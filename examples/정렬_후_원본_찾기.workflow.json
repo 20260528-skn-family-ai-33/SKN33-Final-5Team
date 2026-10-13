@@ -1,0 +1,202 @@
+{
+  "name": "중복을 지우고 상위 두 명 모으기",
+  "nodes": [
+    {
+      "id": "ef4dd1f9-0781-4281-8521-f32c3aaf8bfc",
+      "name": "버튼으로 시작",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "854883bf-5fec-418a-8955-55e8a703679b",
+      "name": "예시 점수 준비",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        330,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{\"name\": \"예시 고객 A\", \"score\": 92}, {\"name\": \"예시 고객 B\", \"score\": 68}, {\"name\": \"예시 고객 A\", \"score\": 92}, {\"name\": \"예시 고객 C\", \"score\": 84}].map(json => ({json}));"
+      }
+    },
+    {
+      "id": "8fcdaaf4-5546-4543-aaac-1671bafefbd4",
+      "name": "중복 점수 제거",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "operation": "removeDuplicateInputItems",
+        "compare": "allFields",
+        "options": {}
+      }
+    },
+    {
+      "id": "d08c25f9-1e17-4aa6-9429-8c1e6e6829f5",
+      "name": "높은 점수부터 정렬",
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        790,
+        300
+      ],
+      "parameters": {
+        "type": "simple",
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "score",
+              "order": "descending"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "24481c98-c84f-4501-91fb-f3b348cf5f21",
+      "name": "상위 두 명",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "maxItems": 2,
+        "keep": "firstItems"
+      }
+    },
+    {
+      "id": "top-data-original-name",
+      "name": "원본 이름 다시 가져오기",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1250,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "original-name",
+              "name": "name",
+              "value": "={{ $('예시 점수 준비').item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "original-score",
+              "name": "score",
+              "value": "={{ $json.score }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f2b817da-90b9-4658-9295-9168ddf43d90",
+      "name": "목록으로 묶기",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        300
+      ],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "data",
+        "include": "allFields",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "버튼으로 시작": {
+      "main": [
+        [
+          {
+            "node": "예시 점수 준비",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "예시 점수 준비": {
+      "main": [
+        [
+          {
+            "node": "중복 점수 제거",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "중복 점수 제거": {
+      "main": [
+        [
+          {
+            "node": "높은 점수부터 정렬",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "높은 점수부터 정렬": {
+      "main": [
+        [
+          {
+            "node": "상위 두 명",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "상위 두 명": {
+      "main": [
+        [
+          {
+            "node": "원본 이름 다시 가져오기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "원본 이름 다시 가져오기": {
+      "main": [
+        [
+          {
+            "node": "목록으로 묶기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul"
+  },
+  "active": false
+}

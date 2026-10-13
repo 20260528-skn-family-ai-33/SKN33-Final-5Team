@@ -1,0 +1,20 @@
+{
+  "raw_rows": 32,
+  "clean_rows": 30,
+  "duplicates_removed": 2,
+  "compatibility": {
+    "compatible": 12,
+    "unsupported": 12,
+    "needs_clarification": 6
+  },
+  "split_rows": {
+    "test": 6,
+    "train": 18,
+    "validation": 6
+  },
+  "cross_split_group_overlap": 0,
+  "actual_llm_runs": 0,
+  "human_review": "pending",
+  "provenance": "synthetic",
+  "batch_id": "88d3c65ea5ecfd3768d5997f52b01fb346f91d42c5c5e409723b794471c2e3b7"
+}

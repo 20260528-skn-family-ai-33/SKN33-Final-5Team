@@ -1,0 +1,225 @@
+{
+  "name": "고객과 주문을 번호로 맞추기",
+  "active": false,
+  "nodes": [
+    {
+      "id": "note",
+      "name": "사용 방법",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        110,
+        25
+      ],
+      "parameters": {
+        "content": "## 고객 번호로 두 목록 맞추기\n시험 실행을 누르면 예시 고객과 주문을 맞추고 CSV를 만들어요.\n**두 흐름 합치기**에서 비교 기준과 일치하지 않는 항목의 처리 방법을 바꿔보세요.\n**결과 정리**의 값 선택으로 이전 단계 결과를 다시 사용할 수 있어요.",
+        "width": 460,
+        "height": 180,
+        "color": 5
+      }
+    },
+    {
+      "id": "start",
+      "name": "클릭해서 시작",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        110,
+        340
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "customers",
+      "name": "고객 목록",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        330,
+        250
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{customerId:101,customer:{name:\"예시 고객 A\"}}},{json:{customerId:102,customer:{name:\"예시 고객 B\"}}}];"
+      }
+    },
+    {
+      "id": "orders",
+      "name": "주문 목록",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        330,
+        450
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{buyerId:101,total:30000}},{json:{buyerId:102,total:45000}},{json:{buyerId:103,total:9000}}];"
+      }
+    },
+    {
+      "id": "merge",
+      "name": "두 흐름 합치기",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        555,
+        340
+      ],
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByFields",
+        "numberInputs": 2,
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "customerId",
+              "field2": "buyerId"
+            }
+          ]
+        },
+        "joinMode": "enrichInput1",
+        "outputDataFrom": "both",
+        "options": {
+          "clashHandling": {
+            "values": {
+              "resolveClash": "preferInput1",
+              "mergeMode": "deepMerge",
+              "overrideEmpty": false
+            }
+          },
+          "multipleMatches": "all"
+        }
+      }
+    },
+    {
+      "id": "result",
+      "name": "결과 정리",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        780,
+        340
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "customerId",
+              "name": "customerId",
+              "value": "={{ $json.customerId }}",
+              "type": "number"
+            },
+            {
+              "id": "name",
+              "name": "name",
+              "value": "={{ $json.customer.name }}",
+              "type": "string"
+            },
+            {
+              "id": "total",
+              "name": "total",
+              "value": "={{ $json.total ?? 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "sourceCount",
+              "name": "sourceCount",
+              "value": "={{ $(\"고객 목록\").all().length }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "file",
+      "name": "CSV 파일로 받기",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1005,
+        340
+      ],
+      "parameters": {
+        "operation": "csv",
+        "binaryPropertyName": "data",
+        "options": {
+          "fileName": "고객별_주문.csv",
+          "headerRow": true,
+          "addBOM": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "클릭해서 시작": {
+      "main": [
+        [
+          {
+            "node": "고객 목록",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "주문 목록",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "고객 목록": {
+      "main": [
+        [
+          {
+            "node": "두 흐름 합치기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "주문 목록": {
+      "main": [
+        [
+          {
+            "node": "두 흐름 합치기",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "두 흐름 합치기": {
+      "main": [
+        [
+          {
+            "node": "결과 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "결과 정리": {
+      "main": [
+        [
+          {
+            "node": "CSV 파일로 받기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul"
+  }
+}

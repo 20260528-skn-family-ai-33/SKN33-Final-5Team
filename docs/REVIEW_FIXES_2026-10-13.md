@@ -12,7 +12,7 @@
 
 ## 추가 회귀 검사
 
-`python/agent_builder/test_review_fixes.py`의 15개 검사:
+`Backend/agent_builder/test_review_fixes.py`의 15개 검사:
 
 - 정책+표 예약 생성, 소스 교체, 정책 원문을 포함한 검수 실행
 - 초기화 예외 시 기존 버전/예약 유지 및 신규 설정 무잔여 롤백
@@ -25,7 +25,7 @@
 - 실제 자식 프로세스 강제 종료→복구→체크포인트 재시도
 - 정상 완료 후 heartbeat를 실패로 처리하지 않음
 
-`server/worker-lifecycle.test.ts`: 실제 worker timeout을 짧게 설정해 Python 자식을 강제 종료하고, API 응답 전에 failed 기록이 저장됐는지 검사한다. 같은 실행 ID를 재시도해 성공과 실패 이력 보존을 확인한다. 모델은 대역이며 외부 API를 호출하지 않는다.
+`Frontend/server/worker-lifecycle.test.ts`: 실제 worker timeout을 짧게 설정해 Python 자식을 강제 종료하고, API 응답 전에 failed 기록이 저장됐는지 검사한다. 같은 실행 ID를 재시도해 성공과 실패 이력 보존을 확인한다. 모델은 대역이며 외부 API를 호출하지 않는다.
 
 ## 결과
 
@@ -35,4 +35,4 @@ Python 103개 통과(기존 88 + 추가 15). 서버 510개 중 509개 통과, �
 
 ## 기존 데이터·실제 데모 확인
 
-이전 데모의 SQLite는 backup API로 독립 복사하고 원본은 보존했다. 기존 자동화 9개를 유지한 새 서버에서 팀별 합계 A=0.3/B=200, 서버 CSV 다운로드, 시험 예약 등록·취소, 정규 예약 중지를 실제 HTTP로 확인했다. 화면 결과는 review-fixed-demo-2026-10-13.png, API 기록은 REVIEW_FIXES_LIVE_CHECK.json에 있다. 이 확인에서는 외부 모델 API를 호출하지 않았다.
+이전 데모의 SQLite는 backup API로 독립 복사하고 원본은 보존했다. 기존 자동화 9개를 유지한 새 서버에서 팀별 합계 A=0.3/B=200, 서버 CSV 다운로드, 시험 예약 등록·취소, 정규 예약 중지를 실제 HTTP로 확인했다. 화면 결과는 ../images/review-fixed-demo-2026-10-13.png, API 기록은 REVIEW_FIXES_LIVE_CHECK.json에 있다. 이 확인에서는 외부 모델 API를 호출하지 않았다.

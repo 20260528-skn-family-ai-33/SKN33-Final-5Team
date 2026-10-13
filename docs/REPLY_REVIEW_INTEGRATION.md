@@ -15,13 +15,13 @@
 
 | 파일 | 역할 |
 |---|---|
-| `python/agent_builder/review_contracts.py` | 기존 개인 앱에서 가져온 판정·문제 유형·심각도·근거·수정안 계약 |
-| `python/agent_builder/review_prompts.py` | 기존 개인 앱의 검수 지침 |
-| `python/agent_builder/reply_review.py` | A4B 모델과 Deep Agents에서 실제 조회 도구로 세 입력을 읽고 보고서를 검증 |
-| `python/agent_builder/review_decisions.py` | 동일 SQLite에 승인·거절 기록, 중복 결정 방지, 승인된 최종 문장만 CSV 출력 |
-| `app/reply-review-panel.tsx` | 판정·문제 구절·근거·수정안, 편집·승인·거절 화면 |
+| `Backend/agent_builder/review_contracts.py` | 기존 개인 앱에서 가져온 판정·문제 유형·심각도·근거·수정안 계약 |
+| `Backend/agent_builder/review_prompts.py` | 기존 개인 앱의 검수 지침 |
+| `Backend/agent_builder/reply_review.py` | A4B 모델과 Deep Agents에서 실제 조회 도구로 세 입력을 읽고 보고서를 검증 |
+| `Backend/agent_builder/review_decisions.py` | 동일 SQLite에 승인·거절 기록, 중복 결정 방지, 승인된 최종 문장만 CSV 출력 |
+| `Frontend/app/reply-review-panel.tsx` | 판정·문제 구절·근거·수정안, 편집·승인·거절 화면 |
 | 기존 registry/models/workflow/runtime/worker | 등록 도구·입출력 검사·실행 결과·체크포인트 재시도 연결 |
-| 기존 server/agent-builder 및 scheduler | 기존 계정 주입·HTTP·예약 모델 판별 재사용 |
+| 기존 Frontend/server/agent-builder 및 scheduler | 기존 계정 주입·HTTP·예약 모델 판별 재사용 |
 | 기존 AgentStudio | 시작 예시·입력·실행 기록·보고서·승인 결과 다운로드 연결 |
 
 현재 기본 진입점인 AgentStudio에 통합했습니다. 비활성화된 과거 자유 캔버스에 별도로 노드를 추가하지 않았습니다.

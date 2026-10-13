@@ -29,7 +29,7 @@ outputs/
 *.zip
 *.pdf
 # The bundled synthetic PDF is required by document API regression tests
-!examples/*PDF*.pdf
+!docs/examples/*PDF*.pdf
 
 # Manifests from the earlier ZIP delivery are not the Git release
 DELIVERY_MANIFEST.json

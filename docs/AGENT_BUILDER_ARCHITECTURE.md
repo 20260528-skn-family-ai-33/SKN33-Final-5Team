@@ -29,7 +29,7 @@ flowchart LR
 
 ## 코드와 DB 분리
 
-각 단계의 코드는 `python/agent_builder/nodes/*.py`입니다. 업무 도구 구현은 `tools/read_table.py`, `tools/filter_sort.py`, `tools/write_result.py`입니다. 에이전트마다 코드를 생성하는 방식이 아니라 등록된 코드와 검증된 실행 설정을 조합합니다.
+각 단계의 코드는 `Backend/agent_builder/nodes/*.py`입니다. 업무 도구 구현은 `tools/read_table.py`, `tools/filter_sort.py`, `tools/write_result.py`입니다. 에이전트마다 코드를 생성하는 방식이 아니라 등록된 코드와 검증된 실행 설정을 조합합니다.
 
 | 테이블 | 저장 내용 |
 |---|---|

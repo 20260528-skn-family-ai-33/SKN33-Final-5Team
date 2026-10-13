@@ -1,4 +1,4 @@
-# A4B — 대화로 만드는 워크플로우·에이전트
+# SKN33-Final-5Team · A4B — 대화로 만드는 워크플로우·에이전트
 
 **노드 라이브러리 통합판 v2.3 · 2026-10-13**
 
@@ -6,42 +6,80 @@
 
 화면은 **노드 만들기 → 워크플로우 설계 → 서비스 실행**으로 구성합니다. 팀원이 제공한 `Demo`에서 노드 라이브러리와 화면·캔버스 개선을 선별 통합했습니다. 기존 A4B 검수·승인·예약·복구 기능과 기본 모델 설정을 유지합니다.
 
+## 폴더 구조
+
+```text
+SKN33-Final-5Team/
+├── Backend/                  # Python 에이전트·전처리
+│   ├── agent_builder/        # 생성·실행·예약·검수·승인 및 테스트
+│   ├── integrations/         # 전처리 코드·명세
+│   ├── scripts/              # 문서 worker·설치·데이터 가져오기·패키징
+│   ├── requirements-agent.txt
+│   └── requirements-agent-lock.txt
+├── Frontend/                 # React 화면·Node 서버
+│   ├── app/
+│   ├── components/
+│   ├── hooks/
+│   ├── lib/
+│   ├── server/
+│   ├── public/
+│   ├── vendor/
+│   ├── scripts/              # 실행·검증 도구
+│   ├── .env.example
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   ├── postcss.config.mjs
+│   └── index.html
+├── docs/                     # 설계·사용 안내·합성 시연 자료 examples/
+├── images/                   # 문서용 화면 이미지
+├── Dockerfile
+├── .dockerignore
+├── .gitattributes
+├── .gitignore
+└── README.md
+```
+
+로컬 폴더 이름은 `finalproject`를 유지합니다. 실행 중 생성하는 `data/`, 설치 환경과 빌드 결과는 Git에서 제외합니다. 구조별 역할과 이전 경로 대응은 [폴더 정리 안내](docs/PROJECT_STRUCTURE.md), 빠른 시작은 [시작 안내](docs/START_HERE.md)를 참고하세요.
+
 ## 설치와 실행
 
 Node.js 24, Python 3.12 권장. 최초 패키지 설치에는 인터넷이 필요합니다. 이번 수정은 macOS의 Node.js 24.19.0·Python 3.14.4에서 검증했으며 Windows 안내도 아래에 제공합니다.
 
 ### macOS / Linux
 
-프로젝트 폴더에서:
+저장소 최상위 폴더에서:
 
 ```bash
-./setup-agent-demo.sh
-npm ci
-npm run dev
+./Backend/scripts/setup-agent-demo.sh
+npm --prefix Frontend ci
+npm --prefix Frontend run dev
 ```
 
-접속: **http://127.0.0.1:3030/**. 다음 실행은 `./start-agent-demo.sh` 또는 `npm run dev`입니다. 프로젝트 폴더에서 실행하고 서버 터미널을 유지하세요.
+접속: **http://127.0.0.1:3030/**. 다음 실행은 `./Frontend/scripts/start-agent-demo.sh` 또는 `npm --prefix Frontend run dev`입니다. 서버 터미널을 유지하세요. macOS에서는 `Frontend/scripts/실행.command`로도 시작할 수 있습니다.
 
 ### Windows PowerShell
 
-프로젝트 폴더에서:
+저장소 최상위 폴더에서:
 
 ```powershell
-py -3.12 -m venv .venv-agent
-.venv-agent\Scripts\python.exe -m pip install -r requirements-agent-lock.txt
-.venv-agent\Scripts\python.exe -m pip install tzdata
-$env:A4B_AGENT_PYTHON=(Resolve-Path .venv-agent\Scripts\python.exe).Path
-npm ci
-npm run dev
+py -3.12 -m venv Backend\.venv-agent
+Backend\.venv-agent\Scripts\python.exe -m pip install -r Backend\requirements-agent-lock.txt
+Backend\.venv-agent\Scripts\python.exe -m pip install tzdata
+npm --prefix Frontend ci
+npm --prefix Frontend run dev
 ```
 
-새 PowerShell 창을 열면 `A4B_AGENT_PYTHON`을 다시 지정하세요. `tzdata`는 Windows에서 IANA 예약 시간대를 읽기 위한 추가 패키지입니다. 이번 수정판을 Windows에서 직접 실행 검증한 것은 아닙니다.
+`Backend/.venv-agent`의 Python을 자동으로 찾습니다. 다른 환경은 `A4B_AGENT_PYTHON`에 절대 경로를 지정하세요. `tzdata`는 Windows에서 IANA 예약 시간대를 읽기 위한 추가 패키지입니다. 이번 수정판을 Windows에서 직접 실행 검증한 것은 아닙니다.
+
+선택 설정은 `Frontend/.env.example`을 `Frontend/.env`로 복사해 사용합니다. `npm run dev`와 `npm start`가 이 파일을 읽으며, 실제 모델 계정은 화면의 **모델 연결**에서 등록합니다.
 
 ### 모델과 문서
 
 생성 대화·문서 답변·응대 검수는 화면의 **모델 연결**에서 계정을 연결해야 실제 모델 API를 사용합니다. 키를 생성 대화에 입력하지 마세요. 단순 표 읽기·필터·합계·파일 저장·예약 시간 계산은 모델을 호출하지 않습니다.
 
-PDF 처리에는 별도로 `./setup-document-demo.sh`로 Docling을 설치합니다. 예약 CSV 시연에는 필요하지 않습니다. 스캔 PDF OCR는 현재 범위 밖입니다.
+PDF 처리에는 별도로 `./Backend/scripts/setup-document-demo.sh`로 Docling을 설치합니다. 예약 CSV 시연에는 필요하지 않습니다. 스캔 PDF OCR는 현재 범위 밖입니다.
 
 ## 노드 만들기와 재사용
 
@@ -57,7 +95,7 @@ PDF 처리에는 별도로 `./setup-document-demo.sh`로 Docling을 설치합니
 
 ## 시연 1: 예약 재고 보고서
 
-1. **워크플로우 설계 → 자료 연결**에서 `examples/scheduled-workflow/inventory.csv`를 연결합니다.
+1. **워크플로우 설계 → 자료 연결**에서 `docs/examples/scheduled-workflow/inventory.csv`를 연결합니다.
 2. “매일 오전 9시에 재고가 기준 수량보다 적은 상품을 찾아 보고서로 저장해줘.”라고 설명합니다.
 3. 질문에 답합니다. 예: “Asia/Seoul, current_stock < threshold, 빈 값 제외·숫자 오류 실패·중복 유지, 원래 열의 CSV를 A4B 서버 보고서 보관함에 저장해주세요.”
 4. 노드·연결·처리 규칙·예약을 확인하고 **자동화 저장**합니다. 저장 직후 예약은 중지 상태입니다.
@@ -70,7 +108,7 @@ PDF 처리에는 별도로 `./setup-document-demo.sh`로 Docling을 설치합니
 
 ## 시연 2: 합계·건수
 
-`examples/scheduled-workflow/team-sales.csv`를 연결한 뒤:
+`docs/examples/scheduled-workflow/team-sales.csv`를 연결한 뒤:
 
 > 매주 월요일 오전 10시 Asia/Seoul에 amount를 team별로 합계 집계해 CSV를 A4B 서버 보고서 보관함에 저장해주세요. 빈 금액·비숫자는 실패로 처리하고 중복 행은 모두 포함해주세요. 정렬·요약은 필요 없습니다.
 
@@ -79,7 +117,7 @@ PDF 처리에는 별도로 `./setup-document-demo.sh`로 Docling을 설치합니
 ## 시연 3: 응대 검수·승인
 
 1. 시작 예시 **고객 응대 초안 검수**를 선택하거나 검수가 필요한 상황을 설명합니다.
-2. 정책 자료를 연결하고 고객 문의·초안은 실행 시 입력한다고 정합니다. 예제는 `examples/reply-review/`에 있습니다.
+2. 정책 자료를 연결하고 고객 문의·초안은 실행 시 입력한다고 정합니다. 예제는 `docs/examples/reply-review/`에 있습니다.
 3. 워크플로우를 저장하고 문의·초안을 입력해 실행합니다.
 4. 보고서에서 문제 유형·심각도·문제 구절·정책/고객 원문·수정안을 확인합니다.
 5. 운영자가 문장을 편집하고 **수정 후 승인·저장**하거나 **거절**합니다.
@@ -118,19 +156,19 @@ PDF 처리에는 별도로 `./setup-document-demo.sh`로 Docling을 설치합니
 
 ## 데이터와 전처리
 
-운영 데이터는 `data/`에 저장합니다. 다른 폴더로 실행하거나 data를 바꾸면 기존 설정을 불러오지 못할 수 있습니다. ZIP은 API 키·계정 보호 키·DB·원본 업로드를 포함하지 않으므로 새 설치에서는 계정을 연결하고 예제로 시작합니다.
+운영 데이터는 저장소 최상위의 `data/`에 저장합니다. 실행 위치와 무관하게 같은 폴더를 사용하며, `EASYFLOW_DATA_DIR`로 변경할 수 있습니다. 상대 경로 설정도 저장소 최상위를 기준으로 해석합니다. 기존 DB·계정 보호 키·원본 업로드는 이동하지 않았습니다. ZIP은 API 키·계정 보호 키·DB·원본 업로드를 포함하지 않으므로 새 설치에서는 계정을 연결하고 예제로 시작합니다.
 
-Git에는 환경 파일·개인 DB·원본 업로드·로그·ZIP·설치 환경·빌드 결과를 제외합니다. `examples/`의 표와 정책은 합성 시연 자료입니다. `초보자_PDF_예제.pdf`는 “Easyflow report page one”, “Second page contains actual text” 두 페이지의 합성 시험 문서이며, 문서 API 회귀 테스트용으로 포함합니다. 고객 원본 PDF는 등록하지 않습니다.
+Git에는 환경 파일·개인 DB·원본 업로드·로그·ZIP·설치 환경·빌드 결과를 제외합니다. `docs/examples/`의 표와 정책은 합성 시연 자료입니다. `초보자_PDF_예제.pdf`는 “Easyflow report page one”, “Second page contains actual text” 두 페이지의 합성 시험 문서이며, 문서 API 회귀 테스트용으로 포함합니다. 고객 원본 PDF는 등록하지 않습니다.
 
-별도 프린터 매뉴얼 실호출 시험은 `A4B_MANUAL_PDF`에 자신의 로컬 PDF 경로를 지정해 `scripts/verify-manual-workflow.ts`를 실행합니다. 또는 `A4B_SESSION_ID`로 기존 시험 대화를 이어갈 수 있습니다. 이 시험은 모델 API 비용이 발생하고 원본 PDF는 로컬에만 보관합니다.
+별도 프린터 매뉴얼 실호출 시험은 `A4B_MANUAL_PDF`에 자신의 로컬 PDF 경로를 지정해 `Frontend/scripts/verify-manual-workflow.ts`를 실행합니다. 또는 `A4B_SESSION_ID`로 기존 시험 대화를 이어갈 수 있습니다. 이 시험은 모델 API 비용이 발생하고 원본 PDF는 로컬에만 보관합니다.
 
-`workflow_preprocessing` 원본은 `integrations/workflow_preprocessing/`에 보존했습니다. 원본의 NFC·공백 정규화·완전 중복 제거·시나리오별 분할·도구 참조 검증을 사용합니다.
+`workflow_preprocessing` 전처리 코드·명세는 `Backend/integrations/workflow_preprocessing/`에, 합성 데이터는 `docs/examples/workflow_preprocessing/`에 보존했습니다. 원본의 NFC·공백 정규화·완전 중복 제거·시나리오별 분할·도구 참조 검증을 사용합니다.
 
 ```bash
-.venv-agent/bin/python scripts/import-preprocessing.py
+Backend/.venv-agent/bin/python Backend/scripts/import-preprocessing.py
 ```
 
-Windows는 `.venv-agent\Scripts\python.exe scripts/import-preprocessing.py`를 사용합니다. 합성 사례 32→30건, 변환 가능 12·질문 필요 6·어댑터 미지원 12건을 별도 DB 테이블에 저장합니다. 사용자 워크플로우로 자동 등록하거나 모델을 자동 학습하지 않습니다. 사람 검수 상태는 pending입니다.
+Windows는 `Backend\.venv-agent\Scripts\python.exe Backend\scripts\import-preprocessing.py`를 사용합니다. 합성 사례 32→30건, 변환 가능 12·질문 필요 6·어댑터 미지원 12건을 별도 DB 테이블에 저장합니다. 사용자 워크플로우로 자동 등록하거나 모델을 자동 학습하지 않습니다. 사람 검수 상태는 pending입니다.
 
 ## 구조
 
@@ -149,12 +187,14 @@ React 화면 → Node API → Python 생성/실행 worker → 공통 SQLite·Lan
 ## 검증
 
 ```bash
-.venv-agent/bin/python -m pytest python/agent_builder -q
-npm run check
-npm test
+npm --prefix Frontend run test:python
+npm --prefix Frontend run check
+npm --prefix Frontend test
 ```
 
-Python **172개 통과**, 서버·화면 **520개 중 519개 통과·기존 1개 제외**, 실패 0. TypeScript 검사 및 빌드 통과. 노드 버전 고정·동시 수정·기본 노드 복제·선택 버전 표시·노드 저장 API와 기존 예약·검수·승인 기능을 함께 검증했습니다. 프로세스 강제 종료·worker timeout은 실제 자식 프로세스로 시험했으며 모델 응답은 회귀 검사에서 대역을 사용했습니다. 중첩 흐름의 수정 후보·승인·CSV·JSON 보고서와 서버 재시작도 로컬 HTTP로 검증했습니다. 이번 수정 검증은 모델 품질 평가가 아닙니다.
+**폴더 정리 후 검증 — 2026-10-13:** Python 172개 통과, 서버·화면 522개 중 521개 통과·기존 Docling 선택 검사 1개 제외, 실패 0. 타입 검사·빌드 통과. 저장소 최상위·Frontend·다른 폴더에서 경로를 확인하고, 소스 서버와 빌드 서버의 화면 응답·Python 노드 목록 조회를 임시 DB로 검증했습니다. 전처리 예제 6개는 다시 생성해 원본과 바이트 단위로 일치했습니다. Dockerfile 경로는 갱신했지만 로컬 Docker 서비스가 꺼져 있어 컨테이너 빌드·실행은 검증하지 않았습니다. 자세한 결과는 [폴더 정리 검증 기록](docs/RESTRUCTURE_VALIDATION_2026-10-13.md)에 있습니다.
+
+노드 라이브러리 통합 당시 Python **172개 통과**, 서버·화면 **520개 중 519개 통과·기존 1개 제외**, 실패 0. TypeScript 검사 및 빌드 통과. 노드 버전 고정·동시 수정·기본 노드 복제·선택 버전 표시·노드 저장 API와 기존 예약·검수·승인 기능을 함께 검증했습니다. 프로세스 강제 종료·worker timeout은 실제 자식 프로세스로 시험했으며 모델 응답은 회귀 검사에서 대역을 사용했습니다. 중첩 흐름의 수정 후보·승인·CSV·JSON 보고서와 서버 재시작도 로컬 HTTP로 검증했습니다. 이번 수정 검증은 모델 품질 평가가 아닙니다.
 
 `npm test`는 빌드를 먼저 실행하고 테스트 파일을 최대 4개씩 실행합니다. 여러 Python 작업자가 동시에 시작하면서 짧은 timeout 시험이 초기화 전에 끝나는 테스트 간 간섭을 줄였습니다. 앱의 실제 worker timeout 설정은 변경하지 않았습니다.
 
@@ -162,7 +202,7 @@ Python **172개 통과**, 서버·화면 **520개 중 519개 통과·기존 1개
 
 ## 노드를 이어 연결하는 구조 — v2.2
 
-등록된 업무 노드 16종은 각각 `python/agent_builder/executors/<노드 ID>.py`의 실행 함수를 갖습니다. 앞뒤 노드 이름은 실행 코드에 고정하지 않습니다. `bindings`가 앞 단계 출력 포트를 자신의 입력으로 연결하고, `edges`가 다음 실행·분기 경로를 지정합니다. LangGraph가 저장한 연결을 실제 호출로 구성합니다. 한 흐름의 노드 개수는 기존과 같이 최대 15개입니다.
+등록된 업무 노드 16종은 각각 `Backend/agent_builder/executors/<노드 ID>.py`의 실행 함수를 갖습니다. 앞뒤 노드 이름은 실행 코드에 고정하지 않습니다. `bindings`가 앞 단계 출력 포트를 자신의 입력으로 연결하고, `edges`가 다음 실행·분기 경로를 지정합니다. LangGraph가 저장한 연결을 실제 호출로 구성합니다. 한 흐름의 노드 개수는 기존과 같이 최대 15개입니다.
 
 - `filter_sort.settings.execution_plan`: 해당 노드만의 필터·정렬·예외 정책. 같은 종류 노드를 여러 번 쓰면서 각각 다른 조건을 적용합니다.
 - `write_result.settings.format`: 해당 저장 노드의 출력 형식.
@@ -185,6 +225,6 @@ Python **172개 통과**, 서버·화면 **520개 중 519개 통과·기존 1개
 
 ## 통합 자료의 출처
 
-노드 라이브러리·새 역할 실행·3화면 구성·캔버스 확대 기능은 팀원이 제공한 `../Demo` 작업물에서 가져와 A4B에 맞게 수정했습니다. 원본 Demo에는 별도 프로젝트 라이선스가 명시돼 있지 않아 팀 내부 제공 자료로 기록합니다. 이번 통합은 원본 폴더를 변경하지 않았습니다. 포함된 외부 CSS의 MIT 라이선스는 [vendor/shadcn-tailwind-4.13.0.LICENSE.md](vendor/shadcn-tailwind-4.13.0.LICENSE.md)에 보존돼 있습니다.
+노드 라이브러리·새 역할 실행·3화면 구성·캔버스 확대 기능은 팀원이 제공한 `../Demo` 작업물에서 가져와 A4B에 맞게 수정했습니다. 원본 Demo에는 별도 프로젝트 라이선스가 명시돼 있지 않아 팀 내부 제공 자료로 기록합니다. 이번 통합은 원본 폴더를 변경하지 않았습니다. 포함된 외부 CSS의 MIT 라이선스는 [Frontend/vendor/shadcn-tailwind-4.13.0.LICENSE.md](Frontend/vendor/shadcn-tailwind-4.13.0.LICENSE.md)에 보존돼 있습니다.
 
 선별 통합 범위·호환성·검증: [docs/DEMO_INTEGRATION_2026-10-13.md](docs/DEMO_INTEGRATION_2026-10-13.md).

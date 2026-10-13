@@ -12,7 +12,7 @@
 
 ## 전처리와 DB
 
-`integrations/workflow_preprocessing/`에 제공된 파일럿 원본을 보존했다. `python/agent_builder/preprocessing.py`는 그 normalize/validate 함수를 직접 사용하며 실제 백엔드 규격과의 연결을 담당한다.
+`Backend/integrations/workflow_preprocessing/`에 제공된 파일럿 원본을 보존했다. `Backend/agent_builder/preprocessing.py`는 그 normalize/validate 함수를 직접 사용하며 실제 백엔드 규격과의 연결을 담당한다.
 
 `preprocessing_batches`: 배치 ID, 원본 경로, 규약 버전, 합성 자료 여부, 사람 검수 상태, 통계.
 
@@ -23,7 +23,7 @@
 실행:
 
 ```bash
-.venv-agent/bin/python scripts/import-preprocessing.py
+Backend/.venv-agent/bin/python Backend/scripts/import-preprocessing.py
 ```
 
 기본 DB는 `data/agent-builder.sqlite`. 다른 DB에는 `--directory /path/to/data`를 지정한다. 반복 가져오기는 같은 배치를 중복 삽입하지 않는다. 원본/분할 파일 불일치나 동일 시나리오의 분할 간 누출이 있으면 가져오기를 거부한다.
@@ -50,4 +50,4 @@ Python 생성·실행·예약·전처리 테스트 69건 통과. 서버 회귀 �
 
 실제 모델 API 생성까지 재검증한 결과: ‘팀별 금액 합계 정기 집계 및 보고서 저장’ 자동화를 대화 요청으로 생성·저장했다. A팀 0.3, B팀 200의 합계 CSV를 서버에 실제 저장하고 다운로드 응답을 확인했다. 시험 예약 등록→취소도 실제 API에서 통과했다. 정규 예약은 중지 상태로 유지했다. 첫 생성에서 검토 모델이 합계 노드의 숫자 검증 기능을 알지 못해 불필요한 검사를 요구했고, 도구 설명·검토 프롬프트에 실제 실행 규칙을 반영한 후 다시 통과했다. 이 한 건의 성공을 일반적인 생성 정확도로 확대 해석하지 않는다.
 
-브라우저에서도 합계 자동화의 결과·4개 노드 연결·노드별 입출력과 시간을 확인했다. 시험 예약 등록→취소 버튼 흐름을 수행하여 ‘시험 예약을 취소했습니다.’ 상태를 확인했다. 별도의 15초 시험 예약은 실제 성공 결과를 생성했다. 화면 기록: `integrated-demo-2026-10-12.png`.
+브라우저에서도 합계 자동화의 결과·4개 노드 연결·노드별 입출력과 시간을 확인했다. 시험 예약 등록→취소 버튼 흐름을 수행하여 ‘시험 예약을 취소했습니다.’ 상태를 확인했다. 별도의 15초 시험 예약은 실제 성공 결과를 생성했다. 화면 기록: `../images/integrated-demo-2026-10-12.png`.

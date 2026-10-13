@@ -28,6 +28,6 @@ try:
     if result.status==ConversionStatus.PARTIAL_SUCCESS or result.errors:warnings.append('일부 변환 오류가 있습니다. 원문과 대조하세요.')
     empty=[i+1 for i,p in enumerate(ordered) if not p.strip()]
     if empty:warnings.append('텍스트가 없는 페이지: '+', '.join(map(str,empty[:30])))
-    output.write_text(json.dumps({'text':text,'pages':ordered,'sections':sections,'tables':tables,'engine':'docling','parser_version':__import__('importlib.metadata',fromlist=['version']).version('docling'),'warnings':warnings,'page_count':len(ordered)},ensure_ascii=False))
+    output.write_text(json.dumps({'text':text,'pages':ordered,'sections':sections,'tables':tables,'engine':'docling','parser_version':__import__('importlib.metadata',fromlist=['version']).version('docling'),'warnings':warnings,'page_count':len(ordered)},ensure_ascii=False),encoding='utf-8')
 except Exception as error:
-    output.write_text(json.dumps({'error':'Docling 문서 처리에 실패했습니다. 텍스트 PDF·500페이지·8MB 제한을 확인하세요.','error_type':type(error).__name__},ensure_ascii=False));sys.exit(1)
+    output.write_text(json.dumps({'error':'Docling 문서 처리에 실패했습니다. 텍스트 PDF·500페이지·8MB 제한을 확인하세요.','error_type':type(error).__name__},ensure_ascii=False),encoding='utf-8');sys.exit(1)

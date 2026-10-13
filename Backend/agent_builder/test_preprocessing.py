@@ -8,7 +8,7 @@ from agent_builder.workflow_runtime import run_workflow
 from agent_builder.scheduling import Schedules
 from agent_builder.test_scheduling import seed
 
-ROWS=[json.loads(l) for l in (ROOT/'clean_requests.jsonl').read_text().splitlines()]
+ROWS=[json.loads(l) for l in (ROOT/'clean_requests.jsonl').read_text(encoding='utf-8').splitlines()]
 
 def test_import_normalizes_deduplicates_and_is_idempotent(tmp_path):
     st=Storage(tmp_path);ds=DatasetStore(st);result=ds.import_directory();assert result['raw_rows']==32;assert result['clean_rows']==30;assert result['duplicates_removed']==2
@@ -22,8 +22,8 @@ def test_import_normalizes_deduplicates_and_is_idempotent(tmp_path):
 def test_split_leakage_rejected_without_partial_import(tmp_path):
     source=tmp_path/'input';source.mkdir()
     for name in ['raw_requests.jsonl','train.jsonl','validation.jsonl','test.jsonl']:(source/name).write_bytes((ROOT/name).read_bytes())
-    row=json.loads((source/'train.jsonl').read_text().splitlines()[0]);row['id']='different-id'
-    with (source/'test.jsonl').open('a') as f:f.write(json.dumps(row)+'\n')
+    row=json.loads((source/'train.jsonl').read_text(encoding='utf-8').splitlines()[0]);row['id']='different-id'
+    with (source/'test.jsonl').open('a',encoding='utf-8') as f:f.write(json.dumps(row)+'\n')
     st=Storage(tmp_path/'db');ds=DatasetStore(st)
     with pytest.raises(ValueError,match='누출'):ds.import_directory(source)
     assert st.db.execute('SELECT count(*) FROM preprocessing_examples').fetchone()[0]==0;st.close()

@@ -6,6 +6,19 @@ from .storage import now
 LEASE_SECONDS=90
 
 def alive(pid):
+    if not pid:return False
+    if os.name=='nt':
+        # Windows os.kill(pid,0) sends CTRL_C_EVENT instead of checking the process.
+        import ctypes
+        from ctypes import wintypes
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.OpenProcess.restype=wintypes.HANDLE
+        handle=kernel.OpenProcess(0x1000,False,int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:return ctypes.get_last_error()==5  # access denied: the process exists
+        try:
+            code=wintypes.DWORD()
+            return bool(kernel.GetExitCodeProcess(handle,ctypes.byref(code))) and code.value==259  # STILL_ACTIVE
+        finally:kernel.CloseHandle(handle)
     try:os.kill(pid,0);return True
     except ProcessLookupError:return False
     except PermissionError:return True

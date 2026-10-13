@@ -61,12 +61,12 @@ class DatasetStore:
     def import_directory(self,directory=ROOT):
         directory=Path(directory);split_by_id={};group_split={}
         for split in ['train','validation','test']:
-            for line in (directory/(split+'.jsonl')).read_text().splitlines():
+            for line in (directory/(split+'.jsonl')).read_text(encoding='utf-8').splitlines():
                 row=json.loads(line);group=row['scenario_group']
                 if row['id'] in split_by_id or group in group_split and group_split[group]!=split:raise ValueError('데이터 분할 간 중복 또는 시나리오 누출이 있습니다.')
                 split_by_id[row['id']]=(split,row);group_split[group]=split
         raw_path=directory/'raw_requests.jsonl'
-        rows=[json.loads(l) for l in (raw_path if raw_path.exists() else directory/'clean_requests.jsonl').read_text().splitlines() if l.strip()]
+        rows=[json.loads(l) for l in (raw_path if raw_path.exists() else directory/'clean_requests.jsonl').read_text(encoding='utf-8').splitlines() if l.strip()]
         originals={};fingerprints=set();examples=[];duplicates=0
         for raw in rows:
             clean=copy.deepcopy(raw);clean['request']=pilot.normalize(clean.get('request',''))

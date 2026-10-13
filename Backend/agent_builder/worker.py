@@ -126,6 +126,8 @@ def handle(data,conversation=None):
 
 if __name__=='__main__':
     data={}
+    # Node exchanges UTF-8 JSON. Windows pipes otherwise use the locale code page (e.g. cp949).
+    sys.stdin.reconfigure(encoding='utf-8');sys.stdout.reconfigure(encoding='utf-8')
     try:
         data=json.load(sys.stdin)
         if not isinstance(data,dict):raise ValueError('요청 형식을 확인하세요.')
@@ -137,5 +139,5 @@ if __name__=='__main__':
     except Exception as error:
         import traceback,os
         if os.environ.get('A4B_DIAGNOSTICS'):
-            Path('/tmp/a4b-worker-diagnostic.json').write_text(json.dumps({'type':type(error).__name__,'code':getattr(error,'code',None),'param':getattr(error,'param',None),'frames':[{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)[-6:]]}))
+            Path(__import__('tempfile').gettempdir(),'a4b-worker-diagnostic.json').write_text(json.dumps({'type':type(error).__name__,'code':getattr(error,'code',None),'param':getattr(error,'param',None),'frames':[{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)[-6:]]}))
         print(json.dumps({'ok':False,'error':public_error(error,data.get('api_key',''))},ensure_ascii=False))

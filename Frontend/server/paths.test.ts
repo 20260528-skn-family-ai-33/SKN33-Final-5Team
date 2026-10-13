@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from './test-process';
 import test from 'node:test';
 import {spawn,spawnSync,type ChildProcess} from 'node:child_process';
 import {existsSync} from 'node:fs';
@@ -27,7 +28,7 @@ test('repository paths keep existing data and sample files independent of the wo
    assert.equal(configured.status,0,configured.stderr);
    assert.equal(JSON.parse(configured.stdout).data,join(PROJECT_ROOT,'custom-data'));
   }
- }finally{await rm(elsewhere,{recursive:true,force:true});}
+ }finally{await removeDirectory(elsewhere);}
 });
 
 async function freePort():Promise<number>{
@@ -41,8 +42,8 @@ async function freePort():Promise<number>{
 async function stop(child:ChildProcess){
  if(child.exitCode!==null||child.signalCode)return;
  const exited=new Promise<void>(done=>child.once('exit',()=>done()));
- child.kill('SIGTERM');
- const timer=setTimeout(()=>child.kill('SIGKILL'),4000);
+ requestShutdown(child);
+ const timer=setTimeout(()=>child.kill('SIGKILL'),scaled(4000));
  try{await exited;}finally{clearTimeout(timer);}
 }
 
@@ -55,10 +56,10 @@ test('source and built servers serve the UI and reach the Python catalog from an
    ['built',[frontendPath('build-server/index.mjs')]],
   ] as const){
    const port=await freePort(),directory=join(elsewhere,name);
-   const child=spawn(process.execPath,[...args],{cwd:elsewhere,env:{...process.env,HOST:'127.0.0.1',PORT:String(port),A4B_FOCUSED_DEMO:'1',EASYFLOW_DATA_DIR:directory,A4B_AGENT_PYTHON:python},stdio:['ignore','pipe','pipe']});
+   const child=spawn(process.execPath,[...args],{cwd:elsewhere,env:{...process.env,HOST:'127.0.0.1',PORT:String(port),A4B_FOCUSED_DEMO:'1',EASYFLOW_DATA_DIR:directory,A4B_AGENT_PYTHON:python},stdio:SERVER_STDIO});
    let output='';child.stdout?.on('data',chunk=>output+=String(chunk));child.stderr?.on('data',chunk=>output+=String(chunk));
    try{
-    const base=`http://127.0.0.1:${port}`,deadline=Date.now()+12000;let ready=false;
+    const base=`http://127.0.0.1:${port}`,deadline=Date.now()+scaled(12000);let ready=false;
     while(Date.now()<deadline){
      assert.equal(child.exitCode,null,output);
      try{ready=(await fetch(base+'/api/health',{signal:AbortSignal.timeout(500)})).ok;}catch{}
@@ -66,11 +67,11 @@ test('source and built servers serve the UI and reach the Python catalog from an
     }
     assert.ok(ready,output);
     const page=await fetch(base);assert.equal(page.status,200);assert.match(await page.text(),/<div id="root"><\/div>/);
-    const catalog=await fetch(base+'/api/agent-builder/catalog',{signal:AbortSignal.timeout(12000)});assert.equal(catalog.status,200);
+    const catalog=await fetch(base+'/api/agent-builder/catalog',{signal:AbortSignal.timeout(scaled(12000))});assert.equal(catalog.status,200);
     const value=await catalog.json() as any;assert.equal(value.engine.conversation,'deepagents');assert.ok(value.tools.length>0);
     assert.ok(existsSync(join(directory,'easyflow.sqlite')));assert.ok(existsSync(join(directory,'agent-builder.sqlite')));
     assert.equal(existsSync(join(elsewhere,'data')),false);
    }finally{await stop(child);}
   }
- }finally{await rm(elsewhere,{recursive:true,force:true});}
+ }finally{await removeDirectory(elsewhere);}
 });

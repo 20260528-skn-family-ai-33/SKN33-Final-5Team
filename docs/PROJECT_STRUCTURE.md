@@ -24,12 +24,12 @@
 모든 명령은 저장소 최상위 폴더에서 실행합니다.
 
 ```bash
-./Backend/scripts/setup-agent-demo.sh
 npm --prefix Frontend ci
+npm --prefix Frontend run setup
 npm --prefix Frontend run dev
 ```
 
-이후 실행은 `./Frontend/scripts/start-agent-demo.sh`입니다. `Frontend/` 안에서는 `npm run dev`, `npm run check`, `npm test`를 사용합니다. macOS 더블클릭 시작 파일은 `Frontend/scripts/실행.command`입니다.
+macOS·Windows 공통 명령입니다. 이후 실행은 `npm --prefix Frontend run demo`(macOS는 `./Frontend/scripts/start-agent-demo.sh`도 가능)입니다. `Frontend/` 안에서는 `npm run dev`, `npm run check`, `npm test`를 사용합니다. macOS 더블클릭 시작 파일은 `Frontend/scripts/실행.command`입니다.
 
 새 Python 환경은 `Backend/.venv-agent/`에 설치합니다. 기존 최상위 `.venv-agent/`는 내부에 설치 당시의 경로가 기록되어 있어 이동하지 않았으며, 새 환경이 없으면 기존 환경을 사용합니다. PDF 변환 환경 설치는 `./Backend/scripts/setup-document-demo.sh`입니다.
 
@@ -45,7 +45,7 @@ npm --prefix Frontend run dev
 Backend/.venv-agent/bin/python Backend/scripts/import-preprocessing.py
 ```
 
-기존 최상위 환경을 사용하는 경우 명령 앞의 `Backend/.venv-agent/bin/python`을 `.venv-agent/bin/python`으로 바꿉니다. 이 가져오기는 기존과 동일하게 합성 데이터를 별도 테이블에 저장하며 사용자 워크플로우를 생성하지 않습니다.
+Windows는 `Backend\.venv-agent\Scripts\python.exe Backend\scripts\import-preprocessing.py`입니다. 기존 최상위 환경을 사용하는 경우 명령 앞의 `Backend/.venv-agent`를 `.venv-agent`로 바꿉니다. 이 가져오기는 기존과 동일하게 합성 데이터를 별도 테이블에 저장하며 사용자 워크플로우를 생성하지 않습니다.
 
 ## 확인과 컨테이너 실행
 

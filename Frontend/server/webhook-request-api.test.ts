@@ -1,4 +1,5 @@
 import {examplePath} from './paths';
+import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from './test-process';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -36,12 +37,12 @@ class Server {
   async start() {
     const environment: NodeJS.ProcessEnv = { ...process.env, PORT: String(this.port), HOST: '127.0.0.1', EASYFLOW_DATA_DIR: this.directory, EASYFLOW_WEBHOOK_RESPONSE_TIMEOUT_MS: '15000' };
     for (const key of Object.keys(environment)) if (/^N8N_/i.test(key)) delete environment[key];
-    const child = this.child = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { cwd: project, env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = this.child = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { cwd: project, env: environment, stdio: SERVER_STDIO });
     child.stdout?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
     child.stderr?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
     let launchError: Error | undefined;
     child.once('error', error => { launchError = error; });
-    const deadline = Date.now() + 12_000;
+    const deadline = Date.now() + scaled(12_000);
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
       if (child.exitCode !== null || child.signalCode) throw new Error(`File Webhook server exited: ${this.output}`);
@@ -54,10 +55,10 @@ class Server {
     const child = this.child;
     if (!child || child.exitCode !== null || child.signalCode) return;
     const exit = new Promise<{code: number | null; signal: NodeJS.Signals | null}>(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
-    child.kill('SIGTERM');
+    requestShutdown(child);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const result = await Promise.race([exit, new Promise<never>((_, reject) => { timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`File Webhook server did not shut down: ${this.output}`)); }, 4_000); })]);
+      const result = await Promise.race([exit, new Promise<never>((_, reject) => { timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`File Webhook server did not shut down: ${this.output}`)); }, scaled(4_000)); })]);
       assert.equal(result.code, 0, this.output);
       assert.equal(result.signal, null);
     } finally { if (timer) clearTimeout(timer); }
@@ -75,7 +76,7 @@ class Server {
     return { url: details.url, token: active.workflow.hookToken };
   }
   async execution(id: string): Promise<Execution> {
-    const deadline = Date.now() + 12_000;
+    const deadline = Date.now() + scaled(12_000);
     let last: Execution | undefined;
     while (Date.now() < deadline) {
       last = (await this.api('/api/executions?id=' + encodeURIComponent(id))).execution;
@@ -169,7 +170,7 @@ function stalledRequest(url: string): Promise<{bytes: Buffer; milliseconds: numb
   });
 }
 
-test('independent Webhook receives files through real HTTP, parses native bodies and keeps exact bytes after restart', { timeout: 150_000 }, async t => {
+test('independent Webhook receives files through real HTTP, parses native bodies and keeps exact bytes after restart', { timeout: scaled(150_000) }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'easyflow-webhook-request-api-'));
   const server = new Server(await freePort(), directory);
   const durable: { id: string; property: string; bytes: Buffer; responseBytes?: Buffer }[] = [];
@@ -524,6 +525,6 @@ test('independent Webhook receives files through real HTTP, parses native bodies
     });
   } finally {
     await server.stop();
-    await rm(directory, { recursive: true, force: true });
+    await removeDirectory(directory);
   }
 });

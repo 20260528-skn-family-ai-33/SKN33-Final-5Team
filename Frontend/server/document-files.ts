@@ -1,4 +1,6 @@
 import {Worker} from 'node:worker_threads';
+import {spawn} from 'node:child_process';
+import {trackWorker} from './worker-exit';
 import {createRequire} from 'node:module';
 import {inflateRawSync} from 'node:zlib';
 import type {Json} from '../lib/workflow';
@@ -60,6 +62,7 @@ async function documentWorkerMain(workerData:any,parentPort:any,require:any,insp
    // Disallow ancillary CMap/font/wasm fetches. Only document-provided bytes are read.
    globalThis.fetch=async()=>{throw new Error('파일 변환에서는 외부 주소를 읽을 수 없어요.');};
    const {PDFParse}=require(modulePath),parser=new PDFParse({data:new Uint8Array(data),verbosity:0,isEvalSupported:false,useWorkerFetch:false,useWasm:false,useSystemFonts:false,enableXfa:false,disableFontFace:true,stopAtErrors:true,disableRange:true,disableStream:true,disableAutoFetch:true});
+   let pdfResult:any;
    try {
     const info=await parser.getInfo();if(info.total>500)fail('PDF는 한 번에 500페이지까지 읽을 수 있어요. 문서를 나눠주세요.');
     const count=options.maxPages||info.total,pages:string[]=[];let length=0;
@@ -68,8 +71,11 @@ async function documentWorkerMain(workerData:any,parentPort:any,require:any,insp
      length+=Buffer.byteLength(page,'utf8');if(length>MAX_BYTES)fail('PDF에서 읽은 글자는 8MB 이하로 줄여주세요.');pages.push(page);
     }
     if(!pages.some(text=>text.trim()))fail('PDF에 추출할 텍스트가 없어요. 스캔·이미지 PDF는 OCR(문자 인식)이 먼저 필요해요.');
-    parentPort.postMessage({ok:true,result:bounded({numpages:info.total,numrender:pages.length,text:options.joinPages===false?pages:pages.join('\n\n')})});
+    pdfResult=bounded({numpages:info.total,numrender:pages.length,text:options.joinPages===false?pages:pages.join('\n\n')});
    } finally {await parser.destroy();}
+   // Reply only after pdf.js cleanup. The parent terminates the worker on reply, and terminating it
+   // during destroy() intermittently crashes Node on Windows.
+   parentPort.postMessage({ok:true,result:pdfResult});
   } else {
    const ExcelJS=require(modulePath),workbook=new ExcelJS.Workbook();
    const scalar=(value:any):any=>{
@@ -127,15 +133,34 @@ async function runDocumentTask(task:'readXlsx'|'writeXlsx'|'pdf',data:Uint8Array
  const timeout=context.timeoutMs??DOCUMENT_TIMEOUT_MS;if(!Number.isInteger(timeout)||timeout<1||timeout>30000)throw new Error('파일 처리 제한 시간은 1~30,000ms로 지정해주세요.');
  const require=createRequire(import.meta.url);let modulePath:string;try{modulePath=require.resolve(task==='pdf'?'pdf-parse':'exceljs');}catch{throw new Error('파일 처리 라이브러리가 설치되지 않았어요. 서버 설정을 확인해주세요.');}
  // tsx/esbuild may preserve nested function names with their __name helper.
+ // Windows: a worker thread that loaded pdf.js or exceljs intermittently crashes the whole Node process
+ // when it exits (seen with Node 24.19). There each document is parsed in its own process instead, so a
+ // crash can only end that process. macOS and Linux keep the worker thread.
+ if(process.platform==='win32')return runDocumentProcess({task,data,options,modulePath},timeout,context);
  const source=`const __name=(fn)=>fn;(${documentWorkerMain.toString()})(require('node:worker_threads').workerData,require('node:worker_threads').parentPort,require,(${inspectZip.toString()}));`;
  return new Promise((resolve,reject)=>{
-  const worker=new Worker(source,{eval:true,workerData:{task,data,options,modulePath},execArgv:[],resourceLimits:{maxOldGenerationSizeMb:192,maxYoungGenerationSizeMb:32,stackSizeMb:4}});
+  const worker=new Worker(source,{eval:true,workerData:{task,data,options,modulePath},execArgv:[],resourceLimits:{maxOldGenerationSizeMb:192,maxYoungGenerationSizeMb:32,stackSizeMb:4}});trackWorker(worker);
   let settled=false;const finish=(error?:Error,result?:any)=>{if(settled)return;settled=true;clearTimeout(timer);context.signal?.removeEventListener('abort',abort);void worker.terminate();if(error)reject(error);else resolve(result);};
   const abort=()=>finish(new Error('파일 처리를 중지했어요.')),timer=setTimeout(()=>finish(new Error('파일 처리 시간이 초과됐어요. 문서를 나누거나 파일을 줄여주세요.')),timeout);
   context.signal?.addEventListener('abort',abort,{once:true});if(context.signal?.aborted)abort();
   worker.once('message',(message:any)=>message?.ok?finish(undefined,message.result):finish(new Error(message?.error||'파일을 읽지 못했어요.')));
   worker.once('error',()=>finish(new Error('파일 처리 중 메모리 또는 형식 오류가 발생했어요. 파일을 줄이거나 다시 저장해주세요.')));
   worker.once('exit',()=>{if(!settled)finish(new Error('파일 처리가 완료되기 전에 종료됐어요.'));});
+ });
+}
+// Same documentWorkerMain in a child process. The payload travels over IPC with structured clone,
+// and the child exits after its single reply has been sent.
+function runDocumentProcess(payload:{task:string;data:Uint8Array|Json[];options:Json;modulePath:string},timeout:number,context:DocumentContext):Promise<any> {
+ const source=`const __name=(fn)=>fn;process.once('message',workerData=>{const parentPort={postMessage:message=>process.send(message,()=>process.exit(0))};(${documentWorkerMain.toString()})(workerData,parentPort,require,(${inspectZip.toString()}));});`;
+ return new Promise((resolve,reject)=>{
+  const child=spawn(process.execPath,['--max-old-space-size=192','-e',source],{stdio:['ignore','ignore','ignore','ipc'],serialization:'advanced',windowsHide:true});
+  let settled=false;const finish=(error?:Error,result?:any)=>{if(settled)return;settled=true;clearTimeout(timer);context.signal?.removeEventListener('abort',abort);if(child.exitCode===null&&child.signalCode===null)child.kill();if(error)reject(error);else resolve(result);};
+  const abort=()=>finish(new Error('파일 처리를 중지했어요.')),timer=setTimeout(()=>finish(new Error('파일 처리 시간이 초과됐어요. 문서를 나누거나 파일을 줄여주세요.')),timeout);
+  context.signal?.addEventListener('abort',abort,{once:true});if(context.signal?.aborted)abort();
+  child.once('message',(message:any)=>message?.ok?finish(undefined,message.result):finish(new Error(message?.error||'파일을 읽지 못했어요.')));
+  child.once('error',()=>finish(new Error('파일 처리 중 메모리 또는 형식 오류가 발생했어요. 파일을 줄이거나 다시 저장해주세요.')));
+  child.once('exit',()=>{if(!settled)finish(new Error('파일 처리 중 메모리 또는 형식 오류가 발생했어요. 파일을 줄이거나 다시 저장해주세요.'));});
+  child.send(payload);
  });
 }
 function bytesInput(bytes:Uint8Array):Uint8Array {if(!(bytes instanceof Uint8Array))throw new Error('파일 내용은 바이트 데이터로 입력해주세요.');if(bytes.byteLength>MAX_DOCUMENT_BYTES)throw new Error('파일은 8MB 이하로 입력해주세요.');return bytes;}

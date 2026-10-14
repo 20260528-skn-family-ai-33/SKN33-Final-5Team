@@ -6,11 +6,14 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "setup": "node scripts/setup-python.mjs",
+    "setup:docling": "node scripts/setup-python.mjs --docling",
+    "demo": "node scripts/launch-demo.mjs",
     "dev": "npm run build && node --env-file-if-exists=.env --import tsx server/launch.ts",
     "build": "vite build && esbuild server/launch.ts --bundle --platform=node --format=esm --packages=external --outfile=build-server/index.mjs",
     "start": "node --env-file-if-exists=.env build-server/index.mjs",
     "check": "tsc --noEmit --incremental false",
-    "test": "node --import tsx --test --test-concurrency=4 server/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=4 --test-timeout=900000 server/*.test.ts",
     "pretest": "npm run build",
     "test:python": "node --env-file-if-exists=.env --import tsx scripts/test-python.ts",
     "verify:review:live": "node --import tsx scripts/live-check-reply-review.ts"

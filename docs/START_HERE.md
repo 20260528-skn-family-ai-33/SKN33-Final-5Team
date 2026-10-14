@@ -1,7 +1,7 @@
 # A4B 노드 라이브러리 통합판 v2.3 시작
 
-1. [README](../README.md)의 설치 명령으로 Python 환경과 Node 패키지를 설치합니다. 저장소 최상위에서 `./Backend/scripts/setup-agent-demo.sh`, `npm --prefix Frontend ci`를 실행합니다.
-2. 저장소 최상위에서 `npm --prefix Frontend run dev`로 서버를 실행하고 http://127.0.0.1:3030/ 에 접속합니다. 다음 실행에는 `./Frontend/scripts/start-agent-demo.sh`도 사용할 수 있습니다.
+1. 저장소 최상위에서 `npm --prefix Frontend ci`, `npm --prefix Frontend run setup`을 실행합니다. macOS와 Windows 모두 같은 명령입니다.
+2. `npm --prefix Frontend run dev`로 서버를 실행하고 http://127.0.0.1:3030/ 에 접속합니다. 더블클릭 실행은 macOS `Frontend/scripts/실행.command`, Windows `Frontend/scripts/실행.cmd`입니다.
 3. 노드 만들기에서 역할·처리 규칙을 저장하거나 기본 노드를 고릅니다. 설계·AI 실행에는 화면에서 모델 계정을 연결합니다.
 4. 질문에 답하고 워크플로우·설정을 확인해 저장합니다.
 5. 서비스 실행에서 요청·자료를 넣어 보고서·로그를 확인합니다. 예약 흐름은 시험 예약도 사용할 수 있습니다.

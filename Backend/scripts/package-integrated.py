@@ -13,7 +13,7 @@ def included(path):
     return path.is_file() and not path.is_symlink() and not set(rel.parts)&excluded and not any(part.startswith('.venv-') for part in rel.parts) and path.name not in ['.DS_Store','DELIVERY_MANIFEST.json','DELIVERY_README.txt'] and not local_env and not path.name.endswith(('.pyc','.tsbuildinfo','.sqlite','.sqlite-wal','.sqlite-shm','.db','.db-wal','.db-shm','.log','.zip'))
 files=sorted((p for p in root.rglob('*') if included(p)),key=lambda p:str(p.relative_to(root)))
 manifest={'release':name,'files':{p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
-(root/'DELIVERY_MANIFEST.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+(root/'DELIVERY_MANIFEST.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
     for p in files+[root/'DELIVERY_MANIFEST.json']:archive.write(p,name+'/'+p.relative_to(root).as_posix())
 with zipfile.ZipFile(target) as archive:

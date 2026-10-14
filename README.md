@@ -45,33 +45,20 @@ SKN33-Final-5Team/
 
 ## 설치와 실행
 
-Node.js 24, Python 3.12 권장. 최초 패키지 설치에는 인터넷이 필요합니다. 이번 수정은 macOS의 Node.js 24.19.0·Python 3.14.4에서 검증했으며 Windows 안내도 아래에 제공합니다.
-
-### macOS / Linux
-
-저장소 최상위 폴더에서:
+Node.js 24, Python 3.12 권장(3.11~3.14 사용 가능). 최초 패키지 설치에는 인터넷이 필요합니다. **macOS와 Windows 모두 같은 명령**을 저장소 최상위 폴더에서 실행합니다. macOS는 터미널, Windows는 PowerShell 또는 VSCode 터미널을 사용합니다.
 
 ```bash
-./Backend/scripts/setup-agent-demo.sh
 npm --prefix Frontend ci
+npm --prefix Frontend run setup
 npm --prefix Frontend run dev
 ```
 
-접속: **http://127.0.0.1:3030/**. 다음 실행은 `./Frontend/scripts/start-agent-demo.sh` 또는 `npm --prefix Frontend run dev`입니다. 서버 터미널을 유지하세요. macOS에서는 `Frontend/scripts/실행.command`로도 시작할 수 있습니다.
+접속: **http://127.0.0.1:3030/**. 서버 터미널을 유지하고, 종료는 Ctrl+C입니다.
 
-### Windows PowerShell
-
-저장소 최상위 폴더에서:
-
-```powershell
-py -3.12 -m venv Backend\.venv-agent
-Backend\.venv-agent\Scripts\python.exe -m pip install -r Backend\requirements-agent-lock.txt
-Backend\.venv-agent\Scripts\python.exe -m pip install tzdata
-npm --prefix Frontend ci
-npm --prefix Frontend run dev
-```
-
-`Backend/.venv-agent`의 Python을 자동으로 찾습니다. 다른 환경은 `A4B_AGENT_PYTHON`에 절대 경로를 지정하세요. `tzdata`는 Windows에서 IANA 예약 시간대를 읽기 위한 추가 패키지입니다. 이번 수정판을 Windows에서 직접 실행 검증한 것은 아닙니다.
+- `run setup`은 설치된 Python 3.12 → 3.13 → 3.11 → 3.14 순서로 찾아 `Backend/.venv-agent`를 만들고 `Backend/requirements-agent-lock.txt`를 설치합니다. Windows는 `py` 런처, macOS는 `python3.12` 같은 명령을 찾습니다. 다른 Python을 쓰려면 `A4B_SETUP_PYTHON`에 실행 파일 경로를 지정하세요. Windows에 필요한 `tzdata`(예약 시간대)는 잠금 파일에서 Windows에만 설치됩니다.
+- 더블클릭 실행: macOS `Frontend/scripts/실행.command`, Windows `Frontend/scripts/실행.cmd`. 같은 동작을 `npm --prefix Frontend run demo`로도 할 수 있습니다. 이미 실행 중이면 브라우저만 열고, 아니면 빠진 설치를 마친 뒤 빌드하고 서버를 시작합니다.
+- 기존 macOS 명령(`./Backend/scripts/setup-agent-demo.sh`, `./Frontend/scripts/start-agent-demo.sh`)도 그대로 동작합니다.
+- 서버는 `Backend/.venv-agent`의 Python을 자동으로 찾습니다(Windows `Scripts/python.exe`, macOS `bin/python`). 다른 환경은 `A4B_AGENT_PYTHON`에 절대 경로를 지정하세요.
 
 선택 설정은 `Frontend/.env.example`을 `Frontend/.env`로 복사해 사용합니다. `npm run dev`와 `npm start`가 이 파일을 읽으며, 실제 모델 계정은 화면의 **모델 연결**에서 등록합니다.
 
@@ -79,7 +66,7 @@ npm --prefix Frontend run dev
 
 생성 대화·문서 답변·응대 검수는 화면의 **모델 연결**에서 계정을 연결해야 실제 모델 API를 사용합니다. 키를 생성 대화에 입력하지 마세요. 단순 표 읽기·필터·합계·파일 저장·예약 시간 계산은 모델을 호출하지 않습니다.
 
-PDF 처리에는 별도로 `./Backend/scripts/setup-document-demo.sh`로 Docling을 설치합니다. 예약 CSV 시연에는 필요하지 않습니다. 스캔 PDF OCR는 현재 범위 밖입니다.
+PDF 처리에는 별도로 `npm --prefix Frontend run setup:docling`으로 Docling을 설치합니다(macOS는 `./Backend/scripts/setup-document-demo.sh`도 가능). 예약 CSV 시연에는 필요하지 않습니다. 스캔 PDF OCR는 현재 범위 밖입니다.
 
 ## 노드 만들기와 재사용
 
@@ -191,6 +178,8 @@ npm --prefix Frontend run test:python
 npm --prefix Frontend run check
 npm --prefix Frontend test
 ```
+
+**macOS·Windows 공통 실행 — 2026-10-13:** GitHub Actions(`.github/workflows/ci.yml`)가 main push와 PR마다 macOS·Windows에서 설치·타입 검사·Python 테스트·서버 테스트를 실행합니다. Windows에서 찾아 고친 문제와 결과는 [두 환경 지원 기록](docs/CROSS_PLATFORM_2026-10-13.md)에 있습니다.
 
 **폴더 정리 후 검증 — 2026-10-13:** Python 172개 통과, 서버·화면 522개 중 521개 통과·기존 Docling 선택 검사 1개 제외, 실패 0. 타입 검사·빌드 통과. 저장소 최상위·Frontend·다른 폴더에서 경로를 확인하고, 소스 서버와 빌드 서버의 화면 응답·Python 노드 목록 조회를 임시 DB로 검증했습니다. 전처리 예제 6개는 다시 생성해 원본과 바이트 단위로 일치했습니다. Dockerfile 경로는 갱신했지만 로컬 Docker 서비스가 꺼져 있어 컨테이너 빌드·실행은 검증하지 않았습니다. 자세한 결과는 [폴더 정리 검증 기록](docs/RESTRUCTURE_VALIDATION_2026-10-13.md)에 있습니다.
 

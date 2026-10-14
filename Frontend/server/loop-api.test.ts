@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from './test-process';
 import assert from 'node:assert/strict';
 import {spawn,type ChildProcess} from 'node:child_process';
 import {createServer as createHttpServer,type Server as HttpServer} from 'node:http';
@@ -24,10 +25,10 @@ class OwnServer {
  async start():Promise<void>{
   assert.ok(!this.child);this.output='';const environment={...process.env,HOST:'127.0.0.1',PORT:String(this.port),EASYFLOW_DATA_DIR:this.directory};
   for(const key of Object.keys(environment))if(/^N8N_/i.test(key))delete (environment as NodeJS.ProcessEnv)[key];
-  const child=this.child=spawn(process.execPath,['--import','tsx','server/index.ts'],{cwd:project,env:environment,stdio:['ignore','pipe','pipe']});
+  const child=this.child=spawn(process.execPath,['--import','tsx','server/index.ts'],{cwd:project,env:environment,stdio:SERVER_STDIO});
   child.stdout?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});child.stderr?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});
   let launchError:Error|undefined;child.once('error',error=>{launchError=error;});
-  const deadline=Date.now()+12000;
+  const deadline=Date.now()+scaled(12000);
   while(Date.now()<deadline){
    if(launchError)throw launchError;if(child.exitCode!==null||child.signalCode)throw new Error(`own server exited during startup: ${this.output}`);
    try{const response=await fetch(this.base+'/api/health',{signal:AbortSignal.timeout(500)});if(response.ok){assert.equal((await response.json() as Json).standalone,true);return;}}catch{}
@@ -37,9 +38,9 @@ class OwnServer {
  }
  async stop():Promise<void>{
   const child=this.child;if(!child)return;this.child=undefined;if(child.exitCode!==null||child.signalCode)return;
-  const exit=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));child.kill('SIGTERM');
+  const exit=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));requestShutdown(child);
   let timer:ReturnType<typeof setTimeout>|undefined;
-  try{const result=await Promise.race([exit,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error(`own server shutdown timed out: ${this.output}`));},4000);})]);assert.equal(result.code,0,this.output);assert.equal(result.signal,null);}finally{if(timer)clearTimeout(timer);}
+  try{const result=await Promise.race([exit,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error(`own server shutdown timed out: ${this.output}`));},scaled(4000));})]);assert.equal(result.code,0,this.output);assert.equal(result.signal,null);}finally{if(timer)clearTimeout(timer);}
  }
  async request(path:string,method='GET',data?:unknown):Promise<{status:number;data:Json}>{
   const response=await fetch(this.base+path,{method,headers:{'Content-Type':'application/json'},...(data!==undefined?{body:JSON.stringify(data)}:{}),signal:AbortSignal.timeout(5000)});
@@ -58,7 +59,7 @@ function loopWorkflow(url:string,wait:number,csv=true):Flow{
 }
 async function closeFixture(server:HttpServer):Promise<void>{server.closeAllConnections();await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
 
-test('own loop API resumes persisted batch waits across a process restart and cancellation stops remaining external requests',{timeout:40000},async t=>{
+test('own loop API resumes persisted batch waits across a process restart and cancellation stops remaining external requests',{timeout:scaled(40000)},async t=>{
  const directory=await mkdtemp(join(tmpdir(),'easyflow-loop-api-')),server=new OwnServer(await freePort(),directory),effects:{path:string;item:Json}[]=[];
  const fixture=createHttpServer(async(req,res)=>{
   try{const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(chunk);const item=JSON.parse(Buffer.concat(chunks).toString('utf8')) as Json;effects.push({path:req.url||'',item});res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({...item,handled:true}));}catch{res.writeHead(400);res.end('{}');}
@@ -88,5 +89,5 @@ test('own loop API resumes persisted batch waits across a process restart and ca
    assert.equal((await server.request('/api/executions/cancel','POST',{id})).status,200);const canceled=await server.execution(id,e=>e.status==='canceled');assert.equal(canceled.runs.filter(r=>r.nodeId==='post').length,1);
    await delay(Math.max(0,Date.parse(waiting.resumeAt)-Date.now())+1100);const retained=await server.execution(id,e=>e.status==='canceled');assert.deepEqual(retained.runs,canceled.runs);assert.deepEqual(effects.filter(effect=>effect.path==='/cancel').map(effect=>effect.item.id),[10]);assert.ok(!retained.runs.some(r=>r.nodeId==='result'));
   });
- }finally{await server.stop();if(fixture.listening)await closeFixture(fixture);await rm(directory,{recursive:true,force:true});}
+ }finally{try{await server.stop();}finally{if(fixture.listening)await closeFixture(fixture);await removeDirectory(directory);}}
 });

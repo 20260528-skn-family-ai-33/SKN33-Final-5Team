@@ -1,4 +1,5 @@
 import {createRequire} from 'node:module';
+import {trackWorker} from './worker-exit';
 import {Worker} from 'node:worker_threads';
 import type {Json} from '../lib/workflow';
 import type {CodeContext} from './contracts';
@@ -136,7 +137,7 @@ export async function runCode(source:string,input:Json[],mode='runOnceForAllItem
    return text;
   })()`;
  return new Promise((resolve,reject)=>{
-  const worker=new Worker(workerSource,{eval:true,workerData:{modulePath:quickjsModule,script},env:{},execArgv:[],resourceLimits:{maxOldGenerationSizeMb:64}});
+  const worker=new Worker(workerSource,{eval:true,workerData:{modulePath:quickjsModule,script},env:{},execArgv:[],resourceLimits:{maxOldGenerationSizeMb:64}});trackWorker(worker);
   let settled=false;
   const finish=(error?:Error,value?:string)=>{if(settled)return;settled=true;clearTimeout(timer);void worker.terminate().catch(()=>{});if(error)reject(error);else {try{if(typeof value!=='string'||Buffer.byteLength(value,'utf8')>2_000_000)throw new Error('코드 실행 결과는 2MB 이내여야 해요.');const {output,pairings}=JSON.parse(value);assertBinaryItems(output);resolve(attachItemPairs(output,pairings));}catch(error){reject(error instanceof Error?error:new Error('코드 결과를 읽을 수 없어요. JSON 객체를 반환해주세요.'));}}};
   const timer=setTimeout(()=>finish(new Error('맞춤 계산이 2초를 넘어서 중단했어요. 반복문을 확인해주세요.')),2000);

@@ -458,7 +458,8 @@ test('SQLite stores workflows, private AES-GCM credentials, dedupe reservations 
  try{
   const flow=store.saveFlow(makeFlow());assert.equal(store.getFlow(flow.id)?.name,flow.name);assert.equal(store.listFlows().length,1);
   const publicCredential=store.saveCredential({name:'사용자 키',provider:'openai',data:{apiKey:'never-store-this-in-plaintext'}});assert.equal((publicCredential as any).data,undefined);assert.equal((store.listCredentials()[0] as any).data,undefined);assert.equal(store.getCredential(publicCredential.id).data.apiKey,'never-store-this-in-plaintext');
-  assert.equal(statSync(join(directory,'credential.key')).mode&0o777,0o600);
+  // Windows has no POSIX permission bits; the key file is protected by the user profile ACL.
+  if(process.platform!=='win32')assert.equal(statSync(join(directory,'credential.key')).mode&0o777,0o600);
   const e:Execution={id:'execution1',workflowId:flow.id,workflowName:flow.name,status:'queued',startedAt:new Date().toISOString(),duration:0,runs:[],mode:'learning'};
   assert.equal(store.reserveExecution(e,flow,[{value:1}],'schedule-slot-1'),true);assert.equal(store.reserveExecution({...e,id:'execution2'},flow,[{}],'schedule-slot-1'),false);store.saveExecution({...e,status:'waiting',resumeAt:'2030-01-01T00:00:00Z'});assert.equal(store.getExecution(e.id)?.status,'waiting');assert.deepEqual(store.getExecutionSnapshot(e.id)?.input,[{value:1}]);
   for(let i=0;i<501;i++)store.reserveExecution({...e,id:`done-${i}`,status:'success',startedAt:'2040-01-01T00:00:00Z'},flow,[{}]);assert.ok(!store.listExecutions().some(v=>v.id===e.id));assert.equal(store.listPendingExecutions()[0].id,e.id);

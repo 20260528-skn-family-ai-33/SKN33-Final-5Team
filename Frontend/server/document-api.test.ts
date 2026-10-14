@@ -1,4 +1,5 @@
 import {examplePath} from './paths';
+import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from './test-process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,type ChildProcess} from 'node:child_process';
@@ -24,14 +25,14 @@ class ProductionServer {
  async start(){
   const environment={...process.env,PORT:String(this.port),HOST:'127.0.0.1',EASYFLOW_DATA_DIR:this.directory};for(const key of Object.keys(environment))if(/^N8N_/i.test(key))delete environment[key as keyof typeof environment];
   // Exercise the production bundle; TypeScript source is never launched here.
-  const child=this.child=spawn(process.execPath,['build-server/index.mjs'],{cwd:project,env:environment,stdio:['ignore','pipe','pipe']});let failure:Error|undefined;
+  const child=this.child=spawn(process.execPath,['build-server/index.mjs'],{cwd:project,env:environment,stdio:SERVER_STDIO});let failure:Error|undefined;
   child.stdout?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});child.stderr?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});child.once('error',error=>{failure=error;});
   const until=Date.now()+10000;while(Date.now()<until){if(failure)throw failure;if(child.exitCode!==null||child.signalCode)throw new Error('production test server exited: '+this.output);try{const response=await fetch(this.base+'/api/health',{signal:AbortSignal.timeout(400)});if(response.ok){const health=await response.json() as Json;assert.equal(health.standalone,true);return;}}catch{}await wait(30);}throw new Error('production server did not start: '+this.output);
  }
  async stop(){
   const child=this.child;if(!child)return;this.child=undefined;if(child.exitCode!==null||child.signalCode)return;
-  const exited=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));child.kill('SIGTERM');let timer:ReturnType<typeof setTimeout>|undefined;
-  try{const result=await Promise.race([exited,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('production server did not close gracefully: '+this.output));},4000);})]);assert.equal(result.code,0,this.output);assert.equal(result.signal,null);}finally{if(timer)clearTimeout(timer);}
+  const exited=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));requestShutdown(child);let timer:ReturnType<typeof setTimeout>|undefined;
+  try{const result=await Promise.race([exited,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('production server did not close gracefully: '+this.output));},scaled(4000));})]);assert.equal(result.code,0,this.output);assert.equal(result.signal,null);}finally{if(timer)clearTimeout(timer);}
  }
  async json(path:string,method='GET',data?:unknown){const response=await fetch(this.base+path,{method,headers:{'Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(8000)});const value=await response.json() as Json;return {status:response.status,data:value};}
  async execute(flow:Flow,input:Json[]=[{}]):Promise<Execution>{
@@ -48,7 +49,7 @@ function workflow(nodes:FlowNode[]):Flow{return {id:randomUUID(),name:'productio
 async function example(name:string):Promise<Flow>{const value=JSON.parse(await readFile(examplePath(name),'utf8')) as Flow;return {...value,id:randomUUID(),active:false};}
 function assertNotesExcluded(flow:Flow,execution:Execution){const notes=flow.nodes.filter(node=>node.type==='n8n-nodes-base.stickyNote');assert.ok(notes.length>0);assert.equal(execution.runs.length,flow.nodes.length-notes.length);for(const note of notes){assert.ok(execution.runs.every(run=>run.nodeId!==note.id&&run.name!==note.name));assert.ok(!JSON.stringify(execution.runs).includes(note.parameters.content));}}
 
-test('production bundle executes actual uploaded XLSX/PDF and HTTP pagination with downloadable results', {timeout:45000},async t=>{
+test('production bundle executes actual uploaded XLSX/PDF and HTTP pagination with downloadable results', {timeout:scaled(45000)},async t=>{
  const port=await freePort(),directory=await mkdtemp(join(tmpdir(),'easyflow-production-documents-')),server=new ProductionServer(port,directory);let fixture:HttpServer|undefined;const requests:number[]=[];
  try {
   await server.start();
@@ -72,5 +73,5 @@ test('production bundle executes actual uploaded XLSX/PDF and HTTP pagination wi
   await t.test('an explicit page cap returns its warning and incomplete metadata without requesting more pages',async()=>{
    requests.length=0;const execution=await server.execute(pagedFlow(2,9));assert.deepEqual(requests,[1,2]);const http=execution.runs.find(run=>run.name==='실제 페이지 요청');assert.deepEqual(http?.pagination,{pagesFetched:2,itemsFetched:2,complete:false,limited:true,maxRequests:2});assert.match(http?.warning||'',/설정한 2페이지.*더 있을/);assert.deepEqual(JSON.parse((await server.download(execution,2)).bytes.toString('utf8')),[{page:1,name:'페이지 1'},{page:2,name:'페이지 2'}]);
   });
- } finally {try{await server.stop();}finally{try{if(fixture?.listening){fixture.closeAllConnections();await new Promise<void>((resolve,reject)=>fixture!.close(error=>error?reject(error):resolve()));}}finally{await rm(directory,{recursive:true,force:true});}}}
+ } finally {try{await server.stop();}finally{try{if(fixture?.listening){fixture.closeAllConnections();await new Promise<void>((resolve,reject)=>fixture!.close(error=>error?reject(error):resolve()));}}finally{await removeDirectory(directory);}}}
 });

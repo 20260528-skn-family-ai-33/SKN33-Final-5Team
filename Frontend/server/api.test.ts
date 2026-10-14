@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from './test-process';
 import test from 'node:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -34,12 +35,12 @@ class Server {
     const environment: NodeJS.ProcessEnv = { ...process.env, PORT: String(this.port), HOST: '127.0.0.1', EASYFLOW_DATA_DIR: this.directory };
     // Integration tests run our own process with no n8n configuration or external service.
     for (const key of Object.keys(environment)) if (/^N8N_/i.test(key)) delete environment[key];
-    const child = this.child = spawn(process.execPath, ['--import','tsx','server/index.ts'], { cwd: project, env: environment, stdio: ['ignore','pipe','pipe'] });
+    const child = this.child = spawn(process.execPath, ['--import','tsx','server/index.ts'], { cwd: project, env: environment, stdio: SERVER_STDIO });
     child.stdout?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
     child.stderr?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
     let launchError: Error | undefined;
     child.once('error', error => { launchError = error; });
-    const deadline = Date.now() + 12_000;
+    const deadline = Date.now() + scaled(12_000);
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
       if (child.exitCode !== null || child.signalCode) throw new Error(`test server exited during startup:\n${this.output}`);
@@ -58,10 +59,10 @@ class Server {
     this.child = undefined;
     if (child.exitCode !== null || child.signalCode) return;
     const exit = new Promise<{code:number|null;signal:NodeJS.Signals|null}>(resolve => child.once('exit',(code,signal) => resolve({code,signal})));
-    child.kill('SIGTERM');
+    requestShutdown(child);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const result = await Promise.race([exit, new Promise<never>((_,reject) => { timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`test server did not shut down gracefully:\n${this.output}`)); }, 4_000); })]);
+      const result = await Promise.race([exit, new Promise<never>((_,reject) => { timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`test server did not shut down gracefully:\n${this.output}`)); }, scaled(4_000)); })]);
       assert.equal(result.code,0, `SIGTERM must close the database cleanly: ${this.output}`);
       assert.equal(result.signal,null);
     } finally { if (timer) clearTimeout(timer); }
@@ -95,7 +96,7 @@ function workflow(name: string, nodes: FlowNode[]): Flow {
 }
 function rawSet(name: string) { return stage('set',name,{mode:'raw',jsonOutput:'={{ $json }}',includeOtherFields:false,options:{}}); }
 
-test('standalone server persists and executes workflows, credentials, schedules and webhooks without n8n', {timeout:60_000}, async t => {
+test('standalone server persists and executes workflows, credentials, schedules and webhooks without n8n', {timeout:scaled(60_000)}, async t => {
   const directory = await mkdtemp(join(tmpdir(),'easyflow-api-'));
   const server = new Server(await freePort(),directory);
   let savedFlow: Flow; let successId = ''; let waitingFlow: Flow; let canceledId = ''; let credentialId = ''; let scheduleFlow: Flow; let hookFlow: Flow; let hookExecutionId = ''; let hookToken = '';
@@ -184,7 +185,7 @@ test('standalone server persists and executes workflows, credentials, schedules 
     });
 
     await t.test('a durable wait survives restart and can be canceled before its next step', async () => {
-      waitingFlow = workflow('재시작과 취소 확인',[stage('manualTrigger','시작'),rawSet('대기 전'),stage('wait','30초 대기',{resume:'timeInterval',amount:30,unit:'seconds'}),rawSet('대기 후')]);
+      waitingFlow = workflow('재시작과 취소 확인',[stage('manualTrigger','시작'),rawSet('대기 전'),stage('wait','30초 대기',{resume:'timeInterval',amount:scaled(30),unit:'seconds'}),rawSet('대기 후')]);
       assert.equal((await server.request('/api/workflows','POST',waitingFlow)).status,200);
       const run = await server.request('/api/runs','POST',{workflowId:waitingFlow.id,mode:'live',input:[{example:'재시작 보존'}]});
       assert.equal(run.status,202);
@@ -357,6 +358,6 @@ test('standalone server persists and executes workflows, credentials, schedules 
       assert.equal((await server.request(`/hooks/${hookFlow.id}/${hookFlow.nodes[0].id}`,'POST',{}, {'x-easyflow-token':hookToken})).status,404);
     });
   } finally {
-    try { await server.stop(); } finally { await rm(directory,{recursive:true,force:true}); }
+    try { await server.stop(); } finally { await removeDirectory(directory); }
   }
 });

@@ -50,7 +50,7 @@ def test_condition_reports_are_unique_and_decisions_survive_restart(tmp_path, mo
     assert run['status'] == 'succeeded', run.get('error')
     assert [r['id'] for r in run['reviews']] == ['review:0', 'review:1']
     assert len(run['rows']) == 2
-    report = json.loads((tmp_path / run['review_report_path']).read_text())
+    report = json.loads((tmp_path / run['review_report_path']).read_text(encoding='utf-8'))
     assert len(report['reviews']) == 2
     rid = run['id']
     st.close()

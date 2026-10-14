@@ -32,6 +32,6 @@ try:
  if result.status==ConversionStatus.PARTIAL_SUCCESS or result.errors:warnings.append('일부 변환 오류가 있습니다. 원문과 비교하세요.')
  if path.suffix.lower()=='.pdf':warnings.append('PDF는 텍스트 레이어를 읽습니다. 스캔된 영역의 OCR은 수행하지 않으므로 누락 여부를 확인하세요.')
  if not text.strip() or not has_body_text:raise ValueError('추출할 텍스트가 없습니다.'+(' 스캔 PDF는 OCR 처리가 필요합니다.' if path.suffix.lower()=='.pdf' else ' 파일의 본문·문자 인코딩을 확인하세요.'))
- output.write_text(json.dumps({'sections':sections[:1000],'text':text[:200000],'tables':tables[:30],'warnings':warnings+(['본문은 200,000자로 제한했습니다.'] if len(text)>200000 else []),'engine':'docling','version':__import__('importlib.metadata',fromlist=['version']).version('docling')},ensure_ascii=False))
+ output.write_text(json.dumps({'sections':sections[:1000],'text':text[:200000],'tables':tables[:30],'warnings':warnings+(['본문은 200,000자로 제한했습니다.'] if len(text)>200000 else []),'engine':'docling','version':__import__('importlib.metadata',fromlist=['version']).version('docling')},ensure_ascii=False),encoding='utf-8')
 except Exception as exc:
- output.write_text(json.dumps({'error':'문서 변환 실패: '+str(exc).replace(str(path),path.name).replace(str(path.parent),'[변환 임시 폴더]')[:350]},ensure_ascii=False));sys.exit(1)
+ output.write_text(json.dumps({'error':'문서 변환 실패: '+str(exc).replace(str(path),path.name).replace(str(path.parent),'[변환 임시 폴더]')[:350]},ensure_ascii=False),encoding='utf-8');sys.exit(1)

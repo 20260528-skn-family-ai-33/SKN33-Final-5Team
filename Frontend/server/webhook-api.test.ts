@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from './test-process';
 import test from 'node:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -32,12 +33,12 @@ class Server {
   async start() {
     const environment: NodeJS.ProcessEnv = { ...process.env, PORT: String(this.port), HOST: '127.0.0.1', EASYFLOW_DATA_DIR: this.directory, EASYFLOW_WEBHOOK_RESPONSE_TIMEOUT_MS: '2000' };
     for (const key of Object.keys(environment)) if (/^N8N_/i.test(key)) delete environment[key];
-    const child = this.child = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { cwd: project, env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = this.child = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { cwd: project, env: environment, stdio: SERVER_STDIO });
     child.stdout?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
     child.stderr?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
     let launchError: Error | undefined;
     child.once('error', error => { launchError = error; });
-    const deadline = Date.now() + 12_000;
+    const deadline = Date.now() + scaled(12_000);
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
       if (child.exitCode !== null || child.signalCode) throw new Error(`Webhook test server exited: ${this.output}`);
@@ -51,10 +52,10 @@ class Server {
     const child = this.child;
     if (!child || child.exitCode !== null || child.signalCode) return;
     const exit = new Promise<{code: number | null; signal: NodeJS.Signals | null}>(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
-    child.kill('SIGTERM');
+    requestShutdown(child);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const result = await Promise.race([exit, new Promise<never>((_, reject) => { timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`Webhook server did not shut down: ${this.output}`)); }, 4_000); })]);
+      const result = await Promise.race([exit, new Promise<never>((_, reject) => { timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(`Webhook server did not shut down: ${this.output}`)); }, scaled(4_000)); })]);
       assert.equal(result.code, 0, this.output);
       assert.equal(result.signal, null);
     } finally { if (timer) clearTimeout(timer); }
@@ -118,7 +119,7 @@ function waiting(amount = 30) { return stage('wait', '처리 대기', { resume: 
 function fail(name = '응답 전 실패') { return stage('stopAndError', name, { errorType: 'errorMessage', errorMessage: 'HTTP 통합 검증용 실패' }); }
 function executionId(response: Response) { const id = response.headers.get('x-easyflow-execution-id'); assert.ok(id, 'every accepted request must expose its own persisted execution id'); return id; }
 
-test('independent Webhook HTTP responses honor native modes, bytes, credentials and durable waits', { timeout: 90_000 }, async t => {
+test('independent Webhook HTTP responses honor native modes, bytes, credentials and durable waits', { timeout: scaled(90_000) }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'easyflow-webhook-api-'));
   const server = new Server(await freePort(), directory);
   const sentResponses: { id: string; mimeType: string; bytes: Buffer }[] = [];
@@ -687,6 +688,6 @@ test('independent Webhook HTTP responses honor native modes, bytes, credentials 
       assert.deepEqual(((await server.api('/api/executions')).executions as Execution[]).map(execution => execution.id).sort(), before);
     });
   } finally {
-    try { await server.stop(); } finally { await rm(directory, { recursive: true, force: true }); }
+    try { await server.stop(); } finally { await removeDirectory(directory); }
   }
 });

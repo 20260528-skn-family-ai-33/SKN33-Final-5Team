@@ -3,9 +3,10 @@ import {startBuilderScheduler,builderScheduleHealth} from './agent-builder-sched
 import {handleAgentBuilder} from './agent-builder';
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import {readFile,stat} from 'node:fs/promises';
-import {resolve,extname} from 'node:path';
+import {resolve,extname,sep} from 'node:path';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {Store} from './store';
+import {waitForWorkers} from './worker-exit';
 import {executeFlow} from './engine';
 import {assertWebhookJsonSize,buildWebhookResponse,prepareWebhookResponse} from './webhook-response';
 import {readWebhookRequest,WebhookRequestError} from './webhook-request';
@@ -194,7 +195,7 @@ const server=createServer(async(req,res)=>{
    enqueue(f,input,'live',{trigger:'webhook'},execution=>{if(immediate){if(n.parameters.options?.responseData===undefined&&!n.parameters.options?.noResponseBody&&n.parameters.responseData===undefined)immediate.body={executionId:execution.id,message:'워크플로 실행을 시작했어요.'};respondWebhook(res,execution.id,immediate);}else retainWebhook(execution,res,n,mode);},executionId);return;
   }
   if(method!=='GET'&&method!=='HEAD')return json(res,405,{error:'요청 방식을 확인해주세요.'});
-  const root=frontendPath('dist-app');let file=resolve(root,'.'+decodeURIComponent(path));if(!file.startsWith(root+'/'))file=resolve(root,'index.html');try{if(!(await stat(file)).isFile())file=resolve(root,'index.html');}catch{file=resolve(root,'index.html');}
+  const root=frontendPath('dist-app');let file=resolve(root,'.'+decodeURIComponent(path));if(!file.startsWith(root+sep))file=resolve(root,'index.html');try{if(!(await stat(file)).isFile())file=resolve(root,'index.html');}catch{file=resolve(root,'index.html');}
   const content=await readFile(file);const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};res.writeHead(200,{'Content-Type':mime[extname(file)]||'application/octet-stream','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(method==='HEAD'?undefined:content);
  }catch(error){if(res.writableEnded||res.destroyed)return;if(error instanceof WebhookAuthError){for(const [name,value] of Object.entries(error.headers))res.setHeader(name,value);json(res,error.status,{error:error.message});}else if(error instanceof WebhookRequestError){
    // Write the complete, length-delimited error first. Finishing it immediately
@@ -210,5 +211,15 @@ const server=createServer(async(req,res)=>{
   }else json(res,400,{error:(error as Error).message});}
 });
 server.listen(port,host,()=>{console.log(`A4B: http://127.0.0.1:${port}`);startBuilderScheduler(store);if(process.env.A4B_FOCUSED_DEMO!=='1')void pump();});
-function shutdown(){if(closing)return;closing=true;clearInterval(timer);for(const id of pendingWebhooks.keys())completeWebhook(id,{statusCode:503,headers:{},body:{error:'프로그램이 종료되어 응답을 마치지 못했어요. 실행 기록에서 결과를 확인해주세요.'}});for(const c of controllers.values())c.abort();server.close(()=>{const finish=()=>{if(inFlight.size){setTimeout(finish,20);return;}agentCheckpointer.close();store.close();process.exit(0);};finish();});}
+function shutdown(){if(closing)return;closing=true;clearInterval(timer);for(const id of pendingWebhooks.keys())completeWebhook(id,{statusCode:503,headers:{},body:{error:'프로그램이 종료되어 응답을 마치지 못했어요. 실행 기록에서 결과를 확인해주세요.'}});for(const c of controllers.values())c.abort();server.close(()=>{const finish=()=>{if(inFlight.size){setTimeout(finish,20);return;}agentCheckpointer.close();store.close();void waitForWorkers().then(exitCleanly);};finish();});}
 process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
+// Windows cannot deliver SIGTERM to a child process. A parent (tests, launchers) asks for the same graceful stop over IPC.
+process.on('message',message=>{if(message==='shutdown')shutdown();});
+// Windows: process.exit() while libuv thread-pool work (file writes, lookups) or the IPC channel is still
+// finishing trips "!(handle->flags & UV_HANDLE_CLOSING)" in src\win\async.c and aborts Node after the
+// database is already closed. There the loop drains first; the exit is forced only if something holds it open.
+function exitCleanly(){
+ if(process.platform!=='win32'){process.exit(0);return;}
+ process.exitCode=0;if(process.connected)process.disconnect();
+ setTimeout(()=>process.exit(0),2000).unref();
+}

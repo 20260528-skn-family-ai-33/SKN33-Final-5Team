@@ -9,11 +9,11 @@ def validate_node(state):
     if not draft['name'].strip(): issues.append('에이전트 이름이 필요합니다.')
     if not draft['purpose'].strip(): issues.append('어떤 업무를 맡길지 알려주세요.')
     if not draft['instructions'].strip(): issues.append('에이전트의 지시사항이 필요합니다.')
-    if not draft['tool_ids']: issues.append('처리할 업무에 맞는 도구를 연결해야 합니다.')
+    if not draft['tool_ids'] and not draft['questions'] and not draft['unsupported']: issues.append('처리할 업무에 맞는 도구를 연결해야 합니다.')
     if len(set(draft['tool_ids']))!=len(draft['tool_ids']): issues.append('도구 연결이 중복되었습니다.')
     for id in draft['document_ids']:
         if id not in resources: issues.append('초안에 이번 대화에 연결되지 않은 자료가 포함됐습니다.')
-    if not draft['requirements']: issues.append('업무 조건의 사용자 근거가 필요합니다.')
+    if not draft['requirements'] and not draft['questions'] and not draft['unsupported']: issues.append('업무 조건의 사용자 근거가 필요합니다.')
     for req in draft['requirements']:
         if not req['quote'].strip():issues.append('업무 조건에 근거 원문이 비어 있습니다.');continue
         if req['source_id']=='user': valid=any(req['quote'] in t for t in texts)
@@ -48,17 +48,17 @@ def validate_node(state):
             fields=list(touched)+([plan['duplicate_field']] if plan['duplicate_field'] else [])
             if tables and fields and not any(all(f in t['columns'] for f in fields) for t in tables):issues.append('실행 조건에 실제 자료에 없는 열이 포함됐습니다.')
         if plan['missing_policy']=='ask' and any(t.get('profile',{}).get(f,{}).get('missing',0) for t in tables for f in touched):
-            if not questions:questions.append('조건에 사용하는 열의 빈 값은 제외할까요, 유지할까요?')
+            if not questions:issues.append('조건 열의 빈 값 처리 정책이 미정입니다. 사용자에게 확인해야 합니다.')
         if plan['duplicate_policy'] in ['first','last','error','ask'] and not plan['duplicate_field']:issues.append('중복 처리를 판단할 기준 열이 필요합니다.')
-        if plan['duplicate_policy']=='ask' and not questions:questions.append('중복 상품의 처리 정책을 알려주세요.')
+        if plan['duplicate_policy']=='ask' and not questions:issues.append('요청한 중복 처리 정책이 미정입니다. 사용자에게 확인해야 합니다.')
         for f in plan['filters']:
             if f['compare_field'] and f['value'] is not None:issues.append('열 비교에는 상수 값을 함께 넣을 수 없습니다.')
             if not f['compare_field'] and f['operator'] not in ['is_empty','not_empty'] and f['value'] is None:issues.append('조건 비교에 필요한 기준 값이 없습니다.')
     if draft.get('schedule'):
         from ..scheduling import schedule_errors
-        if not questions:questions+=schedule_errors(draft['schedule'])
-        if not tables:questions.append('예약 실행할 표 데이터 소스를 연결해주세요.')
-        if draft.get('report_destination')!='reports':questions.append('결과를 A4B 서버 보고서 보관함에 저장할까요?')
+        if not questions:issues+=schedule_errors(draft['schedule'])
+        if not tables:issues.append('예약 실행할 표 데이터 소스가 없습니다.')
+        if draft.get('report_destination')!='reports':issues.append('예약 결과의 저장 위치가 미정입니다.')
         if draft.get('workflow') and any(n['tool']=='ask_user' for n in draft['workflow']['nodes']):issues.append('예약 실행에는 사용자 응답 대기 노드를 연결할 수 없습니다.')
         if not set(draft['tool_ids']) & {'write_result','export_result','reply_review'}:issues.append('예약 보고서를 저장할 출력 도구가 필요합니다.')
     draft['questions']=list(dict.fromkeys(questions))[:3]

@@ -24,4 +24,10 @@ def execute(node,state,storage,config,llm):
         if inputs.get('answer') and settings['format'] == 'json':
             ctx['artifact']['content'] = json.dumps({'records': inputs['records'], 'user_confirmation': inputs['answer']}, ensure_ascii=False, indent=2)
         return {'artifact': ctx['artifact']}
-    return {'artifact': {'name': '에이전트_결과.md', 'content': inputs['text'], 'mime': 'text/markdown; charset=utf-8'}}
+    text=inputs.get('text') or inputs.get('answer')
+    if not isinstance(text,str) or not text.strip():raise ValueError('저장할 텍스트 또는 추출 결과를 연결하세요.')
+    if settings['format']=='json':
+        try:parsed=json.loads(text)
+        except (ValueError,TypeError):raise ValueError('JSON 결과가 올바른 JSON 문서가 아닙니다.') from None
+        return {'artifact':{'name':'에이전트_결과.json','content':json.dumps(parsed,ensure_ascii=False,indent=2),'mime':'application/json; charset=utf-8'}}
+    return {'artifact': {'name': '에이전트_결과.md', 'content': text, 'mime': 'text/markdown; charset=utf-8'}}

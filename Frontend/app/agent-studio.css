@@ -125,3 +125,18 @@
  .as-canvas-toolbar>small{display:none}.as-canvas-footer>small{max-width:160px;font-size:9px}.as-empty-flow{gap:8px}.as-empty-flow span{min-width:0;width:90px;padding:18px 5px}
  .screen-run .as-test-area{padding:18px}.screen-workflow .as-config-body{max-height:520px}
 }
+
+/* Focus the entry screen on the user's next action. */
+.screen-workflow .as-welcome{padding:22px 4px 12px}
+.screen-workflow .as-welcome>p{font-size:14px;line-height:1.8}
+.screen-workflow .as-examples{margin-top:28px}
+.screen-workflow .as-examples button{padding:18px;border-radius:12px}
+.screen-workflow .as-examples strong{font-size:14px}
+.screen-workflow .as-examples span{font-size:12px;line-height:1.7;margin-top:8px}
+.as-sidebar-bottom{color:#737373}
+@media(max-width:1000px){
+ .screen-workflow .as-conversation{height:clamp(450px,calc(100dvh - 285px),620px);min-height:450px}
+ .screen-workflow .as-welcome{padding:8px 4px}
+ .screen-workflow .as-welcome-icon{width:42px;height:42px;margin-bottom:14px}
+ .screen-workflow .as-examples{margin-top:18px}
+}

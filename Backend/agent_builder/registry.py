@@ -27,7 +27,7 @@ PORTS = {
 }
 for id,name,description in [
  ('agent_node','에이전트 실행','저장한 역할의 node_ref 버전을 사용하거나 새 역할의 settings.instructions를 구성합니다. 실행 요청·연결 text/문서/표를 실제 조회해 text를 반환합니다. 검수 후 수정에는 reviews 1건을 명시적으로 연결하며 최신 수정문은 승인 후보로 보존됩니다.'),
- ('aggregate_table','목록 집계','fields로 그룹별 집계합니다. aggregation=count는 건수, sum은 sum_field의 숫자 합계입니다. 빈 fields는 전체 집계. 빈값·비숫자 합계는 실패합니다.'),
+ ('aggregate_table','목록 집계','fields로 그룹별 집계합니다. aggregation=count는 건수, sum은 sum_field의 숫자 합계입니다. 빈 fields는 전체 집계. 출력 열은 fields와 count 또는 sum입니다. 합계 후 정렬·필터는 sum 열을 사용합니다. 빈값·비숫자 합계는 실패합니다.'),
  ('finish','완료 안내','설정한 완료·중단 안내를 표시하고 흐름을 끝냅니다.'),
  ('read_document','문서 읽기','연결 문서 또는 이번 실행의 새 문서를 페이지·출처와 함께 읽습니다.'),
  ('search_document','관련 내용 검색','질문과 일치하는 문서 구간을 단어 기반 검색합니다. 의미 검색은 아직 지원하지 않습니다.'),

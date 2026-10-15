@@ -78,17 +78,27 @@ def run_review(request, llm, agent_factory=create_deep_agent):
         return {'source':'draft','text':request.reply_draft}
     @wrap_model_call
     def review_tools_only(req,handler):
-        return handler(req.override(tools=[t for t in req.tools if getattr(t,'name',None) in REQUIRED or getattr(t,'name',None)=='ReviewReport']))
+        pending = sorted(REQUIRED - accessed)
+        choice = {'type':'function','function':{'name':pending[0]}} if pending else None
+        return handler(req.override(tools=[t for t in req.tools if getattr(t,'name',None) in REQUIRED or getattr(t,'name',None)=='ReviewReport'], response_format=None if pending else ToolStrategy(ReviewReport,handle_errors=True), tool_choice=choice, model_settings=req.model_settings))
     agent=agent_factory(model=llm,tools=[get_customer_message,get_policy,get_reply_draft],subagents=[],middleware=[review_tools_only],response_format=ToolStrategy(ReviewReport,handle_errors=False),name='junghyun_reply_review',system_prompt=COMMON+ROLE_PROMPTS['review']+'\n추가 검수 기준:\n'+request.review_rules)
-    result=agent.invoke({'messages':[{'role':'user','content':'조회 도구에서 고객 원문·정책·초안을 먼저 읽고 ReviewReport를 반환하세요.'}]},{'recursion_limit':16})
-    messages=result.get('messages',[])
-    report_indexes=[i for i,m in enumerate(messages) if isinstance(m,AIMessage) and any(t.get('name')=='ReviewReport' for t in m.tool_calls)]
-    if not report_indexes:raise ValueError('검수 보고서 생성 이력을 확인하지 못했습니다.')
-    reads={m.name for m in messages[:report_indexes[-1]] if isinstance(m,ToolMessage) and m.status=='success'}
-    if not REQUIRED<=reads & accessed:raise ValueError('필수 원문·정책·초안을 실제 조회한 뒤 보고서를 생성해야 합니다.')
-    if any(isinstance(m,ToolMessage) and m.status=='error' for m in messages):raise ValueError('검수 자료 조회에 실패했습니다.')
-    report=ReviewReport.model_validate(result.get('structured_response'))
-    validate_report(report,request,request.reply_draft,accessed)
+    payload={'messages':[{'role':'user','content':'조회 도구에서 고객 원문·정책·초안을 먼저 읽고 ReviewReport를 반환하세요.'}]}
+    for attempt in range(2):
+        result=agent.invoke(payload,{'recursion_limit':20})
+        messages=result.get('messages',[])
+        report_indexes=[i for i,m in enumerate(messages) if isinstance(m,AIMessage) and any(t.get('name')=='ReviewReport' for t in m.tool_calls)]
+        if not report_indexes:raise ValueError('검수 보고서 생성 이력을 확인하지 못했습니다.')
+        reads={m.name for m in messages[:report_indexes[-1]] if isinstance(m,ToolMessage) and m.status=='success'}
+        if not REQUIRED<=reads & accessed:raise ValueError('필수 원문·정책·초안을 실제 조회한 뒤 보고서를 생성해야 합니다.')
+        if any(isinstance(m,ToolMessage) and m.name in REQUIRED and m.status=='error' for m in messages):raise ValueError('검수 자료 조회에 실패했습니다.')
+        report=ReviewReport.model_validate(result.get('structured_response'))
+        try:
+            validate_report(report,request,request.reply_draft,accessed)
+            break
+        except ReviewExecutionError as error:
+            if attempt == 1:
+                raise
+            payload={'messages':[*messages,{'role':'user','content':'보고서 검증 실패: '+error.public_message+' 조회한 원문에서 연속된 구절을 정확히 복사하여 인용하고 보고서를 수정하세요. 원문 내용을 바꾸지 마세요.'}]}
     usage={k:sum((getattr(m,'usage_metadata',None) or {}).get(k,0) for m in messages) for k in ['input_tokens','output_tokens','total_tokens']}
     return {'report':report.model_dump(),'tool_calls':sorted(reads),'usage':usage}
 

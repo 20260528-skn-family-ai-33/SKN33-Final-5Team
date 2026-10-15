@@ -34,3 +34,8 @@ outputs/
 # Manifests from the earlier ZIP delivery are not the Git release
 DELIVERY_MANIFEST.json
 DELIVERY_README.txt
+
+# Private workspace for the user-facing demo
+/data-user-workspace/
+
+/data-conversation-workspace/

@@ -126,13 +126,17 @@ def run_agent_node(node,state,storage,config,llm):
     context={'request':state['request'],'inputs':inputs,'documents':docs,'reference':spec['reference'],'workflow_instructions':config.get('instructions','')}
     if len(json.dumps(context,ensure_ascii=False))>45000:
         raise ValueError('에이전트 입력은 45,000자 이내로 줄이거나 문서를 먼저 검색하세요.')
+    inspected=False
     @tool
     def inspect_inputs()->dict:
         """이번 실행의 실제 요청·앞 노드 출력·연결 문서·참고 텍스트를 조회합니다."""
+        nonlocal inspected
+        inspected=True
         return context
     @wrap_model_call
     def tools_only(request,handler):
-        return handler(request.override(tools=[t for t in request.tools if getattr(t,'name',None)=='inspect_inputs']))
+        choice={'type':'function','function':{'name':'inspect_inputs'}} if not inspected else None
+        return handler(request.override(tools=[t for t in request.tools if getattr(t,'name',None)=='inspect_inputs'],tool_choice=choice))
     model=llm
     if spec['model']:
         if not hasattr(llm,'model_copy'):raise ValueError('선택한 에이전트 모델을 적용할 수 없습니다. 모델 연결을 확인하세요.')

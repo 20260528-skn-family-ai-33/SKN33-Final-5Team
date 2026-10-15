@@ -31,7 +31,8 @@ def canonical_table_draft(draft,messages,resources):
             node['settings']['instructions']=json.dumps(own,ensure_ascii=False)
             lines.append('노드 '+node['label']+'의 실제 규칙: '+json.dumps(own,ensure_ascii=False))
         if node['tool']=='write_result':node['settings']['format']=node['settings'].get('format') or plan['output_format']
-    if any(n['tool']=='write_result' for n in workflow['nodes']):lines.append('출력: '+plan['output_format'].upper()+' · A4B 서버 보고서 보관함')
+    formats=list(dict.fromkeys(n['settings']['format'] for n in workflow['nodes'] if n['tool']=='write_result'))
+    if formats:lines.append('출력: '+' / '.join(f.upper() for f in formats)+' · A4B 서버 보고서 보관함')
     draft['instructions']='\n'.join(lines)
     operations=[]
     if any(n['tool']=='filter_sort' for n in workflow['nodes']):operations.append('설정된 조건으로 행을 정리')

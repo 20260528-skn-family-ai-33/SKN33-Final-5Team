@@ -59,8 +59,9 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
         if tool=='extract_information' and not settings['fields']:issues.append('추출할 항목이 필요합니다: '+id)
         if tool=='ask_user' and not settings['question']:issues.append('확인 질문이 필요합니다: '+id)
         if tool=='export_result':
+            if not supplied.intersection({'records','text','answer'}):issues.append('저장할 records/text/answer 결과 입력이 필요합니다: '+id)
             if 'records' in supplied and settings['format'] not in ['csv','json']:issues.append('표 결과는 CSV/JSON을 선택하세요: '+id)
-            if 'text' in supplied and settings['format']!='markdown':issues.append('텍스트 결과는 Markdown을 선택하세요: '+id)
+            if 'records' not in supplied and supplied.intersection({'text','answer'}) and settings['format'] not in ['markdown','json']:issues.append('텍스트 결과는 Markdown 또는 JSON을 선택하세요: '+id)
         if tool in ['read_document','read_table']:
             lookup={r['id']:r for r in resources}
             if any(f not in lookup for f in settings['file_ids']):issues.append('연결되지 않은 파일 ID가 있습니다: '+id)
@@ -131,6 +132,10 @@ def normalize_connections(workflow):
     """Resolve unambiguous port aliases using registered types; never invent topology."""
     if not workflow:return workflow
     by={n['id']:n for n in workflow['nodes']}
+    if workflow['entry'] not in by:
+        targets={e['target'] for e in workflow['edges']}
+        roots=[id for id in by if id not in targets]
+        if len(roots)==1:workflow['entry']=roots[0]
     for edge in workflow['edges']:
         if edge['source'] in by and by[edge['source']]['tool']!='condition':edge['branch']='next'
     for node in workflow['nodes']:

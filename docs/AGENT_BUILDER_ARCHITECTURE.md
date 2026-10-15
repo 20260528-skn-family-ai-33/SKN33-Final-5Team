@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart LR
-    R[자료·도구 확인] --> C[Deep Agents 대화]
+    R[사용자 요청·전체 대화] --> C[Deep Agents 총괄: 자료·도구 확인, 질문, 설계·수정]
     C --> V[필수 설정·근거·실행 조건 검증]
     V --> S[LangGraph Supervisor]
     S -->|조건 부족| Q[질문 대기]
@@ -51,3 +51,7 @@ LLM이 지시사항과 구조화된 `execution_plan`을 함께 생성합니다. 
 ## 지원 범위
 
 CSV·XLSX·JSON 표 파일과 TXT·MD·텍스트 PDF 규칙 자료. 표 읽기, 값/열 비교, 여러 필터, 숫자/문자 정렬, 중복/결측 처리, CSV/JSON 결과. 이미지 OCR·복잡한 문서 RAG·외부 전송·예약·커넥터 추가·자체 ML 분류는 이번 데모 범위 밖입니다.
+
+## 2026-10-14 총괄 역할 수정
+
+생성 대화의 별도 DesignIntent·BusinessQuestions·DraftReview 모델 호출을 제거했습니다. Deep Agents가 대화 전체와 현재 초안, 검증 오류를 받아 직접 부족한 조건을 질문하고 답변을 반영해 설계·수정합니다. `list_tools`, `inspect_resource`, `validate_workflow`는 총괄 에이전트의 도구입니다. 질문·미지원 상태는 workflow=null로 대기할 수 있습니다. 코드 검증은 고정 질문을 만들지 않고 오류를 반환하며, LangGraph는 같은 대화 노드로 수정 요청을 전달하거나 사용자 입력·승인을 기다립니다. 실제 파일 처리와 저장은 기존 실행 코드가 담당합니다. 실행 실패를 자동 복구해 재실행하는 에이전트 루프는 이번 범위에 포함하지 않습니다.

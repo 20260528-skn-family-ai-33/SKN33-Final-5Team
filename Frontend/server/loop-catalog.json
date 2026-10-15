@@ -1,9 +1,0 @@
-[
- {
-  "id":"loop","name":"묶음씩 반복","englishName":"Loop Over Items","category":"데이터","n8nType":"n8n-nodes-base.splitInBatches","typeVersion":3,
-  "description":"목록을 원하는 크기로 나눠 연결된 본문을 반복하고, 돌아온 처리 결과를 완료 경로로 모아요.",
-  "parameters":{"batchSize":1,"options":{}},"inputs":1,"outputs":["완료","반복"],"locallyExecutable":true,
-  "setupGuidance":["반복 경로에서 처리 단계를 연결한 뒤 마지막 단계의 출력을 이 반복 단계 입력으로 다시 연결하세요.","목록을 모두 처리하면 완료 경로로 결과가 모여요.","전체 매개변수의 options.reset을 켜면 돌아온 데이터로 반복을 다시 시작해요. 반드시 종료 조건을 연결하세요."],
-  "fields":[{"key":"batchSize","label":"한 번에 처리할 항목 수","type":"number","help":"기본 1개예요. 1~5,000개로 설정할 수 있어요."}]
- }
-]

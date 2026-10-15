@@ -1,0 +1,71 @@
+{
+  "id": "integrated-document-demo",
+  "name": "문서 읽기와 실제 근거 확인",
+  "settings": {},
+  "nodes": [
+    {
+      "id": "s",
+      "name": "시작",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "d",
+      "name": "여러 형식 문서 읽기",
+      "type": "easyflow.documentRead",
+      "typeVersion": 1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "binaryPropertyName": "data"
+      }
+    },
+    {
+      "id": "k",
+      "name": "반품 원문 근거 확인",
+      "type": "easyflow.knowledgeSearch",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "text": "={{ $json.text }}",
+        "query": "반품",
+        "filename": "={{ $json.filename }}",
+        "limit": 3
+      }
+    }
+  ],
+  "connections": {
+    "시작": {
+      "main": [
+        [
+          {
+            "node": "여러 형식 문서 읽기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "여러 형식 문서 읽기": {
+      "main": [
+        [
+          {
+            "node": "반품 원문 근거 확인",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

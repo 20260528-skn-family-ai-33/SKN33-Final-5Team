@@ -1,0 +1,12 @@
+# Same line endings on macOS and Windows. Without this, Windows checkouts with core.autocrlf
+# turn shell scripts into CRLF (bash: $'\r': command not found) and byte-compared fixtures differ.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.pdf binary
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.jpeg binary

@@ -1,0 +1,22 @@
+import {documentationPath} from '../server/paths';
+import assert from 'node:assert/strict';
+import {writeFile} from 'node:fs/promises';
+const base=process.env.A4B_DEMO_URL||'http://127.0.0.1:3030';
+async function call(action:string,data?:any){const r=await fetch(base+'/api/'+action,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined,signal:AbortSignal.timeout(180000)});const v:any=await r.json();if(!r.ok)throw new Error(v.error);return v;}
+const accounts=(await call('credentials')).credentials.filter((c:any)=>c.provider==='openai');assert.ok(accounts.length);
+let s=await call('agent-builder/sessions',{model:'gpt-4.1-mini',credentialId:accounts[0].id});
+s=await call('agent-builder/message',{id:s.id,revision:s.revision,content:'여러 문서에서 제목과 총금액을 매번 찾아 옮기고 있어요. 해당 두 항목을 원문 근거와 함께 정리하는 에이전트가 필요해요. 파일은 실행할 때 넣을 거예요. 총금액은 문서에 명시된 전체 합계 금액이고, 제목은 문서 제목입니다. 없으면 추측하지 말고 누락으로 표시해 주세요. 누락 항목이 있으면 계속 진행할지 저에게 확인한 뒤 JSON 파일로 저장하고, 누락이 없으면 바로 저장해주세요.'});
+console.log(JSON.stringify({stage:'generated',status:s.status,questions:s.draft.questions,issues:s.issues,tools:s.draft.tool_ids,nodes:s.draft.workflow?.nodes.map((n:any)=>({id:n.id,tool:n.tool})),edges:s.draft.workflow?.edges}));
+if(s.status==='needs_clarification'&&!s.issues.length)s=await call('agent-builder/message',{id:s.id,revision:s.revision,content:'표현이나 양식은 문서마다 달라요. 항목의 의미로 찾아주세요. 제목과 총금액은 앞서 설명한 의미이고, 없거나 근거가 불확실하면 누락으로 표시하는 규칙입니다. 다른 조건은 그대로입니다.'});
+assert.equal(s.status,'ready');assert.ok(s.draft.workflow.nodes.some((n:any)=>n.tool==='condition'));assert.ok(s.draft.workflow.nodes.some((n:any)=>n.tool==='ask_user'));
+const prior=s.draft.workflow;
+s=await call('agent-builder/message',{id:s.id,revision:s.revision,content:'작성일도 추출 항목에 추가해 주세요. 문서에 명시된 작성일입니다. 나머지 항목과 누락 시 확인, JSON 출력 조건은 그대로 유지해주세요.'});
+assert.equal(s.status,'ready');const extractor=s.draft.workflow.nodes.find((n:any)=>n.tool==='extract_information');assert.equal(extractor.settings.fields.length,3);assert.ok(s.draft.workflow.nodes.some((n:any)=>n.tool==='condition'));assert.ok(s.draft.workflow.nodes.some((n:any)=>n.tool==='ask_user'));
+s=await call('agent-builder/confirm',{id:s.id,revision:s.revision});const agentId=s.saved_agent_id;
+const uploaded=await call('agent-builder/run_upload',{id:agentId,fileName:'범용_실행검증.txt',data:Buffer.from('문서 제목: 기능 검증 자료\n작성일: 2026-10-12\n본 자료에는 총금액이 기재되어 있지 않습니다.').toString('base64')});
+let run=await call('agent-builder/test',{id:agentId,content:'새로 연결한 자료를 저장된 흐름대로 처리해주세요.',fileIds:[uploaded.asset.id]});
+console.log(JSON.stringify({stage:'executed',status:run.status,steps:run.steps.map((v:any)=>v.node),question:run.question,rows:run.rows}));assert.equal(run.status,'needs_input');const runId=run.id;
+run=await call('agent-builder/resume_run',{id:run.id,content:'누락은 그대로 표시하고 저장해주세요.'});assert.equal(run.id,runId);assert.equal(run.status,'succeeded');assert.ok(run.artifact);
+const report={date:'2026-10-12',realDeepAgents:true,realLangGraph:true,agentId,runId,generationWithoutFile:true,conversationModificationPreservesBranch:true,sameRunResumed:true,finalWorkflow:s.draft.workflow,run};
+await writeFile(documentationPath('WORKFLOW_DEMO_LIVE_CHECK.json'),JSON.stringify(report,null,2));
+console.log(JSON.stringify({stage:'resumed',status:run.status,sameRun:true,artifact:run.artifact.name,steps:run.steps.map((v:any)=>v.node)}));

@@ -1,0 +1,74 @@
+{
+  "name": "빈 결과에서도 이어 실행하기",
+  "nodes": [
+    {
+      "id": "empty-start",
+      "name": "버튼으로 시작",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        180,
+        320
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "empty-code",
+      "name": "빈 결과 만들기",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [];"
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "empty-set",
+      "name": "다음 단계 실행 확인",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        660,
+        320
+      ],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\"message\":\"빈 결과 뒤에도 실행됐어요\"}"
+      }
+    }
+  ],
+  "connections": {
+    "버튼으로 시작": {
+      "main": [
+        [
+          {
+            "node": "빈 결과 만들기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "빈 결과 만들기": {
+      "main": [
+        [
+          {
+            "node": "다음 단계 실행 확인",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Seoul",
+    "executionOrder": "v1"
+  },
+  "active": false
+}

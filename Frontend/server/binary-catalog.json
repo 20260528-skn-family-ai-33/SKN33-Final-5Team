@@ -1,0 +1,645 @@
+{
+  "schemaVersion": 1,
+  "verifiedDate": "2026-10-07",
+  "notice": "파일 변환은 Easyflow가 메모리에서 직접 처리해요. 파일 하나 및 한 단계의 파일 총 크기는 8MiB 이하, 데이터는 최대 5,000개까지 지원해요. 컴퓨터의 임의 경로를 읽지 않으며 업로드하거나 앞 단계에서 받은 파일만 처리해요.",
+  "catalog": [
+    {
+      "id": "convertToFile",
+      "name": "데이터를 파일로",
+      "englishName": "Convert to File",
+      "description": "입력 데이터를 실제 CSV·Excel·HTML·RTF·JSON·텍스트 파일로 만들거나 base64 내용을 원래 파일로 되돌려요.",
+      "category": "데이터",
+      "n8nType": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "parameters": {
+        "operation": "csv",
+        "binaryPropertyName": "data",
+        "headerRow": "true",
+        "encoding": "utf8"
+      },
+      "locallyExecutable": true,
+      "requires": [],
+      "inputs": 1,
+      "outputs": [
+        "파일"
+      ],
+      "setupGuidance": [
+        "앞 단계의 데이터를 연결하고 만들 파일 형식을 선택해주세요. 파일 이름은 결과 다운로드에 사용하는 이름이에요.",
+        "CSV는 모든 입력 항목을 한 파일로 모아요. 열 이름을 포함하며 셀 값의 쉼표·따옴표·줄바꿈을 보존해요. 객체나 배열 값은 JSON 문자열로 기록해요.",
+        "텍스트나 base64를 파일로 만들려면 내용이 있는 항목 이름을 입력하세요. 예시 content 또는 message.text처럼 점으로 하위 항목을 선택할 수 있어요.",
+        "JSON은 전체 입력을 배열 하나로 저장하거나 항목마다 별도 파일로 만들 수 있어요. 일반 데이터와 파일 메타데이터는 분리해요.",
+        "Excel은 실제 XLSX로 만들며 숫자·참/거짓·문자열을 보존해요. =로 시작하는 글자도 수식으로 실행하지 않고 글자로 저장해요. 객체와 배열은 JSON 문자열로 담아요.",
+        "Excel 시트 이름을 지정할 수 있어요. 첫 행에 열 이름을 포함하고 파일 압축을 켜면 용량을 줄일 수 있어요.",
+        "HTML·RTF는 입력 데이터를 표 문서로 만들어요. HTML 태그와 RTF 명령처럼 보이는 내용도 글자로 안전하게 담아요. PDF·DOCX 작성은 아직 지원하지 않아요."
+      ],
+      "docsUrl": "https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.converttofile",
+      "sourceUrl": "https://raw.githubusercontent.com/n8n-io/n8n/master/packages/nodes-base/nodes/Files/ConvertToFile/ConvertToFile.node.ts",
+      "fields": [
+        {
+          "key": "operation",
+          "label": "만들 파일 종류",
+          "type": "select",
+          "options": [
+            {
+              "value": "csv",
+              "label": "CSV 표 파일"
+            },
+            {
+              "value": "toJson",
+              "label": "JSON 데이터 파일"
+            },
+            {
+              "value": "toText",
+              "label": "텍스트 파일"
+            },
+            {
+              "value": "toBinary",
+              "label": "base64에서 파일 복원"
+            },
+            {
+              "value": "xlsx",
+              "label": "Excel 통합 문서 (XLSX)"
+            },
+            {
+              "value": "html",
+              "label": "HTML 표 문서"
+            },
+            {
+              "value": "rtf",
+              "label": "RTF 표 문서"
+            }
+          ]
+        },
+        {
+          "key": "binaryPropertyName",
+          "label": "결과 파일 항목 이름",
+          "type": "text",
+          "placeholder": "data",
+          "help": "파일을 읽거나 보낼 다음 단계에서 이 이름을 사용해요."
+        },
+        {
+          "key": "sourceProperty",
+          "label": "파일로 만들 입력 항목",
+          "type": "text",
+          "placeholder": "예시: content 또는 message.text",
+          "showWhen": {
+            "operation": [
+              "toText",
+              "toBinary"
+            ]
+          }
+        },
+        {
+          "key": "mode",
+          "label": "JSON 파일을 만드는 방식",
+          "type": "select",
+          "options": [
+            {
+              "value": "once",
+              "label": "전체 항목을 한 파일로"
+            },
+            {
+              "value": "each",
+              "label": "항목마다 별도 파일로"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "toJson"
+            ]
+          }
+        },
+        {
+          "key": "fileName",
+          "label": "다운로드 파일 이름 · 선택",
+          "type": "text",
+          "placeholder": "예시: 업무결과.csv",
+          "help": "비워두면 형식에 맞는 기본 이름을 사용해요."
+        },
+        {
+          "key": "encoding",
+          "label": "텍스트 인코딩",
+          "type": "select",
+          "options": [
+            {
+              "value": "utf8",
+              "label": "UTF-8"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "csv",
+              "toJson",
+              "toText"
+            ]
+          }
+        },
+        {
+          "key": "headerRow",
+          "label": "표 첫 행에 열 이름 포함",
+          "type": "select",
+          "options": [
+            {
+              "value": "true",
+              "label": "포함"
+            },
+            {
+              "value": "false",
+              "label": "포함 안 함"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "csv",
+              "xlsx",
+              "html",
+              "rtf"
+            ]
+          }
+        },
+        {
+          "key": "delimiter",
+          "label": "CSV 구분 문자 · 선택",
+          "type": "text",
+          "placeholder": ",",
+          "help": "쉼표가 기본값이에요. 세미콜론이나 탭 한 글자도 사용할 수 있어요.",
+          "showWhen": {
+            "operation": [
+              "csv"
+            ]
+          }
+        },
+        {
+          "key": "addBOM",
+          "label": "UTF-8 BOM 추가",
+          "type": "select",
+          "options": [
+            {
+              "value": "false",
+              "label": "추가 안 함"
+            },
+            {
+              "value": "true",
+              "label": "추가"
+            }
+          ],
+          "help": "한국어 CSV를 일부 스프레드시트 앱에서 열 때 사용할 수 있어요.",
+          "showWhen": {
+            "operation": [
+              "csv",
+              "toJson",
+              "toText"
+            ]
+          }
+        },
+        {
+          "key": "format",
+          "label": "JSON 보기 좋게 들여쓰기",
+          "type": "select",
+          "options": [
+            {
+              "value": "false",
+              "label": "간결하게"
+            },
+            {
+              "value": "true",
+              "label": "들여쓰기"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "toJson"
+            ]
+          }
+        },
+        {
+          "key": "mimeType",
+          "label": "복원 파일 MIME 종류 · 선택",
+          "type": "text",
+          "placeholder": "예시: image/png",
+          "help": "base64에서 복원하는 파일 종류예요. 비워두면 application/octet-stream을 사용해요.",
+          "showWhen": {
+            "operation": [
+              "toBinary"
+            ]
+          }
+        },
+        {
+          "key": "sheetName",
+          "label": "Excel 시트 이름 · 선택",
+          "type": "text",
+          "placeholder": "Sheet",
+          "help": "31자 이하로 입력해주세요. 비워두면 Sheet를 사용해요.",
+          "showWhen": {
+            "operation": [
+              "xlsx"
+            ]
+          }
+        },
+        {
+          "key": "compression",
+          "label": "Excel 파일 압축",
+          "type": "select",
+          "options": [
+            {
+              "value": "true",
+              "label": "압축하기"
+            },
+            {
+              "value": "false",
+              "label": "압축 안 함"
+            }
+          ],
+          "help": "기본값은 압축이에요. 만들어진 파일은 8MiB 이하이어야 해요.",
+          "showWhen": {
+            "operation": [
+              "xlsx"
+            ]
+          }
+        }
+      ],
+      "setupGuidanceByOperation": {
+        "csv": [
+          "앞 단계의 모든 항목을 CSV 표 한 파일로 모아요.",
+          "파일 이름과 열 이름 포함 여부를 정하세요. 한국어가 깨지면 UTF-8 BOM 추가를 선택하세요.",
+          "결과의 파일 받기 버튼으로 다운로드해요."
+        ],
+        "xlsx": [
+          "앞 단계의 항목을 Excel 표 한 파일로 모아요. 숫자와 참/거짓 값을 보존해요.",
+          "파일 이름과 시트 이름, 열 이름 포함 여부를 정하세요.",
+          "결과의 파일 받기로 실제 XLSX 파일을 받아요. 수식처럼 보이는 글자는 글자로 저장해요."
+        ],
+        "toText": [
+          "글자가 있는 입력 항목 이름을 고르세요. 예: text 또는 content.",
+          "파일 이름을 정한 뒤 실행 결과에서 UTF-8 텍스트 파일을 받아요."
+        ],
+        "toJson": [
+          "전체 입력을 파일 하나로 모으거나 항목마다 파일을 만들 수 있어요.",
+          "들여쓰기를 켜면 파일 내용을 읽기 편해요. 결과에서 실제 JSON 파일을 받아요."
+        ],
+        "toBinary": [
+          "원래 파일의 base64 문자열이 있는 입력 항목 이름을 고르세요.",
+          "복원할 파일 이름과 종류를 정한 뒤 결과에서 파일을 받아요."
+        ],
+        "html": [
+          "앞 단계의 모든 항목을 HTML 표 문서로 만들어요.",
+          "입력 안의 태그는 글자로 담고, 결과에서 실제 파일을 받아요."
+        ],
+        "rtf": [
+          "앞 단계의 모든 항목을 RTF 표 문서로 만들어요.",
+          "한국어와 줄바꿈을 보존해요. 결과에서 받아 워드 프로세서로 열 수 있어요."
+        ]
+      }
+    },
+    {
+      "id": "extractFromFile",
+      "name": "파일에서 데이터 읽기",
+      "englishName": "Extract from File",
+      "description": "CSV·Excel의 행, PDF의 실제 텍스트, JSON 내용과 UTF-8 글자를 읽거나 파일을 base64 문자열로 바꿔요.",
+      "category": "데이터",
+      "n8nType": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "parameters": {
+        "operation": "csv",
+        "binaryPropertyName": "data",
+        "destinationKey": "data",
+        "headerRow": "true",
+        "encoding": "utf8",
+        "stripBOM": "true",
+        "keepSource": "json"
+      },
+      "locallyExecutable": true,
+      "requires": [
+        "업로드하거나 앞 단계에서 받은 파일"
+      ],
+      "inputs": 1,
+      "outputs": [
+        "읽은 데이터"
+      ],
+      "setupGuidance": [
+        "업로드한 파일이나 파일을 가져오는 단계를 먼저 연결하세요. 파일 항목 이름은 기본 data예요.",
+        "CSV는 행마다 데이터 하나를 만들어요. 값은 문자열로 보존하므로 숫자 비교 전 내용 입력·정리 단계에서 숫자로 바꿔주세요. 따옴표·셀 안 줄바꿈·UTF-8 BOM을 처리해요.",
+        "CSV 첫 행에 열 이름이 없다면 포함 안 함을 선택하세요. column1, column2처럼 순서대로 열 이름을 만들어요. 중복·빈 열 이름과 열 개수가 다른 행은 오류로 알려줘요.",
+        "JSON·텍스트·base64 결과는 결과 항목 이름에 담겨요. JSON 배열도 배열 그대로 담으며 필요하면 항목 나누기 단계로 나눌 수 있어요.",
+        "원본 유지는 JSON·파일·둘 다·유지 안 함 중 선택할 수 있어요. CSV 여러 행에 파일을 함께 유지하면 파일 총 크기 제한이 적용돼요. 파일 내용은 UTF-8 인코딩만 지원해요.",
+        "Excel은 XLSX 파일을 읽어요. 비워둔 시트 이름은 첫 시트를 뜻해요. A1:C20 같은 범위로 원하는 행과 열만 읽을 수 있어요.",
+        "Excel 결과 값은 원래 종류(숫자·참/거짓·글자) 또는 모두 문자열로 선택해요. 날짜는 ISO 문자열이고 수식은 저장된 결과만 읽어요. 수식을 계산하거나 링크를 열지 않으며 저장된 결과가 없는 수식 셀은 빈 값이에요.",
+        "PDF는 실제 글자를 추출해 text 항목에 담고 numpages와 numrender로 전체·읽은 페이지 수를 알려줘요. 페이지 합치기를 끄면 text가 페이지별 문자열 배열이에요.",
+        "스캔·이미지 PDF에는 먼저 OCR(문자 인식)이 필요해요. 암호화된 문서는 먼저 암호를 해제하세요. PDF는 최대 500페이지, Excel은 최대 5,000개 데이터 행·1,000개 열을 읽어요.",
+        "Excel 압축 내부 항목은 2,000개, 항목 하나는 16MiB, 압축 해제 총 크기는 64MiB로 제한해요. 문서 처리는 최대 15초 뒤 종료하고 오류로 알려줘요."
+      ],
+      "docsUrl": "https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.extractfromfile",
+      "sourceUrl": "https://raw.githubusercontent.com/n8n-io/n8n/master/packages/nodes-base/nodes/Files/ExtractFromFile/ExtractFromFile.node.ts",
+      "fields": [
+        {
+          "key": "operation",
+          "label": "읽을 파일 종류",
+          "type": "select",
+          "options": [
+            {
+              "value": "csv",
+              "label": "CSV 표 읽기"
+            },
+            {
+              "value": "fromJson",
+              "label": "JSON 내용 읽기"
+            },
+            {
+              "value": "text",
+              "label": "텍스트 읽기"
+            },
+            {
+              "value": "binaryToPropery",
+              "label": "파일을 base64로"
+            },
+            {
+              "value": "xlsx",
+              "label": "Excel 행 읽기 (XLSX)"
+            },
+            {
+              "value": "pdf",
+              "label": "PDF 텍스트 읽기"
+            }
+          ]
+        },
+        {
+          "key": "binaryPropertyName",
+          "label": "입력 파일 항목 이름",
+          "type": "text",
+          "placeholder": "data"
+        },
+        {
+          "key": "destinationKey",
+          "label": "결과를 담을 항목 이름",
+          "type": "text",
+          "placeholder": "data",
+          "help": "예시: content 또는 result.content. CSV·Excel은 열 이름으로 각 행을 만들고, PDF는 text·numpages·numrender 항목을 만들어요.",
+          "showWhen": {
+            "operation": [
+              "fromJson",
+              "text",
+              "binaryToPropery"
+            ]
+          }
+        },
+        {
+          "key": "encoding",
+          "label": "파일 인코딩",
+          "type": "select",
+          "options": [
+            {
+              "value": "utf8",
+              "label": "UTF-8"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "csv",
+              "fromJson",
+              "text"
+            ]
+          }
+        },
+        {
+          "key": "headerRow",
+          "label": "표 첫 행이 열 이름",
+          "type": "select",
+          "options": [
+            {
+              "value": "true",
+              "label": "열 이름 있음"
+            },
+            {
+              "value": "false",
+              "label": "열 이름 없음"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "csv",
+              "xlsx"
+            ]
+          }
+        },
+        {
+          "key": "delimiter",
+          "label": "CSV 구분 문자 · 선택",
+          "type": "text",
+          "placeholder": ",",
+          "showWhen": {
+            "operation": [
+              "csv"
+            ]
+          }
+        },
+        {
+          "key": "skipEmptyLines",
+          "label": "CSV 빈 줄 건너뛰기",
+          "type": "select",
+          "options": [
+            {
+              "value": "true",
+              "label": "건너뛰기"
+            },
+            {
+              "value": "false",
+              "label": "빈 줄도 읽기"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "csv"
+            ]
+          }
+        },
+        {
+          "key": "stripBOM",
+          "label": "UTF-8 BOM 제거",
+          "type": "select",
+          "options": [
+            {
+              "value": "true",
+              "label": "제거"
+            },
+            {
+              "value": "false",
+              "label": "유지"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "csv",
+              "fromJson",
+              "text"
+            ]
+          }
+        },
+        {
+          "key": "keepSource",
+          "label": "원본 데이터 유지",
+          "type": "select",
+          "options": [
+            {
+              "value": "json",
+              "label": "일반 JSON 유지"
+            },
+            {
+              "value": "binary",
+              "label": "파일 유지"
+            },
+            {
+              "value": "both",
+              "label": "JSON과 파일 유지"
+            },
+            {
+              "value": "none",
+              "label": "유지 안 함"
+            }
+          ]
+        },
+        {
+          "key": "sheetName",
+          "label": "읽을 Excel 시트 이름 · 선택",
+          "type": "text",
+          "placeholder": "비워두면 첫 시트",
+          "showWhen": {
+            "operation": [
+              "xlsx"
+            ]
+          }
+        },
+        {
+          "key": "range",
+          "label": "읽을 Excel 범위 · 선택",
+          "type": "text",
+          "placeholder": "예시: A1:C20",
+          "help": "범위의 첫 행을 열 이름으로 사용해요. 비워두면 시트 전체를 읽어요.",
+          "showWhen": {
+            "operation": [
+              "xlsx"
+            ]
+          }
+        },
+        {
+          "key": "resultTypes",
+          "label": "Excel 결과 값 종류",
+          "type": "select",
+          "options": [
+            {
+              "value": "typed",
+              "label": "원래 종류 보존"
+            },
+            {
+              "value": "strings",
+              "label": "모두 문자열로"
+            }
+          ],
+          "help": "숫자와 참/거짓을 보존하거나 글자로 바꿔요. 수식은 계산하지 않고 저장된 값만 읽어요.",
+          "showWhen": {
+            "operation": [
+              "xlsx"
+            ]
+          }
+        },
+        {
+          "key": "includeEmptyCells",
+          "label": "Excel 빈 셀 포함",
+          "type": "select",
+          "options": [
+            {
+              "value": "false",
+              "label": "빈 셀 제외"
+            },
+            {
+              "value": "true",
+              "label": "빈 셀 포함"
+            }
+          ],
+          "help": "포함하면 빈 셀은 null(문자열 모드에서는 빈 글자)로 담아요. 완전히 빈 행은 건너뛰어요.",
+          "showWhen": {
+            "operation": [
+              "xlsx"
+            ]
+          }
+        },
+        {
+          "key": "joinPages",
+          "label": "PDF 페이지 글자 합치기",
+          "type": "select",
+          "options": [
+            {
+              "value": "true",
+              "label": "전체 글자를 하나로"
+            },
+            {
+              "value": "false",
+              "label": "페이지별 배열로"
+            }
+          ],
+          "showWhen": {
+            "operation": [
+              "pdf"
+            ]
+          }
+        },
+        {
+          "key": "maxPages",
+          "label": "PDF 읽을 최대 페이지",
+          "type": "number",
+          "placeholder": "0",
+          "help": "0은 전체 페이지예요. 1~500으로 첫 몇 페이지까지만 읽을 수 있어요.",
+          "showWhen": {
+            "operation": [
+              "pdf"
+            ]
+          }
+        }
+      ],
+      "setupGuidanceByOperation": {
+        "csv": [
+          "메뉴의 파일·시작 데이터로 실행에서 CSV를 올리거나 앞 단계의 파일을 연결하세요.",
+          "첫 행에 열 이름이 있는지 선택하세요. 파일 항목 이름은 기본 data예요.",
+          "행마다 데이터가 나와요. 숫자 비교 전에 내용 입력·정리에서 값을 숫자로 바꿔주세요."
+        ],
+        "xlsx": [
+          "메뉴의 파일·시작 데이터로 실행에서 XLSX를 올리거나 앞 단계의 파일을 연결하세요.",
+          "시트 이름을 비우면 첫 시트를 읽어요. A1:C20처럼 필요한 범위만 고를 수 있어요.",
+          "숫자를 보존하려면 원래 종류 보존을 선택하세요. 수식은 저장된 결과만 읽어요."
+        ],
+        "pdf": [
+          "메뉴의 파일·시작 데이터로 실행에서 텍스트가 있는 PDF를 올리세요.",
+          "읽은 글자는 text에 담겨요. 페이지 합치기를 끄면 페이지별 글자 목록이 나와요.",
+          "스캔·이미지 PDF는 먼저 OCR이 필요해요. 암호화된 PDF는 먼저 암호를 해제해주세요."
+        ],
+        "fromJson": [
+          "실제 JSON 파일을 올리거나 앞 파일 단계의 결과를 연결하세요.",
+          "읽은 내용을 결과 항목에 담아요. 배열이면 항목 나누기로 행마다 펼칠 수 있어요."
+        ],
+        "text": [
+          "실제 UTF-8 텍스트 파일을 올리거나 앞 파일 단계의 결과를 연결하세요.",
+          "읽은 글자를 담을 결과 항목 이름을 정하세요. 다음 AI나 내용 정리 단계에서 사용할 수 있어요."
+        ],
+        "binaryToPropery": [
+          "파일을 문자열로 전달해야 할 때 base64로 바꿔요.",
+          "입력 파일 항목과 결과 문자열 항목의 이름을 정하세요. 원본 유지를 선택할 수 있어요."
+        ],
+        "binaryToProperty": [
+          "파일을 문자열로 전달해야 할 때 base64로 바꿔요.",
+          "입력 파일 항목과 결과 문자열 항목의 이름을 정하세요. 원본 유지를 선택할 수 있어요."
+        ]
+      }
+    }
+  ],
+  "libraries": [
+    {
+      "package": "exceljs",
+      "version": "4.4.0",
+      "docsUrl": "https://github.com/exceljs/exceljs#xlsx"
+    },
+    {
+      "package": "pdf-parse",
+      "version": "2.4.5",
+      "docsUrl": "https://github.com/mehmet-kozan/pdf-parse/tree/v2.4.5"
+    }
+  ]
+}

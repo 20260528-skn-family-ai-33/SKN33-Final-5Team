@@ -1,0 +1,43 @@
+{
+  "realProvider": true,
+  "model": "gpt-4.1-mini",
+  "checkedAt": "2026-10-12T15:09:31.723Z",
+  "agentId": "be15f777-5707-4dcb-9fc4-4c4e175ff57c",
+  "naturalLanguageCreated": true,
+  "badDraftVerdict": "revise",
+  "badDraftCategories": [
+    "unsupported_claim"
+  ],
+  "duplicateApprovalIdempotent": true,
+  "savedDecisionRestored": true,
+  "goodDraftVerdict": "pass",
+  "onlyApprovedExported": true,
+  "reportDownloaded": true,
+  "runIds": [
+    "4c3842af-3bdf-4200-b788-707558884c44",
+    "9a52f613-dffe-4333-9258-04ea6c59723a"
+  ],
+  "scheduledDesignCorrected": true,
+  "scheduled": {
+    "agentId": "86728a7f-8ac9-4947-8ef2-889d496d356a",
+    "runId": "20b904b3-b06f-4e0e-aa9e-57eeb3ea2917",
+    "trigger": "schedule_test",
+    "sourceVersion": 1,
+    "verdict": "revise",
+    "approvedAfterRun": true,
+    "policySnapshot": true
+  },
+  "uiCheck": {
+    "runId": "db2800ed-8143-4ac2-8324-c76e68761c62",
+    "irrelevantPolicyNotAccepted": true,
+    "editedReplyApprovedInUI": true,
+    "decisionRestoredAfterReload": true,
+    "screenshot": "REPLY_REVIEW_UI.png"
+  },
+  "automatedTests": {
+    "pythonPassed": 88,
+    "nodePassed": 508,
+    "nodeSkipped": 1,
+    "failures": 0
+  }
+}

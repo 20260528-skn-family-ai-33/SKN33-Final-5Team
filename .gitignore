@@ -27,7 +27,6 @@ outputs/
 *.db-*
 *.log
 *.zip
-*.pdf
 # The bundled synthetic PDF is required by document API regression tests
 !docs/examples/*PDF*.pdf
 

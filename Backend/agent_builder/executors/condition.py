@@ -13,7 +13,7 @@ from ..tools.write_result import write_result_node
 def execute(node,state,storage,config,llm):
     tool=node["tool"];settings=node["settings"];inputs={b["input"]:state["outputs"][b["node_id"]][b["output"]] for b in node["bindings"]}
     op = settings['condition_operator']
-    value = inputs.get('reviews',inputs.get('table',{}).get('rows',inputs.get('records', inputs.get('text', inputs.get('answer')))))
+    value = inputs.get('reviews',inputs.get('table',{}).get('rows',inputs.get('records', inputs.get('text', inputs.get('answer', inputs.get('documents'))))))
     if op in ['all_pass','any_revision']:
         reviews=inputs.get('reviews',[])
         return {**inputs,'decision':bool(reviews) and (all(r['report']['verdict']=='pass' for r in reviews) if op=='all_pass' else any(r['report']['verdict']!='pass' for r in reviews))}

@@ -121,7 +121,8 @@ run_workflow(st,id,'execute','',executor=slow)
         recovered=handle({'directory':str(tmp_path),'action':'recover_runs'});assert len(recovered['recovered'])==1
         id=recovered['recovered'][0];st=Storage(tmp_path);assert st.test(id)['status']=='failed';st.close()
         result=handle({'directory':str(tmp_path),'action':'retry_run','id':id,'api_key':''})
-        assert result['status']=='succeeded';assert result['id']==id;assert len(result['attempts'])==2;assert len(result['rows'])==2
+        assert result['status']=='succeeded',json.dumps({key:result.get(key) for key in ['status','error','error_type','diagnostic_frames','steps','attempts']},ensure_ascii=False,indent=2)
+        assert result['id']==id;assert len(result['attempts'])==2;assert len(result['rows'])==2
     finally:
         if child.poll() is None:child.kill();child.wait()
 

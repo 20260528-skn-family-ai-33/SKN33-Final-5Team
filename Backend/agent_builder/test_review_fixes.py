@@ -102,27 +102,50 @@ def test_schedule_retry_syncs_job_and_preserves_failure(tmp_path,monkeypatch):
     assert [a['status'] for a in second['attempts']]==['failed','succeeded'];assert second['attempts'][0]['error']
     st=Storage(tmp_path);j=Schedules(st).jobs(id)[0];assert j['status']=='succeeded';assert j['attempt_history'][0]['status']=='failed';assert j['retry_count']==1;st.close()
 
-def test_killed_process_recovers_then_retries_same_checkpoint(tmp_path):
+# Slow persistence exposes the race even on hosts that normally flush before kill().
+@pytest.mark.parametrize('checkpoint_delay', [0, 0.3])
+@pytest.mark.parametrize('interrupted_node', ['read_table', 'filter_sort'])
+def test_killed_process_recovers_then_retries_same_checkpoint(tmp_path, checkpoint_delay, interrupted_node):
     import subprocess
+    from langgraph.checkpoint.sqlite import SqliteSaver
     child_code='''import sys,time
 from pathlib import Path
 sys.path.insert(0,sys.argv[2])
 from agent_builder.test_scheduling import seed
-from agent_builder.workflow_runtime import run_workflow
+from agent_builder.workflow_runtime import run_workflow,execute_node
+from langgraph.checkpoint.sqlite import SqliteSaver
+original_put=SqliteSaver.put
+def delayed_put(self,*args,**kwargs):
+ time.sleep(float(sys.argv[3]))
+ return original_put(self,*args,**kwargs)
+SqliteSaver.put=delayed_put
 st,id=seed(Path(sys.argv[1]))
-def slow(*args):
- print('node_started',flush=True);time.sleep(30)
+def slow(node,*args):
+ if node['id']==sys.argv[4]:
+  print('node_started',flush=True);time.sleep(30)
+ return execute_node(node,*args)
 run_workflow(st,id,'execute','',executor=slow)
 '''
-    child=subprocess.Popen([sys.executable,'-c',child_code,str(tmp_path),str(Path(__file__).resolve().parents[1])],stdout=subprocess.PIPE,text=True)
+    child=subprocess.Popen([sys.executable,'-c',child_code,str(tmp_path),str(Path(__file__).resolve().parents[1]),str(checkpoint_delay),interrupted_node],stdout=subprocess.PIPE,text=True)
     try:
         assert child.stdout.readline().strip()=='node_started'
         child.kill();child.wait(timeout=10)
         recovered=handle({'directory':str(tmp_path),'action':'recover_runs'});assert len(recovered['recovered'])==1
-        id=recovered['recovered'][0];st=Storage(tmp_path);assert st.test(id)['status']=='failed';st.close()
+        id=recovered['recovered'][0];st=Storage(tmp_path)
+        try:
+            assert st.test(id)['status']=='failed'
+            with SqliteSaver.from_conn_string(str(st.path)) as saver:
+                checkpoint=saver.get_tuple({'configurable':{'thread_id':'run:'+id}})
+            assert checkpoint is not None, 'A started node must have a durable input checkpoint.'
+            state=checkpoint.checkpoint['channel_values']
+            assert state['request']=='execute'
+            assert list(state['outputs'])==([] if interrupted_node=='read_table' else ['read_table'])
+        finally:
+            st.close()
         result=handle({'directory':str(tmp_path),'action':'retry_run','id':id,'api_key':''})
         assert result['status']=='succeeded',json.dumps({key:result.get(key) for key in ['status','error','error_type','diagnostic_frames','steps','attempts']},ensure_ascii=False,indent=2)
         assert result['id']==id;assert len(result['attempts'])==2;assert len(result['rows'])==2
+        assert [step['node'] for step in result['steps']]==['read_table','filter_sort','write_result']
     finally:
         if child.poll() is None:child.kill();child.wait()
 

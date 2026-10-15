@@ -197,7 +197,9 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         runtime_model=llm or (ChatOpenAI(model=model,api_key=api_key,timeout=65,max_retries=1,max_tokens=5000) if needs_model else None)
         graph,connection=compile_workflow(storage,config,runtime_model,executor,ownership=lambda:lifecycle.assert_owner(run['id'],execution_token))
         resume_pending=bool(forced_run_id and graph.get_state(cfg).values)
-        result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':request,'file_ids':file_ids or [],'messages':[{'role':'user','content':request}],'customer_message':request,'reply_draft':reply_draft},cfg)
+        # Persist each checkpoint before the next node starts so a killed worker
+        # can resume its input and completed steps without losing or replaying them.
+        result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':request,'file_ids':file_ids or [],'messages':[{'role':'user','content':request}],'customer_message':request,'reply_draft':reply_draft},cfg,durability='sync')
         snapshot=graph.get_state(cfg);state=snapshot.values;outputs=state.get('outputs',{})
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]
         artifacts=[v['artifact'] for v in outputs.values() if v.get('artifact')]

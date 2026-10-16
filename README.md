@@ -6,7 +6,7 @@
 
 업무 설명을 실행 가능한 워크플로우로 연결합니다.
 
-[빠른 시작](#빠른-시작) · [사용 예시](#사용-예시) · [구조](#시스템-구조) · [개발 문서](#개발-문서)
+[빠른 시작](#빠른-시작) · [사용 예시](#사용-예시) · [구조](#시스템-구조) · [프로젝트 문서](#프로젝트-문서)
 
 </div>
 
@@ -55,7 +55,7 @@ flowchart LR
 
 ### 1. 준비 환경
 
-- **Node.js 24 권장**: 패키지의 최소 요구 버전은 22.13.0입니다. CI는 Node.js 24를 사용합니다.
+- **Node.js 24 권장**: 패키지의 최소 요구 버전은 22.13.0입니다.
 - **Python 3.12 권장**: 설치 스크립트가 3.11~3.14 인터프리터를 지원합니다.
 - Git 및 최초 의존성 설치를 위한 인터넷 연결
 - 생성 대화와 AI 처리에 사용할 OpenAI API 계정
@@ -87,7 +87,15 @@ npm --prefix Frontend run dev
 
 ### 팀별 실적 보고서 설계와 수정
 
-저장소의 [team-sales.csv](docs/examples/scheduled-workflow/team-sales.csv)를 연결합니다. 이 자료는 합성 시연 데이터입니다.
+아래 합성 데이터를 UTF-8 형식의 `team-sales.csv` 파일로 저장한 뒤, **워크플로우 설계** 화면에 업로드합니다.
+
+```csv
+team,amount
+A,0.1
+A,0.2
+B,120
+B,80
+```
 
 **업무 설명**
 
@@ -99,7 +107,7 @@ npm --prefix Frontend run dev
 
 > team별로 amount를 합계 집계해서 CSV로 저장해줘. 모든 행을 포함하고, 빈 금액이나 숫자가 아닌 값은 실패로 처리해줘. 정렬과 예약은 필요 없어.
 
-초안에서 집계 열·그룹 기준·출력을 확인하고 저장한 뒤 **서비스 실행**에서 실행합니다. 제공 자료의 기대 결과는 다음과 같습니다.
+초안에서 집계 열·그룹 기준·출력을 확인하고 저장한 뒤 **서비스 실행**에서 실행합니다. 위 데이터의 기대 결과는 다음과 같습니다.
 
 | team | sum |
 | --- | ---: |
@@ -114,11 +122,13 @@ npm --prefix Frontend run dev
 
 ### 다른 적용 사례
 
-| 업무 | 구성할 수 있는 흐름 | 예제 자료 |
+아래 업무를 구성하려면 각 항목에 필요한 자료를 준비해 연결합니다.
+
+| 업무 | 구성할 수 있는 흐름 | 준비할 자료 |
 | --- | --- | --- |
-| 재고 점검 | 재고와 기준 수량 비교 → 부족 상품 보고서 → 예약 실행 | [재고 예제](docs/examples/scheduled-workflow/inventory.csv) |
-| 정책 기반 응대 검수 | 정책·고객 문의·초안 조회 → 검수 보고서 → 사람 수정·승인 | [검수 예제](docs/examples/reply-review/) |
-| 정보 추출·근거 답변 | 자료 읽기 → 필요 구간 검색·항목 추출 또는 답변 → 결과 출력 | [문서 흐름 예제](docs/examples/document-evidence.workflow.json) |
+| 재고 점검 | 재고와 기준 수량 비교 → 부족 상품 보고서 → 예약 실행 | 상품별 재고와 기준 수량이 있는 표 |
+| 정책 기반 응대 검수 | 정책·고객 문의·초안 조회 → 검수 보고서 → 사람 수정·승인 | 정책 문서, 고객 문의, 응대 초안 |
+| 정보 추출·근거 답변 | 자료 읽기 → 필요 구간 검색·항목 추출 또는 답변 → 결과 출력 | 근거로 사용할 TXT·MD 또는 텍스트 PDF 문서 |
 
 응대 검수의 실행 성공과 사람의 승인 완료는 별도 상태입니다. 최종 응대는 운영자 승인 후 내보내며, 외부 발송은 수행하지 않습니다.
 
@@ -163,7 +173,9 @@ flowchart TD
 - **Node**: 도구에 업무별 설정과 입력 연결을 지정한 단계입니다. 예: `team`별 `amount` 합계.
 - **Workflow**: 노드의 실행 순서와 데이터 연결을 저장한 업무 절차입니다.
 
-워크플로우는 노드별 설정, 입력 연결인 `bindings`, 실행 경로인 `edges`로 구성됩니다. 새 업무마다 임의의 실행 코드를 생성하는 방식이 아닙니다. 자세한 계약은 [노드 연결 구조](docs/NODE_CONNECTIONS_2026-10-13.md)와 [생성 대화 총괄](docs/DEEP_AGENT_ORCHESTRATION_2026-10-14.md)에 있습니다.
+워크플로우는 노드별 설정, 입력 연결인 `bindings`, 실행 경로인 `edges`로 구성됩니다. 새 업무마다 임의의 실행 코드를 생성하는 방식이 아닙니다.
+
+세부 구현은 [워크플로우 데이터 모델](Backend/agent_builder/models.py), [노드·연결 검증](Backend/agent_builder/workflow.py), [설계 대화](Backend/agent_builder/nodes/conversation.py), [워크플로우 실행](Backend/agent_builder/workflow_runtime.py)에서 확인할 수 있습니다.
 
 ## 기술 스택
 
@@ -176,7 +188,7 @@ flowchart TD
 | 실행·검증 | Python · Pydantic | 노드 실행과 설정·자료 계약 검증 |
 | 저장 | SQLite · 로컬 파일 | 설정 버전, 실행·승인 기록, 업로드, 보고서 |
 | 문서 처리 | Docling(선택) | PDF 문서 변환 |
-| 자동 검사 | pytest · Node.js Test Runner · GitHub Actions | Python·서버 회귀 검사와 타입 검사 |
+| 자동 검사 | pytest · Node.js Test Runner · TypeScript | Python·서버 회귀 검사와 타입 검사 |
 
 정확한 패키지 버전은 [Frontend/package-lock.json](Frontend/package-lock.json)과 [Backend/requirements-agent-lock.txt](Backend/requirements-agent-lock.txt)을 기준으로 합니다.
 
@@ -239,31 +251,41 @@ npm --prefix Frontend test
 
 ## 디렉터리
 
+주요 소스와 문서의 구조입니다.
+
 ```text
 .
 ├── Backend/
-│   ├── agent_builder/       # 생성 대화·검증·실행·예약·승인·테스트
-│   ├── integrations/        # 전처리 연계
-│   ├── scripts/             # Python 환경·문서 worker·데이터 도구
+│   ├── agent_builder/      # 생성 대화·검증·실행·예약·승인·테스트
+│   ├── integrations/
+│   │   └── workflow_preprocessing/  # 전처리 코드·제안 명세
+│   ├── scripts/            # Python 환경·문서 worker·데이터 도구
+│   ├── requirements-agent.txt
 │   └── requirements-agent-lock.txt
 ├── Frontend/
-│   ├── app/                # 사용자 화면
-│   ├── components/         # 화면 구성 요소
-│   ├── server/             # API·계정·worker·예약 관리
-│   └── scripts/            # 설치·시작·검증 명령
-├── docs/                   # 필수 산출물 문서 
-├── evaluation/             # 개발용 회귀 평가
-├── images/                 # 기록된 화면 이미지
-└── Dockerfile
+│   ├── app/               # 사용자 화면
+│   ├── components/        # 화면 구성 요소
+│   ├── hooks/             # React 훅
+│   ├── lib/               # 공통 타입·유틸리티·카탈로그
+│   ├── public/            # 아이콘 등 정적 파일
+│   ├── scripts/           # 설치·시작·검증 명령
+│   ├── server/            # API·계정·worker·예약 관리·테스트
+│   ├── vendor/            # 외부 스타일시트·라이선스
+│   ├── .env.example       # 환경변수 예시
+│   └── package.json       # 패키지·실행 스크립트
+├── docs/                  # 프로젝트 PDF 산출물 4개
+├── images/                # 기록된 화면 이미지
+├── Dockerfile
+└── README.md
 ```
-## 개발 문서
 
-| 문서 | 내용 |
-| --- | --- |
-| [시작 안내](docs/START_HERE.md) | 설치 후 첫 실행 |
-| [생성 대화 총괄](docs/DEEP_AGENT_ORCHESTRATION_2026-10-14.md) | Deep Agents의 현재 역할과 검증 범위 |
-| [노드·워크플로우 구조](docs/NODE_CONNECTIONS_2026-10-13.md) | 노드별 설정, 입출력, 저장 흐름 재사용 |
-| [검수·사람 승인](docs/REPLY_REVIEW_INTEGRATION.md) | 정책 검수와 운영자 승인 |
-| [예약 실행](docs/SCHEDULED_WORKFLOW_IMPLEMENTATION_2026-10-12.md) | 시간대·관리 자료·예약 작업 |
-| [폴더 구조](docs/PROJECT_STRUCTURE.md) | 소스와 데이터의 경로 |
-| [macOS·Windows 지원 기록](docs/CROSS_PLATFORM_2026-10-13.md) | 환경별 처리와 기존 확인 기록 |
+설치·실행 과정에서 생성되는 Python 가상환경, `node_modules/`, `Frontend/dist-app/`, `Frontend/build-server/`와 기본 데이터 폴더 `data/`는 Git 추적 대상에서 제외됩니다.
+
+## 프로젝트 문서
+
+`docs/`에 포함된 PDF 산출물입니다.
+
+- [요구사항 정의서(초안)](<docs/1. 요구사항 정의서(초안).pdf>)
+- [WBS(초안)](<docs/2. WBS(초안).pdf>)
+- [프로젝트 기획서](docs/3.프로젝트_기획서.pdf)
+- [수집 데이터 보고서](docs/4.수집_데이터_보고서.pdf)

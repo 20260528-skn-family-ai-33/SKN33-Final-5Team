@@ -1,0 +1,12 @@
+{
+  "tests_run": 17,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "passed": true,
+  "seconds": 1.2588898339308798,
+  "python": "3.13.13",
+  "pydantic": "2.13.4",
+  "jsonschema": "4.26.0",
+  "output": "test_13_fixture_routes (test_integration.Integration.test_13_fixture_routes) ... ok\ntest_aggregate_output_schema_and_sort_validation (test_integration.Integration.test_aggregate_output_schema_and_sort_validation) ... ok\ntest_bad_binding_and_unknown_column (test_integration.Integration.test_bad_binding_and_unknown_column) ... ok\ntest_fabricated_actual_and_invalid_pointer (test_integration.Integration.test_fabricated_actual_and_invalid_pointer) ... ok\ntest_independent_json_schema_and_frozen_exports (test_integration.Integration.test_independent_json_schema_and_frozen_exports) ... ok\ntest_independent_numeric_boundary_oracle (test_integration.Integration.test_independent_numeric_boundary_oracle) ... ok\ntest_malformed_filter_and_nonfinite_input_do_not_pass (test_integration.Integration.test_malformed_filter_and_nonfinite_input_do_not_pass) ... ok\ntest_missing_prior_draft_cannot_pass_reflection (test_integration.Integration.test_missing_prior_draft_cannot_pass_reflection) ... ok\ntest_numeric_equivalence_not_operator_equivalence (test_integration.Integration.test_numeric_equivalence_not_operator_equivalence) ... ok\ntest_ready_request_can_have_failed_draft (test_integration.Integration.test_ready_request_can_have_failed_draft) ... ok\ntest_ready_with_missing_condition_is_review (test_integration.Integration.test_ready_with_missing_condition_is_review) ... ok\ntest_reflection_requires_latest_answer_source (test_integration.Integration.test_reflection_requires_latest_answer_source) ... ok\ntest_registry_and_backend_adapter (test_integration.Integration.test_registry_and_backend_adapter) ... ok\ntest_reject_extra_fields_and_duplicate_message_id (test_integration.Integration.test_reject_extra_fields_and_duplicate_message_id) ... ok\ntest_schema_rejects_boolean_as_execution_permission (test_integration.Integration.test_schema_rejects_boolean_as_execution_permission) ... ok\ntest_sqlite_exact_document_version_roundtrip (test_integration.Integration.test_sqlite_exact_document_version_roundtrip) ... ok\ntest_timeout_incomplete_generation_and_context_limit (test_integration.Integration.test_timeout_incomplete_generation_and_context_limit) ... ok\n\n----------------------------------------------------------------------\nRan 17 tests in 0.104s\n\nOK\n"
+}

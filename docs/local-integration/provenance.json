@@ -1,0 +1,7 @@
+{
+  "source_commit": "1956d6f9e793836a8635ba41eb75b9ae549ae82e",
+  "verifier_source": "A4B_Qwen분류검증_연동패키지_v0.1",
+  "transport_source": "팀공유_2026-10-20_통합자료",
+  "scope": "Local parser, Qwen verifier and RunPod integration; publication to a feature branch authorized on 2026-10-21",
+  "adapter_sha256": "d08b2c8c0c8ff421182b8c09727ce0ecdbbe874bc13c20a2cd1d99d5e1408a47"
+}

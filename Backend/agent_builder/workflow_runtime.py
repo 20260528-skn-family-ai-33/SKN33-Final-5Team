@@ -6,7 +6,7 @@ from pydantic import BaseModel,ConfigDict
 from langgraph.graph import StateGraph,START,END
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import interrupt,Command
-from langchain_openai import ChatOpenAI
+from .model_factory import create_chat_model
 from deepagents import create_deep_agent
 from langchain_core.tools import tool as registered_tool
 from langchain.agents.structured_output import ProviderStrategy
@@ -194,7 +194,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         if any(v!=1 for v in run.get('tool_versions',{}).values()):raise ValueError('저장된 도구 버전을 지원하지 않습니다.')
         from .reusable_workflows import requires_model
         needs_model=requires_model(config)
-        runtime_model=llm or (ChatOpenAI(model=model,api_key=api_key,timeout=65,max_retries=1,max_tokens=5000) if needs_model else None)
+        runtime_model=llm or (create_chat_model(model=model,api_key=api_key,timeout=65,max_retries=1,max_tokens=5000) if needs_model else None)
         graph,connection=compile_workflow(storage,config,runtime_model,executor,ownership=lambda:lifecycle.assert_owner(run['id'],execution_token))
         resume_pending=bool(forced_run_id and graph.get_state(cfg).values)
         # Persist each checkpoint before the next node starts so a killed worker

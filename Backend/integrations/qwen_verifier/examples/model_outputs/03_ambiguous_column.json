@@ -1,0 +1,41 @@
+{
+  "request_status": "clarify",
+  "evidence_status": "sufficient",
+  "missing_conditions": [
+    {
+      "code": "field",
+      "detail": "사용자에게 field 조건 확인이 필요합니다.",
+      "evidence": [
+        {
+          "evidence_id": "user_request",
+          "quote": "금액 100만원 이상만 JSON으로 저장해줘."
+        }
+      ]
+    }
+  ],
+  "unsupported_actions": [],
+  "draft_verdict": "fail",
+  "reflection_verdict": "not_applicable",
+  "evidence": [
+    {
+      "evidence_id": "user_request",
+      "quote": "금액 100만원 이상만 JSON으로 저장해줘."
+    }
+  ],
+  "issues": [
+    {
+      "code": "draft_mismatch",
+      "detail": "요청·답변의 조건과 초안이 다릅니다.",
+      "path": "/workflow/nodes/1/settings/execution_plan/filters/0/field",
+      "expected": "미확정",
+      "actual": "보증금",
+      "evidence": [
+        {
+          "evidence_id": "user_request",
+          "quote": "금액 100만원 이상만 JSON으로 저장해줘."
+        }
+      ]
+    }
+  ],
+  "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+}

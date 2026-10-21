@@ -1,0 +1,222 @@
+{
+  "purpose": "연동 계약·검증 예시. 학습/독립 test가 아닙니다. guard는 잘못된 모델 응답을 의도적으로 넣습니다.",
+  "cases": [
+    {
+      "id": "01_ready",
+      "kind": "semantic",
+      "input": "inputs/01_ready.json",
+      "fixture": "model_outputs/01_ready.json",
+      "expected": {
+        "route": "continue_review",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": [
+          "B",
+          "C",
+          "D"
+        ]
+      }
+    },
+    {
+      "id": "02_missing_selection",
+      "kind": "semantic",
+      "input": "inputs/02_missing_selection.json",
+      "fixture": "model_outputs/02_missing_selection.json",
+      "expected": {
+        "route": "ask_user",
+        "required_codes": [],
+        "request_status": "clarify",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [
+          "selection_rule"
+        ],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "03_ambiguous_column",
+      "kind": "semantic",
+      "input": "inputs/03_ambiguous_column.json",
+      "fixture": "model_outputs/03_ambiguous_column.json",
+      "expected": {
+        "route": "ask_user",
+        "required_codes": [],
+        "request_status": "clarify",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [
+          "field"
+        ],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "04_wrong_column",
+      "kind": "semantic",
+      "input": "inputs/04_wrong_column.json",
+      "fixture": "model_outputs/04_wrong_column.json",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "05_reflection_wrong_operator",
+      "kind": "semantic",
+      "input": "inputs/05_reflection_wrong_operator.json",
+      "fixture": "model_outputs/05_reflection_wrong_operator.json",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "fail",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "06_reflection_correct",
+      "kind": "semantic",
+      "input": "inputs/06_reflection_correct.json",
+      "fixture": "model_outputs/06_reflection_correct.json",
+      "expected": {
+        "route": "continue_review",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "pass",
+        "missing_codes": [],
+        "row_ids": [
+          "D"
+        ]
+      }
+    },
+    {
+      "id": "07_unrelated_field_changed",
+      "kind": "semantic",
+      "input": "inputs/07_unrelated_field_changed.json",
+      "fixture": "model_outputs/07_unrelated_field_changed.json",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "fail",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "08_still_ambiguous",
+      "kind": "semantic",
+      "input": "inputs/08_still_ambiguous.json",
+      "fixture": "model_outputs/08_still_ambiguous.json",
+      "expected": {
+        "route": "ask_user",
+        "required_codes": [],
+        "request_status": "clarify",
+        "draft_verdict": "fail",
+        "reflection_verdict": "fail",
+        "missing_codes": [
+          "selection_rule"
+        ],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "09_unsupported_email",
+      "kind": "semantic",
+      "input": "inputs/09_unsupported_email.json",
+      "fixture": "model_outputs/09_unsupported_email.json",
+      "expected": {
+        "route": "unsupported",
+        "required_codes": [
+          "unavailable_tool"
+        ],
+        "request_status": "unsupported",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "10_parser_failed",
+      "kind": "semantic",
+      "input": "inputs/10_parser_failed.json",
+      "fixture": "model_outputs/10_parser_failed.json",
+      "expected": {
+        "route": "manual_review",
+        "required_codes": [
+          "evidence_incomplete"
+        ],
+        "request_status": null,
+        "draft_verdict": "not_applicable",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "11_missing_filter_value",
+      "kind": "semantic",
+      "input": "inputs/11_missing_filter_value.json",
+      "fixture": "model_outputs/11_missing_filter_value.json",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [
+          "missing_filter_value"
+        ],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "12_forged_evidence_guard",
+      "kind": "guard",
+      "input": "inputs/12_forged_evidence_guard.json",
+      "fixture": "model_outputs/12_forged_evidence_guard.json",
+      "expected": {
+        "route": "manual_review",
+        "required_codes": [
+          "invalid_quote"
+        ],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    },
+    {
+      "id": "13_cycle_guard",
+      "kind": "guard",
+      "input": "inputs/13_cycle_guard.json",
+      "fixture": "model_outputs/13_cycle_guard.json",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [
+          "cycle"
+        ],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      }
+    }
+  ]
+}

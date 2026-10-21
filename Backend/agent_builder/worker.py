@@ -16,7 +16,7 @@ def public_state(storage,s,graph):
     if not state and s.get('agent_id'):
         base=storage.agent(s['agent_id']);old=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {})
         state={'draft':base['config'],'messages':old.get('messages',[]),'status':'editing'}
-    return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':state.get('status','empty'),'issues':state.get('issues',[]),'trace':state.get('trace',[])[-40:],'saved_agent_id':state.get('saved_agent_id'),'resources':[storage.asset(id) for id in s['file_ids']]}
+    return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':state.get('status','empty'),'issues':state.get('issues',[]),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':[storage.asset(id) for id in s['file_ids']]}
 
 def handle(data,conversation=None):
     storage=Storage(data['directory']);action=data['action'];api_key=data.get('api_key','');connection=None

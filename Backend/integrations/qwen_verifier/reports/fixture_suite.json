@@ -1,0 +1,853 @@
+{
+  "mode": "fixture",
+  "purpose": "연동 점검 예제이며 독립 모델 성능 벤치마크가 아닙니다.",
+  "config": null,
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.13",
+  "system_prompt_sha256": "83ab1e0a59775af845ea4b5d29fbeaa3e4109fde475a27f328269bfc4207b7dc",
+  "output_schema_sha256": "95d64453119d65168886af4a475f33fdb27336464569cbf502ff7dd0eeb8c562",
+  "source_hashes": {
+    "scripts/run_suite.py": "b5e3b46ef84ec8f154fc94fb4ea8e32bd54e4d9b7fce114ec128f484027b5b48",
+    "a4b_verifier/client.py": "7baa412c12a2cefd5edabd9a53896e9df2e36c4a1ad83baf3db9ccb155471c26",
+    "a4b_verifier/service.py": "9e1a3a1fd089dfc564d4a73807073f7530482fac64c0ff998d972013b8c9c70e",
+    "a4b_verifier/validation.py": "e5ce99a537094995d804a2aef4329c29a7c9dc26942a6f7190658dbf46a514e6",
+    "a4b_verifier/contracts.py": "b44b18b9892d279a5516d84fde95a3dc30f7a33f673ea2a3242183905637103d"
+  },
+  "before": null,
+  "after": null,
+  "model_digest_unchanged": null,
+  "cases": 13,
+  "passed": 13,
+  "records": [
+    {
+      "id": "01_ready",
+      "expected": {
+        "route": "continue_review",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": [
+          "B",
+          "C",
+          "D"
+        ]
+      },
+      "input_sha256": "e96b7e01b401793847bd9a9029dd5fcdd59212853aa86e9d9bb8eedcc12cf592",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "01_ready",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "pass",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+            }
+          ],
+          "issues": [],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "continue_review",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.3204159438610077,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "02_missing_selection",
+      "expected": {
+        "route": "ask_user",
+        "required_codes": [],
+        "request_status": "clarify",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [
+          "selection_rule"
+        ],
+        "row_ids": null
+      },
+      "input_sha256": "84a19697c93fe0b5e470a85561d214e36134f6e2428738ff82fd221d7648a6ed",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "02_missing_selection",
+        "model_output": {
+          "request_status": "clarify",
+          "evidence_status": "sufficient",
+          "missing_conditions": [
+            {
+              "code": "selection_rule",
+              "detail": "사용자에게 selection_rule 조건 확인이 필요합니다.",
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "보증금이 큰 거래를 골라 JSON으로 저장해줘."
+                }
+              ]
+            }
+          ],
+          "unsupported_actions": [],
+          "draft_verdict": "fail",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금이 큰 거래를 골라 JSON으로 저장해줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "draft_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/1/settings/execution_plan/filters/0/value",
+              "expected": "미확정",
+              "actual": "1000000",
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "보증금이 큰 거래를 골라 JSON으로 저장해줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "ask_user",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.6190419662743807,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "03_ambiguous_column",
+      "expected": {
+        "route": "ask_user",
+        "required_codes": [],
+        "request_status": "clarify",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [
+          "field"
+        ],
+        "row_ids": null
+      },
+      "input_sha256": "1e2d6f98ea6019f58972712ff2fbe50383487b837a7a457f090c8aae30625653",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "03_ambiguous_column",
+        "model_output": {
+          "request_status": "clarify",
+          "evidence_status": "sufficient",
+          "missing_conditions": [
+            {
+              "code": "field",
+              "detail": "사용자에게 field 조건 확인이 필요합니다.",
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "금액 100만원 이상만 JSON으로 저장해줘."
+                }
+              ]
+            }
+          ],
+          "unsupported_actions": [],
+          "draft_verdict": "fail",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "금액 100만원 이상만 JSON으로 저장해줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "draft_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/1/settings/execution_plan/filters/0/field",
+              "expected": "미확정",
+              "actual": "보증금",
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "금액 100만원 이상만 JSON으로 저장해줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "ask_user",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.3065001219511032,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "04_wrong_column",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "b53c562f6c813e5f3dc0d41cb569159cb16744735bdef44c41dd49db822821c0",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "04_wrong_column",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "fail",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "draft_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/1/settings/execution_plan/filters/0/field",
+              "expected": "보증금",
+              "actual": "임대료",
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "repair_plan",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.29191584326326847,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "05_reflection_wrong_operator",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "fail",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "8417f3dccc519b2a26501accc5561dd227eb1da5decae6573fd8dbe7c1dd6b04",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "05_reflection_wrong_operator",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "fail",
+          "reflection_verdict": "fail",
+          "evidence": [
+            {
+              "evidence_id": "message/answer-1",
+              "quote": "보증금 기준으로 200만원 초과만 골라줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "reflection_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/1/settings/execution_plan/filters/0/operator",
+              "expected": "gt",
+              "actual": "gte",
+              "evidence": [
+                {
+                  "evidence_id": "message/answer-1",
+                  "quote": "보증금 기준으로 200만원 초과만 골라줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "repair_plan",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.268666073679924,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "06_reflection_correct",
+      "expected": {
+        "route": "continue_review",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "pass",
+        "missing_codes": [],
+        "row_ids": [
+          "D"
+        ]
+      },
+      "input_sha256": "9c63a800bbd03586ef0be2fec03de1fcf82961d2ef4f1b6665d16adccbc78fb6",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "06_reflection_correct",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "pass",
+          "reflection_verdict": "pass",
+          "evidence": [
+            {
+              "evidence_id": "message/answer-1",
+              "quote": "보증금 기준으로 200만원 초과만 골라줘."
+            }
+          ],
+          "issues": [],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "continue_review",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.21170801483094692,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "07_unrelated_field_changed",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "fail",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "332904ab72b734ca8e5d6e54660e3a352261ab81dae93718cacf1348d039253c",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "07_unrelated_field_changed",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "fail",
+          "reflection_verdict": "fail",
+          "evidence": [
+            {
+              "evidence_id": "message/answer-1",
+              "quote": "보증금 기준으로 200만원 초과만 골라줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "reflection_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/1/settings/execution_plan/filters/0/field",
+              "expected": "보증금",
+              "actual": "임대료",
+              "evidence": [
+                {
+                  "evidence_id": "message/answer-1",
+                  "quote": "보증금 기준으로 200만원 초과만 골라줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "repair_plan",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.24662516079843044,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "08_still_ambiguous",
+      "expected": {
+        "route": "ask_user",
+        "required_codes": [],
+        "request_status": "clarify",
+        "draft_verdict": "fail",
+        "reflection_verdict": "fail",
+        "missing_codes": [
+          "selection_rule"
+        ],
+        "row_ids": null
+      },
+      "input_sha256": "ad97bf828b7b2a47945b978873e70d9ddcb5291dc6005b716c7200d3fb7a2ebd",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "08_still_ambiguous",
+        "model_output": {
+          "request_status": "clarify",
+          "evidence_status": "sufficient",
+          "missing_conditions": [
+            {
+              "code": "selection_rule",
+              "detail": "사용자에게 selection_rule 조건 확인이 필요합니다.",
+              "evidence": [
+                {
+                  "evidence_id": "message/answer-1",
+                  "quote": "좀 더 큰 거래만 골라줘."
+                }
+              ]
+            }
+          ],
+          "unsupported_actions": [],
+          "draft_verdict": "fail",
+          "reflection_verdict": "fail",
+          "evidence": [
+            {
+              "evidence_id": "message/answer-1",
+              "quote": "좀 더 큰 거래만 골라줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "reflection_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/1/settings/execution_plan/filters/0/value",
+              "expected": "미확정",
+              "actual": "2000000",
+              "evidence": [
+                {
+                  "evidence_id": "message/answer-1",
+                  "quote": "좀 더 큰 거래만 골라줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [],
+        "route": "ask_user",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 1.14733399823308,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "09_unsupported_email",
+      "expected": {
+        "route": "unsupported",
+        "required_codes": [
+          "unavailable_tool"
+        ],
+        "request_status": "unsupported",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "e7058bef2d6c8318b06a6d47f0b2b12b236f4433431ab6bea996355831706dd4",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "09_unsupported_email",
+        "model_output": {
+          "request_status": "unsupported",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [
+            "필수 이메일 발송 도구 없음"
+          ],
+          "draft_verdict": "fail",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금 100만원 이상 거래를 이메일 발송까지 완료해줘. 발송이 필수야."
+            }
+          ],
+          "issues": [
+            {
+              "code": "draft_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/2/tool",
+              "expected": "지원 불가",
+              "actual": "send_email",
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "보증금 100만원 이상 거래를 이메일 발송까지 완료해줘. 발송이 필수야."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [
+          {
+            "code": "unavailable_tool",
+            "severity": "block",
+            "detail": "미등록 또는 비활성 도구입니다: send_email",
+            "path": "/workflow/nodes/2"
+          }
+        ],
+        "route": "unsupported",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.2935838419944048,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "10_parser_failed",
+      "expected": {
+        "route": "manual_review",
+        "required_codes": [
+          "evidence_incomplete"
+        ],
+        "request_status": null,
+        "draft_verdict": "not_applicable",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "ca1536f964ee150a14b5ff26c8ae4cb3d7e2e7bd61f6389326b7ba6ac04639b4",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "10_parser_failed",
+        "model_output": {
+          "request_status": null,
+          "evidence_status": "insufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "not_applicable",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "evidence_insufficient",
+              "detail": "파서 결과가 없어 실제 열과 문서 근거를 확인하지 못했습니다.",
+              "path": null,
+              "expected": null,
+              "actual": null,
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [
+          {
+            "code": "evidence_incomplete",
+            "severity": "review",
+            "detail": "문서 파싱 누락·부분 실패가 있어 자동 확정할 수 없습니다.",
+            "path": null
+          }
+        ],
+        "route": "manual_review",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.12208311818540096,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "11_missing_filter_value",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [
+          "missing_filter_value"
+        ],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "087f093fdb3709091f4b6baef73a6dfa5788133e242f3cdecefbca2747d4feff",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "11_missing_filter_value",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "fail",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+            }
+          ],
+          "issues": [
+            {
+              "code": "draft_mismatch",
+              "detail": "요청·답변의 조건과 초안이 다릅니다.",
+              "path": "/workflow/nodes/1/settings/execution_plan/filters/0/value",
+              "expected": "1000000",
+              "actual": "null",
+              "evidence": [
+                {
+                  "evidence_id": "user_request",
+                  "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+                }
+              ]
+            }
+          ],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [
+          {
+            "code": "missing_filter_value",
+            "severity": "block",
+            "detail": "필터 기준값이 없습니다.",
+            "path": "/workflow/nodes/1"
+          }
+        ],
+        "route": "repair_plan",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.24866708554327488,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "12_forged_evidence_guard",
+      "expected": {
+        "route": "manual_review",
+        "required_codes": [
+          "invalid_quote"
+        ],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "87e2b27fbc7db8ef396cc38536dfc0945bfd9027c6fd3e724d7e9b80ab45389d",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "12_forged_evidence_guard",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "pass",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "document/not-real",
+              "quote": "가짜 원문"
+            }
+          ],
+          "issues": [],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [
+          {
+            "code": "invalid_quote",
+            "severity": "review",
+            "detail": "근거 ID 또는 원문 인용이 일치하지 않습니다.",
+            "path": null
+          }
+        ],
+        "route": "manual_review",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.155583955347538,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "13_cycle_guard",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [
+          "cycle"
+        ],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "ea18a84950cd730479463c52dc3a5f6b0727e20632a5edb884c785df7b86accf",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "13_cycle_guard",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "pass",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+            }
+          ],
+          "issues": [],
+          "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+        },
+        "findings": [
+          {
+            "code": "cycle",
+            "severity": "block",
+            "detail": "순환 워크플로우는 지원하지 않습니다.",
+            "path": null
+          }
+        ],
+        "route": "repair_plan",
+        "execution_allowed": false,
+        "mode": "fixture",
+        "model": null,
+        "latency_ms": 0.21054199896752834,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true
+      },
+      "all_passed": true
+    }
+  ],
+  "training_runs": 0
+}

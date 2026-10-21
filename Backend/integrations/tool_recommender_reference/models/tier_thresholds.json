@@ -1,0 +1,9 @@
+{
+ "high": 0.5,
+ "low": 0.03,
+ "chosen_on": "D1 학습 541개, 중첩 교차 검증(바깥 5겹 × 안쪽 5겹, StratifiedGroupKFold) × 시드 3개 OOF, 안쪽 점수로 맞춘 Platt 보정",
+ "high_fixed": true,
+ "rule": "low = 필요+검토의 OOF COMP가 상위 5개 방식 이상인 가장 큰 기준값",
+ "rule_met": true,
+ "oof_top5_comp": 0.984
+}

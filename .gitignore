@@ -1,4 +1,6 @@
 node_modules/
+node_modules
+data-local-integration/
 data/
 dist-app/
 build-server/
@@ -38,3 +40,32 @@ DELIVERY_README.txt
 /data-user-workspace/
 
 /data-conversation-workspace/
+
+# Private keys and local cloud credentials
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+.ssh/
+.netrc
+.npmrc
+.envrc
+credentials.json
+service-account*.json
+
+# Downloaded neural model weights and caches (small shipped ML reference stays tracked)
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+.cache/
+.huggingface/
+
+# Operating system and local test artifacts
+.AppleDouble
+.LSOverride
+coverage/
+htmlcov/
+.coverage*

@@ -1,0 +1,1272 @@
+{
+  "before": {
+    "summary": {
+      "attempted": 20,
+      "completed": 20,
+      "seconds": 63.75,
+      "peak_rss_gib": 2.776958465576172,
+      "complete_only": {
+        "presence_pass": 100,
+        "presence_total": 100,
+        "order_pass": 20,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 10,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.7530100000000001,
+        "table_count": 6,
+        "relation_pass": 5,
+        "relation_total": 5
+      },
+      "all_outputs_diagnostic": {
+        "presence_pass": 100,
+        "presence_total": 100,
+        "order_pass": 20,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 10,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.7530100000000001,
+        "table_count": 6,
+        "relation_pass": 5,
+        "relation_total": 5
+      },
+      "common_complete": {
+        "presence_pass": 100,
+        "presence_total": 100,
+        "order_pass": 20,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 10,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.7530100000000001,
+        "table_count": 6,
+        "relation_pass": 5,
+        "relation_total": 5
+      }
+    },
+    "relations": [
+      {
+        "page": 64,
+        "row": "총 임직원",
+        "column": "2022년",
+        "value": "270,278",
+        "observed": [
+          "270,278"
+        ],
+        "passed": true
+      },
+      {
+        "page": 64,
+        "row": "총 임직원",
+        "column": "2023년",
+        "value": "267,860",
+        "observed": [
+          "267,860"
+        ],
+        "passed": true
+      },
+      {
+        "page": 64,
+        "row": "총 임직원",
+        "column": "2024년",
+        "value": "262,647",
+        "observed": [
+          "262,647"
+        ],
+        "passed": true
+      },
+      {
+        "page": 65,
+        "row": "LTIR",
+        "column": "2022년",
+        "value": "0.033",
+        "observed": [
+          "0.033"
+        ],
+        "passed": true
+      },
+      {
+        "page": 65,
+        "row": "LTIR",
+        "column": "2023년",
+        "value": "0.023",
+        "observed": [
+          "0.023"
+        ],
+        "passed": true
+      },
+      {
+        "page": 65,
+        "row": "LTIR",
+        "column": "2024년",
+        "value": "0.022",
+        "observed": [
+          "0.022"
+        ],
+        "passed": true
+      },
+      {
+        "page": 66,
+        "row": "임직원 교육 횟수",
+        "column": "2022년",
+        "value": "914",
+        "observed": [
+          "914"
+        ],
+        "passed": true
+      },
+      {
+        "page": 66,
+        "row": "임직원 교육 횟수",
+        "column": "2023년",
+        "value": "950",
+        "observed": [
+          "950"
+        ],
+        "passed": true
+      },
+      {
+        "page": 66,
+        "row": "임직원 교육 횟수",
+        "column": "2024년",
+        "value": "936",
+        "observed": [
+          "936"
+        ],
+        "passed": true
+      },
+      {
+        "page": 67,
+        "row": "협력회사 현장점검",
+        "column": "2022년",
+        "value": "438",
+        "observed": [
+          "438"
+        ],
+        "passed": true
+      },
+      {
+        "page": 67,
+        "row": "협력회사 현장점검",
+        "column": "2023년",
+        "value": "315",
+        "observed": [
+          "315"
+        ],
+        "passed": true
+      },
+      {
+        "page": 67,
+        "row": "협력회사 현장점검",
+        "column": "2024년",
+        "value": "202",
+        "observed": [
+          "202"
+        ],
+        "passed": true
+      },
+      {
+        "page": 69,
+        "row": "사업장 에너지 사용량",
+        "column": "2022년",
+        "value": "35,177",
+        "observed": [
+          "35,177"
+        ],
+        "passed": true
+      },
+      {
+        "page": 69,
+        "row": "사업장 에너지 사용량",
+        "column": "2023년",
+        "value": "36,399",
+        "observed": [
+          "36,399"
+        ],
+        "passed": true
+      },
+      {
+        "page": 69,
+        "row": "사업장 에너지 사용량",
+        "column": "2024년",
+        "value": "38,772",
+        "observed": [
+          "38,772"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2022년",
+        "value": "172,811",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2023년",
+        "value": "177,361",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2024년",
+        "value": "188,540",
+        "observed": [],
+        "passed": false
+      }
+    ],
+    "relation_pass": 15,
+    "water": [
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2022년",
+        "value": "172,811",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2023년",
+        "value": "177,361",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2024년",
+        "value": "188,540",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "시수(지표수)",
+        "column": "2022년",
+        "value": "172,112",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "시수(지표수)",
+        "column": "2023년",
+        "value": "176,575",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "시수(지표수)",
+        "column": "2024년",
+        "value": "187,639",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "지하수",
+        "column": "2022년",
+        "value": "698",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "지하수",
+        "column": "2023년",
+        "value": "786",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "지하수",
+        "column": "2024년",
+        "value": "902",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 방류량",
+        "column": "2022년",
+        "value": "136,118",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 방류량",
+        "column": "2023년",
+        "value": "142,995",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 방류량",
+        "column": "2024년",
+        "value": "152,109",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 재이용량",
+        "column": "2022년",
+        "value": "116,590",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 재이용량",
+        "column": "2023년",
+        "value": "122,891",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "용수 재이용량",
+        "column": "2024년",
+        "value": "125,463",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "공급량",
+        "column": "2022년",
+        "value": "70,989",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "공급량",
+        "column": "2023년",
+        "value": "71,487",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "공급량",
+        "column": "2024년",
+        "value": "74,784",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "회수량",
+        "column": "2022년",
+        "value": "24,731",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "회수량",
+        "column": "2023년",
+        "value": "22,004",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "회수량",
+        "column": "2024년",
+        "value": "23,025",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "협력회사 용수 사용량",
+        "column": "2022년",
+        "value": "94,814",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "협력회사 용수 사용량",
+        "column": "2023년",
+        "value": "97,482",
+        "observed": [],
+        "passed": false
+      },
+      {
+        "page": 70,
+        "row": "협력회사 용수 사용량",
+        "column": "2024년",
+        "value": "88,467",
+        "observed": [],
+        "passed": false
+      }
+    ],
+    "water_pass": 0,
+    "startup": 35.23217464800109,
+    "hardware": {
+      "gpu_identity": "GPU-bd67c5d1-9456-f35d-62e8-eb19d647df5a, NVIDIA GeForce RTX 4090, 595.91.07",
+      "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.39",
+      "torch": "2.8.0+cu128",
+      "cuda": "12.8"
+    },
+    "groups": {
+      "original10": 27.488,
+      "recent10": 36.263
+    },
+    "table_scores": [
+      {
+        "page": 62,
+        "tables": [
+          {
+            "name": "핵심 재무 성과",
+            "teds": 0.91667,
+            "teds_s": 0.91667,
+            "matched_table_index": 0,
+            "predicted_table_count": 4
+          }
+        ]
+      },
+      {
+        "page": 63,
+        "tables": [
+          {
+            "name": "중소기업 지원",
+            "teds": 0.9125,
+            "teds_s": 0.91667,
+            "matched_table_index": 2,
+            "predicted_table_count": 4
+          }
+        ]
+      },
+      {
+        "page": 65,
+        "tables": [
+          {
+            "name": "안전·보건",
+            "teds": 0.91667,
+            "teds_s": 0.91667,
+            "matched_table_index": 2,
+            "predicted_table_count": 3
+          }
+        ]
+      },
+      {
+        "page": 67,
+        "tables": [
+          {
+            "name": "책임광물 관리 투명성 확보",
+            "teds": 0.05,
+            "teds_s": 0.05,
+            "matched_table_index": 0,
+            "predicted_table_count": 2
+          }
+        ]
+      },
+      {
+        "page": 69,
+        "tables": [
+          {
+            "name": "제품 에너지 사용 효율화1)",
+            "teds": 0.83333,
+            "teds_s": 0.83333,
+            "matched_table_index": 1,
+            "predicted_table_count": 4
+          }
+        ]
+      },
+      {
+        "page": 70,
+        "tables": [
+          {
+            "name": "화학물질 관리1)",
+            "teds": 0.88889,
+            "teds_s": 0.88889,
+            "matched_table_index": 1,
+            "predicted_table_count": 4
+          }
+        ]
+      }
+    ]
+  },
+  "after": {
+    "summary": {
+      "attempted": 20,
+      "completed": 20,
+      "seconds": 63.47,
+      "peak_rss_gib": 3.1381759643554688,
+      "complete_only": {
+        "presence_pass": 100,
+        "presence_total": 100,
+        "order_pass": 20,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 10,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.8835649999999999,
+        "table_count": 6,
+        "relation_pass": 5,
+        "relation_total": 5
+      },
+      "all_outputs_diagnostic": {
+        "presence_pass": 100,
+        "presence_total": 100,
+        "order_pass": 20,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 10,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.8835649999999999,
+        "table_count": 6,
+        "relation_pass": 5,
+        "relation_total": 5
+      },
+      "common_complete": {
+        "presence_pass": 100,
+        "presence_total": 100,
+        "order_pass": 20,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 10,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.8835649999999999,
+        "table_count": 6,
+        "relation_pass": 5,
+        "relation_total": 5
+      }
+    },
+    "relations": [
+      {
+        "page": 64,
+        "row": "총 임직원",
+        "column": "2022년",
+        "value": "270,278",
+        "observed": [
+          "270,278"
+        ],
+        "passed": true
+      },
+      {
+        "page": 64,
+        "row": "총 임직원",
+        "column": "2023년",
+        "value": "267,860",
+        "observed": [
+          "267,860"
+        ],
+        "passed": true
+      },
+      {
+        "page": 64,
+        "row": "총 임직원",
+        "column": "2024년",
+        "value": "262,647",
+        "observed": [
+          "262,647"
+        ],
+        "passed": true
+      },
+      {
+        "page": 65,
+        "row": "LTIR",
+        "column": "2022년",
+        "value": "0.033",
+        "observed": [
+          "0.033"
+        ],
+        "passed": true
+      },
+      {
+        "page": 65,
+        "row": "LTIR",
+        "column": "2023년",
+        "value": "0.023",
+        "observed": [
+          "0.023"
+        ],
+        "passed": true
+      },
+      {
+        "page": 65,
+        "row": "LTIR",
+        "column": "2024년",
+        "value": "0.022",
+        "observed": [
+          "0.022"
+        ],
+        "passed": true
+      },
+      {
+        "page": 66,
+        "row": "임직원 교육 횟수",
+        "column": "2022년",
+        "value": "914",
+        "observed": [
+          "914"
+        ],
+        "passed": true
+      },
+      {
+        "page": 66,
+        "row": "임직원 교육 횟수",
+        "column": "2023년",
+        "value": "950",
+        "observed": [
+          "950"
+        ],
+        "passed": true
+      },
+      {
+        "page": 66,
+        "row": "임직원 교육 횟수",
+        "column": "2024년",
+        "value": "936",
+        "observed": [
+          "936"
+        ],
+        "passed": true
+      },
+      {
+        "page": 67,
+        "row": "협력회사 현장점검",
+        "column": "2022년",
+        "value": "438",
+        "observed": [
+          "438"
+        ],
+        "passed": true
+      },
+      {
+        "page": 67,
+        "row": "협력회사 현장점검",
+        "column": "2023년",
+        "value": "315",
+        "observed": [
+          "315"
+        ],
+        "passed": true
+      },
+      {
+        "page": 67,
+        "row": "협력회사 현장점검",
+        "column": "2024년",
+        "value": "202",
+        "observed": [
+          "202"
+        ],
+        "passed": true
+      },
+      {
+        "page": 69,
+        "row": "사업장 에너지 사용량",
+        "column": "2022년",
+        "value": "35,177",
+        "observed": [
+          "35,177"
+        ],
+        "passed": true
+      },
+      {
+        "page": 69,
+        "row": "사업장 에너지 사용량",
+        "column": "2023년",
+        "value": "36,399",
+        "observed": [
+          "36,399"
+        ],
+        "passed": true
+      },
+      {
+        "page": 69,
+        "row": "사업장 에너지 사용량",
+        "column": "2024년",
+        "value": "38,772",
+        "observed": [
+          "38,772"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2022년",
+        "value": "172,811",
+        "observed": [
+          "172,811"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2023년",
+        "value": "177,361",
+        "observed": [
+          "177,361"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2024년",
+        "value": "188,540",
+        "observed": [
+          "188,540"
+        ],
+        "passed": true
+      }
+    ],
+    "relation_pass": 18,
+    "water": [
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2022년",
+        "value": "172,811",
+        "observed": [
+          "172,811"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2023년",
+        "value": "177,361",
+        "observed": [
+          "177,361"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 취수량",
+        "column": "2024년",
+        "value": "188,540",
+        "observed": [
+          "188,540"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "시수(지표수)",
+        "column": "2022년",
+        "value": "172,112",
+        "observed": [
+          "172,112"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "시수(지표수)",
+        "column": "2023년",
+        "value": "176,575",
+        "observed": [
+          "176,575"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "시수(지표수)",
+        "column": "2024년",
+        "value": "187,639",
+        "observed": [
+          "187,639"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "지하수",
+        "column": "2022년",
+        "value": "698",
+        "observed": [
+          "698"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "지하수",
+        "column": "2023년",
+        "value": "786",
+        "observed": [
+          "786"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "지하수",
+        "column": "2024년",
+        "value": "902",
+        "observed": [
+          "902"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 방류량",
+        "column": "2022년",
+        "value": "136,118",
+        "observed": [
+          "136,118"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 방류량",
+        "column": "2023년",
+        "value": "142,995",
+        "observed": [
+          "142,995"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 방류량",
+        "column": "2024년",
+        "value": "152,109",
+        "observed": [
+          "152,109"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 재이용량",
+        "column": "2022년",
+        "value": "116,590",
+        "observed": [
+          "116,590"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 재이용량",
+        "column": "2023년",
+        "value": "122,891",
+        "observed": [
+          "122,891"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "용수 재이용량",
+        "column": "2024년",
+        "value": "125,463",
+        "observed": [
+          "125,463"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "공급량",
+        "column": "2022년",
+        "value": "70,989",
+        "observed": [
+          "70,989"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "공급량",
+        "column": "2023년",
+        "value": "71,487",
+        "observed": [
+          "71,487"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "공급량",
+        "column": "2024년",
+        "value": "74,784",
+        "observed": [
+          "74,784"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "회수량",
+        "column": "2022년",
+        "value": "24,731",
+        "observed": [
+          "24,731"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "회수량",
+        "column": "2023년",
+        "value": "22,004",
+        "observed": [
+          "22,004"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "회수량",
+        "column": "2024년",
+        "value": "23,025",
+        "observed": [
+          "23,025"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "협력회사 용수 사용량",
+        "column": "2022년",
+        "value": "94,814",
+        "observed": [
+          "94,814"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "협력회사 용수 사용량",
+        "column": "2023년",
+        "value": "97,482",
+        "observed": [
+          "97,482"
+        ],
+        "passed": true
+      },
+      {
+        "page": 70,
+        "row": "협력회사 용수 사용량",
+        "column": "2024년",
+        "value": "88,467",
+        "observed": [
+          "88,467"
+        ],
+        "passed": true
+      }
+    ],
+    "water_pass": 24,
+    "startup": 35.67269745399972,
+    "hardware": {
+      "gpu_identity": "GPU-bd67c5d1-9456-f35d-62e8-eb19d647df5a, NVIDIA GeForce RTX 4090, 595.91.07",
+      "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.39",
+      "torch": "2.8.0+cu128",
+      "cuda": "12.8"
+    },
+    "groups": {
+      "original10": 27.098,
+      "recent10": 36.373
+    },
+    "table_scores": [
+      {
+        "page": 62,
+        "tables": [
+          {
+            "name": "핵심 재무 성과",
+            "teds": 0.91667,
+            "teds_s": 0.91667,
+            "matched_table_index": 0,
+            "predicted_table_count": 4
+          }
+        ]
+      },
+      {
+        "page": 63,
+        "tables": [
+          {
+            "name": "중소기업 지원",
+            "teds": 0.9125,
+            "teds_s": 0.91667,
+            "matched_table_index": 2,
+            "predicted_table_count": 4
+          }
+        ]
+      },
+      {
+        "page": 65,
+        "tables": [
+          {
+            "name": "안전·보건",
+            "teds": 0.91667,
+            "teds_s": 0.91667,
+            "matched_table_index": 2,
+            "predicted_table_count": 3
+          }
+        ]
+      },
+      {
+        "page": 67,
+        "tables": [
+          {
+            "name": "책임광물 관리 투명성 확보",
+            "teds": 0.83333,
+            "teds_s": 0.83333,
+            "matched_table_index": 0,
+            "predicted_table_count": 4
+          }
+        ]
+      },
+      {
+        "page": 69,
+        "tables": [
+          {
+            "name": "제품 에너지 사용 효율화1)",
+            "teds": 0.83333,
+            "teds_s": 0.83333,
+            "matched_table_index": 1,
+            "predicted_table_count": 4
+          }
+        ]
+      },
+      {
+        "page": 70,
+        "tables": [
+          {
+            "name": "화학물질 관리1)",
+            "teds": 0.88889,
+            "teds_s": 0.88889,
+            "matched_table_index": 2,
+            "predicted_table_count": 5
+          }
+        ]
+      }
+    ]
+  },
+  "audit": [
+    {
+      "page": 4,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 5,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 1,
+      "tables_after": 1,
+      "tables_identical": true
+    },
+    {
+      "page": 11,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 12,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 1,
+      "tables_after": 1,
+      "tables_identical": true
+    },
+    {
+      "page": 16,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 20,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 35,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 38,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 51,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 55,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 59,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 0,
+      "tables_after": 0,
+      "tables_identical": true
+    },
+    {
+      "page": 62,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 4,
+      "tables_after": 4,
+      "tables_identical": true
+    },
+    {
+      "page": 63,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 4,
+      "tables_after": 4,
+      "tables_identical": true
+    },
+    {
+      "page": 64,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 3,
+      "tables_after": 3,
+      "tables_identical": true
+    },
+    {
+      "page": 65,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 3,
+      "tables_after": 3,
+      "tables_identical": true
+    },
+    {
+      "page": 66,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 2,
+      "tables_after": 2,
+      "tables_identical": true
+    },
+    {
+      "page": 67,
+      "text_identical": false,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 2,
+      "tables_after": 4,
+      "tables_identical": false
+    },
+    {
+      "page": 68,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 4,
+      "tables_after": 4,
+      "tables_identical": true
+    },
+    {
+      "page": 69,
+      "text_identical": true,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 4,
+      "tables_after": 4,
+      "tables_identical": true
+    },
+    {
+      "page": 70,
+      "text_identical": false,
+      "numbers_preserved": true,
+      "numbers_added": {},
+      "numbers_removed": {},
+      "tables_before": 4,
+      "tables_after": 5,
+      "tables_identical": false
+    }
+  ]
+}

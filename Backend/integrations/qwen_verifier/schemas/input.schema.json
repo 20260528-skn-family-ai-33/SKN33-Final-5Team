@@ -1,0 +1,455 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Binding": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "title": "Input",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "output": {
+          "title": "Output",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "node_id",
+        "output"
+      ],
+      "title": "Binding",
+      "type": "object"
+    },
+    "Chunk": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 30000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "locator": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "locator"
+      ],
+      "title": "Chunk",
+      "type": "object"
+    },
+    "Document": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "parse_status": {
+          "enum": [
+            "ready",
+            "partial",
+            "failed"
+          ],
+          "title": "Parse Status",
+          "type": "string"
+        },
+        "chunks": {
+          "items": {
+            "$ref": "#/$defs/Chunk"
+          },
+          "maxItems": 50,
+          "title": "Chunks",
+          "type": "array"
+        },
+        "tables": {
+          "items": {
+            "$ref": "#/$defs/Table"
+          },
+          "maxItems": 10,
+          "title": "Tables",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "parse_status"
+      ],
+      "title": "Document",
+      "type": "object"
+    },
+    "Draft": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Document Ids",
+          "type": "array"
+        },
+        "workflow": {
+          "$ref": "#/$defs/Workflow"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "workflow"
+      ],
+      "title": "Draft",
+      "type": "object"
+    },
+    "Edge": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "branch": {
+          "default": "next",
+          "enum": [
+            "next",
+            "yes",
+            "no"
+          ],
+          "title": "Branch",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ],
+      "title": "Edge",
+      "type": "object"
+    },
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "role",
+        "content"
+      ],
+      "title": "Message",
+      "type": "object"
+    },
+    "Node": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "tool": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Tool",
+          "type": "string"
+        },
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/Binding"
+          },
+          "maxItems": 30,
+          "title": "Bindings",
+          "type": "array"
+        },
+        "settings": {
+          "additionalProperties": true,
+          "title": "Settings",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "tool"
+      ],
+      "title": "Node",
+      "type": "object"
+    },
+    "Table": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "minItems": 1,
+          "title": "Columns",
+          "type": "array"
+        },
+        "sample_rows": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 20,
+          "title": "Sample Rows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "columns"
+      ],
+      "title": "Table",
+      "type": "object"
+    },
+    "ToolSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "input_ports": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Input Ports",
+          "type": "object"
+        },
+        "output_ports": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Output Ports",
+          "type": "object"
+        },
+        "required_input_ports": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Input Ports",
+          "type": "array"
+        },
+        "required_settings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Settings",
+          "type": "array"
+        },
+        "check_scope": {
+          "enum": [
+            "basic",
+            "table",
+            "dynamic"
+          ],
+          "title": "Check Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "enabled",
+        "input_ports",
+        "output_ports",
+        "required_input_ports",
+        "required_settings",
+        "check_scope"
+      ],
+      "title": "ToolSpec",
+      "type": "object"
+    },
+    "Workflow": {
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "title": "Entry",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "maxItems": 15,
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "maxItems": 25,
+          "title": "Edges",
+          "type": "array"
+        }
+      },
+      "required": [
+        "entry",
+        "nodes"
+      ],
+      "title": "Workflow",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "a4b.verifier.v1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "user_request": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "User Request",
+      "type": "string"
+    },
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/Message"
+      },
+      "maxItems": 50,
+      "title": "Messages",
+      "type": "array"
+    },
+    "latest_user_answer_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latest User Answer Id"
+    },
+    "documents": {
+      "items": {
+        "$ref": "#/$defs/Document"
+      },
+      "maxItems": 10,
+      "title": "Documents",
+      "type": "array"
+    },
+    "tools": {
+      "items": {
+        "$ref": "#/$defs/ToolSpec"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Tools",
+      "type": "array"
+    },
+    "previous_draft": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Draft"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "candidate_draft": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Draft"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "contract_version",
+    "request_id",
+    "user_request",
+    "tools"
+  ],
+  "title": "VerificationInput",
+  "type": "object"
+}

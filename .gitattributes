@@ -10,3 +10,8 @@
 *.png binary
 *.jpg binary
 *.jpeg binary
+
+# Preserve supplied package bytes and their checksum manifests.
+Backend/integrations/parser_handoff/** -text
+Backend/integrations/qwen_verifier/** -text
+Backend/integrations/tool_recommender_reference/** -text

@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "quote": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "quote"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "Issue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "request_missing",
+            "unsupported",
+            "draft_mismatch",
+            "reflection_mismatch",
+            "evidence_insufficient"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actual"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 5,
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "detail",
+        "path",
+        "expected",
+        "actual",
+        "evidence"
+      ],
+      "title": "Issue",
+      "type": "object"
+    },
+    "MissingCondition": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "field",
+            "selection_rule",
+            "operator",
+            "value",
+            "missing_policy",
+            "document_priority",
+            "resource",
+            "other"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "maxItems": 5,
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "detail",
+        "evidence"
+      ],
+      "title": "MissingCondition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "request_status": {
+      "anyOf": [
+        {
+          "enum": [
+            "ready",
+            "clarify",
+            "unsupported"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Request Status"
+    },
+    "evidence_status": {
+      "enum": [
+        "sufficient",
+        "insufficient"
+      ],
+      "title": "Evidence Status",
+      "type": "string"
+    },
+    "missing_conditions": {
+      "items": {
+        "$ref": "#/$defs/MissingCondition"
+      },
+      "maxItems": 8,
+      "title": "Missing Conditions",
+      "type": "array"
+    },
+    "unsupported_actions": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Unsupported Actions",
+      "type": "array"
+    },
+    "draft_verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "undetermined",
+        "not_applicable"
+      ],
+      "title": "Draft Verdict",
+      "type": "string"
+    },
+    "reflection_verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "undetermined",
+        "not_applicable"
+      ],
+      "title": "Reflection Verdict",
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "maxItems": 8,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/Issue"
+      },
+      "maxItems": 10,
+      "title": "Issues",
+      "type": "array"
+    },
+    "summary": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_status",
+    "evidence_status",
+    "missing_conditions",
+    "unsupported_actions",
+    "draft_verdict",
+    "reflection_verdict",
+    "evidence",
+    "issues",
+    "summary"
+  ],
+  "title": "VerificationOutput",
+  "type": "object"
+}

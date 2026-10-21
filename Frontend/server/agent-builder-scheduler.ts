@@ -1,3 +1,4 @@
+import {localModelConnection,LOCAL_MODEL_ID} from './builder-local-model';
 import {builderNeedsModel} from './builder-model-requirements';
 import type {Store} from './store';
 import {builderWorker} from './agent-builder';
@@ -14,7 +15,7 @@ export function startBuilderScheduler(store:Store){
     try{
      const config=job.agent_snapshot.config;
      const needsModel=builderNeedsModel(config,job.agent_snapshot.workflow_dependencies);
-     let apiKey='';if(needsModel){const credential=store.getCredential(job.agent_snapshot.credential_id);apiKey=String(credential.data.apiKey||credential.data.token||'');}
+     let apiKey='';if(needsModel){const local=localModelConnection();const credential=job.agent_snapshot.credential_id===LOCAL_MODEL_ID&&local?{data:{apiKey:'local-not-a-secret',token:''}}:store.getCredential(job.agent_snapshot.credential_id);apiKey=String(credential.data.apiKey||credential.data.token||'');}
      await builderWorker({action:'scheduled_run',id:job.id,lease_token:job.lease_token,api_key:apiKey});
     }catch{await builderWorker({action:'fail_job',id:job.id,lease_token:job.lease_token}).catch(()=>{});state.lastError='예약 실행 실패가 기록되었습니다.';}
    }

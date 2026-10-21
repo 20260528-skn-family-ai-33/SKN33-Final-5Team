@@ -51,7 +51,7 @@ try{
   run(command,[...args,'-m','venv',...(existsSync(venv)?['--clear']:[]),venv]);
  }
  run(venvPython,['-m','pip','install','--upgrade','pip']);
- if(docling)run(venvPython,['-m','pip','install','docling==2.133.0']);
+ if(docling)run(venvPython,['-m','pip','install','-r',resolve(backend,'requirements-parser.txt')]);
  else run(venvPython,['-m','pip','install','-r',resolve(backend,'requirements-agent-lock.txt')]);
  console.log(`\n설치 완료: ${venv}\n다음 실행: npm --prefix Frontend run dev`);
 }catch(error){

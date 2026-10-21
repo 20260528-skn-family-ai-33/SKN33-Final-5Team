@@ -1,0 +1,82 @@
+[
+  {
+    "id": "inventory_daily-1",
+    "action": "normalize_whitespace",
+    "before": "  한국 시간 매일 오전 9시에 inventory 재고표에서 stock이 minimum보다 작은 상품을 reports 폴더에 보고서로 저장해줘.\n",
+    "after": "한국 시간 매일 오전 9시에 inventory 재고표에서 stock이 minimum보다 작은 상품을 reports 폴더에 보고서로 저장해줘."
+  },
+  {
+    "id": "sales_weekly-1",
+    "action": "normalize_whitespace",
+    "before": "  매주 월요일 한국 시간 10시에 sales의 amount 합계를 계산해 reports에 저장해줘.\n",
+    "after": "매주 월요일 한국 시간 10시에 sales의 amount 합계를 계산해 reports에 저장해줘."
+  },
+  {
+    "id": "applications_event-1",
+    "action": "normalize_whitespace",
+    "before": "  applications_changed 웹훅이 오면 applications 목록에서 status가 pending인 신청서를 reports에 저장해줘.\n",
+    "after": "applications_changed 웹훅이 오면 applications 목록에서 status가 pending인 신청서를 reports에 저장해줘."
+  },
+  {
+    "id": "expenses_manual-1",
+    "action": "normalize_whitespace",
+    "before": "  실행 버튼을 누르면 expenses에서 amount가 100보다 큰 내역만 reports에 저장해줘.\n",
+    "after": "실행 버튼을 누르면 expenses에서 amount가 100보다 큰 내역만 reports에 저장해줘."
+  },
+  {
+    "id": "attendance_daily-1",
+    "action": "normalize_whitespace",
+    "before": "  매일 한국 시간 오후 6시에 attendance에서 absent가 true인 항목을 test_team에 알려줘.\n",
+    "after": "매일 한국 시간 오후 6시에 attendance에서 absent가 true인 항목을 test_team에 알려줘."
+  },
+  {
+    "id": "invoices_event-1",
+    "action": "normalize_whitespace",
+    "before": "  invoices_updated 웹훅이 들어오면 invoices에서 status가 unpaid인 건을 test_team에게 알려줘.\n",
+    "after": "invoices_updated 웹훅이 들어오면 invoices에서 status가 unpaid인 건을 test_team에게 알려줘."
+  },
+  {
+    "id": "contacts_manual-1",
+    "action": "normalize_whitespace",
+    "before": "  실행 버튼을 누르면 contacts에서 email이 빈 문자열인 행을 reports에 저장해줘. 빈칸을 채우지는 마.\n",
+    "after": "실행 버튼을 누르면 contacts에서 email이 빈 문자열인 행을 reports에 저장해줘. 빈칸을 채우지는 마."
+  },
+  {
+    "id": "manual_chat-1",
+    "action": "normalize_whitespace",
+    "before": "  대화로 질문이 오면 manual_demo에서 근거를 검색해줘. 질문은 message에서 받아.\n",
+    "after": "대화로 질문이 오면 manual_demo에서 근거를 검색해줘. 질문은 message에서 받아."
+  },
+  {
+    "id": "missing_schedule-1",
+    "action": "normalize_whitespace",
+    "before": "  매일 inventory에서 stock < minimum인 상품 보고서를 reports에 저장해줘.\n",
+    "after": "매일 inventory에서 stock < minimum인 상품 보고서를 reports에 저장해줘."
+  },
+  {
+    "id": "missing_document-1",
+    "action": "normalize_whitespace",
+    "before": "  대화로 들어온 질문을 매뉴얼에서 검색해줘. 아직 매뉴얼은 연결하지 않았어.\n",
+    "after": "대화로 들어온 질문을 매뉴얼에서 검색해줘. 아직 매뉴얼은 연결하지 않았어."
+  },
+  {
+    "id": "inventory_daily-1-duplicate",
+    "action": "normalize_whitespace",
+    "before": "  한국 시간 매일 오전 9시에 inventory 재고표에서 stock이 minimum보다 작은 상품을 reports 폴더에 보고서로 저장해줘.\n",
+    "after": "한국 시간 매일 오전 9시에 inventory 재고표에서 stock이 minimum보다 작은 상품을 reports 폴더에 보고서로 저장해줘."
+  },
+  {
+    "id": "inventory_daily-1-duplicate",
+    "action": "drop_exact_duplicate"
+  },
+  {
+    "id": "sales_weekly-1-duplicate",
+    "action": "normalize_whitespace",
+    "before": "  매주 월요일 한국 시간 10시에 sales의 amount 합계를 계산해 reports에 저장해줘.\n",
+    "after": "매주 월요일 한국 시간 10시에 sales의 amount 합계를 계산해 reports에 저장해줘."
+  },
+  {
+    "id": "sales_weekly-1-duplicate",
+    "action": "drop_exact_duplicate"
+  }
+]

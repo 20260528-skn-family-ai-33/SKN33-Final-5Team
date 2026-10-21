@@ -10,10 +10,12 @@ export async function readDocument(node:FlowNode,input:Json[],signal?:AbortSigna
   const dir=await mkdtemp(join(tmpdir(),'easyflow-document-'));try{
    const source=join(dir,'input.'+ext),output=join(dir,'output.json');await writeFile(source,decodeBinaryFile(file));
    const python=doclingPython();if(!python)throw new Error('Docling 환경이 없습니다. Backend/scripts/setup-document-demo.sh로 설치하세요.');
-   await run(python,[backendPath('scripts/document_worker.py'),source,output],{timeout:180000,maxBuffer:1024*1024,signal});
+   const configured=Number(process.env.A4B_PDF_TIMEOUT_MS);const timeout=Number.isFinite(configured)&&configured>0&&configured<=1800000?configured:300000;
+   await run(python,[backendPath('scripts/document_worker.py'),source,output],{timeout,maxBuffer:1024*1024,signal,env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1'}});
    const data=JSON.parse(await readFile(output,'utf8'));if(data.error||!data.text?.trim())throw new Error('문서에서 실제 본문을 추출하지 못했어요.');
-   result.push({...item,text:data.text,filename:basename(file.fileName),document:{filename:basename(file.fileName),engine:'docling',sections:data.sections||[],tables:data.tables||[],warnings:data.warnings||[]}});
-  }catch(e:any){if(e.message?.startsWith('문서에서'))throw e;throw new Error('Docling 문서 변환 실패: Python 환경·지원 형식·180초 제한을 확인해주세요.');}finally{await rm(dir,{recursive:true,force:true});}
+   const {text,...metadata}=data;
+   result.push({...item,text,filename:basename(file.fileName),document:{...metadata,filename:basename(file.fileName),engine:'docling',sections:data.sections||[],tables:data.tables||[],warnings:data.warnings||[]}});
+  }catch(e:any){if(e.message?.startsWith('문서에서'))throw e;throw new Error('Docling 문서 변환 실패: Python 환경·OCR/표 모델·지원 형식·A4B_PDF_TIMEOUT_MS 제한을 확인해주세요.');}finally{await rm(dir,{recursive:true,force:true});}
  }
  return [attachItemPairs(result,result.map((_,i)=>[{item:i}]))];
 }

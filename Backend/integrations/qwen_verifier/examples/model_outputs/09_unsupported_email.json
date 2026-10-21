@@ -1,0 +1,32 @@
+{
+  "request_status": "unsupported",
+  "evidence_status": "sufficient",
+  "missing_conditions": [],
+  "unsupported_actions": [
+    "필수 이메일 발송 도구 없음"
+  ],
+  "draft_verdict": "fail",
+  "reflection_verdict": "not_applicable",
+  "evidence": [
+    {
+      "evidence_id": "user_request",
+      "quote": "보증금 100만원 이상 거래를 이메일 발송까지 완료해줘. 발송이 필수야."
+    }
+  ],
+  "issues": [
+    {
+      "code": "draft_mismatch",
+      "detail": "요청·답변의 조건과 초안이 다릅니다.",
+      "path": "/workflow/nodes/2/tool",
+      "expected": "지원 불가",
+      "actual": "send_email",
+      "evidence": [
+        {
+          "evidence_id": "user_request",
+          "quote": "보증금 100만원 이상 거래를 이메일 발송까지 완료해줘. 발송이 필수야."
+        }
+      ]
+    }
+  ],
+  "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+}

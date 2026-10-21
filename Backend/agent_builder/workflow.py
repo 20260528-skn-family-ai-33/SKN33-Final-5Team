@@ -35,8 +35,9 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
         id=n['id'];tool=n['tool'];bindings=n['bindings'];settings=n['settings'];ins,outs=node_ports(n)
         if tool not in tool_ids:issues.append('노드의 도구가 연결 도구 목록에 없습니다: '+id)
         own_plan=settings.get('execution_plan')
-        if tool!='filter_sort' and own_plan and (own_plan.get('filters') or own_plan.get('sort') or own_plan.get('duplicate_field')):
-            issues.append('필터·정렬 조건은 filter_sort 노드에만 둘 수 있습니다. 이 노드에서는 조건이 적용되지 않습니다: '+id)
+        if tool!='filter_sort' and own_plan and (own_plan.get('filters') or own_plan.get('sort') or own_plan.get('duplicate_field')
+                or own_plan.get('missing_policy')=='exclude' or own_plan.get('duplicate_policy') not in (None,'keep','ask')):
+            issues.append('필터·정렬·빈 값·중복 처리 조건은 filter_sort 노드에만 둘 수 있습니다. 이 노드에서는 조건이 적용되지 않습니다: '+id)
         if tool=='reply_review':
             if 'table' in {b['input'] for b in bindings} and len(settings['fields'])!=2:issues.append('검수에는 문의 열·초안 열 두 개를 순서대로 지정하세요: '+id)
             if 'table' in {b['input'] for b in bindings} and 'text' in {b['input'] for b in bindings}:issues.append('표 검수와 단일 초안 입력을 동시에 연결할 수 없습니다: '+id)

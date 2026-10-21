@@ -22,7 +22,7 @@ try:
   report['models']=json.load(r)
  from agent_builder.model_factory import create_chat_model
  start=time.perf_counter()
- reply=create_chat_model(key,os.environ['A4B_LLM_MODEL'],timeout=180,max_tokens=64).invoke('연결 확인입니다. 다른 설명 없이 연결 성공이라고만 답하세요.')
+ reply=create_chat_model('',os.environ['A4B_LLM_MODEL'],timeout=180,max_tokens=64).invoke('연결 확인입니다. 다른 설명 없이 연결 성공이라고만 답하세요.')
  report['main']={'seconds':time.perf_counter()-start,'content':reply.content}
  from a4b_verifier.client import OllamaConfig,health,call_qwen
  from a4b_verifier.contracts import VerificationInput

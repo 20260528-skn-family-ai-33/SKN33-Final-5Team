@@ -38,6 +38,10 @@ def validate_node(state):
     filters=[n for n in (draft.get('workflow') or {}).get('nodes',[]) if n['tool']=='filter_sort']
     plans=[n['settings'].get('execution_plan') or draft['execution_plan'] for n in filters]
     if not draft.get('workflow'):plans=[draft['execution_plan']]
+    elif not filters:
+        gp=draft['execution_plan']
+        if gp['filters'] or gp['sort'] or gp['duplicate_policy'] not in ['keep','ask'] or gp['missing_policy']=='exclude':
+            issues.append('실행 조건을 적용할 filter_sort 노드가 워크플로우에 필요합니다.')
     tables=[r for r in state['resources'] if r.get('kind')=='table' and r['id'] in draft['document_ids']]
     questions=list(draft['questions'])
     for plan in plans:

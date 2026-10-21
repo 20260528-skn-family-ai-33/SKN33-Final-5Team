@@ -3,19 +3,25 @@ import os
 from langchain_openai import ChatOpenAI
 
 
+# The web server sends this placeholder (or no key) when the local model connection is selected.
+LOCAL_MODEL_API_KEY = 'local-not-a-secret'
+
+
 def create_chat_model(api_key, model, **limits):
     provider = os.getenv('A4B_MAIN_PROVIDER', 'openai')
     if provider not in ('openai', 'ollama', 'vllm'):
         raise ValueError('A4B_MAIN_PROVIDER는 openai/ollama/vllm이어야 합니다.')
     options = dict(model=model, api_key=api_key, **limits)
-    if provider != 'openai':
+    # Only the explicit local connection goes to the local server; a selected OpenAI account
+    # (real key) always talks to OpenAI, whatever the server-wide provider is.
+    if provider != 'openai' and api_key in (None, '', LOCAL_MODEL_API_KEY):
         base_url = os.getenv('A4B_MAIN_BASE_URL')
         if not base_url:
             raise ValueError('로컬 모델의 A4B_MAIN_BASE_URL이 필요합니다.')
         timeout=float(os.getenv('A4B_MAIN_TIMEOUT_S','180'))
         if not 1<=timeout<=600:raise ValueError('A4B_MAIN_TIMEOUT_S는 1~600초로 설정하세요.')
         options['timeout']=timeout
-        options.update(base_url=base_url, api_key=os.getenv('A4B_MAIN_API_KEY') or 'local-not-a-secret',
+        options.update(base_url=base_url, api_key=os.getenv('A4B_MAIN_API_KEY') or LOCAL_MODEL_API_KEY,
                        default_headers={'User-Agent': 'A4B/0.1'})
         if provider == 'vllm':
             from .qwen_chat_model import QwenChatOpenAI

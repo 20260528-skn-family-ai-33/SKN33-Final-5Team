@@ -15,7 +15,7 @@ def create_chat_model(api_key, model, **limits):
         timeout=float(os.getenv('A4B_MAIN_TIMEOUT_S','180'))
         if not 1<=timeout<=600:raise ValueError('A4B_MAIN_TIMEOUT_S는 1~600초로 설정하세요.')
         options['timeout']=timeout
-        options.update(base_url=base_url, api_key=os.getenv('A4B_MAIN_API_KEY') or api_key or 'local-not-a-secret',
+        options.update(base_url=base_url, api_key=os.getenv('A4B_MAIN_API_KEY') or 'local-not-a-secret',
                        default_headers={'User-Agent': 'A4B/0.1'})
         if provider == 'vllm':
             from .qwen_chat_model import QwenChatOpenAI

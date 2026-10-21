@@ -4,7 +4,7 @@ from pathlib import Path
 from .contracts import Document,Draft,ToolSpec,VerificationInput,VerificationResult
 
 def load_registry():
-    raw=json.loads(Path(__file__).with_name('registry.json').read_text())
+    raw=json.loads(Path(__file__).with_name('registry.json').read_text(encoding='utf-8'))
     return [ToolSpec.model_validate(x) for x in raw['tools']]
 
 def document_from_parser(normalized_payload):

@@ -89,13 +89,18 @@ def make_verification_node(storage, verifier=None, mode=None):
                         node['settings']['file_ids']=[i for i in raw.get('document_ids',[]) if kinds.get(i)==kind]
                 version=hashlib.sha256(json.dumps(raw,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
                 return draft_from_backend(snapshot, draft_id=state['session_id'], version=version)
+            previous_adapted = adapt(previous, 'previous')
+            candidate_adapted = adapt(draft, 'candidate')
+            # Reflection needs both drafts; without a previous one there is nothing to compare,
+            # so don't ask for it (otherwise a valid first completed draft is blocked in enforce).
+            has_pair = previous_adapted is not None and candidate_adapted is not None
             payload = VerificationInput.model_validate(dict(
                 contract_version='a4b.verifier.v1', request_id=request_id,
                 user_request=users[0]['content'], messages=messages,
-                latest_user_answer_id=users[-1]['id'] if len(users) > 1 else None,
+                latest_user_answer_id=users[-1]['id'] if len(users) > 1 and has_pair else None,
                 documents=[resource_document(a) for a in state.get('resources', [])],
-                tools=current_tools(), previous_draft=adapt(previous, 'previous'),
-                candidate_draft=adapt(draft, 'candidate')))
+                tools=current_tools(), previous_draft=previous_adapted,
+                candidate_draft=candidate_adapted))
             result = (verifier or verify)(payload).model_dump(mode='json')
         except (ValueError, TypeError, KeyError) as error:
             result = dict(request_id=request_id, route='manual_review', execution_allowed=False,

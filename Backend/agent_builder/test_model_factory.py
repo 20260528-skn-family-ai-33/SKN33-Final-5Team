@@ -48,3 +48,14 @@ def test_remote_timeout_is_configurable_and_bounded(monkeypatch):
     assert model_factory.create_chat_model('','qwen3:8b',timeout=70)['timeout']==240
     monkeypatch.setenv('A4B_MAIN_TIMEOUT_S','0')
     with pytest.raises(ValueError,match='A4B_MAIN_TIMEOUT_S'):model_factory.create_chat_model('','qwen3:8b')
+
+
+def test_local_provider_never_reuses_the_openai_key(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL','http://127.0.0.1:11434/v1')
+    monkeypatch.delenv('A4B_MAIN_API_KEY',raising=False)
+    monkeypatch.setattr('agent_builder.ollama_chat_model.OllamaChatOpenAI',lambda **kw:kw)
+    result=model_factory.create_chat_model('sk-real-openai-key','qwen3:8b')
+    assert result['api_key']=='local-not-a-secret'
+    monkeypatch.setenv('A4B_MAIN_API_KEY','dedicated-local-key')
+    assert model_factory.create_chat_model('sk-real-openai-key','qwen3:8b')['api_key']=='dedicated-local-key'

@@ -69,3 +69,48 @@ def test_first_edit_compares_against_the_saved_draft(tmp_path):
     make_verification_node(store,verifier=recording_verifier,mode='shadow')(state)
     assert seen['input'].previous_draft is not None
     assert seen['input'].latest_user_answer_id is not None
+
+
+def test_worker_edit_session_gives_the_verifier_the_saved_draft(tmp_path,monkeypatch):
+    """End to end through worker.handle: the first edit must be compared with the saved agent."""
+    import json
+    import agent_builder.nodes.verification as verification_module
+    from a4b_verifier.service import verify
+    from agent_builder.storage import uid
+    from agent_builder.test_builder import PROMPT, draft
+    from agent_builder.test_verifier_bridge import EXAMPLES
+    from agent_builder.test_workflow import bind, edge, node
+    from agent_builder.worker import handle
+    seen=[]
+    def recording_verify(data,*args,**kwargs):
+        seen.append(data)
+        output=json.loads((EXAMPLES/'model_outputs/01_ready.json').read_text())
+        return verify(data,mode='fixture',fixture=output)
+    monkeypatch.setattr(verification_module,'verify',recording_verify)
+    monkeypatch.setenv('A4B_VERIFIER_MODE','shadow')
+    plan=dict(filters=[dict(field='stock',operator='lt',value=10,compare_field=None,value_type='number')],sort=[],
+              match='all',missing_policy='keep',duplicate_policy='keep',duplicate_field=None,output_format='csv')
+    def conversation(name):
+        def run(state):
+            rid=state['resources'][0]['id']
+            wf=dict(entry='read',nodes=[node('read','read_table',file_ids=[rid]),
+                    node('filter','filter_sort',[bind('table','read','table')],execution_plan=plan),
+                    node('save','write_result',[bind('table','filter','table')],format='csv')],
+                    edges=[edge('read','filter'),edge('filter','save')])
+            return {'draft':{**draft(),'name':name,'workflow':wf,'execution_plan':plan,'document_ids':[rid]},'confirmed':False}
+        return run
+    directory=str(tmp_path)
+    s=handle({'directory':directory,'action':'new_session','model':'gpt-4.1-mini','credential_id':uid()})
+    s=handle({'directory':directory,'action':'upload','id':s['id'],'revision':s['revision'],
+              'asset':{'name':'stock.csv','kind':'table','columns':['stock'],'profile':{},'row_count':2,'preview':[{'stock':1},{'stock':20}],'format':'csv','version':1,'hash':'h'},
+              'rows':[{'stock':1},{'stock':20}]})
+    s=handle({'directory':directory,'action':'message','id':s['id'],'revision':s['revision'],'content':PROMPT},conversation=conversation('재고 정리'))
+    assert s['status']=='ready',s.get('issues')
+    s=handle({'directory':directory,'action':'confirm','id':s['id'],'revision':s['revision']},conversation=conversation('재고 정리'))
+    assert s['saved_agent_id']
+    seen.clear()
+    edit=handle({'directory':directory,'action':'new_session','model':'gpt-4.1-mini','credential_id':s['credential_id'],'agent_id':s['saved_agent_id']})
+    handle({'directory':directory,'action':'message','id':edit['id'],'revision':edit['revision'],'content':'이름만 수정'},conversation=conversation('이름만 수정'))
+    assert seen,'verifier was not called on the first edit'
+    assert seen[-1].previous_draft is not None
+    assert seen[-1].candidate_draft is not None

@@ -1,0 +1,3 @@
+-r requirements-agent.txt
+jsonschema>=4.21,<5
+# Optional SVM hints: install integrations/tool_recommender_reference/requirements-ml-reference.txt

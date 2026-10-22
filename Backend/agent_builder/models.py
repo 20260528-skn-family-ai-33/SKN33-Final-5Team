@@ -121,3 +121,9 @@ class BuilderState(TypedDict, total=False):
     saved_workflows: list[dict]
     node_library: list[dict]
     required_node_refs: list[str]
+    verification: dict
+    verification_route: str | None
+    verification_enforced: bool
+    verification_last_candidate: dict | None
+    verification_previous_draft: dict | None
+    verification_user_fingerprint: str

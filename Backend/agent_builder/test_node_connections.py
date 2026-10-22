@@ -78,7 +78,7 @@ def test_catalog_exposes_actual_output_schema(tmp_path):
 def test_reused_table_workflow_does_not_construct_a_model(tmp_path,monkeypatch):
     st,child,d=reusable(tmp_path);cfg=copy.deepcopy(d);cfg.update(tool_ids=['saved_workflow'],workflow={'entry':'call','nodes':[node('call','saved_workflow',agent_id=child,agent_version=1,output_node='filter',output_port='table')],'edges':[]})
     id=save(st,cfg)
-    monkeypatch.setattr('agent_builder.workflow_runtime.ChatOpenAI',lambda **kw:(_ for _ in ()).throw(AssertionError('pure graph requested a model')))
+    monkeypatch.setattr('agent_builder.workflow_runtime.create_chat_model',lambda **kw:(_ for _ in ()).throw(AssertionError('pure graph requested a model')))
     assert run_workflow(st,id,'execute','')['status']=='succeeded';st.close()
 
 def test_reused_flow_accepts_explicit_run_file_override(tmp_path):

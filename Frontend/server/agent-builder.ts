@@ -6,6 +6,7 @@ import {existsSync} from 'node:fs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {convertBuilderPdf} from './builder-documents';
 import {createHash,randomUUID} from 'node:crypto';
+import {localModelConnection,LOCAL_MODEL_ID} from './builder-local-model';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {Store} from './store';
 import {parseCsv} from './binary';
@@ -13,6 +14,13 @@ import {readXlsx,extractPdfText} from './document-files';
 
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const locks=new Set<string>();
+export function builderWorkerTimeout(action:string,env:NodeJS.ProcessEnv=process.env):number {
+ const execution=['test','scheduled_run','retry_run','resume_run'].includes(action);
+ const localDesign=['message','confirm'].includes(action)&&['ollama','vllm'].includes(env.A4B_MAIN_PROVIDER||'');
+ const fallback=execution?900000:localDesign?600000:180000;
+ const configured=Number(execution?env.A4B_WORKER_TIMEOUT_MS:localDesign?env.A4B_DESIGN_TIMEOUT_MS:undefined);
+ return Number.isFinite(configured)&&configured>0&&configured<=1800000?configured:fallback;
+}
 export async function builderWorker(payload:Record<string,unknown>):Promise<any>{
  const python=agentPython();
  if(!existsSync(python))throw new Error('Deep Agents 실행 환경이 없습니다. Backend/scripts/setup-agent-demo.sh를 먼저 실행하세요.');
@@ -30,9 +38,9 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
    if(execution)await builderWorker({action:'interrupt_run',id:runId,execution_token:executionToken}).catch(()=>{});
    reject(new Error(message));
   };
-  const configured=Number(process.env.A4B_WORKER_TIMEOUT_MS);
-  const timeout=execution?(Number.isFinite(configured)&&configured>0?configured:900000):180000;
-  const timer=setTimeout(()=>void fail('실행 시간이 초과됐습니다. 실행 기록을 확인하고 실패 단계부터 재시도하세요.'),timeout);
+  const timeout=builderWorkerTimeout(String(payload.action));
+  const timeoutMessage=execution?'실행 시간이 초과됐습니다. 실행 기록을 확인하고 실패 단계부터 재시도하세요.':'모델 설계 응답 시간이 초과됐습니다. 대화는 보존되어 있으니 서버 상태와 응답 제한 시간을 확인한 뒤 다시 시도하세요.';
+  const timer=setTimeout(()=>void fail(timeoutMessage),timeout);
   if(execution){
    heartbeat=setInterval(()=>{
     if(settled||heartbeatBusy)return;heartbeatBusy=true;
@@ -59,7 +67,7 @@ export async function parseBuilderAsset(input:any){
  if(format==='csv')rows=parseCsv(bytes.toString('utf8'));
  else if(format==='xlsx')rows=await readXlsx(bytes,{includeEmptyCells:true});
  else if(format==='json'){const value=JSON.parse(bytes.toString('utf8'));if(!Array.isArray(value)||value.length>5000||value.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw new Error('JSON은 객체 행의 배열로 입력하세요.');rows=value;}
- else if(['txt','md','pdf'].includes(format)){kind='document';if(format==='pdf'){const parsed=await convertBuilderPdf(bytes);pages=parsed.pages;text=parsed.text;documentMeta={engine:parsed.engine,parser_version:parsed.parser_version,warnings:parsed.warnings,page_count:parsed.page_count,sections:parsed.sections,tables:parsed.tables};}else{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);pages=[text];}if(!text.trim())throw new Error('문서의 본문이 비어 있습니다.');if(text.length>1000000)throw new Error('문서는 1,000,000자 이내로 연결하세요.');}
+ else if(['txt','md','pdf'].includes(format)){kind='document';if(format==='pdf'){const parsed=await convertBuilderPdf(bytes);pages=parsed.pages;text=parsed.text;documentMeta={engine:parsed.engine,parser_version:parsed.parser_version,warnings:parsed.warnings,page_count:parsed.page_count,sections:parsed.sections,tables:parsed.tables,parser_status:parsed.parser_status,parser_metadata:parsed.parser_metadata};}else{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);pages=[text];}if(!text.trim())throw new Error('문서의 본문이 비어 있습니다.');if(text.length>1000000)throw new Error('문서는 1,000,000자 이내로 연결하세요.');}
  else throw new Error('CSV·XLSX·JSON 표 또는 TXT·MD·텍스트 PDF 규칙 문서를 연결하세요.');
  if(kind==='table'&&!rows.length)throw new Error('표 파일에 데이터 행이 없습니다.');
  const columns=[...new Set(rows.flatMap(row=>Object.keys(row)))];
@@ -71,6 +79,7 @@ export async function parseBuilderAsset(input:any){
 export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void):Promise<boolean>{
  if(!url.pathname.startsWith('/api/agent-builder/'))return false;
  const action=url.pathname.slice('/api/agent-builder/'.length),method=req.method||'GET';
+ if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection()});return true;}
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
   const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');
@@ -104,11 +113,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  try{
   let payload:any={action:workerAction,id:data.id};
   if(workerAction==='new_session'){
-   if(typeof data.model!=='string'||!data.model.trim()||data.model.length>120||!/^[-\w.]+$/.test(data.model))throw new Error('모델 이름을 확인하세요.');
-   const credential=store.getCredential(data.credentialId);if(credential.provider!=='openai')throw new Error('OpenAI 연결 계정을 선택하세요.');
+   if(typeof data.model!=='string'||!data.model.trim()||data.model.length>120||!/^[-\w./:]+$/.test(data.model))throw new Error('모델 이름을 확인하세요.');
+   const local=localModelConnection();const credential=data.credentialId===LOCAL_MODEL_ID&&local?{...local.credential,data:{}}:store.getCredential(data.credentialId);if(credential.provider!=='openai')throw new Error('OpenAI 연결 계정을 선택하세요.');
    if(data.agentId&&!idPattern.test(data.agentId))throw new Error('에이전트 ID를 확인하세요.');
    if(data.nodeRefs!==undefined&&(!Array.isArray(data.nodeRefs)||data.nodeRefs.length>10||new Set(data.nodeRefs).size!==data.nodeRefs.length||data.nodeRefs.some((r:unknown)=>typeof r!=='string'||!/^[a-f0-9-]{36}:[1-9][0-9]{0,5}$/.test(r))))throw new Error('선택한 노드 버전을 확인하세요.');
-   payload={action:workerAction,model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs};
+   payload={action:workerAction,model:credential.id===LOCAL_MODEL_ID?local!.model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs};
   }
   if(['upload','message','confirm'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
   if(['message','test','resume_run'].includes(workerAction)){
@@ -119,7 +128,8 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    const config=workerAction==='test'?current.agent.config:['resume_run','retry_run'].includes(workerAction)?current.run.config_snapshot:null;
    const needsModel=builderNeedsModel(config,workerAction==='test'?current.agent.workflow_dependencies:current.run?.workflow_dependencies);
    if(needsModel){
-    const credential=store.getCredential(workerAction==='test'?current.agent.credential_id:['resume_run','retry_run'].includes(workerAction)?current.run.credential_id:current.credential_id);
+    const credentialId=workerAction==='test'?current.agent.credential_id:['resume_run','retry_run'].includes(workerAction)?current.run.credential_id:current.credential_id;
+    const local=localModelConnection();const credential=credentialId===LOCAL_MODEL_ID&&local?{...local.credential,data:{apiKey:'local-not-a-secret',token:''}}:store.getCredential(credentialId);
     if(credential.provider!=='openai')throw new Error('모델 연결 계정을 확인하세요.');
     payload.api_key=credential.data.apiKey||credential.data.token;
    }

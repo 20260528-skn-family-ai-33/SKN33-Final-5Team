@@ -1,0 +1,30 @@
+{
+  "request_status": null,
+  "evidence_status": "insufficient",
+  "missing_conditions": [],
+  "unsupported_actions": [],
+  "draft_verdict": "not_applicable",
+  "reflection_verdict": "not_applicable",
+  "evidence": [
+    {
+      "evidence_id": "user_request",
+      "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+    }
+  ],
+  "issues": [
+    {
+      "code": "evidence_insufficient",
+      "detail": "파서 결과가 없어 실제 열과 문서 근거를 확인하지 못했습니다.",
+      "path": null,
+      "expected": null,
+      "actual": null,
+      "evidence": [
+        {
+          "evidence_id": "user_request",
+          "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+        }
+      ]
+    }
+  ],
+  "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+}

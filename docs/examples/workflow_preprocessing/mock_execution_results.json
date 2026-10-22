@@ -1,0 +1,1124 @@
+[
+  {
+    "id": "inventory_daily-1",
+    "scenario_group": "inventory_daily",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "B",
+              "stock": 10,
+              "minimum": 10
+            },
+            {
+              "product": "C",
+              "stock": 20,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "inventory_daily-2",
+    "scenario_group": "inventory_daily",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "B",
+              "stock": 10,
+              "minimum": 10
+            },
+            {
+              "product": "C",
+              "stock": 20,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "inventory_daily-3",
+    "scenario_group": "inventory_daily",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "B",
+              "stock": 10,
+              "minimum": 10
+            },
+            {
+              "product": "C",
+              "stock": 20,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "product": "A",
+              "stock": 3,
+              "minimum": 10
+            },
+            {
+              "product": "D",
+              "stock": 0,
+              "minimum": 5
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "sales_weekly-1",
+    "scenario_group": "sales_weekly",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "amount": 120
+            },
+            {
+              "product": "B",
+              "amount": 80
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "result": {
+            "value": 200
+          }
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": {
+            "value": 200
+          }
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "sales_weekly-2",
+    "scenario_group": "sales_weekly",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "amount": 120
+            },
+            {
+              "product": "B",
+              "amount": 80
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "result": {
+            "value": 200
+          }
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": {
+            "value": 200
+          }
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "sales_weekly-3",
+    "scenario_group": "sales_weekly",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "product": "A",
+              "amount": 120
+            },
+            {
+              "product": "B",
+              "amount": 80
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "result": {
+            "value": 200
+          }
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": {
+            "value": 200
+          }
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "applications_event-1",
+    "scenario_group": "applications_event",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            },
+            {
+              "id": "APP-2",
+              "status": "approved"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "applications_event-2",
+    "scenario_group": "applications_event",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            },
+            {
+              "id": "APP-2",
+              "status": "approved"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "applications_event-3",
+    "scenario_group": "applications_event",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            },
+            {
+              "id": "APP-2",
+              "status": "approved"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "APP-1",
+              "status": "pending"
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "expenses_manual-1",
+    "scenario_group": "expenses_manual",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "E-1",
+              "amount": 100
+            },
+            {
+              "id": "E-2",
+              "amount": 101
+            },
+            {
+              "id": "E-3",
+              "amount": 90
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "E-2",
+              "amount": 101
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "E-2",
+              "amount": 101
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "expenses_manual-2",
+    "scenario_group": "expenses_manual",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "E-1",
+              "amount": 100
+            },
+            {
+              "id": "E-2",
+              "amount": 101
+            },
+            {
+              "id": "E-3",
+              "amount": 90
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "E-2",
+              "amount": 101
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "E-2",
+              "amount": 101
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "expenses_manual-3",
+    "scenario_group": "expenses_manual",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "E-1",
+              "amount": 100
+            },
+            {
+              "id": "E-2",
+              "amount": 101
+            },
+            {
+              "id": "E-3",
+              "amount": 90
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "E-2",
+              "amount": 101
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "E-2",
+              "amount": 101
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "attendance_daily-1",
+    "scenario_group": "attendance_daily",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "U-1",
+              "absent": true
+            },
+            {
+              "id": "U-2",
+              "absent": false
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "U-1",
+              "absent": true
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "delivery_id": "MOCK-NO-SEND",
+          "content": [
+            {
+              "id": "U-1",
+              "absent": true
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "attendance_daily-2",
+    "scenario_group": "attendance_daily",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "U-1",
+              "absent": true
+            },
+            {
+              "id": "U-2",
+              "absent": false
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "U-1",
+              "absent": true
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "delivery_id": "MOCK-NO-SEND",
+          "content": [
+            {
+              "id": "U-1",
+              "absent": true
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "attendance_daily-3",
+    "scenario_group": "attendance_daily",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "U-1",
+              "absent": true
+            },
+            {
+              "id": "U-2",
+              "absent": false
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "U-1",
+              "absent": true
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "delivery_id": "MOCK-NO-SEND",
+          "content": [
+            {
+              "id": "U-1",
+              "absent": true
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "invoices_event-1",
+    "scenario_group": "invoices_event",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            },
+            {
+              "id": "I-2",
+              "status": "paid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "delivery_id": "MOCK-NO-SEND",
+          "content": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "invoices_event-2",
+    "scenario_group": "invoices_event",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            },
+            {
+              "id": "I-2",
+              "status": "paid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "delivery_id": "MOCK-NO-SEND",
+          "content": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "invoices_event-3",
+    "scenario_group": "invoices_event",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            },
+            {
+              "id": "I-2",
+              "status": "paid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "delivery_id": "MOCK-NO-SEND",
+          "content": [
+            {
+              "id": "I-1",
+              "status": "unpaid"
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "contacts_manual-1",
+    "scenario_group": "contacts_manual",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "C-1",
+              "email": ""
+            },
+            {
+              "id": "C-2",
+              "email": "example@example.invalid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "C-1",
+              "email": ""
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "C-1",
+              "email": ""
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "contacts_manual-2",
+    "scenario_group": "contacts_manual",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "C-1",
+              "email": ""
+            },
+            {
+              "id": "C-2",
+              "email": "example@example.invalid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "C-1",
+              "email": ""
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "C-1",
+              "email": ""
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "contacts_manual-3",
+    "scenario_group": "contacts_manual",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "rows": [
+            {
+              "id": "C-1",
+              "email": ""
+            },
+            {
+              "id": "C-2",
+              "email": "example@example.invalid"
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n2",
+        "output": {
+          "rows": [
+            {
+              "id": "C-1",
+              "email": ""
+            }
+          ]
+        }
+      },
+      {
+        "node_id": "n3",
+        "output": {
+          "artifact_id": "MOCK-ARTIFACT",
+          "content": [
+            {
+              "id": "C-1",
+              "email": ""
+            }
+          ]
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "manual_chat-1",
+    "scenario_group": "manual_chat",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "evidence": [
+            {
+              "page": 1,
+              "text": "시험 오류 E01: 연결 상태를 확인한다."
+            }
+          ],
+          "mock_search": true
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "manual_chat-2",
+    "scenario_group": "manual_chat",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "evidence": [
+            {
+              "page": 1,
+              "text": "시험 오류 E01: 연결 상태를 확인한다."
+            }
+          ],
+          "mock_search": true
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "manual_chat-3",
+    "scenario_group": "manual_chat",
+    "status": "mock_completed",
+    "steps": [
+      {
+        "node_id": "n1",
+        "output": {
+          "evidence": [
+            {
+              "page": 1,
+              "text": "시험 오류 E01: 연결 상태를 확인한다."
+            }
+          ],
+          "mock_search": true
+        }
+      }
+    ],
+    "expected_match": true
+  },
+  {
+    "id": "missing_schedule-1",
+    "scenario_group": "missing_schedule",
+    "status": "not_run_clarification"
+  },
+  {
+    "id": "missing_schedule-2",
+    "scenario_group": "missing_schedule",
+    "status": "not_run_clarification"
+  },
+  {
+    "id": "missing_schedule-3",
+    "scenario_group": "missing_schedule",
+    "status": "not_run_clarification"
+  },
+  {
+    "id": "missing_document-1",
+    "scenario_group": "missing_document",
+    "status": "not_run_clarification"
+  },
+  {
+    "id": "missing_document-2",
+    "scenario_group": "missing_document",
+    "status": "not_run_clarification"
+  },
+  {
+    "id": "missing_document-3",
+    "scenario_group": "missing_document",
+    "status": "not_run_clarification"
+  }
+]

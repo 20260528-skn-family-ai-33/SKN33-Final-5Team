@@ -1,0 +1,23 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "scope",
+  "session_id": "sample-session",
+  "revision": 0,
+  "messages": [
+    {
+      "role": "user",
+      "content": "업무를 정리해줘."
+    }
+  ],
+  "resources": [],
+  "source_health": {
+    "db_status": "ok",
+    "messages_loaded": true
+  },
+  "tool_catalog_fingerprint": "9e5f3dbb8dce098f095438cb71cab56ee09e96a77ec56c350337e7c7db88142b",
+  "ml_advice": {
+    "status": "not_requested",
+    "ml_candidates": [],
+    "model_revision": null
+  }
+}

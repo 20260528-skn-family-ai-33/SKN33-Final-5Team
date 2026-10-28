@@ -124,6 +124,24 @@ class BuilderState(TypedDict, total=False):
     verification: dict
     verification_route: str | None
     verification_enforced: bool
+    verification_required: bool
     verification_last_candidate: dict | None
     verification_previous_draft: dict | None
     verification_user_fingerprint: str
+    condition_ledger: dict | None
+    condition_enforced: bool
+    condition_required: bool
+    condition_route: str
+    condition_template: bool
+    pending_questions: list[dict]
+    condition_answers: list[dict]
+    source_health: dict
+    tool_gap: dict | None
+    capability_route: str
+    capability_assessment: dict | None
+    capability_enforced: bool
+    capability_fingerprint: str | None
+    capability_questions: list[dict]
+    capability_answers: list[dict]
+    capability_deferred: bool
+    capability_generation_route: str

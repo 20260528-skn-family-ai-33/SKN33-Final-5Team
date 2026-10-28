@@ -1,0 +1,23 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "clarify",
+  "session_id": "sample-session",
+  "revision": 0,
+  "messages": [
+    {
+      "role": "user",
+      "content": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
+    }
+  ],
+  "resources": [],
+  "source_health": {
+    "db_status": "ok",
+    "messages_loaded": true
+  },
+  "tool_catalog_fingerprint": "9e5f3dbb8dce098f095438cb71cab56ee09e96a77ec56c350337e7c7db88142b",
+  "ml_advice": {
+    "status": "not_requested",
+    "ml_candidates": [],
+    "model_revision": null
+  }
+}

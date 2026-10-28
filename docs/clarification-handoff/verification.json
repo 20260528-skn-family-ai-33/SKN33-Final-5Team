@@ -1,0 +1,39 @@
+{
+  "status": "passed",
+  "frontend_producer_cases": 3,
+  "published_example_pairs": 9,
+  "checks": [
+    {
+      "fixture": "native-csv",
+      "producer": "parseBuilderAsset",
+      "boundary_valid": true,
+      "input_issues": [],
+      "page_numbers_verified": false,
+      "real_pdf_parsing": false
+    },
+    {
+      "fixture": "native-txt",
+      "producer": "parseBuilderAsset",
+      "boundary_valid": true,
+      "input_issues": [],
+      "page_numbers_verified": false,
+      "real_pdf_parsing": false
+    },
+    {
+      "fixture": "normalizer-partial-pdf",
+      "producer": "normalizeBuilderDocument; synthetic worker packet, no PDF parsing",
+      "boundary_valid": true,
+      "input_issues": [
+        "자료 normalizer-pdf의 변환 상태를 확인해야 합니다.",
+        "자료 normalizer-pdf의 누락 범위를 확인해야 합니다."
+      ],
+      "page_numbers_verified": false,
+      "real_pdf_parsing": false
+    }
+  ],
+  "real_model_calls": 0,
+  "database_writes": false,
+  "service_endpoint_added": false,
+  "human_contract_agreement": "pending",
+  "scope": "메타데이터 규격 연결 검사. 실제 파서·DB·모델 E2E 검증이 아님."
+}

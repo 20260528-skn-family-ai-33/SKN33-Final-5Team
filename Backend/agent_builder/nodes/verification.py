@@ -66,6 +66,7 @@ def make_verification_node(storage, verifier=None, mode=None):
         setting = mode or os.getenv('A4B_VERIFIER_MODE', 'off')
         if setting not in ('off', 'shadow', 'enforce'):
             raise ValueError('A4B_VERIFIER_MODE는 off/shadow/enforce이어야 합니다.')
+        if state.get('verification_required') or state.get('verification_enforced'):setting='enforce'
         if setting == 'off':
             return {'verification_route': None, 'verification_enforced': False}
         messages = [dict(id=f'm{i}', role=m['role'], content=m['content'])
@@ -121,6 +122,7 @@ def make_verification_node(storage, verifier=None, mode=None):
             detail.append(output['summary'])
         update = dict(verification=result, verification_route=route,
                       verification_enforced=setting == 'enforce',
+                      verification_required=setting == 'enforce',
                       verification_last_candidate=deepcopy(draft),
                       verification_previous_draft=deepcopy(previous), verification_user_fingerprint=fingerprint,
                       trace=state.get('trace', []) + [dict(node='verification', label='Qwen 분류·검증',

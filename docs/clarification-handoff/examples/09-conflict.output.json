@@ -1,0 +1,161 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "conflict",
+  "session_id": "sample-session",
+  "revision": 0,
+  "condition_protocol": "condition-contracts-v8-dedup-scope",
+  "decision": "CLARIFY",
+  "next_action": "ASK_USER",
+  "reason": "자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. 선별할 기준 값은 얼마인가요?",
+  "confirmed_conditions": {
+    "filter.field": {
+      "key": "filter.field",
+      "status": "specified",
+      "value": "비용",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
+        }
+      ]
+    },
+    "filter.operator": {
+      "key": "filter.operator",
+      "status": "specified",
+      "value": "gte",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
+        }
+      ]
+    },
+    "missing.policy": {
+      "key": "missing.policy",
+      "status": "specified",
+      "value": "error",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
+        }
+      ],
+      "extraction": "literal_policy_rule"
+    },
+    "duplicate.policy": {
+      "key": "duplicate.policy",
+      "status": "specified",
+      "value": "keep",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
+        }
+      ],
+      "extraction": "literal_policy_rule"
+    },
+    "output.format": {
+      "key": "output.format",
+      "status": "specified",
+      "value": "json",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
+        }
+      ],
+      "extraction": "literal_policy_rule"
+    }
+  },
+  "unresolved_conditions": {
+    "filter.value": {
+      "key": "filter.value",
+      "status": "conflict",
+      "value": null,
+      "evidence_ids": [
+        "policy-1:p1:0",
+        "policy-2:p1:0"
+      ],
+      "evidence": [
+        {
+          "id": "policy-1:p1:0",
+          "source_id": "policy-1",
+          "version": "1",
+          "page": 1,
+          "offset": 0,
+          "quote": "비용 기준은 300000원 이상이다."
+        },
+        {
+          "id": "policy-2:p1:0",
+          "source_id": "policy-2",
+          "version": "1",
+          "page": 1,
+          "offset": 0,
+          "quote": "비용 기준은 500000원 이상이다."
+        }
+      ]
+    }
+  },
+  "unresolved_keys": [
+    "filter.value"
+  ],
+  "questions": [
+    {
+      "id": "0397f3408f521847125afe4c",
+      "key": "filter.value",
+      "text": "자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. 선별할 기준 값은 얼마인가요?",
+      "options": []
+    }
+  ],
+  "issues": [],
+  "unsupported_actions": [],
+  "resource_versions": {
+    "policy-1": "1",
+    "policy-2": "1"
+  },
+  "input_requirements": [
+    {
+      "kind": "table",
+      "timing": "execution",
+      "fields": [
+        "비용"
+      ],
+      "ready": false,
+      "description": "열 이름·처리 기준으로 먼저 설계하고, 실제 표 파일은 실행 전에 연결할 수 있습니다.",
+      "alternatives": [
+        "지금 자료 연결",
+        "열 이름·기준 직접 입력",
+        "실행 전에 파일 연결"
+      ]
+    }
+  ],
+  "generator_context": null,
+  "requires_user_approval": true,
+  "allows_save": false,
+  "allows_execution": false
+}

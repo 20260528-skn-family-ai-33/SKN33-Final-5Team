@@ -1,0 +1,252 @@
+[
+  {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "활동시간이 긴 기록만 골라 JSON으로 정리해줘. 빈 값은 제외하고 중복은 유지해."
+        }
+      ],
+      "resources": [
+        {
+          "id": "training_example",
+          "kind": "table",
+          "columns": [
+            "참가자",
+            "활동시간"
+          ]
+        }
+      ]
+    },
+    "output": {
+      "decision": "clarify",
+      "questions": [
+        "활동시간을 몇 분 이상 또는 초과한 기록으로 정할까요?"
+      ],
+      "unsupported_actions": [],
+      "reason": "도구는 지원하지만 긴 활동시간의 수치 기준과 경계 포함 여부가 정해지지 않았습니다."
+    },
+    "checks": [
+      {
+        "condition": "활동시간의 선별 수치·경계",
+        "status": "missing",
+        "evidence_quote": "활동시간이 긴 기록",
+        "question": "활동시간을 몇 분 이상 또는 초과한 기록으로 정할까요?"
+      },
+      {
+        "condition": "빈 값 처리",
+        "status": "specified",
+        "evidence_quote": "빈 값은 제외",
+        "question": null
+      },
+      {
+        "condition": "중복 처리",
+        "status": "specified",
+        "evidence_quote": "중복은 유지",
+        "question": null
+      }
+    ]
+  },
+  {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "활동시간이 긴 기록만 골라 JSON으로 정리해줘. 빈 값은 제외하고 중복은 유지해."
+        },
+        {
+          "role": "assistant",
+          "content": "몇 분 이상으로 정할까요?"
+        },
+        {
+          "role": "user",
+          "content": "활동시간 열은 분 단위이고 45분 이상으로 해줘."
+        }
+      ],
+      "resources": [
+        {
+          "id": "training_example",
+          "kind": "table",
+          "columns": [
+            "참가자",
+            "활동시간"
+          ]
+        }
+      ]
+    },
+    "output": {
+      "decision": "ready",
+      "questions": [],
+      "unsupported_actions": [],
+      "reason": "최신 답변이 미정 기준을 해결했습니다. 원래 빈 값 제외와 중복 유지 조건을 유지해 처리할 수 있습니다."
+    },
+    "checks": [
+      {
+        "condition": "활동시간의 선별 수치·경계",
+        "status": "specified",
+        "evidence_quote": "활동시간 열은 분 단위이고 45분 이상으로 해줘.",
+        "question": null
+      },
+      {
+        "condition": "빈 값 처리",
+        "status": "specified",
+        "evidence_quote": "빈 값은 제외",
+        "question": null
+      },
+      {
+        "condition": "중복 처리",
+        "status": "specified",
+        "evidence_quote": "중복은 유지",
+        "question": null
+      }
+    ]
+  },
+  {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "참가자별 또는 프로그램별 중 어떤 기준으로 모을지 정하지 않았어. 참석 횟수를 그룹별로 합산해줘. 빈 값은 제외하고 중복은 유지해."
+        }
+      ],
+      "resources": [
+        {
+          "id": "training_example",
+          "kind": "table",
+          "columns": [
+            "참가자",
+            "프로그램",
+            "참석횟수"
+          ]
+        }
+      ]
+    },
+    "output": {
+      "decision": "clarify",
+      "questions": [
+        "참가자별과 프로그램별 중 어느 기준으로 합산할까요?"
+      ],
+      "unsupported_actions": [],
+      "reason": "그룹 열만 미정입니다. 이미 지정한 빈 값·중복 정책은 다시 묻지 않습니다."
+    },
+    "checks": [
+      {
+        "condition": "집계 기준 열",
+        "status": "missing",
+        "evidence_quote": "참가자별 또는 프로그램별 중 어떤 기준으로 모을지 정하지 않았어.",
+        "question": "참가자별과 프로그램별 중 어느 기준으로 합산할까요?"
+      }
+    ]
+  },
+  {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "활동시간이 긴 기록을 골라줘. 결과를 Discord 채널에 실제 게시하는 것도 필수야."
+        }
+      ],
+      "resources": [
+        {
+          "id": "training_example",
+          "kind": "table",
+          "columns": [
+            "참가자",
+            "활동시간"
+          ]
+        }
+      ]
+    },
+    "output": {
+      "decision": "unsupported",
+      "questions": [],
+      "unsupported_actions": [
+        "Discord 채널에 실제 게시"
+      ],
+      "reason": "게시 도구가 없으므로 필수 미지원 동작이 우선입니다. 미정 수치 질문으로 지원 불가를 대신하지 않습니다."
+    },
+    "checks": []
+  },
+  {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "점수 열에서 70점 이상인 기록만 JSON으로 만들어줘. 빈 값은 제외하고 중복은 유지해. 외부 전송은 하지 마."
+        }
+      ],
+      "resources": [
+        {
+          "id": "training_score",
+          "kind": "table",
+          "columns": [
+            "이름",
+            "점수"
+          ]
+        }
+      ]
+    },
+    "output": {
+      "decision": "ready",
+      "questions": [],
+      "unsupported_actions": [],
+      "reason": "점수 기준과 빈 값·중복 정책이 명시됐고, 외부 전송은 요구한 동작이 아닙니다."
+    },
+    "checks": [
+      {
+        "condition": "점수 선별 수치·경계",
+        "status": "specified",
+        "evidence_quote": "70점 이상",
+        "question": null
+      },
+      {
+        "condition": "빈 값 처리",
+        "status": "specified",
+        "evidence_quote": "빈 값은 제외",
+        "question": null
+      },
+      {
+        "condition": "중복 처리",
+        "status": "specified",
+        "evidence_quote": "중복은 유지",
+        "question": null
+      }
+    ]
+  },
+  {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "성과가 높은 기록만 CSV로 골라줘. 성과 기준은 아직 정하지 않았어."
+        }
+      ],
+      "resources": [
+        {
+          "id": "training_effort",
+          "kind": "table",
+          "columns": [
+            "프로그램",
+            "성과"
+          ]
+        }
+      ]
+    },
+    "output": {
+      "decision": "clarify",
+      "questions": [
+        "성과를 얼마 이상 또는 초과한 기록으로 정할까요?"
+      ],
+      "unsupported_actions": [],
+      "reason": "성과를 선별할 수치·경계 기준이 미정입니다."
+    },
+    "checks": [
+      {
+        "condition": "성과 선별 수치·경계",
+        "status": "missing",
+        "evidence_quote": "성과가 높은 기록",
+        "question": "성과를 얼마 이상 또는 초과한 기록으로 정할까요?"
+      }
+    ]
+  }
+]

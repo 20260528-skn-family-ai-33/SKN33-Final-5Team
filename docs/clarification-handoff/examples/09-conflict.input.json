@@ -1,0 +1,46 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "conflict",
+  "session_id": "sample-session",
+  "revision": 0,
+  "messages": [
+    {
+      "role": "user",
+      "content": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
+    }
+  ],
+  "resources": [
+    {
+      "id": "policy-1",
+      "name": "규정1.txt",
+      "kind": "document",
+      "format": "txt",
+      "text": "비용 기준은 300000원 이상이다.",
+      "pages": [
+        "비용 기준은 300000원 이상이다."
+      ],
+      "version": 1
+    },
+    {
+      "id": "policy-2",
+      "name": "규정2.txt",
+      "kind": "document",
+      "format": "txt",
+      "text": "비용 기준은 500000원 이상이다.",
+      "pages": [
+        "비용 기준은 500000원 이상이다."
+      ],
+      "version": 1
+    }
+  ],
+  "source_health": {
+    "db_status": "ok",
+    "messages_loaded": true
+  },
+  "tool_catalog_fingerprint": "9e5f3dbb8dce098f095438cb71cab56ee09e96a77ec56c350337e7c7db88142b",
+  "ml_advice": {
+    "status": "not_requested",
+    "ml_candidates": [],
+    "model_revision": null
+  }
+}

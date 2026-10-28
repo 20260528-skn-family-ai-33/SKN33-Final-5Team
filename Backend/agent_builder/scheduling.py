@@ -11,7 +11,7 @@ def next_occurrence(spec,current=None):
     candidate=datetime.combine(date,time(spec['hour'],spec['minute']),zone)
     # Shift nonexistent DST wall time forward; choose first fold on an ambiguous day.
     candidate=candidate.astimezone(timezone.utc).astimezone(zone)
-    if candidate<=local:
+    if candidate.astimezone(timezone.utc)<=current.astimezone(timezone.utc):
         candidate=datetime.combine(date+timedelta(days=7 if spec['frequency']=='weekly' else 1),time(spec['hour'],spec['minute']),zone)
         candidate=candidate.astimezone(timezone.utc).astimezone(zone)
     return candidate.astimezone(timezone.utc).isoformat()

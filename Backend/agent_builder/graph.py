@@ -9,8 +9,13 @@ from .nodes.supervisor import supervisor_node
 from .nodes.await_input import await_input_node, await_approval_node
 from .nodes.save import make_save_node
 from .nodes.verification import make_verification_node
+from .nodes.condition_check import make_condition_check, audit_conditions
+from .condition_templates import template_node
+from .tool_gap import tool_gap_node
+from .nodes.capability_check import make_capability_check, await_capability_node
+from .capability_gate import generation_gate, require_ready
 
-def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None):
+def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None):
     connection=sqlite3.connect(storage.path,check_same_thread=False,timeout=10)
     saver=SqliteSaver(connection)
     graph=StateGraph(BuilderState)
@@ -18,16 +23,38 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         from .reusable_workflows import catalog
         return {**resources_node(state),'saved_workflows':catalog(storage,state.get('model',model),state.get('credential_id',''))}
     graph.add_node('resources',available_resources)
-    graph.add_node('conversation',conversation or make_conversation(api_key,model))
+    graph.add_node('capability_check',make_capability_check(model,capability_transport,capability_mode))
+    graph.add_node('await_capability',await_capability_node)
+    graph.add_node('generation_gate',generation_gate)
+    graph.add_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode))
+    planner=conversation or make_conversation(api_key,model)
+    def guarded_plan(state):
+        # A restored checkpoint can resume directly at this node, bypassing edges.
+        require_ready(state)
+        return planner(state)
+    def guarded_template(state):
+        require_ready(state)
+        return template_node(state)
+    graph.add_node('template_plan',guarded_template)
+    graph.add_node('conversation',guarded_plan)
+    graph.add_node('condition_audit',audit_conditions)
     graph.add_node('validate',validate_node)
     graph.add_node('verification',make_verification_node(storage,verifier,verifier_mode))
     graph.add_node('supervisor',supervisor_node)
     graph.add_node('await_input',await_input_node)
     graph.add_node('await_approval',await_approval_node)
     graph.add_node('save',make_save_node(storage))
-    graph.add_edge(START,'resources');graph.add_edge('resources','conversation');graph.add_edge('conversation','validate');graph.add_edge('validate','verification');graph.add_edge('verification','supervisor')
-    graph.add_conditional_edges('supervisor',lambda s:s['route'],{'unsupported':END,'invalid':END,'repair':'conversation','await_input':'await_input','await_approval':'await_approval','save':'save'})
-    graph.add_edge('await_input','conversation')
-    graph.add_conditional_edges('await_approval',lambda s:'save' if s['confirmed'] else 'conversation',{'save':'save','conversation':'conversation'})
+    graph.add_node('tool_gap',tool_gap_node)
+    graph.add_edge(START,'resources');graph.add_edge('resources','capability_check')
+    graph.add_conditional_edges('capability_check',lambda s:s['capability_route'],{'conditions':'condition_check','supervisor':'supervisor','stop':END,'await_capability':'await_capability'})
+    graph.add_edge('await_capability','capability_check')
+    graph.add_conditional_edges('generation_gate',lambda s:s['capability_generation_route'],{'generate':'conversation','recheck':'capability_check'})
+    graph.add_conditional_edges('condition_check',lambda s:s['condition_route'],{'conversation':'generation_gate','template_plan':'template_plan','supervisor':'supervisor','stop':END})
+    graph.add_conditional_edges('template_plan',lambda s:s['condition_route'],{'audit':'condition_audit','stop':END})
+    graph.add_edge('conversation','condition_audit');graph.add_edge('condition_audit','validate');graph.add_edge('validate','verification');graph.add_edge('verification','supervisor')
+    graph.add_conditional_edges('supervisor',lambda s:s['route'],{'unsupported':'tool_gap','invalid':END,'repair':'generation_gate','await_input':'await_input','await_approval':'await_approval','save':'save'})
+    graph.add_edge('tool_gap',END)
+    graph.add_edge('await_input','capability_check')
+    graph.add_conditional_edges('await_approval',lambda s:'save' if s['confirmed'] else 'capability_check',{'save':'save','capability_check':'capability_check'})
     graph.add_edge('save',END)
     return graph.compile(checkpointer=saver),connection

@@ -72,6 +72,8 @@ class Storage:
         if not row:raise ValueError('저장된 워크플로우 버전을 찾을 수 없습니다.')
         return json.loads(row[0])
     def save_agent(self,state):
+        from .capability_gate import require_save_ready
+        require_save_ready(state)
         from .scheduling import Schedules
         from .node_library import init,apply_refs,used_snapshots,persist_proposals
         init(self)

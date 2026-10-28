@@ -5,6 +5,7 @@ import {existsSync} from 'node:fs';
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {validateDocumentAnalysis} from './document-analysis-contract';
 const run=promisify(execFile);
 export interface BuilderParsedDocument {
  text:string;pages:string[];sections:unknown[];tables:unknown[];engine:string;parser_version:string;
@@ -15,7 +16,10 @@ export function normalizeBuilderDocument(data:unknown):BuilderParsedDocument {
  const value=data as Record<string,any>;
  if(value.error)throw new Error(typeof value.error==='string'?value.error:'문서 파싱에 실패했습니다.');
  // The DB proposal has canonical_text/blocks; it is not this worker's output.
- if(typeof value.text!=='string'||!value.text.trim()||value.text.length>1000000||
+ const routed=validateDocumentAnalysis(value.document_analysis);
+ if(value.document_analysis!==undefined&&(!routed||value.document_analysis.status!==value.parser_status))
+  throw new Error('문서 분석 결과와 파서 상태가 일치하지 않습니다.');
+ if(typeof value.text!=='string'||(!value.text.trim()&&!(routed&&value.document_analysis.blocks.some((b:any)=>b.content_types.includes('image'))))||value.text.length>1000000||
     !Array.isArray(value.pages)||!value.pages.length||value.pages.some((p:unknown)=>typeof p!=='string')||
     !Array.isArray(value.sections)||!Array.isArray(value.tables)||!Array.isArray(value.warnings)||
     value.warnings.some((w:unknown)=>typeof w!=='string')||!Number.isInteger(value.page_count)||value.page_count!==value.pages.length||

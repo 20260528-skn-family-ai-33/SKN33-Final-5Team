@@ -1,4 +1,5 @@
 """Immutable reusable node configurations; no generated code or credentials."""
+from .document_resources import supports
 import json, re
 from copy import deepcopy
 from typing import Literal
@@ -121,7 +122,7 @@ def run_agent_node(node,state,storage,config,llm):
     if reviews:inputs['reviews']=reviews
     docs=inputs.get('documents')
     if docs is None:
-        ids=[id for id in (state.get('file_ids') or config['document_ids']) if storage.asset(id)['kind']=='document']
+        ids=[id for id in (state.get('file_ids') or config['document_ids']) if supports(storage.asset(id),'document')]
         docs=document_chunks(storage,ids)
     context={'request':state['request'],'inputs':inputs,'documents':docs,'reference':spec['reference'],'workflow_instructions':config.get('instructions','')}
     if len(json.dumps(context,ensure_ascii=False))>45000:

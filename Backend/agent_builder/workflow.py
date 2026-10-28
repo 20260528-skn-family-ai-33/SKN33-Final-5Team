@@ -1,6 +1,7 @@
 """Validate and normalize workflow definitions without generating executable source."""
 import re
 from .registry import node_ports
+from .document_resources import supports
 
 def workflow_errors(workflow,tool_ids,resources,default_plan=None):
     nodes=workflow['nodes'];edges=workflow['edges'];by={n['id']:n for n in nodes};issues=[]
@@ -70,7 +71,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             lookup={r['id']:r for r in resources}
             if any(f not in lookup for f in settings['file_ids']):issues.append('연결되지 않은 파일 ID가 있습니다: '+id)
             expected='document' if tool=='read_document' else 'table'
-            if any(lookup[f]['kind']!=expected for f in settings['file_ids'] if f in lookup):issues.append('읽기 노드와 파일 종류가 맞지 않습니다: '+id)
+            if any(not supports(lookup[f],expected) for f in settings['file_ids'] if f in lookup):issues.append('읽기 노드와 파일 종류가 맞지 않습니다: '+id)
     if set(tool_ids)!={n['tool'] for n in nodes}:issues.append('연결 도구 목록과 실제 노드 구성이 다릅니다.')
     # A binding must be available on EVERY path reaching the node, not just an ancestor.
     dominators={}

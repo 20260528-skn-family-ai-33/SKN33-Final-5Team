@@ -22,5 +22,5 @@ def execute(node,state,storage,config,llm):
             fact = matches[0] if len(matches) == 1 else None
             source = lookup.get(fact['source_id']) if fact else None
             valid = bool(fact and fact['value'] is not None and source and fact['quote'] and (fact['quote'] in source['text']) and (fact['value'] in fact['quote']))
-            records.append({'file_name': parts[0]['file_name'], 'field': field, 'value': fact['value'] if valid else None, 'status': 'verified' if valid else 'not_found_or_unverified', 'evidence': {**{k: source[k] for k in ['source_id', 'file_id', 'file_name', 'page', 'offset']}, 'quote': fact['quote']} if valid else None})
+            records.append({'file_name': parts[0]['file_name'], 'field': field, 'value': fact['value'] if valid else None, 'status': 'verified' if valid else 'not_found_or_unverified', 'evidence': {**{k: source[k] for k in ['source_id', 'file_id', 'file_name', 'page', 'offset', 'block_id', 'native_location', 'bbox', 'parser_engine', 'review_required'] if k in source}, 'quote': fact['quote']} if valid else None})
     return {'records': records}

@@ -23,3 +23,9 @@ export function doclingPython():string|undefined {
  if(process.env.EASYFLOW_DOCLING_PYTHON)return resolve(PROJECT_ROOT,process.env.EASYFLOW_DOCLING_PYTHON);
  return [backendPath('.venv-docling',pythonExecutable),resolve(PROJECT_ROOT,'.venv-docling',pythonExecutable),resolve(PROJECT_ROOT,'..','.venv-docling',pythonExecutable)].find(existsSync);
 }
+
+export function documentPython():string {
+ if(process.env.A4B_DOCUMENT_PYTHON)return resolve(PROJECT_ROOT,process.env.A4B_DOCUMENT_PYTHON);
+ return [backendPath('.venv-document-analysis',pythonExecutable),agentPython(),doclingPython()].find((p):p is string=>!!p&&existsSync(p))||
+  (process.platform==='win32'?'python':'python3');
+}

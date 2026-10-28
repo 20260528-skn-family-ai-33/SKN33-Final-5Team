@@ -1,16 +1,34 @@
-import json, sqlite3, uuid
+import json, sqlite3, time, uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from .registry import TOOLS
 
 def now(): return datetime.now(timezone.utc).isoformat()
 def uid(): return str(uuid.uuid4())
+
+def enable_wal(connection, timeout=10):
+    # SQLite can return BUSY immediately while concurrent first connections
+    # switch journal mode, even when connect(timeout=...) has a busy timeout.
+    deadline=time.monotonic()+timeout
+    while True:
+        try:
+            connection.execute('PRAGMA journal_mode=WAL')
+            return
+        except sqlite3.OperationalError as error:
+            code=getattr(error,'sqlite_errorcode',0)&0xff
+            if code not in (sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED) or time.monotonic()>=deadline:
+                raise
+            time.sleep(min(.05,max(0,deadline-time.monotonic())))
+
 class Storage:
     def __init__(self,directory):
         Path(directory).mkdir(parents=True,exist_ok=True)
         self.path=str(Path(directory)/'agent-builder.sqlite')
         self.db=sqlite3.connect(self.path,timeout=10,check_same_thread=False)
-        self.db.execute('PRAGMA journal_mode=WAL')
+        try:enable_wal(self.db)
+        except Exception:
+            self.db.close()
+            raise
         self.db.execute('PRAGMA foreign_keys=ON')
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS registered_tools(id TEXT NOT NULL,version INTEGER NOT NULL,module_path TEXT NOT NULL,schema_json TEXT NOT NULL,PRIMARY KEY(id,version));

@@ -18,6 +18,8 @@ PaddleOCR 3.x 환경을 `A4B_PADDLE_PYTHON`에 설정하고, `A4B_PADDLE_MODEL_D
 
 레이아웃 모델 경로만 별도로 지정하려면 `A4B_LAYOUT_MODEL_DIR`를 사용한다. Paddle 장치는 기본 CPU이다. HWP/HWPX에는 `rhwp export-pdf INPUT -o OUTPUT`, 구형 Office에는 LibreOffice `--headless --convert-to`를 사용한다. `A4B_RHWP`와 `A4B_LIBREOFFICE`로 실행 파일을 지정할 수 있다. 모델·변환 도구 설치는 이 코드가 자동 수행하지 않는다.
 
+현재 로컬 기본 `.env`에는 MinerU 4.0.12와 PaddleOCR 3.7.0의 기존 Python 환경을 연결했다. 모델은 `data/document-runtime/mineru`와 `data/document-runtime/paddlex/official_models`에 실파일로 복사했다. Python 실행 파일은 기존 BMT 가상환경을 재사용하므로 그 환경을 이동·삭제할 때 설정도 갱신해야 한다. `PADDLE_PDX_CACHE_HOME`·`HF_HOME`도 프로젝트의 쓰기 가능한 캐시 폴더를 사용한다. `node scripts/run-configured.mjs`는 루트 `.env`를 읽는다.
+
 직접 실행 예:
 
 ```sh
@@ -82,3 +84,5 @@ npm run build
 분기 단위 테스트는 신경망 엔진을 테스트 더블로 대체하고 실제 PDF·Office·이미지 파일로 원본 보존·계약·좌표·실패 상태를 검사한다. 이를 OCR 성능 BMT라고 부르지 않는다. 실제 엔진 스모크 테스트와 한국어 혼합 문서 BMT는 별도이며, 엔진·모델 버전과 초기화·처리 조건을 기록해야 한다. `A4B_DOCUMENT_ROUTING=0`으로 기존 업로드·Docling 문서 경로를 선택할 수 있다.
 
 2026-10-28 로컬 실행 환경 준비 및 실제 HWP/HWPX·구형 Office 9개 파일, 서비스 업로드 함수, 스캔 OCR의 결과와 한계는 [실행 환경 검증 기록](validation/document-runtime-20261028.md)에 정리했다. 재실행 도구는 `Backend/scripts/verify_document_runtime.py`이며 정답은 모델 실행이 끝난 뒤 평가에만 사용한다. 엔진 실행 성공 수와 필드·표 구조 보존 결과를 따로 기록한다.
+
+기본 `.env`를 사용하는 실제 HTTP 업로드·원본 다운로드·서비스 재시작 검증은 `Frontend/scripts/verify-document-upload.ts`로 실행한다. 이 도구는 모델을 대체하지 않으며 새 시험 DB·결과 폴더를 만들고 종료 시 시험 서버를 닫는다. PDF·문자 이미지·한글 표 이미지 결과는 [서비스 업로드 검증 기록](validation/document-service-upload-20261028.md)에 정리했다.

@@ -24,6 +24,7 @@ def public_state(storage,s,graph):
     issue=blocking_issue(state) if state.get('status')=='ready' else None
     return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':[storage.asset(id) for id in s['file_ids']],
             'condition_ledger':state.get('condition_ledger'),'pending_questions':state.get('pending_questions',[]),
+            'gap_condition_review':state.get('gap_condition_review'),
             'input_requirements':design_requirements(state) if state.get('condition_enforced') else [],
             'tool_gap':(export_gap(state,s) if describe_gap(state,s['id']) else None),
             'tool_gap_choice':present_choice(state,s), 'redesign_context':redesign_context(state,s),

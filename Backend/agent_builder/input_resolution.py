@@ -14,7 +14,7 @@ def answer_kind(content):
         return 'unknown'
     if text in {'나중에결정', '나중에결정할게', '나중에할게', '보류', '보류할게', '일단보류'}:
         return 'defer'
-    if text in {'자료연결후기준입력', '기준을직접입력'}:
+    if text in {'자료연결후기준입력', '연결자료에서기준확인후입력', '기준을직접입력'}:
         return 'guidance'
     return 'answer'
 
@@ -59,3 +59,10 @@ def resolution_question(key, resolution, base):
 
 
 RESOLUTION_OPTIONS = ['자료 연결 후 기준 입력', '기준을 직접 입력', '나중에 결정']
+
+
+def resolution_options(state):
+    options = list(RESOLUTION_OPTIONS)
+    if state.get('resources'):
+        options[0] = '연결 자료에서 기준 확인 후 입력'
+    return options

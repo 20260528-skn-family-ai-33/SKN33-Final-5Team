@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from .registry import TOOLS
-from .input_resolution import latest_resolution, resolution_question, RESOLUTION_OPTIONS
+from .input_resolution import latest_resolution, resolution_question, resolution_options
 
 
 class ConditionContractError(ValueError):
@@ -24,6 +24,8 @@ class ConditionContractError(ValueError):
         self.attempts = attempts
         self.model_calls = len(attempts)
 
+# The handoff envelope is unchanged. Revalidate legacy values below rather than
+# breaking published input/output contracts for a semantic-validation repair.
 PROTOCOL = 'condition-contracts-v8-dedup-scope'
 QUESTIONS = {
     'filter.field': '어느 열을 기준으로 선별할까요?',
@@ -38,6 +40,7 @@ QUESTIONS = {
     'schedule.weekday': '매주 무슨 요일에 실행할까요?',
     'missing.policy': '빈 값은 유지·제외·오류 중 어떻게 처리할까요?',
     'output.format': '결과 파일은 CSV 또는 JSON 중 무엇으로 저장할까요?',
+    'sort.policy': '입력 순서를 유지할까요, 정렬할까요?',
 }
 ENUMS = {
     'filter.operator': {'gt', 'gte', 'lt', 'lte', 'eq', 'ne', 'contains'},
@@ -45,6 +48,7 @@ ENUMS = {
     'missing.policy': {'exclude', 'keep', 'error'},
     'schedule.frequency': {'daily', 'weekly'},
     'output.format': {'csv', 'json'},
+    'sort.policy': {'none'},
 }
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
@@ -88,6 +92,9 @@ output.format=csv/json. 관련 없는 항목은 만들지 않습니다.
 각 조건은 specified(확정), missing(미정), conflict(충돌) 중 하나입니다.
 specified만 value를 넣고 근거 evidence_ids를 실제 이번 요청 목록에서 선택합니다.
 미정/충돌은 value=null입니다. 큰 금액을 0원으로, 중복 제거를 첫 행으로 임의 확정하지 않습니다.
+초과=gt, 이상=gte, 미만=lt, 이하=lte를 구분합니다. 큰 것/높은 것만으로 비교 방식을 확정하지 않습니다.
+파일로 저장하라는 요청만으로 CSV/JSON을 정하지 않습니다. 형식 미정은 output.format missing입니다.
+빈 비용/빈 금액 등 특정 열의 빈 값 처리도 missing.policy에 기록합니다. 정렬 금지는 sort.policy=none입니다.
 사용자가 명시한 조건, 문서 근거와 이전 확정 조건을 사용하고 이미 해결한 내용은 재질문하지 않습니다.
 최신 답변은 pending_questions와 연결하여 해당 조건만 갱신합니다. 기존 부가 조건도 보존합니다.
 질문에 대한 '모르겠어'·'미정'·'나중에 결정'은 확정값이 아닙니다. 기존 조건을 보존하고 해당 조건은 missing으로 남깁니다.
@@ -244,7 +251,7 @@ def prepare_conditions(state):
     demos=[{'input':d['input'],'output':{'operation':d['output']['operations'][0],
              'conditions':d['output']['conditions'],'unsupported_actions':d['output']['unsupported_actions']}} for d in DEMOS]
     instruction=SYSTEM.replace('operations, conditions','operation, conditions')
-    instruction+='\noperation은 실제 요청한 주 업무 하나입니다. 여러 업무를 함께 요청했으면 mixed, 이 범위 밖이면 other입니다. 다른 업무의 미정 항목을 추가하지 않습니다. 중복 유지는 filter의 부가 정책이지 deduplicate 요청이 아닙니다.'
+    instruction+='\noperation은 실제 요청한 주 업무 하나입니다. 한 filter_sort로 수행하는 상수 선별과 중복 정책은 filter로 두고 duplicate.field/policy도 빠짐없이 적습니다. 그 외 여러 업무를 함께 요청했으면 mixed, 이 범위 밖이면 other입니다. 다른 업무의 미정 항목을 추가하지 않습니다. 중복 유지는 filter의 부가 정책이지 deduplicate 요청이 아닙니다.'
     instruction+='\nlatest_user_update의 실제 변경 값을 이전 장부보다 우선 확인합니다. 새로 명시한 금액을 null로 비우거나 이전 값으로 되돌리지 않습니다. 바꾸지 않은 다른 조건은 보존합니다.'
     return [{'role': 'system', 'content': instruction + '\n다음은 지원 명세이며 실제 요청이 아닙니다.\n' + json.dumps(reference, ensure_ascii=False) + '\n다음 예시는 각각 독립된 형식 예시입니다. 예시 ID·조건을 실제 입력에 복사하지 않습니다.\n' + json.dumps(demos, ensure_ascii=False)},
             {'role': 'user', 'content': json.dumps({'target_case': context}, ensure_ascii=False)}], schema, catalog
@@ -296,12 +303,18 @@ def explicit_policies(state, catalog):
     """
     result = {}
     patterns = [
-        ('missing.policy', r'(?:빈\s*값|결측(?:치|값)?)\s*(?:은|는|을|:)?\s*(오류|에러|제외|유지)',
+        ('missing.policy', r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?)\s*(?:은|는|을|:)?\s*(오류|에러|제외|유지)',
          {'오류': 'error', '에러': 'error', '제외': 'exclude', '유지': 'keep'}),
         ('duplicate.policy', r'중복(?:\s*행)?\s*(?:은|는|을|:)?\s*(유지|오류|에러)',
          {'유지': 'keep', '오류': 'error', '에러': 'error'}),
         ('output.format', r'(CSV|JSON)\s*(?:파일|산출물)?\s*(?:으로|로|저장|생성|만들)',
          {'CSV': 'csv', 'JSON': 'json'}),
+        ('duplicate.policy', r'중복[^.!?\n]{0,40}?(첫|마지막)\s*행(?:만|을)?\s*(?:남|유지)',
+         {'첫': 'first', '마지막': 'last'}),
+        ('sort.policy', r'정렬\s*(?:은|을)?\s*(하지\s*말|하지\s*않|안\s*해|없이)',
+         {'하지 말': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
+        ('filter.operator', r'\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개)?\s*(초과|이상|미만|이하)',
+         {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}),
     ]
     for turn, message in enumerate(state.get('messages', [])):
         if message['role'] != 'user': continue
@@ -310,7 +323,8 @@ def explicit_policies(state, catalog):
             for match in re.finditer(pattern, message['content'], re.IGNORECASE):
                 tail = message['content'][match.end():match.end() + 16]
                 negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
-                value = None if negated else mapping.get(match.group(1), mapping.get(match.group(1).upper()))
+                token = re.sub(r'\s+', ' ', match.group(1))
+                value = None if negated else mapping.get(token, mapping.get(token.upper()))
                 refs = [e for e in catalog if e.get('turn') == turn and match.group(0) in e['quote']]
                 if not refs: continue
                 old = per_turn.get(key)
@@ -319,7 +333,61 @@ def explicit_policies(state, catalog):
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
         result.update(per_turn)
+    # An explicit correction to the one recorded conflicting duplicate policy
+    # can be short ("마지막 행으로 해줘"). Do not interpret unrelated replies or
+    # an answer mentioning both choices as a resolution.
+    previous=(state.get('condition_ledger') or {}).get('slots',{})
+    if previous.get('duplicate.policy',{}).get('status')=='conflict':
+        last=next(((i,m) for i,m in reversed(list(enumerate(state.get('messages',[])))) if m.get('role')=='user'),None)
+        accepted=(state.get('condition_ledger') or {}).get('validated_user_turn',-1)
+        if last and last[0]>accepted:
+            choices=re.findall(r'(첫|마지막)\s*행',last[1]['content'])
+            refs=[e for e in catalog if e.get('turn')==last[0] and e.get('source_id')=='user']
+            if len(set(choices))==1 and refs and not re.search(r'아니|않|말고|제외|미정|모르',last[1]['content']):
+                result['duplicate.policy']={'key':'duplicate.policy','status':'specified',
+                    'value':'first' if choices[0]=='첫' else 'last','evidence_ids':[refs[0]['id']],
+                    'evidence':[refs[0]],'extraction':'conflict_answer_rule'}
+    old=previous.get('duplicate.policy',{})
+    if old.get('extraction')=='conflict_answer_rule' and old.get('status')=='specified':
+        refs=old.get('evidence',[])
+        latest_user=max((i for i,m in enumerate(state.get('messages',[])) if m.get('role')=='user'),default=-1)
+        if refs and refs[-1].get('turn')==latest_user:
+            result['duplicate.policy']=deepcopy(old)
     return result
+
+
+def literal_condition_issues(state):
+    """Reject persisted ready decisions that contradict explicit user text."""
+    ledger=state.get('condition_ledger') or {}
+    if not (state.get('condition_required') or state.get('condition_enforced')) or ledger.get('decision')!='ready':
+        return []
+    catalog,_=source_catalog(state)
+    literals=explicit_policies(state,catalog)
+    issues=[]
+    for key,item in literals.items():
+        stored=(ledger.get('slots') or {}).get(key)
+        if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
+            issues.append(f'{key}: 저장된 조건이 사용자 원문과 달라 재판정이 필요합니다.')
+    return issues
+
+
+def _grounded_enum(key, value, quote):
+    """Check narrow literal meanings, not just the existence of an evidence ID.
+
+    Unknown paraphrases remain unresolved. The model may ask rather than turn
+    a guessed default into a user-confirmed condition.
+    """
+    if key == 'output.format':
+        return bool(re.search(r'(?<![A-Za-z])' + re.escape(value) + r'(?![A-Za-z])', quote, re.I))
+    if key == 'missing.policy':
+        policy={'exclude':r'제외|빼|삭제','keep':r'유지|포함|그대로','error':r'오류|에러|중단'}[value]
+        return bool(re.search(r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?).{0,20}(?:'+policy+r')',quote))
+    if key == 'filter.operator':
+        aliases = {'gt': r'초과|보다\s*큰', 'gte': r'이상', 'lt': r'미만|보다\s*작은',
+                   'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
+                   'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
+        return bool(re.search(aliases[value], quote))
+    return True
 
 
 def validate_conditions(raw, state, catalog):
@@ -327,12 +395,22 @@ def validate_conditions(raw, state, catalog):
     if 'operation' in raw:
         single=SingleWorkProposal.model_validate(raw).model_dump()
         scope_review=single['operation'] in ('mixed','other')
+        keys={c['key'] for c in single['conditions']}
+        # Only recognise this supported combination when both components are
+        # actually present; other mixed scopes remain a manual review.
+        if single['operation']=='mixed' and 'filter.field' in keys and 'duplicate.field' in keys:
+            scope_review=False
+            single['operation']='filter'
         raw={'operations':[] if scope_review else [single['operation']],
              'conditions':single['conditions'],'unsupported_actions':single['unsupported_actions']}
     proposal = Proposal.model_validate(raw).model_dump()
     by_id = {e['id']: e for e in catalog}
     slots, invalid = {}, []
-    previous = state.get('condition_ledger') or {}
+    previous = deepcopy(state.get('condition_ledger') or {})
+    for key, old in previous.get('slots', {}).items():
+        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
+            old.update(status='missing', value=None, evidence_ids=[], evidence=[])
+            invalid.append(f'{key}: 이전 확정 값의 원문 근거를 재검증')
     latest = max((i for i, m in enumerate(state.get('messages', [])) if m['role'] == 'user'), default=-1)
     accepted_turn = previous.get('validated_user_turn', latest - 1)
     for condition in proposal['conditions']:
@@ -349,6 +427,8 @@ def validate_conditions(raw, state, catalog):
             try:
                 value = _value(key, condition['value'])
                 quote = '\n'.join(e['quote'] for e in evidence)
+                if not _grounded_enum(key, value, quote):
+                    raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
                 if key.endswith('.field') and value not in quote:
                     raise ValueError('원문에 없는 열 이름입니다.')
                 if key == 'filter.value' and isinstance(value, float) and Decimal(str(value)) not in _amounts(quote):
@@ -373,7 +453,10 @@ def validate_conditions(raw, state, catalog):
             raise ValueError('미정·충돌 조건을 임의 값으로 확정할 수 없습니다.')
         old = previous.get('slots', {}).get(key)
         if old and old['status'] == 'specified':
-            if item['status'] == 'missing' and not any(e.get('turn', -1) > accepted_turn for e in evidence):
+            latest_text=state.get('messages',[])[latest]['content'] if latest>=0 else ''
+            unrelated_value_correction=(key=='filter.value' and item['status']=='conflict'
+                and not re.search(r'\d|금액|비용|매출|가격|기준|선별|조건|초과|이상|미만|이하',latest_text))
+            if (item['status'] == 'missing' or unrelated_value_correction) and not any(e.get('turn', -1) > accepted_turn for e in evidence):
                 item = deepcopy(old)
             elif item['status'] == 'specified' and item['value'] != old['value'] and not any(e.get('turn', -1) > accepted_turn for e in evidence):
                 item.update(status='conflict', value=None)
@@ -381,16 +464,41 @@ def validate_conditions(raw, state, catalog):
     for key, old in previous.get('slots', {}).items():
         if key not in slots:
             slots[key] = deepcopy(old)
-    for key, item in explicit_policies(state,catalog).items():
+    literals = explicit_policies(state,catalog)
+    for key, item in literals.items():
         if key not in slots or slots[key]['status']!=item['status'] or slots[key]['value']!=item['value']:
             invalid.append(f'{key}: 사용자의 명시적 정책 구절로 보존·대조')
         slots[key]=item
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
+    # A follow-up may focus on deduplication and omit the earlier filter from
+    # the model's single-operation label. Preserve it whenever its three
+    # individually grounded slots still exist; do not synthesize missing values.
+    if all(key in slots for key in REQUIRED['filter']) and 'filter' not in operations:
+        operations.insert(0,'filter')
+    # An explicit deduplication policy must not disappear when a model labels
+    # the combined request as a filter. Ambiguous mixed scopes still stop below.
+    if 'duplicate.policy' in literals and slots['duplicate.policy'].get('value') in ('first', 'last'):
+        if 'deduplicate' not in operations:
+            operations.append('deduplicate')
+    if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
+        # Do not lose a requested filter simply because the model labelled the
+        # request as deduplication; ask for absent conditions rather than guess.
+        if 'filter' not in operations:operations.insert(0,'filter')
     required = list(dict.fromkeys(key for operation in operations for key in REQUIRED[operation]))
+    filter_field=slots.get('filter.field',{}).get('value')
+    if 'filter' in operations and filter_field and any(
+        r.get('kind')=='table' and (r.get('profile',{}).get(filter_field,{}) or {}).get('missing',0)>0
+        for r in state.get('resources',[])):
+        # A known empty value in the actual filter column needs a user or
+        # document-backed policy; model defaults are not user decisions.
+        required.append('missing.policy')
     if slots.get('schedule.frequency', {}).get('value') == 'weekly':
         required.append('schedule.weekday')
     for key in required:
         slots.setdefault(key, {'key': key, 'status': 'missing', 'value': None, 'evidence_ids': [], 'evidence': []})
+    if any(re.search(r'(?:파일|CSV|JSON).{0,16}(?:저장|만들|생성)|(?:CSV|JSON)(?:으로|로)', m['content'], re.I)
+           for m in state.get('messages', []) if m['role'] == 'user'):
+        slots.setdefault('output.format', {'key': 'output.format', 'status': 'missing', 'value': None, 'evidence_ids': [], 'evidence': []})
     resolution = latest_resolution(state)
     if resolution:
         for key in resolution['keys']:
@@ -417,7 +525,7 @@ def validate_conditions(raw, state, catalog):
             is_resolution = resolution and key in resolution['keys']
             questions.append({'id': hashlib.sha256((identity + key).encode()).hexdigest()[:24], 'key': key,
                               'text': resolution_question(key, resolution, text) if is_resolution else text,
-                              'options': RESOLUTION_OPTIONS if is_resolution and not resolution['deferred'] else []})
+                              'options': resolution_options(state) if is_resolution and not resolution['deferred'] else []})
     return {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
             'unresolved': unresolved, 'questions': questions, 'issues': issues,
             'resolution': resolution,
@@ -485,8 +593,12 @@ def plan_issues(ledger, draft):
         if any(plan.get('sort') for plan in plans):
             problems.append('단일 중복 제거 계약에 없는 정렬이 추가됐습니다. sort=[]로 입력 행 순서를 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
     if 'filter' in ledger['operations']:
-        expected = {'field': slots.get('filter.field'), 'operator': slots.get('filter.operator'), 'value': slots.get('filter.value')}
+        value=slots.get('filter.value')
+        expected = {'field': slots.get('filter.field'), 'operator': slots.get('filter.operator'), 'value': value,
+                    'value_type':'boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'text'}
         filters = [condition for plan in plans for condition in plan.get('filters', [])]
+        if len(filters) != 1:
+            problems.append('단일 선별 계약에 없는 추가 선별 조건이 있거나 조건이 누락됐습니다.')
         if not any(all(condition.get(k) == v for k, v in expected.items()) and not condition.get('compare_field') for condition in filters):
             problems.append('확정된 선별 열·비교·기준 값이 실행 설정과 다릅니다.')
     for key, field in [('duplicate.field', 'duplicate_field'), ('duplicate.policy', 'duplicate_policy'), ('missing.policy', 'missing_policy')]:
@@ -501,4 +613,6 @@ def plan_issues(ledger, draft):
         outputs = [n for n in nodes if n['tool'] in ('write_result', 'export_result')]
         if not outputs or any(n['settings'].get('format') != slots['output.format'] for n in outputs):
             problems.append('확정된 출력 형식이 결과 저장 설정과 다릅니다.')
+    if slots.get('sort.policy') == 'none' and any(plan.get('sort') for plan in plans):
+        problems.append('정렬하지 말라는 확정 조건과 실행 설정이 다릅니다.')
     return problems

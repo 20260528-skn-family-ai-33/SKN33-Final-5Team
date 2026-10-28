@@ -32,6 +32,7 @@ def present_choice(state, session):
                        'defer': 'deferred'}.get(choice, 'awaiting_choice'),
             'prompt': '현재 도구로는 요청한 기능을 처리하기 어려울 수 있습니다. 새 도구 제작과 검증에 시간이 더 걸릴 수 있습니다. 새 도구 제작을 진행할까요, 아니면 기존 도구로 워크플로우를 다시 설계할까요?',
             'missing_actions': gap['reported_missing_actions'],
+            'condition_review': gap.get('condition_review'),
             'options': [{'id': 'create_tool', 'label': '새 도구 제작'},
                         {'id': 'redesign_workflow', 'label': '워크플로우 재설계'},
                         {'id': 'defer', 'label': '나중에 결정'}],
@@ -96,5 +97,6 @@ def redesign_context(state, session):
     from copy import deepcopy
     return {'original_user_messages': deepcopy([m for m in state.get('messages', []) if m.get('role') == 'user']),
             'condition_ledger': deepcopy(state.get('condition_ledger')),
+            'condition_review': deepcopy(value.get('condition_review')),
             'draft': deepcopy(state.get('draft')), 'missing_actions': value['missing_actions'],
             'required_next_step': '기존 도구 대안과 변경점을 제시한 뒤 사용자 확인', 'requirement_changes_approved': False}

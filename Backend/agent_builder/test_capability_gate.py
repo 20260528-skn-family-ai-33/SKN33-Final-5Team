@@ -287,7 +287,7 @@ def test_condition_nonanswer_survives_capability_recheck_and_restart(tmp_path,re
                           condition_mode='enforce',condition_transport=cond,verifier_mode='off')
     current=graph.invoke(s,cfg);qid=current['pending_questions'][0]['id']
     current=graph.invoke(Command(resume={'type':'message','content':reply,'question_id':qid}),cfg)
-    assert cap.calls==2 and cond.calls==1 and not calls and not store.agents()
+    assert cap.calls==1 and cond.calls==1 and not calls and not store.agents()
     assert current['condition_ledger']['decision']==('deferred' if reply=='나중에 결정' else 'clarify')
     assert current['condition_ledger']['slots']['missing.policy']['value']=='error'
     later={**current,'messages':current['messages']+[{'role':'user','content':'100만원 초과로 해줘.'}]}

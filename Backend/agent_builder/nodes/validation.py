@@ -1,6 +1,6 @@
 import json
 from ..models import AgentDraft
-from ..registry import TOOLS
+
 from ..workflow import workflow_errors
 
 def validate_node(state):

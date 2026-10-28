@@ -94,3 +94,24 @@ def test_exclusion_policy_requires_a_processing_node():
     d=draft();d['tool_ids']=['read_table','write_result'];d['execution_plan']['missing_policy']='exclude'
     result=validate_node({**initial(),'draft':d})
     assert result['status']=='needs_clarification';assert any('조건 처리 도구' in s for s in result['issues'])
+
+
+def test_dst_fold_never_returns_an_instant_in_the_past():
+    spec={**SPEC,'timezone':'America/New_York','hour':1,'minute':30}
+    # 01:15 in the second fold; the first 01:30 occurrence already passed.
+    current=datetime(2026,11,1,6,15,tzinfo=timezone.utc)
+    result=next_occurrence(spec,current)
+    assert result=='2026-11-02T06:30:00+00:00'
+    assert datetime.fromisoformat(result)>current
+
+
+def test_weekly_monday_kst_example_and_offline_coalescing(tmp_path):
+    weekly={**SPEC,'frequency':'weekly','weekday':0}
+    assert next_occurrence(weekly,datetime(2026,10,27,0,tzinfo=timezone.utc))=='2026-11-02T00:00:00+00:00'
+    store,id=seed(tmp_path);s=Schedules(store);s.activate(id,True)
+    due=datetime.now(timezone.utc)-timedelta(days=20)
+    store.db.execute('UPDATE builder_schedules SET next_at=? WHERE agent_id=?',(due.isoformat(),id));store.db.commit()
+    jobs=s.claim_due();assert len(jobs)==1
+    assert jobs[0]['due_at']==due.isoformat()
+    assert datetime.fromisoformat(s.get(id)['next_run_at'])>datetime.now(timezone.utc)
+    assert not s.claim_due();store.close()

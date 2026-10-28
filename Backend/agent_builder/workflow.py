@@ -1,6 +1,6 @@
 """Validate and normalize workflow definitions without generating executable source."""
 import re
-from .registry import PORTS,node_ports
+from .registry import node_ports
 
 def workflow_errors(workflow,tool_ids,resources,default_plan=None):
     nodes=workflow['nodes'];edges=workflow['edges'];by={n['id']:n for n in nodes};issues=[]

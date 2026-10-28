@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-27",
+  "scope": "연결 규격 초안 및 오프라인 어댑터 검사",
+  "contract_tests_passed": 42,
+  "python_regression_passed": 454,
+  "python_regression_deselected": 1,
+  "excluded": "optional_svm_hints: joblib 미설치",
+  "frontend_typecheck": "passed",
+  "existing_document_normalizer_tests_passed": 2,
+  "frontend_producer_boundary_cases_passed": 3,
+  "example_input_output_pairs_validated": 9,
+  "real_model_calls": 0,
+  "database_writes": false,
+  "new_http_endpoint": false,
+  "service_default_changed": false,
+  "team_agreement": "pending",
+  "previous_live_qwen_end_to_end": "2/5; 이번에 재측정하지 않음"
+}

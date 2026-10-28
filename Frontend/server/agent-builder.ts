@@ -1,3 +1,4 @@
+import {parseToolGapChoiceRequest,parseRedesignDecisionRequest} from './tool-gap-contract';
 import {agentPython,backendPath,dataDirectory} from './paths';
 import {builderNeedsModel} from './builder-model-requirements';
 import {spawn} from 'node:child_process';
@@ -102,6 +103,29 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  }
  if(action==='catalog'&&method==='GET'){json(res,200,await builderWorker({action:'catalog'}));return true;}
  if(action==='agents'&&method==='GET'){json(res,200,await builderWorker({action:'agents'}));return true;}
+ if(action==='tool_gap_replan_decision'&&method==='POST'){
+  const data=parseRedesignDecisionRequest(await readBody(req,10000));
+  if(locks.has(data.id)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다.'});return true;}
+  locks.add(data.id);
+  try{res.setHeader('Cache-Control','no-store');json(res,200,await builderWorker({action:'tool_gap_replan_decide',id:data.id,
+   revision:data.revision,request_id:data.requestId,proposal_id:data.proposalId,decision:data.decision}));}
+  finally{locks.delete(data.id);}return true;
+ }
+ if(action==='tool_gap_choice'&&method==='POST'){
+  const data=parseToolGapChoiceRequest(await readBody(req,10000));
+  if(locks.has(data.id)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
+  locks.add(data.id);
+  try{res.setHeader('Cache-Control','no-store');json(res,200,await builderWorker({action:'tool_gap_choice',id:data.id,
+   revision:data.revision,request_id:data.requestId,gap_id:data.gapId,state_fingerprint:data.stateFingerprint,choice:data.choice}));}
+  finally{locks.delete(data.id);}
+  return true;
+ }
+ if(action==='tool_gap'&&method==='GET'){
+  const id=url.searchParams.get('id'),raw=url.searchParams.get('revision');
+  if(!id||!idPattern.test(id)||!raw||!/^\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new Error('대화 ID와 버전을 확인하세요.');
+  res.setHeader('Cache-Control','no-store');
+  json(res,200,await builderWorker({action:'tool_gap',id,revision:Number(raw)}));return true;
+ }
  const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,['upload','run_upload','source_upload'].includes(action)?12*1024*1024:100000);
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('요청 형식을 확인하세요.');
  const workerAction=action==='sessions'&&method==='POST'?'new_session':action;
@@ -122,6 +146,10 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(['upload','message','confirm'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
   if(['message','test','resume_run'].includes(workerAction)){
    if(typeof data.content!=='string'||!data.content.trim()||data.content.length>4000)throw new Error('설명은 1~4,000자로 입력하세요.');payload.content=data.content;
+  }
+  if(workerAction==='message'&&data.questionId!==undefined){
+   if(typeof data.questionId!=='string'||!/^[a-f0-9]{24}$/.test(data.questionId))throw new Error('확인 질문 ID를 확인하세요.');
+   payload.question_id=data.questionId;
   }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
    const current=await builderWorker({action:workerAction==='test'?'agent':['resume_run','retry_run'].includes(workerAction)?'run':'session',id:data.id});

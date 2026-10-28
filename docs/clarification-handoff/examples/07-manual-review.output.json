@@ -1,0 +1,22 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "scope",
+  "session_id": "sample-session",
+  "revision": 0,
+  "condition_protocol": "condition-contracts-v8-dedup-scope",
+  "decision": "MANUAL_REVIEW",
+  "next_action": "REVIEW_SCOPE",
+  "reason": "자동 확정 범위를 벗어나 검토가 필요합니다.",
+  "confirmed_conditions": {},
+  "unresolved_conditions": {},
+  "unresolved_keys": [],
+  "questions": [],
+  "issues": [],
+  "unsupported_actions": [],
+  "resource_versions": {},
+  "input_requirements": [],
+  "generator_context": null,
+  "requires_user_approval": true,
+  "allows_save": false,
+  "allows_execution": false
+}

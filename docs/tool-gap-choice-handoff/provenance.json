@@ -1,0 +1,8 @@
+{
+  "classification": "injected_fixture",
+  "user_selection": "scripted",
+  "model_calls": 0,
+  "human_reviewed": false,
+  "source": "actual Python worker + synthetic SQLite, job example from actual Node coordinator + fixture QuickJS run",
+  "scope": "응답 규격 예시, 모델 정확도와 사람 승인 근거 아님"
+}

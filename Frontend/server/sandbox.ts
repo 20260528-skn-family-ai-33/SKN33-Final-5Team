@@ -19,6 +19,7 @@ const workerSource=`
   const context=runtime.newContext();
   let output;
   try{
+   parentPort.postMessage({ready:true});
    const result=context.evalCode(workerData.script,'workflow-code.js');
    if(result.error){const error=context.dump(result.error);result.error.dispose();if(Date.now()>deadline)throw new Error('맞춤 계산이 2초를 넘어서 중단했어요. 반복문을 확인해주세요.');throw new Error(typeof error?.message==='string'?error.message:'코드를 실행할 수 없어요. 메모리 또는 문법을 확인해주세요.');}
    output=context.dump(result.value);result.value.dispose();
@@ -28,7 +29,9 @@ const workerSource=`
 `;
 
 /** QuickJS receives JSON only. No host filesystem, process, network or native functions. */
-export async function runCode(source:string,input:Json[],mode='runOnceForAllItems',context:CodeContext={}):Promise<Json[]> {
+export async function runCode(source:string,input:Json[],mode='runOnceForAllItems',context:CodeContext={},limits:{startupTimeoutMs?:number}={}):Promise<Json[]> {
+ const startupTimeoutMs=limits.startupTimeoutMs??2000;
+ if(!Number.isInteger(startupTimeoutMs)||startupTimeoutMs<2000||startupTimeoutMs>10000)throw new Error('실행 준비 제한 시간은 2~10초입니다.');
  if(typeof source!=='string'||source.length>200_000)throw new Error('코드는 200,000자 이내로 작성해주세요.');
  if(!['runOnceForAllItems','runOnceForEachItem'].includes(mode))throw new Error('맞춤 계산의 실행 방식을 확인해주세요.');
  assertBinaryItems(input);
@@ -140,8 +143,16 @@ export async function runCode(source:string,input:Json[],mode='runOnceForAllItem
   const worker=new Worker(workerSource,{eval:true,workerData:{modulePath:quickjsModule,script},env:{},execArgv:[],resourceLimits:{maxOldGenerationSizeMb:64}});trackWorker(worker);
   let settled=false;
   const finish=(error?:Error,value?:string)=>{if(settled)return;settled=true;clearTimeout(timer);void worker.terminate().catch(()=>{});if(error)reject(error);else {try{if(typeof value!=='string'||Buffer.byteLength(value,'utf8')>2_000_000)throw new Error('코드 실행 결과는 2MB 이내여야 해요.');const {output,pairings}=JSON.parse(value);assertBinaryItems(output);resolve(attachItemPairs(output,pairings));}catch(error){reject(error instanceof Error?error:new Error('코드 결과를 읽을 수 없어요. JSON 객체를 반환해주세요.'));}}};
-  const timer=setTimeout(()=>finish(new Error('맞춤 계산이 2초를 넘어서 중단했어요. 반복문을 확인해주세요.')),2000);
-  worker.on('message',message=>finish(message.error?new Error(message.error):undefined,message.value));
+  let ready=false;
+  let timer=setTimeout(()=>finish(new Error(startupTimeoutMs===2000?'맞춤 계산이 2초를 넘어서 중단했어요. 반복문을 확인해주세요.':'실행 환경 준비 시간이 초과됐습니다.')),startupTimeoutMs);
+  worker.on('message',message=>{
+   if(settled)return;
+   if(message.ready===true){
+    if(!ready&&startupTimeoutMs!==2000){clearTimeout(timer);timer=setTimeout(()=>finish(new Error('맞춤 계산이 2초를 넘어서 중단했어요. 반복문을 확인해주세요.')),2000);}
+    ready=true;return;
+   }
+   finish(message.error?new Error(message.error):undefined,message.value);
+  });
   worker.on('error',()=>finish(new Error('코드를 실행할 수 없어요. 메모리 또는 문법을 확인해주세요.')));
   worker.on('exit',()=>{if(!settled)finish(new Error('코드 실행이 중단됐어요. 메모리 또는 문법을 확인해주세요.'));});
  });

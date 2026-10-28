@@ -1,0 +1,26 @@
+{
+  "tool_gap_job": {
+    "protocol": "a4b.tool-gap-job.v1",
+    "id": "07a9d972-8530-427d-a19a-4b081a6384e2",
+    "session_id": "f01ad440-9f21-4208-8e23-5237f7cac91f",
+    "decision_id": "a9f44d44-7b86-4fdd-9c59-d4158a4bd122",
+    "gap_id": "gap_7754eed065b99c4d113a7e42",
+    "state_fingerprint": "7754eed065b99c4d113a7e42729c5b9f89541419a5972d6ab3b6ba33c2e9e122",
+    "revision": 4,
+    "input_sha256": "753673a378dc057d3f23f44c6cf1ae7633e16c8b6692a17d1d86e9ba6720b0e3",
+    "status": "passed_lab_tests",
+    "created_at": "2026-10-27T02:54:27.311261+00:00",
+    "result": {
+      "status": "passed_lab_tests",
+      "task_id": "phone_normalize",
+      "model_calls": 0,
+      "passed_cases": 4,
+      "total_cases": 4,
+      "response_seconds": 8.966688875000001
+    },
+    "workflow_execution_allowed": false,
+    "automatic_registration": false,
+    "finished_at": "2026-10-27T02:54:33.470300+00:00",
+    "current_state_revalidated": true
+  }
+}

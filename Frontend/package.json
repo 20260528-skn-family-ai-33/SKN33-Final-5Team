@@ -16,7 +16,10 @@
     "test": "node --import tsx --test --test-concurrency=4 --test-timeout=900000 server/*.test.ts",
     "pretest": "npm run build",
     "test:python": "node --env-file-if-exists=.env --import tsx scripts/test-python.ts",
-    "verify:review:live": "node --import tsx scripts/live-check-reply-review.ts"
+    "verify:review:live": "node --import tsx scripts/live-check-reply-review.ts",
+    "tool-lab": "node --import tsx server/tool-lab/cli.ts",
+    "tool-lab:demo": "node --import tsx server/tool-lab/cli.ts --demo",
+    "tool-lab:gap": "node --import tsx server/tool-lab/gap-cli.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -1,0 +1,37 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "partial",
+  "session_id": "sample-session",
+  "revision": 0,
+  "messages": [
+    {
+      "role": "user",
+      "content": "문서 기준으로 비용을 선별해줘."
+    }
+  ],
+  "resources": [
+    {
+      "id": "doc-1",
+      "name": "규정.pdf",
+      "kind": "document",
+      "format": "pdf",
+      "text": "일부 규정",
+      "pages": [
+        "일부 규정"
+      ],
+      "parser_status": "partial",
+      "processing_status": "ready",
+      "version": 1
+    }
+  ],
+  "source_health": {
+    "db_status": "ok",
+    "messages_loaded": true
+  },
+  "tool_catalog_fingerprint": "9e5f3dbb8dce098f095438cb71cab56ee09e96a77ec56c350337e7c7db88142b",
+  "ml_advice": {
+    "status": "not_requested",
+    "ml_candidates": [],
+    "model_revision": null
+  }
+}

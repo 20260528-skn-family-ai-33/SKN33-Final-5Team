@@ -1,5 +1,5 @@
 """JSON over stdin/stdout bridge. Secrets are supplied only in process memory."""
-import json,sys,re
+import json, sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from agent_builder.storage import Storage,uid,now
@@ -8,6 +8,10 @@ from agent_builder.runtime import test_agent,public_error
 from agent_builder.registry import TOOLS
 from agent_builder.scheduling import Schedules
 from agent_builder.workflow_runtime import run_workflow
+from agent_builder.input_requirements import design_requirements, execution_requirements, preflight_execution
+from agent_builder.tool_gap import describe_gap, export_gap
+from agent_builder.tool_gap_choice import present_choice, choose, redesign_context
+from agent_builder import tool_gap_jobs, tool_gap_redesign
 from langgraph.types import Command
 
 def public_state(storage,s,graph):
@@ -16,7 +20,19 @@ def public_state(storage,s,graph):
     if not state and s.get('agent_id'):
         base=storage.agent(s['agent_id']);old=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {})
         state={'draft':base['config'],'messages':old.get('messages',[]),'status':'editing'}
-    return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':state.get('status','empty'),'issues':state.get('issues',[]),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':[storage.asset(id) for id in s['file_ids']]}
+    from agent_builder.capability_gate import blocking_issue,capability_enforced
+    issue=blocking_issue(state) if state.get('status')=='ready' else None
+    return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':[storage.asset(id) for id in s['file_ids']],
+            'condition_ledger':state.get('condition_ledger'),'pending_questions':state.get('pending_questions',[]),
+            'input_requirements':design_requirements(state) if state.get('condition_enforced') else [],
+            'tool_gap':(export_gap(state,s) if describe_gap(state,s['id']) else None),
+            'tool_gap_choice':present_choice(state,s), 'redesign_context':redesign_context(state,s),
+            'tool_gap_job':tool_gap_jobs.current_job(storage,state,s),
+            'capability_assessment':state.get('capability_assessment'),
+            'capability_enforced':capability_enforced(state),
+            'capability_deferred':state.get('capability_deferred',False),
+            'redesign_proposal':tool_gap_redesign.view(state,s),
+            'redesign_generation':tool_gap_redesign.generation_handoff(state,s)}
 
 def handle(data,conversation=None):
     storage=Storage(data['directory']);action=data['action'];api_key=data.get('api_key','');connection=None
@@ -49,7 +65,9 @@ def handle(data,conversation=None):
         if action=='agents':return {'agents':storage.agents()}
         if action=='agent':
             agent=storage.agent(data['id']);schedules=Schedules(storage)
-            return {'agent':agent,'tests':storage.tests(data['id']),'resources':[storage.asset(id) for id in agent['config']['document_ids']],'schedule':schedules.get(data['id']),'source':schedules.source(data['id']),'jobs':schedules.jobs(data['id'])}
+            source=schedules.source(data['id'])
+            return {'agent':agent,'tests':storage.tests(data['id']),'resources':[storage.asset(id) for id in agent['config']['document_ids']],'schedule':schedules.get(data['id']),'source':source,'jobs':schedules.jobs(data['id']),
+                    'input_requirements':execution_requirements(agent['config'],storage,[source['asset_id']] if source else [],agent.get('workflow_dependencies'))}
         if action=='claim_due':return {'jobs':Schedules(storage).claim_due()}
         if action=='schedule':return {'schedule':Schedules(storage).activate(data['id'],data['active'])}
         if action=='schedule_test':return {'job':Schedules(storage).enqueue_test(data['id'])}
@@ -78,10 +96,32 @@ def handle(data,conversation=None):
             agent=storage.agent(data['id'])
             if agent['config'].get('workflow'):
                 source=Schedules(storage).source(data['id']);files=data.get('file_ids') or ([source['asset_id']] if source else [])
+                preflight_execution(agent['config'],storage,files,agent.get('workflow_dependencies'))
                 return run_workflow(storage,data['id'],data['content'],api_key,files,reply_draft=data.get('reply_draft'),forced_run_id=data.get('run_id'),execution_token=data.get('execution_token'),run_tags={'trigger':'manual','source_version':source['version'],'source_id':source['id']} if source and not data.get('file_ids') else {'trigger':'manual'})
             return test_agent(storage,data['id'],data['content'],api_key)
-        s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in ['session','upload'] else None)
+        s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in ['session','upload','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'] else None)
         if action=='session':return public_state(storage,s,graph)
+        if action in ('tool_gap_replan_propose','tool_gap_replan_decide'):
+            state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
+            s=(tool_gap_redesign.propose if action=='tool_gap_replan_propose' else tool_gap_redesign.decide)(storage,state,s,data)
+            return public_state(storage,s,graph)
+        if action=='tool_gap_job_recover':return tool_gap_jobs.recover(storage,s)
+        if action in ('tool_gap_job_claim','tool_gap_job_finish'):
+            state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
+            if action=='tool_gap_job_claim':
+                if type(data.get('revision')) is not int or data['revision']!=s['revision']:
+                    raise ValueError('대화 버전이 변경됐습니다. 제작 선택을 다시 확인하세요.')
+                return tool_gap_jobs.claim(storage,state,s,data.get('input_sha256'))
+            return {'job':tool_gap_jobs.finish(storage,state,s,data.get('job_id'),data.get('result'),data.get('lease_token'))}
+        if action=='tool_gap_choice':
+            state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
+            s=choose(storage,state,s,data)
+            return public_state(storage,s,graph)
+        if action=='tool_gap':
+            if isinstance(data.get('revision'),bool) or not isinstance(data.get('revision'),int) or s['revision']!=data['revision']:
+                raise ValueError('대화 버전이 변경됐습니다. 현재 미지원 요청을 다시 확인하세요.')
+            state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
+            return {'tool_gap':export_gap(state,s)}
         if action=='upload':
             if s['revision']!=data['revision']:raise ValueError('대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
             if len(s['file_ids'])>=10:raise ValueError('자료는 최대 10개 연결할 수 있습니다.')
@@ -96,6 +136,8 @@ def handle(data,conversation=None):
         before=graph.get_state(config);state=before.values or {};has_interrupt=any(task.interrupts for task in before.tasks)
         if action=='confirm':
             if state.get('status')=='saved':return public_state(storage,s,graph)
+            from agent_builder.capability_gate import require_ready
+            require_ready(state)
             if not has_interrupt or state.get('status')!='ready':raise ValueError('필수 조건과 근거 검증을 완료한 뒤 저장할 수 있습니다.')
             graph.invoke(Command(resume={'type':'confirm'}),config)
         else:
@@ -103,13 +145,18 @@ def handle(data,conversation=None):
             if not content or len(content)>4000:raise ValueError('업무 설명은 1~4,000자로 입력하세요.')
             if state.get('status')=='saved':raise ValueError('저장한 설정을 바꾸려면 설정 수정 대화를 시작하세요.')
             if has_interrupt:
+                if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:
+                    raise ValueError('현재 대화의 확인 질문에 답변해주세요.')
                 graph.update_state(config,{'repair_count':0})
-                graph.invoke(Command(resume={'type':'message','content':content}),config)
+                graph.invoke(Command(resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {})}),config)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.
-                if state.get('messages',[]) and state['messages'][-1]['content']==content:graph.invoke(None,config)
+                from agent_builder.capability_gate import blocking_issue
+                same=bool(state.get('messages',[]) and state['messages'][-1]['content']==content)
+                if same and not blocking_issue(state):graph.invoke(None,config)
                 else:
-                    graph.update_state(config,{'messages':state.get('messages',[])+[{'role':'user','content':content}]})
+                    graph.update_state(config,{'messages':state.get('messages',[]) if same else state.get('messages',[])+[{'role':'user','content':content}],
+                                               'confirmed':False},as_node='resources')
                     graph.invoke(None,config)
             else:
                 base=storage.agent(s['agent_id']) if s.get('agent_id') else None

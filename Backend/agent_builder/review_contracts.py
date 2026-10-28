@@ -1,5 +1,5 @@
 """Junghyun's public review contracts. Source texts are data, never instructions."""
-from typing import Any, Literal
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class ReviewRequest(BaseModel):

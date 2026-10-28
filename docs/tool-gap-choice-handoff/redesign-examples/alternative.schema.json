@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "Change": {
+      "additionalProperties": false,
+      "properties": {
+        "original_quote": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Original Quote",
+          "type": "string"
+        },
+        "proposed_change": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Proposed Change",
+          "type": "string"
+        }
+      },
+      "required": [
+        "original_quote",
+        "proposed_change"
+      ],
+      "title": "Change",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "proposed_request": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Proposed Request",
+      "type": "string"
+    },
+    "tool_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Tool Ids",
+      "type": "array"
+    },
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/Change"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Changes",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "summary",
+    "proposed_request",
+    "tool_ids",
+    "changes",
+    "limitations"
+  ],
+  "title": "Alternative",
+  "type": "object"
+}

@@ -1,0 +1,136 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "defer",
+  "session_id": "sample-session",
+  "revision": 1,
+  "condition_protocol": "condition-contracts-v8-dedup-scope",
+  "decision": "DEFERRED",
+  "next_action": "WAIT_FOR_USER",
+  "reason": "비교 방식: 미정 상태로 보류했습니다. 확인한 값이나 자료를 보내면 이어서 진행합니다. / 선별 기준값: 미정 상태로 보류했습니다. 확인한 값이나 자료를 보내면 이어서 진행합니다.",
+  "confirmed_conditions": {
+    "filter.field": {
+      "key": "filter.field",
+      "status": "specified",
+      "value": "비용",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
+        }
+      ]
+    },
+    "missing.policy": {
+      "key": "missing.policy",
+      "status": "specified",
+      "value": "error",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
+        }
+      ],
+      "extraction": "literal_policy_rule"
+    },
+    "duplicate.policy": {
+      "key": "duplicate.policy",
+      "status": "specified",
+      "value": "keep",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
+        }
+      ],
+      "extraction": "literal_policy_rule"
+    },
+    "output.format": {
+      "key": "output.format",
+      "status": "specified",
+      "value": "json",
+      "evidence_ids": [
+        "user:0:0"
+      ],
+      "evidence": [
+        {
+          "id": "user:0:0",
+          "source_id": "user",
+          "turn": 0,
+          "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
+        }
+      ],
+      "extraction": "literal_policy_rule"
+    }
+  },
+  "unresolved_conditions": {
+    "filter.operator": {
+      "key": "filter.operator",
+      "status": "missing",
+      "value": null,
+      "evidence_ids": [],
+      "evidence": []
+    },
+    "filter.value": {
+      "key": "filter.value",
+      "status": "missing",
+      "value": null,
+      "evidence_ids": [],
+      "evidence": []
+    }
+  },
+  "unresolved_keys": [
+    "filter.operator",
+    "filter.value"
+  ],
+  "questions": [
+    {
+      "id": "2bed008220cc1b2ac5e78631",
+      "key": "filter.operator",
+      "text": "비교 방식: 미정 상태로 보류했습니다. 확인한 값이나 자료를 보내면 이어서 진행합니다.",
+      "options": []
+    },
+    {
+      "id": "27ccd4b923ccf7d3c53475c2",
+      "key": "filter.value",
+      "text": "선별 기준값: 미정 상태로 보류했습니다. 확인한 값이나 자료를 보내면 이어서 진행합니다.",
+      "options": []
+    }
+  ],
+  "issues": [],
+  "unsupported_actions": [],
+  "resource_versions": {},
+  "input_requirements": [
+    {
+      "kind": "table",
+      "timing": "execution",
+      "fields": [
+        "비용"
+      ],
+      "ready": false,
+      "description": "열 이름·처리 기준으로 먼저 설계하고, 실제 표 파일은 실행 전에 연결할 수 있습니다.",
+      "alternatives": [
+        "지금 자료 연결",
+        "열 이름·기준 직접 입력",
+        "실행 전에 파일 연결"
+      ]
+    }
+  ],
+  "generator_context": null,
+  "requires_user_approval": true,
+  "allows_save": false,
+  "allows_execution": false
+}

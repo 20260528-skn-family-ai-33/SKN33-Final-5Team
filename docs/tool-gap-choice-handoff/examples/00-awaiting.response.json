@@ -1,0 +1,284 @@
+{
+  "id": "17551d56-5e09-4651-8dce-ed4672c33fdf",
+  "revision": 1,
+  "status": "unsupported",
+  "tool_gap_choice": {
+    "protocol": "a4b.tool-gap-choice.v1",
+    "gap_id": "gap_8df3d225df8299c5f4b270f9",
+    "revision": 1,
+    "state_fingerprint": "8df3d225df8299c5f4b270f9d528f548a52e30028eaceaaf68726e3239bde633",
+    "capability_status": "unverified",
+    "status": "awaiting_choice",
+    "prompt": "현재 도구로는 요청한 기능을 처리하기 어려울 수 있습니다. 새 도구 제작과 검증에 시간이 더 걸릴 수 있습니다. 새 도구 제작을 진행할까요, 아니면 기존 도구로 워크플로우를 다시 설계할까요?",
+    "missing_actions": [
+      "전화번호 정규화 기능이 필요합니다."
+    ],
+    "options": [
+      {
+        "id": "create_tool",
+        "label": "새 도구 제작"
+      },
+      {
+        "id": "redesign_workflow",
+        "label": "워크플로우 재설계"
+      },
+      {
+        "id": "defer",
+        "label": "나중에 결정"
+      }
+    ],
+    "selection": null,
+    "next_action": "wait_for_user",
+    "requirement_changes_approved": false,
+    "workflow_execution_allowed": false,
+    "automatic_registration": false
+  },
+  "tool_gap": {
+    "protocol": "a4b.tool-gap.v1",
+    "gap_id": "gap_8df3d225df8299c5f4b270f9",
+    "state_fingerprint": "8df3d225df8299c5f4b270f9d528f548a52e30028eaceaaf68726e3239bde633",
+    "session_id": "17551d56-5e09-4651-8dce-ed4672c33fdf",
+    "user_messages": [
+      {
+        "turn": 0,
+        "content": "전화번호 열의 공백과 하이픈을 제거하는 변환이 필요해."
+      }
+    ],
+    "reported_missing_actions": [
+      "전화번호 정규화 기능이 필요합니다."
+    ],
+    "resources": [],
+    "catalog_sha256": "00d05a4a874105567cb3a7acecadf85f736e942c9347fc01cf6bf7ed88958aa5",
+    "condition_ledger_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "catalog": [
+      {
+        "id": "read_table",
+        "version": 1,
+        "description": "연결한 CSV·Excel·JSON 파일의 실제 행을 읽습니다.",
+        "input_ports": {
+          "file_id": "file"
+        },
+        "output_ports": {
+          "table": "table"
+        }
+      },
+      {
+        "id": "filter_sort",
+        "version": 1,
+        "description": "여러 조건의 값·열 비교, 숫자·문자 정렬, 중복 및 결측 정책을 적용합니다.",
+        "input_ports": {
+          "table": "table"
+        },
+        "output_ports": {
+          "table": "table"
+        }
+      },
+      {
+        "id": "write_result",
+        "version": 1,
+        "description": "실제 처리 결과를 CSV 또는 JSON으로 만듭니다. 외부 전송은 하지 않습니다.",
+        "input_ports": {
+          "table": "table"
+        },
+        "output_ports": {
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "agent_node",
+        "version": 1,
+        "description": "저장한 역할의 node_ref 버전을 사용하거나 새 역할의 settings.instructions를 구성합니다. 실행 요청·연결 text/문서/표를 실제 조회해 text를 반환합니다. 검수 후 수정에는 reviews 1건을 명시적으로 연결하며 최신 수정문은 승인 후보로 보존됩니다.",
+        "input_ports": {
+          "text": "text",
+          "documents": "documents",
+          "table": "table",
+          "reviews": "reviews"
+        },
+        "output_ports": {
+          "text": "text"
+        }
+      },
+      {
+        "id": "aggregate_table",
+        "version": 1,
+        "description": "fields로 그룹별 집계합니다. aggregation=count는 건수, sum은 sum_field의 숫자 합계입니다. 빈 fields는 전체 집계. 출력 열은 fields와 count 또는 sum입니다. 합계 후 정렬·필터는 sum 열을 사용합니다. 빈값·비숫자 합계는 실패합니다.",
+        "input_ports": {
+          "table": "table"
+        },
+        "output_ports": {
+          "table": "table"
+        }
+      },
+      {
+        "id": "finish",
+        "version": 1,
+        "description": "설정한 완료·중단 안내를 표시하고 흐름을 끝냅니다.",
+        "input_ports": {
+          "text": "text",
+          "artifact": "artifact"
+        },
+        "output_ports": {
+          "text": "text",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "read_document",
+        "version": 1,
+        "description": "연결 문서 또는 이번 실행의 새 문서를 페이지·출처와 함께 읽습니다.",
+        "input_ports": {},
+        "output_ports": {
+          "documents": "documents"
+        }
+      },
+      {
+        "id": "search_document",
+        "version": 1,
+        "description": "질문과 일치하는 문서 구간을 단어 기반 검색합니다. 의미 검색은 아직 지원하지 않습니다.",
+        "input_ports": {
+          "documents": "documents"
+        },
+        "output_ports": {
+          "documents": "documents"
+        }
+      },
+      {
+        "id": "extract_information",
+        "version": 1,
+        "description": "설정한 항목을 추출하고 실제 원문 인용을 검증합니다. 없는 값은 누락으로 표시합니다.",
+        "input_ports": {
+          "documents": "documents"
+        },
+        "output_ports": {
+          "records": "records"
+        }
+      },
+      {
+        "id": "reply_review",
+        "version": 1,
+        "description": "고객 원문·정책·초안을 조회해 판정·문제 구절·수정안을 보고합니다. fields=[문의 열, 초안 열]은 표 검수이며 최대 10행입니다. reviews를 후속 분기·보고서 정리·수정 단계로 전달합니다. 승인·거절은 실행 결과에서 사람이 결정합니다. 단일 검수의 고객 문의·초안은 실행 화면 외부 입력이므로 bindings=[] 또는 documents만 연결합니다. 가짜 start/request binding은 금지합니다.",
+        "input_ports": {
+          "documents": "documents",
+          "text": "text",
+          "table": "table"
+        },
+        "output_ports": {
+          "reviews": "reviews"
+        }
+      },
+      {
+        "id": "compose_answer",
+        "version": 1,
+        "description": "검색된 원문만 바탕으로 답변 또는 요약을 작성합니다.",
+        "input_ports": {
+          "reviews": "reviews",
+          "documents": "documents",
+          "answer": "text"
+        },
+        "output_ports": {
+          "text": "text"
+        }
+      },
+      {
+        "id": "export_result",
+        "version": 1,
+        "description": "추출 표를 CSV/JSON, 답변을 Markdown 파일로 만듭니다.",
+        "input_ports": {
+          "records": "records",
+          "text": "text",
+          "documents": "documents",
+          "answer": "text"
+        },
+        "output_ports": {
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "condition",
+        "version": 1,
+        "description": "누락 항목 또는 빈 결과 여부에 따라 yes/no 경로를 선택합니다.",
+        "input_ports": {
+          "table": "table",
+          "reviews": "reviews",
+          "records": "records",
+          "text": "text",
+          "answer": "text",
+          "documents": "documents"
+        },
+        "output_ports": {
+          "table": "table",
+          "reviews": "reviews",
+          "records": "records",
+          "text": "text",
+          "answer": "text",
+          "documents": "documents",
+          "decision": "boolean"
+        }
+      },
+      {
+        "id": "ask_user",
+        "version": 1,
+        "description": "실행을 멈추고 확인 답변을 받아 동일한 실행을 이어갑니다.",
+        "input_ports": {
+          "records": "records",
+          "text": "text",
+          "documents": "documents"
+        },
+        "output_ports": {
+          "records": "records",
+          "text": "text",
+          "documents": "documents",
+          "answer": "text"
+        }
+      },
+      {
+        "id": "review_summary",
+        "version": 1,
+        "description": "검수 결과를 보고서 표로 정리합니다. 수정안은 승인 전 후보이며 최종 승인 응대가 아닙니다.",
+        "input_ports": {
+          "reviews": "reviews"
+        },
+        "output_ports": {
+          "table": "table"
+        }
+      },
+      {
+        "id": "saved_workflow",
+        "version": 1,
+        "description": "저장한 에이전트의 특정 버전을 노드로 재사용합니다. agent_id/agent_version/output_node/output_port를 지정합니다. 앞 단계 table/documents/text를 전달하고 선택한 출력 포트를 다음 단계로 연결합니다. 동일 모델·계정만 지원하며 재귀 호출은 금지됩니다.",
+        "input_ports": {
+          "table": "table",
+          "documents": "documents",
+          "records": "records",
+          "text": "text",
+          "reviews": "reviews",
+          "artifact": "artifact"
+        },
+        "output_ports": {
+          "table": "table",
+          "documents": "documents",
+          "records": "records",
+          "text": "text",
+          "reviews": "reviews",
+          "artifact": "artifact"
+        }
+      }
+    ],
+    "capability_status": "unverified",
+    "status": "needs_spec_review",
+    "required_review": [
+      "등록 도구 또는 조합으로 이미 가능한지 확인",
+      "입출력 열·자료형·경계·오류 처리 확정",
+      "순수 JSON 변환과 외부 권한 동작 구분",
+      "독립된 공개·숨긴 정답 사례 준비"
+    ],
+    "lab_scope": "pure_json_transform",
+    "automatic_generation": false,
+    "automatic_registration": false,
+    "workflow_execution_allowed": false,
+    "revision": 1,
+    "creation_intent": null
+  },
+  "redesign_context": null,
+  "tool_gap_job": null
+}

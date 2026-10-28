@@ -12,6 +12,7 @@ from . import CONTRACT_VERSION
 from .adapters import LocalEngines, convert
 from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, block, bounds, project, sha256, validate
 from .readers import Inspector
+from .image_metadata import png_resolution
 
 PRIMARY = {'pdf': 'mineru', 'hwp': 'docling', 'hwpx': 'docling', 'doc': 'docling',
            'docx': 'docling', 'ppt': 'docling', 'pptx': 'docling', 'xls': 'native', 'xlsx': 'native',
@@ -169,9 +170,12 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                     continue
                 scale = min(1.5, (4000000 / max(rect.get_area(), 1))**.5)
                 path = work / f'figure-{len(images) + 1}.png'
-                page.get_pixmap(matrix=fitz.Matrix(scale, scale), clip=rect, alpha=False).save(path)
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), clip=rect, alpha=False)
+                dpi = max(1, round(72 * scale))
+                pixmap.set_dpi(dpi, dpi)
+                pixmap.save(path)
                 item['artifact'] = str(path.relative_to(work))
-                item['data']['raster_transform'] = dict(pdf_rect=list(rect), pixels_per_point=scale)
+                item['data']['raster_transform'] = dict(pdf_rect=list(rect), pixels_per_point=scale, raster_dpi=[dpi, dpi])
                 images.append(dict(block_id=item['id'], path=path))
 
     # Bound engine work, explicitly retaining skipped source objects.
@@ -186,10 +190,12 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
             from PIL import Image, ImageOps
             with Image.open(image['path']) as original:
                 orientation = original.getexif().get(274, 1)
+                resolution = png_resolution(original, orientation)
                 normalized = ImageOps.exif_transpose(original).convert('RGB')
                 path = work / ('upright-' + parent['id'] + '.png')
-                normalized.save(path)
-                parent['data']['image_transform'] = dict(original_size=list(original.size), upright_size=list(normalized.size), exif_orientation=orientation)
+                normalized.save(path, **resolution)
+                parent['data']['image_transform'] = dict(original_size=list(original.size), upright_size=list(normalized.size),
+                                                        exif_orientation=orientation, upright_dpi=resolution.get('dpi'))
                 jobs.append(dict(parent=parent, path=path, size=normalized.size))
         except (ImportError, OSError, ValueError) as exc:
             parent['status'] = 'review_required'
@@ -234,10 +240,12 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                             continue
                         crop_path = work / ('crop-' + region['id'] + '.png')
                         with Image.open(job['path']) as picture:
-                            picture.crop(crop_bounds).save(crop_path)
+                            resolution = png_resolution(picture)
+                            picture.crop(crop_bounds).save(crop_path, **resolution)
                         region['artifact'] = str(crop_path.relative_to(work))
                         region['data']['crop_origin'] = list(crop_bounds[:2])
-                        (ocr_jobs if kind == 'text' else table_jobs).append(dict(path=crop_path, parent=region))
+                        region['data']['crop_dpi'] = resolution.get('dpi')
+                        (ocr_jobs if kind == 'text' else table_jobs).append(dict(path=crop_path, parent=region, context=job))
                     elif kind in {'formula', 'chart', 'unknown'}:
                         region['status'] = 'review_required'
                         review('semantic_analysis_required:' + kind)
@@ -272,6 +280,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
         except AnalysisError as exc:
             review('image_ocr:' + exc.code)
 
+    missing_table_images = {}
     for job in table_jobs:
         region = job['parent']
         try:
@@ -283,10 +292,38 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                 # A crop-local engine box must not masquerade as original PDF geometry.
                 if item['bbox']:
                     item['bbox']['coordinate_system'] = 'docling_crop_input_points'
-            if not any('table' in b['content_types'] for b in added):
+            if not any('table' in b['content_types'] and b['data'].get('cells') for b in added):
                 review('table_structure_missing:' + region['id'])
+                context = job['context']
+                entry = missing_table_images.setdefault(context['parent']['id'], dict(context=context, regions=[]))
+                entry['regions'].append(region['id'])
         except AnalysisError as exc:
             review('image_table:' + exc.code)
+
+    # Tight crops can remove layout context. Compare the containing image once,
+    # retaining the original crop output and exposing the result as a candidate.
+    for image_id, entry in missing_table_images.items():
+        if len(ocr_jobs) + len(table_jobs) >= max_supplements:
+            review('supplement_limit_reached')
+            break
+        table_jobs.append({'comparison_image': image_id})
+        context = entry['context']
+        image = context['parent']
+        result['routing_decisions'].append(dict(phase='comparison', rule='missing_crop_table_structure',
+            processor='docling', scope=image_id, region_ids=entry['regions']))
+        try:
+            candidate = engines.run('docling', source=context['path'], scope=image_id, phase='comparison')
+            added = add_parsed(candidate, parent=image_id, unit=image['unit_id'], location=image['native_location'],
+                               selected=False, phase='comparison')
+            for item in added:
+                item['data']['context_for_regions'] = entry['regions']
+                item['data']['input_coordinate_system'] = 'containing_upright_image'
+                if item['bbox']:
+                    item['bbox']['coordinate_system'] = 'docling_image_input_points'
+            if not any('table' in b['content_types'] and b['data'].get('cells') for b in added):
+                review('image_context_table_structure_missing:' + image_id)
+        except AnalysisError as exc:
+            review('image_table_comparison:' + exc.code)
 
     # A structurally incomplete PDF table is compared with its whole page,
     # retaining page context. Candidate output never overwrites primary values.

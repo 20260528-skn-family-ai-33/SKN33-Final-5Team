@@ -114,6 +114,89 @@ class PipelineTests(unittest.TestCase):
         self.assertIsNotNone(table['parent_object_id'])
         self.assertEqual(table['native_location'], {'frame': 1})
 
+    def test_known_dpi_survives_normalization_rotation_and_table_crop(self):
+        for orientation in (1, 6):
+            with self.subTest(orientation=orientation):
+                source = self.root / f'dpi-{orientation}.png'
+                exif = Image.Exif()
+                exif[274] = orientation
+                Image.new('RGB', (100, 90), 'white').save(source, dpi=(144, 288), exif=exif)
+                before = sha256(source)
+                work = self.root / f'dpi-work-{orientation}'
+                payload = run(source, work, engines=Engines(table=True))
+                expected = (288, 144) if orientation == 6 else (144, 288)
+                artifacts = list((work / 'images').glob('*.png')) + list(work.glob('upright-*.png')) + list(work.glob('crop-*.png'))
+                self.assertEqual(len(artifacts), 3)
+                for artifact in artifacts:
+                    with Image.open(artifact) as image:
+                        for actual, gold in zip(image.info['dpi'], expected):
+                            self.assertAlmostEqual(actual, gold, delta=.03)
+                region = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'layout')
+                self.assertEqual(region['data']['crop_origin'], [2, 3])
+                self.assertEqual(sha256(source), before)
+
+    def test_missing_crop_table_is_compared_with_image_within_supplement_budget(self):
+        class CropMissEngines(Engines):
+            def run(self, engine, **kwargs):
+                parsed = super().run(engine, **kwargs)
+                if engine == 'docling' and kwargs.get('phase') == 'supplement':
+                    parsed['blocks'][0].update(kind='text', data={})
+                return parsed
+        for budget in (1, 2):
+            with self.subTest(budget=budget):
+                engine = CropMissEngines(table=True)
+                payload = run(self.picture(), self.root / f'budget-{budget}', engines=engine, max_supplements=budget)
+                analysis = payload['document_analysis']
+                self.assertEqual(payload['parser_status'], 'partial')
+                self.assertEqual(len(engine.attempts), 2 if budget == 1 else 3)
+                candidates = [b for b in analysis['blocks'] if b.get('phase') == 'comparison']
+                if budget == 1:
+                    self.assertEqual(candidates, [])
+                    self.assertIn('supplement_limit_reached', analysis['review_reasons'])
+                else:
+                    self.assertEqual(len(candidates), 1)
+                    candidate = candidates[0]
+                    self.assertFalse(candidate['selected'])
+                    self.assertEqual(candidate['parent_object_id'], analysis['blocks'][0]['id'])
+                    self.assertEqual(candidate['data']['context_for_regions'], [analysis['blocks'][1]['id']])
+                    self.assertEqual(candidate['data']['input_coordinate_system'], 'containing_upright_image')
+                    self.assertNotIn('crop_origin', candidate['data'])
+                    self.assertEqual(engine.attempts[-1]['phase'], 'comparison')
+
+    def test_unknown_or_invalid_dpi_is_not_invented(self):
+        from .image_metadata import png_resolution
+        image = Image.new('RGB', (100, 90), 'white')
+        for value in (None, (float('nan'), 144), (0, 144), (1e300, 144), 'bad', (144,)):
+            image.info['dpi'] = value
+            self.assertEqual(png_resolution(image), {})
+        run(self.picture(), self.work, engines=Engines(table=True))
+        for path in self.work.glob('*.png'):
+            with Image.open(path) as normalized:
+                self.assertNotIn('dpi', normalized.info)
+
+    def test_pdf_figure_raster_dpi_matches_render_scale(self):
+        import pymupdf
+        source = self.root / 'figure.pdf'
+        with pymupdf.open() as doc:
+            doc.new_page(width=100, height=100)
+            doc.save(source)
+        class FigureEngines(Engines):
+            def run(self, engine, **kwargs):
+                parsed = super().run(engine, **kwargs)
+                if engine == 'mineru':
+                    parsed['blocks'][0].update(kind='image', text='', data={})
+                return parsed
+        payload = run(source, self.work, engines=FigureEngines(table=True))
+        figure = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'mineru')
+        transform = figure['data']['raster_transform']
+        self.assertEqual(transform['raster_dpi'], [108, 108])
+        self.assertEqual(transform['pixels_per_point'], 1.5)
+        for pattern in ('figure-*.png', 'upright-*.png', 'crop-*.png'):
+            paths = list(self.work.glob(pattern))
+            self.assertEqual(len(paths), 1)
+            with Image.open(paths[0]) as image:
+                self.assertAlmostEqual(image.info['dpi'][0], 108, delta=.03)
+
     def test_multiframe_tiff_and_supplement_limit_are_not_silently_complete(self):
         source = self.root / 'frames.tiff'
         images = [Image.new('RGB', (100, 90), color) for color in ['white', 'gray', 'blue']]

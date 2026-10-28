@@ -12,6 +12,7 @@ from pathlib import Path
 from zipfile import ZipFile, BadZipFile
 from xml.etree import ElementTree as ET
 from .contracts import AnalysisError, IMAGE_FORMATS, MAX_UNITS, MAX_BLOCKS, block, bounds
+from .image_metadata import png_resolution
 
 NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
       'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
@@ -378,14 +379,16 @@ class Inspector:
                     image.seek(frame)
                     orientation = image.getexif().get(274, 1)
                     original_size = image.size
+                    resolution = png_resolution(image, orientation)
                     upright = ImageOps.exif_transpose(image.copy()).convert('RGB')
                     unit = self.unit('frame-' + str(frame + 1), {'frame': frame + 1})
                     stream = io.BytesIO()
-                    upright.save(stream, format='PNG')
+                    upright.save(stream, format='PNG', **resolution)
                     item = self.image(stream.getvalue(), '.png', {'frame': frame + 1}, unit=unit,
                                       bbox=bounds([0, 0, *upright.size], 'upright_image_pixels', width=upright.width, height=upright.height))
                     item['data']['transform'] = dict(exif_orientation=orientation, original_size=list(original_size),
-                                                     upright_size=list(upright.size), operation='exif_transpose')
+                                                     upright_size=list(upright.size), operation='exif_transpose',
+                                                     upright_dpi=resolution.get('dpi'))
 
     def plain(self, fmt):
         raw = self.source.read_bytes()

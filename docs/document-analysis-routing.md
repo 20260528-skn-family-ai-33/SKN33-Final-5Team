@@ -6,7 +6,7 @@
 
 저장소 루트에서 `bash Backend/scripts/setup-document-analysis.sh`를 실행한다. 구조 리더 전용 환경이 만들어진다. `.env.example`의 문서 분석 설정을 루트 `.env`에 반영한다. 기존 `.env`는 설치 스크립트가 변경하지 않는다.
 
-신경망 엔진은 별도 환경을 사용한다. Docling은 기존 `setup-document-demo.sh`와 `prepare_parser_models.py`로 설치·모델 준비 후 `EASYFLOW_DOCLING_PYTHON`, `A4B_PDF_ARTIFACTS_DIR`, `A4B_PDF_OCR_MODEL_DIR`를 설정한다. 현재 서비스의 Docling OCR 설정은 한국어·영어 EasyOCR이다.
+신경망 엔진은 별도 환경을 사용한다. Docling은 `bash Backend/scripts/setup-document-demo.sh`로 설치하고 `Backend/.venv-docling/bin/python Backend/scripts/prepare_parser_models.py`로 모델을 준비한 후 `EASYFLOW_DOCLING_PYTHON`, `A4B_PDF_ARTIFACTS_DIR`, `A4B_PDF_OCR_MODEL_DIR`를 루트 `.env`에 설정한다. 설치 스크립트는 기존 가상환경을 재사용하며 새 환경은 Python 3.13을 우선 선택한다. 다른 실행 파일은 `A4B_DOCLING_SETUP_PYTHON`으로 지정한다. 현재 서비스의 Docling OCR 설정은 한국어·영어 EasyOCR이다.
 
 MinerU 어댑터는 4.0의 `MinerUParser(tier='standard')`와 MiddleJson 2.0 계약을 사용한다. `A4B_MINERU_PYTHON`과 쓰기 가능한 `MINERU_HOME`을 설정하고 해당 버전의 Standard 모델을 미리 준비한다. 로컬 small-model/VLM 실행 설정은 MinerU의 환경 설정을 따른다. 원격 API나 자동 다운로드를 사용하지 않는다.
 
@@ -37,9 +37,11 @@ Backend/.venv-document-analysis/bin/python Backend/scripts/analyze_document.py i
 | DOC/PPT/XLS | LibreOffice로 작업 사본 변환 | 변환본에 해당 경로 적용, 보존 검토 상태 기록 |
 | CSV/TSV | csv 모듈로 논리 행·원래 필드 보존 | 선행 0·인용 필드 안 줄바꿈 보존, OCR 없음 |
 | TXT/MD | 원문 직접 보존 | 외부 이미지 참조는 기록만 하고 가져오지 않음 |
-| 이미지·TIFF·HEIC | 방향·프레임 조사 → LayoutDetection | 글자 PaddleOCR / 표 Docling / 차트·수식 의미는 검토 |
+| 이미지·TIFF·HEIC | 방향·프레임 조사 → LayoutDetection | 글자 PaddleOCR / 표 Docling. 크롭에 표 셀이 없으면 해당 이미지 전체로 한 번 대조 / 차트·수식 의미는 검토 |
 
 기존 표 업무용 CSV/XLSX `rows`는 유지한다. XLSX의 표 행 뷰는 기존과 같이 첫 시트를 사용하지만, 분석 JSON은 여러 시트·그림·수식을 보존한다. 분석된 표 파일도 `read_document`로 읽을 수 있다. 원본 셀 값과 OCR 결과는 부모·자식 관계로 공존하며 덮어쓰지 않는다.
+
+원본에 유효한 DPI가 있으면 이미지 정규화·회전·크롭에도 보존한다. PDF에서 만든 이미지는 렌더 배율에 맞는 DPI를 기록한다. DPI가 없는 사진의 물리 크기는 추정하지 않는다. 표 크롭의 구조 추출 실패 시 이미지 전체 대조 결과는 `phase=comparison`, `selected=false` 후보로 남긴다. 이미지당 한 번, 기존 보완 처리 상한 안에서만 실행하며 기본 추출값을 바꾸거나 검토 상태를 해제하지 않는다.
 
 ## 결과 계약과 출처
 
@@ -78,3 +80,5 @@ npm run build
 ```
 
 분기 단위 테스트는 신경망 엔진을 테스트 더블로 대체하고 실제 PDF·Office·이미지 파일로 원본 보존·계약·좌표·실패 상태를 검사한다. 이를 OCR 성능 BMT라고 부르지 않는다. 실제 엔진 스모크 테스트와 한국어 혼합 문서 BMT는 별도이며, 엔진·모델 버전과 초기화·처리 조건을 기록해야 한다. `A4B_DOCUMENT_ROUTING=0`으로 기존 업로드·Docling 문서 경로를 선택할 수 있다.
+
+2026-10-28 로컬 실행 환경 준비 및 실제 HWP/HWPX·구형 Office 9개 파일, 서비스 업로드 함수, 스캔 OCR의 결과와 한계는 [실행 환경 검증 기록](validation/document-runtime-20261028.md)에 정리했다. 재실행 도구는 `Backend/scripts/verify_document_runtime.py`이며 정답은 모델 실행이 끝난 뒤 평가에만 사용한다. 엔진 실행 성공 수와 필드·표 구조 보존 결과를 따로 기록한다.

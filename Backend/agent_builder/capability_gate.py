@@ -41,9 +41,9 @@ def require_save_ready(state):
     condition=state.get('condition_required') or state.get('condition_enforced')
     verification=state.get('verification_required') or state.get('verification_enforced')
     if condition:
-        from .condition_readiness import plan_issues
+        from .condition_readiness import plan_issues, literal_condition_issues
         ledger=state.get('condition_ledger') or {}
-        if ledger.get('decision')!='ready' or plan_issues(ledger,state['draft']):
+        if ledger.get('decision')!='ready' or literal_condition_issues(state) or plan_issues(ledger,state['draft']):
             raise ValueError('확정 업무 조건이 반영된 설정만 저장할 수 있습니다.')
     if verification and state.get('verification_route')!='continue_review':
         raise ValueError('검증 보류 상태의 초안은 저장할 수 없습니다.')

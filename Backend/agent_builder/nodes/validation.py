@@ -5,6 +5,8 @@ from ..workflow import workflow_errors
 
 def validate_node(state):
     draft=AgentDraft.model_validate({k:v for k,v in state['draft'].items() if k!='node_snapshots'}).model_dump();issues=list(state.get('semantic_issues',[]))
+    from ..condition_readiness import literal_condition_issues
+    issues.extend(literal_condition_issues(state))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']
     if not draft['name'].strip(): issues.append('에이전트 이름이 필요합니다.')
     if not draft['purpose'].strip(): issues.append('어떤 업무를 맡길지 알려주세요.')

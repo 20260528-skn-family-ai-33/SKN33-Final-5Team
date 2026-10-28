@@ -57,15 +57,14 @@ def test_followup_and_validation_feedback_reach_same_deep_agent(monkeypatch):
                 context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
                 assert context['validation_issues']==['앞 단계 출력 포트를 고쳐야 합니다.']
                 assert payload['messages'][-1]['content']=='기준을 3건 이상으로 바꿔줘'
-                bad=deepcopy(workflow);bad['nodes'][-1]['bindings'][0]['output']='nonexistent'
-                assert not tools['validate_workflow'].invoke({'workflow_json':json.dumps(bad),'tool_ids':['read_table','filter_sort','write_result']})['valid']
-                assert tools['validate_workflow'].invoke({'workflow_json':json.dumps(workflow),'tool_ids':['read_table','filter_sort','write_result']})['valid']
+                assert 'validate_workflow' not in tools
                 return {'structured_response':draft(workflow=workflow)}
         return Agent()
     monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
     original=state([{'role':'user','content':'집계 결과를 저장해줘'},{'role':'assistant','content':'기준은 얼마인가요?'},{'role':'user','content':'기준을 3건 이상으로 바꿔줘'}]);original['issues']=['앞 단계 출력 포트를 고쳐야 합니다.']
     result=make_conversation(None,'test',model_factory=lambda:object())(original)
     assert result['draft']['workflow']['nodes'][1]['settings']['execution_plan']['filters'][0]['value']==3
+    assert result['trace'][-1]['final_code_validation'] is True
     assert validate_node({**original,**result})['status']=='ready'
 
 
@@ -112,21 +111,20 @@ def test_invalid_structured_response_is_regenerated_with_bounded_agent_retry(mon
         assert len(calls)==2
 
 
-def test_unvalidated_ready_draft_is_returned_to_agent_for_tool_validation(monkeypatch):
+def test_unvalidated_ready_draft_is_code_checked_without_extra_model_call(monkeypatch):
     workflow={'entry':'read','nodes':[node('read','read_table')],'edges':[]};calls=[]
     def factory(**kwargs):
         tools={t.name:t for t in kwargs['tools']}
         class Agent:
             def invoke(self,payload,config):
                 calls.append(payload)
-                if len(calls)==2:
-                    assert '검증이 아직 실행되지 않았습니다' in payload['messages'][-1]['content']
-                    assert tools['validate_workflow'].invoke({'workflow_json':json.dumps(workflow),'tool_ids':['read_table']})['valid']
+                assert 'validate_workflow' not in tools
                 return {'structured_response':draft(workflow=workflow)}
         return Agent()
     monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
     result=make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'자료를 읽어줘'}]))
-    assert len(calls)==2
+    assert len(calls)==1
+    assert result['trace'][-1]['final_code_validation'] is True
     assert result['draft']['workflow']['entry']=='read'
     assert result['draft']['workflow']['nodes'][0]['tool']=='read_table'
 
@@ -139,3 +137,80 @@ def test_unsupported_request_does_not_ask_for_credentials_or_setup(monkeypatch):
     assert result['draft']['unsupported']==['실제 전송 도구가 없습니다.']
     assert result['draft']['questions']==[]
     assert result['draft']['workflow'] is None
+
+
+def test_empty_output_is_regenerated_once_with_fresh_nested_checkpoint(monkeypatch):
+    """The real failure shape cannot become a ready draft; a new agent repairs it."""
+    workflow={'entry':'read','nodes':[node('read','read_table')],'edges':[]}
+    calls=[];factories=[]
+    def factory(**kwargs):
+        factories.append(kwargs)
+        class Agent:
+            def invoke(self,payload,config):
+                calls.append(payload)
+                if len(calls)==1:return {'structured_response':draft(workflow=None)}
+                assert 'workflow가 없고 questions와 unsupported도 비어' in payload['messages'][-1]['content']
+                return {'structured_response':draft(workflow=workflow)}
+        return Agent()
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
+    s=state([{'role':'user','content':'자료를 읽어줘'}])
+    result=make_conversation(None,'test',model_factory=lambda:object())(s)
+    assert len(calls)==2 and factories[1]['checkpointer'] is False
+    assert result['trace'][-1]['response_relation_repairs']==1
+    assert result['trace'][-1]['final_code_validation'] is True
+    assert result['confirmed'] is False and result['saved_agent_id'] is None
+    assert validate_node({**s,**result})['status']=='ready'
+
+
+def test_repeated_empty_output_stops_after_one_repair_without_partial_draft(monkeypatch):
+    calls=[];factories=[]
+    def factory(**kwargs):
+        factories.append(kwargs)
+        class Agent:
+            def invoke(self,payload,config):calls.append(payload);return {'structured_response':draft(workflow=None)}
+        return Agent()
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
+    s=state([{'role':'user','content':'자료를 읽어줘'}]);before=deepcopy(s)
+    with pytest.raises(ValueError,match='한 번 다시 생성했지만'):
+        make_conversation(None,'test',model_factory=lambda:object())(s)
+    assert s==before and len(calls)==2 and factories[1]['checkpointer'] is False
+
+
+@pytest.mark.parametrize('questions,unsupported',[(['기준을 알려주세요'],[]),([],['외부 발송 도구 없음'])])
+def test_real_question_or_unsupported_with_null_workflow_is_not_regenerated(monkeypatch,questions,unsupported):
+    calls=[]
+    class Agent:
+        def invoke(self,payload,config):calls.append(1);return {'structured_response':draft(questions,unsupported)}
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    result=make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
+    assert len(calls)==1 and result['trace'][-1]['response_relation_repairs']==0
+    assert result['draft']['questions']==questions and result['draft']['unsupported']==unsupported
+
+
+def test_unreadable_json_gets_one_fresh_repair(monkeypatch):
+    from langchain_core.messages import AIMessage
+    calls=[];factories=[]
+    def factory(**kwargs):
+        factories.append(kwargs)
+        class Agent:
+            def invoke(self,payload,config):
+                calls.append(payload)
+                if len(calls)==1:return {'messages':[AIMessage(content='not json')]}
+                assert '유효한 JSON 객체로 읽을 수 없거나' in payload['messages'][-1]['content']
+                return {'structured_response':draft(questions=['기준을 알려주세요'])}
+        return Agent()
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
+    result=make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'기준을 정해줘'}]))
+    assert len(calls)==2 and factories[-1]['checkpointer'] is False
+    assert result['draft']['questions']==['기준을 알려주세요'] and not result['confirmed']
+
+
+def test_unreadable_json_twice_stops(monkeypatch):
+    from langchain_core.messages import AIMessage
+    calls=[]
+    class Agent:
+        def invoke(self,payload,config):calls.append(1);return {'messages':[AIMessage(content='not json')]}
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    with pytest.raises(ValueError,match='한 번 다시 생성'):
+        make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
+    assert len(calls)==2

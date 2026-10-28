@@ -62,8 +62,8 @@ def test_required_condition_omitted_by_model_is_derived_by_code():
     s = state('비용이 큰 행만 골라줘.')
     result = checked(s, proposal(s, {'filter.field': '비용', 'filter.operator': 'gt'}))
     assert result['decision'] == 'clarify'
-    assert result['unresolved'] == ['filter.value']
-    assert result['questions'][0]['key'] == 'filter.value'
+    assert result['unresolved'] == ['filter.operator', 'filter.value']
+    assert result['questions'][0]['key'] == 'filter.operator'
 
 
 @pytest.mark.parametrize('threshold', ['0', '999999', 'NaN', 'Infinity'])
@@ -169,6 +169,47 @@ def test_single_work_contract_and_mixed_request_hold():
     assert checked(s,raw)['decision']=='ready'
     raw['operation']='mixed'
     assert checked(s,raw)['decision']=='manual_review'
+
+
+def test_old_ready_condition_conflicting_with_user_text_cannot_be_saved(tmp_path):
+    from agent_builder.condition_readiness import literal_condition_issues
+    from agent_builder.capability_gate import require_save_ready
+    s=state();ledger=checked(s,proposal(s));ledger['slots']['filter.operator']['value']='gte'
+    s.update(condition_enforced=True,condition_ledger=ledger,confirmed=True,draft=workflow_draft(s,operator='gte'))
+    assert any('filter.operator' in issue for issue in literal_condition_issues(s))
+    with pytest.raises(ValueError,match='확정 업무 조건'):
+        require_save_ready(s)
+    with pytest.raises(ValueError,match='확정 업무 조건'):
+        Storage(str(tmp_path/'test.sqlite')).save_agent(s)
+
+
+def test_supported_filter_and_dedup_missing_threshold_asks_user():
+    s=state('비용이 높은 거래를 JSON으로 저장해줘. 빈 값은 제외하고 중복 거래ID는 마지막 행만 남겨.')
+    raw=proposal(s,{'filter.field':'비용','filter.operator':None,'filter.value':None,'duplicate.field':'거래ID','duplicate.policy':'last','missing.policy':'exclude','output.format':'json'})
+    raw['operation']='mixed';raw.pop('operations')
+    ledger=checked(s,raw)
+    assert ledger['decision']=='clarify'
+    assert {'filter','deduplicate'}.issubset(ledger['operations'])
+    assert {'filter.operator','filter.value'}.issubset(ledger['unresolved'])
+
+
+def test_known_missing_filter_values_require_grounded_policy():
+    s=state('비용이 100만원 초과인 거래를 JSON으로 저장해줘. 중복 거래ID는 마지막 행을 유지해.')
+    s['resources']=[{'id':'table','kind':'table','columns':['비용','거래ID'],'profile':{'비용':{'missing':1}}}]
+    raw=proposal(s,{'filter.field':'비용','filter.operator':'gt','filter.value':'1000000','duplicate.field':'거래ID','duplicate.policy':'last','output.format':'json'},['filter','deduplicate'])
+    ledger=checked(s,raw)
+    assert ledger['decision']=='clarify' and 'missing.policy' in ledger['unresolved']
+    assert any('빈 값' in q['text'] for q in ledger['questions'])
+    raw['conditions'].append({'key':'missing.policy','value':'exclude','status':'specified','evidence_ids':['user:0:0']})
+    assert checked(s,raw)['slots']['missing.policy']['status']=='missing'
+
+
+def test_known_missing_filter_values_accept_explicit_policy():
+    s=state('비용이 100만원 초과인 거래를 JSON으로 저장해줘. 빈 비용은 제외해.')
+    s['resources']=[{'id':'table','kind':'table','columns':['비용'],'profile':{'비용':{'missing':1}}}]
+    raw=proposal(s,{'filter.field':'비용','filter.operator':'gt','filter.value':'1000000','output.format':'json'})
+    ledger=checked(s,raw)
+    assert ledger['decision']=='ready' and ledger['slots']['missing.policy']['value']=='exclude'
 
 
 def test_weekday_is_canonicalized_from_unique_literal_source():

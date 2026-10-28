@@ -89,6 +89,7 @@ def generation_handoff(state,session):
     return {'protocol':'a4b.redesign-generation.v1','session_id':session['id'],'revision':session['revision'],
         'proposal_id':proposal['id'],'original_messages':deepcopy(state.get('messages',[])),
         'original_conditions':deepcopy(state.get('condition_ledger')),
+        'condition_review':deepcopy(state.get('gap_condition_review')),
         'effective_request':proposal['alternative']['proposed_request'],
         'approved_changes':proposal['alternative']['changes'],'tool_ids':proposal['alternative']['tool_ids'],
         'requires_condition_recheck':True,'requires_draft_validation':True,'requires_user_approval':True,

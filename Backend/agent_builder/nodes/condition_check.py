@@ -90,7 +90,10 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         elif ledger['decision']=='unsupported':
             reply='지원 범위: '+' / '.join(ledger.get('unsupported_actions',[]))
         else:
-            reply=' '.join(ledger.get('issues') or ['조건을 자동 확정하지 않았습니다. 대표 업무의 범위와 변경 내용을 확인해주세요.'])
+            conflicts=[q for q in ledger.get('unresolved',[]) if ledger.get('slots',{}).get(q,{}).get('status')=='conflict']
+            from ..condition_readiness import QUESTIONS
+            detail=['서로 다른 조건이 함께 요청됐습니다. '+QUESTIONS[key] for key in conflicts if key in QUESTIONS]
+            reply=' '.join((ledger.get('issues') or ['조건을 자동 확정하지 않았습니다. 대표 업무의 범위와 변경 내용을 확인해주세요.'])+detail)
         update['messages']=state.get('messages',[])+[{'role':'assistant','content':reply}]
         if ledger['decision'] in ('clarify', 'deferred'):
             update.update(status='needs_clarification')
@@ -98,7 +101,7 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             update.update(status='unsupported')
         else:
             update.update(condition_route='stop', status='validation_failed',
-                          issues=ledger.get('issues') or ['대표 업무의 지원 범위를 벗어났거나 작업 변경·취소 확인이 필요합니다.'])
+                          issues=(ledger.get('issues') or ['대표 업무의 지원 범위를 벗어났거나 작업 변경·취소 확인이 필요합니다.'])+detail)
         return update
     return check
 
@@ -107,7 +110,8 @@ def audit_conditions(state):
     ledger = state.get('condition_ledger')
     if not ledger or ledger.get('decision') != 'ready':
         return {}
-    issues = plan_issues(ledger, state['draft'])
+    from ..condition_readiness import literal_condition_issues
+    issues = literal_condition_issues(state) + plan_issues(ledger, state['draft'])
     update = {'trace': state.get('trace', []) + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
                'issues': issues, 'enforced': state.get('condition_enforced', False)}]}

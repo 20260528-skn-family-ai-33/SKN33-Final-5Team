@@ -137,6 +137,7 @@ class BuilderState(TypedDict, total=False):
     condition_answers: list[dict]
     source_health: dict
     tool_gap: dict | None
+    gap_condition_review: dict | None
     capability_route: str
     capability_assessment: dict | None
     capability_enforced: bool

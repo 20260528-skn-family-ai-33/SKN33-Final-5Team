@@ -78,7 +78,7 @@ def test_second_unknown_or_explicit_defer_preserves_pending_state(reply):
     s = respond(s, reply)
     ledger = judge_conditions(s, Fake([]))['ledger']
     assert ledger['decision'] == 'deferred'
-    assert ledger['unresolved'] == ['filter.value']
+    assert ledger['unresolved'] == ['filter.operator', 'filter.value']
     assert '보류' in ledger['questions'][0]['text']
     assert not ledger['unsupported_actions']
 

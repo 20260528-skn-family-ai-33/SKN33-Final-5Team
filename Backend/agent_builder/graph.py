@@ -31,6 +31,19 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     def guarded_plan(state):
         # A restored checkpoint can resume directly at this node, bypassing edges.
         require_ready(state)
+        from .condition_readiness import literal_condition_issues, explicit_policies, source_catalog
+        from copy import deepcopy
+        if literal_condition_issues(state):
+            ledger=deepcopy(state['condition_ledger'])
+            literals=explicit_policies(state,source_catalog(state)[0])
+            for key,item in literals.items():
+                old=ledger.get('slots',{}).get(key)
+                if old and (old.get('status')!=item['status'] or old.get('value')!=item.get('value')):
+                    if item['status']!='specified':
+                        raise ValueError('이전 조건이 사용자 원문과 충돌합니다. 조건을 다시 확인해주세요.')
+                    ledger['slots'][key]=item
+            refreshed={**state,'condition_ledger':ledger,'confirmed':False}
+            return {**planner(refreshed),'condition_ledger':ledger,'confirmed':False}
         return planner(state)
     def guarded_template(state):
         require_ready(state)

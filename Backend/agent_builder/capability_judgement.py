@@ -15,6 +15,34 @@ class Assessment(BaseModel):
     reason:str=Field(min_length=1,max_length=1500)
     user_quotes:list[str]=Field(min_length=1,max_length=4)
 
+
+class AssessmentConflictError(ValueError):
+    """Keep contradictory reports as diagnostics, never as routing authority."""
+    def __init__(self,result,model_calls):
+        super().__init__('지원 판정과 누락 항목이 서로 모순됩니다.')
+        self.reported={key:result[key] for key in ('decision','missing_conditions','missing_actions')}
+        self.model_calls=model_calls
+
+
+def validate_assessment_result(result,state,*,model_calls=0):
+    # Check both model responses and persisted results reused after non-answers.
+    # Runtime metadata is allowed on persisted results; core fields stay strict.
+    value=Assessment.model_validate({key:result.get(key) for key in Assessment.model_fields},strict=True).model_dump()
+    decision=value['decision'];conditions=value['missing_conditions'];actions=value['missing_actions']
+    if ((decision=='existing_tools' and (not value['tool_ids'] or conditions or actions))
+        or (decision=='clarify' and (not conditions or actions))
+        or (decision=='missing_capability' and (not actions or conditions))):
+        raise AssessmentConflictError(value,model_calls)
+    if (not value['reason'].strip()
+        or any(not text.strip() for key in ('missing_conditions','missing_actions') for text in value[key])):
+        raise ValueError('지원 판단의 사유·누락 항목은 공백일 수 없습니다.')
+    if len(set(value['tool_ids']))!=len(value['tool_ids']) or any(t not in {t['id'] for t in TOOLS} for t in value['tool_ids']):
+        raise ValueError('등록되지 않았거나 중복된 도구 판단입니다.')
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    if any(not q.strip() or not any(q in text for text in user) for q in value['user_quotes']):
+        raise ValueError('요청 원문 근거를 확인하지 못했습니다.')
+    return result
+
 # Native app capabilities are not tool IDs and do not grant runtime permission.
 APP_CAPABILITIES=[{
     'id':'workflow_schedule','implementation_status':'implemented and verified on this server; not a simulation',
@@ -92,7 +120,7 @@ def assess_capability(state,transport):
         'authoritative_request':user[-1],'user_quote_catalog':user},ensure_ascii=False)}]
     reply=transport.invoke(messages)
     content=reply.get('content') if isinstance(reply,dict) else reply.content
-    result=Assessment.model_validate_json(content).model_dump()
+    result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=1)
     calls=1
     if result['decision']=='missing_capability':
         review_prompt='''이전 지원 판단은 미검증 후보입니다. 요청과 실제 tools 및 app_capabilities를 모두 다시 대조하여 최종 Assessment JSON 하나를 반환합니다.
@@ -107,11 +135,6 @@ user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 �
         reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+review_prompt},
             messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'task':'실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
-        result=Assessment.model_validate_json(content).model_dump();calls+=1
-    if any(t not in {t['id'] for t in TOOLS} for t in result['tool_ids']):raise ValueError('등록되지 않은 도구 판단입니다.')
-    if any(not q.strip() or not any(q in text for text in user) for q in result['user_quotes']):raise ValueError('요청 원문 근거를 확인하지 못했습니다.')
-    d=result['decision']
-    if d=='existing_tools' and (not result['tool_ids'] or result['missing_conditions'] or result['missing_actions']):raise ValueError('지원 판단과 누락 항목이 모순됩니다.')
-    if d=='clarify' and not result['missing_conditions']:raise ValueError('질문할 조건이 필요합니다.')
-    if d=='missing_capability' and not result['missing_actions']:raise ValueError('부족한 기능이 필요합니다.')
-    return {**normalize_native_claims(result),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}
+        calls+=1
+        result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
+    return {**validate_assessment_result(normalize_native_claims(result),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

@@ -62,6 +62,9 @@ def handle(data,conversation=None):
             run=storage.test(data['id'])
             return run_workflow(storage,run['agent_id'],run['request'],api_key,run_id=run['id'],retry=True,execution_token=data.get('execution_token'))
         if action=='asset':return {'asset':storage.asset(data['id'])}
+        if action=='document_review':
+            from agent_builder.document_review import view,save
+            return save(storage,data['id'],data['command']) if 'command' in data else view(storage,data['id'])
         if action=='agents':return {'agents':storage.agents()}
         if action=='agent':
             agent=storage.agent(data['id']);schedules=Schedules(storage)
@@ -100,6 +103,13 @@ def handle(data,conversation=None):
                 return run_workflow(storage,data['id'],data['content'],api_key,files,reply_draft=data.get('reply_draft'),forced_run_id=data.get('run_id'),execution_token=data.get('execution_token'),run_tags={'trigger':'manual','source_version':source['version'],'source_id':source['id']} if source and not data.get('file_ids') else {'trigger':'manual'})
             return test_agent(storage,data['id'],data['content'],api_key)
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in ['session','upload','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'] else None)
+        if action in {'message','confirm'}:
+            snapshot=graph.get_state({'configurable':{'thread_id':s['id']}})
+            fresh=[storage.asset(id) for id in s['file_ids']]
+            versions=lambda resources:[(r['id'],str(r.get('version') or r.get('hash') or '1')) for r in resources]
+            if snapshot.values and versions(snapshot.values.get('resources',[]))!=versions(fresh):
+                if action=='confirm':raise ValueError('자료 검토 결과가 변경됐습니다. 업무 설명을 다시 보내 설정과 근거를 확인하세요.')
+                graph.update_state({'configurable':{'thread_id':s['id']}},{'resources':fresh,'confirmed':False,'verification':None,'verification_last_candidate':None})
         if action=='session':return public_state(storage,s,graph)
         if action in ('tool_gap_replan_propose','tool_gap_replan_decide'):
             state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}

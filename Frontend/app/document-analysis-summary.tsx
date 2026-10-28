@@ -1,6 +1,9 @@
 import type {DocumentAnalysis} from '../server/document-analysis-contract';
 
-const reasonLabel=(reason:string)=>{
+export const reasonLabel=(reason:string)=>{
+ if(reason.includes('table_structure_missing'))return '기본 처리에서 표 셀 구조를 확보하지 못했습니다. 대조 후보를 확인하세요.';
+ if(reason.includes('floating_textbox'))return '떠 있는 텍스트 상자의 위치와 읽기 순서를 확인해야 합니다.';
+ if(reason.includes('word_auxiliary'))return '머리말·꼬리말·각주 등 본문 밖 내용은 포함하지 않았습니다.';
  if(reason.includes('dependency_missing')||reason.includes('unavailable'))return '일부 처리 도구 또는 로컬 모델이 준비되지 않았습니다.';
  if(reason.includes('supplement_limit'))return '보완 처리 상한으로 일부 영역을 처리하지 못했습니다.';
  if(reason.includes('formula_cache'))return '저장된 계산 결과가 없는 수식이 있습니다.';
@@ -15,11 +18,11 @@ const reasonLabel=(reason:string)=>{
 };
 const statusLabel:Record<string,string>={succeeded:'처리 완료',partial:'부분 처리',failed:'처리 실패'};
 const phaseLabel:Record<string,string>={primary:'기본 처리',fallback:'대체 처리',classification:'영역 분류',supplement:'영역 보완',comparison:'구조 대조'};
-export function DocumentAnalysisSummary({analysis,showText=false}:{analysis?:DocumentAnalysis;showText?:boolean}){
+export function DocumentAnalysisSummary({analysis,showText=false,humanReviewed=false}:{analysis?:DocumentAnalysis;showText?:boolean;humanReviewed?:boolean}){
  if(!analysis)return null;
  const reasons=[...new Set(analysis.review_reasons.map(reasonLabel))];
  return <section aria-label="문서 내용 분석 결과" className="as-help">
-  <p><strong>{analysis.review_required?'원본 검토 필요':'문서 분석 완료'}</strong> · {analysis.units.length}개 처리 단위 · {analysis.blocks.length}개 객체·영역</p>
+  <p><strong>{humanReviewed?'사람 검토 완료':analysis.review_required?'원본 검토 필요':'문서 분석 완료'}</strong> · {analysis.units.length}개 처리 단위 · {analysis.blocks.length}개 객체·영역</p>
   {reasons.map(reason=><p className="as-validation" key={reason}>{reason}</p>)}
   <details><summary>처리 경로 확인</summary>
    <p className="as-small-muted">기본 처리: {analysis.primary_processor} · 원본 위치와 영역별 출처를 보존합니다.</p>

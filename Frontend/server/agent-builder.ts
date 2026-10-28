@@ -7,6 +7,7 @@ import {existsSync} from 'node:fs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {convertBuilderPdf} from './builder-documents';
 import {analyzeBuilderDocument,DOCUMENT_FORMATS,routingEnabled} from './document-analysis';
+import {parseDocumentReviewCommand,documentPreview,originalMime} from './document-review';
 import {createHash,randomUUID} from 'node:crypto';
 import {localModelConnection,LOCAL_MODEL_ID} from './builder-local-model';
 import type {IncomingMessage,ServerResponse} from 'node:http';
@@ -88,6 +89,18 @@ export async function parseBuilderAsset(input:any){
 export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void):Promise<boolean>{
  if(!url.pathname.startsWith('/api/agent-builder/'))return false;
  const action=url.pathname.slice('/api/agent-builder/'.length),method=req.method||'GET';
+ if(action==='document_review'&&['GET','POST'].includes(method)){
+  const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,12000);
+  if(!idPattern.test(data?.id||''))throw new Error('자료 ID를 확인하세요.');
+  const payload=method==='GET'?{action:'document_review',id:data.id}:{action:'document_review',id:data.id,command:parseDocumentReviewCommand(data)};
+  json(res,200,await builderWorker(payload));return true;
+ }
+ if(action==='document_preview'&&method==='GET'){
+  const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');
+  const {asset}=await builderWorker({action:'asset',id});
+  const preview=await documentPreview(asset,url.searchParams.get('blockId'),url.searchParams.get('converted'));
+  res.writeHead(200,{'Content-Type':preview.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'self'"});res.end(preview.bytes);return true;
+ }
  if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection()});return true;}
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
@@ -102,7 +115,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   else {const {run}=await builderWorker({action:'run',id});if(!run.reviews?.length)throw new Error('검수 보고서가 없습니다.');artifact={name:'검수_보고서_'+id+'.json',mime:'application/json; charset=utf-8',content:JSON.stringify({id:run.id,agent_version:run.agent_version,source_version:run.source_version,created_at:run.created_at,status:run.status,reviews:run.reviews},null,2)};}
   res.writeHead(200,{'Content-Type':artifact.mime,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(artifact.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(artifact.content);return true;
  }
- if(action==='original'&&method==='GET'){const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');const {asset}=await builderWorker({action:'asset',id});if(!/^builder-originals\/[a-f0-9]{64}\.[a-z0-9]+$/.test(asset.original_path||''))throw new Error('원본 파일이 없는 이전 자료입니다. 다시 연결하세요.');const content=await readFile(dataDirectory(asset.original_path));res.writeHead(200,{'Content-Type':asset.format==='pdf'?'application/pdf':'application/octet-stream','Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;}
+ if(action==='original'&&method==='GET'){const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');const {asset}=await builderWorker({action:'asset',id});if(!/^builder-originals\/[a-f0-9]{64}\.[a-z0-9]+$/.test(asset.original_path||''))throw new Error('원본 파일이 없는 이전 자료입니다. 다시 연결하세요.');const content=await readFile(dataDirectory(asset.original_path));res.writeHead(200,{'Content-Type':originalMime(asset.format),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;}
  if(action==='nodes'&&method==='GET'){json(res,200,await builderWorker({action:'nodes'}));return true;}
  if(action==='nodes'&&method==='POST'){
   const data=await readBody(req,50000);

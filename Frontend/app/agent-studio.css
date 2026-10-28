@@ -140,3 +140,18 @@
  .screen-workflow .as-welcome-icon{width:42px;height:42px;margin-bottom:14px}
  .screen-workflow .as-examples{margin-top:18px}
 }
+
+/* Original/candidate comparison and persisted human review. */
+.as-resource-dialog{--as-accent:#77586e;--as-soft:#f5eff3;--as-border:#e7e3e7;--as-muted:#807982;--as-ink:#302b33}
+.as-resource-dialog:has(.dr-panel){max-width:1120px!important}
+.dr-panel{border:1px solid var(--as-border);border-radius:10px;padding:16px;margin:16px 0;font-size:12px;line-height:1.7}
+.dr-panel button{cursor:pointer}.dr-panel button:disabled{opacity:.45;cursor:not-allowed}.dr-panel .as-primary{background:var(--as-accent);border-color:var(--as-accent);color:white}.dr-panel :focus-visible{outline:2px solid var(--as-accent);outline-offset:3px}
+.dr-source-region{display:block;max-width:100%;height:auto;max-height:240px;object-fit:contain;margin:12px auto;border:1px solid var(--as-border);border-radius:6px}
+.dr-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 8px}.dr-heading small,.dr-heading span{color:var(--as-muted)}
+.dr-source{display:block;max-width:100%;max-height:350px;object-fit:contain;margin:12px auto;border:1px solid var(--as-border);border-radius:6px;background:#f8f6f8}
+.dr-pdf{width:100%;height:360px;border:1px solid var(--as-border);border-radius:6px;margin:12px 0}
+.dr-group{border-top:1px solid var(--as-border);padding:12px 0;margin-top:16px}.dr-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin:12px 0}
+.dr-columns>section{min-width:0;max-height:440px;overflow:auto;border:1px solid var(--as-border);border-radius:8px;padding:12px}.dr-columns h4{position:sticky;top:-12px;background:white;margin:0;padding:0 0 10px;font-size:13px;z-index:1}
+.dr-block{padding:8px 0;border-bottom:1px solid #eee8ee}.dr-block small{color:var(--as-muted)}.dr-block .as-preserve{font-size:12px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}
+.dr-cell{white-space:pre-wrap!important;overflow-wrap:anywhere;max-width:none!important;text-overflow:clip!important}.dr-check{display:flex;gap:8px;align-items:flex-start;margin:12px 0}.dr-panel details{margin:14px 0}.dr-panel details>p,.dr-panel li{overflow-wrap:anywhere}.dr-panel textarea{min-height:70px}
+@media(max-width:760px){.dr-columns{grid-template-columns:minmax(0,1fr)}.dr-panel{padding:12px}.dr-heading{align-items:flex-start}.dr-source{max-height:260px}}

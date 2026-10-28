@@ -19,6 +19,7 @@ def chunks_for_asset(asset):
         raise ValueError('문서 읽기에 사용할 본문 또는 분석 결과가 없습니다.')
     analysis = analysis_of(asset)
     if analysis:
+        review=(asset.get('parser_metadata') or {}).get('document_review') or {}
         for block in analysis['blocks']:
             if not block.get('selected', True) or not block.get('text', '').strip():
                 continue
@@ -29,7 +30,8 @@ def chunks_for_asset(asset):
                     yield dict(source_id=f"{asset['id']}:{block['id']}:{start}", file_id=asset['id'],
                                file_name=asset['name'], page=location.get('page'), offset=start, text=text,
                                block_id=block['id'], native_location=location, bbox=block.get('bbox'),
-                               parser_engine=block['engine'], review_required=analysis['review_required'])
+                               parser_engine=block['engine'], review_required=analysis['review_required'] and review.get('status')!='completed',
+                               document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0))
         return
     for page, text in enumerate(asset.get('pages') or [asset.get('text', '')], 1):
         for start in range(0, len(text), 1400):

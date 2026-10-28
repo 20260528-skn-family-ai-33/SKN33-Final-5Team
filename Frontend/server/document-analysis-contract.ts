@@ -2,12 +2,12 @@ export const DOCUMENT_FORMATS=new Set(['pdf','hwp','hwpx','doc','docx','ppt','pp
 export const routingEnabled=()=>process.env.A4B_DOCUMENT_ROUTING!=='0';
 export type AnalysisBlock={id:string;parent_object_id:string|null;unit_id:string|null;content_types:string[];
  native_location:Record<string,unknown>;text:string;engine:string;selected?:boolean;status:string;
- bbox:null|{values:number[];coordinate_system:string};data:Record<string,unknown>};
+ bbox:null|{values:number[];coordinate_system:string};data:Record<string,unknown>;phase?:string;artifact?:string|null;parser_version?:string};
 export type DocumentAnalysis={contract_version:'a4b.document_analysis.v1';source_sha256:string;source_format:string;
  primary_processor:string;status:'succeeded'|'partial';review_required:boolean;review_reasons:string[];
  units:{id:string;native_location:Record<string,unknown>}[];blocks:AnalysisBlock[];
  routes:{id:string;phase:string;processor:string;status:string;elapsed_seconds:number}[];
- coverage:Record<string,unknown>;warnings:string[]};
+ coverage:Record<string,unknown>;warnings:string[];conversions?:{artifact:string}[]};
 
 export function validateDocumentAnalysis(value:unknown):value is DocumentAnalysis {
  if(!value||typeof value!=='object'||Array.isArray(value))return false;

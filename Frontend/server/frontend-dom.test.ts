@@ -8,6 +8,7 @@ import {FRONTEND_ROOT} from './paths';
 
 const require=createRequire(new URL('../package.json',import.meta.url));
 const compiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/agent-studio.tsx')],absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
+const entryCompiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/entry-app.tsx')],absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
 const nodeCompiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/node-library.tsx')],absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',write:false,logLevel:'silent'}).outputFiles[0].text;
 function load(code:string){const module={exports:{} as any};new Function('require','module','exports',code)(require,module,module.exports);return module.exports;}
 let dom:JSDOM;
@@ -18,11 +19,12 @@ function installDOM(search=''){
  dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'http://localhost/'+search,pretendToBeVisual:true});
  for(const key of globals){if(key==='IS_REACT_ACT_ENVIRONMENT')Object.defineProperty(globalThis,key,{value:true,writable:true,configurable:true});else if(key in dom.window)Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],writable:true,configurable:true});}
  Object.defineProperty(globalThis,'ResizeObserver',{value:class{observe(){}disconnect(){}},configurable:true});
- dom.window.HTMLElement.prototype.scrollIntoView=()=>{};
+ dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.scrollTo=()=>{};
 }
 installDOM();
 const {createElement,act,StrictMode}=require('react');
 const {createRoot}=require('react-dom/client');
+const EntryApp=load(entryCompiled).default;
 const AgentStudio=load(compiled).default,NodeLibrary=load(nodeCompiled).NodeLibrary;
 const originalFetch=globalThis.fetch;
 const agent=(id:string,name=id,schedule:any=null)=>({id,version:1,config:{name,purpose:'동작 검증',instructions:'요청 처리',tool_ids:['read_table'],requirements:[],questions:[],unsupported:[],document_ids:[],workflow:null,schedule},model:'gpt-4.1-mini',credential_id:'cred'});
@@ -36,7 +38,7 @@ async function setup(search='',stored:Record<string,string>={},override?:(path:s
  globalThis.fetch=(async(input:any,init:any)=>{
   const path=String(input),body=init?.body?JSON.parse(init.body):undefined;calls.push({path,body});
   let value=override?await override(path,body):undefined;
-  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path.endsWith('/agents'))value={agents:[A,B]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(path.endsWith('/connection'))value={connection:null};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
+  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path.endsWith('/agents'))value={agents:[A,B]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(path.endsWith('/connection'))value={connection:{model:'qwen3:8b-q4_K_M',credential:{id:'local-model',provider:'openai',name:'Ollama · Qwen'}},health:{status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'}};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
   return value instanceof Response?value:new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
  }) as any;
  const root=createRoot(document.getElementById('root'));await act(async()=>{root.render(component||createElement(AgentStudio));await tick();});
@@ -164,4 +166,153 @@ test('DOM integration: new document review UI survives merging with workflow res
   assert.equal(localStorage.getItem('a4b-builder-session'),null);
   const accept=Array.from(document.querySelectorAll('input[type=file]')).map(i=>i.getAttribute('accept')||'').join(',');assert.match(accept,/\.hwpx/);assert.match(accept,/\.png/);
  }finally{await h.close();}
+});
+
+
+test('entry: service introduction is the default, then opens the actual workflow list',async()=>{
+ const t=await setup('',{},undefined,createElement(EntryApp));
+ try{
+  assert.match(document.body.textContent||'',/업무를 말하세요/);
+  assert.equal(t.calls.length,0,'landing must not require a backend or model');
+  await click(button('A4B 시작하기'));await t.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
+  assert.ok(document.body.textContent?.includes('서비스 A'));
+  assert.ok(document.body.textContent?.includes('서비스 B'));
+  await input(document.querySelector('input[aria-label="워크플로우 검색"]')!,'없는 작업');
+  assert.ok(document.body.textContent?.includes('검색 결과가 없습니다.'));
+ }finally{await t.close();}
+});
+test('entry: scrolling intro keeps every link on the existing routes without API calls',async()=>{
+ const cases:[string,string,string|null][]=[['워크플로우 열기','workflows',null],['제품 살펴보기','preview',null],['노드 라이브러리','nodes',null],['워크플로우 목록','workflows',null],['실행 기록','history',null],['워크플로우 시작하기','workflows',null]];
+ for(const [label,screen,node] of cases){
+  const t=await setup('?screen=intro',{'a4b-builder-session':'kept'},undefined,createElement(EntryApp));
+  try{
+   assert.ok(document.querySelector('#a4b-how')&&document.querySelector('#a4b-usecases')&&document.querySelector('#a4b-product-preview'),'scroll sections');
+   assert.equal(t.calls.length,0,'intro must not call the backend');
+   await click(button(label));await t.flush();
+   const params=new URL(location.href).searchParams;
+   assert.equal(params.get('screen'),screen,label);assert.equal(params.get('previewNode'),node,label);
+   assert.equal(localStorage.getItem('a4b-builder-session'),'kept','intro links never reset a draft');
+  }finally{await t.close();}
+ }
+ const n=await setup('?screen=intro',{},undefined,createElement(EntryApp));
+ try{await click(document.querySelector('.entry-preview-node.ai') as HTMLElement);await n.flush();const params=new URL(location.href).searchParams;assert.equal(params.get('screen'),'preview');assert.equal(params.get('previewNode'),'ai');assert.ok(document.body.textContent?.includes('AI 작업 노드 설정'));}finally{await n.close();}
+});
+test('entry: list failures are recoverable and never displayed as an empty success',async()=>{
+ let failed=true;
+ const t=await setup('?screen=workflows',{},async path=>{if(path.endsWith('/agents')&&failed)throw Error('목록 연결 실패');},createElement(EntryApp));
+ try{
+  assert.match(document.querySelector('[role=alert]')?.textContent||'',/목록 연결 실패/);
+  assert.ok(!document.body.textContent?.includes('첫 워크플로우를 만들어보세요.'));
+  failed=false;await click(button('다시 시도'));await t.flush();
+  assert.ok(document.body.textContent?.includes('서비스 A'));
+ }finally{await t.close();}
+});
+test('entry: fresh editor starts from the list and browser history returns to the list',async()=>{
+ const t=await setup('?screen=workflows',{},undefined,createElement(EntryApp));
+ try{
+  await click(button('새 워크플로우'));await t.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
+  assert.ok(document.querySelector('.as-composer'));
+  await click(button('목록으로'));await t.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
+  await act(async()=>{window.history.replaceState(null,'','?screen=intro');window.dispatchEvent(new dom.window.PopStateEvent('popstate'));await tick();});
+  assert.ok(document.body.textContent?.includes('업무를 말하세요.'));
+ }finally{await t.close();}
+});
+test('entry: model profiles never render a key input, and deep links keep their exact run',async()=>{
+ const t=await setup('?screen=models',{},undefined,createElement(EntryApp));
+ try{
+  assert.ok(document.body.textContent?.includes('qwen3:8b-q4_K_M'));
+  assert.equal(document.querySelectorAll('input[type=password]').length,0);
+  assert.ok(document.body.textContent?.includes('테스트 연결'));
+ }finally{await t.close();}
+ const older={id:'old-run',status:'succeeded',answer:'이전 실행 결과',error:null,steps:[],rows:[],artifact:null,agent_version:1};
+ const latest={...older,id:'latest-run',answer:'최신 실행 결과'};
+ const r=await setup('?screen=run&service=A&run=old-run',{},async path=>path.includes('/agent?')?snapshot(A,[latest,older]):undefined,createElement(EntryApp));
+ try{assert.ok(document.body.textContent?.includes('이전 실행 결과'));assert.ok(!document.body.textContent?.includes('최신 실행 결과'));}finally{await r.close();}
+});
+
+test('entry: ZIP preview is separate from real workflows, preserves storage, and has no API side effects',async()=>{
+ const t=await setup('',{'a4b-selected-agent':'A','a4b-builder-session':'remembered'},undefined,createElement(EntryApp));
+ try{
+  assert.equal(document.querySelectorAll('.entry-preview-steps').length,0);
+  assert.equal(document.querySelectorAll('.entry-preview-node:is(button)').length,1);
+  await click(button('편집기 미리보기'));await t.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'preview');
+  assert.ok(document.body.textContent?.includes('대화 제안 검토'));
+  await click(button('AI 노드 설정 살펴보기'));await t.flush();
+  assert.ok(document.body.textContent?.includes('AI 작업 노드 설정'));
+  assert.equal(localStorage.getItem('a4b-selected-agent'),'A');
+  assert.equal(localStorage.getItem('a4b-builder-session'),'remembered');
+  assert.equal(t.calls.length,0);
+  await click(button('제안 검토로 돌아가기'));await t.flush();
+  assert.equal(new URL(location.href).searchParams.has('previewNode'),false);
+ }finally{await t.close();}
+ const n=await setup('',{},undefined,createElement(EntryApp));
+ try{await click(button('노드 추가'));await n.flush();assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');assert.ok(document.body.textContent?.includes('재사용할 노드를 만드세요.'));}finally{await n.close();}
+});
+
+test('entry: Qwen status replaces API-key entry and unsent input is guarded on exit',async()=>{
+ const t=await setup('?screen=workflow',{},undefined,createElement(EntryApp));
+ try{
+  await click(button('Qwen 연결'));
+  assert.equal(document.querySelectorAll('input[type=password]').length,0);
+  assert.ok(document.body.textContent?.includes('Qwen 서버 응답 확인'));
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
+  const close=document.querySelector('[data-slot=dialog-close]');if(close)await click(close);
+ }finally{await t.close();}
+ const n=await setup('?screen=workflow',{},undefined,createElement(EntryApp));
+ try{
+  await input(document.querySelector('textarea[aria-label="업무 설명"]')!,'아직 보내지 않은 요청');
+  let prompts=0;window.confirm=()=>{prompts++;return false;};
+  await click(button('목록으로'));assert.equal(prompts,1);assert.ok(document.querySelector('.as-composer'));
+  window.confirm=()=>true;await click(button('목록으로'));await n.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
+ }finally{await n.close();}
+});
+
+test('navigation: internal back/forward preserves unsent workflow text and avoids duplicate startup loads',async()=>{
+ const t=await setup('?screen=workflow',{},undefined,createElement(EntryApp));
+ const travel=async(direction:'back'|'forward')=>act(async()=>{window.history[direction]();await new Promise(r=>setTimeout(r,35));});
+ try{
+  await input(document.querySelector('textarea[aria-label="업무 설명"]')!,'탭 이동 후 유지할 업무');
+  const loads=t.calls.filter(c=>c.path.endsWith('/catalog')).length;
+  await click(button('노드 만들기'));assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
+  await click(button('서비스 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
+  await travel('back');assert.ok(document.body.textContent?.includes('재사용할 노드를 만드세요.'));
+  await travel('back');assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement)?.value,'탭 이동 후 유지할 업무');
+  await travel('forward');assert.ok(document.body.textContent?.includes('재사용할 노드를 만드세요.'));
+  assert.equal(t.calls.filter(c=>c.path.endsWith('/catalog')).length,loads);
+ }finally{await t.close();}
+});
+
+test('navigation: explicit missing run never falls back to a different latest result',async()=>{
+ const t=await setup('?screen=run&service=A&run=missing',{},async path=>path.includes('/agent?')?snapshot(A,[{id:'latest',status:'succeeded',answer:'다른 실행 결과',steps:[],rows:[],artifact:null}]):undefined,createElement(EntryApp));
+ try{assert.match(document.querySelector('[role=alert]')?.textContent||'',/지정한 실행 기록/);assert.ok(!document.body.textContent?.includes('다른 실행 결과'));}finally{await t.close();}
+});
+
+test('navigation: node form survives internal tab switches and external exit can be cancelled',async()=>{
+ const t=await setup('?screen=nodes',{},undefined,createElement(EntryApp));
+ try{
+  await input(field('노드 이름'),'미저장 노드');
+  await click(button('워크플로우 설계'));await click(button('노드 만들기'));
+  assert.equal(field('노드 이름').value,'미저장 노드');
+  window.confirm=()=>false;await click(button('목록으로'));
+  assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
+  assert.equal(field('노드 이름').value,'미저장 노드');
+ }finally{await t.close();}
+});
+
+test('navigation: cancelling browser back from a dirty editor restores the URL and input',async()=>{
+ const t=await setup('?screen=workflows',{},undefined,createElement(EntryApp));
+ try{
+  await click(button('새 워크플로우'));await t.flush();
+  await input(document.querySelector('textarea[aria-label="업무 설명"]')!,'뒤로 가기로 잃으면 안 되는 입력');
+  let prompts=0;window.confirm=()=>{prompts++;return false;};
+  await act(async()=>{window.history.back();await new Promise(r=>setTimeout(r,100));});
+  assert.equal(prompts,1);assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
+  assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement).value,'뒤로 가기로 잃으면 안 되는 입력');
+  const event=new dom.window.Event('beforeunload',{cancelable:true});window.dispatchEvent(event);assert.equal(event.defaultPrevented,true);
+ }finally{await t.close();}
 });

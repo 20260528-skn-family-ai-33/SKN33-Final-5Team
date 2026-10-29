@@ -23,9 +23,9 @@ function portCenter(index: number, count: number, height: number) {
 
 function outputColor(node: FlowNode, output: number) {
   const ports = nodePorts(node);
-  if (node.onError === 'continueErrorOutput' && output === ports.outputs.length - 1) return '#f97373';
-  if (node.type === 'n8n-nodes-base.if') return output === 0 ? '#7fb685' : '#d89494';
-  return '#b3b3b3';
+  if (node.onError === 'continueErrorOutput' && output === ports.outputs.length - 1) return 'var(--a4b-danger)';
+  if (node.type === 'n8n-nodes-base.if') return output === 0 ? 'var(--a4b-success)' : 'var(--a4b-danger)';
+  return 'var(--a4b-flow-line)';
 }
 
 export function Canvas({flow, onChange, onSelect, onAdd, onRun, running, execution, beginner, guide, setGuide, onUndo, onRedo, canUndo, canRedo}: {
@@ -233,7 +233,7 @@ export function Canvas({flow, onChange, onSelect, onAdd, onRun, running, executi
           const edgeUsed=execution?.runs.some(record=>record.nodeId===from.id&&record.status==='success'&&record.output[output]?.length), color = outputColor(from, output);
           const remove = () => {const next = clone(flow); next.connections[source][channel][output].splice(edgeIndex, 1); onChange(next); toast('연결을 지웠어요. 되돌리기로 복구할 수 있어요.');};
           return <g key={`${source}-${channel}-${output}-${edgeIndex}`}>
-            <path d={path} style={{stroke: edgeUsed ? '#74c391' : color}} strokeDasharray={channel === 'main' ? undefined : '5 5'}/>
+            <path d={path} style={{stroke: edgeUsed ? 'var(--a4b-success)' : color}} strokeDasharray={channel === 'main' ? undefined : '5 5'}/>
             <path className="line-click" d={path} role="button" tabIndex={0} aria-label={`${source}에서 ${edge.node}로 이어진 연결 삭제`} onClick={event => {event.stopPropagation(); remove();}} onKeyDown={event => {if (['Enter', ' ', 'Delete', 'Backspace'].includes(event.key)) {event.preventDefault(); event.stopPropagation(); remove();}}}/>
           </g>;
         }))))}
@@ -276,6 +276,6 @@ export function Canvas({flow, onChange, onSelect, onAdd, onRun, running, executi
     {guide && beginner && <aside className="guide"><div className="guide-head"><b><Sparkles/>함께 만들어볼까요?</b><button className="icon-btn" onClick={() => setGuide(false)} aria-label="가이드 닫기"><X/></button></div><div className="guide-content"><div className="guide-steps">{[0, 1, 2].map(index => <span key={index} className={index <= step ? 'current' : ''}/>)}</div><h3>{['자동화는 작은 단계의 연결이에요', '단계를 눌러 설정을 바꿔요', '이제 한 번 실행해보세요'][step]}</h3><p>{['언제 시작할지, 어떤 일을 할지, 결과를 어디에 보낼지. 순서대로 연결하면 워크플로가 완성돼요.', '각 네모가 하나의 작업이에요. 데이터와 조건을 바꾸면 나에게 필요한 자동화가 돼요.', '아래 ‘시험 실행’을 누르면 각 단계를 거치는 데이터와 결과를 확인할 수 있어요.'][step]}</p><div className="guide-footer"><span>{step + 1} / 3</span><button className="btn" onClick={() => step < 2 ? setStep(step + 1) : setGuide(false)}>{step < 2 ? '다음' : '시작하기'}</button></div></div></aside>}
     <div className="canvas-tools"><button className="icon-btn" aria-label="축소" onClick={() => setView(previous => ({...previous, scale: Math.max(.25, previous.scale - .1)}))}><ZoomOut/></button><span className="zoom-label">{Math.round(view.scale * 100)}%</span><button className="icon-btn" aria-label="확대" onClick={() => setView(previous => ({...previous, scale: Math.min(1.8, previous.scale + .1)}))}><ZoomIn/></button><div className="tool-divider"/><button className="icon-btn" aria-label="전체 보기" onClick={fit}><Maximize/></button><div className="tool-divider"/><button className="icon-btn" aria-label="되돌리기" onClick={onUndo} disabled={!canUndo}><Undo2/></button><button className="icon-btn" aria-label="다시 하기" onClick={onRedo} disabled={!canRedo}><Redo2/></button></div>
     <div className="execute-controls"><button className="btn primary" disabled={running} onClick={onRun}>{running ? <Loader2 className="animate-spin"/> : <Play fill="currentColor"/>}{running ? '실행 중…' : '실행 준비'}</button></div>
-    <button className="mini-map" aria-label="워크플로 전체 보기" onClick={fit}><svg viewBox="0 0 1100 520">{flow.nodes.map(node => <rect key={node.id} x={node.position[0]} y={node.position[1] - 100} width={isStickyNote(node) ? stickyNoteSize(node).width : 88} height={isStickyNote(node) ? stickyNoteSize(node).height : squareHeight(node)} rx={isStickyNote(node) ? 2 : 7} fill={isStickyNote(node) ? `var(--sticky-${stickyNoteColor(node)}-background)` : execution?.runs.findLast(record => record.nodeId === node.id)?.status === 'success' ? '#71af88' : '#737373'}/>)}</svg></button>
+    <button className="mini-map" aria-label="워크플로 전체 보기" onClick={fit}><svg viewBox="0 0 1100 520">{flow.nodes.map(node => <rect key={node.id} x={node.position[0]} y={node.position[1] - 100} width={isStickyNote(node) ? stickyNoteSize(node).width : 88} height={isStickyNote(node) ? stickyNoteSize(node).height : squareHeight(node)} rx={isStickyNote(node) ? 2 : 7} fill={isStickyNote(node) ? `var(--sticky-${stickyNoteColor(node)}-background)` : execution?.runs.findLast(record => record.nodeId === node.id)?.status === 'success' ? 'var(--a4b-success)' : 'var(--a4b-muted)'}/>)}</svg></button>
   </div>;
 }

@@ -11,6 +11,8 @@ def create_chat_model(api_key, model, **limits):
     provider = os.getenv('A4B_MAIN_PROVIDER', 'openai')
     if provider not in ('openai', 'ollama', 'vllm'):
         raise ValueError('A4B_MAIN_PROVIDER는 openai/ollama/vllm이어야 합니다.')
+    if os.getenv('A4B_REQUIRE_LOCAL_MODEL') == '1' and (provider not in ('ollama', 'vllm') or api_key not in (None, '', LOCAL_MODEL_API_KEY)):
+        raise ValueError('Qwen 서버 연결만 사용할 수 있습니다. OpenAI 계정 호출은 차단됐습니다.')
     options = dict(model=model, api_key=api_key, **limits)
     # Only the explicit local connection goes to the local server; a selected OpenAI account
     # (real key) always talks to OpenAI, whatever the server-wide provider is.

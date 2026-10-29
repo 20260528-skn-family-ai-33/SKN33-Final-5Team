@@ -12,12 +12,12 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/c
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
 
 const statuses = {
-  success: {label: '성공', Icon: CheckCircle2, color: '#24734b'},
-  error: {label: '오류', Icon: AlertCircle, color: '#b33b53'},
-  queued: {label: '시작 대기', Icon: Clock3, color: '#7958a0'},
-  running: {label: '실행 중', Icon: Loader2, color: '#8a6b27'},
-  waiting: {label: '기다리는 중', Icon: CirclePause, color: '#7958a0'},
-  canceled: {label: '중지됨', Icon: CircleX, color: '#6a716c'},
+  success: {label: '성공', Icon: CheckCircle2, color: 'var(--a4b-success)'},
+  error: {label: '오류', Icon: AlertCircle, color: 'var(--a4b-danger)'},
+  queued: {label: '시작 대기', Icon: Clock3, color: 'var(--a4b-blue-ink)'},
+  running: {label: '실행 중', Icon: Loader2, color: 'var(--a4b-warning)'},
+  waiting: {label: '기다리는 중', Icon: CirclePause, color: 'var(--a4b-blue-ink)'},
+  canceled: {label: '중지됨', Icon: CircleX, color: 'var(--a4b-muted)'},
 };
 
 function Status({execution}: {execution: Execution}) {
@@ -79,7 +79,7 @@ export function ExecutionView({executions, onReload, workflowId, onCancel, onRet
         {rows.length > 0 ? <Table>
           <TableHeader><TableRow><TableHead>결과</TableHead><TableHead>워크플로</TableHead><TableHead>시작 시간 (한국)</TableHead><TableHead>소요 시간</TableHead><TableHead><span className="sr-only">상세 보기</span></TableHead></TableRow></TableHeader>
           <TableBody>{rows.map(execution => <TableRow key={execution.id} className={selected?.id === execution.id ? 'selected-row' : ''} onClick={() => setSelectedId(execution.id)}>
-            <TableCell><Status execution={execution}/>{execution.runs.some(run => run.continued) && <small className="block mt-1 text-[#8a6b27]">오류 후 계속한 단계 있음</small>}{execution.runs.some(run=>run.warning)&&<small className="block mt-1 text-[#8a6b27]">결과 안내 있음</small>}</TableCell>
+            <TableCell><Status execution={execution}/>{execution.runs.some(run => run.continued) && <small className="block mt-1 text-[var(--a4b-warning)]">오류 후 계속한 단계 있음</small>}{execution.runs.some(run=>run.warning)&&<small className="block mt-1 text-[var(--a4b-warning)]">결과 안내 있음</small>}</TableCell>
             <TableCell>{execution.workflowName}<small className="block muted">{execution.mode === 'live' ? '실제 실행' : '학습 실행'}</small></TableCell>
             <TableCell>{formatDate(execution.startedAt)}</TableCell>
             <TableCell>{execution.status === 'queued' ? '—' : formatDuration(execution.duration)}</TableCell>
@@ -104,7 +104,7 @@ export function ExecutionView({executions, onReload, workflowId, onCancel, onRet
         </div>
         {selected.runs.length === 0 && !['queued', 'running'].includes(selected.status) && <p className="muted text-sm">저장된 단계 결과가 없어요.</p>}
         {selected.runs.map((run, index) => <details className="run-detail" key={`${selected.id}-${run.nodeId}-${index}`} open={run.status === 'error' || !!run.warning || undefined}>
-          <summary><span className={`run-state ${run.status}`}/><span className="min-w-0 flex-1"><span className="block">{run.name}{selected.runs.filter(r=>r.nodeId===run.nodeId).length>1&&<small className="muted ml-2">{(run.runIndex??selected.runs.slice(0,index).filter(r=>r.nodeId===run.nodeId).length)+1}번째 처리</small>}</span>{(run.continued || (run.attempts || 0) > 1 || run.pinned) && <span className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs">{run.continued && <span className="text-[#8a6b27]">오류 후 계속</span>}{(run.attempts || 0) > 1 && <span className="inline-flex items-center gap-1 text-[#7958a0]"><RefreshCw size={11}/>{run.attempts}회 시도</span>}{run.pinned && <span className="inline-flex items-center gap-1 text-[#7958a0]"><Pin size={11}/>고정 데이터</span>}</span>}</span><small className="shrink-0">{run.status === 'skipped' ? '건너뜀' : `${run.output.flat().length}개 · ${formatDuration(run.duration)}`}</small></summary>
+          <summary><span className={`run-state ${run.status}`}/><span className="min-w-0 flex-1"><span className="block">{run.name}{selected.runs.filter(r=>r.nodeId===run.nodeId).length>1&&<small className="muted ml-2">{(run.runIndex??selected.runs.slice(0,index).filter(r=>r.nodeId===run.nodeId).length)+1}번째 처리</small>}</span>{(run.continued || (run.attempts || 0) > 1 || run.pinned) && <span className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs">{run.continued && <span className="text-[var(--a4b-warning)]">오류 후 계속</span>}{(run.attempts || 0) > 1 && <span className="inline-flex items-center gap-1 text-[var(--a4b-blue-ink)]"><RefreshCw size={11}/>{run.attempts}회 시도</span>}{run.pinned && <span className="inline-flex items-center gap-1 text-[var(--a4b-blue-ink)]"><Pin size={11}/>고정 데이터</span>}</span>}</span><small className="shrink-0">{run.status === 'skipped' ? '건너뜀' : `${run.output.flat().length}개 · ${formatDuration(run.duration)}`}</small></summary>
           {run.pinned && <p className="muted text-xs mt-3">이 단계는 실행 대신 미리 고정한 데이터를 다음 단계로 전달했어요.</p>}
           {run.warning&&<div className="help-box mt-3" role="status">{run.warning}</div>}
           {run.pagination&&<p className="muted text-xs mt-3">{run.pagination.pagesFetched}페이지 · {run.pagination.itemsFetched}개 항목{run.pagination.limited?' · 지정한 페이지까지만 처리':run.pagination.complete?' · 마지막 페이지까지 처리':''}</p>}

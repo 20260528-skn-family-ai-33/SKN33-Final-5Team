@@ -65,7 +65,9 @@ def mineru(request):
     return dict(engine='mineru', version=version('mineru'), blocks=blocks,
                 partial=not raw.get('is_full_document', False), model={'tier': 'standard', 'image_analysis': False,
                     'requested_small_backend': os.environ.get('MINERU_MODEL_SMALL_BACKEND', 'auto'),
-                    'requested_vlm_engine': local_engine, 'local_models_only': True},
+                    'requested_vlm_engine': local_engine,
+                    'requested_llama_backend': os.environ.get('MINERU_LLAMA_CPP_BACKEND', 'auto'),
+                    'local_models_only': True},
                 page_count=len(raw['pages']))
 
 
@@ -106,7 +108,7 @@ def docling(request):
                            coordinate_system='pdf_top_left_points', data=data))
     return dict(engine='docling', version=version('docling'), blocks=blocks,
                 partial=converted.status != ConversionStatus.SUCCESS or bool(converted.errors),
-                page_count=len(doc.pages), model={'ocr_languages': config['ocr_languages'], 'mode': config['mode']})
+                page_count=len(doc.pages), model={'ocr_languages': config['ocr_languages'], 'mode': config['mode'], 'device': config['device']})
 
 
 def paddle(request):
@@ -136,7 +138,8 @@ def paddle(request):
             raw = raw.get('res', raw)
             outputs.append(dict(source=str(source), result=raw))
     Path(request['raw']).write_text(json.dumps(outputs, ensure_ascii=False, default=plain), encoding='utf-8')
-    return dict(engine=request['engine'], version=version('paddleocr'), model={'name': name}, outputs=outputs)
+    return dict(engine=request['engine'], version=version('paddleocr'),
+                model={'name': name, 'device': os.environ.get('A4B_PADDLE_DEVICE', 'cpu')}, outputs=outputs)
 
 
 def main():

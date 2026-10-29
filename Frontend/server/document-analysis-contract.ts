@@ -1,5 +1,7 @@
 export const DOCUMENT_FORMATS=new Set(['pdf','hwp','hwpx','doc','docx','ppt','pptx','xls','xlsx','csv','tsv','txt','md','jpg','jpeg','png','bmp','webp','tif','tiff','heic']);
 export const routingEnabled=()=>process.env.A4B_DOCUMENT_ROUTING!=='0';
+export const analysisSupportsFormat=(format:string)=>DOCUMENT_FORMATS.has(format)||
+ (format==='json'&&process.env.A4B_DOCUMENT_BENCHMARK_ARM==='docling-paddle-fixed-v1');
 export type AnalysisBlock={id:string;parent_object_id:string|null;unit_id:string|null;content_types:string[];
  native_location:Record<string,unknown>;text:string;engine:string;selected?:boolean;status:string;
  bbox:null|{values:number[];coordinate_system:string};data:Record<string,unknown>;phase?:string;artifact?:string|null;parser_version?:string};
@@ -13,7 +15,7 @@ export function validateDocumentAnalysis(value:unknown):value is DocumentAnalysi
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const v=value as DocumentAnalysis;
  if(v.contract_version!=='a4b.document_analysis.v1'||!/^[a-f0-9]{64}$/.test(v.source_sha256)||
-  !DOCUMENT_FORMATS.has(v.source_format)||!['succeeded','partial'].includes(v.status)||typeof v.review_required!=='boolean'||
+  !(DOCUMENT_FORMATS.has(v.source_format)||v.source_format==='json'&&v.primary_processor==='docling+paddleocr')||!['succeeded','partial'].includes(v.status)||typeof v.review_required!=='boolean'||
   !Array.isArray(v.review_reasons)||!Array.isArray(v.blocks)||v.blocks.length>20000||!Array.isArray(v.units)||v.units.length>500||
   !Array.isArray(v.routes)||!Array.isArray(v.warnings)||v.warnings.some(w=>typeof w!=='string')||
   v.review_reasons.some(w=>typeof w!=='string')||v.status==='succeeded'&&v.review_required)return false;

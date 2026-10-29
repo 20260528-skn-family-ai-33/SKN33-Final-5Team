@@ -6,7 +6,7 @@ import {extname} from 'node:path';
 import {existsSync} from 'node:fs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {convertBuilderPdf} from './builder-documents';
-import {analyzeBuilderDocument,DOCUMENT_FORMATS,routingEnabled} from './document-analysis';
+import {analyzeBuilderDocument,analysisSupportsFormat,routingEnabled} from './document-analysis';
 import {parseDocumentReviewCommand,documentPreview,originalMime} from './document-review';
 import {createHash,randomUUID} from 'node:crypto';
 import {localModelConnection,LOCAL_MODEL_ID} from './builder-local-model';
@@ -67,7 +67,7 @@ export async function parseBuilderAsset(input:any){
  if(typeof input.data!=='string'||input.data.length>11200000||input.data.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))throw new Error('파일 데이터를 확인하세요.');
  const bytes=Buffer.from(input.data,'base64');if(bytes.toString('base64')!==input.data)throw new Error('파일 데이터를 확인하세요.');if(!bytes.length||bytes.length>8*1024*1024)throw new Error('파일은 8MB 이하로 연결하세요.');
  const format=extname(input.fileName).slice(1).toLowerCase();let rows:Record<string,unknown>[]=[],text='',pages:string[]=[],kind='table',documentMeta:Record<string,unknown>={};
- const routed=routingEnabled()&&DOCUMENT_FORMATS.has(format)?await analyzeBuilderDocument(bytes,format):undefined;
+ const routed=routingEnabled()&&analysisSupportsFormat(format)?await analyzeBuilderDocument(bytes,format):undefined;
  if(format==='csv'||format==='tsv'){
   let decoded:string;try{decoded=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{decoded=new TextDecoder('euc-kr',{fatal:true}).decode(bytes);}
   rows=parseCsv(decoded,{delimiter:format==='tsv'?'\t':','});

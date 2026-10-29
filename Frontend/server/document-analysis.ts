@@ -6,12 +6,12 @@ import {join,sep} from 'node:path';
 import {backendPath,dataDirectory,documentPython,PROJECT_ROOT} from './paths';
 import {normalizeBuilderDocument,type BuilderParsedDocument} from './builder-documents';
 
-import {DOCUMENT_FORMATS,validateDocumentAnalysis} from './document-analysis-contract';
-export {DOCUMENT_FORMATS,routingEnabled,validateDocumentAnalysis} from './document-analysis-contract';
+import {analysisSupportsFormat,validateDocumentAnalysis} from './document-analysis-contract';
+export {DOCUMENT_FORMATS,analysisSupportsFormat,routingEnabled,validateDocumentAnalysis} from './document-analysis-contract';
 export type {DocumentAnalysis,AnalysisBlock} from './document-analysis-contract';
 
 export async function analyzeBuilderDocument(bytes:Uint8Array,format:string):Promise<BuilderParsedDocument>{
- if(!DOCUMENT_FORMATS.has(format))throw new Error('지원하지 않는 문서 분석 형식입니다.');
+ if(!analysisSupportsFormat(format))throw new Error('지원하지 않는 문서 분석 형식입니다.');
  const hash=createHash('sha256').update(bytes).digest('hex');
  const relative=join('document-results',hash,randomUUID()),dir=dataDirectory(relative);
  await mkdir(dir,{recursive:true});

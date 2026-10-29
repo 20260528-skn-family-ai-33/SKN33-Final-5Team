@@ -19,8 +19,12 @@ def main():
     args = parser.parse_args()
     try:
         with contextlib.redirect_stdout(sys.stderr):
-            result = run(args.source, args.work_dir or args.output.parent,
-                         max_supplements=int(os.environ.get('A4B_DOCUMENT_MAX_SUPPLEMENTS', '16')))
+            if os.environ.get('A4B_DOCUMENT_BENCHMARK_ARM') == 'docling-paddle-fixed-v1':
+                from document_analysis.benchmark_baseline import run as baseline_run
+                result = baseline_run(args.source, args.work_dir or args.output.parent)
+            else:
+                result = run(args.source, args.work_dir or args.output.parent,
+                             max_supplements=int(os.environ.get('A4B_DOCUMENT_MAX_SUPPLEMENTS', '16')))
         args.output.write_text(json.dumps(result, ensure_ascii=False, allow_nan=False), encoding='utf-8')
         return 0
     except Exception as error:

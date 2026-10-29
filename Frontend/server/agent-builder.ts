@@ -3,7 +3,7 @@ import {agentPython,backendPath,dataDirectory} from './paths';
 import {builderNeedsModel} from './builder-model-requirements';
 import {spawn} from 'node:child_process';
 import {extname} from 'node:path';
-import {existsSync} from 'node:fs';
+import {existsSync,mkdirSync,appendFileSync} from 'node:fs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {convertBuilderPdf} from './builder-documents';
 import {analyzeBuilderDocument,analysisSupportsFormat,routingEnabled} from './document-analysis';
@@ -32,12 +32,17 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
  const executionToken=execution?randomUUID():undefined;
  const workerPayload=execution?{...payload,execution_token:executionToken,...(payload.action==='test'?{run_id:runId}:{})}:payload;
  return new Promise((accept,reject)=>{
-  const child=spawn(python,[backendPath('agent_builder/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});
+  let timingPath='';
+  if(['message','confirm','test','scheduled_run','retry_run','resume_run'].includes(String(payload.action)))
+   try{const dir=dataDirectory('builder-timing');mkdirSync(dir,{recursive:true,mode:0o700});timingPath=dataDirectory('builder-timing',randomUUID()+'.jsonl');}catch{}
+  const timing=(event:string)=>{if(timingPath)try{appendFileSync(timingPath,JSON.stringify({event,at:Date.now()/1000})+'\n',{mode:0o600});}catch{}};
+  timing('worker_start');
+  const child=spawn(python,[backendPath('agent_builder/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,A4B_TIMING_LOG:timingPath,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});
   let stdout='',settled=false,heartbeatBusy=false;
   let heartbeat:ReturnType<typeof setInterval>|undefined;
   const clear=()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat);};
   const fail=async(message:string)=>{
-   if(settled)return;settled=true;clear();child.kill('SIGKILL');
+   if(settled)return;settled=true;clear();timing(child.exitCode===null&&child.signalCode===null?'worker_interrupted':'worker_failed');child.kill('SIGKILL');
    if(execution)await builderWorker({action:'interrupt_run',id:runId,execution_token:executionToken}).catch(()=>{});
    reject(new Error(message));
   };
@@ -56,6 +61,7 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
   child.stderr.resume();child.stdin.on('error',()=>{});
   child.on('close',()=>{
    if(settled)return;
+   timing('worker_exit');
    try{const data=JSON.parse(stdout.trim());if(!data.ok){void fail(data.error||'에이전트 실행에 실패했습니다.');return;}settled=true;clear();accept(data.result);}
    catch{void fail('에이전트 응답을 읽지 못했습니다. 실행 기록과 Python 환경을 확인하세요.');}
   });

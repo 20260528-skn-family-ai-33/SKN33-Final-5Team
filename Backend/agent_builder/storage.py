@@ -1,16 +1,34 @@
-import json, sqlite3, uuid
+import json, sqlite3, time, uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from .registry import TOOLS
 
 def now(): return datetime.now(timezone.utc).isoformat()
 def uid(): return str(uuid.uuid4())
+
+def enable_wal(connection, timeout=10):
+    # SQLite can return BUSY immediately while concurrent first connections
+    # switch journal mode, even when connect(timeout=...) has a busy timeout.
+    deadline=time.monotonic()+timeout
+    while True:
+        try:
+            connection.execute('PRAGMA journal_mode=WAL')
+            return
+        except sqlite3.OperationalError as error:
+            code=getattr(error,'sqlite_errorcode',0)&0xff
+            if code not in (sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED) or time.monotonic()>=deadline:
+                raise
+            time.sleep(min(.05,max(0,deadline-time.monotonic())))
+
 class Storage:
     def __init__(self,directory):
         Path(directory).mkdir(parents=True,exist_ok=True)
         self.path=str(Path(directory)/'agent-builder.sqlite')
         self.db=sqlite3.connect(self.path,timeout=10,check_same_thread=False)
-        self.db.execute('PRAGMA journal_mode=WAL')
+        try:enable_wal(self.db)
+        except Exception:
+            self.db.close()
+            raise
         self.db.execute('PRAGMA foreign_keys=ON')
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS registered_tools(id TEXT NOT NULL,version INTEGER NOT NULL,module_path TEXT NOT NULL,schema_json TEXT NOT NULL,PRIMARY KEY(id,version));
@@ -21,6 +39,8 @@ class Storage:
         CREATE TABLE IF NOT EXISTS builder_run_leases(run_id TEXT PRIMARY KEY,token TEXT NOT NULL,expires_at TEXT NOT NULL,pid INTEGER NOT NULL,active INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS builder_schedule_jobs(id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,slot_key TEXT NOT NULL,state TEXT NOT NULL,lease_until TEXT,lease_token TEXT,json TEXT NOT NULL,UNIQUE(agent_id,slot_key));
         CREATE TABLE IF NOT EXISTS reply_review_decisions(run_id TEXT NOT NULL REFERENCES agent_tests(id),review_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(run_id,review_id));
+        CREATE TABLE IF NOT EXISTS document_reviews(asset_id TEXT PRIMARY KEY REFERENCES builder_assets(id),revision INTEGER NOT NULL,json TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS document_review_events(asset_id TEXT NOT NULL REFERENCES builder_assets(id),revision INTEGER NOT NULL,request_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(asset_id,revision),UNIQUE(asset_id,request_id));
         ''')
         for tool in TOOLS:self.db.execute('INSERT INTO registered_tools VALUES(?,?,?,?) ON CONFLICT(id,version) DO UPDATE SET schema_json=excluded.schema_json',(tool['id'],tool['version'],tool['module_path'],json.dumps(tool,ensure_ascii=False)))
         self.db.commit()
@@ -54,9 +74,17 @@ class Storage:
     def add_asset(self,asset,rows):
         self.db.execute('INSERT INTO builder_assets VALUES(?,?,?)',(asset['id'],json.dumps(asset,ensure_ascii=False),json.dumps(rows,ensure_ascii=False)));self.db.commit();return asset
     def asset(self,id):
+        from .document_review import effective_asset
+        return effective_asset(self.raw_asset(id),self.document_review(id))
+    def raw_asset(self,id):
         row=self.db.execute('SELECT json FROM builder_assets WHERE id=?',(id,)).fetchone()
         if not row: raise ValueError('연결한 자료를 찾을 수 없습니다.')
         return json.loads(row[0])
+    def document_review(self,id):
+        row=self.db.execute('SELECT json FROM document_reviews WHERE asset_id=?',(id,)).fetchone()
+        return json.loads(row[0]) if row else None
+    def document_review_history(self,id):
+        return [json.loads(row[0]) for row in self.db.execute('SELECT json FROM document_review_events WHERE asset_id=? ORDER BY revision DESC LIMIT 50',(id,))]
     def rows(self,id):
         row=self.db.execute('SELECT rows_json FROM builder_assets WHERE id=?',(id,)).fetchone()
         if not row: raise ValueError('표 파일을 찾을 수 없습니다.')

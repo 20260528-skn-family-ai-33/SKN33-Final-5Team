@@ -6,6 +6,8 @@ import {extname} from 'node:path';
 import {existsSync} from 'node:fs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {convertBuilderPdf} from './builder-documents';
+import {analyzeBuilderDocument,analysisSupportsFormat,routingEnabled} from './document-analysis';
+import {parseDocumentReviewCommand,documentPreview,originalMime} from './document-review';
 import {createHash,randomUUID} from 'node:crypto';
 import {localModelConnection,LOCAL_MODEL_ID} from './builder-local-model';
 import type {IncomingMessage,ServerResponse} from 'node:http';
@@ -65,21 +67,40 @@ export async function parseBuilderAsset(input:any){
  if(typeof input.data!=='string'||input.data.length>11200000||input.data.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))throw new Error('파일 데이터를 확인하세요.');
  const bytes=Buffer.from(input.data,'base64');if(bytes.toString('base64')!==input.data)throw new Error('파일 데이터를 확인하세요.');if(!bytes.length||bytes.length>8*1024*1024)throw new Error('파일은 8MB 이하로 연결하세요.');
  const format=extname(input.fileName).slice(1).toLowerCase();let rows:Record<string,unknown>[]=[],text='',pages:string[]=[],kind='table',documentMeta:Record<string,unknown>={};
- if(format==='csv')rows=parseCsv(bytes.toString('utf8'));
+ const routed=routingEnabled()&&analysisSupportsFormat(format)?await analyzeBuilderDocument(bytes,format):undefined;
+ if(format==='csv'||format==='tsv'){
+  let decoded:string;try{decoded=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{decoded=new TextDecoder('euc-kr',{fatal:true}).decode(bytes);}
+  rows=parseCsv(decoded,{delimiter:format==='tsv'?'\t':','});
+ }
  else if(format==='xlsx')rows=await readXlsx(bytes,{includeEmptyCells:true});
  else if(format==='json'){const value=JSON.parse(bytes.toString('utf8'));if(!Array.isArray(value)||value.length>5000||value.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw new Error('JSON은 객체 행의 배열로 입력하세요.');rows=value;}
- else if(['txt','md','pdf'].includes(format)){kind='document';if(format==='pdf'){const parsed=await convertBuilderPdf(bytes);pages=parsed.pages;text=parsed.text;documentMeta={engine:parsed.engine,parser_version:parsed.parser_version,warnings:parsed.warnings,page_count:parsed.page_count,sections:parsed.sections,tables:parsed.tables,parser_status:parsed.parser_status,parser_metadata:parsed.parser_metadata};}else{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);pages=[text];}if(!text.trim())throw new Error('문서의 본문이 비어 있습니다.');if(text.length>1000000)throw new Error('문서는 1,000,000자 이내로 연결하세요.');}
- else throw new Error('CSV·XLSX·JSON 표 또는 TXT·MD·텍스트 PDF 규칙 문서를 연결하세요.');
+ else if(routed||['txt','md','pdf'].includes(format)){kind='document';if(routed||format==='pdf'){const parsed=routed||await convertBuilderPdf(bytes);pages=parsed.pages;text=parsed.text;documentMeta={engine:parsed.engine,parser_version:parsed.parser_version,warnings:parsed.warnings,page_count:parsed.page_count,sections:parsed.sections,tables:parsed.tables,parser_status:parsed.parser_status,parser_metadata:parsed.parser_metadata};}else{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);pages=[text];}if(!text.trim()&&!routed)throw new Error('문서의 본문이 비어 있습니다.');if(text.length>1000000)throw new Error('문서는 1,000,000자 이내로 연결하세요.');}
+ else throw new Error('지원되는 문서·이미지 또는 CSV·XLSX·JSON 표 파일을 연결하세요.');
+ if(routed){text=routed.text;pages=routed.pages;documentMeta={engine:routed.engine,parser_version:routed.parser_version,warnings:routed.warnings,
+  page_count:routed.page_count,sections:routed.sections,tables:routed.tables,parser_status:routed.parser_status,parser_metadata:routed.parser_metadata};}
  if(kind==='table'&&!rows.length)throw new Error('표 파일에 데이터 행이 없습니다.');
  const columns=[...new Set(rows.flatMap(row=>Object.keys(row)))];
  if(columns.length>200||columns.some(k=>!k.trim()||k.length>120||['__proto__','prototype','constructor'].includes(k)))throw new Error('열 이름 또는 열 수를 확인하세요. 최대 200개 열을 지원합니다.');
  if(rows.some(r=>Object.values(r).some(v=>v!==null&&!['string','number','boolean'].includes(typeof v))))throw new Error('표의 셀은 문자열·숫자·논리값·빈 값만 지원합니다.');
  const profile=Object.fromEntries(columns.map(k=>{const values=rows.map(r=>r[k]);const filled=values.filter(v=>v!==null&&v!==undefined&&v!=='');return [k,{types:[...new Set(filled.map(v=>typeof v))],missing:values.length-filled.length,duplicateValues:filled.length-new Set(filled.map(v=>JSON.stringify(v))).size,numericStrings:filled.filter(v=>typeof v==='string'&&v.trim()!==''&&Number.isFinite(Number(v))).length}];}));
- return {asset:{name:input.fileName,kind,format,hash:createHash('sha256').update(bytes).digest('hex'),row_count:rows.length,columns,profile,preview:rows.slice(0,3),text,pages,...documentMeta},rows};
+ return {asset:{name:input.fileName,kind,format,hash:createHash('sha256').update(bytes).digest('hex'),row_count:rows.length,columns,profile,preview:rows.slice(0,3),text,pages,
+  capabilities:[kind,...(kind==='table'&&routed?.text.trim()?['document']:[])],...documentMeta},rows};
 }
 export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void):Promise<boolean>{
  if(!url.pathname.startsWith('/api/agent-builder/'))return false;
  const action=url.pathname.slice('/api/agent-builder/'.length),method=req.method||'GET';
+ if(action==='document_review'&&['GET','POST'].includes(method)){
+  const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,12000);
+  if(!idPattern.test(data?.id||''))throw new Error('자료 ID를 확인하세요.');
+  const payload=method==='GET'?{action:'document_review',id:data.id}:{action:'document_review',id:data.id,command:parseDocumentReviewCommand(data)};
+  json(res,200,await builderWorker(payload));return true;
+ }
+ if(action==='document_preview'&&method==='GET'){
+  const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');
+  const {asset}=await builderWorker({action:'asset',id});
+  const preview=await documentPreview(asset,url.searchParams.get('blockId'),url.searchParams.get('converted'));
+  res.writeHead(200,{'Content-Type':preview.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'self'"});res.end(preview.bytes);return true;
+ }
  if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection()});return true;}
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
@@ -94,7 +115,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   else {const {run}=await builderWorker({action:'run',id});if(!run.reviews?.length)throw new Error('검수 보고서가 없습니다.');artifact={name:'검수_보고서_'+id+'.json',mime:'application/json; charset=utf-8',content:JSON.stringify({id:run.id,agent_version:run.agent_version,source_version:run.source_version,created_at:run.created_at,status:run.status,reviews:run.reviews},null,2)};}
   res.writeHead(200,{'Content-Type':artifact.mime,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(artifact.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(artifact.content);return true;
  }
- if(action==='original'&&method==='GET'){const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');const {asset}=await builderWorker({action:'asset',id});if(!/^builder-originals\/[a-f0-9]{64}\.[a-z0-9]+$/.test(asset.original_path||''))throw new Error('원본 파일이 없는 이전 자료입니다. 다시 연결하세요.');const content=await readFile(dataDirectory(asset.original_path));res.writeHead(200,{'Content-Type':asset.format==='pdf'?'application/pdf':'application/octet-stream','Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;}
+ if(action==='original'&&method==='GET'){const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');const {asset}=await builderWorker({action:'asset',id});if(!/^builder-originals\/[a-f0-9]{64}\.[a-z0-9]+$/.test(asset.original_path||''))throw new Error('원본 파일이 없는 이전 자료입니다. 다시 연결하세요.');const content=await readFile(dataDirectory(asset.original_path));res.writeHead(200,{'Content-Type':originalMime(asset.format),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;}
  if(action==='nodes'&&method==='GET'){json(res,200,await builderWorker({action:'nodes'}));return true;}
  if(action==='nodes'&&method==='POST'){
   const data=await readBody(req,50000);
@@ -162,7 +183,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     payload.api_key=credential.data.apiKey||credential.data.token;
    }
   }
-  if(['upload','run_upload','source_upload'].includes(workerAction)){Object.assign(payload,await parseBuilderAsset(data));const relative='builder-originals/'+payload.asset.hash+'.'+payload.asset.format;await mkdir(dataDirectory('builder-originals'),{recursive:true});await writeFile(dataDirectory(relative),Buffer.from(data.data,'base64'));payload.asset.original_path=relative;payload.asset.version=1;payload.asset.processing_status='ready';}
+  if(['upload','run_upload','source_upload'].includes(workerAction)){Object.assign(payload,await parseBuilderAsset(data));const relative='builder-originals/'+payload.asset.hash+'.'+payload.asset.format;await mkdir(dataDirectory('builder-originals'),{recursive:true});await writeFile(dataDirectory(relative),Buffer.from(data.data,'base64'));payload.asset.original_path=relative;payload.asset.version=1;payload.asset.processing_status=payload.asset.parser_status==='partial'?'partial':'ready';}
   if(workerAction==='test'&&data.replyDraft!==undefined){if(typeof data.replyDraft!=='string'||data.replyDraft.length>12000)throw new Error('검수 초안은 12,000자 이하로 입력하세요.');payload.reply_draft=data.replyDraft;}
   if(workerAction==='review_decision'){
    if(typeof data.reviewId!=='string'||!/^[-\w]+:\d+$/.test(data.reviewId)||data.reviewId.length>60)throw new Error('검수 항목 ID를 확인하세요.');

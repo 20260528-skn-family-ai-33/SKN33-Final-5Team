@@ -8,6 +8,7 @@ import uuid
 from a4b_verifier import VerificationInput, verify
 from a4b_verifier.adapters import draft_from_backend, load_registry
 from ..registry import TOOLS
+from ..document_resources import supports,analysis_of,chunks_for_asset,locator
 
 
 def current_tools():
@@ -41,13 +42,17 @@ def resource_document(asset):
     if status!='failed' and (any(text in warnings for text in ['일부 변환 오류', '텍스트가 없는 페이지'])
                              or supplement.get('errors') or supplement.get('deferred_pages')):
         status = 'partial'
+    if status!='failed' and analysis_of(asset) and analysis_of(asset).get('review_required'):
+        status='partial'
     doc = dict(id=asset['id'], version=str(asset.get('version') or asset.get('hash') or '1'),
                parse_status=status, chunks=[], tables=[])
     if status == 'failed':
         return doc
     if asset['kind'] == 'table':
         doc['tables'] = [dict(id='table-1', columns=asset['columns'], sample_rows=asset.get('preview', [])[:20])]
-    else:
+    if analysis_of(asset) and supports(asset,'document'):
+        doc['chunks']=[dict(id=c['source_id'],text=c['text'],locator=locator(c)) for c in chunks_for_asset(asset)]
+    elif asset['kind'] != 'table':
         pages = asset.get('pages') or [asset.get('text', '')]
         for page, text in enumerate(pages, 1):
             for start in range(0, len(text), 1400):
@@ -83,11 +88,11 @@ def make_verification_node(storage, verifier=None, mode=None):
                 if not raw or not raw.get('workflow'):
                     return None
                 snapshot=deepcopy(raw)
-                kinds={a['id']:a['kind'] for a in state.get('resources', [])}
+                assets={a['id']:a for a in state.get('resources', [])}
                 for node in snapshot['workflow']['nodes']:
                     if node['tool'] in ('read_table','read_document') and not node['settings'].get('file_ids'):
                         kind='table' if node['tool']=='read_table' else 'document'
-                        node['settings']['file_ids']=[i for i in raw.get('document_ids',[]) if kinds.get(i)==kind]
+                        node['settings']['file_ids']=[i for i in raw.get('document_ids',[]) if i in assets and supports(assets[i],kind)]
                 version=hashlib.sha256(json.dumps(raw,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
                 return draft_from_backend(snapshot, draft_id=state['session_id'], version=version)
             previous_adapted = adapt(previous, 'previous')

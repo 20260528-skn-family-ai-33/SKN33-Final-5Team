@@ -15,7 +15,7 @@ def main():
     destination=download_models(output_dir=root/'docling',with_layout=True,with_tableformer=True,
         with_code_formula=False,with_picture_classifier=False,with_rapidocr=False,
         with_easyocr=True,easyocr_languages=['ko','en'],progress=True)
-    print('\nFrontend/.env에 다음 경로를 설정하세요:')
+    print('\n저장소 루트 .env에 다음 경로를 설정하세요:')
     print('A4B_PDF_ARTIFACTS_DIR='+str(destination).replace('\\','/'))
     print('A4B_PDF_OCR_MODEL_DIR='+str(destination/EasyOcrModel._model_repo_folder).replace('\\','/'))
 

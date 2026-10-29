@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {canEditFirstFilter,nodeSpecFromForm,type NodeForm} from '../app/node-form';
+import type {LibraryNode} from '../app/node-library';
+const form:NodeForm={kind:'processing',tool:'filter_sort',name:'규칙',purpose:'업무 자료 처리',instructions:'입력 자료를 확인하여 답변합니다.',reference:'기준',model:'',field:'amount',operator:'gte',value:'100',group:'team, category',aggregation:'count',sumField:''};
+const plan={filters:[{field:'amount',operator:'gte',value:100,compare_field:null,value_type:'number'},{field:'stock',operator:'lt',value:5,compare_field:null,value_type:'number'}],sort:[{field:'amount',direction:'descending',value_type:'number'}],match:'any',missing_policy:'keep',duplicate_policy:'last',duplicate_field:'code',output_format:'csv'};
+function node(execution_plan:any=plan,tool='filter_sort'):LibraryNode{return {id:'n',version:1,ref:'n:1',saved_at:'',spec:{kind:'processing',name:'규칙',purpose:'업무 자료 처리',tool,model:null,instructions:'',reference:'',settings:{query:'preserved',fields:[],format:'csv'},execution_plan:structuredClone(execution_plan)}};}
+test('numeric editing preserves remaining filters, sort, policies, hidden settings and original object',()=>{
+ const n=node(),before=structuredClone(n),result=nodeSpecFromForm({...form,value:'200'},n);assert.equal(result.execution_plan.filters[0].value,200);assert.deepEqual(result.execution_plan.filters.slice(1),plan.filters.slice(1));
+ for(const key of ['sort','match','missing_policy','duplicate_policy','duplicate_field','output_format'])assert.deepEqual(result.execution_plan[key],(plan as any)[key]);assert.equal(result.settings.query,'preserved');assert.deepEqual(n,before);
+});
+for(const first of [{field:'name',operator:'contains',value:'A',value_type:'text'},{field:'a',operator:'gt',value:null,compare_field:'b',value_type:'number'},{field:'active',operator:'eq',value:true,value_type:'boolean'},{field:'a',operator:'is_empty',value:null,value_type:'text'}])test(`non-numeric ${first.operator} filter is preserved verbatim`,()=>{const n=node({...plan,filters:[first]});assert.equal(canEditFirstFilter(n,'filter_sort'),false);assert.deepEqual(nodeSpecFromForm({...form,field:'',value:''},n).execution_plan,n.spec.execution_plan);});
+test('sort-only plan is preserved',()=>{const n=node({...plan,filters:[]});assert.equal(canEditFirstFilter(n,'filter_sort'),false);assert.deepEqual(nodeSpecFromForm(form,n).execution_plan,n.spec.execution_plan);});
+for(const value of ['', ' ', 'Infinity','NaN','1e999'])test(`invalid new numeric filter ${JSON.stringify(value)} rejected`,()=>assert.throws(()=>nodeSpecFromForm({...form,value},null),/유한한 숫자/));
+for(const value of ['0','-12.5','1e3'])test(`finite numeric filter ${value} accepted`,()=>assert.equal(nodeSpecFromForm({...form,value},null).execution_plan.filters[0].value,Number(value)));
+test('changing processing tool starts a fresh config',()=>{const result=nodeSpecFromForm({...form,tool:'read_table'},node());assert.equal(result.execution_plan,null);assert.equal(result.settings.query,null);});
+test('aggregate edits preserve hidden settings while updating grouping and sum',()=>{const result=nodeSpecFromForm({...form,tool:'aggregate_table',aggregation:'sum',sumField:'total'},node(null,'aggregate_table'));assert.deepEqual(result.settings.fields,['team','category']);assert.equal(result.settings.sum_field,'total');assert.equal(result.settings.query,'preserved');});
+test('agent edits preserve hidden settings and empty model inheritance',()=>{const n=node(null,'agent_node');n.spec.kind='agent';const result=nodeSpecFromForm({...form,kind:'agent'},n);assert.equal(result.model,null);assert.equal(result.settings.query,'preserved');assert.equal(result.reference,'기준');});

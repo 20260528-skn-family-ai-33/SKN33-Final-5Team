@@ -38,6 +38,9 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    from .name_policy import invalid_workflow_name
+    if invalid_workflow_name((state.get('draft') or {}).get('name')):
+        raise ValueError('도구 식별자만으로는 저장할 수 없습니다. 업무 이름을 확인해주세요.')
     condition=state.get('condition_required') or state.get('condition_enforced')
     verification=state.get('verification_required') or state.get('verification_enforced')
     if condition:

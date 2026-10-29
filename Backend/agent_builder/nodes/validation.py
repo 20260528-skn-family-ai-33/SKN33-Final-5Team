@@ -9,6 +9,9 @@ def validate_node(state):
     issues.extend(literal_condition_issues(state))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']
     if not draft['name'].strip(): issues.append('에이전트 이름이 필요합니다.')
+    from ..name_policy import invalid_workflow_name
+    if draft.get('workflow') and invalid_workflow_name(draft['name']):
+        issues.append('도구 식별자만으로는 저장할 수 없습니다. 사용자 업무를 설명하는 이름으로 바꿔주세요.')
     if not draft['purpose'].strip(): issues.append('어떤 업무를 맡길지 알려주세요.')
     if not draft['instructions'].strip(): issues.append('에이전트의 지시사항이 필요합니다.')
     if not draft['tool_ids'] and not draft['questions'] and not draft['unsupported']: issues.append('처리할 업무에 맞는 도구를 연결해야 합니다.')

@@ -145,8 +145,10 @@ def test_empty_output_is_regenerated_once_with_fresh_nested_checkpoint(monkeypat
     calls=[];factories=[]
     def factory(**kwargs):
         factories.append(kwargs)
+        tools={t.name:t for t in kwargs['tools']}
         class Agent:
             def invoke(self,payload,config):
+                tools['list_tools'].invoke({})
                 calls.append(payload)
                 if len(calls)==1:return {'structured_response':draft(workflow=None)}
                 assert 'workflow가 없고 questions와 unsupported도 비어' in payload['messages'][-1]['content']
@@ -192,8 +194,10 @@ def test_unreadable_json_gets_one_fresh_repair(monkeypatch):
     calls=[];factories=[]
     def factory(**kwargs):
         factories.append(kwargs)
+        tools={t.name:t for t in kwargs['tools']}
         class Agent:
             def invoke(self,payload,config):
+                tools['list_tools'].invoke({})
                 calls.append(payload)
                 if len(calls)==1:return {'messages':[AIMessage(content='not json')]}
                 assert '유효한 JSON 객체로 읽을 수 없거나' in payload['messages'][-1]['content']
@@ -208,9 +212,50 @@ def test_unreadable_json_gets_one_fresh_repair(monkeypatch):
 def test_unreadable_json_twice_stops(monkeypatch):
     from langchain_core.messages import AIMessage
     calls=[]
-    class Agent:
-        def invoke(self,payload,config):calls.append(1);return {'messages':[AIMessage(content='not json')]}
-    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    def factory(**kwargs):
+        tools={t.name:t for t in kwargs['tools']}
+        class Agent:
+            def invoke(self,payload,config):
+                tools['list_tools'].invoke({});calls.append(1);return {'messages':[AIMessage(content='not json')]}
+        return Agent()
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
     with pytest.raises(ValueError,match='한 번 다시 생성'):
         make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
     assert len(calls)==2
+
+def test_missing_tool_selection_is_not_reclassified_as_json_error(monkeypatch):
+    from langchain_core.messages import AIMessage
+    class Agent:
+        def invoke(self,payload,config):return {'messages':[AIMessage(content='도구를 확인하겠습니다')]}
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    with pytest.raises(ValueError,match='도구 목록 확인이 완료되지 않아'):
+        make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
+
+def test_direct_catalog_supplies_registry_without_model_tool_call(monkeypatch):
+    from agent_builder.registry import TOOLS
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','direct')
+    class Agent:
+        def invoke(self,payload,config):
+            context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
+            assert context['supported_tools']==TOOLS
+            return {'structured_response':draft(questions=['기준을 알려주세요'])}
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    result=make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
+    assert result['draft']['questions']==['기준을 알려주세요']
+
+def test_length_error_is_not_parsed_as_json_or_retried(monkeypatch):
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    calls=[]
+    def factory(**kwargs):
+        tools={t.name:t for t in kwargs['tools']}
+        class Agent:
+            def invoke(self,payload,config):
+                tools['list_tools'].invoke({}); calls.append(1)
+                completion=ChatCompletion.model_construct(choices=[],usage=None)
+                raise LengthFinishReasonError(completion=completion)
+        return Agent()
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
+    with pytest.raises(ValueError,match='길이 제한'):
+        make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
+    assert len(calls)==1

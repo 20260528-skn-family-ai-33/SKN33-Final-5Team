@@ -33,4 +33,10 @@ def compatible_schema_payload(payload):
 
 class OllamaChatOpenAI(ChatOpenAI):
     def _get_request_payload(self, input_, *, stop=None, **kwargs):
-        return compatible_schema_payload(omit_empty_tools(super()._get_request_payload(input_, stop=stop, **kwargs)))
+        payload=compatible_schema_payload(omit_empty_tools(super()._get_request_payload(input_, stop=stop, **kwargs)))
+        from .graph import _timing_event
+        _timing_event({'event':'model_request','model':payload.get('model'),
+            'max_tokens':payload.get('max_tokens'),'max_completion_tokens':payload.get('max_completion_tokens'),
+            'stream':payload.get('stream'),'structured':bool(payload.get('response_format')),
+            'tool_count':len(payload.get('tools') or []),'thinking':(payload.get('extra_body') or {}).get('think',payload.get('think'))})
+        return payload

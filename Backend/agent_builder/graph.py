@@ -1,4 +1,7 @@
 import sqlite3
+import time
+import json
+import os
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 from .models import BuilderState
@@ -15,6 +18,38 @@ from .tool_gap import tool_gap_node
 from .nodes.capability_check import make_capability_check, await_capability_node
 from .capability_gate import generation_gate, require_ready
 
+def _timing_event(event):
+    path = os.getenv('A4B_TIMING_LOG')
+    if not path:
+        return
+    try:
+        with open(path, 'a', encoding='utf-8') as out:
+            out.write(json.dumps(event, ensure_ascii=False) + '\n')
+    except OSError:
+        pass
+
+def _timed_node(name, fn):
+    """Attach elapsed time to completed synchronous stages without logging input data."""
+    def run(state):
+        started = time.monotonic()
+        _timing_event({'event':'start','stage':name,'at':time.time()})
+        try:
+            result = fn(state)
+        except Exception as error:
+            _timing_event({'event':'error','stage':name,'at':time.time(),
+                           'elapsed_ms':round((time.monotonic()-started)*1000,2),
+                           'error_type':type(error).__name__})
+            raise
+        _timing_event({'event':'end','stage':name,'at':time.time(),
+                       'elapsed_ms':round((time.monotonic()-started)*1000,2)})
+        if not isinstance(result, dict):
+            return result
+        trace = list(result.get('trace', state.get('trace', [])))
+        trace.append({'node': name, 'label': '단계 소요 시간', 'status': 'completed',
+                      'detail': name, 'elapsed_ms': round((time.monotonic() - started) * 1000, 2)})
+        return {**result, 'trace': trace}
+    return run
+
 def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None):
     connection=sqlite3.connect(storage.path,check_same_thread=False,timeout=10)
     saver=SqliteSaver(connection)
@@ -22,11 +57,11 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     def available_resources(state):
         from .reusable_workflows import catalog
         return {**resources_node(state),'saved_workflows':catalog(storage,state.get('model',model),state.get('credential_id',''))}
-    graph.add_node('resources',available_resources)
-    graph.add_node('capability_check',make_capability_check(model,capability_transport,capability_mode))
+    graph.add_node('resources',_timed_node('resources',available_resources))
+    graph.add_node('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode)))
     graph.add_node('await_capability',await_capability_node)
     graph.add_node('generation_gate',generation_gate)
-    graph.add_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode))
+    graph.add_node('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode)))
     planner=conversation or make_conversation(api_key,model)
     def guarded_plan(state):
         # A restored checkpoint can resume directly at this node, bypassing edges.
@@ -49,11 +84,11 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         require_ready(state)
         return template_node(state)
     graph.add_node('template_plan',guarded_template)
-    graph.add_node('conversation',guarded_plan)
-    graph.add_node('condition_audit',audit_conditions)
-    graph.add_node('validate',validate_node)
-    graph.add_node('verification',make_verification_node(storage,verifier,verifier_mode))
-    graph.add_node('supervisor',supervisor_node)
+    graph.add_node('conversation',_timed_node('conversation',guarded_plan))
+    graph.add_node('condition_audit',_timed_node('condition_audit',audit_conditions))
+    graph.add_node('validate',_timed_node('validate',validate_node))
+    graph.add_node('verification',_timed_node('verification',make_verification_node(storage,verifier,verifier_mode)))
+    graph.add_node('supervisor',_timed_node('supervisor',supervisor_node))
     graph.add_node('await_input',await_input_node)
     graph.add_node('await_approval',await_approval_node)
     graph.add_node('save',make_save_node(storage))

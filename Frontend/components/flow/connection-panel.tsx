@@ -207,7 +207,7 @@ export function ConnectionPanel({onClose, onChanged}: {onClose?: () => void; onC
           return <TableRow key={credential.id}>
             <TableCell className="font-medium">{credential.name}</TableCell>
             <TableCell>{services[credential.service||credential.provider]?.label || credential.provider}{credential.authType==='oauth2'&&<small className="block muted mt-1">로그인 연결 · 자동 갱신</small>}</TableCell>
-            <TableCell>{result ? <span className={`flex items-start gap-2 text-sm ${result.ok ? 'text-[#24734b]' : 'text-[#b33b53]'}`}><ResultIcon size={15} className="shrink-0 mt-1"/>{result.message}</span> : <span className="muted text-sm">아직 확인하지 않았어요</span>}</TableCell>
+            <TableCell>{result ? <span className={`flex items-start gap-2 text-sm ${result.ok ? 'text-[var(--a4b-success)]' : 'text-[var(--a4b-danger)]'}`}><ResultIcon size={15} className="shrink-0 mt-1"/>{result.message}</span> : <span className="muted text-sm">아직 확인하지 않았어요</span>}</TableCell>
             <TableCell><div className="flex justify-end gap-2"><button className="btn" disabled={!!actionId} onClick={() => void test(credential)}>{actionId === credential.id ? <Loader2 className="animate-spin"/> : <PlugZap/>}연결 확인</button><button className="icon-btn" disabled={!!actionId} aria-label={`${credential.name} 연결 삭제`} onClick={() => setDeleteTarget(credential)}><Trash2 size={17}/></button></div></TableCell>
           </TableRow>;
         })}</TableBody>

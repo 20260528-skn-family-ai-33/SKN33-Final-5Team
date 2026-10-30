@@ -9,7 +9,7 @@ import {convertBuilderPdf} from './builder-documents';
 import {analyzeBuilderDocument,analysisSupportsFormat,routingEnabled} from './document-analysis';
 import {parseDocumentReviewCommand,documentPreview,originalMime} from './document-review';
 import {createHash,randomUUID} from 'node:crypto';
-import {localModelConnection,LOCAL_MODEL_ID} from './builder-local-model';
+import {localModelConnection,localModelHealth,LOCAL_MODEL_ID} from './builder-local-model';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {Store} from './store';
 import {parseCsv} from './binary';
@@ -107,7 +107,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   const preview=await documentPreview(asset,url.searchParams.get('blockId'),url.searchParams.get('converted'));
   res.writeHead(200,{'Content-Type':preview.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'self'"});res.end(preview.bytes);return true;
  }
- if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection()});return true;}
+ if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection(),...(url.searchParams.get('profile')==='1'?{}:{health:await localModelHealth()})});return true;}
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
   const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');
@@ -165,6 +165,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   let payload:any={action:workerAction,id:data.id};
   if(workerAction==='new_session'){
    if(typeof data.model!=='string'||!data.model.trim()||data.model.length>120||!/^[-\w./:]+$/.test(data.model))throw new Error('모델 이름을 확인하세요.');
+   if(process.env.A4B_REQUIRE_LOCAL_MODEL==='1'&&data.credentialId!==LOCAL_MODEL_ID)throw new Error('Qwen 연결로 새 워크플로우를 만들어주세요.');
    const local=localModelConnection();const credential=data.credentialId===LOCAL_MODEL_ID&&local?{...local.credential,data:{}}:store.getCredential(data.credentialId);if(credential.provider!=='openai')throw new Error('OpenAI 연결 계정을 선택하세요.');
    if(data.agentId&&!idPattern.test(data.agentId))throw new Error('에이전트 ID를 확인하세요.');
    if(data.nodeRefs!==undefined&&(!Array.isArray(data.nodeRefs)||data.nodeRefs.length>10||new Set(data.nodeRefs).size!==data.nodeRefs.length||data.nodeRefs.some((r:unknown)=>typeof r!=='string'||!/^[a-f0-9-]{36}:[1-9][0-9]{0,5}$/.test(r))))throw new Error('선택한 노드 버전을 확인하세요.');
@@ -184,6 +185,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    const needsModel=builderNeedsModel(config,workerAction==='test'?current.agent.workflow_dependencies:current.run?.workflow_dependencies);
    if(needsModel){
     const credentialId=workerAction==='test'?current.agent.credential_id:['resume_run','retry_run'].includes(workerAction)?current.run.credential_id:current.credential_id;
+    if(process.env.A4B_REQUIRE_LOCAL_MODEL==='1'&&credentialId!==LOCAL_MODEL_ID)throw new Error('이 작업은 이전 모델 연결로 저장됐습니다. Qwen으로 다시 만들어주세요.');
     const local=localModelConnection();const credential=credentialId===LOCAL_MODEL_ID&&local?{...local.credential,data:{apiKey:'local-not-a-secret',token:''}}:store.getCredential(credentialId);
     if(credential.provider!=='openai')throw new Error('모델 연결 계정을 확인하세요.');
     payload.api_key=credential.data.apiKey||credential.data.token;

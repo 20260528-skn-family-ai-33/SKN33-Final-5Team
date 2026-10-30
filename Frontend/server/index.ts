@@ -196,7 +196,7 @@ const server=createServer(async(req,res)=>{
   }
   if(method!=='GET'&&method!=='HEAD')return json(res,405,{error:'요청 방식을 확인해주세요.'});
   const root=frontendPath('dist-app');let file=resolve(root,'.'+decodeURIComponent(path));if(!file.startsWith(root+sep))file=resolve(root,'index.html');try{if(!(await stat(file)).isFile())file=resolve(root,'index.html');}catch{file=resolve(root,'index.html');}
-  const content=await readFile(file);const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};res.writeHead(200,{'Content-Type':mime[extname(file)]||'application/octet-stream','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(method==='HEAD'?undefined:content);
+  const content=await readFile(file);const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};res.writeHead(200,{'Content-Type':mime[extname(file)]||'application/octet-stream','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(method==='HEAD'?undefined:content);
  }catch(error){if(res.writableEnded||res.destroyed)return;if(error instanceof WebhookAuthError){for(const [name,value] of Object.entries(error.headers))res.setHeader(name,value);json(res,error.status,{error:error.message});}else if(error instanceof WebhookRequestError){
    // Write the complete, length-delimited error first. Finishing it immediately
    // makes HTTP destroySoon race an upload which has not read the response yet.

@@ -478,3 +478,5 @@
 @media(prefers-reduced-motion:reduce) {
  .a4b-landing *, .a4b-landing *::before, .a4b-landing *::after {transition:none!important;animation:none!important;scroll-behavior:auto!important;}
 }
+
+.a4b-assistant-avatar .workspace-brandmark{width:100%;height:100%;border-radius:inherit}

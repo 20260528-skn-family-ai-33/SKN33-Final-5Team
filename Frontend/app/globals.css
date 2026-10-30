@@ -247,7 +247,7 @@
 .node-name {color:var(--a4b-action);font-weight:600;}
 .workflow-card {box-shadow:0 3px 14px #302c3505;border-radius:14px;}
 .workflow-card:hover {border-color:var(--a4b-blue);box-shadow:0 5px 20px #302c350a;}
-[data-slot="dialog-overlay"],[data-slot="sheet-overlay"] {background:rgba(46,34,52,.28);backdrop-filter:blur(3px);}
+[data-slot="dialog-overlay"],[data-slot="sheet-overlay"] {background:rgba(18,31,46,.28);backdrop-filter:blur(3px);}
 
 .design-launcher {display:flex;justify-content:space-between;align-items:center;gap:20px;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--a4b-surface);flex-shrink:0;}
 .design-eyebrow {display:block;font-size:11px;color:var(--a4b-action);margin-bottom:5px;font-weight:600;letter-spacing:.03em;}

@@ -1,6 +1,7 @@
+import {WorkspaceBrandMark} from './workspace-header';
 import {useEffect,useRef,useState,type CSSProperties,type KeyboardEvent,type MouseEvent,type RefObject} from 'react';
 import {IntroPreview} from './intro-preview';
-import {ArrowDown,ArrowRight,ArrowUp,ArrowUpRight,CalendarClock,Check,CheckCircle2,Database,FileOutput,FileText,Filter,MessageSquare,Paperclip,Search,ShieldCheck,Sparkles} from 'lucide-react';
+import {ArrowDown,ArrowRight,ArrowUp,ArrowUpRight,CalendarClock,Check,CheckCircle2,Database,FileOutput,FileText,Filter,MessageSquare,Paperclip,Search,ShieldCheck,Workflow} from 'lucide-react';
 import './landing-page.css';
 
 type ScenarioId='inventory'|'review'|'document';
@@ -25,14 +26,14 @@ const scenarios:Scenario[]=[
 
 function ScenarioResult({scenario}:{scenario:Scenario}){
  if(scenario.id==='inventory')return <div className="a4b-result-content"><span className="a4b-result-kicker">재고 확인 결과</span><h4>부족 상품 <strong>2개</strong></h4><p>기준 수량에 못 미치는 상품을 모았어요.</p><table className="a4b-demo-table"><caption className="a4b-sr-only">재고 보고서 예시: 현재 재고가 기준 수량보다 적은 상품</caption><thead><tr><th scope="col">상품</th><th scope="col">재고</th><th scope="col">기준</th></tr></thead><tbody><tr><th scope="row">키보드</th><td>20</td><td>30</td></tr><tr><th scope="row">마우스</th><td>3</td><td>10</td></tr></tbody></table><div className="a4b-result-file"><span className="a4b-file-symbol"><FileOutput size={20}/></span><span><b>재고_보고서.csv</b><small>부족 상품 2개 · 결과 예시</small></span><CheckCircle2 size={17}/></div><div className="a4b-result-note"><CalendarClock size={15}/><span>매일 오전 9시 · 예약 설정 예시</span></div></div>;
- if(scenario.id==='review')return <div className="a4b-result-content"><span className="a4b-result-kicker">고객 응대 검수 결과</span><h4>확인이 필요한 <strong>표현 1곳</strong></h4><div className="a4b-review-quote"><small>응대 초안</small><p>“환불을 완료했습니다.<br/>오늘 바로 입금됩니다.”</p><span>처리 완료 여부 · 정책 확인 필요</span></div><div className="a4b-review-suggestion"><span><Sparkles size={13}/>수정안 예시</span><p>환불 신청 후 처리 기간은 영업일 3일입니다. 실제 처리 여부는 담당자의 확인이 필요합니다.</p></div><div className="a4b-result-note"><ShieldCheck size={16}/><span>최종 응대는 운영자가 확인·승인</span></div></div>;
+ if(scenario.id==='review')return <div className="a4b-result-content"><span className="a4b-result-kicker">고객 응대 검수 결과</span><h4>확인이 필요한 <strong>표현 1곳</strong></h4><div className="a4b-review-quote"><small>응대 초안</small><p>“환불을 완료했습니다.<br/>오늘 바로 입금됩니다.”</p><span>처리 완료 여부 · 정책 확인 필요</span></div><div className="a4b-review-suggestion"><span><Workflow size={13}/>수정안 예시</span><p>환불 신청 후 처리 기간은 영업일 3일입니다. 실제 처리 여부는 담당자의 확인이 필요합니다.</p></div><div className="a4b-result-note"><ShieldCheck size={16}/><span>최종 응대는 운영자가 확인·승인</span></div></div>;
  return <div className="a4b-result-content"><span className="a4b-result-kicker">문서 기반 답변</span><h4>필요한 답을,<br/><strong>문서에서 찾았어요.</strong></h4><div className="a4b-document-answer"><span className="a4b-answer-icon"><MessageSquare size={16}/></span><p>반품은 수령 후 <strong>7일 이내</strong>에 접수할 수 있습니다.</p></div><div className="a4b-evidence"><span><FileText size={14}/>답변에 사용한 원문</span><p>“반품은 수령 후 7일 이내 접수합니다.”</p><small>반품정책_샘플.txt</small></div><div className="a4b-result-note"><CheckCircle2 size={15}/><span>사용한 근거를 결과와 함께 확인</span></div></div>;
 }
 
 function ProductPreview({scenario,selected}:{scenario:Scenario;selected:boolean}){
  return <div className="a4b-demo-board" role="tabpanel" id={'a4b-preview-panel-'+scenario.id} aria-labelledby={'a4b-preview-tab-'+scenario.id} hidden={!selected} tabIndex={0}>
-  <section className="a4b-demo-conversation" aria-label="업무 설계 대화 예시"><div className="a4b-demo-column-title"><span><MessageSquare size={14}/>업무 설명</span><small>01</small></div><div className="a4b-demo-chat"><div className="a4b-demo-resource"><Paperclip size={13}/>{scenario.file}</div><p className="a4b-demo-user">{scenario.request}</p><div className="a4b-demo-assistant"><span className="a4b-assistant-avatar"><span className="entry-mark">A</span></span><div><b>A4B</b><p>{scenario.reply}</p></div></div><p className="a4b-demo-user a4b-demo-confirmation">{scenario.confirmation}</p></div><div className="a4b-demo-composer" aria-hidden="true"><span>업무의 조건을 이야기하세요</span><span className="a4b-demo-send"><ArrowUp size={15}/></span></div></section>
-  <section className="a4b-demo-flow" aria-label="구성된 워크플로우 예시"><div className="a4b-demo-column-title"><span><Sparkles size={14}/>워크플로우 설계</span><small>02</small></div><div className="a4b-demo-flow-body"><span className="a4b-flow-start"><span/>업무 시작</span><span className="a4b-flow-link" aria-hidden="true"/>{scenario.nodes.map((node,index)=><div className="a4b-flow-step" key={node.label}><div className={'a4b-preview-node a4b-preview-node-'+node.kind}><span className="a4b-preview-node-icon">{node.kind==='input'?<FileText size={17}/>:node.kind==='process'?<Filter size={17}/>:<FileOutput size={17}/>}</span><div><span>{node.kind==='input'?'입력':node.kind==='process'?'처리':'출력'}</span><b>{node.label}</b><small>{node.detail}</small></div></div>{index<scenario.nodes.length-1&&<span className="a4b-flow-link" aria-hidden="true"/>}</div>)}<span className="a4b-flow-link" aria-hidden="true"/><span className="a4b-flow-end"><Check size={12}/>확인한 흐름을 저장</span></div><div className="a4b-demo-flow-caption">조건을 확인하고, 실행할 순서로 연결합니다.</div></section>
+  <section className="a4b-demo-conversation" aria-label="업무 설계 대화 예시"><div className="a4b-demo-column-title"><span><MessageSquare size={14}/>업무 설명</span><small>01</small></div><div className="a4b-demo-chat"><div className="a4b-demo-resource"><Paperclip size={13}/>{scenario.file}</div><p className="a4b-demo-user">{scenario.request}</p><div className="a4b-demo-assistant"><span className="a4b-assistant-avatar"><WorkspaceBrandMark/></span><div><b>A4B</b><p>{scenario.reply}</p></div></div><p className="a4b-demo-user a4b-demo-confirmation">{scenario.confirmation}</p></div><div className="a4b-demo-composer" aria-hidden="true"><span>업무의 조건을 이야기하세요</span><span className="a4b-demo-send"><ArrowUp size={15}/></span></div></section>
+  <section className="a4b-demo-flow" aria-label="구성된 워크플로우 예시"><div className="a4b-demo-column-title"><span><Workflow size={14}/>워크플로우 설계</span><small>02</small></div><div className="a4b-demo-flow-body"><span className="a4b-flow-start"><span/>업무 시작</span><span className="a4b-flow-link" aria-hidden="true"/>{scenario.nodes.map((node,index)=><div className="a4b-flow-step" key={node.label}><div className={'a4b-preview-node a4b-preview-node-'+node.kind}><span className="a4b-preview-node-icon">{node.kind==='input'?<FileText size={17}/>:node.kind==='process'?<Filter size={17}/>:<FileOutput size={17}/>}</span><div><span>{node.kind==='input'?'입력':node.kind==='process'?'처리':'출력'}</span><b>{node.label}</b><small>{node.detail}</small></div></div>{index<scenario.nodes.length-1&&<span className="a4b-flow-link" aria-hidden="true"/>}</div>)}<span className="a4b-flow-link" aria-hidden="true"/><span className="a4b-flow-end"><Check size={12}/>확인한 흐름을 저장</span></div><div className="a4b-demo-flow-caption">조건을 확인하고, 실행할 순서로 연결합니다.</div></section>
   <section className="a4b-demo-result" aria-label="업무 실행 결과 예시"><div className="a4b-demo-column-title"><span><FileOutput size={14}/>결과 확인</span><small>03</small></div><ScenarioResult scenario={scenario}/></section>
  </div>;
 }
@@ -54,9 +55,9 @@ type LandingProps={
 };
 const sections=[{id:'a4b-product-preview',label:'제품 미리보기'},{id:'a4b-how',label:'작동 방식'},{id:'a4b-usecases',label:'활용 사례'}] as const;
 const steps=[
- {n:'01',Icon:Sparkles,title:'역할을 준비하세요.',text:'에이전트의 역할이나 파일 처리 기능을 노드로 저장하세요. 기본 노드를 선택해 바로 설계를 시작할 수도 있습니다.',action:'노드 라이브러리',route:'nodes'},
- {n:'02',Icon:MessageSquare,title:'업무를 이야기하세요.',text:'자료와 원하는 결과를 설명하세요. 부족한 조건을 대화로 확인하고, 연결된 노드와 설정을 살펴본 뒤 저장합니다.',action:'워크플로우 목록',route:'workflows'},
- {n:'03',Icon:CheckCircle2,title:'결과를 확인하세요.',text:'저장한 흐름에 요청과 자료를 넣어 실행하세요. 결과, 사용한 근거, 처리 단계를 함께 확인할 수 있습니다.',action:'실행 기록',route:'history'},
+ {n:'01',Icon:MessageSquare,title:'업무부터 설명하세요.',text:'워크플로우 목록에서 새 워크플로우를 선택하고, 사용할 자료와 원하는 결과를 설명하세요. 작업을 미리 만들지 않아도 됩니다.',action:'워크플로우 목록',route:'workflows'},
+ {n:'02',Icon:Check,title:'처리 순서를 확인하세요.',text:'생성된 작업의 순서와 조건을 확인하고, 바꿀 내용은 대화로 요청하세요. 반복해서 쓸 작업은 라이브러리에 준비할 수 있습니다.',action:'작업 라이브러리',route:'nodes'},
+ {n:'03',Icon:CheckCircle2,title:'저장하고 실행하세요.',text:'확인한 흐름을 저장한 뒤 요청이나 파일을 넣어 실행하세요. 완료 여부와 결과, 사용한 근거는 실행 기록에서 확인합니다.',action:'실행 기록',route:'history'},
 ] as const;
 const order=(index:number)=>({'--a4b-reveal-order':index} as CSSProperties);
 
@@ -100,7 +101,7 @@ export default function LandingPage({onStart,onPreview,onRoute}:LandingProps){
  return <div className="a4b-landing" id="a4b-landing-top" ref={root}>
   <a className="a4b-landing-skip" href="#a4b-landing-main" onClick={scrollTo('a4b-landing-main')}>본문으로 건너뛰기</a>
   <header className="a4b-landing-header" ref={header}><div className="a4b-landing-header-inner">
-   <a className="a4b-landing-brand" href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')} aria-label="A4B 서비스 소개 맨 위로"><span className="entry-mark">A</span><span>A4B</span></a>
+   <a className="a4b-landing-brand" href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')} aria-label="A4B 서비스 소개 맨 위로"><WorkspaceBrandMark/><span>A4B</span></a>
    <nav className="a4b-landing-nav" aria-label="페이지 메뉴">{sections.map(({id,label})=><a key={id} href={'#'+id} onClick={scrollTo(id)} aria-current={current===id?'location':undefined} className={current===id?'is-current':undefined}>{label}</a>)}</nav>
    <div className="a4b-landing-header-actions"><button type="button" className="a4b-landing-button a4b-button-header a4b-button-quiet" onClick={()=>onPreview(false)}>제품 살펴보기</button><button type="button" className="a4b-landing-button a4b-button-header" onClick={onStart}>워크플로우 열기<ArrowUpRight size={16} aria-hidden="true"/></button></div>
   </div><span className="a4b-scroll-progress" aria-hidden="true"/></header>
@@ -108,15 +109,15 @@ export default function LandingPage({onStart,onPreview,onRoute}:LandingProps){
    <section className="a4b-landing-hero" aria-labelledby="a4b-hero-title">
     <div className="a4b-hero-eyebrow a4b-hero-enter"><span/>대화로 설계하는 워크플로우</div>
     <h1 id="a4b-hero-title" className="a4b-hero-enter" style={order(1)}><span>업무를 말하세요.</span><span>흐름은 A4B가 만듭니다.</span></h1>
-    <p className="a4b-hero-enter" style={order(2)}>대화로 시작하고, 노드로 다듬고, 확인한 뒤 실행하세요.<br className="a4b-desktop-break"/> 자료와 처리 단계를 연결해 내 작업에 맞는 흐름을 만듭니다.</p>
+    <p className="a4b-hero-enter" style={order(2)}>대화로 시작하고, 작업으로 다듬고, 확인한 뒤 실행하세요.<br className="a4b-desktop-break"/> 자료와 처리 단계를 연결해 내 작업에 맞는 흐름을 만듭니다.</p>
     <div className="a4b-hero-actions a4b-hero-enter" style={order(3)}><button type="button" className="a4b-landing-button a4b-button-primary" onClick={onStart}>A4B 시작하기<ArrowUpRight size={19} aria-hidden="true"/></button><button type="button" className="a4b-landing-button a4b-button-secondary" onClick={()=>onPreview(false)}>편집기 미리보기</button></div>
-    <div className="a4b-hero-capabilities a4b-hero-enter" style={order(4)} aria-label="주요 기능"><span>재사용할 노드</span><i aria-hidden="true"/><span>대화로 만든 설계</span><i aria-hidden="true"/><span>버전으로 실행</span></div>
+    <div className="a4b-hero-capabilities a4b-hero-enter" style={order(4)} aria-label="주요 기능"><span>재사용할 작업</span><i aria-hidden="true"/><span>대화로 만든 설계</span><i aria-hidden="true"/><span>버전으로 실행</span></div>
     <div className="a4b-hero-visual a4b-hero-enter" style={order(5)}><IntroPreview onEditor={()=>onPreview(true)} onLibrary={()=>onRoute('nodes')}/><a className="a4b-landing-text-link a4b-scroll-cue" href="#a4b-product-preview" onClick={scrollTo('a4b-product-preview')}>스크롤해서 살펴보기<ArrowDown size={16} aria-hidden="true"/></a></div>
    </section>
    <section className="a4b-product-section" id="a4b-product-preview" aria-labelledby="a4b-product-title"><div className="a4b-landing-container">
     <div className="a4b-section-heading" data-reveal><div><span className="a4b-landing-eyebrow">FROM WORDS TO WORKFLOWS</span><h2 id="a4b-product-title">설명하던 업무가,<br/>눈에 보이는 흐름으로.</h2></div><p>자료를 읽고, 조건을 확인하고, 결과를 만드는 과정.<br className="a4b-desktop-break"/> 하나의 업무가 어떻게 연결되는지 살펴보세요.</p></div>
     <div className="a4b-product-preview" data-reveal style={order(1)}>
-     <div className="a4b-preview-topbar"><div className="a4b-preview-brand"><span className="entry-mark">A</span><span>A4B <small>Studio</small></span></div><span className="a4b-preview-example"><span/>제품 미리보기 · 예시</span></div>
+     <div className="a4b-preview-topbar"><div className="a4b-preview-brand"><WorkspaceBrandMark/><span>A4B <small>Studio</small></span></div><span className="a4b-preview-example"><span/>제품 미리보기 · 예시</span></div>
      <div className="a4b-preview-tabs" role="tablist" aria-label="업무 시나리오">{scenarios.map((scenario,index)=><button key={scenario.id} type="button" role="tab" id={'a4b-preview-tab-'+scenario.id} aria-selected={active===scenario.id} aria-controls={'a4b-preview-panel-'+scenario.id} tabIndex={active===scenario.id?0:-1} ref={element=>{tabRefs.current[index]=element;}} onClick={()=>setActive(scenario.id)} onKeyDown={event=>handleTabKey(event,index)}>{scenario.id==='inventory'?<CalendarClock size={15}/>:scenario.id==='review'?<ShieldCheck size={15}/>:<FileText size={15}/>}<span>{scenario.label}</span></button>)}</div>
      {scenarios.map(scenario=><ProductPreview key={scenario.id} scenario={scenario} selected={active===scenario.id}/>)}
      <div className="a4b-preview-bottom"><span><span/>설명 → 설계 → 실행</span><span>업무의 시작부터 결과까지, 한곳에서.</span></div>
@@ -133,6 +134,6 @@ export default function LandingPage({onStart,onPreview,onRoute}:LandingProps){
    </div></section>
    <section className="a4b-final-section" aria-labelledby="a4b-final-title"><div className="a4b-final-decoration" aria-hidden="true"><span/><span/><span/></div><div className="a4b-final-content" data-reveal><span className="a4b-landing-eyebrow">YOUR WORK. YOUR FLOW.</span><h2 id="a4b-final-title">다음 업무는,<br/>A4B와 함께.</h2><p>머릿속에 있던 업무를 실행할 흐름으로 만들어보세요.</p><button type="button" className="a4b-landing-button a4b-button-primary" onClick={onStart}>워크플로우 시작하기<ArrowUpRight size={19} aria-hidden="true"/></button></div></section>
   </main>
-  <footer className="a4b-landing-footer"><div className="a4b-landing-container"><div className="a4b-footer-brand"><span className="entry-mark">A</span><span>A4B<small>AI for Business</small></span></div><p>대화로 설계하고, 확인한 흐름으로 실행합니다.</p><a href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')}>맨 위로<ArrowUpRight size={15} aria-hidden="true"/></a></div></footer>
+  <footer className="a4b-landing-footer"><div className="a4b-landing-container"><div className="a4b-footer-brand"><WorkspaceBrandMark/><span>A4B<small>AI for Business</small></span></div><p>대화로 설계하고, 확인한 흐름으로 실행합니다.</p><a href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')}>맨 위로<ArrowUpRight size={15} aria-hidden="true"/></a></div></footer>
  </div>;
 }

@@ -107,7 +107,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   const preview=await documentPreview(asset,url.searchParams.get('blockId'),url.searchParams.get('converted'));
   res.writeHead(200,{'Content-Type':preview.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'self'"});res.end(preview.bytes);return true;
  }
- if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection(),health:await localModelHealth()});return true;}
+ if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection(),...(url.searchParams.get('profile')==='1'?{}:{health:await localModelHealth()})});return true;}
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
   const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');

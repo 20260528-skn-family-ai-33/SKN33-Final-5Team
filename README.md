@@ -40,14 +40,68 @@ flowchart LR
 | --- | --- | --- |
 | Windows Docker 실행 | `a4b-agent-studio:local` 이미지 약 4.24GB, 앱 컨테이너 실행 확인 | 다른 팀원 PC에서 같은 구성 재현 |
 | 앱 실행 환경 | 프론트·Node API·핵심 Python·일반 문서 읽기 환경이 이미지에 포함 | OS·CPU 구조별 설치·실행 호환성 |
-| OCR | 컨테이너 안 PaddlePaddle 3.2.2·PaddleOCR 3.7.0·PaddleX 3.7.2와 모델 3종 존재 확인. CPU 처리 | 파일 종류별 정확도·처리 시간, Mac에서 실행 |
+| OCR | 컨테이너 안 PaddlePaddle 3.2.2·PaddleOCR 3.7.0·PaddleX 3.7.2와 모델 3종 존재 확인. CPU 처리. 영수증 사진 약 760자 추출(18.7초) | 파일 종류별 정확도·처리 시간, Mac에서 실행 |
+| 나머지 파서 엔진 | 별도 시험 컨테이너에서만 동작 확인, **이미지에는 아직 미포함**(아래 표) | Dockerfile 통합 후 형식별 업로드 확인 |
 | Qwen 연결 | PC의 Ollama에 연결하며 `qwen3:8b-q4_K_M` 준비 상태 `ready` 확인 | 팀원별 같은 모델·설정과 컨테이너→Ollama 연결 |
 | 자료 보관 | Docker 영구 볼륨에 DB·원본·결과 저장 | 백업·복구 시험, 사용자별 자료 격리 |
-| 영수증 업무 | 재구성 보고서에 사진 OCR 성공 기록 있음 | 날짜·상호·금액 추출부터 결과 다운로드까지 완주 |
+| 영수증 업무 | Docker에서 업로드 → 항목 질문 → 설계 → 저장 → 실행 → CSV 생성까지 완주(상품 6줄 모두 추출, 4줄 정확) | 숫자 칸 짝짓기 정확도, 날짜·상호·합계 같은 단일 항목과 함께 뽑기 |
 | 예약 실행 | 관리 표 파일 한 개를 자료원으로 사용하는 일간·주간 예약 기반 있음 | 사용자별 폴더를 자료원으로 지정하는 예약 기능 |
 | 서버 배포 | Dockerfile·Compose 구성 있음 | Linux GPU 서버 설치, 사내 접속·인증·권한·복구 검증 |
 
-OCR 성공은 정리 파일 생성 성공과 구분합니다. [재구성 보고서의 OCR 추가 기록](REBUILD_REPORT.md#11-1-docker-이미지에-ocrpaddleocr-cpu-추가)에는 영수증의 `read_document → write_result` 연결이 검증에 실패한 사례가 남아 있습니다. 해당 사례의 의도된 기본 연결은 `read_document → extract_information → export_result`이며, 최신 코드에서 재현 여부와 최종 출력까지 다시 확인해야 합니다. 현재 문서 업무의 출력 지원은 CSV·JSON 기준이고, 실제 `.xlsx` 생성 지원 여부는 별도로 확인·구현해야 합니다.
+OCR 성공은 정리 파일 생성 성공과 구분합니다. 영수증처럼 문서·사진을 표로 정리하는 요청은 Qwen 8B가 도구를 잘못 연결하는 일이 반복되어(`read_document → write_result` 등), 현재는 **코드가 고정 흐름을 만듭니다**: 첨부 문서 + "엑셀·표·CSV" 요청이면 모델 없이 "어떤 항목을 한 줄씩 뽑을까요?"를 묻고, 답한 항목으로 `read_document → extract_information(rows) → export_result(csv)`를 구성합니다([document_rows_template.py](Backend/agent_builder/design/document_rows_template.py), `A4B_DOCUMENT_ROWS_TEMPLATE=off`로 끔). 결과 CSV는 엑셀에서 바로 열리며 `.xlsx` 생성은 아직 지원하지 않습니다. 추출 결과의 `verified`는 "원문에 있는 값"이라는 뜻이지 "올바른 칸"이라는 뜻이 아닙니다. 영수증에서 틀린 2줄은 OCR이 위에서 아래로 읽어 칸 구조가 사라진 탓이며, OCR 글자 좌표로 같은 줄을 묶는 후처리가 다음 개선 후보입니다. 자세한 기록은 [재구성 보고서 11절](REBUILD_REPORT.md#11-docker-일괄-실행--2026-11-01)에 있습니다.
+
+**파서 엔진 시험 결과**(2026-11-01, Windows Docker, 각 엔진을 별도 시험 컨테이너에서 CPU로 실행. 이미지 통합 전)
+
+| 엔진 | 쓰이는 곳(라우터) | 버전·설치 | 결과 | 크기 |
+| --- | --- | --- | --- | --- |
+| PaddleOCR | 사진 글자 | paddlepaddle 3.2.2(3.3.1은 CPU 오류) | **이미지에 포함**, 영수증 18.7초 | 모델 145MB |
+| MinerU | PDF 1차 | `mineru==4.0.12`, llama.cpp CPU | 2쪽 PDF 33초, 영수증 95초 | 패키지 0.8GB + 모델 1.4GB |
+| Docling | PDF 2차·DOCX/PPTX·사진 속 표 | `docling==2.133.0`, torch 2.14.1 CPU(`--index-url https://download.pytorch.org/whl/cpu`) | 글자 PDF 15.8초, 영수증 126초(표 1개 인식, EasyOCR 한글 품질은 Paddle보다 낮음) | 패키지 2.0GB + 모델 0.8GB |
+| LibreOffice | DOC/PPT/XLS 변환 | Debian `libreoffice-*-nogui`, `fonts-nanum` | XLS→XLSX 변환 확인 | 약 234MB |
+| rhwp | HWP/HWPX → PDF | v0.8.7. crates.io에 없음, GitHub 배포 바이너리는 GLIBC 2.39가 필요해 Debian 12 이미지에서 실행 불가 → 소스 빌드 필요(Rust 1.93.1) | 소스 빌드 진행 중 확인 못 함(확인 명령 오류) | — |
+
+엔진을 모두 넣으면 이미지는 약 9~10GB로 예상합니다. 시험 중 세 엔진을 동시에 빌드하다 PC 메모리(16GB)가 부족해 Docker가 멈춘 적이 있으니, 빌드는 한 번에 하나씩 진행합니다.
+
+### 처음 시작하는 팀원
+
+**1단계 — 실행해 보기(약 1시간, 대부분 다운로드)**
+
+1. Docker Desktop과 Ollama를 설치합니다. Windows는 Docker 설치 전에 관리자 PowerShell에서 `wsl --install --no-distribution` 후 재부팅이 필요할 수 있습니다. 메모리 16GB 이상, 디스크 여유 30GB 이상을 권장합니다.
+2. 저장소를 받습니다.
+
+   ```bash
+   git clone https://github.com/tender0602/final_test.git
+   cd final_test
+   ```
+
+3. Ollama 설정과 Qwen 모델 2개(약 8.5GB)를 준비합니다. 문맥 16384·KV 캐시 q8_0·모델 상주 설정이 함께 들어갑니다.
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\prepare-ollama.ps1
+   ```
+
+   macOS는 `sh scripts/prepare-ollama.sh`입니다.
+4. `docker compose up -d`로 실행하고 [http://127.0.0.1:3030](http://127.0.0.1:3030)에 접속합니다. 첫 빌드는 이미지 다운로드·설치로 10~30분 걸립니다.
+5. 확인 순서: CSV 업로드 → "지역별 매출 합계를 CSV로 저장해줘" 설계 → 영수증 사진 업로드 → "엑셀파일로 정리해줘" → 항목 답변(예: `상품명, 단가, 수량, 금액`) → 저장 → 실행 → CSV 확인. 각 단계 시간과 오류를 기록해 공유합니다.
+
+**2단계 — 코드 읽기 순서**
+
+| 순서 | 위치 | 보는 이유 |
+| --- | --- | --- |
+| 1 | [REBUILD_REPORT.md](REBUILD_REPORT.md) | 폴더 재구성 이유·검증 결과·알려진 문제(1~11절) |
+| 2 | [REBUILD_FILE_MAP.md](REBUILD_FILE_MAP.md) | 원본 저장소(SKN33-Final-5Team) 파일이 어디로 옮겨졌는지 |
+| 3 | `Backend/api/src/agent-builder.ts` → `Backend/service/dispatch.py` | 화면 요청이 Node를 거쳐 Python 작업으로 가는 길 |
+| 4 | `Backend/agent_builder/design/graph.py` | 설계 대화 흐름(파일 없음 안내·문서 표 고정 흐름·Qwen 설계·검증) |
+| 5 | `Backend/workflow_engine/` (`catalog/registry.py`, `runner.py`, `executors/`) | 저장된 워크플로우 실행과 도구 22종 |
+| 6 | `Backend/documents/analysis/pipeline.py` | 파일 형식별 파서 라우터 |
+
+**3단계 — 작업 고르기**: 아래 "이어서 할 일"에서 하나를 맡습니다. 첫 작업으로는 2번(파서 엔진 통합)이나 3번(Mac 재현)이 다른 작업과 겹치지 않아 시작하기 좋습니다.
+
+**개발 시 지켜 주세요**
+
+- Python 테스트: `cd Backend` 후 `.venv-agent/Scripts/python.exe -X utf8 -m pytest -q`(macOS·Linux는 `.venv-agent/bin/python -m pytest -q`). 기준선은 **821개 통과, 실패 1개**(`test_csv_quoted_newline_and_leading_zero_use_no_models`, Windows 줄바꿈 문제로 원본에서도 실패)입니다. Node 테스트는 저장소 루트에서 `npm test`(703/704).
+- 도구를 추가하면 `workflow_engine/catalog/registry.py`의 `EXECUTORS` 표와 검증기 범위(`agent_builder/design/nodes/verification.py`의 `LOCAL_SCOPES`)도 함께 고칩니다. Docker 빌드는 등록 도구의 실행 코드를 하나라도 못 불러오면 실패하도록 되어 있습니다.
+- 실제 `.env`, `data*/`, 모델 파일은 커밋하지 않습니다. 설정 예시는 `.env.example`에만 추가합니다.
 
 ### Windows·Mac 팀 개발 기준
 
@@ -65,20 +119,24 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. [재구성 보고�
 1. **작업 시작 상태 확인**
    - 최신 코드와 이 문서 이후 변경 사항을 확인하고, 시험할 코드 버전·Docker 이미지·모델 버전을 기록합니다.
    - 개발용 Compose는 현재 로컬 PC 접속용입니다. 사내 다른 PC가 접속할 서버 배포 구성과 구분합니다.
-2. **Mac 팀원 한 명의 환경에서 재현**
+2. **파서 엔진을 Docker 이미지에 통합**(위 "파서 엔진 시험 결과" 표 기준)
+   - Dockerfile에 `.venv-docling`(parser.txt, CPU torch)·`.venv-mineru`(mineru 4.0.12)를 만들고, 모델을 빌드 때 받아 `A4B_PDF_ARTIFACTS_DIR`·`A4B_PDF_OCR_MODEL_DIR`·`MINERU_HOME`에 둡니다. 실행 중에는 내려받지 않습니다(엔진 코드가 오프라인 설정을 강제).
+   - rhwp는 Rust 빌드 단계를 따로 두어 `v0.8.7` 소스를 빌드하고 실행 파일만 복사합니다. LibreOffice·한글 글꼴은 apt로 설치합니다.
+   - 빌드 후 PDF·DOCX·XLSX·XLS·HWP·사진을 하나씩 올려 `processing_status`·경고·처리 시간을 기록합니다.
+3. **Mac 팀원 한 명의 환경에서 재현**
    - Mac의 Intel/Apple Silicon 여부와 메모리, Docker·Ollama 버전을 기록합니다.
    - 이미지 빌드 → 화면 접속 → CSV/Excel 업로드 → 글자 PDF 읽기 → 영수증 사진 OCR → Qwen 설계 응답 순으로 확인합니다.
    - 설치 실패는 설치 단계·오류 로그·CPU 구조를 기록하고, 설치 성공만으로 실제 OCR·모델 실행도 성공했다고 처리하지 않습니다.
-3. **대표 업무 하나를 끝까지 완료**
-   - 같은 영수증 표본으로 업로드 → 날짜·상호·금액 추출 → 원문 근거 확인 → 결과 파일 생성·다운로드까지 시험합니다.
+4. **대표 업무의 정확도 올리기**
+   - 업로드 → 항목 추출 → CSV 생성까지는 동작합니다(위 기록). 남은 것은 정확도입니다: OCR 글자 좌표로 같은 줄을 묶어 상품명·단가·수량·금액을 맞추고, 날짜·상호·합계 같은 단일 항목을 목록과 함께 뽑는 방법을 정합니다.
    - 문서에서 읽을 수 있는 실제 값을 사용자에게 다시 입력하도록 요구하지 않는지 확인합니다. 충돌·누락이 있거나 사용자가 정할 업무 기준만 확인 질문으로 구분합니다.
    - 잘못된 도구 연결과 실제 출력 지원부터 해결하고, 파인튜닝 필요성을 먼저 단정하지 않습니다. CSV 파일을 `.xlsx`로 이름만 바꿔 제공하지 않습니다.
-4. **사용자별 자료 폴더·폴더 예약 기능 추가**
+5. **사용자별 자료 폴더·폴더 예약 기능 추가**
    - 사용자 인증과 소유권, 논리적 폴더·하위 폴더·파일 소속을 마련합니다. 원본은 서버 저장소에 두고 DB에는 소유권·위치·상태를 연결합니다. S3는 필수가 아닙니다.
    - 저장된 워크플로우에 대상 폴더를 연결하고, 예를 들어 `Asia/Seoul` 기준 매일 09:00에 미처리 파일을 선택합니다.
    - 예약 시 대상 파일·버전을 확정하고 기존 실행기로 파일별 처리합니다. 중복 방지·실패 재시도·재시작 복구·사용자 간 접근 차단을 검증합니다.
    - 예약 시각에 작업을 등록하는 것과 실제 시작·완료 시각을 구분합니다. 서버가 켜져 있으면 브라우저 종료 후에도 동작해야 합니다.
-5. **AWS에서 서버 배포 검증 후 온프레미스 이관 준비**
+6. **AWS에서 서버 배포 검증 후 온프레미스 이관 준비**
    - 대표 업무가 동작한 뒤 EC2 등 Linux 서버에 같은 배포 구성을 설치하고, GPU·모델 연결·영구 저장·다른 PC 접속을 확인합니다.
    - AWS는 사내 서버를 대신한 사전 검증 환경이며 실제 온프레미스 운영과 구분합니다. S3에 파일만 올리는 시험과 서버에서 프로그램 전체를 실행하는 시험도 구분합니다.
    - 이후 사내 서버에 적용할 때 모델 주소·저장 위치·접속 정책 등을 조정하고 실제 내부망에서 검증합니다.
@@ -93,8 +151,9 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. [재구성 보고�
 | 다음 확인 결과 | Windows | Mac | Linux/AWS |
 | --- | --- | --- | --- |
 | 앱 실행·Qwen 연결 | 확인됨 | 미확인 | 미확인 |
-| 대표 표본 OCR 정확도·시간 | 보고서에 단일 사진 기록, 재현 필요 | 미확인 | 미확인 |
-| 영수증 추출→결과 다운로드 | 최종 완주 확인 필요 | 미확인 | 미확인 |
+| 대표 표본 OCR 정확도·시간 | 영수증 1장 기록(18.7초), 표본 확대 필요 | 미확인 | 미확인 |
+| 영수증 추출→CSV 생성 | 완주 확인(6줄 중 4줄 정확) | 미확인 | 미확인 |
+| PDF·Office·HWP 파서 엔진 | 시험 컨테이너에서만 확인, 이미지 통합 필요 | 미확인 | 미확인 |
 | 사용자별 폴더·폴더 예약 | 추가 구현 필요 | 추가 구현 필요 | 추가 구현 필요 |
 
 후속 작업을 완료할 때는 날짜·환경·코드/모델 버전·입력 표본·실제 결과·남은 문제를 갱신합니다. 단순 설치 성공, 자동 테스트 통과, 실제 업무 성공률은 각각 구분해 기록합니다.

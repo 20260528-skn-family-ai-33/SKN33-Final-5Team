@@ -1,0 +1,6 @@
+# OCR for photos and scanned pages (Backend/.venv-paddle). CPU build for the Docker image.
+# PaddleOCR/PaddleX match the team's parser benchmark (3.7.0 / 3.7.2). PaddlePaddle 3.3.1 CPU
+# fails at inference with oneDNN ("ConvertPirAttribute2RuntimeAttribute not support"), so 3.2.2.
+paddlepaddle==3.2.2
+paddleocr==3.7.0
+paddlex==3.7.2

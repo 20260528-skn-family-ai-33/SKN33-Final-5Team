@@ -1,0 +1,4 @@
+# Locked worker/test environment plus optional integration schema validation.
+-r agent-lock.txt
+jsonschema>=4.21,<5
+# Optional SVM hints: install integrations/tool_recommender_reference/requirements-ml-reference.txt

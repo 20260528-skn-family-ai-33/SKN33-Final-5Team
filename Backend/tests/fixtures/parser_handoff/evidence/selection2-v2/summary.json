@@ -1,0 +1,2083 @@
+{
+  "probe": {
+    "before": {
+      "seconds": 11.053369793000456,
+      "startup": 36.49424916899807,
+      "quality": {
+        "presence_pass": 3,
+        "presence_total": 12,
+        "order_pass": 1,
+        "order_total": 4,
+        "order_anchors_available": 1,
+        "counts_pass": 2,
+        "counts_total": 2,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": null,
+        "table_count": 0,
+        "relation_pass": 0,
+        "relation_total": 0
+      },
+      "pages": [
+        {
+          "model": "hybrid",
+          "page": 141,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 8.697603203003382,
+          "peak_rss_gib": 2.3268165588378906,
+          "presence": [
+            {
+              "text": "소프트웨어 설치",
+              "pass": true
+            },
+            {
+              "text": "필수 소프트웨어 재설치",
+              "pass": false
+            },
+            {
+              "text": "선택적 소프트웨어 설치",
+              "pass": false
+            },
+            {
+              "text": "연결 방법 선택",
+              "pass": true
+            },
+            {
+              "text": "USB 케이블을 통한 연결",
+              "pass": false
+            },
+            {
+              "text": "고급 구성",
+              "pass": false
+            }
+          ],
+          "order": [
+            {
+              "first": "필수 소프트웨어 재설치",
+              "second": "선택적 소프트웨어 설치",
+              "anchors_present": false,
+              "pass": false
+            },
+            {
+              "first": "연결 방법 선택",
+              "second": "고급 구성",
+              "anchors_present": false,
+              "pass": false
+            }
+          ],
+          "counts": [
+            {
+              "text": "유선 LAN(이더넷)을 통해 연결을 선택하고 다음을 클릭합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 183,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 2.3557665899970743,
+          "peak_rss_gib": 2.4408493041992188,
+          "presence": [
+            {
+              "text": "Mac OS 프린터 드라이버 가이드",
+              "pass": true
+            },
+            {
+              "text": "Epson Printer Utility 4",
+              "pass": false
+            },
+            {
+              "text": "대기 중",
+              "pass": false
+            },
+            {
+              "text": "연결됨",
+              "pass": false
+            },
+            {
+              "text": "업데이트",
+              "pass": false
+            },
+            {
+              "text": "프린터 목록",
+              "pass": false
+            }
+          ],
+          "order": [
+            {
+              "first": "Mac OS 프린터 드라이버 가이드",
+              "second": "Epson Printer Utility 4",
+              "anchors_present": false,
+              "pass": false
+            },
+            {
+              "first": "응용 프로그램에서 프린터 드라이버 열기",
+              "second": "제어판에서 프린터 드라이버 열기",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "응용 프로그램에서 프린터 드라이버 열기",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        }
+      ],
+      "repairs": [
+        {
+          "page": 141,
+          "picture": "#/pictures/0",
+          "bbox": [
+            68.85639124860162,
+            302.2883012191109,
+            92.16696497931991,
+            310.28252397620156
+          ],
+          "candidate": "기능 확인",
+          "ocr_text": "기능 작인",
+          "ocr_confidence": 0.22718494970903857,
+          "verification": "기능 확인",
+          "verification_complete": true,
+          "seconds": 0.1377553860002081,
+          "action": "insert",
+          "item": "#/texts/8"
+        },
+        {
+          "page": 141,
+          "picture": "#/pictures/1",
+          "bbox": [
+            146.03418293046133,
+            487.3712761913212,
+            213.35961682868725,
+            500.69046761032286
+          ],
+          "candidate": "연결 방법 선택",
+          "ocr_text": "연결 방법 선택",
+          "ocr_confidence": 0.9101491041092776,
+          "verification": "연결 방법 선택",
+          "verification_complete": true,
+          "seconds": 0.16163303700159304,
+          "action": "insert",
+          "item": "#/texts/9"
+        }
+      ],
+      "errors": [],
+      "calls": 23,
+      "repetition_stops": 0,
+      "regions": 3
+    },
+    "after": {
+      "seconds": 10.952953915002581,
+      "startup": 35.0276466840005,
+      "quality": {
+        "presence_pass": 4,
+        "presence_total": 12,
+        "order_pass": 1,
+        "order_total": 4,
+        "order_anchors_available": 1,
+        "counts_pass": 2,
+        "counts_total": 2,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": null,
+        "table_count": 0,
+        "relation_pass": 0,
+        "relation_total": 0
+      },
+      "pages": [
+        {
+          "model": "hybrid",
+          "page": 141,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 8.677798461998464,
+          "peak_rss_gib": 2.317890167236328,
+          "presence": [
+            {
+              "text": "소프트웨어 설치",
+              "pass": true
+            },
+            {
+              "text": "필수 소프트웨어 재설치",
+              "pass": false
+            },
+            {
+              "text": "선택적 소프트웨어 설치",
+              "pass": false
+            },
+            {
+              "text": "연결 방법 선택",
+              "pass": true
+            },
+            {
+              "text": "USB 케이블을 통한 연결",
+              "pass": false
+            },
+            {
+              "text": "고급 구성",
+              "pass": false
+            }
+          ],
+          "order": [
+            {
+              "first": "필수 소프트웨어 재설치",
+              "second": "선택적 소프트웨어 설치",
+              "anchors_present": false,
+              "pass": false
+            },
+            {
+              "first": "연결 방법 선택",
+              "second": "고급 구성",
+              "anchors_present": false,
+              "pass": false
+            }
+          ],
+          "counts": [
+            {
+              "text": "유선 LAN(이더넷)을 통해 연결을 선택하고 다음을 클릭합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 183,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 2.2751554530041176,
+          "peak_rss_gib": 2.4363975524902344,
+          "presence": [
+            {
+              "text": "Mac OS 프린터 드라이버 가이드",
+              "pass": true
+            },
+            {
+              "text": "Epson Printer Utility 4",
+              "pass": false
+            },
+            {
+              "text": "대기 중",
+              "pass": true
+            },
+            {
+              "text": "연결됨",
+              "pass": false
+            },
+            {
+              "text": "업데이트",
+              "pass": false
+            },
+            {
+              "text": "프린터 목록",
+              "pass": false
+            }
+          ],
+          "order": [
+            {
+              "first": "Mac OS 프린터 드라이버 가이드",
+              "second": "Epson Printer Utility 4",
+              "anchors_present": false,
+              "pass": false
+            },
+            {
+              "first": "응용 프로그램에서 프린터 드라이버 열기",
+              "second": "제어판에서 프린터 드라이버 열기",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "응용 프로그램에서 프린터 드라이버 열기",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        }
+      ],
+      "repairs": [
+        {
+          "page": 141,
+          "picture": "#/pictures/0",
+          "bbox": [
+            68.85639124860162,
+            302.2883012191109,
+            92.16696497931991,
+            310.28252397620156
+          ],
+          "candidate": "기능 확인",
+          "ocr_text": "기능 작인",
+          "ocr_confidence": 0.22718494970903857,
+          "verification": "기능 확인",
+          "verification_complete": true,
+          "seconds": 0.13339811800324242,
+          "action": "insert",
+          "item": "#/texts/8"
+        },
+        {
+          "page": 141,
+          "picture": "#/pictures/1",
+          "bbox": [
+            146.03418293046133,
+            487.3712761913212,
+            213.35961682868725,
+            500.69046761032286
+          ],
+          "candidate": "연결 방법 선택",
+          "ocr_text": "연결 방법 선택",
+          "ocr_confidence": 0.9101491041092776,
+          "verification": "연결 방법 선택",
+          "verification_complete": true,
+          "seconds": 0.1593556220032042,
+          "action": "insert",
+          "item": "#/texts/9"
+        },
+        {
+          "page": 183,
+          "picture": "#/pictures/0",
+          "bbox": [
+            116.65963258260882,
+            213.04001815614555,
+            135.96856214471364,
+            221.6840165143102
+          ],
+          "candidate": "대기 중",
+          "ocr_text": "대기 중",
+          "ocr_confidence": 0.9999136328697205,
+          "verification": "대기 중",
+          "verification_complete": true,
+          "seconds": 0.1409749369995552,
+          "replacement_evidence": "high_confidence_ocr_plus_two_vlm_reads",
+          "action": "replace",
+          "previous": "978",
+          "item": "#/texts/5"
+        }
+      ],
+      "errors": [],
+      "calls": 23,
+      "repetition_stops": 0,
+      "regions": 3
+    },
+    "diffs": [
+      {
+        "page": 183,
+        "diff": "--- \n+++ \n@@ -2,7 +2,7 @@\n Epson Printer Utility (Epson 프린터 유틸리티)\n EPSON Status Monitor를 시작하고 프린터 상태 및 오류 정보를 확인할 수 있습니다.\n EPSON\n-978\n+대기 중\n PostScript 글꼴을 인쇄할 수 있는 응용 프로그램 (Windows PostScript 프린터 드라이버)\n PostScript 프린터 드라이버를 사용하면 프린터가 컴퓨터에서 보낸 페이지 설명 언어로 인쇄 지침을 수신하고 해석하여 올바르 게 인쇄할 수 있습니다. DTP에 사용되는 PostScript 호환 응용 프로그램에서 인쇄하는 데 적합합니다.\n 응용 프로그램에서 프린터 드라이버 열기"
+      }
+    ],
+    "tables_identical": true
+  },
+  "regression": {
+    "before": {
+      "seconds": 69.6972190629931,
+      "startup": 36.21183441899848,
+      "quality": {
+        "presence_pass": 60,
+        "presence_total": 60,
+        "order_pass": 19,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 9,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.75641,
+        "table_count": 2,
+        "relation_pass": 3,
+        "relation_total": 3
+      },
+      "pages": [
+        {
+          "model": "hybrid",
+          "page": 6,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 12.044339643998683,
+          "peak_rss_gib": 2.269397735595703,
+          "presence": [
+            {
+              "text": "설치가이드 (종이 설명서)",
+              "pass": true
+            },
+            {
+              "text": "사용설명서 (전자 설명서)",
+              "pass": true
+            },
+            {
+              "text": "http://epson.sn",
+              "pass": true
+            },
+            {
+              "text": "Adobe Acrobat Reader DC",
+              "pass": true
+            },
+            {
+              "text": "키워드로 검색하기",
+              "pass": true
+            },
+            {
+              "text": "북마크에서 바로 이동하기",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "설치가이드 (종이 설명서)",
+              "second": "사용설명서 (전자 설명서)",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "키워드로 검색하기",
+              "second": "북마크에서 바로 이동하기",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "프린터 설정 및 소프트웨어 설치에 대한 정보를 확인할 수 있습니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 8,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.38495163900006446,
+          "peak_rss_gib": 2.3217239379882812,
+          "presence": [
+            {
+              "text": "QR 코드는 전용 앱으로 인식됩니다.",
+              "pass": true
+            },
+            {
+              "text": "macOS High Sierra",
+              "pass": true
+            },
+            {
+              "text": "Microsoft® Windows® XP Professional x64 Edition 운영 체제",
+              "pass": true
+            },
+            {
+              "text": "Microsoft® Windows Server® 2012 R2 운영 체제",
+              "pass": true
+            },
+            {
+              "text": "Microsoft® Windows Server® 2003 R2 운영 체제",
+              "pass": true
+            },
+            {
+              "text": "Mac OS X v10.6.8",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "QR 코드는 전용 앱으로 인식됩니다.",
+              "second": "Microsoft® Windows® XP Professional x64 Edition 운영 체제",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "Microsoft® Windows Server® 2003 R2 운영 체제",
+              "second": "Mac OS X v10.6.8",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "이 설명서에 사용된 일러스트 이미지는 참고 예시입니다. 모델에 따라 다소 차이가 있을 수 있으나, 작동 방법은 동일합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 26,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 5.853609185000096,
+          "peak_rss_gib": 2.664325714111328,
+          "presence": [
+            {
+              "text": "프린터 및 소모품의 상태를 확인할 수 있습니다.",
+              "pass": true
+            },
+            {
+              "text": "네트워크 연결 상태를 표시합니다.",
+              "pass": true
+            },
+            {
+              "text": "설정 > 일반 설정 > 기본 설정 > 소리",
+              "pass": true
+            },
+            {
+              "text": "프린터가 절전 모드로 전환됩니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터 작동과 관련된 설정을 할 수 있습니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터가 유선(이더넷) 네트워크에 연결되어 있습니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "프린터 및 소모품의 상태를 확인할 수 있습니다.",
+              "second": "프린터가 절전 모드로 전환됩니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "프린터 작동과 관련된 설정을 할 수 있습니다.",
+              "second": "프린터가 유선(이더넷) 네트워크에 연결되어 있습니다.",
+              "anchors_present": true,
+              "pass": false
+            }
+          ],
+          "counts": [
+            {
+              "text": "도움말 화면을 표시합니다. 작동 지침 또는 문제 해결 방법을 확인할 수 있습니다.",
+              "expected": 1,
+              "actual": 3,
+              "pass": false
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [
+            {
+              "name": "네트워크 아이콘 표",
+              "teds": 0.66667,
+              "teds_s": 0.66667,
+              "matched_table_index": 1,
+              "predicted_table_count": 2
+            }
+          ],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 37,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.43471071100066183,
+          "peak_rss_gib": 2.711200714111328,
+          "presence": [
+            {
+              "text": "필요할 경우 설정을 변경합니다.",
+              "pass": true
+            },
+            {
+              "text": "인쇄미리보기를 선택하면 인쇄 전에 문서를 미리 볼 수 있습니다.",
+              "pass": true
+            },
+            {
+              "text": "확인을 클릭하여 프린터 드라이버 창을 닫습니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터 카세트 정보:",
+              "pass": true
+            },
+            {
+              "text": "EPSON Status Monitor",
+              "pass": true
+            },
+            {
+              "text": "설정 보기/설정 숨기기:",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "필요할 경우 설정을 변경합니다.",
+              "second": "확인을 클릭하여 프린터 드라이버 창을 닫습니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "프린터 카세트 정보:",
+              "second": "설정 보기/설정 숨기기:",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "자주 사용하는 인쇄 설정에 대해 직접 지정한 사전 설정을 추가 또는 제거할 수 있습니다. 목록에서 사용하려는 사전 설정을 선택합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 62,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.4268791109971062,
+          "peak_rss_gib": 2.7542800903320312,
+          "presence": [
+            {
+              "text": "Windows 10/Windows Server 2019/Windows Server 2016",
+              "pass": true
+            },
+            {
+              "text": "Windows 7/Windows Server 2008 R2",
+              "pass": true
+            },
+            {
+              "text": "PostScript 프린터 드라이버 메뉴 옵션",
+              "pass": true
+            },
+            {
+              "text": "용지/품질 탭",
+              "pass": true
+            },
+            {
+              "text": "용지 급지와 미디어를 선택합니다.",
+              "pass": true
+            },
+            {
+              "text": "인쇄 작업의 색상을 선택합니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "Windows 10/Windows Server 2019/Windows Server 2016",
+              "second": "용지/품질 탭",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "용지 급지와 미디어를 선택합니다.",
+              "second": "인쇄 작업의 색상을 선택합니다.",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "프린터의 용지 설정에서 선택한 용지 급지를 자동으로 선택하려면 자동 선택을 선택합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 95,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.3918053540000983,
+          "peak_rss_gib": 2.7701416015625,
+          "presence": [
+            {
+              "text": "PostScript 프린터 드라이버 설치하기 (Mac OS)",
+              "pass": true
+            },
+            {
+              "text": "프린터 드라이버 설치 시 프린터의 IP 주소가 필요합니다.",
+              "pass": true
+            },
+            {
+              "text": "다른 프린터 또는 스캐너 추가",
+              "pass": true
+            },
+            {
+              "text": "USB, IP 또는 Bonjour",
+              "pass": true
+            },
+            {
+              "text": "실행 중인 모든 응용 프로그램을 종료합니다.",
+              "pass": true
+            },
+            {
+              "text": "Windows 시스템 > 제어판",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "프린터 드라이버 설치 시 프린터의 IP 주소가 필요합니다.",
+              "second": "다른 프린터 또는 스캐너 추가",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "실행 중인 모든 응용 프로그램을 종료합니다.",
+              "second": "Windows 시스템 > 제어판",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "프린터의 홈 화면에서 네트워크 아이콘을 선택한 다음 활성 연결 방법을 선택하여 프린터의 IP 주소를 확인합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 159,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 16.76608464200035,
+          "peak_rss_gib": 2.827648162841797,
+          "presence": [
+            {
+              "text": "USB 케이블과 전원 코드를 다시 연결한 다음 프린터를 켭니다.",
+              "pass": true
+            },
+            {
+              "text": "Configuration Status Sheet",
+              "pass": true
+            },
+            {
+              "text": "AL-C9500DN",
+              "pass": true
+            },
+            {
+              "text": "컴퓨터에 관리자로 로그온합니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터에서 획득을 선택한 후 획득을 클릭합니다.",
+              "pass": true
+            },
+            {
+              "text": "현재 프린터 정보에 옵션 급지 장치가 표시됩니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "USB 케이블과 전원 코드를 다시 연결한 다음 프린터를 켭니다.",
+              "second": "컴퓨터에 관리자로 로그온합니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "프린터에서 획득을 선택한 후 획득을 클릭합니다.",
+              "second": "현재 프린터 정보에 옵션 급지 장치가 표시됩니다.",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "용지 카세트 장치를 설치한 후 구성 상태 시트를 인쇄하여 옵션 아이템이 올바르게 설치되었는지 확인하십시오.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 179,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 1.5599357149985735,
+          "peak_rss_gib": 2.920879364013672,
+          "presence": [
+            {
+              "text": "뒷면 시트는 라벨 사이에 틈이 없도록 완전히 덮여야 합니다.",
+              "pass": true
+            },
+            {
+              "text": "27.6mm",
+              "pass": true
+            },
+            {
+              "text": "59.4mm",
+              "pass": true
+            },
+            {
+              "text": "17.5mm",
+              "pass": true
+            },
+            {
+              "text": "Envelope #10",
+              "pass": true
+            },
+            {
+              "text": "프린터 조절 메뉴에서 코팅 용지1을 선택한 경우에만 해당됩니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "라벨 용지",
+              "second": "코팅 용지",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "Envelope #10",
+              "second": "자동 양면 인쇄용 용지",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "사용 가능한 크기는 일반 용지 및 조금 두꺼운 용지의 사용자 정의 크기를 참조하십시오.",
+              "expected": 2,
+              "actual": 2,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [
+            {
+              "name": "라벨 용지 표",
+              "teds": 0.84615,
+              "teds_s": 0.84615,
+              "matched_table_index": 0,
+              "predicted_table_count": 3
+            }
+          ],
+          "relations": [
+            {
+              "page": 179,
+              "row": "A4",
+              "column": "용지 카세트 1",
+              "value": "27.6mm",
+              "pass": true
+            },
+            {
+              "page": 179,
+              "row": "A4",
+              "column": "용지 카세트 2 - 4",
+              "value": "59.4mm",
+              "pass": true
+            },
+            {
+              "page": 179,
+              "row": "A4",
+              "column": "용지 트레이",
+              "value": "17.5mm",
+              "pass": true
+            }
+          ]
+        },
+        {
+          "model": "hybrid",
+          "page": 210,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 20.36130776799837,
+          "peak_rss_gib": 2.973278045654297,
+          "presence": [
+            {
+              "text": "Epson BarCode Fonts로 인쇄",
+              "pass": true
+            },
+            {
+              "text": "Windows 10의 Microsoft 워드패드",
+              "pass": true
+            },
+            {
+              "text": "응용 프로그램에서 문서를 열고 바코드로 변환할 문자를 입력합니다.",
+              "pass": true
+            },
+            {
+              "text": "Arial",
+              "pass": true
+            },
+            {
+              "text": "12345",
+              "pass": true
+            },
+            {
+              "text": "다른 글꼴 표시",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "Epson BarCode Fonts로 인쇄",
+              "second": "응용 프로그램에서 문서를 열고 바코드로 변환할 문자를 입력합니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "문자를 선택한 다음 사용할 Epson BarCode font 및 글자 크기를 선택합니다.",
+              "second": "다른 글꼴 표시",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "12345",
+              "expected": 2,
+              "actual": 2,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 238,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 11.473595293999097,
+          "peak_rss_gib": 3.0173416137695312,
+          "presence": [
+            {
+              "text": "하루 중 최대 5개 기간",
+              "pass": true
+            },
+            {
+              "text": "Sleep Schedule",
+              "pass": true
+            },
+            {
+              "text": "Monday",
+              "pass": true
+            },
+            {
+              "text": "Sunday",
+              "pass": true
+            },
+            {
+              "text": "활동이 없으면 즉시 절전 모드로 들어갑니다.",
+              "pass": true
+            },
+            {
+              "text": "연결 끊긴 후 전원 끄기를 켜기로 설정합니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "하루 중 최대 5개 기간",
+              "second": "활동이 없으면 즉시 절전 모드로 들어갑니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "USB 포트를 포함한 모든 포트가 분리된 경우",
+              "second": "연결 끊긴 후 전원 끄기를 켜기로 설정합니다.",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "USB 포트를 포함한 모든 포트가 분리된 경우, 지정된 시간이 지나면 프린터가 자동으로 꺼지도록 설정합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        }
+      ],
+      "repairs": [
+        {
+          "page": 159,
+          "picture": "#/pictures/0",
+          "bbox": [
+            272.2132999493058,
+            157.519611013383,
+            283.5321824772343,
+            162.1719550328539
+          ],
+          "candidate": "PAGE.",
+          "ocr_text": "PAGH",
+          "ocr_confidence": 0.13470052182674408,
+          "verification": "PAGE.\n\nPAGE.",
+          "verification_complete": true,
+          "seconds": 0.17038525299722096,
+          "action": "insert",
+          "item": "#/texts/30"
+        },
+        {
+          "page": 159,
+          "picture": "#/pictures/0",
+          "bbox": [
+            211.29107928427922,
+            221.65549642466027,
+            234.26175264978104,
+            227.6370815925514
+          ],
+          "candidate": "Paper Type",
+          "ocr_text": "PaPa? TYP",
+          "ocr_confidence": 0.08343529465661642,
+          "verification": "Paper Type",
+          "verification_complete": true,
+          "seconds": 0.10853974799829302,
+          "action": "insert",
+          "item": "#/texts/31"
+        },
+        {
+          "page": 159,
+          "picture": "#/pictures/0",
+          "bbox": [
+            253.90334291883335,
+            221.65549642466027,
+            303.5066810559315,
+            227.6370815925514
+          ],
+          "candidate": "Paper Size Auto Detect",
+          "ocr_text": "PF; Str Auito Ditect",
+          "ocr_confidence": 0.035390141881748376,
+          "verification": "Paper Size Auto Detect",
+          "verification_complete": true,
+          "seconds": 0.16276967000158038,
+          "action": "insert",
+          "item": "#/texts/32"
+        },
+        {
+          "page": 210,
+          "picture": "#/pictures/1",
+          "bbox": [
+            197.43725650823006,
+            649.2137166212785,
+            254.04523062304915,
+            662.8598216926262
+          ],
+          "candidate": "다른 글꼴 표시",
+          "ocr_text": "다른 글플 표시",
+          "ocr_confidence": 0.1806193568551468,
+          "verification": "다른 글꼴 표시",
+          "verification_complete": true,
+          "seconds": 0.21767533800084493,
+          "action": "insert",
+          "item": "#/texts/35"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            79.54029483955448,
+            320.51995760723224,
+            107.50315763970383,
+            325.1628395253401
+          ],
+          "candidate": "Sleep Schedule",
+          "ocr_text": "Skro Schodulr",
+          "ocr_confidence": 0.276184895587043,
+          "verification": "Sleep Schedule",
+          "verification_complete": true,
+          "seconds": 0.10743868099962128,
+          "action": "insert",
+          "item": "#/texts/45"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            87.86257543483703,
+            355.0099375703188,
+            104.17424540159081,
+            360.97935717931455
+          ],
+          "candidate": "Monday",
+          "ocr_text": "Moday",
+          "ocr_confidence": 0.7743134806490279,
+          "verification": "Monday\n\n$\\text{Monday}$\n\n$\\text{Monday}$\n\n$\\text{Monday}$\n\n$\\text{Monday}$",
+          "verification_complete": false,
+          "seconds": 0.7445256159990095,
+          "retry": {
+            "output": "Monday",
+            "complete": true,
+            "seconds": 0.08423915900129941,
+            "padding": 3,
+            "max_tokens": 32
+          },
+          "action": "replace",
+          "previous": "oday",
+          "item": "#/texts/15"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            88.19546665864831,
+            363.63243256109047,
+            105.50581029683602,
+            368.93858332464225
+          ],
+          "candidate": "Tuesday",
+          "ocr_text": "Tusdny",
+          "ocr_confidence": 0.20762484290948974,
+          "verification": "Tuesday",
+          "verification_complete": true,
+          "seconds": 0.08422819699990214,
+          "action": "insert",
+          "item": "#/texts/46"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            88.19546665864831,
+            372.2549275518621,
+            111.49785232543945,
+            377.5610783154139
+          ],
+          "candidate": "Wednesday",
+          "ocr_text": "Wednesday",
+          "ocr_confidence": 0.6505536065179554,
+          "verification": "Wednesday",
+          "verification_complete": true,
+          "seconds": 0.08259243299835362,
+          "action": "replace",
+          "previous": "Wodnesday",
+          "item": "#/texts/19"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            88.19546665864831,
+            397.4591436787331,
+            106.17159274445862,
+            402.7652944422848
+          ],
+          "candidate": "Saturday",
+          "ocr_text": "Stlurdy",
+          "ocr_confidence": 0.4243666879627519,
+          "verification": "Saturday",
+          "verification_complete": true,
+          "seconds": 0.08197202299925266,
+          "action": "insert",
+          "item": "#/texts/47"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            87.86257543483703,
+            405.41836982406073,
+            103.5084629539682,
+            411.38778943305647
+          ],
+          "candidate": "Sunday",
+          "ocr_text": "Sunday",
+          "ocr_confidence": 0.6844796631404969,
+          "verification": "Sunday\n\nSunday",
+          "verification_complete": true,
+          "seconds": 0.1420011419977527,
+          "action": "replace",
+          "previous": "Sunddy",
+          "item": "#/texts/25"
+        }
+      ],
+      "errors": [],
+      "calls": 93,
+      "repetition_stops": 17,
+      "regions": 7
+    },
+    "after": {
+      "seconds": 59.76119232899873,
+      "startup": 36.28765043099702,
+      "quality": {
+        "presence_pass": 60,
+        "presence_total": 60,
+        "order_pass": 19,
+        "order_total": 20,
+        "order_anchors_available": 20,
+        "counts_pass": 9,
+        "counts_total": 10,
+        "excerpt_error_mean": 0.0,
+        "teds_mean": 0.75641,
+        "table_count": 2,
+        "relation_pass": 3,
+        "relation_total": 3
+      },
+      "pages": [
+        {
+          "model": "hybrid",
+          "page": 6,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 2.3515919169985864,
+          "peak_rss_gib": 2.0238914489746094,
+          "presence": [
+            {
+              "text": "설치가이드 (종이 설명서)",
+              "pass": true
+            },
+            {
+              "text": "사용설명서 (전자 설명서)",
+              "pass": true
+            },
+            {
+              "text": "http://epson.sn",
+              "pass": true
+            },
+            {
+              "text": "Adobe Acrobat Reader DC",
+              "pass": true
+            },
+            {
+              "text": "키워드로 검색하기",
+              "pass": true
+            },
+            {
+              "text": "북마크에서 바로 이동하기",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "설치가이드 (종이 설명서)",
+              "second": "사용설명서 (전자 설명서)",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "키워드로 검색하기",
+              "second": "북마크에서 바로 이동하기",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "프린터 설정 및 소프트웨어 설치에 대한 정보를 확인할 수 있습니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 8,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.42959966199850896,
+          "peak_rss_gib": 2.065021514892578,
+          "presence": [
+            {
+              "text": "QR 코드는 전용 앱으로 인식됩니다.",
+              "pass": true
+            },
+            {
+              "text": "macOS High Sierra",
+              "pass": true
+            },
+            {
+              "text": "Microsoft® Windows® XP Professional x64 Edition 운영 체제",
+              "pass": true
+            },
+            {
+              "text": "Microsoft® Windows Server® 2012 R2 운영 체제",
+              "pass": true
+            },
+            {
+              "text": "Microsoft® Windows Server® 2003 R2 운영 체제",
+              "pass": true
+            },
+            {
+              "text": "Mac OS X v10.6.8",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "QR 코드는 전용 앱으로 인식됩니다.",
+              "second": "Microsoft® Windows® XP Professional x64 Edition 운영 체제",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "Microsoft® Windows Server® 2003 R2 운영 체제",
+              "second": "Mac OS X v10.6.8",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "이 설명서에 사용된 일러스트 이미지는 참고 예시입니다. 모델에 따라 다소 차이가 있을 수 있으나, 작동 방법은 동일합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 26,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 6.507519067003159,
+          "peak_rss_gib": 2.366802215576172,
+          "presence": [
+            {
+              "text": "프린터 및 소모품의 상태를 확인할 수 있습니다.",
+              "pass": true
+            },
+            {
+              "text": "네트워크 연결 상태를 표시합니다.",
+              "pass": true
+            },
+            {
+              "text": "설정 > 일반 설정 > 기본 설정 > 소리",
+              "pass": true
+            },
+            {
+              "text": "프린터가 절전 모드로 전환됩니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터 작동과 관련된 설정을 할 수 있습니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터가 유선(이더넷) 네트워크에 연결되어 있습니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "프린터 및 소모품의 상태를 확인할 수 있습니다.",
+              "second": "프린터가 절전 모드로 전환됩니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "프린터 작동과 관련된 설정을 할 수 있습니다.",
+              "second": "프린터가 유선(이더넷) 네트워크에 연결되어 있습니다.",
+              "anchors_present": true,
+              "pass": false
+            }
+          ],
+          "counts": [
+            {
+              "text": "도움말 화면을 표시합니다. 작동 지침 또는 문제 해결 방법을 확인할 수 있습니다.",
+              "expected": 1,
+              "actual": 3,
+              "pass": false
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [
+            {
+              "name": "네트워크 아이콘 표",
+              "teds": 0.66667,
+              "teds_s": 0.66667,
+              "matched_table_index": 1,
+              "predicted_table_count": 2
+            }
+          ],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 37,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.4506343819994072,
+          "peak_rss_gib": 2.413677215576172,
+          "presence": [
+            {
+              "text": "필요할 경우 설정을 변경합니다.",
+              "pass": true
+            },
+            {
+              "text": "인쇄미리보기를 선택하면 인쇄 전에 문서를 미리 볼 수 있습니다.",
+              "pass": true
+            },
+            {
+              "text": "확인을 클릭하여 프린터 드라이버 창을 닫습니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터 카세트 정보:",
+              "pass": true
+            },
+            {
+              "text": "EPSON Status Monitor",
+              "pass": true
+            },
+            {
+              "text": "설정 보기/설정 숨기기:",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "필요할 경우 설정을 변경합니다.",
+              "second": "확인을 클릭하여 프린터 드라이버 창을 닫습니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "프린터 카세트 정보:",
+              "second": "설정 보기/설정 숨기기:",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "자주 사용하는 인쇄 설정에 대해 직접 지정한 사전 설정을 추가 또는 제거할 수 있습니다. 목록에서 사용하려는 사전 설정을 선택합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 62,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.41865695399974356,
+          "peak_rss_gib": 2.456756591796875,
+          "presence": [
+            {
+              "text": "Windows 10/Windows Server 2019/Windows Server 2016",
+              "pass": true
+            },
+            {
+              "text": "Windows 7/Windows Server 2008 R2",
+              "pass": true
+            },
+            {
+              "text": "PostScript 프린터 드라이버 메뉴 옵션",
+              "pass": true
+            },
+            {
+              "text": "용지/품질 탭",
+              "pass": true
+            },
+            {
+              "text": "용지 급지와 미디어를 선택합니다.",
+              "pass": true
+            },
+            {
+              "text": "인쇄 작업의 색상을 선택합니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "Windows 10/Windows Server 2019/Windows Server 2016",
+              "second": "용지/품질 탭",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "용지 급지와 미디어를 선택합니다.",
+              "second": "인쇄 작업의 색상을 선택합니다.",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "프린터의 용지 설정에서 선택한 용지 급지를 자동으로 선택하려면 자동 선택을 선택합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 95,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 0.3700756830039609,
+          "peak_rss_gib": 2.4903907775878906,
+          "presence": [
+            {
+              "text": "PostScript 프린터 드라이버 설치하기 (Mac OS)",
+              "pass": true
+            },
+            {
+              "text": "프린터 드라이버 설치 시 프린터의 IP 주소가 필요합니다.",
+              "pass": true
+            },
+            {
+              "text": "다른 프린터 또는 스캐너 추가",
+              "pass": true
+            },
+            {
+              "text": "USB, IP 또는 Bonjour",
+              "pass": true
+            },
+            {
+              "text": "실행 중인 모든 응용 프로그램을 종료합니다.",
+              "pass": true
+            },
+            {
+              "text": "Windows 시스템 > 제어판",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "프린터 드라이버 설치 시 프린터의 IP 주소가 필요합니다.",
+              "second": "다른 프린터 또는 스캐너 추가",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "실행 중인 모든 응용 프로그램을 종료합니다.",
+              "second": "Windows 시스템 > 제어판",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "프린터의 홈 화면에서 네트워크 아이콘을 선택한 다음 활성 연결 방법을 선택하여 프린터의 IP 주소를 확인합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 159,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 16.68084451499817,
+          "peak_rss_gib": 2.73785400390625,
+          "presence": [
+            {
+              "text": "USB 케이블과 전원 코드를 다시 연결한 다음 프린터를 켭니다.",
+              "pass": true
+            },
+            {
+              "text": "Configuration Status Sheet",
+              "pass": true
+            },
+            {
+              "text": "AL-C9500DN",
+              "pass": true
+            },
+            {
+              "text": "컴퓨터에 관리자로 로그온합니다.",
+              "pass": true
+            },
+            {
+              "text": "프린터에서 획득을 선택한 후 획득을 클릭합니다.",
+              "pass": true
+            },
+            {
+              "text": "현재 프린터 정보에 옵션 급지 장치가 표시됩니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "USB 케이블과 전원 코드를 다시 연결한 다음 프린터를 켭니다.",
+              "second": "컴퓨터에 관리자로 로그온합니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "프린터에서 획득을 선택한 후 획득을 클릭합니다.",
+              "second": "현재 프린터 정보에 옵션 급지 장치가 표시됩니다.",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "용지 카세트 장치를 설치한 후 구성 상태 시트를 인쇄하여 옵션 아이템이 올바르게 설치되었는지 확인하십시오.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 179,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 1.5454871559995809,
+          "peak_rss_gib": 2.8718414306640625,
+          "presence": [
+            {
+              "text": "뒷면 시트는 라벨 사이에 틈이 없도록 완전히 덮여야 합니다.",
+              "pass": true
+            },
+            {
+              "text": "27.6mm",
+              "pass": true
+            },
+            {
+              "text": "59.4mm",
+              "pass": true
+            },
+            {
+              "text": "17.5mm",
+              "pass": true
+            },
+            {
+              "text": "Envelope #10",
+              "pass": true
+            },
+            {
+              "text": "프린터 조절 메뉴에서 코팅 용지1을 선택한 경우에만 해당됩니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "라벨 용지",
+              "second": "코팅 용지",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "Envelope #10",
+              "second": "자동 양면 인쇄용 용지",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "사용 가능한 크기는 일반 용지 및 조금 두꺼운 용지의 사용자 정의 크기를 참조하십시오.",
+              "expected": 2,
+              "actual": 2,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [
+            {
+              "name": "라벨 용지 표",
+              "teds": 0.84615,
+              "teds_s": 0.84615,
+              "matched_table_index": 0,
+              "predicted_table_count": 3
+            }
+          ],
+          "relations": [
+            {
+              "page": 179,
+              "row": "A4",
+              "column": "용지 카세트 1",
+              "value": "27.6mm",
+              "pass": true
+            },
+            {
+              "page": 179,
+              "row": "A4",
+              "column": "용지 카세트 2 - 4",
+              "value": "59.4mm",
+              "pass": true
+            },
+            {
+              "page": 179,
+              "row": "A4",
+              "column": "용지 트레이",
+              "value": "17.5mm",
+              "pass": true
+            }
+          ]
+        },
+        {
+          "model": "hybrid",
+          "page": 210,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 19.83394704699822,
+          "peak_rss_gib": 2.9710540771484375,
+          "presence": [
+            {
+              "text": "Epson BarCode Fonts로 인쇄",
+              "pass": true
+            },
+            {
+              "text": "Windows 10의 Microsoft 워드패드",
+              "pass": true
+            },
+            {
+              "text": "응용 프로그램에서 문서를 열고 바코드로 변환할 문자를 입력합니다.",
+              "pass": true
+            },
+            {
+              "text": "Arial",
+              "pass": true
+            },
+            {
+              "text": "12345",
+              "pass": true
+            },
+            {
+              "text": "다른 글꼴 표시",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "Epson BarCode Fonts로 인쇄",
+              "second": "응용 프로그램에서 문서를 열고 바코드로 변환할 문자를 입력합니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "문자를 선택한 다음 사용할 Epson BarCode font 및 글자 크기를 선택합니다.",
+              "second": "다른 글꼴 표시",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "12345",
+              "expected": 2,
+              "actual": 2,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        },
+        {
+          "model": "hybrid",
+          "page": 238,
+          "complete": true,
+          "status": "ConversionStatus.SUCCESS",
+          "seconds": 11.172835945999395,
+          "peak_rss_gib": 3.0081443786621094,
+          "presence": [
+            {
+              "text": "하루 중 최대 5개 기간",
+              "pass": true
+            },
+            {
+              "text": "Sleep Schedule",
+              "pass": true
+            },
+            {
+              "text": "Monday",
+              "pass": true
+            },
+            {
+              "text": "Sunday",
+              "pass": true
+            },
+            {
+              "text": "활동이 없으면 즉시 절전 모드로 들어갑니다.",
+              "pass": true
+            },
+            {
+              "text": "연결 끊긴 후 전원 끄기를 켜기로 설정합니다.",
+              "pass": true
+            }
+          ],
+          "order": [
+            {
+              "first": "하루 중 최대 5개 기간",
+              "second": "활동이 없으면 즉시 절전 모드로 들어갑니다.",
+              "anchors_present": true,
+              "pass": true
+            },
+            {
+              "first": "USB 포트를 포함한 모든 포트가 분리된 경우",
+              "second": "연결 끊긴 후 전원 끄기를 켜기로 설정합니다.",
+              "anchors_present": true,
+              "pass": true
+            }
+          ],
+          "counts": [
+            {
+              "text": "USB 포트를 포함한 모든 포트가 분리된 경우, 지정된 시간이 지나면 프린터가 자동으로 꺼지도록 설정합니다.",
+              "expected": 1,
+              "actual": 1,
+              "pass": true
+            }
+          ],
+          "excerpt_error": 0.0,
+          "tables": [],
+          "relations": []
+        }
+      ],
+      "repairs": [
+        {
+          "page": 159,
+          "picture": "#/pictures/0",
+          "bbox": [
+            272.2132999493058,
+            157.519611013383,
+            283.5321824772343,
+            162.1719550328539
+          ],
+          "candidate": "PAGE.",
+          "ocr_text": "PAGH",
+          "ocr_confidence": 0.13470052182674408,
+          "verification": "PAGE.\n\nPAGE.",
+          "verification_complete": true,
+          "seconds": 0.16359497700250358,
+          "action": "insert",
+          "item": "#/texts/30"
+        },
+        {
+          "page": 159,
+          "picture": "#/pictures/0",
+          "bbox": [
+            211.29107928427922,
+            221.65549642466027,
+            234.26175264978104,
+            227.6370815925514
+          ],
+          "candidate": "Paper Type",
+          "ocr_text": "PaPa? TYP",
+          "ocr_confidence": 0.08343529465661642,
+          "verification": "Paper Type",
+          "verification_complete": true,
+          "seconds": 0.10801736199937295,
+          "action": "insert",
+          "item": "#/texts/31"
+        },
+        {
+          "page": 159,
+          "picture": "#/pictures/0",
+          "bbox": [
+            253.90334291883335,
+            221.65549642466027,
+            303.5066810559315,
+            227.6370815925514
+          ],
+          "candidate": "Paper Size Auto Detect",
+          "ocr_text": "PF; Str Auito Ditect",
+          "ocr_confidence": 0.035390141881748376,
+          "verification": "Paper Size Auto Detect",
+          "verification_complete": true,
+          "seconds": 0.16099525399840786,
+          "action": "insert",
+          "item": "#/texts/32"
+        },
+        {
+          "page": 210,
+          "picture": "#/pictures/1",
+          "bbox": [
+            197.43725650823006,
+            649.2137166212785,
+            254.04523062304915,
+            662.8598216926262
+          ],
+          "candidate": "다른 글꼴 표시",
+          "ocr_text": "다른 글플 표시",
+          "ocr_confidence": 0.1806193568551468,
+          "verification": "다른 글꼴 표시",
+          "verification_complete": true,
+          "seconds": 0.21959312499893713,
+          "action": "insert",
+          "item": "#/texts/35"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            79.54029483955448,
+            320.51995760723224,
+            107.50315763970383,
+            325.1628395253401
+          ],
+          "candidate": "Sleep Schedule",
+          "ocr_text": "Skro Schodulr",
+          "ocr_confidence": 0.276184895587043,
+          "verification": "Sleep Schedule",
+          "verification_complete": true,
+          "seconds": 0.10942223199890577,
+          "action": "insert",
+          "item": "#/texts/45"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            87.86257543483703,
+            355.0099375703188,
+            104.17424540159081,
+            360.97935717931455
+          ],
+          "candidate": "Monday",
+          "ocr_text": "Moday",
+          "ocr_confidence": 0.7743134806490279,
+          "verification": "Monday\n\n$\\text{Monday}$\n\n$\\text{Monday}$\n\n$\\text{Monday}$\n\n$\\text{Monday}$",
+          "verification_complete": false,
+          "seconds": 0.7242426939992583,
+          "retry": {
+            "output": "Monday",
+            "complete": true,
+            "seconds": 0.080978468999092,
+            "padding": 3,
+            "max_tokens": 32
+          },
+          "action": "replace",
+          "previous": "oday",
+          "item": "#/texts/15"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            88.19546665864831,
+            363.63243256109047,
+            105.50581029683602,
+            368.93858332464225
+          ],
+          "candidate": "Tuesday",
+          "ocr_text": "Tusdny",
+          "ocr_confidence": 0.20762484290948974,
+          "verification": "Tuesday",
+          "verification_complete": true,
+          "seconds": 0.08037205499931588,
+          "action": "insert",
+          "item": "#/texts/46"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            88.19546665864831,
+            372.2549275518621,
+            111.49785232543945,
+            377.5610783154139
+          ],
+          "candidate": "Wednesday",
+          "ocr_text": "Wednesday",
+          "ocr_confidence": 0.6505536065179554,
+          "verification": "Wednesday",
+          "verification_complete": true,
+          "seconds": 0.08067035800195299,
+          "action": "replace",
+          "previous": "Wodnesday",
+          "item": "#/texts/19"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            88.19546665864831,
+            397.4591436787331,
+            106.17159274445862,
+            402.7652944422848
+          ],
+          "candidate": "Saturday",
+          "ocr_text": "Stlurdy",
+          "ocr_confidence": 0.4243666879627519,
+          "verification": "Saturday",
+          "verification_complete": true,
+          "seconds": 0.08008184799837181,
+          "action": "insert",
+          "item": "#/texts/47"
+        },
+        {
+          "page": 238,
+          "picture": "#/pictures/1",
+          "bbox": [
+            87.86257543483703,
+            405.41836982406073,
+            103.5084629539682,
+            411.38778943305647
+          ],
+          "candidate": "Sunday",
+          "ocr_text": "Sunday",
+          "ocr_confidence": 0.6844796631404969,
+          "verification": "Sunday\n\nSunday",
+          "verification_complete": true,
+          "seconds": 0.13608831199962879,
+          "action": "replace",
+          "previous": "Sunddy",
+          "item": "#/texts/25"
+        }
+      ],
+      "errors": [],
+      "calls": 84,
+      "repetition_stops": 14,
+      "regions": 5
+    },
+    "diffs": [],
+    "tables_identical": true
+  }
+}

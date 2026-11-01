@@ -1,0 +1,16 @@
+{
+  "request_status": "ready",
+  "evidence_status": "sufficient",
+  "missing_conditions": [],
+  "unsupported_actions": [],
+  "draft_verdict": "pass",
+  "reflection_verdict": "not_applicable",
+  "evidence": [
+    {
+      "evidence_id": "document/not-real",
+      "quote": "가짜 원문"
+    }
+  ],
+  "issues": [],
+  "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+}

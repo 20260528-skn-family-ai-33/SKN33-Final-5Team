@@ -1,0 +1,26 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "partial",
+  "session_id": "sample-session",
+  "revision": 0,
+  "condition_protocol": "condition-contracts-v8-dedup-scope",
+  "decision": "SYSTEM_ERROR",
+  "next_action": "CHECK_SYSTEM",
+  "reason": "자료 doc-1의 변환 상태를 확인해야 합니다.",
+  "confirmed_conditions": {},
+  "unresolved_conditions": {},
+  "unresolved_keys": [],
+  "questions": [],
+  "issues": [
+    "자료 doc-1의 변환 상태를 확인해야 합니다."
+  ],
+  "unsupported_actions": [],
+  "resource_versions": {
+    "doc-1": "1"
+  },
+  "input_requirements": [],
+  "generator_context": null,
+  "requires_user_approval": true,
+  "allows_save": false,
+  "allows_execution": false
+}

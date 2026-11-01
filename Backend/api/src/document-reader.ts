@@ -1,0 +1,29 @@
+import {backendPath,doclingPython} from './paths';
+import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,extname,basename} from 'node:path';
+import type {FlowNode,Json} from '../../../shared/workflow';import {getBinary,decodeBinaryFile} from './binary';import {attachItemPairs} from './provenance';
+import {analyzeBuilderDocument,DOCUMENT_FORMATS,routingEnabled} from './document-analysis';
+const run=promisify(execFile);const allowed=new Set(['pdf','docx','dotx','xlsx','xlsm','pptx','ppsx','md','markdown','txt','html','htm','xhtml','csv','adoc','asciidoc','odt','ods','odp','epub','vtt','tex','latex','eml','msg','mhtml','mht','boxnote']);
+export async function readDocument(node:FlowNode,input:Json[],signal?:AbortSignal):Promise<Json[][]>{
+ if(input.length>10)throw new Error('문서 읽기는 한 번에 10개 이하로 입력해주세요.');const result:Json[]=[];
+ for(const item of input){
+  const property=node.parameters.binaryPropertyName||'data',file=getBinary(item,property);if(!file)throw new Error('실제 업로드 파일을 문서 읽기 단계로 연결해주세요.');
+  const ext=extname(file.fileName).slice(1).toLowerCase();
+  if(routingEnabled()&&DOCUMENT_FORMATS.has(ext)){
+   const parsed=await analyzeBuilderDocument(decodeBinaryFile(file),ext);
+   result.push({...item,text:parsed.text,filename:basename(file.fileName),document:{...parsed.parser_metadata,filename:basename(file.fileName),
+    engine:parsed.engine,sections:parsed.sections,tables:parsed.tables,warnings:parsed.warnings,parser_status:parsed.parser_status}} as Json);
+   continue;
+  }
+  if(!allowed.has(ext))throw new Error('이 형식은 문서 읽기에서 지원하지 않아요. 문서 분석 설정과 지원 형식을 확인하세요.');
+  const dir=await mkdtemp(join(tmpdir(),'easyflow-document-'));try{
+   const source=join(dir,'input.'+ext),output=join(dir,'output.json');await writeFile(source,decodeBinaryFile(file));
+   const python=doclingPython();if(!python)throw new Error('Docling 환경이 없습니다. Backend/scripts/setup-document-demo.sh로 설치하세요.');
+   const configured=Number(process.env.A4B_PDF_TIMEOUT_MS);const timeout=Number.isFinite(configured)&&configured>0&&configured<=1800000?configured:300000;
+   await run(python,[backendPath('documents/parsers/document_worker.py'),source,output],{timeout,maxBuffer:1024*1024,signal,env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1'}});
+   const data=JSON.parse(await readFile(output,'utf8'));if(data.error||!data.text?.trim())throw new Error('문서에서 실제 본문을 추출하지 못했어요.');
+   const {text,...metadata}=data;
+   result.push({...item,text,filename:basename(file.fileName),document:{...metadata,filename:basename(file.fileName),engine:'docling',sections:data.sections||[],tables:data.tables||[],warnings:data.warnings||[]}});
+  }catch(e:any){if(e.message?.startsWith('문서에서'))throw e;throw new Error('Docling 문서 변환 실패: Python 환경·OCR/표 모델·지원 형식·A4B_PDF_TIMEOUT_MS 제한을 확인해주세요.');}finally{await rm(dir,{recursive:true,force:true});}
+ }
+ return [attachItemPairs(result,result.map((_,i)=>[{item:i}]))];
+}

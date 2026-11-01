@@ -1,0 +1,62 @@
+{
+  "purpose": "연결 규격 예시, 실제 모델 성능 평가가 아님",
+  "human_agreement": "pending",
+  "real_model_calls": 0,
+  "database_writes": false,
+  "examples": [
+    {
+      "name": "01-ready",
+      "decision": "READY",
+      "fixture_transport_calls": 1,
+      "real_model_calls": 0
+    },
+    {
+      "name": "02-clarify",
+      "decision": "CLARIFY",
+      "fixture_transport_calls": 1,
+      "real_model_calls": 0
+    },
+    {
+      "name": "03-parser-error",
+      "decision": "SYSTEM_ERROR",
+      "fixture_transport_calls": 0,
+      "real_model_calls": 0
+    },
+    {
+      "name": "04-db-error",
+      "decision": "SYSTEM_ERROR",
+      "fixture_transport_calls": 0,
+      "real_model_calls": 0
+    },
+    {
+      "name": "05-unsupported",
+      "decision": "UNSUPPORTED",
+      "fixture_transport_calls": 1,
+      "real_model_calls": 0
+    },
+    {
+      "name": "06-deferred",
+      "decision": "DEFERRED",
+      "fixture_transport_calls": 0,
+      "real_model_calls": 0
+    },
+    {
+      "name": "07-manual-review",
+      "decision": "MANUAL_REVIEW",
+      "fixture_transport_calls": 1,
+      "real_model_calls": 0
+    },
+    {
+      "name": "08-answer",
+      "decision": "READY",
+      "fixture_transport_calls": 1,
+      "real_model_calls": 0
+    },
+    {
+      "name": "09-conflict",
+      "decision": "CLARIFY",
+      "fixture_transport_calls": 1,
+      "real_model_calls": 0
+    }
+  ]
+}

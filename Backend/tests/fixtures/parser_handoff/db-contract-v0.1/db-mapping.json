@@ -1,0 +1,42 @@
+[
+  {
+    "parser_field": "source.file_name, source.mime_type, source.size_bytes",
+    "destination": "documents.name / document_versions.mime_type,size_bytes",
+    "rule": "원본 식별·크기. 문서 종류는 별도 분류·선택 결과이며 파서 MIME과 다름."
+  },
+  {
+    "parser_field": "source.sha256",
+    "destination": "document_versions.content_hash",
+    "rule": "원본 바이트 해시. canonical_text_sha256와 바꾸지 않음."
+  },
+  {
+    "parser_field": "원본 파일·완료 JSON 파일",
+    "destination": "S3 / document_versions.s3_bucket,s3_key,parsed_s3_key",
+    "rule": "백엔드가 업로드·해시·불변 객체 경로를 확인. 파서가 임의 S3 경로나 권한을 생성하지 않음."
+  },
+  {
+    "parser_field": "processing.config_json",
+    "destination": "document_versions.processing_config_json",
+    "rule": "같은 설정을 작업 시작 전 고정. 결과를 받은 뒤 기존 버전 설정을 덮어쓰지 않음."
+  },
+  {
+    "parser_field": "canonical_text, blocks, tables",
+    "destination": "S3 파싱 결과 JSON",
+    "rule": "기준 본문·보완 후 셀·병합·좌표 보존. DB가 원문을 복원하려고 HTML을 재파싱하지 않음."
+  },
+  {
+    "parser_field": "source_locations",
+    "destination": "source_locations",
+    "rule": "UUID·document_version_id는 백엔드가 채움. bbox 배열을 bbox_x0,y0,x1,y1으로 분리."
+  },
+  {
+    "parser_field": "chunk-example.json",
+    "destination": "document_chunks / chunk_locations",
+    "rule": "청킹 담당이 생성할 제안 예시. chunk_no/location_no를 실제 UUID로 해석하여 같은 처리 버전에 연결."
+  },
+  {
+    "parser_field": "업무 추출 단계 결과",
+    "destination": "outputs.content_json / output_evidence",
+    "rule": "이 파서 JSON을 업무 추출 결과로 넣지 않음. 총액·요약·판단은 별도 규격과 실제 원문 근거를 참조."
+  }
+]

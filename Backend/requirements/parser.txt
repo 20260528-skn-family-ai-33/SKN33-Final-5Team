@@ -1,0 +1,12 @@
+# Parser handoff validated environment. Model weights are prepared separately.
+docling==2.133.0
+docling-core==2.99.0
+torch==2.14.1
+torchvision==0.29.1
+easyocr==1.7.2
+transformers==5.18.0
+pymupdf==2.0
+pymupdf4llm==2.0
+Pillow==12.3.0
+beautifulsoup4==4.15.0
+markdown-it-py==4.2.0

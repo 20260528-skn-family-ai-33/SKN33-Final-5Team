@@ -1,0 +1,37 @@
+# App, Python workers and document readers run in the container; Ollama runs on the host PC
+# so it can use the host GPU directly (Windows NVIDIA or Apple Silicon).
+# Prepare Ollama first: scripts/prepare-ollama.ps1 (Windows) or scripts/prepare-ollama.sh (macOS/Linux).
+# Values below can be overridden from a repository-root .env (Compose reads it for ${...}).
+services:
+  app:
+    build: .
+    image: a4b-agent-studio:local
+    ports:
+      # Host and container port must match: the server only accepts its own 127.0.0.1:<PORT> host.
+      - "127.0.0.1:${A4B_DOCKER_PORT:-3030}:${A4B_DOCKER_PORT:-3030}"
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${A4B_DOCKER_PORT:-3030}
+      EASYFLOW_DATA_DIR: /app/data
+      A4B_MAIN_PROVIDER: ollama
+      A4B_MAIN_BASE_URL: ${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}/v1
+      A4B_MAIN_MODEL: ${A4B_LLM_MODEL:-qwen3:8b-q4_K_M}
+      A4B_VERIFIER_PROVIDER: ollama
+      A4B_VERIFIER_BASE_URL: ${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}
+      A4B_VERIFIER_MODEL: ${A4B_VERIFIER_MODEL:-qwen3.5:4b}
+      # defer records verifier input; run scripts/run-deferred-verifications.py later (see README).
+      A4B_VERIFIER_MODE: ${A4B_VERIFIER_MODE:-defer}
+      # direct: the registered catalogue is passed in the design input. With files attached the
+      # model often inspects the file and never calls list_tools, which the model mode rejects.
+      A4B_TOOL_CATALOG_MODE: ${A4B_TOOL_CATALOG_MODE:-direct}
+      A4B_MAIN_TIMEOUT_S: ${A4B_MAIN_TIMEOUT_S:-180}
+      A4B_DESIGN_TIMEOUT_MS: ${A4B_DESIGN_TIMEOUT_MS:-600000}
+    extra_hosts:
+      # Docker Desktop provides host.docker.internal; this makes it resolve on Linux engines too.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - a4b-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  a4b-data:

@@ -1,0 +1,74 @@
+{
+  "contract_version": "a4b.parser_result.v0.1-draft",
+  "source": {
+    "file_name": "samsung-2025-ko.pdf",
+    "mime_type": "application/pdf",
+    "sha256": "8609e03c796230d98ff583f1101ee5bf940aa8be7884bf9b576e984086c88103",
+    "size_bytes": 6084711,
+    "page_count_total": 87
+  },
+  "processing": {
+    "outcome": "failed",
+    "scope": "selected_pages",
+    "requested_pages": [
+      67
+    ],
+    "completed_pages": [],
+    "failed_pages": [
+      67
+    ],
+    "whole_document_complete": false,
+    "parser": {
+      "engine": "docling",
+      "package_version": null,
+      "postprocessor_revision": "b12a349d35a487ea17b7a82c52abb0d25a29581c256aba9911a30bfa84e880c9"
+    },
+    "config_json": {
+      "parser_engine": "docling",
+      "ocr": {
+        "enabled": true,
+        "engine": "easyocr",
+        "languages": [
+          "ko",
+          "en"
+        ],
+        "force_full_page_ocr": false
+      },
+      "table_structure": true,
+      "postprocessor_revision": "b12a349d35a487ea17b7a82c52abb0d25a29581c256aba9911a30bfa84e880c9",
+      "canonicalization": {
+        "name": "anchor-cell-tsv",
+        "version": "0.1-draft",
+        "unicode_normalization": "none"
+      }
+    },
+    "provenance": {
+      "derivation": "illustrative_example",
+      "service_integration": false,
+      "source_artifacts": []
+    },
+    "warnings": [],
+    "error": {
+      "code": "SYNTHETIC_FAILURE_EXAMPLE",
+      "message": "공유 규격의 오류 형식 설명용 합성 예시이며 실제 삼성 실행 실패가 아닙니다.",
+      "retryable": true
+    }
+  },
+  "coordinate_system": {
+    "origin": "top_left",
+    "unit": "normalized_0_1",
+    "bbox_meaning": "visible_text_bounds"
+  },
+  "text_indexing": {
+    "unit": "unicode_code_point",
+    "start_index": 0,
+    "end": "exclusive",
+    "normalization": "none"
+  },
+  "canonical_text": "",
+  "canonical_text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "pages": [],
+  "blocks": [],
+  "tables": [],
+  "source_locations": []
+}

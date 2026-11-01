@@ -1,0 +1,296 @@
+{
+  "$defs": {
+    "ConfirmedCondition": {
+      "additionalProperties": true,
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "status": {
+          "const": "specified",
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Value"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "status",
+        "value",
+        "evidence_ids",
+        "evidence"
+      ],
+      "title": "ConfirmedCondition",
+      "type": "object"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "text"
+      ],
+      "title": "Question",
+      "type": "object"
+    },
+    "UnresolvedCondition": {
+      "additionalProperties": true,
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "missing",
+            "conflict"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value",
+          "type": "null"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "status"
+      ],
+      "title": "UnresolvedCondition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "a4b.clarification.v1-draft",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "revision": {
+      "title": "Revision",
+      "type": "integer"
+    },
+    "condition_protocol": {
+      "const": "condition-contracts-v8-dedup-scope",
+      "title": "Condition Protocol",
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "READY",
+        "CLARIFY",
+        "UNSUPPORTED",
+        "SYSTEM_ERROR",
+        "DEFERRED",
+        "MANUAL_REVIEW"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "next_action": {
+      "enum": [
+        "GENERATE_DRAFT",
+        "ASK_USER",
+        "SHOW_UNSUPPORTED",
+        "CHECK_SYSTEM",
+        "WAIT_FOR_USER",
+        "REVIEW_SCOPE"
+      ],
+      "title": "Next Action",
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "confirmed_conditions": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ConfirmedCondition"
+      },
+      "title": "Confirmed Conditions",
+      "type": "object"
+    },
+    "unresolved_conditions": {
+      "additionalProperties": {
+        "$ref": "#/$defs/UnresolvedCondition"
+      },
+      "title": "Unresolved Conditions",
+      "type": "object"
+    },
+    "unresolved_keys": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Keys",
+      "type": "array"
+    },
+    "questions": {
+      "items": {
+        "$ref": "#/$defs/Question"
+      },
+      "maxItems": 3,
+      "title": "Questions",
+      "type": "array"
+    },
+    "issues": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "unsupported_actions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unsupported Actions",
+      "type": "array"
+    },
+    "resource_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Resource Versions",
+      "type": "object"
+    },
+    "input_requirements": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Input Requirements",
+      "type": "array"
+    },
+    "generator_context": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Generator Context"
+    },
+    "requires_user_approval": {
+      "const": true,
+      "default": true,
+      "title": "Requires User Approval",
+      "type": "boolean"
+    },
+    "allows_save": {
+      "const": false,
+      "default": false,
+      "title": "Allows Save",
+      "type": "boolean"
+    },
+    "allows_execution": {
+      "const": false,
+      "default": false,
+      "title": "Allows Execution",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract_version",
+    "request_id",
+    "session_id",
+    "revision",
+    "condition_protocol",
+    "decision",
+    "next_action",
+    "reason",
+    "confirmed_conditions",
+    "unresolved_conditions",
+    "unresolved_keys",
+    "questions",
+    "issues",
+    "unsupported_actions",
+    "resource_versions",
+    "input_requirements",
+    "generator_context"
+  ],
+  "title": "ClarificationOutput",
+  "type": "object"
+}

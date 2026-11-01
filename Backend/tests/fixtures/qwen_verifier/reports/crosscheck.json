@@ -1,0 +1,54 @@
+{
+  "contract_cases_crosschecked": [
+    "01_ready",
+    "02_missing_selection",
+    "03_ambiguous_column",
+    "04_wrong_column",
+    "05_reflection_wrong_operator",
+    "06_reflection_correct",
+    "07_unrelated_field_changed",
+    "08_still_ambiguous",
+    "09_unsupported_email",
+    "10_parser_failed",
+    "11_missing_filter_value",
+    "12_forged_evidence_guard",
+    "13_cycle_guard"
+  ],
+  "independent_jsonschema": true,
+  "fixture_routes_all_match": true,
+  "live_source_and_input_hashes_match": true,
+  "live_replayed_code_checks_match": true,
+  "live_semantic_review": [
+    {
+      "id": "01_ready",
+      "semantic_axes_match": true,
+      "route_matches_expected": true,
+      "code_findings": [],
+      "execution_allowed": false
+    },
+    {
+      "id": "02_missing_selection",
+      "semantic_axes_match": false,
+      "route_matches_expected": false,
+      "code_findings": [
+        "invalid_quote"
+      ],
+      "execution_allowed": false
+    },
+    {
+      "id": "05_reflection_wrong_operator",
+      "semantic_axes_match": false,
+      "route_matches_expected": false,
+      "code_findings": [
+        "reflection_check_omitted"
+      ],
+      "execution_allowed": false
+    }
+  ],
+  "unit_test_count": 17,
+  "unit_tests_passed": true,
+  "model_quality_gate_passed": false,
+  "auto_execution_supported": false,
+  "test_data": "수작업 합성 연동 예시. 독립 평가셋 아님",
+  "training_runs": 0
+}

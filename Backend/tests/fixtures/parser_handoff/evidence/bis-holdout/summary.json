@@ -1,0 +1,753 @@
+{
+  "manifest": {
+    "source_url": "https://www.bis.org/publications/annual-report-2025.pdf",
+    "pages": [
+      177,
+      178,
+      179,
+      180,
+      196,
+      197,
+      217,
+      218,
+      219,
+      220
+    ],
+    "source_sha256": "7a5e9582b5337e7bbf0e8af871c9aeb6577d8158cf5277c5c541816b12cdf7ea",
+    "reference_sha256": "bbbf9a43453accd90813926eb1440dcec4a4fcda9b65e91f9fd8917f60cfe734",
+    "relation_sha256": "84c280cf8f44d37c298d061285b13671f49983fda326c8ee0721a5277ecce62c"
+  },
+  "summary": {
+    "attempted": 10,
+    "completed": 10,
+    "seconds": 42.56,
+    "peak_rss_gib": 2.6018295288085938,
+    "complete_only": {
+      "presence_pass": 40,
+      "presence_total": 40,
+      "order_pass": 0,
+      "order_total": 0,
+      "order_anchors_available": 0,
+      "counts_pass": 0,
+      "counts_total": 0,
+      "excerpt_error_mean": 0.0,
+      "teds_mean": 0.968085,
+      "table_count": 2,
+      "relation_pass": 0,
+      "relation_total": 0
+    },
+    "all_outputs_diagnostic": {
+      "presence_pass": 40,
+      "presence_total": 40,
+      "order_pass": 0,
+      "order_total": 0,
+      "order_anchors_available": 0,
+      "counts_pass": 0,
+      "counts_total": 0,
+      "excerpt_error_mean": 0.0,
+      "teds_mean": 0.968085,
+      "table_count": 2,
+      "relation_pass": 0,
+      "relation_total": 0
+    },
+    "common_complete": {
+      "presence_pass": 40,
+      "presence_total": 40,
+      "order_pass": 0,
+      "order_total": 0,
+      "order_anchors_available": 0,
+      "counts_pass": 0,
+      "counts_total": 0,
+      "excerpt_error_mean": 0.0,
+      "teds_mean": 0.968085,
+      "table_count": 2,
+      "relation_pass": 0,
+      "relation_total": 0
+    }
+  },
+  "startup_seconds": 34.37899544800166,
+  "relation_pass": 32,
+  "relation_total": 32,
+  "checks": [
+    {
+      "page": 177,
+      "table_index": 0,
+      "row": "Cash and cash equivalents",
+      "column": "2025",
+      "value": "86,083.9",
+      "observed": [
+        "86,083.9"
+      ],
+      "passed": true
+    },
+    {
+      "page": 177,
+      "table_index": 0,
+      "row": "Cash and cash equivalents",
+      "column": "2024",
+      "value": "46,574.8",
+      "observed": [
+        "46,574.8"
+      ],
+      "passed": true
+    },
+    {
+      "page": 177,
+      "table_index": 0,
+      "row": "Total assets",
+      "column": "2025",
+      "value": "431,333.2",
+      "observed": [
+        "431,333.2"
+      ],
+      "passed": true
+    },
+    {
+      "page": 178,
+      "table_index": 0,
+      "row": "Interest expense",
+      "column": "2025",
+      "value": "(2,744.4)",
+      "observed": [
+        "(2,744.4)"
+      ],
+      "passed": true
+    },
+    {
+      "page": 178,
+      "table_index": 0,
+      "row": "Net profit",
+      "column": "2025",
+      "value": "843.7",
+      "observed": [
+        "843.7"
+      ],
+      "passed": true
+    },
+    {
+      "page": 178,
+      "table_index": 0,
+      "row": "Net profit",
+      "column": "2024",
+      "value": "831.5",
+      "observed": [
+        "831.5"
+      ],
+      "passed": true
+    },
+    {
+      "page": 179,
+      "table_index": 0,
+      "row": "Net profit",
+      "column": "2025",
+      "value": "843.7",
+      "observed": [
+        "843.7"
+      ],
+      "passed": true
+    },
+    {
+      "page": 179,
+      "table_index": 0,
+      "row": "Total comprehensive income",
+      "column": "2025",
+      "value": "3,396.7",
+      "observed": [
+        "3,396.7"
+      ],
+      "passed": true
+    },
+    {
+      "page": 179,
+      "table_index": 0,
+      "row": "Total comprehensive income",
+      "column": "2024",
+      "value": "1,538.9",
+      "observed": [
+        "1,538.9"
+      ],
+      "passed": true
+    },
+    {
+      "page": 180,
+      "table_index": 0,
+      "row": "Interest expense paid",
+      "column": "2025",
+      "value": "(2,667.6)",
+      "observed": [
+        "(2,667.6)"
+      ],
+      "passed": true
+    },
+    {
+      "page": 180,
+      "table_index": 0,
+      "row": "Interest expense paid",
+      "column": "2024",
+      "value": "(2,472.8)",
+      "observed": [
+        "(2,472.8)"
+      ],
+      "passed": true
+    },
+    {
+      "page": 180,
+      "table_index": 0,
+      "row": "Interest income received",
+      "column": "2025",
+      "value": "536.8",
+      "observed": [
+        "536.8"
+      ],
+      "passed": true
+    },
+    {
+      "page": 196,
+      "table_index": 0,
+      "row": "Balance at central banks",
+      "column": "2025",
+      "value": "84,682.8",
+      "observed": [
+        "84,682.8"
+      ],
+      "passed": true
+    },
+    {
+      "page": 196,
+      "table_index": 0,
+      "row": "Notice accounts",
+      "column": "2024",
+      "value": "1,531.3",
+      "observed": [
+        "1,531.3"
+      ],
+      "passed": true
+    },
+    {
+      "page": 196,
+      "table_index": 0,
+      "row": "Total cash and cash equivalents",
+      "column": "2025",
+      "value": "86,083.9",
+      "observed": [
+        "86,083.9"
+      ],
+      "passed": true
+    },
+    {
+      "page": 197,
+      "table_index": 0,
+      "row": "Total currency assets",
+      "column": "FVPL",
+      "value": "272,487.4",
+      "observed": [
+        "272,487.4"
+      ],
+      "passed": true
+    },
+    {
+      "page": 197,
+      "table_index": 0,
+      "row": "Total currency assets",
+      "column": "FVOCI",
+      "value": "18,216.8",
+      "observed": [
+        "18,216.8"
+      ],
+      "passed": true
+    },
+    {
+      "page": 197,
+      "table_index": 0,
+      "row": "Total currency assets",
+      "column": "Total",
+      "value": "290,704.2",
+      "observed": [
+        "290,704.2"
+      ],
+      "passed": true
+    },
+    {
+      "page": 217,
+      "table_index": 0,
+      "row": "Total financial assets accounted for at fair value",
+      "column": "Level 1",
+      "value": "88,096.1",
+      "observed": [
+        "88,096.1"
+      ],
+      "passed": true
+    },
+    {
+      "page": 217,
+      "table_index": 0,
+      "row": "Total financial assets accounted for at fair value",
+      "column": "Level 3",
+      "value": "1,316.6",
+      "observed": [
+        "1,316.6"
+      ],
+      "passed": true
+    },
+    {
+      "page": 217,
+      "table_index": 0,
+      "row": "Total financial assets accounted for at fair value",
+      "column": "Total",
+      "value": "284,824.8",
+      "observed": [
+        "284,824.8"
+      ],
+      "passed": true
+    },
+    {
+      "page": 218,
+      "table_index": 0,
+      "row": "Total financial assets accounted for at fair value",
+      "column": "Level 1",
+      "value": "89,405.1",
+      "observed": [
+        "89,405.1"
+      ],
+      "passed": true
+    },
+    {
+      "page": 218,
+      "table_index": 0,
+      "row": "Total financial assets accounted for at fair value",
+      "column": "Level 3",
+      "value": "1,100.5",
+      "observed": [
+        "1,100.5"
+      ],
+      "passed": true
+    },
+    {
+      "page": 218,
+      "table_index": 0,
+      "row": "Total financial assets accounted for at fair value",
+      "column": "Total",
+      "value": "296,911.7",
+      "observed": [
+        "296,911.7"
+      ],
+      "passed": true
+    },
+    {
+      "page": 219,
+      "table_index": 0,
+      "row": "Maturities and sales",
+      "column": "FVPL",
+      "value": "(606.9)",
+      "observed": [
+        "(606.9)"
+      ],
+      "passed": true
+    },
+    {
+      "page": 219,
+      "table_index": 0,
+      "row": "Maturities and sales",
+      "column": "FVOCI",
+      "value": "(73.2)",
+      "observed": [
+        "(73.2)"
+      ],
+      "passed": true
+    },
+    {
+      "page": 219,
+      "table_index": 0,
+      "row": "Maturities and sales",
+      "column": "Total",
+      "value": "(680.1)",
+      "observed": [
+        "(680.1)"
+      ],
+      "passed": true
+    },
+    {
+      "page": 219,
+      "table_index": 1,
+      "row": "Maturities and sales",
+      "column": "Total",
+      "value": "(1,797.9)",
+      "observed": [
+        "(1,797.9)"
+      ],
+      "passed": true
+    },
+    {
+      "page": 219,
+      "table_index": 1,
+      "row": "Balance at end of the year",
+      "column": "Total",
+      "value": "1,100.5",
+      "observed": [
+        "1,100.5"
+      ],
+      "passed": true
+    },
+    {
+      "page": 220,
+      "table_index": 0,
+      "row": "Debt securities",
+      "column": "Minimum value of input",
+      "value": "-40.0",
+      "observed": [
+        "-40.0"
+      ],
+      "passed": true
+    },
+    {
+      "page": 220,
+      "table_index": 0,
+      "row": "Debt securities",
+      "column": "Maximum value of input",
+      "value": "73.0",
+      "observed": [
+        "73.0"
+      ],
+      "passed": true
+    },
+    {
+      "page": 220,
+      "table_index": 0,
+      "row": "Debt securities",
+      "column": "Weighted average of input",
+      "value": "35.4",
+      "observed": [
+        "35.4"
+      ],
+      "passed": true
+    }
+  ],
+  "pages": [
+    {
+      "model": "hybrid",
+      "page": 177,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 8.748670631001005,
+      "peak_rss_gib": 2.2546348571777344,
+      "presence": [
+        {
+          "text": "Balance sheet",
+          "pass": true
+        },
+        {
+          "text": "Cash and cash equivalents",
+          "pass": true
+        },
+        {
+          "text": "431,333.2",
+          "pass": true
+        },
+        {
+          "text": "379,155.4",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 178,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 3.1526789709969307,
+      "peak_rss_gib": 2.3796615600585938,
+      "presence": [
+        {
+          "text": "Profit and loss account",
+          "pass": true
+        },
+        {
+          "text": "Interest expense",
+          "pass": true
+        },
+        {
+          "text": "(2,744.4)",
+          "pass": true
+        },
+        {
+          "text": "843.7",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 179,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 3.326731565997761,
+      "peak_rss_gib": 2.3882675170898438,
+      "presence": [
+        {
+          "text": "Statement of comprehensive income",
+          "pass": true
+        },
+        {
+          "text": "Other comprehensive income",
+          "pass": true
+        },
+        {
+          "text": "3,396.7",
+          "pass": true
+        },
+        {
+          "text": "1,538.9",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 180,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 4.49078217701026,
+      "peak_rss_gib": 2.452045440673828,
+      "presence": [
+        {
+          "text": "Statement of cash flows",
+          "pass": true
+        },
+        {
+          "text": "Interest expense paid",
+          "pass": true
+        },
+        {
+          "text": "(2,667.6)",
+          "pass": true
+        },
+        {
+          "text": "39,729.9",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 196,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 3.852606743996148,
+      "peak_rss_gib": 2.4760894775390625,
+      "presence": [
+        {
+          "text": "Cash and cash equivalents",
+          "pass": true
+        },
+        {
+          "text": "Currency assets",
+          "pass": true
+        },
+        {
+          "text": "84,682.8",
+          "pass": true
+        },
+        {
+          "text": "1,317.9",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [
+        {
+          "name": "Cash and equivalents",
+          "teds": 1.0,
+          "teds_s": 1.0,
+          "matched_table_index": 0,
+          "predicted_table_count": 2
+        }
+      ],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 197,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 4.247301967996464,
+      "peak_rss_gib": 2.519664764404297,
+      "presence": [
+        {
+          "text": "Gold and gold loans",
+          "pass": true
+        },
+        {
+          "text": "FVOCI",
+          "pass": true
+        },
+        {
+          "text": "290,704.2",
+          "pass": true
+        },
+        {
+          "text": "40,580.8",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 217,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 3.93020492499636,
+      "peak_rss_gib": 2.5490150451660156,
+      "presence": [
+        {
+          "text": "Fair value hierarchy",
+          "pass": true
+        },
+        {
+          "text": "Level 3",
+          "pass": true
+        },
+        {
+          "text": "1,316.6",
+          "pass": true
+        },
+        {
+          "text": "284,824.8",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 218,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 3.395104369992623,
+      "peak_rss_gib": 2.5649261474609375,
+      "presence": [
+        {
+          "text": "As at 31 March 2024",
+          "pass": true
+        },
+        {
+          "text": "Level 3",
+          "pass": true
+        },
+        {
+          "text": "1,100.5",
+          "pass": true
+        },
+        {
+          "text": "296,911.7",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 219,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 4.750294670993753,
+      "peak_rss_gib": 2.5861167907714844,
+      "presence": [
+        {
+          "text": "As at 31 March 2025",
+          "pass": true
+        },
+        {
+          "text": "Maturities and sales",
+          "pass": true
+        },
+        {
+          "text": "(606.9)",
+          "pass": true
+        },
+        {
+          "text": "(1,797.9)",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [
+        {
+          "name": "Level3 reconciliation2025",
+          "teds": 0.93617,
+          "teds_s": 0.95745,
+          "matched_table_index": 0,
+          "predicted_table_count": 3
+        }
+      ],
+      "relations": []
+    },
+    {
+      "model": "hybrid",
+      "page": 220,
+      "complete": true,
+      "status": "ConversionStatus.SUCCESS",
+      "seconds": 2.662060427996039,
+      "peak_rss_gib": 2.6018295288085938,
+      "presence": [
+        {
+          "text": "As at 31 March 2024",
+          "pass": true
+        },
+        {
+          "text": "Unobservable input",
+          "pass": true
+        },
+        {
+          "text": "-40.0",
+          "pass": true
+        },
+        {
+          "text": "35.4",
+          "pass": true
+        }
+      ],
+      "order": [],
+      "counts": [],
+      "excerpt_error": 0.0,
+      "tables": [],
+      "relations": []
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+import type {Flow,Json,Execution} from '../../../shared/workflow';
+import type {ItemPair,ItemSourceRef} from './provenance';
+import type {BinaryFile} from './binary';
+import type {Provider,CredentialPublic} from '../../../shared/api-contracts';
+export type {Provider,CredentialPublic};
+export type WebhookResponse={statusCode:number;headers:Record<string,string>;body?:unknown;binary?:BinaryFile};
+export type CredentialInput={id?:string;name:string;provider:Provider;data:Json};
+export type CredentialSecret=CredentialPublic&{data:Json};
+export type CodeNodeRun={name:string;runIndex:number;output:Json[][];defaultOutputIndex?:number;key?:string;inputRefs?:ItemSourceRef[][];outputPairedItems?:ItemPair[][][];outputSourceRefs?:ItemSourceRef[][][];inputPortCounts?:number[];linkOnly?:boolean};
+export type CodeContext={execution?:{id:string;mode:string};runIndex?:number;params?:Json;inputRefs?:ItemSourceRef[][];nodeRuns?:CodeNodeRun[]};
+export type RunOptions={mode:'learning'|'live';expressionMode?:'test'|'production';signal?:AbortSignal;onProgress?:(execution:Execution)=>Promise<void>|void;onWebhookResponse?:(response:WebhookResponse)=>Promise<void>|void;webhookResponseMode?:string;resume?:Execution;credential:(id:string)=>CredentialSecret|Promise<CredentialSecret>;getFlow?:(id:string)=>Flow|undefined;code?:(source:string,input:Json[],mode:string,context?:CodeContext)=>Promise<Json[]>;fetch?:typeof fetch;executionId?:string;onlyNode?:string;maxSteps?:number;depth?:number};

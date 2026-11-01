@@ -1,0 +1,419 @@
+{
+  "$defs": {
+    "Candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "tool_id": {
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "estimated_probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Estimated Probability",
+          "type": "number"
+        }
+      },
+      "required": [
+        "tool_id",
+        "estimated_probability"
+      ],
+      "title": "Candidate",
+      "type": "object"
+    },
+    "MLAdvice": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "not_requested",
+            "available",
+            "fallback",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "ml_candidates": {
+          "items": {
+            "$ref": "#/$defs/Candidate"
+          },
+          "maxItems": 16,
+          "title": "Ml Candidates",
+          "type": "array"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "MLAdvice",
+      "type": "object"
+    },
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 12000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "title": "Message",
+      "type": "object"
+    },
+    "PreviousState": {
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "ledger": {
+          "additionalProperties": true,
+          "title": "Ledger",
+          "type": "object"
+        },
+        "pending_questions": {
+          "items": {
+            "$ref": "#/$defs/Question"
+          },
+          "maxItems": 3,
+          "title": "Pending Questions",
+          "type": "array"
+        },
+        "answer_events": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Answer Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "session_id",
+        "revision",
+        "ledger"
+      ],
+      "title": "PreviousState",
+      "type": "object"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-f0-9]{24}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "text"
+      ],
+      "title": "Question",
+      "type": "object"
+    },
+    "Resource": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "table",
+            "document"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "csv",
+            "xlsx",
+            "json",
+            "txt",
+            "md",
+            "pdf"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "pages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pages",
+          "type": "array"
+        },
+        "profile": {
+          "additionalProperties": true,
+          "title": "Profile",
+          "type": "object"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hash"
+        },
+        "parser_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "succeeded",
+                "partial",
+                "failed",
+                "processing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parser Status"
+        },
+        "processing_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ready",
+                "completed",
+                "partial",
+                "failed",
+                "processing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Processing Status"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "parser_metadata": {
+          "additionalProperties": true,
+          "title": "Parser Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "format"
+      ],
+      "title": "Resource",
+      "type": "object"
+    },
+    "SourceHealth": {
+      "additionalProperties": false,
+      "properties": {
+        "db_status": {
+          "enum": [
+            "ok",
+            "timeout",
+            "failed",
+            "unavailable"
+          ],
+          "title": "Db Status",
+          "type": "string"
+        },
+        "messages_loaded": {
+          "title": "Messages Loaded",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "db_status",
+        "messages_loaded"
+      ],
+      "title": "SourceHealth",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "a4b.clarification.v1-draft",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "request_id": {
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/Message"
+      },
+      "minItems": 1,
+      "title": "Messages",
+      "type": "array"
+    },
+    "resources": {
+      "items": {
+        "$ref": "#/$defs/Resource"
+      },
+      "title": "Resources",
+      "type": "array"
+    },
+    "source_health": {
+      "$ref": "#/$defs/SourceHealth"
+    },
+    "tool_catalog_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Tool Catalog Fingerprint",
+      "type": "string"
+    },
+    "ml_advice": {
+      "$ref": "#/$defs/MLAdvice"
+    },
+    "previous_state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PreviousState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "answer_question_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{24}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Answer Question Id"
+    }
+  },
+  "required": [
+    "contract_version",
+    "request_id",
+    "session_id",
+    "revision",
+    "messages",
+    "resources",
+    "source_health",
+    "tool_catalog_fingerprint",
+    "ml_advice"
+  ],
+  "title": "ClarificationInput",
+  "type": "object"
+}

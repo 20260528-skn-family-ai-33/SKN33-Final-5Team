@@ -1,0 +1,63 @@
+{
+  "contract_version": "a4b.clarification.v1-draft",
+  "request_id": "unsupported",
+  "session_id": "sample-session",
+  "revision": 0,
+  "condition_protocol": "condition-contracts-v8-dedup-scope",
+  "decision": "UNSUPPORTED",
+  "next_action": "SHOW_UNSUPPORTED",
+  "reason": "등록 도구에 외부 이메일 자동 발송이 없습니다.",
+  "confirmed_conditions": {},
+  "unresolved_conditions": {
+    "filter.field": {
+      "key": "filter.field",
+      "status": "missing",
+      "value": null,
+      "evidence_ids": [],
+      "evidence": []
+    },
+    "filter.operator": {
+      "key": "filter.operator",
+      "status": "missing",
+      "value": null,
+      "evidence_ids": [],
+      "evidence": []
+    },
+    "filter.value": {
+      "key": "filter.value",
+      "status": "missing",
+      "value": null,
+      "evidence_ids": [],
+      "evidence": []
+    }
+  },
+  "unresolved_keys": [
+    "filter.field",
+    "filter.operator",
+    "filter.value"
+  ],
+  "questions": [],
+  "issues": [],
+  "unsupported_actions": [
+    "등록 도구에 외부 이메일 자동 발송이 없습니다."
+  ],
+  "resource_versions": {},
+  "input_requirements": [
+    {
+      "kind": "table",
+      "timing": "execution",
+      "fields": [],
+      "ready": false,
+      "description": "열 이름·처리 기준으로 먼저 설계하고, 실제 표 파일은 실행 전에 연결할 수 있습니다.",
+      "alternatives": [
+        "지금 자료 연결",
+        "열 이름·기준 직접 입력",
+        "실행 전에 파일 연결"
+      ]
+    }
+  ],
+  "generator_context": null,
+  "requires_user_approval": true,
+  "allows_save": false,
+  "allows_execution": false
+}

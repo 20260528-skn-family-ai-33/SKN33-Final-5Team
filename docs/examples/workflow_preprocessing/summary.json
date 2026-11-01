@@ -1,0 +1,40 @@
+{
+  "raw_rows": 32,
+  "clean_rows": 30,
+  "exact_duplicates_removed": 2,
+  "whitespace_normalized_raw_rows": 12,
+  "empty_requests_after_cleaning": 0,
+  "structural_errors_after_cleaning": 0,
+  "ready": 24,
+  "clarification": 6,
+  "split_rows": {
+    "test": 6,
+    "train": 18,
+    "validation": 6
+  },
+  "split_groups": {
+    "train": [
+      "manual_chat",
+      "expenses_manual",
+      "applications_event",
+      "missing_schedule",
+      "invoices_event",
+      "contacts_manual"
+    ],
+    "validation": [
+      "missing_document",
+      "attendance_daily"
+    ],
+    "test": [
+      "inventory_daily",
+      "sales_weekly"
+    ]
+  },
+  "cross_split_group_overlap": 0,
+  "mock_passed": 24,
+  "negative_tests_detected": 8,
+  "actual_llm_runs": 0,
+  "production_integrations_tested": 0,
+  "human_review": "pending",
+  "schema": "proposed v0.1, not aligned with existing backend"
+}

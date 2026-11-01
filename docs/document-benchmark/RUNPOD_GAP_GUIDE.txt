@@ -1,0 +1,69 @@
+문서 파서 부족 검증: 실행 안내 v1 (2026-10-28)
+
+목적과 범위
+- 고정 입력에서 Docling 옵션과 서비스 보완 예산을 비교한다. 결과는 새 실험의 관측치이다.
+- 30개 입력: 자체 생성 2개 내용의 디지털/스캔 PDF 4개 및 이미지 1개, 기존 작성형 HWP/HWPX 6개(3개 내용의 형식 쌍), 고정 OmniDocBench PDF 18페이지, 의도적으로 손상한 PDF 1개. 서로 독립된 30개 문서가 아니다.
+- synthetic-spec.json은 PDF 생성 전에 작성한 정답이고 각 입력과 정답은 SHA-256으로 고정한다. 공개 PDF의 정답은 동봉된 omni-selected.json에서 image_id로 찾는다. HWP 정답은 기존 작성형 자료이며 사람의 독립 검수가 완료되지 않았다.
+- 일부 자료는 문서 전체 정확도나 한국어 운영 문서를 대표하지 않는다. 실무 한국어, 실제 차트·수식, 다단 및 독립 holdout은 별도 추가해야 한다.
+- 기존 179개 입력과 930회 서비스 시험은 별도 원본 코퍼스/프로토콜을 사용한다. 이번 코퍼스로 기존 점수를 대체하지 않는다.
+
+비교군
+service-default: 현재 파이프라인, 보완 상한 16. service-no-supplement: 같은 파이프라인, 보완 상한 0. 후자는 기본 결과에 보완을 적용하지 않는 근사 비교군이며, 검사·대상 선택·검토 상태도 달라져 보완 모델 하나만의 순수 효과는 아니다.
+docling-base: 프로젝트의 standard/EasyOCR ko,en/표 accurate 설정. docling-formula: base에 수식 보완만 켬. docling-table-fast: base에서 표 모드만 fast. docling-chart: base에서 차트 추출만 켬. 각각 PDF만 실행하고 나머지는 not_applicable로 남긴다. 2.133.0의 옵션 생성은 확인했으나 실제 모델과 GPU 실행은 아직 검증하지 않았다. 별도 모델이 없으면 실패로 남긴다.
+서비스는 파일별 별도 프로세스이다. 모든 조건은 요청마다 새 프로세스이며 디스크 모델 캐시는 남는다. 워커 시작부터 종료까지의 elapsed는 초기화·처리 포함이고 파일 전송/HTTP/DB 시간은 포함하지 않는다. Docling setup_seconds는 모델의 지연 초기화를 배제하지 않으므로 warm 추론 시간이라고 부르지 않는다.
+
+코드 및 데이터 전송
+- source 패키지는 deployment-manifest.json과 해시를 포함한다. 로컬 .env, 자격증명, 모델 및 데이터는 포함하지 않는다. 소스 tar, 이번 corpus tar를 Runpod /workspace에 따로 전송한다.
+- 예시: cd /workspace; tar -xzf SOURCE_ARCHIVE.tar.gz
+- cd /workspace/finalproject; mkdir -p data/document-gap-benchmark
+- tar -xzf /workspace/CORPUS_ARCHIVE.tar.gz -C data/document-gap-benchmark
+- 입력 manifest: data/document-gap-benchmark/corpus-v4/manifest.json
+- 파일을 덮어쓰지 않는 새 디렉터리에서만 실행한다. 추론기는 정답 경로를 전달받지 않는다. 실행 전 정답과 입력의 파일 해시만 검사하고, 채점 단계에서 정답을 연다.
+
+런타임 준비 및 확인 (Pod 내부에서 수행)
+1. bash scripts/setup-runpod-document-benchmark.sh
+2. 이 스크립트는 모델 다운로드, rhwp 설치 및 환경 변수 설정을 완료해 주지 않는다. 실제 Linux 실행은 이번 준비에서 수행하지 않았다. CUDA/Paddle/MinerU 호환성, 각 모델 라이선스·가용성, Python/pip 설치가 성공했는지 확인한다.
+3. Docling 표·OCR, 수식·차트 옵션 모델, MinerU standard, Paddle layout/OCR 모델, Linux용 rhwp와 LibreOffice를 준비한다. 설정은 배포 경로에 맞게 export한다. 빈 모델 폴더를 성공으로 간주하지 않는다. 최소한 다음 변수가 필요하다: EASYFLOW_DOCLING_PYTHON, A4B_MINERU_PYTHON, A4B_PADDLE_PYTHON, A4B_PDF_ARTIFACTS_DIR, A4B_PDF_OCR_MODEL_DIR, A4B_PADDLE_MODEL_DIR, MINERU_HOME, A4B_RHWP. GPU 선택 시 A4B_PDF_DEVICE=cuda, A4B_PADDLE_DEVICE=gpu:0 등 실제 엔진 설정을 기록하고 직접 확인한다. MinerU 설정은 공식 엔진과 설치 버전에 맞게 별도 설정한다.
+4. 각 엔진에서 실제 GPU 사용과 모델 로드를 별도 스모크로 검증한다. nvidia-smi만으로 개별 엔진·모델의 GPU 사용을 증명하지 않는다. 기존 MinerU L40S 전용 검사 스크립트는 다른 GPU에서 수정 없이 통과하지 않는다. 원격 모델 다운로드는 준비 단계에서 수행하고 본 측정은 오프라인이다.
+5. JSON Schema 검사에 jsonschema가 필요하다. 해당 패키지를 점수 실행 환경에 고정해 설치한다. 예: uv pip install --python Backend/.venv-bmt/bin/python 'jsonschema==4.25.1'. capture_env.py로 버전을 저장한다. 미설치면 schema 검사 상태가 not_checked_dependency_missing으로 표시된다.
+6. 환경 기록 예시 (경로는 실제 모델 폴더로 수정):
+Backend/.venv-document-analysis/bin/python scripts/document-gap-benchmark/capture_env.py --output output/gap-env --model-dir "$A4B_PDF_ARTIFACTS_DIR" --model-dir "$A4B_PADDLE_MODEL_DIR" --model-dir "$MINERU_HOME"
+모델 전체 해싱에는 시간이 걸린다. 이 기록에는 모델 경로가 포함되므로 배포 범위를 검토한다.
+
+파일럿: GPU/모델/변환기 스모크에 모두 통과한 뒤
+Backend/.venv-document-analysis/bin/python scripts/document-gap-benchmark/run.py \
+  --manifest data/document-gap-benchmark/corpus-v4/manifest.json \
+  --output output/gap-pilot --timeout 300 \
+  --arms service-default service-no-supplement docling-base docling-formula docling-table-fast \
+  --cases SYN-A-native SYN-A-scan SYN-A-image HWP-TABLE-01-HWPX OMNI-01 CORRUPT
+- 한 파일·한 비교군당 최대 300초. 비교군 실행 순서는 항목마다 뒤집는다. 실패·부분 성공·시간 초과를 ledger에 남긴다. 예상 비용은 파일럿 소요시간과 현재 Pod 요금으로 계산한다.
+- 처음부터 30개 전체나 기존 930회 시험을 돌리지 않는다. 수식 모델이 없어서 실패했다면 모델 준비 후 새로운 output에서 다시 실행한다. 실패 기록을 지우지 않는다.
+- docling-chart는 별도 모델과 가용성이 확인된 후 --arms에 명시적으로 추가한다.
+
+채점 및 수동 검토
+Backend/.venv-bmt/bin/python scripts/document-gap-benchmark/score.py --manifest data/document-gap-benchmark/corpus-v4/manifest.json --run output/gap-pilot
+- scores.json: 처리 상태, 시간, 합성 자료의 제목 문자열 존재·순서, 서비스 결과의 계약 무결성/JSON Schema/원본 해시. 계약 검증 통과는 의미 정확도 통과가 아니다.
+- completion.json: 계획 대비 기록 누락. summary.json: 전체 입력의 상태와 시간. 실패를 성공 평균에 숨기지 않는다.
+- manual-review.csv: 각 기준에 PASS/FAIL/NA/PENDING을 지정한다. PENDING은 미평가이다. PASS/FAIL에는 결과 영역·페이지를 가리키는 evidence_path, 이유와 reviewer를 기입한다. NA에도 이유·reviewer가 필요하다. 엔진 오류는 품질 미평가로 남기고 실행 실패율에 포함한다. NA는 범주가 정답에 실제로 없거나 해당 옵션 범위가 아닐 때만 쓴다.
+- 공식 OmniDocBench 점수는 여기서 계산하지 않는다. 기존 scripts/score-document-benchmark.py는 기존 HTTP A/B 결과만을 해당 v1_0 평가 코드로 채점한다. 이번 별도 실행 결과에 공식 점수를 적용하려면 파일별 Markdown, 원본 image_id와 실패 빈 예측의 연결 어댑터를 먼저 구현·검증해야 한다.
+- 수식은 검출 여부와 원본 수학적 의미를 따로 평가한다. 표는 셀 내용/위치와 병합 헤더를 각각 평가한다. 차트는 탐지, 축·범례, 수치 일치를 분리한다. 출력 문장이 자연스러운지만 보고 PASS로 두지 않는다. heading_hierarchy와 reading_order는 원본의 구조·순서와 비교한다. provenance는 원본 페이지/객체와 후보 연결을 확인한다.
+- 검사자는 입력 이미지·정답과 result.json 또는 worker/raw.json 및 prediction.md를 직접 대조하고, 각 오류를 탐지/OCR/구조 복원/병합/저장 단계로 분류한다. 원인 증거가 부족하면 '미확인'으로 적는다.
+- 동일 입력의 제한적인 자동 앵커 개선·악화 비교: Backend/.venv-bmt/bin/python scripts/document-gap-benchmark/compare.py --scores output/gap-pilot/scoring/scores.json --a docling-base --b docling-formula --output output/gap-pilot/scoring/formula-comparison.json
+- 앵커 비교는 표·수식·그래프 정확도가 아니며 두 경로 중 실패한 사례는 개선 건수에서 제외하되 상태 목록에 유지한다.
+- 수동 검토 요약: Backend/.venv-bmt/bin/python scripts/document-gap-benchmark/summarize_review.py output/gap-pilot/scoring/manual-review.csv --output output/gap-pilot/scoring/review-summary.json
+
+실패 주입 (실제 장애율 평가 아님)
+- layout: Backend/.venv-document-analysis/bin/python scripts/document-gap-benchmark/fault_probe.py --input data/document-gap-benchmark/corpus-v4/inputs/SYN-A-image.png --output output/gap-fault-layout --scenario layout
+- PDF 기본 실패 후 Docling 대체: 같은 명령에서 입력 SYN-A-native.pdf, scenario mineru, 별도 output.
+- 두 기본 엔진 실패: 입력 SYN-A-native.pdf, scenario mineru-and-docling, 별도 output.
+- OCR 실패: 입력 SYN-A-image.png, scenario paddleocr, 별도 output. 텍스트 영역이 실제로 라우팅되지 않으면 not_exercised이며 성공이 아니다.
+- 주입 대상 이외 엔진은 실제로 실행한다. 실패 유형은 인위적 injected_failure이며 실제 타임아웃·프로세스 종료·HTTP/DB 전파는 별도 검증이 필요하다.
+
+전체 본 실행
+파일럿 결과와 모델 로드를 검토한 뒤 --cases를 생략하여 별도의 output으로 실행한다. 예산이 허락하면 docling-chart를 추가한다. 각 비교군의 완주·부분·실패·미적용 수, paired case별 개선과 악화, 중앙값과 느린 사례를 표시한다. 포괄적 통계 또는 운영 정확도 추정으로 해석하지 않는다.
+
+기존 HTTP/DB A/B
+기존 corpus 및 scripts/run-document-benchmark.py의 pilot/singles/bundles와 scripts/score-document-benchmark.py를 별도 사용한다. B는 Docling과 PaddleOCR를 모두 호출하며 0/16 보완 비교와 다른 경로다. CSV/XLSX의 공통 로더 점수는 OCR 교체 효과가 아니다. 기존 preflight는 L40S 전용 GPU 증거 및 고정 경로를 요구한다. 기존 문서 docs/document-benchmark/PROTOCOL.md를 따른다.
+
+결과 회수
+context.json, ledger.json, 모든 결과/로그, scoring/, 환경/모델 해시, manifest와 source 배포 manifest를 회수하고 무결성을 확인한 후 Pod를 중지한다. 원시 출력은 원본 문서와 같은 민감도를 가질 수 있다. 설치·다운로드 시간, 실험 시간, 사람 검토 시간을 구분한다.

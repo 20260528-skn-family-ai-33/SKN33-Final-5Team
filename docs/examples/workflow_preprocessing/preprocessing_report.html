@@ -1,0 +1,170 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><title>워크플로우 생성 데이터 전처리 결과</title><style>body{font-family:system-ui,sans-serif;max-width:1040px;margin:40px auto;padding:0 24px;color:#162334;line-height:1.7}h1,h2{color:#164c76}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd5df;padding:9px;text-align:left}pre{white-space:pre-wrap;background:#eef3f8;padding:20px;font-size:13px}.note{background:#fff3d6;padding:18px;border-left:5px solid #e5a628}article{border-top:1px solid #ddd;margin-top:24px}@media print{body{margin:0}article{break-inside:avoid}}</style><h1>워크플로우 생성 데이터<br>1차 전처리 결과</h1><p>2026-10-12 · 제안 규약 v0.1 · 합성 파일럿</p><div class="note">실제 정제·구조 검사와 모의 실행까지 수행했습니다. 모델 학습, 실제 백엔드 연결, 예약/이벤트 동작, 외부 API·알림 전송은 미검증입니다. 팀의 사람 검수와 백엔드 명세 대조가 필요합니다.</div><h2>1. 학습 과제</h2><p>입력: 사용자 요청 + 도구 명세 + 연결 자료 구조. 출력: 시작 조건·도구·인자·단계 연결을 포함한 설정, 또는 누락 정보와 확인 질문.</p><h2>2. 데이터 출처</h2><p>이 작업에서 작성한 합성 요청·정답 30건과 완전 중복 2건. 10개 시나리오의 표현 변형 3개씩입니다. 실제 사용자 로그·기존 데모 데이터가 아닙니다. 공백·중복은 합성 작성 과정에 포함된 특성입니다. 의도적 오류 검사 fixture는 데이터 통계에 포함하지 않습니다.</p><h2>3. 처리 기준</h2><p>공백·Unicode 정규화 → 완전 중복 제거 → 요청/정답 필수값 확인 → 도구·자원 참조 및 단계 연결 검사 → 그룹별 분할 → 모의 실행. 부족한 사용자 정보는 추측하지 않고 확인 질문으로 유지했습니다. 가짜 이상치를 추가해 정제 실적으로 계산하지 않았습니다.</p><h2>4. 실제 계산 결과</h2><table><tr><th>항목</th><th>결과</th></tr><tr><td>raw_rows</td><td>32</td></tr><tr><td>clean_rows</td><td>30</td></tr><tr><td>exact_duplicates_removed</td><td>2</td></tr><tr><td>whitespace_normalized_raw_rows</td><td>12</td></tr><tr><td>empty_requests_after_cleaning</td><td>0</td></tr><tr><td>structural_errors_after_cleaning</td><td>0</td></tr><tr><td>ready</td><td>24</td></tr><tr><td>clarification</td><td>6</td></tr><tr><td>split_rows</td><td>{&#x27;test&#x27;: 6, &#x27;train&#x27;: 18, &#x27;validation&#x27;: 6}</td></tr><tr><td>split_groups</td><td>{&#x27;train&#x27;: [&#x27;manual_chat&#x27;, &#x27;expenses_manual&#x27;, &#x27;applications_event&#x27;, &#x27;missing_schedule&#x27;, &#x27;invoices_event&#x27;, &#x27;contacts_manual&#x27;], &#x27;validation&#x27;: [&#x27;missing_document&#x27;, &#x27;attendance_daily&#x27;], &#x27;test&#x27;: [&#x27;inventory_daily&#x27;, &#x27;sales_weekly&#x27;]}</td></tr><tr><td>cross_split_group_overlap</td><td>0</td></tr><tr><td>mock_passed</td><td>24</td></tr><tr><td>negative_tests_detected</td><td>8</td></tr><tr><td>actual_llm_runs</td><td>0</td></tr><tr><td>production_integrations_tested</td><td>0</td></tr><tr><td>human_review</td><td>pending</td></tr><tr><td>schema</td><td>proposed v0.1, not aligned with existing backend</td></tr></table><h2>5. 의미·실행 검증 범위</h2><p>정답의 의미는 작성된 요청과 대조 가능한 상태이며 팀 검수 대기입니다. 24건의 구성은 Python 시험 레코드와 mock 도구로 예상 결과를 확인했습니다. 검색은 고정 근거, 알림/저장은 모의 반환이므로 실제 검색·외부 연동 성공률이 아닙니다. 분기·반복·대기/재개·권한 분리는 본 검사 범위 밖입니다.</p><h2>6. 대표 사례</h2><article><h3>inventory_daily-1</h3><p>한국 시간 매일 오전 9시에 inventory 재고표에서 stock이 minimum보다 작은 상품을 reports 폴더에 보고서로 저장해줘.</p><pre>{
+  &quot;status&quot;: &quot;ready&quot;,
+  &quot;workflow&quot;: {
+    &quot;version&quot;: &quot;workflow-draft-v0.1&quot;,
+    &quot;trigger&quot;: {
+      &quot;type&quot;: &quot;schedule&quot;,
+      &quot;frequency&quot;: &quot;daily&quot;,
+      &quot;time&quot;: &quot;09:00&quot;,
+      &quot;timezone&quot;: &quot;Asia/Seoul&quot;
+    },
+    &quot;nodes&quot;: [
+      {
+        &quot;id&quot;: &quot;n1&quot;,
+        &quot;kind&quot;: &quot;tool&quot;,
+        &quot;tool_id&quot;: &quot;read_records&quot;,
+        &quot;inputs&quot;: {
+          &quot;source_id&quot;: &quot;inventory&quot;
+        }
+      },
+      {
+        &quot;id&quot;: &quot;n2&quot;,
+        &quot;kind&quot;: &quot;tool&quot;,
+        &quot;tool_id&quot;: &quot;filter_records&quot;,
+        &quot;inputs&quot;: {
+          &quot;rows&quot;: {
+            &quot;ref&quot;: {
+              &quot;node_id&quot;: &quot;n1&quot;,
+              &quot;output&quot;: &quot;rows&quot;
+            }
+          },
+          &quot;condition&quot;: {
+            &quot;field&quot;: &quot;stock&quot;,
+            &quot;operator&quot;: &quot;lt&quot;,
+            &quot;other_field&quot;: &quot;minimum&quot;
+          }
+        }
+      },
+      {
+        &quot;id&quot;: &quot;n3&quot;,
+        &quot;kind&quot;: &quot;tool&quot;,
+        &quot;tool_id&quot;: &quot;save_report&quot;,
+        &quot;inputs&quot;: {
+          &quot;content&quot;: {
+            &quot;ref&quot;: {
+              &quot;node_id&quot;: &quot;n2&quot;,
+              &quot;output&quot;: &quot;rows&quot;
+            }
+          },
+          &quot;destination_id&quot;: &quot;reports&quot;
+        }
+      }
+    ],
+    &quot;edges&quot;: [
+      {
+        &quot;from&quot;: &quot;n1&quot;,
+        &quot;to&quot;: &quot;n2&quot;
+      },
+      {
+        &quot;from&quot;: &quot;n2&quot;,
+        &quot;to&quot;: &quot;n3&quot;
+      }
+    ],
+    &quot;failure_policy&quot;: &quot;stop_and_record&quot;
+  },
+  &quot;missing_fields&quot;: [],
+  &quot;questions&quot;: []
+}</pre></article><article><h3>applications_event-1</h3><p>applications_changed 웹훅이 오면 applications 목록에서 status가 pending인 신청서를 reports에 저장해줘.</p><pre>{
+  &quot;status&quot;: &quot;ready&quot;,
+  &quot;workflow&quot;: {
+    &quot;version&quot;: &quot;workflow-draft-v0.1&quot;,
+    &quot;trigger&quot;: {
+      &quot;type&quot;: &quot;webhook&quot;,
+      &quot;event_name&quot;: &quot;applications_changed&quot;
+    },
+    &quot;nodes&quot;: [
+      {
+        &quot;id&quot;: &quot;n1&quot;,
+        &quot;kind&quot;: &quot;tool&quot;,
+        &quot;tool_id&quot;: &quot;read_records&quot;,
+        &quot;inputs&quot;: {
+          &quot;source_id&quot;: &quot;applications&quot;
+        }
+      },
+      {
+        &quot;id&quot;: &quot;n2&quot;,
+        &quot;kind&quot;: &quot;tool&quot;,
+        &quot;tool_id&quot;: &quot;filter_records&quot;,
+        &quot;inputs&quot;: {
+          &quot;rows&quot;: {
+            &quot;ref&quot;: {
+              &quot;node_id&quot;: &quot;n1&quot;,
+              &quot;output&quot;: &quot;rows&quot;
+            }
+          },
+          &quot;condition&quot;: {
+            &quot;field&quot;: &quot;status&quot;,
+            &quot;operator&quot;: &quot;eq&quot;,
+            &quot;value&quot;: &quot;pending&quot;
+          }
+        }
+      },
+      {
+        &quot;id&quot;: &quot;n3&quot;,
+        &quot;kind&quot;: &quot;tool&quot;,
+        &quot;tool_id&quot;: &quot;save_report&quot;,
+        &quot;inputs&quot;: {
+          &quot;content&quot;: {
+            &quot;ref&quot;: {
+              &quot;node_id&quot;: &quot;n2&quot;,
+              &quot;output&quot;: &quot;rows&quot;
+            }
+          },
+          &quot;destination_id&quot;: &quot;reports&quot;
+        }
+      }
+    ],
+    &quot;edges&quot;: [
+      {
+        &quot;from&quot;: &quot;n1&quot;,
+        &quot;to&quot;: &quot;n2&quot;
+      },
+      {
+        &quot;from&quot;: &quot;n2&quot;,
+        &quot;to&quot;: &quot;n3&quot;
+      }
+    ],
+    &quot;failure_policy&quot;: &quot;stop_and_record&quot;
+  },
+  &quot;missing_fields&quot;: [],
+  &quot;questions&quot;: []
+}</pre></article><article><h3>manual_chat-1</h3><p>대화로 질문이 오면 manual_demo에서 근거를 검색해줘. 질문은 message에서 받아.</p><pre>{
+  &quot;status&quot;: &quot;ready&quot;,
+  &quot;workflow&quot;: {
+    &quot;version&quot;: &quot;workflow-draft-v0.1&quot;,
+    &quot;trigger&quot;: {
+      &quot;type&quot;: &quot;chat&quot;,
+      &quot;input_schema&quot;: {
+        &quot;message&quot;: &quot;string&quot;
+      }
+    },
+    &quot;nodes&quot;: [
+      {
+        &quot;id&quot;: &quot;n1&quot;,
+        &quot;kind&quot;: &quot;tool&quot;,
+        &quot;tool_id&quot;: &quot;search_document&quot;,
+        &quot;inputs&quot;: {
+          &quot;document_id&quot;: &quot;manual_demo&quot;,
+          &quot;query&quot;: {
+            &quot;trigger_input&quot;: &quot;message&quot;
+          }
+        }
+      }
+    ],
+    &quot;edges&quot;: [],
+    &quot;failure_policy&quot;: &quot;stop_and_record&quot;
+  },
+  &quot;missing_fields&quot;: [],
+  &quot;questions&quot;: []
+}</pre></article><article><h3>missing_schedule-1</h3><p>매일 inventory에서 stock &lt; minimum인 상품 보고서를 reports에 저장해줘.</p><pre>{
+  &quot;status&quot;: &quot;needs_clarification&quot;,
+  &quot;workflow&quot;: null,
+  &quot;missing_fields&quot;: [
+    &quot;schedule.time&quot;,
+    &quot;schedule.timezone&quot;
+  ],
+  &quot;questions&quot;: [
+    &quot;매일 몇 시에 실행할까요?&quot;,
+    &quot;어느 시간대를 사용할까요?&quot;
+  ]
+}</pre></article><h2>7. 남은 작업</h2><p>백엔드 명세에 맞게 규약 조정 → 팀 정답 검수 → 도구·업무·표현 다양성 확대 → 선택 모델별 토큰화 → 기본/학습 모델 비교 → 실제 실행 시험. 표본 30건으로 모델 성능이나 범용성을 주장하지 않습니다.</p></html>

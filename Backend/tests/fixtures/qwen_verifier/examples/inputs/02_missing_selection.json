@@ -1,0 +1,421 @@
+{
+  "contract_version": "a4b.verifier.v1",
+  "request_id": "02_missing_selection",
+  "user_request": "보증금이 큰 거래를 골라 JSON으로 저장해줘.",
+  "messages": [],
+  "latest_user_answer_id": null,
+  "documents": [
+    {
+      "id": "transactions",
+      "version": "1",
+      "parse_status": "ready",
+      "chunks": [
+        {
+          "id": "header",
+          "text": "열: 번호, 보증금, 임대료. 기준은 사용자 요청에 따른다.",
+          "locator": "CSV header"
+        }
+      ],
+      "tables": [
+        {
+          "id": "main",
+          "columns": [
+            "번호",
+            "보증금",
+            "임대료"
+          ],
+          "sample_rows": [
+            {
+              "번호": "A",
+              "보증금": 999999,
+              "임대료": 2000001
+            },
+            {
+              "번호": "B",
+              "보증금": 1000000,
+              "임대료": 100
+            },
+            {
+              "번호": "C",
+              "보증금": 2000000,
+              "임대료": 2000000
+            },
+            {
+              "번호": "D",
+              "보증금": 2000001,
+              "임대료": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "id": "read_table",
+      "description": "연결한 CSV·Excel·JSON 파일의 실제 행을 읽습니다.",
+      "enabled": true,
+      "input_ports": {
+        "file_id": "file"
+      },
+      "output_ports": {
+        "table": "table"
+      },
+      "required_input_ports": [],
+      "required_settings": [
+        "file_ids"
+      ],
+      "check_scope": "table"
+    },
+    {
+      "id": "filter_sort",
+      "description": "여러 조건의 값·열 비교, 숫자·문자 정렬, 중복 및 결측 정책을 적용합니다.",
+      "enabled": true,
+      "input_ports": {
+        "table": "table"
+      },
+      "output_ports": {
+        "table": "table"
+      },
+      "required_input_ports": [
+        "table"
+      ],
+      "required_settings": [
+        "execution_plan"
+      ],
+      "check_scope": "table"
+    },
+    {
+      "id": "write_result",
+      "description": "실제 처리 결과를 CSV 또는 JSON으로 만듭니다. 외부 전송은 하지 않습니다.",
+      "enabled": true,
+      "input_ports": {
+        "table": "table"
+      },
+      "output_ports": {
+        "artifact": "artifact"
+      },
+      "required_input_ports": [
+        "table"
+      ],
+      "required_settings": [
+        "format"
+      ],
+      "check_scope": "table"
+    },
+    {
+      "id": "agent_node",
+      "description": "저장한 역할의 node_ref 버전을 사용하거나 새 역할의 settings.instructions를 구성합니다. 실행 요청·연결 text/문서/표를 실제 조회해 text를 반환합니다. 검수 후 수정에는 reviews 1건을 명시적으로 연결하며 최신 수정문은 승인 후보로 보존됩니다.",
+      "enabled": true,
+      "input_ports": {
+        "text": "text",
+        "documents": "documents",
+        "table": "table",
+        "reviews": "reviews"
+      },
+      "output_ports": {
+        "text": "text"
+      },
+      "required_input_ports": [],
+      "required_settings": [],
+      "check_scope": "dynamic"
+    },
+    {
+      "id": "aggregate_table",
+      "description": "fields로 그룹별 집계합니다. aggregation=count는 건수, sum은 sum_field의 숫자 합계입니다. 빈 fields는 전체 집계. 출력 열은 fields와 count 또는 sum입니다. 합계 후 정렬·필터는 sum 열을 사용합니다. 빈값·비숫자 합계는 실패합니다.",
+      "enabled": true,
+      "input_ports": {
+        "table": "table"
+      },
+      "output_ports": {
+        "table": "table"
+      },
+      "required_input_ports": [
+        "table"
+      ],
+      "required_settings": [
+        "fields"
+      ],
+      "check_scope": "table"
+    },
+    {
+      "id": "finish",
+      "description": "설정한 완료·중단 안내를 표시하고 흐름을 끝냅니다.",
+      "enabled": true,
+      "input_ports": {
+        "text": "text",
+        "artifact": "artifact"
+      },
+      "output_ports": {
+        "text": "text",
+        "artifact": "artifact"
+      },
+      "required_input_ports": [],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "read_document",
+      "description": "연결 문서 또는 이번 실행의 새 문서를 페이지·출처와 함께 읽습니다.",
+      "enabled": true,
+      "input_ports": {},
+      "output_ports": {
+        "documents": "documents"
+      },
+      "required_input_ports": [],
+      "required_settings": [
+        "file_ids"
+      ],
+      "check_scope": "basic"
+    },
+    {
+      "id": "search_document",
+      "description": "질문과 일치하는 문서 구간을 단어 기반 검색합니다. 의미 검색은 아직 지원하지 않습니다.",
+      "enabled": true,
+      "input_ports": {
+        "documents": "documents"
+      },
+      "output_ports": {
+        "documents": "documents"
+      },
+      "required_input_ports": [
+        "documents"
+      ],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "extract_information",
+      "description": "설정한 항목을 추출하고 실제 원문 인용을 검증합니다. 없는 값은 누락으로 표시합니다.",
+      "enabled": true,
+      "input_ports": {
+        "documents": "documents"
+      },
+      "output_ports": {
+        "records": "records"
+      },
+      "required_input_ports": [
+        "documents"
+      ],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "reply_review",
+      "description": "고객 원문·정책·초안을 조회해 판정·문제 구절·수정안을 보고합니다. fields=[문의 열, 초안 열]은 표 검수이며 최대 10행입니다. reviews를 후속 분기·보고서 정리·수정 단계로 전달합니다. 승인·거절은 실행 결과에서 사람이 결정합니다. 단일 검수의 고객 문의·초안은 실행 화면 외부 입력이므로 bindings=[] 또는 documents만 연결합니다. 가짜 start/request binding은 금지합니다.",
+      "enabled": true,
+      "input_ports": {
+        "documents": "documents",
+        "text": "text",
+        "table": "table"
+      },
+      "output_ports": {
+        "reviews": "reviews"
+      },
+      "required_input_ports": [],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "compose_answer",
+      "description": "검색된 원문만 바탕으로 답변 또는 요약을 작성합니다.",
+      "enabled": true,
+      "input_ports": {
+        "reviews": "reviews",
+        "documents": "documents",
+        "answer": "text"
+      },
+      "output_ports": {
+        "text": "text"
+      },
+      "required_input_ports": [],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "export_result",
+      "description": "추출 표를 CSV/JSON, 답변을 Markdown 파일로 만듭니다.",
+      "enabled": true,
+      "input_ports": {
+        "records": "records",
+        "text": "text",
+        "documents": "documents",
+        "answer": "text"
+      },
+      "output_ports": {
+        "artifact": "artifact"
+      },
+      "required_input_ports": [],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "condition",
+      "description": "누락 항목 또는 빈 결과 여부에 따라 yes/no 경로를 선택합니다.",
+      "enabled": true,
+      "input_ports": {
+        "table": "table",
+        "reviews": "reviews",
+        "records": "records",
+        "text": "text",
+        "answer": "text",
+        "documents": "documents"
+      },
+      "output_ports": {
+        "table": "table",
+        "reviews": "reviews",
+        "records": "records",
+        "text": "text",
+        "answer": "text",
+        "documents": "documents",
+        "decision": "boolean"
+      },
+      "required_input_ports": [],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "ask_user",
+      "description": "실행을 멈추고 확인 답변을 받아 동일한 실행을 이어갑니다.",
+      "enabled": true,
+      "input_ports": {
+        "records": "records",
+        "text": "text",
+        "documents": "documents"
+      },
+      "output_ports": {
+        "records": "records",
+        "text": "text",
+        "documents": "documents",
+        "answer": "text"
+      },
+      "required_input_ports": [],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "review_summary",
+      "description": "검수 결과를 보고서 표로 정리합니다. 수정안은 승인 전 후보이며 최종 승인 응대가 아닙니다.",
+      "enabled": true,
+      "input_ports": {
+        "reviews": "reviews"
+      },
+      "output_ports": {
+        "table": "table"
+      },
+      "required_input_ports": [
+        "reviews"
+      ],
+      "required_settings": [],
+      "check_scope": "basic"
+    },
+    {
+      "id": "saved_workflow",
+      "description": "저장한 에이전트의 특정 버전을 노드로 재사용합니다. agent_id/agent_version/output_node/output_port를 지정합니다. 앞 단계 table/documents/text를 전달하고 선택한 출력 포트를 다음 단계로 연결합니다. 동일 모델·계정만 지원하며 재귀 호출은 금지됩니다.",
+      "enabled": true,
+      "input_ports": {
+        "table": "table",
+        "documents": "documents",
+        "records": "records",
+        "text": "text",
+        "reviews": "reviews",
+        "artifact": "artifact"
+      },
+      "output_ports": {
+        "table": "table",
+        "documents": "documents",
+        "records": "records",
+        "text": "text",
+        "reviews": "reviews",
+        "artifact": "artifact"
+      },
+      "required_input_ports": [],
+      "required_settings": [
+        "agent_id",
+        "agent_version",
+        "output_node",
+        "output_port"
+      ],
+      "check_scope": "dynamic"
+    }
+  ],
+  "previous_draft": null,
+  "candidate_draft": {
+    "id": "draft-demo",
+    "version": "1",
+    "document_ids": [
+      "transactions"
+    ],
+    "workflow": {
+      "entry": "read",
+      "nodes": [
+        {
+          "id": "read",
+          "tool": "read_table",
+          "bindings": [],
+          "settings": {
+            "file_ids": [
+              "transactions"
+            ]
+          }
+        },
+        {
+          "id": "filter",
+          "tool": "filter_sort",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "read",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "execution_plan": {
+              "filters": [
+                {
+                  "field": "보증금",
+                  "operator": "gte",
+                  "value": 1000000,
+                  "value_type": "number",
+                  "compare_field": null
+                }
+              ],
+              "sort": [],
+              "match": "all",
+              "missing_policy": "keep",
+              "duplicate_policy": "keep",
+              "duplicate_field": null,
+              "output_format": "json"
+            }
+          }
+        },
+        {
+          "id": "save",
+          "tool": "write_result",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "filter",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "format": "json"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "read",
+          "target": "filter",
+          "branch": "next"
+        },
+        {
+          "source": "filter",
+          "target": "save",
+          "branch": "next"
+        }
+      ]
+    }
+  }
+}

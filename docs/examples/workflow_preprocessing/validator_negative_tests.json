@@ -1,0 +1,79 @@
+[
+  {
+    "fixture": "unknown_tool",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "unknown_tool",
+      "invalid_reference",
+      "unknown_column",
+      "condition_field_type_mismatch",
+      "non_numeric_comparison"
+    ]
+  },
+  {
+    "fixture": "unknown_source",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "unknown_source",
+      "unknown_column",
+      "condition_field_type_mismatch",
+      "non_numeric_comparison"
+    ]
+  },
+  {
+    "fixture": "broken_reference",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "invalid_reference",
+      "unknown_column",
+      "condition_field_type_mismatch",
+      "non_numeric_comparison"
+    ]
+  },
+  {
+    "fixture": "unknown_column",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "unknown_column",
+      "condition_field_type_mismatch",
+      "non_numeric_comparison"
+    ]
+  },
+  {
+    "fixture": "invalid_time",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "invalid_time"
+    ]
+  },
+  {
+    "fixture": "missing_input",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "input_keys_mismatch",
+      "unknown_destination"
+    ]
+  },
+  {
+    "fixture": "broken_edge",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "invalid_linear_edges"
+    ]
+  },
+  {
+    "fixture": "empty_request",
+    "intentionally_corrupted": true,
+    "excluded_from_dataset": true,
+    "detected_errors": [
+      "empty_request"
+    ]
+  }
+]

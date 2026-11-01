@@ -1,0 +1,223 @@
+{
+  "mode": "live",
+  "purpose": "연동 점검 예제이며 독립 모델 성능 벤치마크가 아닙니다.",
+  "config": {
+    "base_url": "http://127.0.0.1:11434",
+    "model": "qwen3.5:4b",
+    "timeout_s": 180,
+    "num_ctx": 32768,
+    "num_predict": 2048
+  },
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.13",
+  "system_prompt_sha256": "83ab1e0a59775af845ea4b5d29fbeaa3e4109fde475a27f328269bfc4207b7dc",
+  "output_schema_sha256": "95d64453119d65168886af4a475f33fdb27336464569cbf502ff7dd0eeb8c562",
+  "source_hashes": {
+    "scripts/run_suite.py": "b5e3b46ef84ec8f154fc94fb4ea8e32bd54e4d9b7fce114ec128f484027b5b48",
+    "a4b_verifier/client.py": "7baa412c12a2cefd5edabd9a53896e9df2e36c4a1ad83baf3db9ccb155471c26",
+    "a4b_verifier/service.py": "9e1a3a1fd089dfc564d4a73807073f7530482fac64c0ff998d972013b8c9c70e",
+    "a4b_verifier/validation.py": "e5ce99a537094995d804a2aef4329c29a7c9dc26942a6f7190658dbf46a514e6",
+    "a4b_verifier/contracts.py": "b44b18b9892d279a5516d84fde95a3dc30f7a33f673ea2a3242183905637103d"
+  },
+  "before": {
+    "server_version": "0.33.0",
+    "model": "qwen3.5:4b",
+    "model_present": true,
+    "model_digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+    "auto_download": false
+  },
+  "after": {
+    "server_version": "0.33.0",
+    "model": "qwen3.5:4b",
+    "model_present": true,
+    "model_digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04",
+    "auto_download": false
+  },
+  "model_digest_unchanged": true,
+  "cases": 3,
+  "passed": 1,
+  "records": [
+    {
+      "id": "01_ready",
+      "expected": {
+        "route": "continue_review",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "pass",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [],
+        "row_ids": [
+          "B",
+          "C",
+          "D"
+        ]
+      },
+      "input_sha256": "e96b7e01b401793847bd9a9029dd5fcdd59212853aa86e9d9bb8eedcc12cf592",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "01_ready",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "pass",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+            },
+            {
+              "evidence_id": "document/transactions/1/chunk/header",
+              "quote": "열: 번호, 보증금, 임대료. 기준은 사용자 요청에 따른다."
+            }
+          ],
+          "issues": [],
+          "summary": "사용자 요청이 명확하고 문서·도구가 충분하며 초안도 조건을 충족합니다."
+        },
+        "findings": [],
+        "route": "continue_review",
+        "execution_allowed": false,
+        "mode": "live",
+        "model": "qwen3.5:4b",
+        "latency_ms": 18531.954749953,
+        "error_code": null
+      },
+      "checks": {
+        "route": true,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true,
+        "request_status": true,
+        "draft_verdict": true,
+        "reflection_verdict": true,
+        "missing_conditions": true
+      },
+      "all_passed": true
+    },
+    {
+      "id": "02_missing_selection",
+      "expected": {
+        "route": "ask_user",
+        "required_codes": [],
+        "request_status": "clarify",
+        "draft_verdict": "fail",
+        "reflection_verdict": "not_applicable",
+        "missing_codes": [
+          "selection_rule"
+        ],
+        "row_ids": null
+      },
+      "input_sha256": "84a19697c93fe0b5e470a85561d214e36134f6e2428738ff82fd221d7648a6ed",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "02_missing_selection",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "pass",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "document/transactions/1/chunk/header",
+              "quote": "기준은 사용자 요청에 따른다."
+            },
+            {
+              "evidence_id": "user_request",
+              "quote": "보증금이 큰 거래를 골라 JSON 으로 저장해줘."
+            }
+          ],
+          "issues": [],
+          "summary": "사용자 요청이 명확하고 문서 내 표 데이터가 존재하며, 필터링 및 정렬 연산자가 정의되어 있어 실행 조건이 충족됨. 초안에서 '보증금' 열에 대해 'gte 1000000'으로 필터링하고 정렬한 후 JSON 형식으로 저장하는 논리가 사용자 의도와 일치함."
+        },
+        "findings": [
+          {
+            "code": "invalid_quote",
+            "severity": "review",
+            "detail": "근거 ID 또는 원문 인용이 일치하지 않습니다.",
+            "path": null
+          }
+        ],
+        "route": "manual_review",
+        "execution_allowed": false,
+        "mode": "live",
+        "model": "qwen3.5:4b",
+        "latency_ms": 15566.77108304575,
+        "error_code": null
+      },
+      "checks": {
+        "route": false,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true,
+        "request_status": false,
+        "draft_verdict": false,
+        "reflection_verdict": true,
+        "missing_conditions": false
+      },
+      "all_passed": false
+    },
+    {
+      "id": "05_reflection_wrong_operator",
+      "expected": {
+        "route": "repair_plan",
+        "required_codes": [],
+        "request_status": "ready",
+        "draft_verdict": "fail",
+        "reflection_verdict": "fail",
+        "missing_codes": [],
+        "row_ids": null
+      },
+      "input_sha256": "8417f3dccc519b2a26501accc5561dd227eb1da5decae6573fd8dbe7c1dd6b04",
+      "result": {
+        "contract_version": "a4b.verifier.v1",
+        "request_id": "05_reflection_wrong_operator",
+        "model_output": {
+          "request_status": "ready",
+          "evidence_status": "sufficient",
+          "missing_conditions": [],
+          "unsupported_actions": [],
+          "draft_verdict": "pass",
+          "reflection_verdict": "not_applicable",
+          "evidence": [
+            {
+              "evidence_id": "document/transactions/1/table/main",
+              "quote": "{\"columns\": [\"번호\", \"보증금\", \"임대료\"], \"sample_rows\": [{\"번호\": \"A\", \"보증금\": 999999, \"임대료\": 2000001}, {\"번호\": \"B\", \"보증금\": 1000000, \"임대료\": 100}, {\"번호\": \"C\", \"보증금\": 2000000, \"임대료\": 2000000}, {\"번호\": \"D\", \"보증금\": 2000001, \"임대료\": 0}]}"
+            }
+          ],
+          "issues": [],
+          "summary": "사용자 요청이 명확하고 문서 데이터가 충분하며, 이전 초안과 비교하여 변경 사항이 없거나 오히려 수정된 초안이 올바른지 확인했습니다. 현재 candidate_draft는 사용자 요청 '200만원 초과'에 따라 보증금 기준을 2000000으로 설정하고 gte 연산자를 사용했습니다. 이는 원문 데이터 (보증금 2000000, 2000001 등) 와 일치하며, '초과'는 gt가 맞지만 사용자 요청이 '200만원 초과'인 경우 보통 200만 원 이상을 의미하는 gte를 사용하는 것이 일반적이며, 만약 엄격한 '초과'를 요구했다면 gt여야 하지만 현재 초안은 gte로 설정되어 있습니다. 그러나 사용자 요청이 '200만원 초과'이고 데이터에 2000000이 포함되어 있다면, 엄밀한 의미의 '초과'(gt)는 2000000을 제외해야 합니다. 하지만 일반적인 비즈니스 로직에서 '200만원 이상'을 의미하는 경우가 많고, 현재 초안이 gte를 사용했으므로 이를 유지하거나 사용자 의도를 다시 확인해야"
+        },
+        "findings": [
+          {
+            "code": "reflection_check_omitted",
+            "severity": "review",
+            "detail": "사용자 답변과 초안 쌍이 있는데 반영 검증을 생략했습니다.",
+            "path": null
+          }
+        ],
+        "route": "manual_review",
+        "execution_allowed": false,
+        "mode": "live",
+        "model": "qwen3.5:4b",
+        "latency_ms": 26743.008124874905,
+        "error_code": null
+      },
+      "checks": {
+        "route": false,
+        "required_code_findings": true,
+        "never_executes": true,
+        "response_valid": true,
+        "request_status": true,
+        "draft_verdict": false,
+        "reflection_verdict": false,
+        "missing_conditions": true
+      },
+      "all_passed": false
+    }
+  ],
+  "training_runs": 0
+}

@@ -1,0 +1,32 @@
+{
+  "version": "workflow-draft-v0.1",
+  "status": [
+    "ready",
+    "needs_clarification"
+  ],
+  "trigger_types": [
+    "schedule",
+    "manual",
+    "webhook",
+    "chat"
+  ],
+  "reference_syntax": {
+    "ref": {
+      "node_id": "previous_node_id",
+      "output": "output_name"
+    }
+  },
+  "scope": "linear DAG only; no branching, loop, approval or pause/resume in this pilot",
+  "ready_required": [
+    "workflow.version",
+    "workflow.trigger",
+    "workflow.nodes",
+    "workflow.edges",
+    "workflow.failure_policy"
+  ],
+  "clarification_required": [
+    "missing_fields",
+    "questions"
+  ],
+  "not_production_schema": true
+}

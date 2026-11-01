@@ -1,0 +1,16 @@
+{
+  "request_status": "ready",
+  "evidence_status": "sufficient",
+  "missing_conditions": [],
+  "unsupported_actions": [],
+  "draft_verdict": "pass",
+  "reflection_verdict": "not_applicable",
+  "evidence": [
+    {
+      "evidence_id": "user_request",
+      "quote": "보증금 100만원 이상만 JSON으로 저장해줘."
+    }
+  ],
+  "issues": [],
+  "summary": "정답 정책에 따라 상태와 초안 조건을 구분했습니다."
+}

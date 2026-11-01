@@ -14,6 +14,28 @@ def state(messages):
     return {'messages':messages,'resources':[],'issues':[],'repair_count':0,'node_library':[]}
 
 
+@pytest.mark.parametrize('configured,expected',[(None,9000),('4000',4000)])
+def test_planner_output_limit_is_configurable(monkeypatch,configured,expected):
+    monkeypatch.setenv('A4B_PLANNER_MODE','deepagent')
+    if configured is None:monkeypatch.delenv('A4B_PLANNER_MAX_TOKENS',raising=False)
+    else:monkeypatch.setenv('A4B_PLANNER_MAX_TOKENS',configured)
+    seen={}
+    def chat_model(**kwargs):
+        seen.update(kwargs)
+        return object()
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_chat_model',chat_model)
+    make_conversation('key','model')
+    assert seen['max_tokens']==expected
+
+
+@pytest.mark.parametrize('configured',['0','9001','-1','4.5','invalid'])
+def test_planner_rejects_invalid_output_limit(monkeypatch,configured):
+    monkeypatch.setenv('A4B_PLANNER_MODE','deepagent')
+    monkeypatch.setenv('A4B_PLANNER_MAX_TOKENS',configured)
+    with pytest.raises(ValueError,match='A4B_PLANNER_MAX_TOKENS'):
+        make_conversation('key','model')
+
+
 def draft(questions=None,unsupported=None,workflow=None):
     return {'name':'업무 설계','purpose':'요청 처리','instructions':'사용자 조건 적용','tool_ids':[],
         'document_ids':[],'requirements':[{'description':'실제 사용자 요청','evidence_id':'e1'}],

@@ -79,7 +79,10 @@ def make_conversation(api_key,model,model_factory=None):
         from .direct_conversation import make_direct_conversation
         return make_direct_conversation(api_key,model,model_factory)
     if mode!='deepagent':raise ValueError('A4B_PLANNER_MODE는 deepagent/direct여야 합니다.')
-    llm=model_factory() if model_factory else create_chat_model(model=model,api_key=api_key,timeout=70,max_retries=1,max_tokens=9000)
+    configured_tokens=os.getenv('A4B_PLANNER_MAX_TOKENS','9000')
+    if not configured_tokens.isdigit() or not 1<=int(configured_tokens)<=9000:
+        raise ValueError('A4B_PLANNER_MAX_TOKENS는 1~9000 정수여야 합니다.')
+    llm=model_factory() if model_factory else create_chat_model(model=model,api_key=api_key,timeout=70,max_retries=1,max_tokens=int(configured_tokens))
     def conversation_node(state):
         resources={}
         for r in state['resources']:

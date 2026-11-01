@@ -47,6 +47,15 @@ class NodeSettings(BaseModel):
     output_port: Literal['table','documents','records','text','artifact','reviews'] | None = None
     aggregation: Literal["count","sum"] | None = None
     sum_field: str | None = None
+    table_operation: Literal['compute','rename','parse_dates'] | None = None
+    output_column: str | None = Field(default=None, max_length=120)
+    calculation_formula: str | None = Field(default=None, max_length=1000)
+    rename_from: str | None = Field(default=None, max_length=120)
+    rename_to: str | None = Field(default=None, max_length=120)
+    date_input_format: str | None = Field(default=None, max_length=120)
+    date_timezone: str | None = Field(default=None, max_length=120)
+    text_find: str | None = Field(default=None, max_length=2000)
+    text_replacement: str | None = Field(default=None, max_length=2000)
     file_ids: list[str]
     query: str | None
     fields: list[str]
@@ -59,7 +68,7 @@ class NodeSettings(BaseModel):
 class WorkflowNode(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str
-    tool: Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','reply_review','review_summary','saved_workflow','agent_node']
+    tool: Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','reply_review','review_summary','saved_workflow','agent_node']
     label: str
     bindings: list[Binding]
     settings: NodeSettings
@@ -89,7 +98,7 @@ class AgentDraft(BaseModel):
     name: str = Field(max_length=60)
     purpose: str = Field(max_length=2000)
     instructions: str = Field(max_length=12000)
-    tool_ids: list[Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','reply_review','review_summary','saved_workflow','agent_node']] = Field(max_length=10)
+    tool_ids: list[Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','reply_review','review_summary','saved_workflow','agent_node']] = Field(max_length=10)
     document_ids: list[str] = Field(max_length=10)
     requirements: list[Requirement] = Field(max_length=30)
     questions: list[str] = Field(max_length=3)

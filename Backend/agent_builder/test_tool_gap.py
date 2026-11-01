@@ -2,6 +2,7 @@ import pytest
 from agent_builder.worker import handle
 from agent_builder.storage import Storage,uid
 from agent_builder.tool_gap import describe_gap
+from agent_builder.registry import TOOLS
 from agent_builder.test_builder import initial,draft
 
 REQUEST='전화번호 열의 공백과 하이픈을 제거하는 변환이 필요해.'
@@ -18,7 +19,7 @@ def test_unsupported_persists_gap_without_saving_or_executing(tmp_path):
     assert gap['capability_status']=='unverified'
     assert gap['user_messages'][0]['content']==REQUEST
     assert not gap['automatic_registration'] and not gap['automatic_generation'] and not gap['workflow_execution_allowed']
-    assert len(gap['catalog'])==16
+    assert {t['id'] for t in gap['catalog']}=={t['id'] for t in TOOLS}
     assert any(x['node']=='tool_gap' for x in s['trace'])
     stored=handle({'directory':str(tmp_path),'action':'tool_gap','id':s['id'],'revision':s['revision']})['tool_gap']
     assert stored==gap

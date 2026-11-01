@@ -83,7 +83,7 @@ def execute_node(node,state,storage,config,llm):
 def validate_node_result(tool,result):
     """Reject broken public outputs before a downstream node can consume them."""
     if not isinstance(result,dict):raise ValueError('노드 결과는 포트별 객체여야 합니다.')
-    mandatory={'agent_node':'text','saved_workflow':result.get('_selected_port'),'review_summary':'table','reply_review':'reviews','read_table':'table','filter_sort':'table','aggregate_table':'table','write_result':'artifact','read_document':'documents','search_document':'documents','extract_information':'records','compose_answer':'text','export_result':'artifact','condition':'decision','ask_user':'answer','finish':'text'}[tool]
+    mandatory={'agent_node':'text','saved_workflow':result.get('_selected_port'),'review_summary':'table','reply_review':'reviews','read_table':'table','filter_sort':'table','aggregate_table':'table','calculate_columns':'table','text_transform':'text','write_result':'artifact','read_document':'documents','search_document':'documents','extract_information':'records','compose_answer':'text','export_result':'artifact','condition':'decision','ask_user':'answer','finish':'text'}[tool]
     if mandatory not in result:raise ValueError('노드 필수 출력이 없습니다: '+mandatory)
     for port,value in result.items():
         if port=='table' and (not isinstance(value,dict) or not isinstance(value.get('rows'),list) or not isinstance(value.get('columns'),list) or any(not isinstance(row,dict) for row in value['rows'])):raise ValueError('표 출력 형식이 올바르지 않습니다.')
@@ -193,7 +193,8 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]
         artifacts=[v['artifact'] for v in outputs.values() if v.get('artifact')]
         tools_by_id={n['id']:n['tool'] for n in config['workflow']['nodes']}
-        texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow']))
+        transformed_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool']=='text_transform' and n['id'] in outputs for b in n['bindings'] if b['input']=='text' and b['output']=='text'}
+        texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources and tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform']))
         records=[v['records'] for v in outputs.values() if 'records' in v]
         tables=[v['table'] for v in outputs.values() if 'table' in v]
         result_rows=next((v['records'] if 'records' in v else v['table']['rows'] for v in reversed(list(outputs.values())) if 'records' in v or 'table' in v),[])

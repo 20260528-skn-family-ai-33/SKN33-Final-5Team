@@ -58,9 +58,17 @@ def catalog(storage,model,credential_id):
                 tables=[storage.asset(id) for id in ids if storage.asset(id)['kind']=='table']
                 if len(tables)==1:columns[n['id']]=tables[0]['columns']
             elif n['tool']=='aggregate_table':columns[n['id']]=n['settings']['fields']+(['sum'] if n['settings'].get('aggregation')=='sum' else ['count'])
-            elif n['tool']=='filter_sort':
+            elif n['tool'] in ('filter_sort','calculate_columns'):
                 b=next((b for b in n['bindings'] if b['input']=='table'),None)
-                if b:columns[n['id']]=columns.get(b['node_id'])
+                if b:
+                    previous=columns.get(b['node_id'])
+                    columns[n['id']]=list(previous) if previous is not None else None
+                    if columns[n['id']] is not None and n['tool']=='calculate_columns':
+                        settings=n['settings'];operation=settings.get('table_operation')
+                        if operation=='compute' and settings.get('output_column'):
+                            columns[n['id']].append(settings['output_column'])
+                        elif operation=='rename' and settings.get('rename_from') in columns[n['id']]:
+                            columns[n['id']]=[settings.get('rename_to') if c==settings['rename_from'] else c for c in columns[n['id']]]
         for n in (a['config'].get('workflow') or {}).get('nodes',[]):
             for port in node_ports(n)[1]:
                 try:guaranteed_output(a['config'],n['id'],port);outputs.append({'node_id':n['id'],'port':port,'label':n['label'],'columns':columns.get(n['id']) if port=='table' else None})

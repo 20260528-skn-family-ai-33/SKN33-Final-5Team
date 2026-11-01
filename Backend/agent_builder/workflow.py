@@ -55,8 +55,22 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             if ins[b['input']]!=node_ports(source)[1][b['output']]:issues.append('입출력 자료형이 맞지 않습니다: '+id)
             if b['node_id'] not in ancestors.get(id,set()):issues.append('앞 단계가 아닌 노드의 출력을 참조했습니다: '+id+' (참조: '+b['node_id']+'.'+b['output']+' → '+b['input']+'). 연결 순서를 확인하세요.')
         supplied={b['input'] for b in bindings}
-        required={'filter_sort':{'table'},'aggregate_table':{'table'},'review_summary':{'reviews'},'write_result':{'table'},'search_document':{'documents'},'extract_information':{'documents'},'compose_answer':{'documents'}}.get(tool,set())
+        required={'filter_sort':{'table'},'aggregate_table':{'table'},'calculate_columns':{'table'},'text_transform':{'text'},'review_summary':{'reviews'},'write_result':{'table'},'search_document':{'documents'},'extract_information':{'documents'},'compose_answer':{'documents'}}.get(tool,set())
         if not required<=supplied:issues.append('필수 입력 연결이 없습니다: '+id)
+        if tool=='calculate_columns':
+            operation=settings.get('table_operation')
+            if operation=='compute':
+                from .table_formula import formula_columns
+                if not isinstance(settings.get('output_column'),str) or not settings['output_column'].strip():issues.append('계산 결과 열 이름이 필요합니다: '+id)
+                try:formula_columns(settings.get('calculation_formula'))
+                except ValueError:issues.append('계산 수식은 열 이름·숫자·사칙연산과 %만 사용할 수 있습니다: '+id)
+            elif operation=='rename':
+                if any(not isinstance(settings.get(k),str) or not settings[k].strip() for k in ('rename_from','rename_to')):issues.append('기존 열과 바꿀 열 이름이 필요합니다: '+id)
+            elif operation=='parse_dates':
+                if not settings.get('fields') or any(not isinstance(settings.get(k),str) or not settings[k].strip() for k in ('date_input_format','date_timezone')):issues.append('날짜 열·입력 형식·시간대가 필요합니다: '+id)
+            else:issues.append('열 계산, 이름 변경 또는 날짜 변환을 선택하세요: '+id)
+        if tool=='text_transform' and (not isinstance(settings.get('text_find'),str) or not settings['text_find'] or not isinstance(settings.get('text_replacement'),str)):
+            issues.append('바꿀 문자열과 교체 문자열이 필요합니다: '+id)
         if tool in ['export_result','condition'] and not supplied.intersection({'records','text','answer','documents','reviews','table'}) and not (tool=='condition' and settings['condition_operator']=='semantic'):issues.append('처리할 결과 입력이 필요합니다: '+id)
         if tool=='condition' and settings['condition_operator'] in ['all_pass','any_revision'] and 'reviews' not in supplied:issues.append('검수 판정 분기는 reviews 입력이 필요합니다: '+id)
         if tool=='condition' and settings['condition_operator']=='has_missing' and 'records' not in supplied:issues.append('누락 분기는 추출 결과 records가 필요합니다: '+id)
@@ -96,7 +110,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             if len(ids)>1:issues.append('표 읽기 노드는 한 데이터 소스를 선택해야 합니다: '+id)
             if len(ids)==1 and ids[0] in table_resources:columns=set(table_resources[ids[0]]['columns'])
         elif tool=='review_summary':columns={'review_id','verdict','summary','candidate_reply','approval_state'}
-        elif tool in ['filter_sort','aggregate_table','reply_review']:
+        elif tool in ['filter_sort','aggregate_table','calculate_columns','reply_review']:
             binding=next((b for b in node['bindings'] if b['input']=='table' and b['node_id'] in by),None)
             incoming=columns_for(binding['node_id']) if binding else None
             if tool=='aggregate_table':
@@ -107,6 +121,23 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
                 output='sum' if operation=='sum' else 'count'
                 if output in fields:issues.append('집계 결과 열과 그룹 열이 충돌합니다: '+id)
                 columns=set(fields+[output])
+            elif tool=='calculate_columns':
+                columns=set(incoming) if incoming is not None else None
+                operation=node['settings'].get('table_operation')
+                if columns is not None and operation=='compute':
+                    from .table_formula import formula_columns
+                    try:
+                        if formula_columns(node['settings'].get('calculation_formula'))-columns:issues.append('계산 수식에 앞 단계에 없는 열이 있습니다: '+id)
+                    except ValueError:pass
+                    output=node['settings'].get('output_column')
+                    if output in columns:issues.append('기존 열은 덮어쓸 수 없습니다: '+id)
+                    elif output:columns.add(output)
+                elif columns is not None and operation=='rename':
+                    old,new=node['settings'].get('rename_from'),node['settings'].get('rename_to')
+                    if old not in columns or (new!=old and new in columns):issues.append('기존 열이 없거나 바꿀 이름이 중복됩니다: '+id)
+                    elif new:columns.remove(old);columns.add(new)
+                elif columns is not None and operation=='parse_dates' and not set(node['settings'].get('fields',[]))<=columns:
+                    issues.append('날짜 열이 앞 단계에 없습니다: '+id)
             elif tool=='reply_review':
                 if incoming is not None and any(f not in incoming for f in node['settings']['fields']):issues.append('검수할 문의·초안 열이 앞 단계에 없습니다: '+id)
             else:
@@ -118,7 +149,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
                     if any(f not in incoming for f in fields):issues.append('노드별 조건의 열이 앞 단계 출력에 없습니다: '+id)
         column_cache[id]=columns;return columns
     for node in nodes:
-        if node['tool'] in ['read_table','filter_sort','aggregate_table','reply_review']:columns_for(node['id'])
+        if node['tool'] in ['read_table','filter_sort','aggregate_table','calculate_columns','reply_review']:columns_for(node['id'])
     return list(dict.fromkeys(issues))
 
 def legacy_workflow(draft):

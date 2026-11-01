@@ -41,6 +41,9 @@ edges는 실제 실행 순서를 연결합니다. 보통 next 하나, condition�
 filter_sort마다 settings.execution_plan에 그 단계의 조건을 지정합니다. 글로벌 execution_plan은 호환 기본값입니다.
 빈 값·중복 정책은 사용자 조건을 따릅니다. 집계는 중복 제거가 아닙니다. 사용자 요청 없는 행 삭제는 하지 마세요.
 aggregate_table에서만 aggregation=count/sum, fields=그룹 열, sum_field=합계 원본 열을 씁니다. 결과 합계 열은 sum입니다.
+calculate_columns는 앞 표의 table을 받아 table_operation=compute와 calculation_formula·output_column으로 숫자 열 계산을 하거나 table_operation=rename과 rename_from·rename_to로 열 이름 하나를 바꿉니다. 수식은 실제 열 이름, 숫자와 + - * / % 괄호만 지원합니다. 불명확한 식·열은 사용자에게 확인합니다.
+text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문자 그대로 바꿉니다. 문서 파일 편집이나 다른 문자열 연산은 지원한다고 가정하지 않습니다.
+날짜 열 변환은 calculate_columns의 table_operation=parse_dates와 fields, date_input_format, date_timezone을 사용합니다. 입력 형식과 시간대가 불명확하면 확인합니다.
 CSV/JSON 표 저장은 write_result, records/text 저장은 export_result입니다. 실제 format을 지정하고 서버 reports에 보관합니다.
 문서 추출은 extract_information.fields에 요청 항목을 지정하며 없는 값은 만들어내지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다.
 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 쓰세요. required_node_refs는 반드시 연결합니다.
@@ -81,6 +84,8 @@ SYSTEM_V2 = """당신은 한국어 문서 업무를 설계하는 A4B 메인 모�
   열끼리 비교하면 compare_field=상대 열, value=null입니다. 상수 비교는 compare_field=null입니다.
 - aggregate_table만 aggregation=count/sum, fields=그룹 열, sum_field=원본 합계 열을 씁니다. 출력은 그룹 열과 count/sum입니다.
   집계를 중복 제거로 바꾸거나 요청 없는 행 삭제를 하지 않습니다.
+- calculate_columns는 table_operation=compute, calculation_formula, output_column 또는 table_operation=rename, rename_from, rename_to를 사용합니다. text_transform은 text_find와 text_replacement를 사용합니다.
+- 날짜 열 변환에는 table_operation=parse_dates, fields, date_input_format, date_timezone이 필요합니다.
 - 표 CSV/JSON은 write_result, records/text는 export_result입니다. format을 지정합니다. 저장 위치는 서버 reports입니다.
 - 문서 추출은 extract_information.fields에 요청 항목을 넣습니다. 없는 값은 만들지 않습니다.
 - agent_node는 자료 조회·텍스트 추론용입니다. 새 역할은 instructions로 구성하며 외부 실행 권한을 추가할 수 없습니다.

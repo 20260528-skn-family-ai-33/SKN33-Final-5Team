@@ -9,7 +9,7 @@ from .condition_readiness import input_issues
 class Assessment(BaseModel):
     model_config=ConfigDict(extra='forbid')
     decision:Literal['existing_tools','clarify','missing_capability','manual_review']
-    tool_ids:list[str]=Field(max_length=16)
+    tool_ids:list[str]=Field(max_length=18)
     missing_conditions:list[str]=Field(max_length=5)
     missing_actions:list[str]=Field(max_length=3)
     reason:str=Field(min_length=1,max_length=1500)
@@ -78,7 +78,7 @@ def normalize_native_claims(result):
         'native_app_claims_removed':removed,'missing_actions':remaining,
         'reason':result['reason']+' 일·주 예약 자체는 앱의 지원 기능이므로 코드 대조 후 부족 목록에서 제외했습니다.'}
 
-SYSTEM='현재 작업은 실행 전의 도구 지원 검토입니다. 도구는 전부 설치·등록된 상태이며 tools에 제공된 기능을 실제 사용할 수 있습니다.\n파일이 아직 없더라도 실행 때 연결할 수 있습니다. 파일·자료 부재는 도구 부재가 아닙니다.\nexisting_tools: 현재 등록 도구 한 개 또는 조합으로 요청한 기능을 지원. tool_ids를 선택하고 missing_conditions/actions는 빈 배열.\nclarify: 지원되는 작업이지만 사용자가 정해야 하는 기준이 빠짐. missing_conditions만 질문하며 missing_actions는 빈 배열.\nmissing_capability: 실제 요청된 동작이 등록 도구/조합에 없음. missing_actions만 적고 missing_conditions는 빈 배열.\nmanual_review: 불확실성·범위 검토가 필요. 지원된 작업을 없는 도구로 바꾸지 않음.\nread_table→filter_sort→write_result로 상수 선별/중복제거/JSON·CSV 파일 생성이 가능합니다. 파일 저장은 외부 전송과 다릅니다.\nread_table→aggregate_table→write_result로 그룹 건수·합계가 가능합니다.\nread_document→search_document→compose_answer로 문서 근거 답변이 가능합니다.\n외부 이메일·Slack 전송, 두 표 join, 명세대로 실행하는 새 결정적 셀 변환은 현재 카탈로그가 지원하지 않습니다. agent_node의 일반 텍스트 응답을 검증된 표 변환 도구와 같다고 취급하지 않습니다.\n금지된 동작은 요청된 동작이 아닙니다. 숫자가 미정이면 질문하고 임의 기준을 넣지 않습니다.\n설명과 사용자 원문 근거를 반환하되 user_quotes는 목록의 원문을 그대로 선택합니다. 실행·설계·코드생성·저장 허가는 주지 않습니다.'
+SYSTEM='현재 작업은 실행 전의 도구 지원 검토입니다. 도구는 전부 설치·등록된 상태이며 tools에 제공된 기능을 실제 사용할 수 있습니다.\n파일이 아직 없더라도 실행 때 연결할 수 있습니다. 파일·자료 부재는 도구 부재가 아닙니다.\nexisting_tools: 현재 등록 도구 한 개 또는 조합으로 요청한 기능을 지원. tool_ids를 선택하고 missing_conditions/actions는 빈 배열.\nclarify: 지원되는 작업이지만 사용자가 정해야 하는 기준이 빠짐. missing_conditions만 질문하며 missing_actions는 빈 배열.\nmissing_capability: 실제 요청된 동작이 등록 도구/조합에 없음. missing_actions만 적고 missing_conditions는 빈 배열.\nmanual_review: 불확실성·범위 검토가 필요. 지원된 작업을 없는 도구로 바꾸지 않음.\nread_table→filter_sort→write_result로 상수 선별/중복제거/JSON·CSV 파일 생성이 가능합니다. 파일 저장은 외부 전송과 다릅니다.\nread_table→aggregate_table→write_result로 그룹 건수·합계가 가능합니다.\nread_document→search_document→compose_answer로 문서 근거 답변이 가능합니다.\ncalculate_columns는 명시된 열과 숫자의 사칙연산·나머지로 새 열을 만들거나 열 하나의 이름을 바꾸고, 입력 형식·시간대가 명시된 날짜 열을 변환합니다. text_transform은 앞 단계 텍스트에서 지정된 문자열을 그대로 바꿉니다. 다른 문자열 처리나 파일 직접 편집을 지원한다고 가정하지 않습니다. 식이나 결과 열이 빠지면 확인합니다. 다른 임의 셀 변환과 수식 함수는 지원한다고 가정하지 않습니다. 외부 이메일·Slack 전송과 두 표 join은 현재 카탈로그가 지원하지 않습니다. agent_node의 일반 텍스트 응답을 검증된 표 변환 도구와 같다고 취급하지 않습니다.\n금지된 동작은 요청된 동작이 아닙니다. 숫자가 미정이면 질문하고 임의 기준을 넣지 않습니다.\n설명과 사용자 원문 근거를 반환하되 user_quotes는 목록의 원문을 그대로 선택합니다. 실행·설계·코드생성·저장 허가는 주지 않습니다.'
 SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 일·주 단위 예약은 Tool ID 없이 서버가 지원합니다. 예약 자체를 부족 도구로 판정하거나 가짜 예약 Tool ID를 만들지 않습니다. 실제 처리에 필요한 등록 tool_ids를 선택합니다. 시각·요일·시간대가 미정이면 clarify이며, 파일 미첨부는 도구 부재가 아닙니다. 활성화 전 관리 자료 연결은 후속 조건 검사에서 확인합니다. 월간·cron·외부 이벤트 트리거는 일·주 예약으로 임의 대체하지 않습니다. 예약이 있어도 이메일·Slack 외부 발송이나 최신 외부 자료 자동 수집까지 지원되는 것은 아닙니다.'
 SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 일·주 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 오류·중복 유지는 이미 정의된 정책입니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 관리 표 연결 검사는 후속 단계에 맡깁니다.'
 SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 일·주 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 monthly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
@@ -130,7 +130,7 @@ def assess_capability(state,transport):
 누락된 입력 파일이나 실행 전 자료 연결은 기능 부족이 아닙니다. 도구 설명에 이미 있는 기능을 없다고 하지 마세요.
 특히 reason에서 등록 도구 조합으로 가능하다고 설명하면서 decision을 missing_capability로 반환하면 모순입니다.
 등록 도구로 요청의 모든 기능이 가능하면 existing_tools와 실제 tool_ids를 반환합니다. 필수 정책이 미정이면 clarify입니다.
-실제 없는 외부 전송/표 join/새 결정적 셀 변환은 missing_capability를 유지합니다. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
+외부 전송과 표 join은 미지원으로 유지합니다. calculate_columns의 명시적 사칙연산·열 이름 변경과 text_transform의 문자열 바꾸기는 등록된 지원 기능입니다. 그 밖의 임의 셀 변환은 지원한다고 가정하지 마세요. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
 user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 실행/제작 허가가 아닙니다.'''
         reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+review_prompt},
             messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'task':'실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])

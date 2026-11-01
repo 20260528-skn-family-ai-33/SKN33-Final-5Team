@@ -1,0 +1,179 @@
+{
+  "version": "a4b-unified-tools-v2",
+  "counting_unit": "대표 도구 ID. 한 도구의 여러 operation은 중복 도구로 세지 않음.",
+  "tools": [
+    {
+      "id": "calculate_columns",
+      "name_ko": "열 계산·변환",
+      "category": "business",
+      "role_ko": "행별 사칙연산으로 새 열/기존 열 계산 / 열 이름 변경 / 날짜 문자열을 명시 형식으로 정규화",
+      "operations": [
+        {
+          "id": "compute",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table output_column:str formula:Formula",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Restricted numeric arithmetic formula; no arbitrary eval",
+          "side_effect": false,
+          "scope": "Restricted numeric arithmetic formula; no arbitrary eval",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "output_column",
+              "required": true
+            },
+            {
+              "name": "formula",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "rename_columns",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table mapping:StringMap",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Simultaneous rename with unknown-key/collision checks",
+          "side_effect": false,
+          "scope": "Simultaneous rename with unknown-key/collision checks",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "mapping",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "parse_dates",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table columns:str[] input_format:str timezone:str",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Explicit strptime + IANA timezone; ambiguous/nonexistent local times rejected",
+          "side_effect": false,
+          "scope": "Explicit strptime + IANA timezone; ambiguous/nonexistent local times rejected",
+          "dependencies": [
+            "tzdata"
+          ],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "columns",
+              "required": true
+            },
+            {
+              "name": "input_format",
+              "required": true
+            },
+            {
+              "name": "timezone",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "compute",
+          "fields": "table:Table output_column:str formula:Formula"
+        },
+        {
+          "operation": "rename_columns",
+          "fields": "table:Table mapping:StringMap"
+        },
+        {
+          "operation": "parse_dates",
+          "fields": "table:Table columns:str[] input_format:str timezone:str"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "compute",
+          "fields": "table:Table"
+        },
+        {
+          "operation": "rename_columns",
+          "fields": "table:Table"
+        },
+        {
+          "operation": "parse_dates",
+          "fields": "table:Table"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "임의 코드 실행과 구분되는 허용 표현식·날짜 형식 정의 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 3
+    },
+    {
+      "id": "text_transform",
+      "name_ko": "문자열 변환",
+      "role_ko": "문자열을 그대로 치환·분리·결합합니다. Word/PDF 파일 편집과 구분합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "replace",
+          "runtime_id": "text.replace",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수), find (필수), replacement (필수), count=-1",
+          "outputs": "string",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    }
+  ],
+  "aliases": {
+    "text.replace": {
+      "tool_id": "text_transform",
+      "operation": "replace"
+    }
+  },
+  "status_legend": {
+    "local_ready": "외부 모델/서비스 없이 통합 실행기에서 호출 가능. 입력 파일·Context는 필요.",
+    "local_ready_partial": "일부 operation 실행 가능. 도구 전체/모든 형식 구현 완료라는 뜻은 아님.",
+    "model_connection_required": "기존 모델 기반 executor 또는 모델 공급자 연결 필요.",
+    "external_connection_required": "외부 공급자·인증/권한 연결 필요.",
+    "backend_connection_required": "기존 백엔드 Storage/상태/실행 환경과 어댑터 연결 필요.",
+    "unimplemented": "정의만 존재하며 통합 실행기에 대응 구현 없음."
+  }
+}

@@ -5,6 +5,8 @@ const descriptions: Record<string, string> = {
     write_result: '처리한 표를 CSV 또는 JSON 파일로 저장합니다.',
     agent_node: '지시사항과 자료를 바탕으로 내용을 분석하거나 답변을 작성합니다.',
     aggregate_table: '전체 또는 그룹별로 건수를 세거나 숫자의 합계를 구합니다.',
+    calculate_columns: '표의 숫자 열을 계산하고, 열 이름이나 날짜 형식을 바꿉니다.',
+    text_transform: '앞 단계 텍스트에서 지정한 문자열을 바꿉니다.',
     finish: '완료 또는 중단 안내를 표시하고 처리를 마칩니다.',
     read_document: '첨부한 문서에서 텍스트와 페이지별 내용을 읽습니다.',
     search_document: '읽은 문서에서 검색어와 관련된 구간을 찾습니다.',

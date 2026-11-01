@@ -8,6 +8,19 @@ def recommend_for_state(state):
     mode=os.getenv('A4B_TOOL_ADVICE_MODE','off')
     if mode=='off':return None
     if mode!='hint':raise ValueError('A4B_TOOL_ADVICE_MODE는 off/hint이어야 합니다.')
+    backend=os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy')
+    if backend=='svm56':
+        try:
+            from .registry import TOOLS
+            from integrations.tool_recommender_svm56.svm56_service_hook import recommend_svm_for_state
+            return recommend_svm_for_state(state, TOOLS)
+        except Exception as error:
+            return {'ml_candidates': [], 'ml_status': 'failed', 'ml_error_type': type(error).__name__,
+                    'advisory_only': True,
+                    'ml_usage': '추천을 사용할 수 없습니다. 전체 등록 도구와 요청을 기준으로 검토하세요.'}
+    if backend!='legacy':
+        return {'ml_candidates': [], 'ml_status': 'invalid_backend', 'advisory_only': True,
+                'ml_usage': '추천 설정을 확인하고 전체 등록 도구와 요청을 기준으로 검토하세요.'}
     root=Path(__file__).parents[1]/'integrations/tool_recommender_reference'
     bundle=str(root/'model_bundle')
     if bundle not in sys.path:sys.path.insert(0,bundle)

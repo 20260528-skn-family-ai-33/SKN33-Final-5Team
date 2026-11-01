@@ -1,5 +1,5 @@
 from typing import Literal, TypedDict
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 class Requirement(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -57,6 +57,11 @@ class NodeSettings(BaseModel):
     text_find: str | None = Field(default=None, max_length=2000)
     text_replacement: str | None = Field(default=None, max_length=2000)
     codec_mode: Literal['encode','decode'] | None = None
+    statistics_unit: Literal['characters','words'] | None = None
+    include_whitespace: bool | None = None
+    date_operation: Literal['adjust','format'] | None = None
+    date_seconds: StrictInt | None = None
+    date_output_format: str | None = Field(default=None, max_length=120)
     file_ids: list[str]
     query: str | None
     fields: list[str]
@@ -69,7 +74,7 @@ class NodeSettings(BaseModel):
 class WorkflowNode(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str
-    tool: Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','reply_review','review_summary','saved_workflow','agent_node']
+    tool: Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','reply_review','review_summary','saved_workflow','agent_node']
     label: str
     bindings: list[Binding]
     settings: NodeSettings
@@ -99,7 +104,7 @@ class AgentDraft(BaseModel):
     name: str = Field(max_length=60)
     purpose: str = Field(max_length=2000)
     instructions: str = Field(max_length=12000)
-    tool_ids: list[Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','reply_review','review_summary','saved_workflow','agent_node']] = Field(max_length=10)
+    tool_ids: list[Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','reply_review','review_summary','saved_workflow','agent_node']] = Field(max_length=10)
     document_ids: list[str] = Field(max_length=10)
     requirements: list[Requirement] = Field(max_length=30)
     questions: list[str] = Field(max_length=3)

@@ -103,6 +103,26 @@ class CalculateColumnsIntegration(unittest.TestCase):
         encode['settings']['codec_mode']=None
         with self.assertRaises(ValueError):execute_node(encode,source,None,{},None)
 
+    def test_text_statistics_explicit_policy(self):
+        source={'outputs':{'prior':{'text':'one two\nthree'}}}
+        binding=[{'input':'text','node_id':'prior','output':'text'}]
+        stats=node('stats','text_statistics',settings(statistics_unit='words'),binding)
+        self.assertEqual(execute_node(stats,source,None,{},None),{'records':[{'unit':'words','count':3}]})
+        stats['settings'].update(statistics_unit='characters',include_whitespace=False)
+        self.assertEqual(execute_node(stats,source,None,{},None),{'records':[{'unit':'characters','count':11}]})
+        stats['settings']['include_whitespace']=None
+        with self.assertRaises(ValueError):execute_node(stats,source,None,{},None)
+
+    def test_iso_date_adjust_and_format(self):
+        source={'outputs':{'prior':{'text':'2026-11-01T12:00:00+09:00'}}}
+        binding=[{'input':'text','node_id':'prior','output':'text'}]
+        date=node('date','date_transform',settings(date_operation='adjust',date_seconds=3600),binding)
+        self.assertEqual(execute_node(date,source,None,{},None),{'text':'2026-11-01T13:00:00+09:00'})
+        date['settings'].update(date_operation='format',date_output_format='%Y-%m-%d')
+        self.assertEqual(execute_node(date,source,None,{},None),{'text':'2026-11-01'})
+        source['outputs']['prior']['text']='2026-11-01T12:00:00';date['settings']['date_operation']='adjust'
+        with self.assertRaises(ValueError):execute_node(date,source,None,{},None)
+
     def test_text_replace_in_registered_workflow(self):
         nodes=[node('source','agent_node',settings()),
             node('replace','text_transform',settings(text_find='old',text_replacement='new'),

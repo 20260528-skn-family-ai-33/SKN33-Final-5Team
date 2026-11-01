@@ -9,7 +9,7 @@ from .condition_readiness import input_issues
 class Assessment(BaseModel):
     model_config=ConfigDict(extra='forbid')
     decision:Literal['existing_tools','clarify','missing_capability','manual_review']
-    tool_ids:list[str]=Field(max_length=20)
+    tool_ids:list[str]=Field(max_length=22)
     missing_conditions:list[str]=Field(max_length=5)
     missing_actions:list[str]=Field(max_length=3)
     reason:str=Field(min_length=1,max_length=1500)

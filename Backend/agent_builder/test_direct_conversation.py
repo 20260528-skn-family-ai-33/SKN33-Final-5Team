@@ -169,7 +169,8 @@ def test_v2_decision_first_schema_keeps_public_contract(monkeypatch):
     context=json.loads(fake.calls[0][1]['content'].split('\n',1)[1])
     assert context['latest_user_request']==original['messages'][-1]['content']
     assert context['source_quote_catalog']==[{'source_id':'user','quote':original['messages'][0]['content']}]
-    assert len(context['supported_tools'])==16
+    from agent_builder.registry import TOOLS
+    assert {t['id'] for t in context['supported_tools']}=={t['id'] for t in TOOLS}
     assert all(set(t)=={'id','description','input_ports','output_ports'} for t in context['supported_tools'])
     assert validate_node({**original,**result})['status']=='ready'
     assert result['trace'][-1]['prompt_version']=='v2'

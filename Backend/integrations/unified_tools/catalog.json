@@ -212,6 +212,81 @@
       "status": "local_ready",
       "all_operations_ready": true,
       "operation_count": 1
+    },
+    {
+      "id": "text_statistics",
+      "name_ko": "문자·단어 수 계산",
+      "category": "business",
+      "role_ko": "Unicode 문자/공백 단위 단어 수",
+      "operations": [
+        {
+          "id": "measure_text",
+          "runtime_id": "text.statistics",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수), unit (필수), include_whitespace=True",
+          "outputs": "integer",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [],
+      "legacy_outputs": [],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "공백·문장부호·한국어 단어 분할 기준 합의 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "date_transform",
+      "name_ko": "날짜·시간 변환",
+      "role_ko": "ISO 시간에 초를 더하거나 지정한 형식으로 표시합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "adjust",
+          "runtime_id": "date.adjust",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "timestamp (필수), seconds (필수)",
+          "outputs": "offset이 있는 ISO timestamp",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "format",
+          "runtime_id": "date.format",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "timestamp (필수), format (필수)",
+          "outputs": "string",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
     }
   ],
   "aliases": {
@@ -226,6 +301,18 @@
     "text.hash": {
       "tool_id": "text_hash",
       "operation": "sha256"
+    },
+    "text.statistics": {
+      "tool_id": "text_statistics",
+      "operation": "measure_text"
+    },
+    "date.adjust": {
+      "tool_id": "date_transform",
+      "operation": "adjust"
+    },
+    "date.format": {
+      "tool_id": "date_transform",
+      "operation": "format"
     }
   },
   "status_legend": {

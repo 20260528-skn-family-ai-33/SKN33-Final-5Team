@@ -25,7 +25,7 @@ read_table/read_document는 file_ids 또는 실행 입력을 읽고 bindings=[]�
 문서 추출 항목은 실제 사용자 요청을 반영합니다. evidence는 값의 근거 메타데이터입니다. 검색이 필요 없으면 강제로 넣지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다. agent_node는 실제 실행 요청과 연결 입력을 조회하여 text를 반환합니다. 실행 요청용 가짜 binding은 필요 없습니다.
 표 열 계산은 calculate_columns 노드의 table_operation=compute, calculation_formula(열 이름과 숫자, + - * / % 괄호만), output_column으로 지정하고 앞 표의 table을 연결합니다. 열 이름 변경은 table_operation=rename, rename_from, rename_to를 사용합니다. 식·새 열 이름이 불명확하면 묻고 임의로 정하지 않습니다. 존재하는 열 덮어쓰기는 지원하지 않습니다.
 날짜 문자열 열의 변환은 같은 도구에서 table_operation=parse_dates, fields=대상 열, date_input_format=입력 형식, date_timezone=IANA 시간대를 명시합니다. 불명확한 날짜 형식이나 시간대는 추정하지 않습니다.
-문자열의 문자 그대로 바꾸기는 text_transform의 text_find와 text_replacement를 사용하고 앞 단계의 text를 연결합니다. 다른 문자열 연산이나 문서 파일 편집으로 확대하지 않습니다.
+문자열의 문자 그대로 바꾸기는 text_transform의 text_find와 text_replacement를 사용하고 앞 단계의 text를 연결합니다. 다른 문자열 연산이나 문서 파일 편집으로 확대하지 않습니다. Base64는 base64_codec의 codec_mode=encode/decode, SHA-256은 text_hash를 사용하며 모두 앞 단계 text를 연결합니다.
 원하는 파일 형식은 실제 출력 노드 settings.format에 지정합니다. 표 결과 CSV/JSON은 write_result, records/text 파일은 export_result로 저장합니다. 화면만 요청하면 저장 노드를 강제로 추가하지 않습니다. 파일 저장 위치는 A4B 서버 reports입니다.
 settings.node_ref는 node_library의 실제 ref만 사용하며 required_node_refs는 반드시 연결합니다. 재사용 설정이 업무와 다르면 새 처리 노드 node_ref=null을 구성합니다. saved_workflow는 실제 목록의 ID·버전·출력만 사용합니다. requirements는 available_evidence의 실제 evidence_id를 선택합니다.
 reply_review는 실제 고객 문의·응대 초안 검수 요청에만 사용합니다. 후보 검수 보고서는 실제 발송이나 사람 승인 완료가 아닙니다. ask_user는 생성 조건 질문이 아니라 실행 중 사람 응답을 기다리는 도구입니다.
@@ -167,7 +167,7 @@ def make_conversation(api_key,model,model_factory=None):
             if inputs:binding_schema['properties']['input']={'type':'string','enum':inputs}
             variant['properties']['bindings']['items']=binding_schema
             if tool_name in ['read_table','read_document']:variant['properties']['bindings']['maxItems']=0
-            if tool_name in ['filter_sort','aggregate_table','calculate_columns','text_transform','write_result','search_document','extract_information','compose_answer','review_summary']:variant['properties']['bindings']['minItems']=1
+            if tool_name in ['filter_sort','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','write_result','search_document','extract_information','compose_answer','review_summary']:variant['properties']['bindings']['minItems']=1
             variant['properties']['settings']=deepcopy(settings_schema)
             # Limit file references at decoding time to resources available to
             # this session; an empty catalogue permits no invented identifiers.

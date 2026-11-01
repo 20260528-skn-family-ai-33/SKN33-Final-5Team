@@ -89,6 +89,20 @@ class CalculateColumnsIntegration(unittest.TestCase):
         transform['settings']['date_timezone']=None
         with self.assertRaises(ValueError):execute_node(transform,source,None,{},None)
 
+    def test_base64_roundtrip_and_text_sha256(self):
+        import hashlib
+        source={'outputs':{'prior':{'text':'가상 text'}}}
+        binding=[{'input':'text','node_id':'prior','output':'text'}]
+        encode=node('encode','base64_codec',settings(codec_mode='encode'),binding)
+        encoded=execute_node(encode,source,None,{},None)['text']
+        source['outputs']['encoded']={'text':encoded}
+        decode=node('decode','base64_codec',settings(codec_mode='decode'),[{'input':'text','node_id':'encoded','output':'text'}])
+        self.assertEqual(execute_node(decode,source,None,{},None)['text'],'가상 text')
+        digest=node('hash','text_hash',settings(),binding)
+        self.assertEqual(execute_node(digest,source,None,{},None)['text'],hashlib.sha256('가상 text'.encode()).hexdigest())
+        encode['settings']['codec_mode']=None
+        with self.assertRaises(ValueError):execute_node(encode,source,None,{},None)
+
     def test_text_replace_in_registered_workflow(self):
         nodes=[node('source','agent_node',settings()),
             node('replace','text_transform',settings(text_find='old',text_replacement='new'),

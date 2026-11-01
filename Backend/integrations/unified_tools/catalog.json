@@ -160,12 +160,72 @@
       "status": "local_ready",
       "all_operations_ready": true,
       "operation_count": 1
+    },
+    {
+      "id": "base64_codec",
+      "name_ko": "Base64 변환",
+      "role_ko": "UTF-8 문자열을 Base64로 인코딩·디코딩합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "convert",
+          "runtime_id": "codec.base64",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수), mode (필수)",
+          "outputs": "string",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "text_hash",
+      "name_ko": "텍스트 SHA-256",
+      "role_ko": "UTF-8 텍스트의 SHA-256을 계산합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "sha256",
+          "runtime_id": "text.hash",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수)",
+          "outputs": "SHA-256 hex string",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
     }
   ],
   "aliases": {
     "text.replace": {
       "tool_id": "text_transform",
       "operation": "replace"
+    },
+    "codec.base64": {
+      "tool_id": "base64_codec",
+      "operation": "convert"
+    },
+    "text.hash": {
+      "tool_id": "text_hash",
+      "operation": "sha256"
     }
   },
   "status_legend": {

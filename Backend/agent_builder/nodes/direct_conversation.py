@@ -42,7 +42,7 @@ filter_sort마다 settings.execution_plan에 그 단계의 조건을 지정합�
 빈 값·중복 정책은 사용자 조건을 따릅니다. 집계는 중복 제거가 아닙니다. 사용자 요청 없는 행 삭제는 하지 마세요.
 aggregate_table에서만 aggregation=count/sum, fields=그룹 열, sum_field=합계 원본 열을 씁니다. 결과 합계 열은 sum입니다.
 calculate_columns는 앞 표의 table을 받아 table_operation=compute와 calculation_formula·output_column으로 숫자 열 계산을 하거나 table_operation=rename과 rename_from·rename_to로 열 이름 하나를 바꿉니다. 수식은 실제 열 이름, 숫자와 + - * / % 괄호만 지원합니다. 불명확한 식·열은 사용자에게 확인합니다.
-text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문자 그대로 바꿉니다. 문서 파일 편집이나 다른 문자열 연산은 지원한다고 가정하지 않습니다.
+text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문자 그대로 바꿉니다. base64_codec은 codec_mode=encode/decode로, text_hash는 SHA-256 계산에 사용합니다. 문서 파일 편집이나 다른 문자열 연산은 지원한다고 가정하지 않습니다.
 날짜 열 변환은 calculate_columns의 table_operation=parse_dates와 fields, date_input_format, date_timezone을 사용합니다. 입력 형식과 시간대가 불명확하면 확인합니다.
 CSV/JSON 표 저장은 write_result, records/text 저장은 export_result입니다. 실제 format을 지정하고 서버 reports에 보관합니다.
 문서 추출은 extract_information.fields에 요청 항목을 지정하며 없는 값은 만들어내지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다.

@@ -55,7 +55,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             if ins[b['input']]!=node_ports(source)[1][b['output']]:issues.append('입출력 자료형이 맞지 않습니다: '+id)
             if b['node_id'] not in ancestors.get(id,set()):issues.append('앞 단계가 아닌 노드의 출력을 참조했습니다: '+id+' (참조: '+b['node_id']+'.'+b['output']+' → '+b['input']+'). 연결 순서를 확인하세요.')
         supplied={b['input'] for b in bindings}
-        required={'filter_sort':{'table'},'aggregate_table':{'table'},'calculate_columns':{'table'},'text_transform':{'text'},'review_summary':{'reviews'},'write_result':{'table'},'search_document':{'documents'},'extract_information':{'documents'},'compose_answer':{'documents'}}.get(tool,set())
+        required={'filter_sort':{'table'},'aggregate_table':{'table'},'calculate_columns':{'table'},'text_transform':{'text'},'base64_codec':{'text'},'text_hash':{'text'},'review_summary':{'reviews'},'write_result':{'table'},'search_document':{'documents'},'extract_information':{'documents'},'compose_answer':{'documents'}}.get(tool,set())
         if not required<=supplied:issues.append('필수 입력 연결이 없습니다: '+id)
         if tool=='calculate_columns':
             operation=settings.get('table_operation')
@@ -71,6 +71,8 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             else:issues.append('열 계산, 이름 변경 또는 날짜 변환을 선택하세요: '+id)
         if tool=='text_transform' and (not isinstance(settings.get('text_find'),str) or not settings['text_find'] or not isinstance(settings.get('text_replacement'),str)):
             issues.append('바꿀 문자열과 교체 문자열이 필요합니다: '+id)
+        if tool=='base64_codec' and settings.get('codec_mode') not in ('encode','decode'):
+            issues.append('Base64 인코딩 또는 디코딩을 선택하세요: '+id)
         if tool in ['export_result','condition'] and not supplied.intersection({'records','text','answer','documents','reviews','table'}) and not (tool=='condition' and settings['condition_operator']=='semantic'):issues.append('처리할 결과 입력이 필요합니다: '+id)
         if tool=='condition' and settings['condition_operator'] in ['all_pass','any_revision'] and 'reviews' not in supplied:issues.append('검수 판정 분기는 reviews 입력이 필요합니다: '+id)
         if tool=='condition' and settings['condition_operator']=='has_missing' and 'records' not in supplied:issues.append('누락 분기는 추출 결과 records가 필요합니다: '+id)

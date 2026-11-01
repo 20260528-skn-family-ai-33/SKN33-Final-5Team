@@ -7,6 +7,8 @@ const descriptions: Record<string, string> = {
     aggregate_table: '전체 또는 그룹별로 건수를 세거나 숫자의 합계를 구합니다.',
     calculate_columns: '표의 숫자 열을 계산하고, 열 이름이나 날짜 형식을 바꿉니다.',
     text_transform: '앞 단계 텍스트에서 지정한 문자열을 바꿉니다.',
+    base64_codec: '텍스트를 Base64로 인코딩하거나 디코딩합니다.',
+    text_hash: '텍스트의 SHA-256 해시를 구합니다.',
     finish: '완료 또는 중단 안내를 표시하고 처리를 마칩니다.',
     read_document: '첨부한 문서에서 텍스트와 페이지별 내용을 읽습니다.',
     search_document: '읽은 문서에서 검색어와 관련된 구간을 찾습니다.',

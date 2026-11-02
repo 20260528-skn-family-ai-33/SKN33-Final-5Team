@@ -36,7 +36,7 @@ COPY Backend/documents/ /app/Backend/documents/
 COPY Backend/verification/ /app/Backend/verification/
 COPY Backend/infrastructure/ /app/Backend/infrastructure/
 COPY Backend/contracts/ /app/Backend/contracts/
-COPY docs/examples/ /app/docs/examples/
+# docs/ is not copied: the server and workers never read it (examples serve tests and dev scripts).
 COPY scripts/run-deferred-verifications.py /app/scripts/run-deferred-verifications.py
 # Fail the build if any registered tool's executor is missing from the image (a broad
 # .dockerignore rule once dropped workflow_engine/executors/output).

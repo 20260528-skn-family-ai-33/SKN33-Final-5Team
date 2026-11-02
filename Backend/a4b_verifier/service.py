@@ -15,7 +15,19 @@ def verify(data:VerificationInput,*,mode='live',fixture=None,config=None):
             out=VerificationOutput.model_validate(fixture)
         else:
             config=config or OllamaConfig.from_env();out,_=call_qwen(data,config)
-        findings.extend(output_checks(data,out));route=choose_route(data,out,findings)
+        output_findings=output_checks(data,out)
+        if mode=='live' and any(f.code=='invalid_quote' for f in output_findings):
+            # One bounded retry asks for genuine evidence; never repair or
+            # replace a quote in application code and retain the gate on error.
+            try:
+                retried,_=call_qwen(data,config,evidence_retry=True)
+            except (RuntimeError,ValueError,TypeError,KeyError):
+                # Keep the first invalid-quote finding visible on retry failure.
+                pass
+            else:
+                out=retried
+                output_findings=output_checks(data,out)
+        findings.extend(output_findings);route=choose_route(data,out,findings)
         return VerificationResult(request_id=data.request_id,model_output=out,findings=findings,route=route,
             mode=mode,model=config.model if mode=='live' else None,latency_ms=(time.perf_counter()-started)*1000)
     except (RuntimeError,ValueError,TypeError,KeyError) as exc:

@@ -60,8 +60,11 @@ def test_agent(storage,agent_id,request,api_key):
 def public_error(error,api_key=''):
     # Provider bodies can contain prompts, billing details or secrets. Do not expose them.
     from pydantic import ValidationError
+    from langchain_core.exceptions import ContextOverflowError
     import os
     from openai import APITimeoutError,APIConnectionError,AuthenticationError,PermissionDeniedError,RateLimitError,NotFoundError,APIStatusError
+    if isinstance(error,ContextOverflowError):
+        return '요청과 연결 자료가 모델의 처리 길이를 넘었습니다. 대화는 보존되며 자료 범위를 줄이거나 서버 문맥 길이와 응답 한도를 확인한 뒤 다시 시도해주세요.'
     if isinstance(error,ValidationError):
         fields=', '.join('.'.join(map(str,e['loc'])) for e in error.errors(include_input=False)[:5])
         return '모델이 반환한 설정 형식이 올바르지 않습니다. 다시 시도해주세요. (검사 항목: '+fields+')'

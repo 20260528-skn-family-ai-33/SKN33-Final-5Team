@@ -1,8 +1,27 @@
 """결정론적 구조/출처 검증. 사용자 의도 자체의 정답 판정기는 아니다."""
-import json,re
+import ast,json,math,re
 from decimal import Decimal,InvalidOperation
 from urllib.parse import quote
 from .contracts import VerificationInput,VerificationOutput,CodeFinding
+
+
+def formula_columns(formula):
+    """Check the supported arithmetic grammar without evaluating user code."""
+    if not isinstance(formula,str) or not formula.strip() or len(formula)>1000:raise ValueError('invalid formula')
+    try:tree=ast.parse(formula,mode='eval')
+    except (SyntaxError,ValueError) as error:raise ValueError('invalid formula') from error
+    if sum(1 for _ in ast.walk(tree))>100:raise ValueError('formula too complex')
+    columns=set()
+    def visit(node):
+        if isinstance(node,ast.Constant) and type(node.value) in (int,float):
+            if isinstance(node.value,float) and not math.isfinite(node.value):raise ValueError('nonfinite')
+        elif isinstance(node,ast.Name):columns.add(node.id)
+        elif isinstance(node,ast.BinOp) and isinstance(node.op,(ast.Add,ast.Sub,ast.Mult,ast.Div,ast.Mod)):
+            visit(node.left);visit(node.right)
+        elif isinstance(node,ast.UnaryOp) and isinstance(node.op,(ast.UAdd,ast.USub)):visit(node.operand)
+        else:raise ValueError('unsupported formula')
+    visit(tree.body)
+    return columns
 
 def evidence_bank(data: VerificationInput):
     bank={'user_request':data.user_request}
@@ -47,6 +66,37 @@ def canonical(value):
         return value
     return json.dumps(value,sort_keys=True,ensure_ascii=False,allow_nan=False,separators=(',',':'))
 
+def explicit_product_request(data):
+    """Recognize one narrow affirmative Korean request; return None if ambiguous."""
+    if data.latest_user_answer_id or any(m.role=='user' and m.content!=data.user_request for m in data.messages):
+        return None
+    token=r'[A-Za-z_][A-Za-z0-9_]*'
+    pattern=rf'(?<![A-Za-z0-9_])({token})\s*(?:와|과)\s*({token})\s*(?:를|을)\s*곱한\s+({token})\s*열'
+    matches=list(re.finditer(pattern,data.user_request))
+    if len(matches)!=1:return None
+    m=matches[0];start=max(data.user_request.rfind('.',0,m.start()),data.user_request.rfind('\n',0,m.start()))+1
+    end_candidates=[i for i in (data.user_request.find('.',m.end()),data.user_request.find('\n',m.end())) if i>=0]
+    sentence=data.user_request[start:min(end_candidates) if end_candidates else len(data.user_request)]
+    if re.search(r'하지\s*마|만들지|생성하지|계산하지|제외|대신|아니라|아닌',sentence):return None
+    return m.group(1),m.group(2),m.group(3)
+
+def check_explicit_product(data,draft,add):
+    requirement=explicit_product_request(data)
+    if not requirement:return
+    left,right,output=requirement
+    matches=[(i,n) for i,n in enumerate(draft.workflow.nodes) if n.tool=='calculate_columns' and n.settings.get('output_column')==output]
+    if len(matches)!=1:
+        add('requested_product_unresolved','요청한 곱셈 결과 열과 계산 노드를 확인하세요.',severity='review');return
+    i,n=matches[0];path='/workflow/nodes/'+str(i)+'/settings/calculation_formula'
+    try:expr=ast.parse(n.settings.get('calculation_formula',''),mode='eval').body
+    except (SyntaxError,ValueError,TypeError):return  # structural checker reports invalid expressions
+    if isinstance(expr,ast.BinOp) and isinstance(expr.left,ast.Name) and isinstance(expr.right,ast.Name):
+        names=[expr.left.id,expr.right.id]
+        if sorted(names)==sorted([left,right]) and isinstance(expr.op,ast.Mult):return
+        if sorted(names)==sorted([left,right]) and isinstance(expr.op,(ast.Add,ast.Sub,ast.Div,ast.Mod)):
+            add('requested_product_mismatch','요청은 두 열의 곱이지만 초안의 수식은 다른 연산입니다.',path);return
+    add('requested_product_unresolved','요청한 곱셈과 계산 수식이 같은지 확인하세요.',path,'review')
+
 def code_checks(data: VerificationInput):
     findings=[]
     def add(code,detail,path=None,severity='block'):
@@ -54,10 +104,26 @@ def code_checks(data: VerificationInput):
     # Never silently accept NaN/Infinity in loosely typed node settings/sample rows.
     try:json.dumps(data.model_dump(mode='python'),allow_nan=False)
     except ValueError:add('nonfinite_json','입력에 NaN 또는 Infinity가 있습니다.');return findings
-    if not data.documents or any(d.parse_status!='ready' for d in data.documents):
-        add('evidence_incomplete','문서 파싱 누락·부분 실패가 있어 자동 확정할 수 없습니다.',severity='review')
+    # A constant-only arithmetic request can be grounded in the user's own text.
+    # Other document-free workflows retain the previous conservative review.
     draft=data.candidate_draft
+    nodes=draft.workflow.nodes if draft else []
+    scalar_only=(not data.documents and not data.latest_user_answer_id and nodes
+                 and any(n.tool=='scalar_calculate' for n in nodes)
+                 and all(n.tool in ('scalar_calculate','finish') for n in nodes)
+                 and all(m.role!='user' or m.content==data.user_request for m in data.messages))
+    if (not data.documents and not scalar_only) or any(d.parse_status!='ready' for d in data.documents):
+        add('evidence_incomplete','문서 파싱 누락·부분 실패가 있어 자동 확정할 수 없습니다.',severity='review')
     if draft is None:return findings
+    if scalar_only:
+        source=re.sub(r'\s+','',data.user_request)
+        for n in nodes:
+            if n.tool=='scalar_calculate':
+                formula=n.settings.get('calculation_formula')
+                normalized=re.sub(r'\s+','',formula) if isinstance(formula,str) else ''
+                bounded=bool(normalized and re.search(r'(?<![A-Za-z0-9_.+*/%()\-])'+re.escape(normalized)+r'(?![A-Za-z0-9_.+*/%()\-])',source))
+                if not bounded:
+                    add('scalar_formula_not_in_request','계산 수식이 사용자 요청 원문에 확인되지 않습니다.',severity='review')
     doc_by={d.id:d for d in data.documents}
     for did in draft.document_ids:
         if did not in doc_by:add('unknown_document','초안의 문서 ID가 입력에 없습니다: '+did)
@@ -120,6 +186,81 @@ def code_checks(data: VerificationInput):
         elif inherited:
             if any(v!=inherited[0] for v in inherited):add('ambiguous_table_input','여러 표 스키마가 충돌합니다.',path)
             node_columns[nid]=set(inherited[0])
+        if n.tool=='join_tables':
+            refs={b.input:b.node_id for b in n.bindings};keys=n.settings.get('join_keys')
+            how=n.settings.get('join_how');card=n.settings.get('join_cardinality')
+            if not isinstance(keys,list) or not keys or len(keys)>10 or any(not isinstance(k,str) or not k.strip() for k in keys) or len(set(keys))!=len(keys):
+                add('invalid_join_keys','중복되지 않은 결합 열이 필요합니다.',path)
+            elif how not in ('inner','left') or card not in ('one_to_one','many_to_one'):
+                add('invalid_join_policy','결합 방식과 키 관계가 필요합니다.',path)
+            elif refs.get('left') not in node_columns or refs.get('right') not in node_columns:
+                add('unresolved_join_tables','결합할 두 표의 열을 확인할 수 없습니다.',path,'review')
+            else:
+                left=node_columns[refs['left']];right=node_columns[refs['right']]
+                if not set(keys)<=left or not set(keys)<=right:add('invalid_join_columns','결합 열은 양쪽 표에 있어야 합니다.',path)
+                result=set(left)
+                for col in sorted(right-set(keys)):
+                    dest=col+'_right' if col in result else col
+                    if dest in result:add('join_column_collision','결합 결과의 열 이름이 충돌합니다.',path)
+                    result.add(dest)
+                node_columns[nid]=result
+        if n.tool=='compare_tables':
+            refs={b.input:b.node_id for b in n.bindings};keys=n.settings.get('compare_keys');cols=n.settings.get('compare_columns');tol=n.settings.get('compare_tolerance')
+            if any(not isinstance(v,list) or not v or any(not isinstance(x,str) or not x.strip() for x in v) or len(set(v))!=len(v) for v in (keys,cols)) or type(tol) not in (int,float) or not math.isfinite(tol) or tol<0:
+                add('invalid_compare_settings','비교 키·열과 0 이상의 허용 오차를 지정하세요.',path)
+            elif refs.get('baseline') not in node_columns or refs.get('candidate') not in node_columns:
+                add('unresolved_compare_tables','비교할 두 표의 열을 확인할 수 없습니다.',path,'review')
+            elif not set(keys+cols)<=node_columns[refs['baseline']] or not set(keys+cols)<=node_columns[refs['candidate']]:
+                add('invalid_compare_columns','비교 키와 열은 양쪽 표에 있어야 합니다.',path)
+        if n.tool=='scalar_calculate':
+            try:
+                if formula_columns(n.settings.get('calculation_formula')):raise ValueError('variables unsupported')
+            except ValueError:add('invalid_scalar_formula','단일 계산에는 숫자 상수와 사칙연산만 사용하세요.',path)
+        if n.tool=='calculate_columns':
+            operation=n.settings.get('table_operation');oldcols=node_columns.get(nid)
+            if oldcols is None:add('unresolved_table','계산할 표의 열을 확인할 수 없습니다.',path,'review')
+            elif operation=='compute':
+                output=n.settings.get('output_column')
+                try:used=formula_columns(n.settings.get('calculation_formula'))
+                except ValueError:add('invalid_calculation_formula','지원하지 않는 계산 수식입니다.',path);used=None
+                if not isinstance(output,str) or not output.strip() or output in oldcols:
+                    add('invalid_calculation_output','계산 결과 열이 없거나 기존 열과 중복됩니다.',path)
+                elif used is not None and not used<=oldcols:
+                    add('unknown_calculation_column','계산 수식의 열이 원본 표에 없습니다.',path)
+                elif used is not None:node_columns[nid]=oldcols|{output}
+            elif operation=='rename':
+                before=n.settings.get('rename_from');after=n.settings.get('rename_to')
+                if not isinstance(before,str) or before not in oldcols or not isinstance(after,str) or not after.strip() or (before!=after and after in oldcols):
+                    add('invalid_rename_column','기존 열이 없거나 바꿀 열 이름이 잘못됐습니다.',path)
+                else:node_columns[nid]=(oldcols-{before})|{after}
+            elif operation=='parse_dates':
+                fields=n.settings.get('fields');fmt=n.settings.get('date_input_format');zone=n.settings.get('date_timezone')
+                if (not isinstance(fields,list) or not fields or any(not isinstance(f,str) or f not in oldcols for f in fields)
+                    or not isinstance(fmt,str) or not fmt.strip() or not isinstance(zone,str) or not zone.strip()):
+                    add('invalid_date_columns','날짜 열·입력 형식·시간대를 확인하세요.',path)
+            else:add('invalid_table_operation','지원하는 표 변환 작업이 아닙니다.',path)
+        if n.tool=='text_transform' and (not isinstance(n.settings.get('text_find'),str) or not n.settings['text_find'] or not isinstance(n.settings.get('text_replacement'),str)):
+            add('invalid_text_transform','찾을 문자열과 교체 문자열을 확인하세요.',path)
+        if n.tool=='base64_codec' and n.settings.get('codec_mode') not in ('encode','decode'):
+            add('invalid_codec_mode','Base64 변환 모드를 확인하세요.',path)
+        if n.tool=='date_transform':
+            op=n.settings.get('date_operation')
+            if op=='adjust' and type(n.settings.get('date_seconds')) is not int:add('invalid_date_adjustment','조정 초는 정수여야 합니다.',path)
+            elif op=='format' and (not isinstance(n.settings.get('date_output_format'),str) or not n.settings['date_output_format'].strip()):add('invalid_date_format','날짜 출력 형식이 필요합니다.',path)
+            elif op not in ('adjust','format'):add('invalid_date_operation','날짜 변환 방식을 확인하세요.',path)
+        if n.tool=='text_statistics':
+            unit=n.settings.get('statistics_unit')
+            if unit not in ('characters','words') or (unit=='characters' and type(n.settings.get('include_whitespace')) is not bool):
+                add('invalid_statistics_settings','문자·단어 단위와 공백 포함 여부를 확인하세요.',path)
+        if n.tool=='json_transform':
+            op=n.settings.get('json_operation');parts=n.settings.get('json_path')
+            if op not in ('parse','lookup'):add('invalid_json_operation','JSON 해석 또는 값 조회를 선택하세요.',path)
+            elif op=='lookup' and (not isinstance(parts,list) or len(parts)>30 or any(type(part) not in (str,int) or (type(part) is int and part<0) for part in parts)):
+                add('invalid_json_path','JSON 경로의 키·인덱스를 확인하세요.',path)
+        if n.tool=='list_transform':
+            op=n.settings.get('list_operation');index=n.settings.get('list_index')
+            if op not in ('select','count') or (op=='select' and (type(index) is not int or index<0)):
+                add('invalid_list_operation','목록 작업과 0 이상 인덱스를 확인하세요.',path)
         if n.tool=='aggregate_table':
             fields=n.settings.get('fields');operation=n.settings.get('aggregation') or 'count'
             if not isinstance(fields,list) or any(not isinstance(f,str) for f in fields):
@@ -164,6 +305,7 @@ def code_checks(data: VerificationInput):
                     except (ValueError,InvalidOperation):add('invalid_numeric_value','숫자 비교에는 유한한 숫자가 필요합니다.',path)
         if n.tool=='write_result' and n.settings.get('format') not in ['csv','json']:
             add('invalid_output_format','결과 저장은 csv/json만 지원합니다.',path)
+    check_explicit_product(data,draft,add)
     return findings
 
 def output_checks(data:VerificationInput,out:VerificationOutput):

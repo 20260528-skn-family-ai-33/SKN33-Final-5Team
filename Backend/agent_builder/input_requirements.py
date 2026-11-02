@@ -50,6 +50,8 @@ def execution_requirements(config, storage, file_ids=None, dependencies=None, pa
     prefix = _prefix(workflow)
     prefix_ids = {n['id'] for n in prefix}
     provided = [storage.asset(id) for id in file_ids or []]
+    referenced_tables = {id for n in workflow['nodes'] if n['tool']=='read_table'
+                         for id in n['settings'].get('file_ids',[])}
     result = []
     for node in workflow['nodes']:
         if node['tool'] == 'saved_workflow' and node['id'] in prefix_ids:
@@ -62,12 +64,19 @@ def execution_requirements(config, storage, file_ids=None, dependencies=None, pa
             continue
         kind = 'table' if node['tool'] == 'read_table' else 'document'
         selected = [a for a in provided if a['kind'] == kind]
+        missing_mapped_inputs = (kind=='table' and bool(selected) and len(referenced_tables)>1
+                                 and not referenced_tables.issubset({a['id'] for a in selected}))
+        if kind=='table' and len(selected)>1 and len(referenced_tables)>1:
+            chosen=set(node['settings'].get('file_ids',[]))
+            selected=[a for a in selected if a['id'] in chosen]
         if not selected:
             selected = [storage.asset(id) for id in node['settings'].get('file_ids') or config.get('document_ids', [])]
             selected = [a for a in selected if a['kind'] == kind]
         fields = _fields(prefix, node['id'], config) if kind == 'table' else []
         issues = []
-        if not selected:
+        if missing_mapped_inputs:
+            issues.append('여러 표 워크플로의 각 입력 파일을 모두 연결하세요. 새 파일은 노드별로 다시 지정해야 합니다.')
+        elif not selected:
             issues.append('실행할 표 파일을 연결하세요.' if kind == 'table' else '실행할 문서를 연결하세요.')
         elif kind == 'table' and len(selected) != 1:
             issues.append('표 파일을 하나만 선택하세요.')

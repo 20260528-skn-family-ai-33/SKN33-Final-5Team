@@ -41,6 +41,32 @@ def test_contract_rejects_type_missing_port_and_cycles():
     w=flow();w['nodes'][-1]['bindings'][0]=bind('records','read','documents');assert any('자료형' in s for s in workflow_errors(w,tools,[]))
     w=flow();w['edges'].append(edge('out','read'));assert any('순환' in s for s in workflow_errors(w,tools,[]))
 
+
+@pytest.mark.parametrize('output_format',['json','markdown'])
+def test_document_export_runs_with_real_document_chunks(tmp_path,output_format):
+    w={'entry':'read','nodes':[node('read','read_document'),node('out','export_result',[bind('documents','read','documents')],format=output_format)],'edges':[edge('read','out')]}
+    assert not workflow_errors(w,['read_document','export_result'],[])
+    store,id,asset=saved(tmp_path,w)
+    try:
+        result=run_workflow(store,id,'제공 문서를 저장','unused',file_ids=[asset['id']])
+        assert result['status']=='succeeded',result.get('error')
+        artifact=result['artifact']
+        if output_format=='json':
+            documents=json.loads(artifact['content'])
+            assert documents[0]['text']=='제목: 테스트\n작성일: 2026-10-12'
+            assert documents[0]['file_id']==asset['id']
+        else:
+            assert '제목: 테스트' in artifact['content'] and 'sample.txt' in artifact['content']
+    finally:store.close()
+
+
+def test_document_export_rejects_mixed_or_unsupported_input():
+    w={'entry':'read','nodes':[node('read','read_document'),node('out','export_result',[bind('documents','read','documents')],format='csv')],'edges':[edge('read','out')]}
+    assert any('Markdown' in issue for issue in workflow_errors(w,['read_document','export_result'],[]))
+    n=node('out','export_result',[bind('documents','read','documents'),bind('text','source','text')],format='json')
+    state={'outputs':{'read':{'documents':[{'text':'문서'}]},'source':{'text':'답변'}}}
+    with pytest.raises(ValueError,match='다른 결과 입력'):execute_node(n,state,None,{},None)
+
 def test_branch_contract_rejects_path_without_input():
     w=flow(True);tools=[n['tool'] for n in w['nodes']]
     assert not workflow_errors(w,tools,[])

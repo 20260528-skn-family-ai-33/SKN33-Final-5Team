@@ -42,9 +42,12 @@ filter_sort마다 settings.execution_plan에 그 단계의 조건을 지정합�
 빈 값·중복 정책은 사용자 조건을 따릅니다. 집계는 중복 제거가 아닙니다. 사용자 요청 없는 행 삭제는 하지 마세요.
 aggregate_table에서만 aggregation=count/sum, fields=그룹 열, sum_field=합계 원본 열을 씁니다. 결과 합계 열은 sum입니다.
 calculate_columns는 앞 표의 table을 받아 table_operation=compute와 calculation_formula·output_column으로 숫자 열 계산을 하거나 table_operation=rename과 rename_from·rename_to로 열 이름 하나를 바꿉니다. 수식은 실제 열 이름, 숫자와 + - * / % 괄호만 지원합니다. 불명확한 식·열은 사용자에게 확인합니다.
-text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문자 그대로 바꿉니다. base64_codec은 codec_mode=encode/decode로, text_hash는 SHA-256 계산에 사용합니다. text_statistics는 statistics_unit=characters/words 및 문자일 때 include_whitespace, date_transform은 date_operation=adjust/format 및 date_seconds/date_output_format을 명시합니다. adjust 입력에는 시간대가 필요합니다. 문서 파일 편집이나 다른 문자열 연산은 지원한다고 가정하지 않습니다.
+text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문자 그대로 바꿉니다. base64_codec은 codec_mode=encode/decode로, text_hash는 SHA-256 계산에 사용합니다. text_statistics는 statistics_unit=characters/words 및 문자일 때 include_whitespace, date_transform은 date_operation=adjust/format 및 date_seconds/date_output_format을 명시합니다. json_transform은 JSON text를 parse하거나 json_path의 문자열 키·0 이상 정수 인덱스로 lookup합니다. adjust 입력에는 시간대가 필요합니다. 문서 파일 편집이나 다른 문자열 연산은 지원한다고 가정하지 않습니다.
 날짜 열 변환은 calculate_columns의 table_operation=parse_dates와 fields, date_input_format, date_timezone을 사용합니다. 입력 형식과 시간대가 불명확하면 확인합니다.
-CSV/JSON 표 저장은 write_result, records/text 저장은 export_result입니다. 실제 format을 지정하고 서버 reports에 보관합니다.
+join_tables는 서로 다른 read_table 두 개의 table을 left/right로 연결하며 join_keys, join_how(inner/left), join_cardinality(one_to_one/many_to_one)를 지정합니다. 각 read_table의 file_ids는 실제 파일 하나씩이고 실행 순서는 첫 읽기→두 번째 읽기→결합입니다. 불명확한 결합 정책은 질문합니다.
+list_transform은 앞 단계의 JSON 배열 text를 받아 list_operation=count 또는 select와 0 이상 list_index를 지정하고 JSON text를 반환합니다.
+compare_tables는 두 read_table 출력을 baseline/candidate로 연결하고 compare_keys, compare_columns, compare_tolerance를 명시합니다. 고유 키를 기준으로 추가·삭제·변경을 JSON text로 반환합니다.
+CSV/JSON 표 저장은 write_result, records는 CSV/JSON, text/documents는 Markdown/JSON으로 export_result에 저장합니다. documents는 다른 입력과 섞지 않습니다. 실제 format을 지정하고 서버 reports에 보관합니다.
 문서 추출은 extract_information.fields에 요청 항목을 지정하며 없는 값은 만들어내지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다.
 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 쓰세요. required_node_refs는 반드시 연결합니다.
 ask_user는 실행 중 사람 응답 대기 도구이며 생성 조건 questions와 다릅니다. reply_review는 실제 문의·응대 초안 검수에만 사용합니다.
@@ -84,9 +87,12 @@ SYSTEM_V2 = """당신은 한국어 문서 업무를 설계하는 A4B 메인 모�
   열끼리 비교하면 compare_field=상대 열, value=null입니다. 상수 비교는 compare_field=null입니다.
 - aggregate_table만 aggregation=count/sum, fields=그룹 열, sum_field=원본 합계 열을 씁니다. 출력은 그룹 열과 count/sum입니다.
   집계를 중복 제거로 바꾸거나 요청 없는 행 삭제를 하지 않습니다.
-- calculate_columns는 table_operation=compute, calculation_formula, output_column 또는 table_operation=rename, rename_from, rename_to를 사용합니다. text_transform은 text_find와 text_replacement를 사용합니다.
+- calculate_columns는 table_operation=compute, calculation_formula, output_column 또는 table_operation=rename, rename_from, rename_to를 사용합니다. text_transform은 text_find와 text_replacement를 사용합니다. json_transform은 JSON text와 json_operation=parse/lookup을 사용하며 lookup의 json_path는 키·인덱스 목록입니다.
 - 날짜 열 변환에는 table_operation=parse_dates, fields, date_input_format, date_timezone이 필요합니다.
-- 표 CSV/JSON은 write_result, records/text는 export_result입니다. format을 지정합니다. 저장 위치는 서버 reports입니다.
+- 두 표 결합에는 각각의 read_table 출력 left/right와 같은 이름의 join_keys, join_how(inner/left), join_cardinality(one_to_one/many_to_one)가 필요합니다. 두 읽기 노드를 순서대로 연결합니다.
+- list_transform은 JSON 배열 text와 list_operation=count 또는 select 및 list_index를 사용합니다.
+- compare_tables는 baseline/candidate 표와 compare_keys, compare_columns, compare_tolerance가 필요하며 JSON text를 반환합니다.
+- 표 CSV/JSON은 write_result, records는 CSV/JSON, text/documents는 Markdown/JSON으로 export_result에 저장합니다. documents는 다른 입력과 섞지 않습니다. format을 지정합니다. 저장 위치는 서버 reports입니다.
 - 문서 추출은 extract_information.fields에 요청 항목을 넣습니다. 없는 값은 만들지 않습니다.
 - agent_node는 자료 조회·텍스트 추론용입니다. 새 역할은 instructions로 구성하며 외부 실행 권한을 추가할 수 없습니다.
 - 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 사용합니다. required_node_refs는 연결합니다.
@@ -145,7 +151,8 @@ filter_sort.settings.execution_plan에 확정 조건을 반영합니다. 확정�
 조건 이름은 데이터 열이 아닙니다. actual_column=true 항목의 value가 실제 열 이름입니다.
 중복 제거는 filter_sort의 duplicate_field와 duplicate_policy(first/last/keep/error)로 지원합니다. 별도 도구가 필요하지 않습니다.
 단일 선별·중복 제거 계약은 sort=[]입니다. 중복 제거만 요청했으면 filters=[]이며 빈 값 정책은 missing_policy입니다.
-표 파일 저장은 write_result의 format=csv/json입니다. records/text는 export_result로 저장합니다. 저장 경로는 reports입니다.
+표 파일 저장은 write_result의 format=csv/json입니다. records는 CSV/JSON, text/documents는 Markdown/JSON으로 export_result에 저장하며 documents는 다른 입력과 섞지 않습니다. 저장 경로는 reports입니다.
+json_transform은 앞 단계 JSON text를 parse하거나 문자열 키·0 이상 정수 인덱스 목록 json_path로 lookup하고 결과를 JSON text로 반환합니다.
 requirements.quote는 source_quote_catalog의 실제 원문을 그대로 선택하고 해당 source_id를 사용합니다. 요약·공백 변경 금지.
 node_ref와 saved_workflow는 제공된 라이브러리·버전·출력만 사용합니다. required_node_refs를 보존합니다.
 설계 질문은 questions이고 ask_user는 실행 중 응답 대기 도구입니다. reply_review는 실제 문의·초안 검수에 사용합니다.

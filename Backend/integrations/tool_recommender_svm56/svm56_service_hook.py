@@ -8,6 +8,8 @@ from pathlib import Path
 from .service_advice_adapter import build_svm_advice
 
 MODEL_SHA256 = "c515ff1b542cf5dee9a48534766d52568c79a605ea5bd813a6540d44d297429b"
+EXPERIMENTAL_MODEL_SHA256 = "2018c862b2c39097f5c3c15b4ff4a91348b105ff09f267543ddb889f97af796d"
+REVIEW_EXPERIMENT_MODEL_SHA256 = "f4b9533a54cf92722e187b20467aa89e9ded7ebd1d312c29ea994dfff9264d76"
 CATALOG_SHA256 = "cd956b51658051ecd95c642b5738238b3ae7f819c89799668280ba6d96f5dd2a"
 
 
@@ -22,7 +24,7 @@ def _sha256(path: Path) -> str:
 @lru_cache(maxsize=1)
 def _load_pinned(model_path: str, catalog_path: str):
     model, catalog = Path(model_path), Path(catalog_path)
-    if _sha256(model) != MODEL_SHA256 or _sha256(catalog) != CATALOG_SHA256:
+    if _sha256(model) not in (MODEL_SHA256,EXPERIMENTAL_MODEL_SHA256,REVIEW_EXPERIMENT_MODEL_SHA256) or _sha256(catalog) != CATALOG_SHA256:
         raise ValueError("model or catalog hash differs from pinned candidate")
     from .inference_adapter import ToolRecommender
     return ToolRecommender(model, catalog)
@@ -36,7 +38,9 @@ def recommend_svm_for_state(state: dict, registry: list[dict]) -> dict:
                 "ml_usage": "추천 모델이 설정되지 않았습니다. 전체 등록 도구와 요청을 기준으로 검토하세요."}
     try:
         model = _load_pinned(model_path, catalog_path)
-        return build_svm_advice(state, registry, model)
+        raw_margin = os.getenv('A4B_SVM_ADDITIONAL_CANDIDATE_MARGIN')
+        extra_margin = float(raw_margin) if raw_margin else None
+        return build_svm_advice(state, registry, model, extra_margin=extra_margin)
     except Exception as error:
         return {"ml_candidates": [], "ml_status": "failed", "ml_error_type": type(error).__name__,
                 "advisory_only": True,

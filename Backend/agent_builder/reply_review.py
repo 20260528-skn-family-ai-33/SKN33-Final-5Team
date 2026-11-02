@@ -8,6 +8,7 @@ from langchain.agents.middleware import wrap_model_call
 from deepagents import create_deep_agent
 from .review_contracts import AnalysisReport, ResponseReport, ReviewReport, ReviewRequest, Evidence
 from .review_prompts import COMMON, ROLE_PROMPTS
+import re
 
 class ReviewExecutionError(ValueError):
     """A safe public error; raw provider request/response data stay private."""
@@ -26,6 +27,19 @@ def _validate_evidence(evidence: list[Evidence], request: ReviewRequest, accesse
             raise ReviewExecutionError('evidence_not_read', '인용한 자료를 실제 조회하지 않아 보고서를 검증하지 못했습니다.')
         if not item.quote.strip() or item.quote not in texts[item.source]:
             raise ReviewExecutionError('invalid_evidence', '보고서 인용이 조회한 고객 원문 또는 정책의 실제 구절과 일치하지 않습니다.')
+
+_DEADLINE_COMMITMENT=re.compile(
+    r'(\d+)\s*(영업일|일|주|시간)\s*(?:이내|내)\s*(?:에|로)?\s*'
+    r'(?:환불|결제|배송|주문|접수)?\s*(처리|완료|지급|입금|발송)'
+    r'(?:됩|될|되었|되며|합니다|하겠습니다|하겠|해\s*드|예정|완료)')
+
+def _validate_reply_deadlines(reply: str, policy: str) -> None:
+    """Block specific time-bound commitments absent from the policy, not all semantic errors."""
+    supported={(m.group(1),m.group(2),m.group(3)) for m in _DEADLINE_COMMITMENT.finditer(policy)}
+    for m in _DEADLINE_COMMITMENT.finditer(reply):
+        if (m.group(1),m.group(2),m.group(3)) not in supported:
+            raise ReviewExecutionError('unverified_deadline_claim',
+                '수정 답변의 처리·완료 기한이 정책 원문에 확인되지 않습니다. 안내 기한을 처리 기한으로 바꾸지 마세요.')
 
 
 def validate_report(report: BaseModel, request: ReviewRequest, draft: str, accessed: set[str]) -> None:
@@ -54,6 +68,7 @@ def validate_report(report: BaseModel, request: ReviewRequest, draft: str, acces
         raise ReviewExecutionError('inconsistent_verdict', '수정 판정의 실제 지적 사항이 없습니다.')
     if report.verdict == 'needs_info' and not report.missing_info and not any(item.category == 'missing_information' for item in report.findings):
         raise ReviewExecutionError('inconsistent_verdict', '추가 확인 판정의 부족한 정보가 명시되지 않았습니다.')
+    _validate_reply_deadlines(report.revised_reply,request.policy_text)
 
 
 

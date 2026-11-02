@@ -94,8 +94,55 @@ def test_partial_parser_output_and_over_budget_document_are_not_ready(tmp_path):
 
 def test_runtime_registry_is_used():
     tools=current_tools()
-    assert len(tools)==16
+    from agent_builder.registry import TOOLS
+    assert {t['id'] for t in tools}=={t['id'] for t in TOOLS}
     assert next(t for t in tools if t['id']=='compose_answer')['required_input_ports']==['documents']
+    assert next(t for t in tools if t['id']=='calculate_columns')['required_input_ports']==['table']
+    assert next(t for t in tools if t['id']=='calculate_columns')['required_settings']==['table_operation']
+    assert next(t for t in tools if t['id']=='text_transform')['required_input_ports']==['text']
+    assert next(t for t in tools if t['id']=='json_transform')['required_input_ports']==['text']
+
+
+def test_verifier_rejects_invalid_json_lookup_path():
+    from a4b_verifier.contracts import VerificationInput
+    from a4b_verifier.adapters import draft_from_backend
+    from a4b_verifier.validation import code_checks
+    w={'entry':'source','nodes':[node('source','agent_node'),
+       node('json','json_transform',[bind('text','source','text')],json_operation='lookup',json_path=[-1])],
+       'edges':[edge('source','json')]}
+    raw={**draft(),'workflow':w,'document_ids':[]}
+    data=VerificationInput.model_validate({'contract_version':'a4b.verifier.v1','request_id':'json',
+        'user_request':'JSON 값 조회','documents':[],'tools':current_tools(),
+        'candidate_draft':draft_from_backend(raw,draft_id='draft',version='1')})
+    assert 'invalid_json_path' in {f.code for f in code_checks(data)}
+    data.candidate_draft.workflow.nodes[1].settings['json_path']=['items',0]
+    assert 'invalid_json_path' not in {f.code for f in code_checks(data)}
+
+
+def test_calculation_verifier_checks_formula_and_propagates_new_column(tmp_path):
+    from a4b_verifier.contracts import VerificationInput
+    from a4b_verifier.adapters import draft_from_backend
+    from a4b_verifier.validation import code_checks
+    store=Storage(tmp_path)
+    try:
+        state,raw=seed(store);asset=state['resources'][0]
+        plan={'filters':[{'field':'두배','operator':'gte','value':2,'compare_field':None,'value_type':'number'}],
+              'sort':[],'match':'all','missing_policy':'keep','duplicate_policy':'keep','duplicate_field':None,'output_format':'json'}
+        wf={'entry':'read','nodes':[node('read','read_table',file_ids=[asset['id']]),
+              node('calc','calculate_columns',[bind('table','read','table')],table_operation='compute',calculation_formula='보증금 * 2',output_column='두배'),
+              node('filter','filter_sort',[bind('table','calc','table')],execution_plan=plan),
+              node('save','write_result',[bind('table','filter','table')],format='json')],
+            'edges':[edge('read','calc'),edge('calc','filter'),edge('filter','save')]}
+        raw['workflow']=wf
+        data=VerificationInput.model_validate({'contract_version':'a4b.verifier.v1','request_id':'calc',
+             'user_request':'계산 후 저장','documents':[resource_document(asset)],'tools':current_tools(),
+             'candidate_draft':draft_from_backend(raw,draft_id='draft',version='1')})
+        assert not [f for f in code_checks(data) if f.severity=='block']
+        data.candidate_draft.workflow.nodes[1].settings['calculation_formula']='__import__("os").system("bad")'
+        assert 'invalid_calculation_formula' in {f.code for f in code_checks(data)}
+        data.candidate_draft.workflow.nodes[1].settings['calculation_formula']='없는열 + 1'
+        assert 'unknown_calculation_column' in {f.code for f in code_checks(data)}
+    finally:store.close()
 
 
 def test_original_user_draft_survives_internal_repair(tmp_path):

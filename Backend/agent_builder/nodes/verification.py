@@ -11,8 +11,31 @@ from ..registry import TOOLS
 from ..document_resources import supports,analysis_of,chunks_for_asset,locator
 
 
+# The independent verifier's registry is an older fixed snapshot. These six
+# static adapters use the live registry's exact ports below; their conditional
+# operation arguments remain checked by the native workflow validator.
+LOCAL_ADAPTER_CHECKS = {
+    'calculate_columns': (['table'], ['table_operation']),
+    'scalar_calculate': ([], ['calculation_formula']),
+    'text_transform': (['text'], ['text_find', 'text_replacement']),
+    'base64_codec': (['text'], ['codec_mode']),
+    'text_hash': (['text'], []),
+    'date_transform': (['text'], ['date_operation']),
+    'text_statistics': (['text'], ['statistics_unit']),
+    'json_transform': (['text'], ['json_operation']),
+    'join_tables': (['left','right'], ['join_keys','join_how','join_cardinality']),
+    'list_transform': (['text'], ['list_operation']),
+    'compare_tables': (['baseline','candidate'], ['compare_keys','compare_columns','compare_tolerance']),
+}
+
+
 def current_tools():
     reference = {t.id: t.model_dump() for t in load_registry()}
+    for tool_id,(required_inputs,required_settings) in LOCAL_ADAPTER_CHECKS.items():
+        reference.setdefault(tool_id,{'id':tool_id,'description':'', 'enabled':True,
+                                      'input_ports':{},'output_ports':{},
+                                      'required_input_ports':required_inputs,
+                                      'required_settings':required_settings,'check_scope':'basic'})
     result = []
     for tool in TOOLS:
         if tool['id'] not in reference:
@@ -75,7 +98,8 @@ def make_verification_node(storage, verifier=None, mode=None):
         if setting == 'off':
             return {'verification_route': None, 'verification_enforced': False}
         messages = [dict(id=f'm{i}', role=m['role'], content=m['content'])
-                    for i, m in enumerate(state['messages']) if m['role'] in ('user', 'assistant')]
+                    for i, m in enumerate(state['messages']) if m['role'] in ('user', 'assistant')
+                    and (m['role'] == 'user' or str(m.get('content') or '').strip())]
         users = [m for m in messages if m['role'] == 'user']
         fingerprint = hashlib.sha256(json.dumps(users, ensure_ascii=False).encode()).hexdigest()
         previous = (state.get('verification_last_candidate') if fingerprint != state.get('verification_user_fingerprint')

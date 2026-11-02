@@ -45,6 +45,28 @@ def draft(questions=None,unsupported=None,workflow=None):
         'workflow':workflow,'schedule':None,'report_destination':None}
 
 
+def test_invalid_tool_name_uses_request_excerpt_without_altering_workflow():
+    workflow={'entry':'read','nodes':[node('read','read_table')],'edges':[]}
+    raw=draft(workflow=deepcopy(workflow));raw['name']='read_table';raw['tool_ids']=['read_table']
+    raw['requirements']=[{'description':'업무 요청','source_id':'user','quote':'표를 읽어 주세요'}]
+    original=state([{'role':'user','content':'표를 읽어 주세요'}]);original['draft']=raw
+    valid_original=deepcopy(original);valid_original['draft']['name']='표 읽기 업무'
+    expected=validate_node(valid_original)
+    result=validate_node(original)
+    assert result['draft']['name']=='요청: 표를 읽어 주세요'
+    assert result['draft']['workflow']==expected['draft']['workflow']
+    assert result['trace'][-1]['name_source']=='user_request_excerpt'
+    assert not any('도구 식별자' in issue for issue in result['issues'])
+
+
+def test_explicit_name_is_never_replaced_by_request_excerpt():
+    from agent_builder.name_policy import grounded_fallback_name
+    assert grounded_fallback_name('read_table',[{'role':'user','content':'이름은 매출 분석으로 해줘'}]) is None
+    assert grounded_fallback_name('매출 분석',[{'role':'user','content':'표를 읽어 줘'}]) is None
+    assert grounded_fallback_name('read_table',[{'role':'assistant','content':'표를 읽어 줘'}]) is None
+    assert len(grounded_fallback_name('read_table',[{'role':'user','content':'가'*200}])) <= 60
+
+
 @pytest.mark.parametrize('questions,unsupported,route',[
     (['얼마 이상을 대상으로 할까요?'],[],'await_input'),
     ([],['연결되지 않은 외부 서비스 전송은 지원하지 않습니다.'],'unsupported')])

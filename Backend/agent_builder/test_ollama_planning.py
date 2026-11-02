@@ -42,3 +42,10 @@ def test_unsupported_settings_are_not_exposed_as_raw_provider_errors():
     result=public_error(error)
     assert '구조화 응답' in result
     assert 'private provider body' not in result
+
+
+def test_context_limit_error_is_actionable_without_leaking_provider_text():
+    from langchain_core.exceptions import ContextOverflowError
+    result=public_error(ContextOverflowError('private prompt and provider diagnostics'))
+    assert '처리 길이' in result and '대화는 보존' in result
+    assert 'private prompt' not in result

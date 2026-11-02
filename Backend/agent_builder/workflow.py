@@ -1,5 +1,5 @@
 """Validate and normalize workflow definitions without generating executable source."""
-import re
+import re,math
 from .registry import node_ports
 from .document_resources import supports
 
@@ -55,8 +55,18 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             if ins[b['input']]!=node_ports(source)[1][b['output']]:issues.append('입출력 자료형이 맞지 않습니다: '+id)
             if b['node_id'] not in ancestors.get(id,set()):issues.append('앞 단계가 아닌 노드의 출력을 참조했습니다: '+id+' (참조: '+b['node_id']+'.'+b['output']+' → '+b['input']+'). 연결 순서를 확인하세요.')
         supplied={b['input'] for b in bindings}
-        required={'filter_sort':{'table'},'aggregate_table':{'table'},'calculate_columns':{'table'},'text_transform':{'text'},'base64_codec':{'text'},'text_hash':{'text'},'date_transform':{'text'},'text_statistics':{'text'},'review_summary':{'reviews'},'write_result':{'table'},'search_document':{'documents'},'extract_information':{'documents'},'compose_answer':{'documents'}}.get(tool,set())
+        required={'filter_sort':{'table'},'aggregate_table':{'table'},'calculate_columns':{'table'},'join_tables':{'left','right'},'compare_tables':{'baseline','candidate'},'text_transform':{'text'},'base64_codec':{'text'},'text_hash':{'text'},'date_transform':{'text'},'text_statistics':{'text'},'json_transform':{'text'},'list_transform':{'text'},'review_summary':{'reviews'},'write_result':{'table'},'search_document':{'documents'},'extract_information':{'documents'},'compose_answer':{'documents'}}.get(tool,set())
         if not required<=supplied:issues.append('필수 입력 연결이 없습니다: '+id)
+        if tool=='join_tables':
+            keys=settings.get('join_keys')
+            if not isinstance(keys,list) or not keys or len(keys)>10 or any(not isinstance(k,str) or not k.strip() for k in keys) or len(set(keys))!=len(keys):issues.append('중복되지 않은 결합 열을 지정하세요: '+id)
+            if settings.get('join_how') not in ('inner','left') or settings.get('join_cardinality') not in ('one_to_one','many_to_one'):issues.append('결합 방식과 키 관계를 명시하세요: '+id)
+        if tool=='list_transform':
+            op=settings.get('list_operation');index=settings.get('list_index')
+            if op not in ('select','count') or (op=='select' and (type(index) is not int or index<0)):issues.append('목록 작업과 0 이상 인덱스를 확인하세요: '+id)
+        if tool=='compare_tables':
+            keys=settings.get('compare_keys');cols=settings.get('compare_columns');tol=settings.get('compare_tolerance')
+            if any(not isinstance(v,list) or not v or any(not isinstance(x,str) or not x.strip() for x in v) or len(set(v))!=len(v) for v in (keys,cols)) or type(tol) not in (int,float) or not math.isfinite(tol) or tol<0:issues.append('비교 키·열과 0 이상의 허용 오차를 지정하세요: '+id)
         if tool=='calculate_columns':
             operation=settings.get('table_operation')
             if operation=='compute':
@@ -69,10 +79,20 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             elif operation=='parse_dates':
                 if not settings.get('fields') or any(not isinstance(settings.get(k),str) or not settings[k].strip() for k in ('date_input_format','date_timezone')):issues.append('날짜 열·입력 형식·시간대가 필요합니다: '+id)
             else:issues.append('열 계산, 이름 변경 또는 날짜 변환을 선택하세요: '+id)
+        if tool=='scalar_calculate':
+            from .table_formula import formula_columns
+            try:
+                if formula_columns(settings.get('calculation_formula')):raise ValueError('variables not supported')
+            except ValueError:issues.append('단일 계산에는 숫자 상수와 사칙연산만 사용하세요: '+id)
         if tool=='text_transform' and (not isinstance(settings.get('text_find'),str) or not settings['text_find'] or not isinstance(settings.get('text_replacement'),str)):
             issues.append('바꿀 문자열과 교체 문자열이 필요합니다: '+id)
         if tool=='base64_codec' and settings.get('codec_mode') not in ('encode','decode'):
             issues.append('Base64 인코딩 또는 디코딩을 선택하세요: '+id)
+        if tool=='json_transform':
+            operation=settings.get('json_operation');path=settings.get('json_path')
+            if operation not in ('parse','lookup'):issues.append('JSON 해석 또는 값 조회를 선택하세요: '+id)
+            elif operation=='lookup' and (not isinstance(path,list) or len(path)>30 or any(type(part) not in (str,int) or (type(part) is int and part<0) for part in path)):
+                issues.append('JSON 조회 경로의 문자열 키와 0 이상 인덱스를 확인하세요: '+id)
         if tool=='date_transform':
             if settings.get('date_operation')=='adjust':
                 if type(settings.get('date_seconds')) is not int:issues.append('조정할 초 단위가 필요합니다: '+id)
@@ -89,9 +109,10 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
         if tool=='extract_information' and not settings['fields']:issues.append('추출할 항목이 필요합니다: '+id)
         if tool=='ask_user' and not settings['question']:issues.append('확인 질문이 필요합니다: '+id)
         if tool=='export_result':
-            if not supplied.intersection({'records','text','answer'}):issues.append('저장할 records/text/answer 결과 입력이 필요합니다: '+id)
+            if not supplied.intersection({'records','text','answer','documents'}):issues.append('저장할 records/text/answer/documents 결과 입력이 필요합니다: '+id)
+            if 'documents' in supplied and len(supplied)>1:issues.append('문서 저장에는 다른 결과 입력을 함께 연결할 수 없습니다: '+id)
             if 'records' in supplied and settings['format'] not in ['csv','json']:issues.append('표 결과는 CSV/JSON을 선택하세요: '+id)
-            if 'records' not in supplied and supplied.intersection({'text','answer'}) and settings['format'] not in ['markdown','json']:issues.append('텍스트 결과는 Markdown 또는 JSON을 선택하세요: '+id)
+            if 'records' not in supplied and supplied.intersection({'text','answer','documents'}) and settings['format'] not in ['markdown','json']:issues.append('텍스트·문서 결과는 Markdown 또는 JSON을 선택하세요: '+id)
         if tool in ['read_document','read_table']:
             lookup={r['id']:r for r in resources}
             if any(f not in lookup for f in settings['file_ids']):issues.append('연결되지 않은 파일 ID가 있습니다: '+id+'. file_ids에는 노드 ID가 아닌 이번 대화에 연결된 자료의 실제 ID만 사용하세요.')
@@ -121,6 +142,24 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             if len(ids)>1:issues.append('표 읽기 노드는 한 데이터 소스를 선택해야 합니다: '+id)
             if len(ids)==1 and ids[0] in table_resources:columns=set(table_resources[ids[0]]['columns'])
         elif tool=='review_summary':columns={'review_id','verdict','summary','candidate_reply','approval_state'}
+        elif tool=='join_tables':
+            refs={b['input']:b['node_id'] for b in node['bindings']}
+            left=columns_for(refs['left']) if 'left' in refs else None
+            right=columns_for(refs['right']) if 'right' in refs else None
+            keys=set(node['settings'].get('join_keys') or [])
+            if left is not None and right is not None:
+                if not keys<=left or not keys<=right:issues.append('결합 열이 양쪽 표에 있어야 합니다: '+id)
+                columns=set(left)
+                for col in sorted(right-keys):
+                    dest=col+'_right' if col in columns else col
+                    if dest in columns:issues.append('결합 결과의 열 이름이 충돌합니다: '+id)
+                    columns.add(dest)
+        elif tool=='compare_tables':
+            refs={b['input']:b['node_id'] for b in node['bindings']}
+            a=columns_for(refs['baseline']) if 'baseline' in refs else None
+            b=columns_for(refs['candidate']) if 'candidate' in refs else None
+            required=set((node['settings'].get('compare_keys') or [])+(node['settings'].get('compare_columns') or []))
+            if a is not None and b is not None and (not required<=a or not required<=b):issues.append('비교 키와 열이 양쪽 표에 있어야 합니다: '+id)
         elif tool in ['filter_sort','aggregate_table','calculate_columns','reply_review']:
             binding=next((b for b in node['bindings'] if b['input']=='table' and b['node_id'] in by),None)
             incoming=columns_for(binding['node_id']) if binding else None
@@ -160,7 +199,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
                     if any(f not in incoming for f in fields):issues.append('노드별 조건의 열이 앞 단계 출력에 없습니다: '+id)
         column_cache[id]=columns;return columns
     for node in nodes:
-        if node['tool'] in ['read_table','filter_sort','aggregate_table','calculate_columns','reply_review']:columns_for(node['id'])
+        if node['tool'] in ['read_table','filter_sort','aggregate_table','calculate_columns','join_tables','compare_tables','reply_review']:columns_for(node['id'])
     return list(dict.fromkeys(issues))
 
 def legacy_workflow(draft):
@@ -175,16 +214,38 @@ def legacy_workflow(draft):
         previous=id
     return {'entry':nodes[0]['id'],'nodes':nodes,'edges':edges} if nodes else None
 
-def normalize_connections(workflow):
-    """Resolve unambiguous port aliases using registered types; never invent topology."""
+def normalize_connections(workflow,audit=None):
+    """Resolve port aliases and serialize an unambiguous pair of file reads."""
     if not workflow:return workflow
     by={n['id']:n for n in workflow['nodes']}
+    for edge in workflow['edges']:
+        if edge['source'] in by and by[edge['source']]['tool']!='condition':edge['branch']='next'
+    # A model may express two independent read_table nodes as parallel inputs
+    # to a join. This runtime has one active path. Only serialize the exact,
+    # side-effect-free two-root shape, preserving the same inputs and join.
+    for join in workflow['nodes']:
+        if join.get('tool') not in ('join_tables','compare_tables'):continue
+        pair=('left','right') if join['tool']=='join_tables' else ('baseline','candidate')
+        refs={b['input']:b['node_id'] for b in join.get('bindings',[])}
+        if not all(k in refs for k in pair):continue
+        a,b=(refs[k] for k in pair)
+        if a==b or any(x not in by or by[x]['tool']!='read_table' or by[x].get('bindings') for x in (a,b)):continue
+        incoming_a=[e for e in workflow['edges'] if e['target']==a]
+        incoming_b=[e for e in workflow['edges'] if e['target']==b]
+        in_join=[e for e in workflow['edges'] if e['target']==join['id']]
+        out_a=[e for e in workflow['edges'] if e['source']==a]
+        out_b=[e for e in workflow['edges'] if e['source']==b]
+        if (incoming_a or incoming_b or workflow['entry'] not in (a,b) or len(in_join)!=2
+            or len(out_a)!=1 or len(out_b)!=1
+            or any(e['target']!=join['id'] or e['branch']!='next' for e in out_a+out_b)):
+            continue
+        first=workflow['entry'];second=b if first==a else a
+        next(e for e in workflow['edges'] if e['source']==first)['target']=second
+        if audit is not None:audit.append({'type':'serialize_independent_table_reads','first':first,'second':second,'target':join['id']})
     if workflow['entry'] not in by:
         targets={e['target'] for e in workflow['edges']}
         roots=[id for id in by if id not in targets]
         if len(roots)==1:workflow['entry']=roots[0]
-    for edge in workflow['edges']:
-        if edge['source'] in by and by[edge['source']]['tool']!='condition':edge['branch']='next'
     for node in workflow['nodes']:
         inputs=node_ports(node)[0]
         for binding in node['bindings']:

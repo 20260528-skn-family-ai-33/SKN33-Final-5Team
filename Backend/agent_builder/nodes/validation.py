@@ -9,7 +9,9 @@ def validate_node(state):
     issues.extend(literal_condition_issues(state))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']
     if not draft['name'].strip(): issues.append('에이전트 이름이 필요합니다.')
-    from ..name_policy import invalid_workflow_name
+    from ..name_policy import grounded_fallback_name,invalid_workflow_name
+    fallback_name=grounded_fallback_name(draft['name'],state.get('messages',[])) if draft.get('workflow') else None
+    if fallback_name:draft['name']=fallback_name
     if draft.get('workflow') and invalid_workflow_name(draft['name']):
         issues.append('도구 식별자만으로는 저장할 수 없습니다. 사용자 업무를 설명하는 이름으로 바꿔주세요.')
     if not draft['purpose'].strip(): issues.append('어떤 업무를 맡길지 알려주세요.')
@@ -72,4 +74,4 @@ def validate_node(state):
         if not set(draft['tool_ids']) & {'write_result','export_result','reply_review'}:issues.append('예약 보고서를 저장할 출력 도구가 필요합니다.')
     draft['questions']=list(dict.fromkeys(questions))[:3]
     status='unsupported' if draft['unsupported'] else 'needs_clarification' if draft['questions'] or issues else 'ready'
-    return {'draft':draft,'issues':list(dict.fromkeys(issues)),'status':status,'trace':state.get('trace',[])+[{'node':'validate','label':'설정·근거 검증','status':'completed' if not issues else 'needs_input','detail':'필수 설정·등록 도구·자료 범위·인용 원문을 검사했습니다.' if not issues else ' / '.join(issues)}]}
+    return {'draft':draft,'issues':list(dict.fromkeys(issues)),'status':status,'trace':state.get('trace',[])+[{'node':'validate','label':'설정·근거 검증','status':'completed' if not issues else 'needs_input','detail':'필수 설정·등록 도구·자료 범위·인용 원문을 검사했습니다.' if not issues else ' / '.join(issues),'name_source':'user_request_excerpt' if fallback_name else 'draft'}]}

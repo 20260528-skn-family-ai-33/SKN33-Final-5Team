@@ -65,6 +65,17 @@ def test_fabricated_tool_trace_and_early_report_rejected():
 def test_report_contract_checks_exact_quotes_evidence_and_verdict(change):
     with pytest.raises(ValueError):validate_report(ReviewReport.model_validate({**report(),**change}),REQUEST,REQUEST.reply_draft,{'get_customer_message','get_policy','get_reply_draft'})
 
+def test_advice_deadline_cannot_be_promoted_to_processing_commitment():
+    bad=ReviewReport.model_validate({**report(),'revised_reply':'신청 후 3일 이내에 처리됩니다.'})
+    with pytest.raises(ValueError,match='처리·완료 기한'):
+        validate_report(bad,REQUEST,REQUEST.reply_draft,{'get_customer_message','get_policy','get_reply_draft'})
+
+def test_policy_supported_processing_deadline_is_allowed():
+    request=ReviewRequest(customer_message='환불 방법과 처리 기간을 알려주세요.',
+        policy_text='환불 신청 후 3일 이내에 처리됩니다.',reply_draft='환불을 완료했습니다.')
+    result=ReviewReport.model_validate({**report(),'revised_reply':'신청 후 3일 이내에 처리됩니다.'})
+    validate_report(result,request,request.reply_draft,{'get_customer_message','get_policy','get_reply_draft'})
+
 def test_report_snapshot_sources_and_restart(tmp_path,monkeypatch):
     st,id,run=executed(tmp_path,monkeypatch);assert run['approval_status']=='pending';assert run['reviews'][0]['sources'][0]['version']==2
     assert (tmp_path/run['review_report_path']).is_file();assert run['artifact'] is None

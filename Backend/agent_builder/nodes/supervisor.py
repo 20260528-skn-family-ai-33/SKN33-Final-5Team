@@ -13,6 +13,14 @@ def supervisor_node(state):
                     'status':'needs_input','detail':issue}]}
     if state.get('condition_template') and state.get('issues'):
         return {'route':'invalid','status':'validation_failed','trace':state.get('trace',[])+[{'node':'supervisor','label':'대표 업무 검증 보류','status':'needs_input','detail':'템플릿의 조건·자료 오류를 확인하세요. 저장은 차단됐습니다.'}]}
+    # A broken edge cannot be executed or approved. Allow the existing bounded
+    # planner repair before treating an uncertain verifier result as final;
+    # the revised draft still goes through both validators and user approval.
+    if (any(issue in state.get('issues',[]) for issue in ('존재하지 않는 노드에 연결했습니다.','시작 노드가 없습니다.'))
+            and state.get('repair_count',0)<2):
+        return {'route':'repair','status':'needs_clarification',
+                'trace':state.get('trace',[])+[{'node':'supervisor','label':'연결 오류 수정',
+                'status':'needs_input','detail':'없는 노드 연결을 수정한 뒤 다시 검증합니다.'}]}
     if state.get('verification_enforced'):
         decision=state.get('verification_route')
         if decision in ['manual_review','unsupported']:

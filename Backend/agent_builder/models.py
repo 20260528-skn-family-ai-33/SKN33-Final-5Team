@@ -1,5 +1,5 @@
 from typing import Literal, TypedDict
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictFloat
 
 class Requirement(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -62,6 +62,16 @@ class NodeSettings(BaseModel):
     date_operation: Literal['adjust','format'] | None = None
     date_seconds: StrictInt | None = None
     date_output_format: str | None = Field(default=None, max_length=120)
+    json_operation: Literal['parse','lookup'] | None = None
+    json_path: list[str | StrictInt] | None = Field(default=None, max_length=30)
+    join_keys: list[str] | None = Field(default=None, max_length=10)
+    join_how: Literal['inner','left'] | None = None
+    join_cardinality: Literal['one_to_one','many_to_one'] | None = None
+    list_operation: Literal['select','count'] | None = None
+    list_index: StrictInt | None = Field(default=None,ge=0)
+    compare_keys: list[str] | None = Field(default=None,max_length=10)
+    compare_columns: list[str] | None = Field(default=None,max_length=50)
+    compare_tolerance: StrictFloat | StrictInt | None = Field(default=None,ge=0,allow_inf_nan=False)
     file_ids: list[str]
     query: str | None
     fields: list[str]
@@ -74,7 +84,7 @@ class NodeSettings(BaseModel):
 class WorkflowNode(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str
-    tool: Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','reply_review','review_summary','saved_workflow','agent_node']
+    tool: Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','scalar_calculate','text_transform','base64_codec','text_hash','date_transform','text_statistics','json_transform','join_tables','list_transform','compare_tables','reply_review','review_summary','saved_workflow','agent_node']
     label: str
     bindings: list[Binding]
     settings: NodeSettings
@@ -104,7 +114,7 @@ class AgentDraft(BaseModel):
     name: str = Field(max_length=60)
     purpose: str = Field(max_length=2000)
     instructions: str = Field(max_length=12000)
-    tool_ids: list[Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','reply_review','review_summary','saved_workflow','agent_node']] = Field(max_length=10)
+    tool_ids: list[Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','scalar_calculate','text_transform','base64_codec','text_hash','date_transform','text_statistics','json_transform','join_tables','list_transform','compare_tables','reply_review','review_summary','saved_workflow','agent_node']] = Field(max_length=10)
     document_ids: list[str] = Field(max_length=10)
     requirements: list[Requirement] = Field(max_length=30)
     questions: list[str] = Field(max_length=3)

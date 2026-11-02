@@ -13,7 +13,7 @@ class Alternative(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
     summary:str=Field(min_length=1,max_length=1000)
     proposed_request:str=Field(min_length=1,max_length=4000)
-    tool_ids:list[str]=Field(min_length=1,max_length=22)
+    tool_ids:list[str]=Field(min_length=1,max_length=26)
     changes:list[Change]=Field(min_length=1,max_length=10)
     limitations:list[str]=Field(min_length=1,max_length=10)
 

@@ -287,6 +287,240 @@
       "status": "local_ready",
       "all_operations_ready": true,
       "operation_count": 2
+    },
+    {
+      "id": "json_transform",
+      "name_ko": "JSON 해석·값 조회",
+      "role_ko": "JSON을 파싱하거나 지정한 키/인덱스 경로를 조회합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "parse",
+          "runtime_id": "json.parse",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수)",
+          "outputs": "JSON value",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "lookup",
+          "runtime_id": "json.lookup",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "value (필수), path (필수)",
+          "outputs": "JSON value",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "join_tables",
+      "name_ko": "두 표 연결",
+      "category": "business",
+      "role_ko": "키로 두 표 연결. 차이 보고/단순 스트림 합치기와 구분",
+      "operations": [
+        {
+          "id": "join",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "left:Table right:Table keys:JoinKey[] how:JoinHow cardinality:Cardinality null_keys:NullKeyPolicy max_rows:Positive",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap",
+          "side_effect": false,
+          "scope": "inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "left",
+              "required": true
+            },
+            {
+              "name": "right",
+              "required": true
+            },
+            {
+              "name": "keys",
+              "required": true
+            },
+            {
+              "name": "how",
+              "required": true
+            },
+            {
+              "name": "cardinality",
+              "required": true
+            },
+            {
+              "name": "null_keys",
+              "required": true
+            },
+            {
+              "name": "max_rows",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "join_records",
+          "runtime_id": "table.join",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "left (필수), right (필수), keys (필수), how='inner', cardinality='many_to_one'",
+          "outputs": "결합 rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "join",
+          "fields": "left:Table right:Table keys:JoinKey[] how:JoinHow cardinality:Cardinality null_keys:NullKeyPolicy max_rows:Positive"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "join",
+          "fields": "table:Table"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "다대다 폭증·동명이 열·null 키 정책 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "list_transform",
+      "name_ko": "목록 선택·개수",
+      "role_ko": "목록의 0 기반 인덱스 선택과 항목 개수를 처리합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "select",
+          "runtime_id": "list.select",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "items (필수), index (필수)",
+          "outputs": "선택 항목",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "count",
+          "runtime_id": "list.count",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "items (필수)",
+          "outputs": "integer",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "compare_tables",
+      "name_ko": "두 표 비교",
+      "category": "business",
+      "role_ko": "두 표의 추가·삭제·변경 보고",
+      "operations": [
+        {
+          "id": "diff",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "baseline:Table candidate:Table keys:str[] compare_columns:str[] absolute_tolerance:NonNegative",
+          "outputs": "differences:TableDiff",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Unique non-null keys; added/deleted/changed cells; absolute numeric tolerance",
+          "side_effect": false,
+          "scope": "Unique non-null keys; added/deleted/changed cells; absolute numeric tolerance",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "baseline",
+              "required": true
+            },
+            {
+              "name": "candidate",
+              "required": true
+            },
+            {
+              "name": "keys",
+              "required": true
+            },
+            {
+              "name": "compare_columns",
+              "required": true
+            },
+            {
+              "name": "absolute_tolerance",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "diff",
+          "fields": "baseline:Table candidate:Table keys:str[] compare_columns:str[] absolute_tolerance:NonNegative"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "diff",
+          "fields": "differences:TableDiff"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "중복 키·숫자 오차·행 순서 비교 정책 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
     }
   ],
   "aliases": {
@@ -313,6 +547,26 @@
     "date.format": {
       "tool_id": "date_transform",
       "operation": "format"
+    },
+    "json.parse": {
+      "tool_id": "json_transform",
+      "operation": "parse"
+    },
+    "json.lookup": {
+      "tool_id": "json_transform",
+      "operation": "lookup"
+    },
+    "table.join": {
+      "tool_id": "join_tables",
+      "operation": "join_records"
+    },
+    "list.select": {
+      "tool_id": "list_transform",
+      "operation": "select"
+    },
+    "list.count": {
+      "tool_id": "list_transform",
+      "operation": "count"
     }
   },
   "status_legend": {

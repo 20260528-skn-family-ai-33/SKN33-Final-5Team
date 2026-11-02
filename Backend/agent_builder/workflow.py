@@ -6,11 +6,13 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
     nodes=workflow['nodes'];edges=workflow['edges'];by={n['id']:n for n in nodes};issues=[]
     if not nodes or len(by)!=len(nodes):return ['워크플로우 노드가 없거나 ID가 중복되었습니다.']
     if any(not re.fullmatch(r'[a-zA-Z][\w-]{0,39}',n['id']) for n in nodes):issues.append('노드 ID 형식을 확인하세요.')
-    if workflow['entry'] not in by:return issues+['시작 노드가 없습니다.']
+    if workflow['entry'] not in by:return issues+['시작 노드가 없습니다. entry는 실제 nodes에 존재하는 노드 ID여야 합니다.']
     outgoing={id:[] for id in by};parents={id:set() for id in by}
     if len({(e['source'],e['target'],e['branch']) for e in edges})!=len(edges):issues.append('중복된 연결이 있습니다.')
     for e in edges:
-        if e['source'] not in by or e['target'] not in by:issues.append('존재하지 않는 노드에 연결했습니다.');continue
+        if e['source'] not in by or e['target'] not in by:
+            issues.append('존재하지 않는 노드에 연결했습니다. edges의 source와 target은 실제 nodes의 ID여야 하며 빈 값이나 가상 start를 사용할 수 없습니다.')
+            continue
         outgoing[e['source']].append(e);parents[e['target']].add(e['source'])
     visiting=set();done=set();ancestors={}
     def visit(id):
@@ -29,7 +31,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
         reached.add(id)
         for edge in outgoing[id]:reach(edge['target'])
     reach(workflow['entry'])
-    if reached!=set(by):issues.append('시작 노드에서 실행할 수 없는 노드가 있습니다.')
+    if reached!=set(by):issues.append('시작 노드에서 실행할 수 없는 노드가 있습니다. entry에서 각 노드로 이어지는 edges를 확인하세요.')
     # This compiler executes one active path, not parallel fan-out/join.
     for n in nodes:
         id=n['id'];tool=n['tool'];bindings=n['bindings'];settings=n['settings'];ins,outs=node_ports(n)
@@ -136,6 +138,16 @@ def normalize_connections(workflow):
     """Resolve unambiguous port aliases using registered types; never invent topology."""
     if not workflow:return workflow
     by={n['id']:n for n in workflow['nodes']}
+    def node_of(reference,side):
+        # "node:port" names one real node only when that node owns the port.
+        if reference in by or not isinstance(reference,str) or ':' not in reference:return reference
+        identifier,port=reference.rsplit(':',1)
+        return identifier if identifier in by and port in node_ports(by[identifier])[side] else reference
+    for edge in workflow['edges']:
+        edge['source']=node_of(edge['source'],1);edge['target']=node_of(edge['target'],0)
+    for node in workflow['nodes']:
+        for binding in node['bindings']:
+            binding['node_id']=node_of(binding['node_id'],1)
     if workflow['entry'] not in by:
         targets={e['target'] for e in workflow['edges']}
         roots=[id for id in by if id not in targets]

@@ -55,8 +55,28 @@ def test_scope_and_existing_references_are_preserved():
     s=context();assert eligible(s)
     for changes in [{'condition_enforced':False},{'required_node_refs':['existing@1']},
                     {'condition_ledger':{**s['condition_ledger'],'operations':['filter','deduplicate']}},
+                    {'resources':[{'kind':'table','id':'a'},{'kind':'table','id':'b'}]},
                     {'condition_ledger':{**s['condition_ledger'],'decision':'clarify'}}]:
         assert not eligible({**s,**changes})
+
+
+def test_complete_combined_contract_preserves_conditions_files_and_rejects_direct_refs():
+    s=context()
+    ledger=s['condition_ledger']
+    ledger['operations']=['filter','deduplicate']
+    ledger['slots'].update({'duplicate.field':{'status':'specified','value':'거래ID'},
+                            'duplicate.policy':{'status':'specified','value':'last'}})
+    s['resources']=[{'id':'selected-file','kind':'table'}]
+    assert eligible(s)
+    raw=ir(s)
+    raw['execution_plan'].update(duplicate_field='거래ID',duplicate_policy='last')
+    raw['workflow']['steps'][0]['settings']['file_ids']=['selected-file']
+    before=deepcopy(raw);compiled=compile_plan(raw,s)
+    assert compiled['execution_plan']==raw['execution_plan'] and raw==before
+    assert compiled['workflow']['nodes'][0]['settings']['file_ids']==['selected-file']
+    for field in ('output_node','output_port','node_ref','agent_id','agent_version'):
+        bad=deepcopy(raw);bad['workflow']['steps'][1]['settings'][field]=1 if field=='agent_version' else 'unknown'
+        with pytest.raises(ValueError):compile_plan(bad,s)
 
 
 def test_ir_schema_requires_steps_and_preserves_public_workflow_schema():
@@ -78,3 +98,16 @@ def test_opt_in_ir_still_runs_original_validation_and_needs_confirmation(monkeyp
     assert result['trace'][-1]['workflow_compiler']=='ordered_steps_v1'
     ctx=json.loads(fake.calls[0][1]['content'].split('\n',1)[1])
     assert len(ctx['supported_tools'])==4 and ctx['output_contract']['workflow_encoding']=='ordered_steps_v1'
+
+
+def test_ir_step_bounds_follow_existing_compile_and_audit_requirements_only():
+    s=context();slots=s['condition_ledger']['slots']
+    steps=schema_for(decoder_schema('v8'),s)['properties']['workflow']['properties']['steps']
+    assert steps['minItems']==2+('output.format' in slots) and steps['maxItems']==4
+    # A lone read_table, as seen in real failed drafts, is below the grammar floor;
+    # if a grammar is ignored, compile+audit still block it and nothing is inserted.
+    raw=ir(s,('read_table',));d=compile_plan(raw,s)
+    assert [n['tool'] for n in d['workflow']['nodes']]==['read_table']
+    assert audit_conditions({**s,'draft':d})['semantic_issues']
+    no_format=deepcopy(s);no_format['condition_ledger']['slots'].pop('output.format',None)
+    assert schema_for(decoder_schema('v8'),no_format)['properties']['workflow']['properties']['steps']['minItems']==2

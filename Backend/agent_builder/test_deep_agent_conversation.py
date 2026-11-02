@@ -223,13 +223,39 @@ def test_unreadable_json_twice_stops(monkeypatch):
         make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
     assert len(calls)==2
 
-def test_missing_tool_selection_is_not_reclassified_as_json_error(monkeypatch):
+def test_skipped_tool_selection_continues_once_with_context_catalog(monkeypatch):
+    """Real Ollama shape: forced tool_choice ignored, model answers in prose."""
     from langchain_core.messages import AIMessage
+    from agent_builder.registry import TOOLS
+    calls=[];factories=[]
+    def factory(**kwargs):
+        factories.append(kwargs)
+        class Agent:
+            def invoke(self,payload,config):
+                calls.append(payload)
+                if len(calls)==1:return {'messages':[AIMessage(content='기준이 모호하여 질문합니다.')]}
+                context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
+                assert context['supported_tools']==TOOLS
+                return {'structured_response':draft(questions=['기준을 알려주세요'])}
+        return Agent()
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',factory)
+    s=state([{'role':'user','content':'업무 요청'}]);before=deepcopy(s)
+    result=make_conversation(None,'test',model_factory=lambda:object())(s)
+    assert len(calls)==2 and factories[1]['checkpointer'] is False and calls[0]==calls[1]
+    assert result['draft']['questions']==['기준을 알려주세요'] and not result['confirmed']
+    assert result['trace'][-1]['tool_selection_fallback'] is True and s==before
+
+
+def test_skipped_tool_selection_fallback_is_bounded(monkeypatch):
+    from langchain_core.messages import AIMessage
+    calls=[]
     class Agent:
-        def invoke(self,payload,config):return {'messages':[AIMessage(content='도구를 확인하겠습니다')]}
+        def invoke(self,payload,config):calls.append(1);return {'messages':[AIMessage(content='도구를 확인하겠습니다')]}
     monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
-    with pytest.raises(ValueError,match='도구 목록 확인이 완료되지 않아'):
+    with pytest.raises(ValueError,match='한 번 다시 생성'):
         make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
+    # tool selection + one context-catalog draft stage + one existing JSON repair.
+    assert len(calls)==3
 
 def test_direct_catalog_supplies_registry_without_model_tool_call(monkeypatch):
     from agent_builder.registry import TOOLS
@@ -242,6 +268,23 @@ def test_direct_catalog_supplies_registry_without_model_tool_call(monkeypatch):
     monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
     result=make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
     assert result['draft']['questions']==['기준을 알려주세요']
+
+@pytest.mark.parametrize('mode,expected_output,expected_count', [('off','typo',0),('safe','table',1)])
+def test_optional_binding_repair_in_generation_is_audited(monkeypatch,mode,expected_output,expected_count):
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','direct')
+    monkeypatch.setenv('A4B_BINDING_REPAIR_MODE',mode)
+    w={'entry':'read','nodes':[node('read','read_table',file_ids=['asset']),
+       node('save','write_result',[bind('table','read','typo')],format='json')],
+       'edges':[edge('read','save')]}
+    class Agent:
+        def invoke(self,payload,config):return {'structured_response':draft(workflow=w)}
+    monkeypatch.setattr('agent_builder.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    s=state([{'role':'user','content':'표를 저장해줘'}])
+    s['resources']=[{'id':'asset','kind':'table','name':'a.csv','columns':['value'],'profile':{}}]
+    result=make_conversation(None,'test',model_factory=lambda:object())(s)
+    assert result['draft']['workflow']['nodes'][1]['bindings'][0]['output']==expected_output
+    assert len(result['trace'][-1]['binding_repairs'])==expected_count
+    assert not result['confirmed'] and result['saved_agent_id'] is None
 
 def test_length_error_is_not_parsed_as_json_or_retried(monkeypatch):
     from openai import LengthFinishReasonError

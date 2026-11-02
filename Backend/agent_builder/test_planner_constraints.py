@@ -49,10 +49,41 @@ def test_confirmed_filter_is_bound_to_current_value_not_previous_draft(operator,
     assert schema['$defs']['WorkflowDefinition']==decoder_schema('v6')['$defs']['WorkflowDefinition']
 
 
-def test_pending_or_combined_conditions_do_not_bind_filter_values():
+def test_pending_or_incomplete_combined_conditions_do_not_bind_filter_values():
     for ledger in [{'decision':'clarify','operations':['filter']},{'decision':'ready','operations':['filter','deduplicate']}]:
         schema=native_decoder_schema(decoder_schema('v6'),[],ledger)
         assert 'enum' not in schema['$defs']['FilterCondition']['properties']['value']
+
+
+def test_complete_combined_contract_constrains_both_graph_and_step_encodings():
+    from agent_builder.linear_plan import schema_for
+    values={'filter.field':'가격','filter.operator':'gte','filter.value':27000,
+            'duplicate.field':'상품번호','duplicate.policy':'first',
+            'missing.policy':'exclude','output.format':'csv','sort.policy':'none'}
+    ledger={'decision':'ready','operations':['filter','deduplicate'],
+            'slots':{k:{'status':'specified','value':v} for k,v in values.items()}}
+    original=deepcopy(ledger)
+    graph=native_decoder_schema(decoder_schema('v7'),[],ledger,require_ready_draft=True)
+    steps=schema_for(decoder_schema('v8'),{'condition_enforced':True,'condition_ledger':ledger,'resources':[]})
+    for schema in (graph,steps):
+        for key in ('questions','question_options','unsupported'):
+            assert schema['properties'][key]['maxItems']==0
+        plan=schema['$defs']['ExecutionPlan'];props=plan['properties']
+        assert props['filters']['minItems']==props['filters']['maxItems']==1
+        assert props['sort']['maxItems']==0
+        assert props['duplicate_field']['enum']==['상품번호']
+        assert props['duplicate_policy']['enum']==['first']
+        assert props['missing_policy']['enum']==['exclude']
+        assert props['output_format']['enum']==['csv']
+        assert set(('filters','sort','duplicate_field','duplicate_policy','missing_policy','output_format'))<=set(plan['required'])
+        assert schema['$defs']['FilterCondition']['properties']['operator']['enum']==['gte']
+        assert schema['$defs']['FilterCondition']['properties']['value']['enum']==[27000]
+        condition=schema['$defs']['FilterCondition']['properties']
+        assert condition['compare_field']=={'type':'null','enum':[None]}
+        assert condition['value']=={'type':'number','enum':[27000]}
+        assert props['duplicate_field']=={'type':'string','enum':['상품번호']}
+    assert graph['$defs']['ExecutionPlan']==steps['$defs']['ExecutionPlan']
+    assert ledger==original
 
 
 def test_repair_options_use_real_ancestor_ports_and_do_not_modify_graph():
@@ -119,3 +150,71 @@ def test_ignored_ready_grammar_is_still_blocked_by_code_audit(monkeypatch):
     assert result['issues'] and result['confirmed'] is False
     assert supervisor_node(result)['route']=='repair'
     assert result.get('saved_agent_id') is None
+
+
+def test_ready_table_tool_scope_blocks_unrequested_aggregation_in_decoder_audit_and_save(monkeypatch):
+    from agent_builder.planner_constraints import TABLE_PLAN_TOOLS,table_tool_issues
+    from agent_builder.test_linear_plan import context
+    from agent_builder.test_condition_readiness import workflow_draft
+    from agent_builder.nodes.condition_check import audit_conditions
+    from agent_builder.capability_gate import require_save_ready
+    s=context();s['node_library']=[]
+    monkeypatch.setenv('A4B_PLANNER_PROMPT','v7')
+    fake=Fake(workflow_draft(s))
+    make_direct_conversation('','fake',model_factory=lambda:fake)(s)
+    variants=fake.schema['$defs']['WorkflowNode']['anyOf']
+    tools={fake.schema['$defs'][v['$ref'].split('/')[-1]]['properties']['tool']['enum'][0] for v in variants}
+    assert tools==set(TABLE_PLAN_TOOLS)
+    ctx=json.loads(fake.calls[0][1]['content'].split('\n',1)[1])
+    assert {t['id'] for t in ctx['supported_tools']}==tools
+    d=workflow_draft(s)
+    d['workflow']['nodes'].insert(2,node('extra','aggregate_table',[bind('table','filter','table')],aggregation='count',fields=[]))
+    d['workflow']['nodes'][-1]['bindings']=[bind('table','extra','table')]
+    d['workflow']['edges']=[edge('read','filter'),edge('filter','extra'),edge('extra','out')]
+    from agent_builder.workflow import workflow_errors
+    assert not workflow_errors(d['workflow'],d['tool_ids']+['aggregate_table'],[],d['execution_plan'])
+    s.update(draft=d,confirmed=True)
+    assert table_tool_issues(s)
+    assert any('범위에 없는 도구' in i for i in audit_conditions(s)['semantic_issues'])
+    with pytest.raises(ValueError,match='확정 업무 조건'):require_save_ready(s)
+    # An explicit request outside this scoped contract must retain its full catalog.
+    unrestricted=native_decoder_schema(decoder_schema('v7'),[],None,require_ready_draft=True)
+    assert len(unrestricted['$defs']['WorkflowNode']['anyOf'])==len(PORTS)
+
+
+def test_node_ids_follow_validator_rule_and_scoped_graph_bounds_repetition():
+    import re
+    from agent_builder.planner_constraints import NODE_ID_PATTERN,TABLE_PLAN_TOOLS
+    full=native_decoder_schema(decoder_schema('v7'),[])
+    assert full['$defs']['WorkflowDefinition']==decoder_schema('v7')['$defs']['WorkflowDefinition']
+    for variant in full['$defs']['WorkflowNode']['anyOf']:
+        assert full['$defs'][variant['$ref'].split('/')[-1]]['properties']['id']['pattern']==NODE_ID_PATTERN
+    for good in ('read','node_read_1','finish-2'):
+        assert re.fullmatch(NODE_ID_PATTERN.strip('^$'),good)
+    for bad in ('1','_a','a'*41):  # e.g. real failed draft used IDs "1".."4"
+        assert not re.fullmatch(NODE_ID_PATTERN.strip('^$'),bad)
+    scoped=native_decoder_schema(decoder_schema('v7'),[],None,require_ready_draft=True,allowed_tools=TABLE_PLAN_TOOLS)
+    graph=scoped['$defs']['WorkflowDefinition']['properties']
+    assert graph['nodes']['maxItems']==4 and graph['edges']['maxItems']==3
+
+
+def test_scoped_finish_offers_only_ports_an_in_scope_producer_supplies():
+    from agent_builder.planner_constraints import TABLE_PLAN_TOOLS,TERMINAL_TOOLS
+    assert set(TERMINAL_TOOLS)<=set(PORTS)
+    scoped=native_decoder_schema(decoder_schema('v7'),[],None,require_ready_draft=True,allowed_tools=TABLE_PLAN_TOOLS)
+    finish=scoped['$defs']['NativeBinding_finish']['anyOf']
+    # Real failed draft bound finish.text <- write_result.text; no in-scope tool emits text.
+    assert [(b['properties']['input']['enum'],b['properties']['output']['enum']) for b in finish]==[(['artifact'],['artifact'])]
+    assert scoped['$defs']['NativeBinding_write_result']['anyOf'][0]['properties']['output']['enum']==['table']
+    # The full catalog keeps every producer; an added text producer reopens text automatically.
+    full=native_decoder_schema(decoder_schema('v7'),[])
+    assert {b['properties']['input']['enum'][0] for b in full['$defs']['NativeBinding_finish']['anyOf']}=={'text','artifact'}
+    wider=native_decoder_schema(decoder_schema('v7'),[],None,allowed_tools=(*TABLE_PLAN_TOOLS,'compose_answer','read_document'))
+    assert {b['properties']['input']['enum'][0] for b in wider['$defs']['NativeBinding_finish']['anyOf']}=={'text','artifact'}
+
+
+@pytest.mark.parametrize('tools,message',[(('read_table','unknown_ml_tool'),'포트가 등록되지 않은'),
+                                          (('read_document','write_result'),'필수 입력을 공급할')])
+def test_inconsistent_scope_fails_loudly_instead_of_hiding_tools(tools,message):
+    with pytest.raises(ValueError,match=message):
+        native_decoder_schema(decoder_schema('v7'),[],None,allowed_tools=tools)

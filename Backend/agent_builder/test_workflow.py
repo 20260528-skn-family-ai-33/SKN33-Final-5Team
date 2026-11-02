@@ -135,3 +135,20 @@ def test_explicit_empty_filter_is_not_overridden_by_global_exclusion():
 def test_backwards_data_binding_is_rejected_without_recursion():
     w={'entry':'read','nodes':[node('read','read_table'),node('group','aggregate_table',[bind('table','filter','table')],fields=['status']),node('filter','filter_sort',[bind('table','group','table')])],'edges':[edge('read','group'),edge('group','filter')]}
     assert workflow_errors(w,['read_table','aggregate_table','filter_sort'],[{'id':'a','kind':'table','columns':['status']}])
+
+
+def test_node_port_edge_references_resolve_only_to_a_real_node_port():
+    """Real Deep Agent draft: edges 'read_table_1:table' → 'filter_sort_1:table'."""
+    from agent_builder.workflow import normalize_connections
+    nodes=[node('read_table_1','read_table',file_ids=['f']),node('filter_sort_1','filter_sort',[bind('table','read_table_1','table')]),
+           node('write_result_1','write_result',[bind('table','filter_sort_1','table')],format='json')]
+    wf={'entry':'read_table_1','nodes':copy.deepcopy(nodes),
+        'edges':[edge('read_table_1:table','filter_sort_1:table'),edge('filter_sort_1:table','write_result_1:table')]}
+    assert workflow_errors(wf,['read_table','filter_sort','write_result'],[{'id':'f','kind':'table','columns':['거래ID','비용']}])
+    fixed=normalize_connections(copy.deepcopy(wf))
+    assert fixed['edges']==[edge('read_table_1','filter_sort_1'),edge('filter_sort_1','write_result_1')]
+    assert not workflow_errors(fixed,['read_table','filter_sort','write_result'],[{'id':'f','kind':'table','columns':['거래ID','비용']}])
+    # Unknown node, a port the node does not own, or no port: left for validation to reject.
+    for source in ('missing_1:table','read_table_1:artifact','read_table_1:','start'):
+        kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(nodes),'edges':[edge(source,'filter_sort_1')]})
+        assert kept['edges'][0]['source']==source

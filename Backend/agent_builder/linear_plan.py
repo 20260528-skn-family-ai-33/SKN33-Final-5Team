@@ -1,14 +1,14 @@
 """Scoped ordered-step IR: model selects tools/order/settings; compiler links them.
 
 No tool insertion, no workflow execution, no model calls and no result oracle.
-Only already-READY single filter/dedup jobs may use this optional path.
+Only already-READY single-table filter/dedup jobs may use this optional path.
 """
 from copy import deepcopy
 from .models import AgentDraft,NodeSettings
 from .registry import PORTS
-from .planner_constraints import native_decoder_schema
+from .planner_constraints import native_decoder_schema, ready_table_slots, table_plan_scope, TABLE_PLAN_TOOLS
 
-ALLOWED=('read_table','filter_sort','write_result','finish')
+ALLOWED=TABLE_PLAN_TOOLS
 SYSTEM='''이미 조건 검사가 끝난 단일 표 업무의 실행 단계를 설계합니다. 규격의 JSON 하나만 반환합니다.
 모델은 실제로 필요한 도구의 순서·설정·설명을 결정합니다. workflow.steps에 순서대로 작성합니다.
 노드 ID·entry·edges·bindings는 출력하지 않습니다. 컴파일러가 단계 순서에 따라 연결합니다.
@@ -17,6 +17,8 @@ SYSTEM='''이미 조건 검사가 끝난 단일 표 업무의 실행 단계를 �
 현재는 설계 단계입니다. 파일 미첨부이면 read_table.settings.file_ids=[], document_ids=[]로 생성합니다. 파일은 실행 전에 연결합니다.
 자료 ID는 available_resources의 id만 씁니다. 근거 ID·파일명을 자료 ID로 쓰지 않습니다.
 confirmed_conditions의 실제 값을 execution_plan에 반영합니다. gt는 초과, gte는 이상입니다. 이전 초안 값으로 되돌리지 않습니다.
+선별과 중복 제거가 함께 있으면 하나의 filter_sort 공통 execution_plan에 두 정책을 모두 보존합니다.
+filter_sort는 원본의 중복 보존 정책을 먼저 적용한 뒤 선별하며, 요청된 순서와 다르면 임의로 바꾸지 않습니다.
 단일 중복 제거는 filters=[], sort=[], duplicate_field=실제 중복 열, duplicate_policy=확정된 first/last/keep/error입니다.
 빈 값 처리 방식은 missing_policy이며 별도의 is_empty 필터가 아닙니다. 정렬은 추가하지 않습니다.
 개별 단계 settings.execution_plan은 null입니다. 공통 execution_plan이 조건 처리 단계에 적용됩니다.
@@ -27,14 +29,7 @@ requirements.quote는 source_quote_catalog의 실제 원문을 그대로 선택�
 
 
 def eligible(state):
-    ledger=state.get('condition_ledger') or {}
-    if not state.get('condition_enforced') or ledger.get('decision')!='ready' or state.get('required_node_refs'):
-        return False
-    operations=ledger.get('operations')
-    required={'filter':('filter.field','filter.operator','filter.value'),
-              'deduplicate':('duplicate.field','duplicate.policy')}
-    return bool(operations and len(operations)==1 and operations[0] in required and
-                all(ledger.get('slots',{}).get(k,{}).get('status')=='specified' for k in required[operations[0]]))
+    return table_plan_scope(state)
 
 
 def schema_for(base,state):
@@ -45,12 +40,19 @@ def schema_for(base,state):
     settings['properties']['execution_plan']={'type':'null'}
     settings['properties']['condition_field']={'type':'null'}
     settings['properties']['condition_operator']={'type':'null'}
+    for field in ('output_node','output_port','node_ref','agent_id','agent_version'):
+        settings['properties'][field]={'type':'null'}
     schema['$defs']['LinearSettings']=settings
     schema['$defs']['LinearStep']={'type':'object','additionalProperties':False,
         'properties':{'tool':{'type':'string','enum':list(ALLOWED)},'label':{'type':'string'},
                       'settings':{'$ref':'#/$defs/LinearSettings'}},'required':['tool','label','settings']}
+    # Length bounds mirror existing compile/audit rules only: read_table first,
+    # filter_sort for the READY transform, write_result for a confirmed format.
+    # Which tools and in what order stays the model's choice; nothing is inserted.
+    slots=ready_table_slots(state['condition_ledger'])
+    minimum=2+('output.format' in slots)
     schema['properties']['workflow']={'type':'object','additionalProperties':False,
-        'properties':{'steps':{'type':'array','minItems':1,'maxItems':5,'items':{'$ref':'#/$defs/LinearStep'}}},'required':['steps']}
+        'properties':{'steps':{'type':'array','minItems':minimum,'maxItems':len(ALLOWED),'items':{'$ref':'#/$defs/LinearStep'}}},'required':['steps']}
     schema['properties']['tool_ids']['items']['enum']=list(ALLOWED)
     # Remove unreachable native-node variants from the transport grammar.
     for key in list(schema['$defs']):
@@ -79,6 +81,9 @@ def compile_plan(raw,state):
         settings=NodeSettings.model_validate(step['settings']).model_dump()
         if settings.get('execution_plan') is not None:
             raise ValueError('선형 단일 업무의 개별 execution_plan은 null이어야 합니다.')
+        if any(settings.get(field) is not None for field in
+               ('output_node','output_port','node_ref','agent_id','agent_version')):
+            raise ValueError('선형 단계에서 직접 노드·저장 도구 참조는 허용하지 않습니다.')
         bindings=[]
         if index:
             previous=nodes[-1];inputs,outputs=PORTS[tool][0],PORTS[previous['tool']][1]

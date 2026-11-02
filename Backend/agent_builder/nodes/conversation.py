@@ -235,10 +235,15 @@ def make_conversation(api_key,model,model_factory=None):
                         raise ValueError('모델 응답이 길이 제한으로 중단되어 초안을 완성하지 못했습니다. 요청은 보존되며 다시 시도할 수 있습니다.') from error
                     raise
         result=invoke_agent(agent,messages)
+        catalog_fallback=False
         if not registry_read and result.get('structured_response') is None:
             from ..graph import _timing_event
-            _timing_event({'event':'tool_selection_incomplete','stage':'tool_selection'})
-            raise ValueError('도구 목록 확인이 완료되지 않아 초안 생성을 중단했습니다. 요청은 보존되며 다시 시도할 수 있습니다.')
+            # Some OpenAI-compatible servers (e.g. Ollama) do not enforce a forced
+            # tool_choice. The exact catalogue is already in the context message, so
+            # continue once to the structured draft stage instead of aborting.
+            _timing_event({'event':'tool_selection_incomplete','stage':'tool_selection','fallback':'context_catalog'})
+            registry_read=catalog_fallback=True
+            result=invoke_agent(create_deep_agent(**agent_options,checkpointer=False),messages)
         content_fallback=result.get('structured_response') is None
         conversation_tool_calls=[call['name'] for message in result.get('messages',[]) for call in getattr(message,'tool_calls',[])]
         parse_error=None
@@ -279,6 +284,19 @@ def make_conversation(api_key,model,model_factory=None):
         if raw.get('questions') or raw.get('unsupported'):
             raw['execution_plan']={'filters':[],'sort':[],'match':'all','missing_policy':'keep','duplicate_policy':'keep','duplicate_field':None,'output_format':raw.get('execution_plan',{}).get('output_format','json')}
         raw['workflow']=normalize_connections(raw.get('workflow'))
+        repair_mode=os.getenv('A4B_BINDING_REPAIR_MODE','off')
+        if repair_mode not in ('off','safe'):
+            raise ValueError('A4B_BINDING_REPAIR_MODE는 off/safe여야 합니다.')
+        binding_changes=[]
+        if raw['workflow'] and repair_mode=='safe':
+            from ..binding_repairs import repair_bindings
+            # Work on a validated shape; existing full workflow/condition checks
+            # still run and may reject the result. Never infer missing topology.
+            validated=WorkflowDefinition.model_validate(raw['workflow']).model_dump()
+            raw['workflow'],binding_changes=repair_bindings(validated,state['resources'])
+            from ..graph import _timing_event
+            _timing_event({'event':'binding_repairs','count':len(binding_changes),
+                           'rules':[change['rule'] for change in binding_changes]})
         final_validation={'valid':None,'issues':[]}
         if raw['workflow']:
             final_validation=validate_workflow.invoke({'workflow_json':json.dumps(raw['workflow'],ensure_ascii=False),
@@ -309,5 +327,5 @@ def make_conversation(api_key,model,model_factory=None):
             draft['explanation']='업무 조건과 처리 순서를 확인해주세요.'
         reply=draft['explanation']+'\n'+('\n'.join('• '+q for q in draft['questions']))+('\n지원 범위: '+ ' / '.join(draft['unsupported']) if draft['unsupported'] else '')
         prior=state['messages'][:-1] if state.get('issues') and state['messages'] and state['messages'][-1]['role']=='assistant' else state['messages']
-        return {'node_library':pool,'semantic_issues':list(dict.fromkeys(final_validation['issues']+([ref_issue] if ref_issue else []))),'messages':prior+[{'role':'assistant','content':reply.strip()}],'draft':draft,'confirmed':False,'saved_agent_id':None,'repair_count':state.get('repair_count',0)+1,'trace':state.get('trace',[])+[{'node':'conversation','label':'대화로 설정 구성','status':'completed','detail':'Deep Agents가 대화를 검토하고 질문 또는 설정 초안을 구성했습니다.','tool_calls':conversation_tool_calls,'json_content_fallback':content_fallback,'response_relation_repairs':relation_repairs,'final_code_validation':final_validation['valid'],'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
+        return {'node_library':pool,'semantic_issues':list(dict.fromkeys(final_validation['issues']+([ref_issue] if ref_issue else []))),'messages':prior+[{'role':'assistant','content':reply.strip()}],'draft':draft,'confirmed':False,'saved_agent_id':None,'repair_count':state.get('repair_count',0)+1,'trace':state.get('trace',[])+[{'node':'conversation','label':'대화로 설정 구성','status':'completed','detail':'Deep Agents가 대화를 검토하고 질문 또는 설정 초안을 구성했습니다.','tool_calls':conversation_tool_calls,'json_content_fallback':content_fallback,'tool_selection_fallback':catalog_fallback,'response_relation_repairs':relation_repairs,'binding_repairs':binding_changes,'final_code_validation':final_validation['valid'],'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
     return conversation_node

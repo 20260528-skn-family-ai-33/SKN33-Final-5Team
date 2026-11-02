@@ -119,6 +119,18 @@ class PipelineTests(unittest.TestCase):
             for actual in crop.info['dpi']:
                 self.assertAlmostEqual(actual, 216, delta=.03)
 
+    def test_ocr_pieces_are_joined_into_visual_lines(self):
+        from documents.analysis.pipeline import ocr_text
+        # Detection order from the GS25 receipt: name, price, then the quantity found last.
+        result = {'rec_texts': ['마늘빅프랑크', '2,100', '예거라들러레몬', '3,300', '', '1', '1'],
+                  'rec_boxes': [[10, 0, 200, 30], [420, 2, 520, 30], [10, 40, 220, 70], [420, 41, 520, 70],
+                                [0, 0, 1, 1], [300, 3, 320, 29], [300, 42, 320, 69]]}
+        self.assertEqual(ocr_text(result), '마늘빅프랑크 1 2,100\n예거라들러레몬 1 3,300')
+        # A piece overlapping two rows only slightly does not merge them.
+        self.assertEqual(ocr_text({'rec_texts': ['위', '아래'], 'rec_boxes': [[0, 0, 50, 30], [60, 22, 120, 52]]}), '위\n아래')
+        self.assertEqual(ocr_text({'rec_texts': ['a', 'b']}), 'a\nb')
+        self.assertEqual(ocr_text({'rec_texts': ['a', 'b'], 'rec_boxes': [[0, 0, 1, 1]]}), 'a\nb')
+
     def test_image_without_usable_region_is_ocr_whole_once(self):
         class LowScoreEngines(Engines):
             def run(self, engine, **kwargs):

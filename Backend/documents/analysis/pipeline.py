@@ -30,6 +30,30 @@ def ocr_scale(size):
     return 1 if long_side >= OCR_UPSCALE_BELOW else min(OCR_MAX_SCALE, -(-OCR_UPSCALE_BELOW // long_side))
 
 
+def ocr_text(result):
+    """Join OCR pieces into visual lines using their boxes.
+
+    PaddleOCR returns pieces in detection order, so a receipt row "마늘빅프랑크  1  2,100" came back as
+    separate lines and quantities drifted next to other items. Pieces whose vertical spans overlap by at
+    least half of the shorter piece form one line, ordered left to right. Without usable boxes the
+    detection order is kept.
+    """
+    texts, boxes = result.get('rec_texts', []), result.get('rec_boxes')
+    if not boxes or len(boxes) != len(texts):
+        return '\n'.join(texts)
+    pieces = sorted(((float(b[1]), float(b[3]), float(b[0]), t) for t, b in zip(texts, boxes) if t.strip()),
+                    key=lambda p: (p[0] + p[1]) / 2)
+    lines = []
+    for top, bottom, left, text in pieces:
+        line = lines[-1] if lines else None
+        # The band stays that of the line's first piece; widening it would chain adjacent rows on a skewed photo.
+        if line and min(bottom, line['bottom']) - max(top, line['top']) >= .5 * min(bottom - top, line['bottom'] - line['top']):
+            line['pieces'].append((left, text))
+        else:
+            lines.append(dict(top=top, bottom=bottom, pieces=[(left, text)]))
+    return '\n'.join(' '.join(t for _, t in sorted(line['pieces'])) for line in lines)
+
+
 def canonical_kind(kind):
     if kind in {'table', 'table_body'}:
         return 'table'
@@ -313,7 +337,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                 job = mapped[output['source']]
                 seen.add(output['source'])
                 region = job['parent']
-                text = '\n'.join(output['result'].get('rec_texts', []))
+                text = ocr_text(output['result'])
                 item = block('ocr-' + str(len(result['blocks']) + 1), 'text', region['native_location'],
                              parent=region['id'], unit=region['unit_id'], text=text, engine='paddleocr',
                              data={'ocr_scores': output['result'].get('rec_scores', []), 'crop_origin': job['origin'],

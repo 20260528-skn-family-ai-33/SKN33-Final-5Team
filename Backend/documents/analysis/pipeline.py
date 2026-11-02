@@ -18,6 +18,16 @@ PRIMARY = {'pdf': 'mineru', 'hwp': 'docling', 'hwpx': 'docling', 'doc': 'docling
            'docx': 'docling', 'ppt': 'docling', 'pptx': 'docling', 'xls': 'native', 'xlsx': 'native',
            'csv': 'native', 'tsv': 'native', 'txt': 'native', 'md': 'native',
            **{fmt: 'layout' for fmt in IMAGE_FORMATS}}
+# Text crops of small photos are enlarged before OCR. A 567x1140 receipt photo gave ~15px text lines;
+# the mobile detector merged them and the item lines came back as noise, while the same crop at 2x read correctly.
+OCR_UPSCALE_BELOW = 1500
+OCR_MAX_SCALE = 3
+
+
+def ocr_scale(size):
+    """Integer enlargement for text crops of an image whose long side is below OCR_UPSCALE_BELOW."""
+    long_side = max(size)
+    return 1 if long_side >= OCR_UPSCALE_BELOW else min(OCR_MAX_SCALE, -(-OCR_UPSCALE_BELOW // long_side))
 
 
 def canonical_kind(kind):
@@ -49,7 +59,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                   warnings=[], review_required=False, review_reasons=[], conversions=[], signals=[],
                   status='succeeded', routing_decisions=[dict(phase='primary', rule='source_format_default',
                   processor=PRIMARY[fmt], source_format=fmt)], policy=dict(max_supplements=max_supplements, scan_characters=30,
-                  broken_ratio=.05, scan_image_fraction=.6, detection_threshold=.5, thresholds_are_provisional=True))
+                  broken_ratio=.05, scan_image_fraction=.6, detection_threshold=.5, thresholds_are_provisional=True,
+                  ocr_upscale_below=OCR_UPSCALE_BELOW, ocr_max_scale=OCR_MAX_SCALE))
     def review(reason):
         if reason not in result['warnings']:
             result['warnings'].append(reason)
@@ -239,12 +250,21 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                             review('invalid_region_crop')
                             continue
                         crop_path = work / ('crop-' + region['id'] + '.png')
+                        # Tables keep source pixels for Docling; only OCR input is enlarged.
+                        scale = ocr_scale(job['size']) if kind == 'text' else 1
                         with Image.open(job['path']) as picture:
                             resolution = png_resolution(picture)
-                            picture.crop(crop_bounds).save(crop_path, **resolution)
+                            cropped = picture.crop(crop_bounds)
+                            if scale > 1:
+                                cropped = cropped.resize((cropped.width * scale, cropped.height * scale), Image.LANCZOS)
+                                if resolution:
+                                    resolution = {'dpi': tuple(v * scale for v in resolution['dpi'])}
+                            cropped.save(crop_path, **resolution)
                         region['artifact'] = str(crop_path.relative_to(work))
                         region['data']['crop_origin'] = list(crop_bounds[:2])
                         region['data']['crop_dpi'] = resolution.get('dpi')
+                        # OCR coordinates inside the crop are divided by this to return to upright pixels.
+                        region['data']['crop_scale'] = scale
                         (ocr_jobs if kind == 'text' else table_jobs).append(dict(path=crop_path, parent=region, context=job))
                     elif kind in {'formula', 'chart', 'unknown'}:
                         region['status'] = 'review_required'
@@ -270,7 +290,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                 text = '\n'.join(output['result'].get('rec_texts', []))
                 item = block('ocr-' + str(len(result['blocks']) + 1), 'text', region['native_location'],
                              parent=region['id'], unit=region['unit_id'], text=text, engine='paddleocr',
-                             data={'ocr_scores': output['result'].get('rec_scores', []), 'crop_origin': region['data']['crop_origin']})
+                             data={'ocr_scores': output['result'].get('rec_scores', []), 'crop_origin': region['data']['crop_origin'],
+                                   'crop_scale': region['data']['crop_scale']})
                 item['parser_version'] = recognized['version']
                 result['blocks'].append(item)
                 if not text.strip():

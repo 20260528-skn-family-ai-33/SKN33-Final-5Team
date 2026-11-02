@@ -105,6 +105,32 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(any(b['artifact'] for b in data['blocks'] if 'image' in b['content_types']))
         self.assertIn('000017', payload['text'])
 
+    def test_small_photo_text_crop_is_enlarged_for_ocr_and_origin_stays_in_source_pixels(self):
+        from documents.analysis.pipeline import ocr_scale
+        self.assertEqual([ocr_scale(s) for s in [(567, 1140), (900, 600), (1500, 800), (100, 90)]], [2, 2, 1, 3])
+        source = self.root / 'small.png'
+        Image.new('RGB', (100, 90), 'white').save(source, dpi=(72, 72))
+        payload = run(source, self.work, engines=Engines())
+        region = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'layout')
+        ocr = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'paddleocr')
+        self.assertEqual((region['data']['crop_origin'], region['data']['crop_scale'], ocr['data']['crop_scale']), ([2, 3], 3, 3))
+        with Image.open(self.work / region['artifact']) as crop:
+            self.assertEqual(crop.size, (94 * 3, 78 * 3))
+            for actual in crop.info['dpi']:
+                self.assertAlmostEqual(actual, 216, delta=.03)
+
+    def test_large_photo_and_table_crops_keep_source_pixels(self):
+        source = self.root / 'large.png'
+        Image.new('RGB', (1600, 900), 'white').save(source)
+        payload = run(source, self.work, engines=Engines())
+        region = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'layout')
+        self.assertEqual(region['data']['crop_scale'], 1)
+        with Image.open(self.work / region['artifact']) as crop:
+            self.assertEqual(crop.size, (94, 78))
+        table = run(self.picture(), self.root / 'table-work', engines=Engines(table=True))
+        region = next(b for b in table['document_analysis']['blocks'] if b['engine'] == 'layout')
+        self.assertEqual(region['data']['crop_scale'], 1)
+
     def test_image_table_goes_to_docling_and_crop_coordinates_stay_local(self):
         payload = run(self.picture(), self.work, engines=Engines(table=True))
         data = payload['document_analysis']

@@ -119,6 +119,36 @@ class PipelineTests(unittest.TestCase):
             for actual in crop.info['dpi']:
                 self.assertAlmostEqual(actual, 216, delta=.03)
 
+    def test_image_without_usable_region_is_ocr_whole_once(self):
+        class LowScoreEngines(Engines):
+            def run(self, engine, **kwargs):
+                parsed = super().run(engine, **kwargs)
+                if engine == 'layout':
+                    for output in parsed['outputs']:
+                        output['result']['boxes'][0]['score'] = .3
+                return parsed
+        engine = LowScoreEngines()
+        payload = run(self.picture(), self.work, engines=engine)
+        data = payload['document_analysis']
+        self.assertEqual([a['processor'] for a in engine.attempts], ['layout', 'paddleocr'])
+        self.assertEqual(engine.attempts[1]['scope'], [data['blocks'][0]['id']])
+        ocr = next(b for b in data['blocks'] if b['engine'] == 'paddleocr')
+        self.assertEqual((ocr['parent_object_id'], ocr['data']['crop_origin'], ocr['data']['crop_scale']), (data['blocks'][0]['id'], [0, 0], 3))
+        self.assertIn('정산금엑 000017', payload['text'])
+        self.assertIn('whole_image_ocr_fallback:no_text_region_detected', data['review_reasons'])
+        self.assertTrue(any(d.get('rule') == 'no_text_region_detected' for d in data['routing_decisions']))
+        with Image.open(self.work / ('ocr-' + data['blocks'][0]['id'] + '.png')) as whole:
+            self.assertEqual(whole.size, (300, 270))
+
+    def test_layout_failure_falls_back_to_whole_image_ocr(self):
+        engine = Engines(fail={'layout'})
+        payload = run(self.picture(), self.work, engines=engine)
+        data = payload['document_analysis']
+        self.assertEqual([a['processor'] for a in engine.attempts], ['layout', 'paddleocr'])
+        self.assertIn('image_classification:dependency_missing', data['review_reasons'])
+        self.assertIn('whole_image_ocr_fallback:layout_unavailable', data['review_reasons'])
+        self.assertIn('정산금엑 000017', payload['text'])
+
     def test_large_photo_and_table_crops_keep_source_pixels(self):
         source = self.root / 'large.png'
         Image.new('RGB', (1600, 900), 'white').save(source)

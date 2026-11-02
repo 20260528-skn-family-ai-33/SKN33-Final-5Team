@@ -1,0 +1,81 @@
+# 영수증 이미지 → CSV 정리 개선 기록
+
+기록 시작: 2026-11-02. 영수증 사진(`영수증.png`, GS25, 567×1140, 72dpi)을 올려 "엑셀로 정리해줘"를 요청했을 때 발견한 오류와 수정 내역이다. 각 항목은 **증상 → 원인 → 수정(코드) → 검증** 순서로 적는다. 수치는 위 영수증 1장 기준이며 일반 정확도를 뜻하지 않는다.
+
+## 처리 흐름 (이미지 입력)
+
+```
+업로드 → [파서] EXIF 회전 보정 → 레이아웃 분석(PP-DocLayout_plus-L)
+       → 영역별 라우팅: text → PaddleOCR(PP-OCRv5 mobile det + korean rec) / table → Docling / 그 외 → 검토 필요
+       → [설계] 문서 표 정리 고정 흐름(document_rows_template): 항목 질문 → read_document → extract_information(rows) → export_result(csv)
+       → [실행] LLM이 OCR 텍스트에서 항목별 값 추출, 원문 인용과 대조해 검증 → CSV 저장
+```
+
+파서 모델은 모두 CPU에서 실행된다(`A4B_PADDLE_DEVICE` 기본값 `cpu`).
+
+---
+
+## 1. "전체 다"가 열 이름 하나로 저장됨
+
+| 구분 | 내용 |
+|---|---|
+| 증상 | CSV 열이 `file_name, row, 전체 다, status, evidence` 하나뿐이고, OCR 줄이 한 행씩 나열됨 |
+| 원인 | 항목 질문("어떤 항목을 한 줄씩 뽑을까요?")의 답을 쉼표로 나눠 그대로 열 이름으로 사용. "전체 다"처럼 '전부'를 뜻하는 답을 구분하지 않음 (모델 문제가 아니라 코드로 고정된 흐름) |
+| 수정 | `Backend/agent_builder/design/document_rows_template.py` — `wants_all_fields()` 추가. "전체 다/전부/모두/알아서/다 뽑아줘" 등을 인식해 영수증 요청이면 기본 항목(상품명, 단가, 수량, 금액)으로 구성하고 안내, 그 외 문서는 항목 이름을 다시 질문. 명령형("다 뽑아줘")이 취소로 오인되지 않도록 취소 판별보다 먼저 확인 |
+| 검증 | 테스트 16개 추가, `tests/design`·`tests/conditions` 507개 통과. 같은 대화를 재현해 4개 열 생성 확인 |
+| 위치 | 브랜치 `fix/document-rows-all-fields`, 커밋 `61ebbcb` |
+
+## 2. 작은 사진에서 상품 영역 OCR이 깨짐
+
+| 구분 | 내용 |
+|---|---|
+| 증상 | 상품 3줄 대신 `vmv, 1, 1, 420` 한 줄만 추출됨. 상품 영역 OCR 결과가 `1-3 / vmv / 1 / J / 권 / 으록 / 인 / -420`, 인식 점수 0.00~0.61 (다른 영역은 0.95 이상) |
+| 원인 | 라우터는 정상. 레이아웃이 자른 상품 영역(383×122px)을 원본 크기 그대로 OCR에 넘겨 글자 줄 높이가 약 15px. 검출 모델이 줄을 합쳐 버림 |
+| 확인 방법 | 같은 crop을 원본 / 여백 추가 / 2배 확대 / 2배+여백으로 각각 OCR → 2배 확대만으로 상품 3줄 인식 |
+| 수정 | `Backend/documents/analysis/pipeline.py` — `ocr_scale()` 추가. 원본 긴 변이 1500px 미만이면 텍스트 영역 crop을 정수배(최대 3배, LANCZOS) 확대 후 OCR. 표 영역은 Docling용으로 원본 유지. 배율은 `crop_scale`로 기록(좌표 복원용), 기준은 `policy.ocr_upscale_below/ocr_max_scale`에 남김 |
+| 검증 | 상품 영역 최저 점수 0.00 → 0.80, `마늘빅프랑크 1 2,100 / 예거라를러레몬 3,380 / 마운틴들러스트 2,100` 인식. 테스트 2개 추가 |
+| 위치 | 브랜치 `feat/parser-ocr-improvement` (`fix/document-rows-all-fields`의 `16b7a86`과 같은 변경) |
+
+## 3. 레이아웃 영역을 못 찾으면 이미지가 통째로 비어 버림
+
+| 구분 | 내용 |
+|---|---|
+| 증상 | "교환/환불 안내" 문단이 결과에서 빠짐. 더 흐린 사진이면 상품 영역까지 빠질 위험 |
+| 원인 | 레이아웃 점수 0.5 미만 영역은 버림(`detection_threshold=.5`). 이 영수증의 영역 점수는 0.507~0.544로 기준선에 붙어 있음. 영역이 하나도 남지 않거나 레이아웃 엔진이 실패해도 **이미지 전체를 읽는 대체 경로가 없었음** |
+| 수정 | `pipeline.py` — 사용할 수 있는 text/table 영역이 하나도 없는 이미지는 이미지 전체를 (같은 기준으로 확대해) PaddleOCR로 한 번 읽음. 라우팅 규칙 `no_text_region_detected` 또는 `layout_unavailable`을 기록하고 검토 사유 `whole_image_ocr_fallback:*`를 남김. 보완 처리 상한(`max_supplements`) 안에서만 실행 |
+| 검증 | 테스트 2개 추가(영역 점수 0.3 → 전체 OCR 1회 / 레이아웃 실패 → 전체 OCR). 문서 분석 테스트 24개 통과. 실제 영수증에서 모든 영역 점수를 0.3으로 낮춰 재현 → 전체 OCR로 66줄 인식 |
+| 위치 | 브랜치 `feat/parser-ocr-improvement` |
+
+### 참고: 영역별 OCR vs 이미지 전체 OCR (같은 영수증, 둘 다 2배 확대)
+
+| 항목 | 영역별 OCR (기본 경로) | 이미지 전체 OCR (대체 경로) |
+|---|---|---|
+| 처리 시간 (CPU) | 69.2초 | 39.7초 |
+| 교환/환불 안내 문단 | 없음 (영역 누락) | 읽음 |
+| 주소 `경기 용인시 처인구` | 빠짐 | 읽음 |
+| `합계수량/금액 … 7,500` | `한계수량/금액 … 7,580` | `합계수량/금액 … 7,500` |
+| `판촉/팝 할인` | `판족/팝 할인` | `판촉/팝 할인` |
+| `예거라들러레몬 3,300` | `3,380` | `3,380` |
+| 상품별 수량 | 1번째 상품 수량만 순서대로 | 수량 숫자의 줄 순서가 섞임 |
+
+영수증처럼 글자만 있는 단일 열 문서는 이미지 전체 OCR이 더 많이 읽고 더 빨랐다. 다만 줄 순서가 섞여 상품-수량 짝이 틀어질 수 있다. 영수증에서 어느 쪽을 기본 경로로 둘지는 여러 장으로 비교한 뒤 정한다(아래 남은 과제 1).
+
+---
+
+## 남은 과제
+
+1. **영수증 여러 장으로 경로 비교** — 영역별 OCR vs 이미지 전체 OCR의 금액 정확도·누락 줄·시간을 같은 평가 세트로 측정해 기본 경로 결정.
+2. **일부 영역만 누락되는 경우** — 다른 영역이 있으면 대체 경로가 동작하지 않아 0.5 미만 문단(교환/환불 안내)은 여전히 빠진다. 낮은 점수 영역을 겹침 검사 후 추가 OCR하거나, 덮지 못한 면적이 크면 전체 OCR과 비교하는 방안 검토.
+3. **숫자 오인식** — `3,300→3,380`, `7,500→7,580` 등. 원본 해상도 한계. 더 큰 OCR 모델(`PP-OCRv5_server`) 또는 영수증 데이터로 인식 모델 파인튜닝 검토.
+4. **머리글·합계 항목** — 현재 흐름은 "한 줄에 상품 하나"라서 가맹점명·결제일시·합계·결제수단은 기본 항목에 없음.
+5. **CSV 가독성** — `evidence` 열에 긴 JSON이 들어가 엑셀에서 보기 어려움.
+
+## 검증 방법
+
+- 단위 테스트: 문서 분석 테스트는 `unittest` 기반이며 Pillow가 있는 `.venv-document-analysis`에서 실행한다(`.venv-agent`에는 Pillow가 없어 pytest로 수집되지 않음).
+  ```bash
+  docker run --rm --entrypoint sh -v "<repo>/Backend:/src:ro" a4b-agent-studio:local \
+    -c "cp -r /src /tmp/b && cd /tmp/b && /app/Backend/.venv-document-analysis/bin/python -m unittest discover -s tests/documents/analysis -t ."
+  ```
+- 실제 영수증 재분석: 컨테이너 안에서 `documents.analysis.pipeline.run(이미지, 작업폴더)`을 호출하고 `document_analysis.blocks` 중 `engine == 'paddleocr'` 블록의 `text`, `data.ocr_scores`, `data.crop_scale`을 비교한다. 대체 경로 재현은 `LocalEngines.run`을 감싸 layout 결과의 `score`를 0.3으로 낮춰서 한다.
+- 실행 기록 확인: 앱 데이터의 `document-results/<문서 해시>/<실행 ID>/`에 `result.json`(영역·OCR 블록·라우팅 결정), `crop-region-*.png`(잘린 영역), `attempt-*/engine.log`가 남는다.

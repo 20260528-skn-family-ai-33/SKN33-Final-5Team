@@ -265,7 +265,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                         region['data']['crop_dpi'] = resolution.get('dpi')
                         # OCR coordinates inside the crop are divided by this to return to upright pixels.
                         region['data']['crop_scale'] = scale
-                        (ocr_jobs if kind == 'text' else table_jobs).append(dict(path=crop_path, parent=region, context=job))
+                        (ocr_jobs if kind == 'text' else table_jobs).append(dict(path=crop_path, parent=region, context=job,
+                                                                                 origin=list(crop_bounds[:2]), scale=scale))
                     elif kind in {'formula', 'chart', 'unknown'}:
                         region['status'] = 'review_required'
                         review('semantic_analysis_required:' + kind)
@@ -276,6 +277,31 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
             review('image_classification:' + exc.code)
             for job in jobs:
                 job['parent']['status'] = 'review_required'
+        layout_failed = classified_count == 0
+
+        # An image with no usable text/table region would otherwise yield no text at all.
+        # Receipt regions scored 0.51-0.54 against the 0.5 threshold, so a slightly worse photo
+        # could drop every region; the whole upright image is OCR'd once instead.
+        covered = {j['context']['parent']['id'] for j in ocr_jobs + table_jobs}
+        for job in jobs:
+            parent = job['parent']
+            if parent['id'] in covered:
+                continue
+            if len(ocr_jobs) + len(table_jobs) >= max_supplements:
+                review('supplement_limit_reached')
+                break
+            scale = ocr_scale(job['size'])
+            path = work / ('ocr-' + parent['id'] + '.png')
+            with Image.open(job['path']) as picture:
+                resolution = png_resolution(picture)
+                whole = picture.resize((picture.width * scale, picture.height * scale), Image.LANCZOS) if scale > 1 else picture.copy()
+                if scale > 1 and resolution:
+                    resolution = {'dpi': tuple(v * scale for v in resolution['dpi'])}
+                whole.save(path, **resolution)
+            rule = 'layout_unavailable' if layout_failed else 'no_text_region_detected'
+            result['routing_decisions'].append(dict(phase='supplement', scope=parent['id'], rule=rule, processor='paddleocr'))
+            review('whole_image_ocr_fallback:' + rule)
+            ocr_jobs.append(dict(path=path, parent=parent, context=job, origin=[0, 0], scale=scale))
 
     if ocr_jobs:
         try:
@@ -290,8 +316,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                 text = '\n'.join(output['result'].get('rec_texts', []))
                 item = block('ocr-' + str(len(result['blocks']) + 1), 'text', region['native_location'],
                              parent=region['id'], unit=region['unit_id'], text=text, engine='paddleocr',
-                             data={'ocr_scores': output['result'].get('rec_scores', []), 'crop_origin': region['data']['crop_origin'],
-                                   'crop_scale': region['data']['crop_scale']})
+                             data={'ocr_scores': output['result'].get('rec_scores', []), 'crop_origin': job['origin'],
+                                   'crop_scale': job['scale']})
                 item['parser_version'] = recognized['version']
                 result['blocks'].append(item)
                 if not text.strip():

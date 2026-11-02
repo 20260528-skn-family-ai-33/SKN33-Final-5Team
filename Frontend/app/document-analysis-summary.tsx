@@ -22,9 +22,9 @@ export function DocumentAnalysisSummary({analysis,showText=false,humanReviewed=f
  if(!analysis)return null;
  const reasons=[...new Set(analysis.review_reasons.map(reasonLabel))];
  return <section aria-label="문서 내용 분석 결과" className="as-help">
-  <p><strong>{humanReviewed?'사람 검토 완료':analysis.review_required?'원본 검토 필요':'문서 분석 완료'}</strong> · {analysis.units.length}개 처리 단위 · {analysis.blocks.length}개 객체·영역</p>
+  <p><strong>{humanReviewed?'사람 검토 완료':analysis.review_required?'원본 검토 필요':'문서 분석 완료'}</strong></p>
   {reasons.map(reason=><p className="as-validation" key={reason}>{reason}</p>)}
-  <details><summary>처리 경로 확인</summary>
+  <details><summary>처리 경로 확인</summary><p>{analysis.units.length}개 처리 단위 · {analysis.blocks.length}개 객체·영역</p>
    <p className="as-small-muted">기본 처리: {analysis.primary_processor} · 원본 위치와 영역별 출처를 보존합니다.</p>
    {analysis.routes.map(route=><p key={route.id}>{phaseLabel[route.phase]||route.phase}: {route.processor} · {statusLabel[route.status]||route.status}</p>)}
   </details>

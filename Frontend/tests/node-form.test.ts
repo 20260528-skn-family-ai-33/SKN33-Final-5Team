@@ -16,3 +16,10 @@ for(const value of ['0','-12.5','1e3'])test(`finite numeric filter ${value} acce
 test('changing processing tool starts a fresh config',()=>{const result=nodeSpecFromForm({...form,tool:'read_table'},node());assert.equal(result.execution_plan,null);assert.equal(result.settings.query,null);});
 test('aggregate edits preserve hidden settings while updating grouping and sum',()=>{const result=nodeSpecFromForm({...form,tool:'aggregate_table',aggregation:'sum',sumField:'total'},node(null,'aggregate_table'));assert.deepEqual(result.settings.fields,['team','category']);assert.equal(result.settings.sum_field,'total');assert.equal(result.settings.query,'preserved');});
 test('agent edits preserve hidden settings and empty model inheritance',()=>{const n=node(null,'agent_node');n.spec.kind='agent';const result=nodeSpecFromForm({...form,kind:'agent'},n);assert.equal(result.model,null);assert.equal(result.settings.query,'preserved');assert.equal(result.reference,'기준');});
+
+
+test('simplified editor derives a purpose for new work while preserving saved descriptions',()=>{
+ assert.equal(nodeSpecFromForm({...form,kind:'agent',purpose:''},null).purpose,form.instructions);
+ assert.ok(nodeSpecFromForm({...form,purpose:''},null).purpose.length>=5);
+ assert.equal(nodeSpecFromForm(form,node()).purpose,form.purpose);
+});

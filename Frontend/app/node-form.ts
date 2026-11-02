@@ -21,5 +21,5 @@ export function nodeSpecFromForm(form:NodeForm,editing:LibraryNode|null){
  }
  const settings={...defaults,...(prior?.settings||{})};
  if(tool==='aggregate_table')Object.assign(settings,{fields:group.split(',').map(v=>v.trim()).filter(Boolean),aggregation,sum_field:aggregation==='sum'?sumField.trim():null});
- return {kind,name,purpose,tool,instructions:kind==='agent'?instructions:'',reference:kind==='agent'?reference:'',model:kind==='agent'&&model.trim()?model.trim():null,settings,execution_plan};
+ return {kind,name,purpose:purpose.trim()||(kind==='agent'?instructions.trim().slice(0,1000):`${name.trim()} 자료 처리 작업`),tool,instructions:kind==='agent'?instructions:'',reference:kind==='agent'?reference:'',model:kind==='agent'&&model.trim()?model.trim():null,settings,execution_plan};
 }

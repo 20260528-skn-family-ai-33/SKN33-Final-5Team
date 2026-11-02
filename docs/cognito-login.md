@@ -53,6 +53,30 @@ A4B_AUTH_SESSION_SECONDS=28800
 
 기존 `a4b.users` 스키마를 사용하므로 로그인용 스키마 마이그레이션은 없다. `auth_provider=cognito:USER_POOL_ID`, `auth_subject=검증된 sub`로 회원을 식별한다. 여러 사용자 풀의 동일 sub를 구분한다. 이메일만 같다는 이유로 기존 계정에 연결하지 않는다. 같은 이메일의 기존 외부 인증 계정이 있으면 관리자가 소유 관계를 검토해야 한다. 첫 로그인은 기본 `member` 권한이다. 클라이언트가 role·status를 지정할 수 없다. 매 요청에서 회원의 활성 상태를 확인한다.
 
+### DB 스키마 정의
+
+실제 RDS에서 추출한 전체 정의를 [`infrastructure/db/schema.sql`](../infrastructure/db/schema.sql)에 보관한다. 2026-11-02 기준 PostgreSQL 16.15의 `a4b` 스키마이며, `a4b.users`를 포함한 테이블 19개·컬럼 198개·외래키 44개·함수 39개·트리거 25개와 인덱스·주석·소유권·권한을 담는다. 회원 행과 카탈로그 초기 데이터, 비밀번호·접속정보는 포함하지 않는다. 기존 DB의 증분 마이그레이션이나 앱 시작 시 실행할 초기화 SQL로 사용하지 않는다.
+
+pgvector와 DB 역할은 `a4b` 밖의 선행 객체이므로 [`prerequisites.sql`](../infrastructure/db/prerequisites.sql)로 준비한다. PostgreSQL 16과 pgvector 0.8.2를 설치한 새 빈 DB에서, 소유권 설정과 확장 설치 권한이 있는 관리자가 psql 16.15 이상으로 실행한다. 접속 설정은 `PGSERVICE`·`PGPASSFILE` 등으로 외부에서 제공한다.
+
+```bash
+psql -X --set ON_ERROR_STOP=1 --single-transaction \
+  --dbname=YOUR_EMPTY_DATABASE \
+  --file=infrastructure/db/prerequisites.sql \
+  --file=infrastructure/db/schema.sql
+```
+
+복원용 선행 SQL이 새로 만드는 역할은 `NOLOGIN`이며, 실제 앱 계정의 로그인·암호 설정은 배포 담당자가 별도로 관리한다. `schema.sql`은 `postgres` 및 `a4b_guard_owner` 소유권과 기존 ACL을 보존한다. 특히 SECURITY DEFINER 함수 5개의 전용 소유자, PUBLIC 함수 실행 권한 회수, 검사 이력의 변경 불가 권한을 함께 유지한다. 전체 서비스용 새 DB를 구성할 때는 카탈로그 기준 데이터도 별도로 준비해야 한다.
+
+갱신할 때는 읽기 전용 RDS 연결에서 다음과 같이 정의만 추출하고, 추출 일자·버전 주석을 갱신한 뒤 빈 DB 복원과 로그인 회원 SQL을 검증한다. 소유권과 ACL을 포함하는 pg_dump 기본 추출 설정을 유지한다. 재실행 시 생성되는 `\restrict`/`\unrestrict` 키도 그대로 보관한다. [pg_dump 스키마 추출과 외부 의존성 안내](https://www.postgresql.org/docs/16/app-pgdump.html)
+
+```bash
+PGSERVICE=a4b_readonly pg_dump --schema-only --schema=a4b --no-password \
+  --file=schema.dump.sql
+```
+
+2026-11-02 검증: 외부 네트워크가 없는 임시 PostgreSQL 16·pgvector 0.8.2 DB에 두 SQL을 복원하고 pg_dump 16.15로 재추출했다. 버전 헤더와 매번 생성되는 psql 제한 키만 제외한 `a4b` 정의·소유권·ACL 전체가 실제 RDS 원본과 일치했다. 앱 역할의 회원 upsert·기본 member/active 값·재로그인 시 동일 UUID 유지, 검사 이력의 수정·삭제 차단, 보안 정의자 역할 분리도 확인했다. 합성 회원은 롤백했고 실제 RDS의 구조·데이터는 변경하지 않았다.
+
 ## 4. 사용자별 자료 분리 범위
 
 회원 정보는 RDS에 저장한다. **문서·워크플로우 등 업무 데이터의 전체 PostgreSQL 이관은 이 변경에 포함되지 않는다.** 현재 Node/Python 업무 저장소를 `EASYFLOW_DATA_DIR/users/RDS_MEMBER_UUID/` 아래에 격리한다.

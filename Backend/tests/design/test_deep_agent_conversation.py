@@ -286,11 +286,13 @@ def test_optional_binding_repair_in_generation_is_audited(monkeypatch,mode,expec
     assert len(result['trace'][-1]['binding_repairs'])==expected_count
     assert not result['confirmed'] and result['saved_agent_id'] is None
 
-def test_length_error_is_not_parsed_as_json_or_retried(monkeypatch):
+def test_length_error_is_not_parsed_as_json_and_retries_once_with_the_next_seed(monkeypatch):
+    """A failed attempt leaves no state, so the next seed is tried here once, then reported."""
     from openai import LengthFinishReasonError
     from openai.types.chat import ChatCompletion
-    calls=[]
+    calls=[];seeds=[];factories=[]
     def factory(**kwargs):
+        factories.append(kwargs)
         tools={t.name:t for t in kwargs['tools']}
         class Agent:
             def invoke(self,payload,config):
@@ -299,9 +301,26 @@ def test_length_error_is_not_parsed_as_json_or_retried(monkeypatch):
                 raise LengthFinishReasonError(completion=completion)
         return Agent()
     monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model',lambda **kw:seeds.append(kw['seed']) or object())
     with pytest.raises(ValueError,match='길이 제한'):
-        make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
-    assert len(calls)==1
+        make_conversation(None,'test')(state([{'role':'user','content':'업무 요청'}]))
+    assert len(calls)==2 and seeds==[42,43] and factories[1]['checkpointer'] is False
+
+
+def test_seed_counts_attempts_within_the_same_user_turn(monkeypatch):
+    seeds=[]
+    class Agent:
+        def invoke(self,payload,config):return {'structured_response':draft(questions=['기준을 알려주세요'])}
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model',lambda **kw:seeds.append(kw['seed']) or object())
+    node=make_conversation(None,'test')
+    first=node(state([{'role':'user','content':'업무 요청'}]))
+    assert seeds==[42] and first['trace'][-1]['seed']==42 and first['trace'][-1]['user_turn']==0
+    retry=node({**state([{'role':'user','content':'업무 요청'}]),'trace':first['trace']})  # same turn again
+    assert seeds[-1]==43 and retry['trace'][-1]['seed']==43
+    later=state([{'role':'user','content':'업무 요청'},{'role':'assistant','content':'?'},{'role':'user','content':'100만원 초과'}])
+    node({**later,'trace':retry['trace']})  # a new user turn starts again from the base
+    assert seeds[-1]==42
 
 
 def run_capturing(monkeypatch, s, response):

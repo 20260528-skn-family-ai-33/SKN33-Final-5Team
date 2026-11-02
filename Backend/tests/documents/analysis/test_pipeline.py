@@ -105,6 +105,74 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(any(b['artifact'] for b in data['blocks'] if 'image' in b['content_types']))
         self.assertIn('000017', payload['text'])
 
+    def test_small_photo_text_crop_is_enlarged_for_ocr_and_origin_stays_in_source_pixels(self):
+        from documents.analysis.pipeline import ocr_scale
+        self.assertEqual([ocr_scale(s) for s in [(567, 1140), (900, 600), (1500, 800), (100, 90)]], [2, 2, 1, 3])
+        source = self.root / 'small.png'
+        Image.new('RGB', (100, 90), 'white').save(source, dpi=(72, 72))
+        payload = run(source, self.work, engines=Engines())
+        region = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'layout')
+        ocr = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'paddleocr')
+        self.assertEqual((region['data']['crop_origin'], region['data']['crop_scale'], ocr['data']['crop_scale']), ([2, 3], 3, 3))
+        with Image.open(self.work / region['artifact']) as crop:
+            self.assertEqual(crop.size, (94 * 3, 78 * 3))
+            for actual in crop.info['dpi']:
+                self.assertAlmostEqual(actual, 216, delta=.03)
+
+    def test_ocr_pieces_are_joined_into_visual_lines(self):
+        from documents.analysis.pipeline import ocr_text
+        # Detection order from the GS25 receipt: name, price, then the quantity found last.
+        result = {'rec_texts': ['마늘빅프랑크', '2,100', '예거라들러레몬', '3,300', '', '1', '1'],
+                  'rec_boxes': [[10, 0, 200, 30], [420, 2, 520, 30], [10, 40, 220, 70], [420, 41, 520, 70],
+                                [0, 0, 1, 1], [300, 3, 320, 29], [300, 42, 320, 69]]}
+        self.assertEqual(ocr_text(result), '마늘빅프랑크 1 2,100\n예거라들러레몬 1 3,300')
+        # A piece overlapping two rows only slightly does not merge them.
+        self.assertEqual(ocr_text({'rec_texts': ['위', '아래'], 'rec_boxes': [[0, 0, 50, 30], [60, 22, 120, 52]]}), '위\n아래')
+        self.assertEqual(ocr_text({'rec_texts': ['a', 'b']}), 'a\nb')
+        self.assertEqual(ocr_text({'rec_texts': ['a', 'b'], 'rec_boxes': [[0, 0, 1, 1]]}), 'a\nb')
+
+    def test_image_without_usable_region_is_ocr_whole_once(self):
+        class LowScoreEngines(Engines):
+            def run(self, engine, **kwargs):
+                parsed = super().run(engine, **kwargs)
+                if engine == 'layout':
+                    for output in parsed['outputs']:
+                        output['result']['boxes'][0]['score'] = .3
+                return parsed
+        engine = LowScoreEngines()
+        payload = run(self.picture(), self.work, engines=engine)
+        data = payload['document_analysis']
+        self.assertEqual([a['processor'] for a in engine.attempts], ['layout', 'paddleocr'])
+        self.assertEqual(engine.attempts[1]['scope'], [data['blocks'][0]['id']])
+        ocr = next(b for b in data['blocks'] if b['engine'] == 'paddleocr')
+        self.assertEqual((ocr['parent_object_id'], ocr['data']['crop_origin'], ocr['data']['crop_scale']), (data['blocks'][0]['id'], [0, 0], 3))
+        self.assertIn('정산금엑 000017', payload['text'])
+        self.assertIn('whole_image_ocr_fallback:no_text_region_detected', data['review_reasons'])
+        self.assertTrue(any(d.get('rule') == 'no_text_region_detected' for d in data['routing_decisions']))
+        with Image.open(self.work / ('ocr-' + data['blocks'][0]['id'] + '.png')) as whole:
+            self.assertEqual(whole.size, (300, 270))
+
+    def test_layout_failure_falls_back_to_whole_image_ocr(self):
+        engine = Engines(fail={'layout'})
+        payload = run(self.picture(), self.work, engines=engine)
+        data = payload['document_analysis']
+        self.assertEqual([a['processor'] for a in engine.attempts], ['layout', 'paddleocr'])
+        self.assertIn('image_classification:dependency_missing', data['review_reasons'])
+        self.assertIn('whole_image_ocr_fallback:layout_unavailable', data['review_reasons'])
+        self.assertIn('정산금엑 000017', payload['text'])
+
+    def test_large_photo_and_table_crops_keep_source_pixels(self):
+        source = self.root / 'large.png'
+        Image.new('RGB', (1600, 900), 'white').save(source)
+        payload = run(source, self.work, engines=Engines())
+        region = next(b for b in payload['document_analysis']['blocks'] if b['engine'] == 'layout')
+        self.assertEqual(region['data']['crop_scale'], 1)
+        with Image.open(self.work / region['artifact']) as crop:
+            self.assertEqual(crop.size, (94, 78))
+        table = run(self.picture(), self.root / 'table-work', engines=Engines(table=True))
+        region = next(b for b in table['document_analysis']['blocks'] if b['engine'] == 'layout')
+        self.assertEqual(region['data']['crop_scale'], 1)
+
     def test_image_table_goes_to_docling_and_crop_coordinates_stay_local(self):
         payload = run(self.picture(), self.work, engines=Engines(table=True))
         data = payload['document_analysis']

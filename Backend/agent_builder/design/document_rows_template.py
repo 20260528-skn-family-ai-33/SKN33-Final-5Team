@@ -17,11 +17,22 @@ _SPLIT = re.compile(r'\s*(?:,|，|、|·|/|\n|\s및\s|\s그리고\s)\s*')
 _CHANGE = re.compile(r'(취소|그만|중단|됐어|됐습니다|필요\s*없|안\s*할래|하지\s*마|말고|대신|바꿔|바꿀|처음부터)')
 _NEGATION = re.compile(r'^(아니|아뇨|아냐|노노|no\b)', re.IGNORECASE)
 _SENTENCE_END = re.compile(r'(줘|주세요|해요|세요|하자|할게|싶어|싶어요|싶다|니다|네요|까요|나요|[?？!])$')
+# "전체 다", "전부", "알아서 다 뽑아줘": the user wants every item but names no column.
+# Matched with spaces removed; taking it as one field named "전체 다" gave a one-column CSV of OCR lines.
+_ALL_FIELDS = re.compile(r'^(?:(?:영수증|문서|사진)?에?있는(?:거|것|항목))?(?:그냥|알아서)?'
+                         r'(?:전체|전부|모두|모든(?:항목|것|거|내용)?|다|알아서|아무거나|all|everything)'
+                         r'(?:다)?(?:항목|내용)?(?:다)?'
+                         r'(?:요|뽑아|뽑아줘|뽑아주세요|해줘|해주세요|정리해줘|정리해주세요|넣어줘|넣어주세요)?$', re.IGNORECASE)
+_RECEIPT = re.compile(r'(영수증|전표|receipt)', re.IGNORECASE)
+RECEIPT_FIELDS = ['상품명', '단가', '수량', '금액']
 
 QUESTION = '어떤 항목을 한 줄씩 뽑을까요? 쉼표로 구분해 적어 주세요. (예: 상품명, 단가, 수량, 금액)'
 ASK_EXPLANATION = '첨부한 문서의 반복 항목을 한 줄씩 표로 정리합니다.'
+ALL_FIELDS_NOTE = '"전체"처럼 답하면 어떤 열을 만들지 정할 수 없어요. 표의 열이 될 항목 이름을 적어 주세요.'
 EXPLANATION = ('첨부한 문서에서 반복 항목을 한 줄씩 추출해 CSV로 저장합니다. 엑셀(xlsx) 파일은 아직 만들 수 없지만, '
                'CSV는 엑셀에서 바로 열립니다. 추출 값은 원문에서 확인된 것만 기록되고, 확인되지 않은 칸은 비워 둡니다.')
+DEFAULT_FIELDS_NOTE = ('항목을 따로 정하지 않아 영수증 기본 항목(' + ', '.join(RECEIPT_FIELDS) + ')으로 정리합니다. '
+                       '다른 항목이 필요하면 항목 이름을 알려 주세요.')
 
 
 def requested_fields(text):
@@ -30,6 +41,11 @@ def requested_fields(text):
     if not fields or len(fields) > 12 or any(len(f) > 20 for f in fields):
         return []
     return list(dict.fromkeys(fields))
+
+
+def wants_all_fields(text):
+    """True when the answer asks for "everything" instead of naming the fields."""
+    return bool(_ALL_FIELDS.match(re.sub(r'[\s.,!~"\']', '', text or '')))
 
 
 def _ends_with_l_rae(text):
@@ -95,6 +111,27 @@ def _ask(state, request, note=None):
                                                 'detail': '고정 흐름(문서 읽기 → 목록 추출 → CSV 저장)에 쓸 항목을 모델 호출 없이 묻습니다.', 'model_calls': 0}]}
 
 
+def document_rows_applies(state):
+    """True when this turn is handled by the fixed flow below (its request or its field answer).
+
+    The condition checker only covers table filtering/deduplication/scheduling; with
+    A4B_CONDITION_MODE=enforce its model read the field answer "상품명, 수량, 단가, 금액" as a filter and
+    asked nine questions or failed its output contract, so this turn is delegated without a model call.
+    """
+    if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
+        return False
+    resources = state.get('resources') or []
+    if not any(r.get('kind') == 'document' for r in resources) or any(r.get('kind') == 'table' for r in resources):
+        return False
+    messages = state.get('messages', [])
+    if not messages or messages[-1]['role'] != 'user':
+        return False
+    if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'].endswith(QUESTION):
+        # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
+        return wants_all_fields(messages[-1]['content']) or not is_request_change(messages[-1]['content'])
+    return bool(_TABLE_INTENT.search(messages[-1]['content']))
+
+
 def document_rows_reply(state):
     """Return the fixed-flow result, or None to continue with the model planner."""
     if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
@@ -110,16 +147,25 @@ def document_rows_reply(state):
     asked = len(messages) >= 2 and messages[-1]['role'] == 'user' and messages[-2]['role'] == 'assistant' \
         and messages[-2]['content'].endswith(QUESTION)
     if asked:
-        if is_request_change(users[-1]['content']):
-            return None  # leave the fixed flow; the planner handles the cancellation or new request
+        answer = users[-1]['content']
         request = next((m['content'] for m in users[:-1][::-1] if _TABLE_INTENT.search(m['content'])), users[0]['content'])
-        fields = requested_fields(users[-1]['content'])
-        if not fields:
-            return _ask(state, request)
-        if reserved_field_issue(fields):
-            return _ask(state, request, note=reserved_field_issue(fields))
-        draft = _draft(request, users[-1]['content'], fields, documents)
-        return {'messages': messages + [{'role': 'assistant', 'content': EXPLANATION}], 'draft': draft,
+        explanation = EXPLANATION
+        # Checked before is_request_change: "다 뽑아줘" ends like a command but still answers the question.
+        if wants_all_fields(answer):
+            names = ' '.join([request] + [r.get('name') or '' for r in resources if r.get('kind') == 'document'])
+            if not _RECEIPT.search(names):
+                return _ask(state, request, note=ALL_FIELDS_NOTE)
+            fields, explanation = RECEIPT_FIELDS, DEFAULT_FIELDS_NOTE + '\n' + EXPLANATION
+        elif is_request_change(answer):
+            return None  # leave the fixed flow; the planner handles the cancellation or new request
+        else:
+            fields = requested_fields(answer)
+            if not fields:
+                return _ask(state, request)
+            if reserved_field_issue(fields):
+                return _ask(state, request, note=reserved_field_issue(fields))
+        draft = _draft(request, answer, fields, documents)
+        return {'messages': messages + [{'role': 'assistant', 'content': explanation}], 'draft': draft,
                 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                 'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
                                                     'detail': '문서 읽기 → 목록 추출(' + ', '.join(fields) + ') → CSV 저장을 코드로 구성했습니다.', 'model_calls': 0}]}

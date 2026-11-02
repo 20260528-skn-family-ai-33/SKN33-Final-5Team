@@ -22,8 +22,8 @@
 | 증상 | CSV 열이 `file_name, row, 전체 다, status, evidence` 하나뿐이고, OCR 줄이 한 행씩 나열됨 |
 | 원인 | 항목 질문("어떤 항목을 한 줄씩 뽑을까요?")의 답을 쉼표로 나눠 그대로 열 이름으로 사용. "전체 다"처럼 '전부'를 뜻하는 답을 구분하지 않음 (모델 문제가 아니라 코드로 고정된 흐름) |
 | 수정 | `Backend/agent_builder/design/document_rows_template.py` — `wants_all_fields()` 추가. "전체 다/전부/모두/알아서/다 뽑아줘" 등을 인식해 영수증 요청이면 기본 항목(상품명, 단가, 수량, 금액)으로 구성하고 안내, 그 외 문서는 항목 이름을 다시 질문. 명령형("다 뽑아줘")이 취소로 오인되지 않도록 취소 판별보다 먼저 확인 |
-| 검증 | 테스트 16개 추가, `tests/design`·`tests/conditions` 507개 통과. 같은 대화를 재현해 4개 열 생성 확인 |
-| 위치 | 브랜치 `fix/document-rows-all-fields`, 커밋 `61ebbcb` |
+| 검증 | 테스트 16개 추가, `tests/design`·`tests/conditions` 507개 통과. 같은 대화를 재현해 4개 열 생성 확인. 조건 검사 enforce 환경에서 마트 영수증에 "전체 다"로 답해 저장·실행·CSV(5행, `합계_검산: 일치`)까지 완주 |
+| 위치 | 브랜치 `feat/parser-ocr-improvement` (`fix/document-rows-all-fields`의 `61ebbcb`를 가져옴). 7번의 위임 판단(`document_rows_applies`)도 "다 뽑아줘"처럼 명령형으로 끝나는 전체 요청을 항목 답변으로 인식 |
 
 ## 2. 작은 사진에서 상품 영역 OCR이 깨짐
 

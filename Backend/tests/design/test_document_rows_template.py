@@ -64,6 +64,7 @@ def test_fixed_flow_scope_excludes_cancellations_tables_and_other_requests():
     asked=lambda answer,resources=[DOC]:{**initial(),'resources':resources,'messages':[{'role':'user','content':REQUEST},
         {'role':'assistant','content':ASK_EXPLANATION+'\n• '+QUESTION},{'role':'user','content':answer}]}
     assert document_rows_applies(asked('상품명, 금액'))
+    assert document_rows_applies(asked('다 뽑아줘')) and document_rows_applies(asked('전체 다'))
     assert not document_rows_applies(asked('취소해줘'))
     assert not document_rows_applies(asked('상품명, 금액',[DOC,{**DOC,'id':'t','kind':'table'}]))
     assert not document_rows_applies({**initial(),'resources':[DOC],'messages':[{'role':'user','content':'이 문서 내용을 요약해줘'}]})

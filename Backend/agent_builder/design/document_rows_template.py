@@ -127,7 +127,8 @@ def document_rows_applies(state):
     if not messages or messages[-1]['role'] != 'user':
         return False
     if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'].endswith(QUESTION):
-        return not is_request_change(messages[-1]['content'])
+        # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
+        return wants_all_fields(messages[-1]['content']) or not is_request_change(messages[-1]['content'])
     return bool(_TABLE_INTENT.search(messages[-1]['content']))
 
 

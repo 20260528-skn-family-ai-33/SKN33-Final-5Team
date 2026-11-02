@@ -57,6 +57,15 @@ test('HTML text and binary replies use an escaped opaque-origin iframe with actu
  const binaryHtml=createBinaryFile(Buffer.from(html),{mimeType:'text/html',fileName:'page.html'}),binaryResponse=prepareWebhookResponse(await buildRespondToWebhookResponse(node({respondWith:'binary'}),[withBinary({},'page',binaryHtml)]));assert.equal(Object.hasOwn(binaryResponse,'binary'),false);assert.equal(binaryResponse.body,response.body);
  const text=prepareWebhookResponse({statusCode:200,headers:{'content-type':'text/plain'},body:html});assert.equal(text.body,html);
 });
+test('workflow responses cannot set or clear browser cookies through custom headers',async()=>{
+ for(const name of ['Set-Cookie','sEt-CoOkIe','Set-Cookie2','Clear-Site-Data']){
+  const value=name.toLowerCase()==='clear-site-data'?'"cookies", "storage"':'__Host-a4b-session=foreign; Path=/; Secure; HttpOnly';
+  const options={responseHeaders:{entries:[{name,value}]}};
+  await assert.rejects(()=>buildRespondToWebhookResponse(node({options}),[{}]),/헤더/);
+  assert.throws(()=>buildWebhookResponse(node({options}),[{}],'onReceived'),/헤더/);
+  assert.throws(()=>prepareWebhookResponse({statusCode:200,headers:{[name]:value},body:'response'}),/헤더/);
+ }
+});
 test('redirect default is 307 and validates header-safe http destination',async()=>{
  assert.deepEqual(await buildRespondToWebhookResponse(node({respondWith:'redirect',redirectURL:'https://example.test/result?id=1'}),[{}]),{statusCode:307,headers:{location:'https://example.test/result?id=1'}});
  assert.equal((await buildRespondToWebhookResponse(node({respondWith:'redirect',redirectURL:'https://example.test',options:{responseCode:302}}),[{}])).statusCode,302);

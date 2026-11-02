@@ -19,6 +19,13 @@ import {runCode} from './sandbox';
 import {nextRunAt,validateSchedule} from './schedule';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
+// Enforce isolation at the HTTP boundary for every MIME, including SVG/XHTML.
+// Workflow headers cannot opt back into the authenticated application's origin.
+const webhookSecurityHeaders=Object.freeze({
+ 'content-security-policy':'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads',
+ 'x-content-type-options':'nosniff',
+});
+
 /** Each member has independent stores, credentials, execution queues and OAuth state. */
 export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string){
 const store=new Store(dataDirectory());
@@ -45,7 +52,7 @@ function respondWebhook(res:ServerResponse,id:string,response:WebhookResponse):v
  if(res.writableEnded||res.destroyed)return;const prepared=prepareWebhookResponse(response);const bytes=prepared.binary?decodeBinaryFile(prepared.binary):prepared.body===undefined?undefined:typeof prepared.body==='string'?prepared.body:JSON.stringify(prepared.body);
  const mime=prepared.headers['content-type']||'application/octet-stream',extension=/json/i.test(mime)?'json':/html/i.test(mime)?'html':/csv/i.test(mime)?'csv':/pdf/i.test(mime)?'pdf':/^text\//i.test(mime)?'txt':'bin';
  store.saveWebhookResponse(id,res.req.method==='HEAD'?Buffer.alloc(0):Buffer.isBuffer(bytes)?bytes:Buffer.from(bytes??'','utf8'),mime,prepared.binary?.fileName||`응답.${extension}`);
- res.writeHead(prepared.statusCode,{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...prepared.headers,'X-Easyflow-Execution-Id':id});res.end(bytes);
+ res.writeHead(prepared.statusCode,{'Cache-Control':'no-store',...prepared.headers,...webhookSecurityHeaders,'X-Easyflow-Execution-Id':id});res.end(bytes);
 }
 function releaseWebhook(id:string):PendingWebhook|undefined {const pending=pendingWebhooks.get(id);if(pending){pendingWebhooks.delete(id);if(pending.timer)clearTimeout(pending.timer);}return pending;}
 function completeWebhook(id:string,response:WebhookResponse):void {const pending=pendingWebhooks.get(id);if(!pending)return;respondWebhook(pending.res,id,response);releaseWebhook(id);}

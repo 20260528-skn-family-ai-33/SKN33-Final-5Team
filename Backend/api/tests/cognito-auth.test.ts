@@ -82,6 +82,19 @@ test('signed Cognito login protects APIs, separates members, refreshes and revok
  }
  async function login(subject:string,override?:Record<string,unknown>){const start=await begin(subject,override),callback=await call('/auth/callback?'+new URLSearchParams({state:start.state,code:start.code}),start.cookie);return {start,callback,session:callback.headers.getSetCookie().find(value=>value.startsWith('a4b-session='))?.split(';')[0]||''};}
  try{
+  await t.test('ALB GET and HEAD probes accept an IP Host without bypassing private route checks',async()=>{
+   const probe=(path:string,method:string)=>new Promise<{status:number;body:string}>((resolve,reject)=>{
+    const request=httpRequest(config.origin+path,{method,headers:{Host:'10.0.1.23:3030','User-Agent':'ELB-HealthChecker/2.0'}},response=>{
+     let body='';response.setEncoding('utf8');response.on('data',chunk=>{body+=chunk;});response.on('end',()=>resolve({status:response.statusCode!,body}));response.on('error',reject);
+    });request.on('error',reject);request.end();
+   });
+   for(const method of ['GET','HEAD']){
+    const response=await probe('/api/health',method);assert.equal(response.status,200);
+    assert.equal(response.body,method==='HEAD'?'':JSON.stringify({ok:true,standalone:true,auth:'cognito'}));
+    for(const path of ['/api/workflows','/api/auth/me','/auth/login','/api/health/extra'])assert.equal((await probe(path,method)).status,403,path);
+   }
+   assert.equal((await probe('/api/health','POST')).status,403);
+  });
   await t.test('anonymous requests cannot read, modify or download private resources',async()=>{
    for(const path of ['/api/workflows','/api/credentials','/api/executions','/api/agent-builder/agents','/api/agent-builder/original?id='+randomUUID(),'/api/files/download?executionId='+randomUUID()])assert.equal((await call(path)).status,401,path);
    assert.equal((await call('/api/workflows','','POST',makeFlow())).status,401);
@@ -125,6 +138,28 @@ test('signed Cognito login protects APIs, separates members, refreshes and revok
    const foreignHost=await new Promise<number|undefined>((resolve,reject)=>{const request=httpRequest(config.origin+'/api/workflows',{headers:{Host:'evil.example',Cookie:alice.session}},response=>{response.resume();resolve(response.statusCode);});request.on('error',reject);request.end();});
    assert.equal(foreignHost,403);
    const rows=await (await call('/api/workflows?userId='+aliceMe.user.id,bob.session)).json() as any;assert.ok(!rows.workflows.some((f:any)=>f.id===flow.id));
+  });
+  await t.test('public workflow responses enforce an opaque origin for every MIME and cannot replace the visitor session',async()=>{
+   const svg='<svg xmlns="http://www.w3.org/2000/svg"><script>fetch("/api/workflows")</script></svg>';
+   for(const mime of ['image/svg+xml','application/xhtml+xml','text/html','text/plain','application/json']){
+    const hook={...makeFlow(),id:randomUUID(),nodes:[{id:'hook',name:'Public response',type:'n8n-nodes-base.webhook',typeVersion:2,position:[0,0],parameters:{path:'response',httpMethod:'GET',authentication:'none',responseMode:'onReceived',options:{responseData:svg,responseHeaders:{entries:[{name:'Content-Type',value:mime},{name:'Content-Security-Policy',value:'sandbox allow-same-origin allow-scripts'},{name:'X-Content-Type-Options',value:'unsafe'}]}}}}],connections:{}};
+    assert.equal((await call('/api/workflows',bob.session,'POST',hook)).status,200);
+    assert.equal((await call('/api/activation',bob.session,'POST',{workflowId:hook.id,active:true})).status,200);
+    const response=await call(`/hooks/${bobMe.user.id}/${hook.id}/response`,alice.session);
+    assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),mime);
+    const policy=response.headers.get('content-security-policy')||'';
+    assert.match(policy,/(?:^|;)\s*sandbox(?:\s|;|$)/);assert.ok(!policy.includes('allow-same-origin'));
+    assert.equal(response.headers.get('x-content-type-options'),'nosniff');assert.equal(response.headers.getSetCookie().length,0);
+    await response.text();
+   }
+   for(const name of ['Set-Cookie','Clear-Site-Data']){
+    const hook={...makeFlow(),id:randomUUID(),nodes:[{id:'hook',name:'Cookie response',type:'n8n-nodes-base.webhook',typeVersion:2,position:[0,0],parameters:{path:'cookie',httpMethod:'GET',authentication:'none',responseMode:'onReceived',options:{responseData:'response',responseHeaders:{entries:[{name,value:name==='Set-Cookie'?bob.session+'; Path=/; HttpOnly; SameSite=Lax':'"cookies"'}]}}}}],connections:{}};
+    assert.equal((await call('/api/workflows',bob.session,'POST',hook)).status,200);
+    assert.equal((await call('/api/activation',bob.session,'POST',{workflowId:hook.id,active:true})).status,200);
+    const response=await call(`/hooks/${bobMe.user.id}/${hook.id}/cookie`,alice.session);
+    assert.equal(response.status,400);assert.equal(response.headers.getSetCookie().length,0);assert.equal(response.headers.get('clear-site-data'),null);
+   }
+   assert.equal((await (await call('/api/auth/me',alice.session)).json() as any).user.id,aliceMe.user.id);
   });
   await t.test('private webhook URLs select the owner but still require their own webhook authentication',async()=>{
    const hook={...makeFlow(),id:randomUUID(),nodes:[{id:'hook',name:'개인 Webhook',type:'n8n-nodes-base.webhook',typeVersion:2,position:[0,0],parameters:{path:'private-hook',httpMethod:'POST',responseMode:'onReceived',authentication:'easyflowToken'}}],connections:{}};

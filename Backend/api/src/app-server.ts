@@ -45,6 +45,8 @@ export function createApplication(options:{port:number;config?:AuthConfig;auth?:
  const server=createServer(async(req,res)=>{
   try{
    const authority=req.headers.host||'',origin=config?.origin||`http://127.0.0.1:${options.port}`,url=new URL(req.url||'/',origin),path=url.pathname,method=req.method||'GET';
+   // ALB probes use the target IP as Host. Only this minimal, read-only endpoint bypasses it.
+   if(auth&&path==='/api/health'&&(method==='GET'||method==='HEAD')){authJson(res,200,{ok:true,standalone:true,auth:'cognito'});return;}
    const allowedHosts=config?new Set([new URL(config.origin).host]):new Set([`127.0.0.1:${options.port}`,`localhost:${options.port}`,`[::1]:${options.port}`]);
    if(!allowedHosts.has(authority))throw new AuthError(403,config?'등록된 서비스 주소로 접속하세요.':'로컬 프로그램에서만 관리할 수 있어요.');
    const sensitive=path.startsWith('/api/')||path.startsWith('/auth/');
@@ -56,7 +58,6 @@ export function createApplication(options:{port:number;config?:AuthConfig;auth?:
    if(path==='/api/auth/me'&&!auth){authJson(res,200,{enabled:false,authenticated:false,user:null});return;}
    if(auth&&await auth.handle(req,res,url))return;
    if(path.startsWith('/auth/'))throw new AuthError(503,'로그인 서비스가 설정되지 않았습니다.');
-   if(auth&&path==='/api/health'){authJson(res,200,{ok:true,standalone:true,auth:'cognito'});return;}
    if(path.startsWith('/api/')){
     const user=auth?await auth.currentUser(req):undefined;
     if(auth&&!user)throw new AuthError(401,'서비스를 이용하려면 로그인하세요.');

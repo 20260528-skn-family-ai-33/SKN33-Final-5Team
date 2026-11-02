@@ -42,3 +42,14 @@ def test_unsupported_settings_are_not_exposed_as_raw_provider_errors():
     result=public_error(error)
     assert '구조화 응답' in result
     assert 'private provider body' not in result
+
+
+
+def test_ollama_wire_preserves_the_requested_output_budget_without_mutating_input():
+    from infrastructure.llm.ollama_chat_model import compatible_schema_payload
+    payload = {'model': 'qwen3.5:4b', 'max_completion_tokens': 9000}
+    assert compatible_schema_payload(payload) == {'model': 'qwen3.5:4b', 'max_tokens': 9000}
+    assert payload == {'model': 'qwen3.5:4b', 'max_completion_tokens': 9000}
+    model = OllamaChatOpenAI(model='qwen3.5:4b', api_key='test', base_url='http://127.0.0.1:1/v1', max_tokens=9000)
+    wire = model._get_request_payload('test')
+    assert wire['max_tokens'] == 9000 and 'max_completion_tokens' not in wire

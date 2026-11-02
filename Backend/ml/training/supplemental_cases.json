@@ -1,0 +1,307 @@
+[
+  {
+    "group": "review_refund",
+    "positive": [
+      "reply_review"
+    ],
+    "queries": [
+      "환불 정책과 고객 문의를 기준으로 상담원 응대 초안이 정책에 맞는지 검수해줘",
+      "고객에게 보낼 환불 안내 답변의 정책 위반 구절을 찾아 검수해줘"
+    ],
+    "negative": [
+      "review_summary",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "review_privacy",
+    "positive": [
+      "reply_review"
+    ],
+    "queries": [
+      "개인정보 처리 정책과 고객 문의를 보고 응대 초안에 민감정보가 노출되는지 검수해줘",
+      "고객 응대 문안이 개인정보 보호 기준을 위반하는지 검토해줘"
+    ],
+    "negative": [
+      "review_summary",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "review_promise",
+    "positive": [
+      "reply_review"
+    ],
+    "queries": [
+      "고객 답변 초안에 약속할 수 없는 보상 내용이 있는지 정책과 대조해서 검수해줘",
+      "배송 정책을 보고 고객 응대 초안의 근거 없는 확약을 찾아줘"
+    ],
+    "negative": [
+      "review_summary",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "review_tone",
+    "positive": [
+      "reply_review"
+    ],
+    "queries": [
+      "상담 정책과 문의 원문을 기준으로 응대 초안의 부적절한 표현을 검수해줘",
+      "고객 답변 초안이 응대 지침을 지키는지 검토하고 문제 구절을 알려줘"
+    ],
+    "negative": [
+      "review_summary",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "review_missing",
+    "positive": [
+      "reply_review"
+    ],
+    "queries": [
+      "고객 문의와 제공한 정책을 읽고 응대 초안에서 빠진 필수 고지 내용을 검수해줘",
+      "응대 초안이 고객 질문에 답하면서 필수 안내 정책까지 지켰는지 검수해줘"
+    ],
+    "negative": [
+      "review_summary",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "review_evidence",
+    "positive": [
+      "reply_review"
+    ],
+    "queries": [
+      "고객 응대 초안의 주장이 제공된 정책 원문에 근거하는지 검수해줘",
+      "주어진 상담 정책에 없는 내용을 고객 답변 초안이 안내하는지 검토해줘"
+    ],
+    "negative": [
+      "review_summary",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "report_issues",
+    "positive": [
+      "review_summary"
+    ],
+    "queries": [
+      "이미 생성된 응대 검수 결과를 문제 유형별 보고서 표로 정리해줘",
+      "기존 검수 결과의 문제 구절과 근거를 보고서 표로 정리해줘"
+    ],
+    "negative": [
+      "reply_review",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "report_decisions",
+    "positive": [
+      "review_summary"
+    ],
+    "queries": [
+      "제공된 응대 검수 결과를 판정과 사유가 있는 보고서 표로 만들어줘",
+      "이미 있는 검수 결과에서 판정별 요약 보고서 표를 만들어줘"
+    ],
+    "negative": [
+      "reply_review",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "report_evidence",
+    "positive": [
+      "review_summary"
+    ],
+    "queries": [
+      "기존 검수 결과의 정책 근거와 수정 제안을 보고서 표로 정리해줘",
+      "응대 검수 결과를 근거 인용이 포함된 보고서 표로 정리해줘"
+    ],
+    "negative": [
+      "reply_review",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "report_priority",
+    "positive": [
+      "review_summary"
+    ],
+    "queries": [
+      "이미 검수한 결과를 담당자가 확인할 보고서 표로 정리해줘",
+      "응대 검수 결과를 확인할 항목이 드러나도록 보고서 표로 정리해줘"
+    ],
+    "negative": [
+      "reply_review",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "report_original",
+    "positive": [
+      "review_summary"
+    ],
+    "queries": [
+      "기존 응대 검수 결과를 원문과 문제점이 함께 있는 보고서 표로 정리해줘",
+      "생성된 검수 결과를 원문 구절별 보고서 표로 바꿔줘"
+    ],
+    "negative": [
+      "reply_review",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "report_handoff",
+    "positive": [
+      "review_summary"
+    ],
+    "queries": [
+      "제공된 응대 검수 결과를 관리자가 읽을 보고서 표로 만들어줘",
+      "이미 생성한 검수 결과를 검토 회의용 보고서 표로 정리해줘"
+    ],
+    "negative": [
+      "reply_review",
+      "compose_answer"
+    ]
+  },
+  {
+    "group": "calculate_product",
+    "positive": [
+      "read_table",
+      "calculate_columns"
+    ],
+    "queries": [
+      "첨부 CSV의 price 열과 qty 열을 곱해 amount 열을 추가해줘",
+      "표에서 unit_price 곱하기 quantity를 계산한 total 열을 만들어줘"
+    ]
+  },
+  {
+    "group": "calculate_difference",
+    "positive": [
+      "read_table",
+      "calculate_columns"
+    ],
+    "queries": [
+      "CSV의 sales에서 cost를 뺀 profit 열을 추가해줘",
+      "표에서 revenue 빼기 expense 수식으로 margin 열을 계산해줘"
+    ]
+  },
+  {
+    "group": "calculate_ratio",
+    "positive": [
+      "read_table",
+      "calculate_columns"
+    ],
+    "queries": [
+      "첨부 표의 amount를 count로 나눠 average 열을 추가해줘",
+      "CSV에서 net 나누기 gross 곱하기 100으로 rate 열을 계산해줘"
+    ]
+  },
+  {
+    "group": "calculate_rename",
+    "positive": [
+      "read_table",
+      "calculate_columns"
+    ],
+    "queries": [
+      "첨부 CSV의 old_code 열 이름을 customer_code로 변경해줘",
+      "표의 amount 열 이름을 total_amount로 바꿔줘"
+    ]
+  },
+  {
+    "group": "search_refund",
+    "positive": [
+      "read_document",
+      "search_document"
+    ],
+    "queries": [
+      "첨부 문서에서 환불 기한과 관련된 구간을 찾아줘",
+      "제공한 정책 문서에서 환불 조건이 나오는 부분을 검색해줘"
+    ]
+  },
+  {
+    "group": "search_security",
+    "positive": [
+      "read_document",
+      "search_document"
+    ],
+    "queries": [
+      "첨부 매뉴얼에서 접근 권한을 회수하는 절차가 있는 구간을 찾아줘",
+      "제공한 보안 문서에서 계정 잠금과 관련된 부분을 검색해줘"
+    ]
+  },
+  {
+    "group": "search_contract",
+    "positive": [
+      "read_document",
+      "search_document"
+    ],
+    "queries": [
+      "첨부 계약서에서 자동 갱신 조건을 설명하는 조항을 찾아줘",
+      "제공한 계약 문서에서 중도 해지 조건에 해당하는 구간을 검색해줘"
+    ]
+  },
+  {
+    "group": "search_delivery",
+    "positive": [
+      "read_document",
+      "search_document"
+    ],
+    "queries": [
+      "첨부 정책 문서에서 배송 지연 보상 관련 구간을 찾아줘",
+      "문서에서 교환 상품 반송 절차에 관한 부분을 검색해줘"
+    ]
+  },
+  {
+    "group": "compound_extract",
+    "positive": [
+      "read_document",
+      "extract_information",
+      "export_result"
+    ],
+    "queries": [
+      "첨부 명세서에서 품목명과 수량을 추출해 CSV로 저장해줘",
+      "문서를 읽고 거래일과 거래금액을 추출해서 CSV로 내보내줘"
+    ]
+  },
+  {
+    "group": "compound_search_summary",
+    "positive": [
+      "read_document",
+      "search_document",
+      "compose_answer",
+      "export_result"
+    ],
+    "queries": [
+      "첨부 정책에서 환불 관련 구간을 찾아 그 근거만 요약하고 Markdown으로 저장해줘",
+      "매뉴얼에서 설치 절차를 검색해 해당 내용만 요약하고 Markdown 파일로 내보내줘"
+    ]
+  },
+  {
+    "group": "compound_calculate",
+    "positive": [
+      "read_table",
+      "calculate_columns",
+      "filter_sort"
+    ],
+    "queries": [
+      "CSV에서 price 곱하기 qty로 total 열을 만들고 total이 10000 이상인 행만 골라줘",
+      "표의 revenue에서 cost를 뺀 profit 열을 계산한 다음 profit 내림차순으로 정렬해줘"
+    ]
+  },
+  {
+    "group": "compound_aggregate",
+    "positive": [
+      "read_table",
+      "filter_sort",
+      "aggregate_table"
+    ],
+    "queries": [
+      "첨부 CSV에서 status가 완료인 행을 골라 지역별 amount 합계를 구해줘",
+      "표의 active가 true인 행만 남기고 department별 건수를 집계해줘"
+    ]
+  }
+]

@@ -63,6 +63,13 @@ def adapt_recommendation(
             "score_type": "uncalibrated_linear_svm_margin", "is_probability": False,
             "selected_by_threshold": flag,
         })
+        if 'selection_threshold' in row:
+            cutoff = row['selection_threshold']
+            if isinstance(cutoff, bool) or not isinstance(cutoff, (int, float)) or not math.isfinite(cutoff):
+                raise ValueError('selection_threshold must be finite')
+            if flag != (score >= cutoff):
+                raise ValueError('selection flag disagrees with tool threshold')
+            normalized[-1]['selection_threshold'] = float(cutoff)
     if top_k is not None:
         normalized = normalized[:top_k]
     known = [tool for tool in selected if tool in catalog]

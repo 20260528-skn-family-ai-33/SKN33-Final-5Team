@@ -17,7 +17,10 @@ export async function localModelHealth(){
  try{const headers:Record<string,string>={};if(process.env.A4B_MAIN_API_KEY)headers.Authorization='Bearer '+process.env.A4B_MAIN_API_KEY;
   const response=await fetch(process.env.A4B_MAIN_BASE_URL!.replace(/\/$/,'')+'/models',{headers,signal:AbortSignal.timeout(5000)});
   if(!response.ok)throw Error('unavailable');const body=await response.json() as {data?:{id:string}[]};
-  if(!body.data?.some(m=>m.id===connection.model))return {status:'unavailable',message:'설정한 Qwen 모델을 서버에서 찾지 못했습니다.'};
+  // Ollama expands an omitted tag to :latest in /v1/models. Registry ports
+  // belong to the prefix, so inspect only the final model-name segment.
+  const canonical=(name:string)=>process.env.A4B_MAIN_PROVIDER==='ollama'&&!name.slice(name.lastIndexOf('/')+1).includes(':')?name+':latest':name;
+  if(!body.data?.some(m=>canonical(m.id)===canonical(connection.model)))return {status:'unavailable',message:'설정한 Qwen 모델을 서버에서 찾지 못했습니다.'};
   return {status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'};
  }catch{return {status:'unavailable',message:'Qwen 서버 응답을 확인하지 못했습니다. 서버 실행 상태를 확인하세요.'};}
 }

@@ -335,7 +335,7 @@ def run_capturing(monkeypatch, s, response):
                 return {'structured_response': response}
         return Agent()
     monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', factory)
-    make_conversation(None, 'test', model_factory=lambda: object())(s)
+    captured['result'] = make_conversation(None, 'test', model_factory=lambda: object())(s)
     return captured
 
 
@@ -382,6 +382,37 @@ def test_ready_table_contract_fixes_node_ids_and_single_typed_bindings(monkeypat
         assert tool + '_1' not in item['node_id']['enum']  # no self-binding
 
 
+def test_ready_table_contract_decodes_only_runtime_settings_and_fills_the_rest(monkeypatch):
+    """62% of a live draft was null settings keys the four table tools never read."""
+    from tests.design.test_linear_plan import context
+    from tests.conditions.test_condition_readiness import workflow_draft
+    from agent_builder.design.nodes.conversation import SCOPED_SETTINGS, SETTINGS_DEFAULTS
+    from contracts.models import NodeSettings
+    s = context(); full = workflow_draft(s)
+    ids = {'read': 'read_table_1', 'filter': 'filter_sort_1', 'out': 'write_result_1'}
+    nodes = [{'id': ids[n['id']], 'tool': n['tool'], 'label': n['label'],
+              'bindings': [{**b, 'node_id': ids[b['node_id']]} for b in n['bindings']],
+              'settings': {k: n['settings'][k] for k in SCOPED_SETTINGS[n['tool']]}} for n in full['workflow']['nodes']]
+    compact = {**draft(), 'execution_plan': full['execution_plan'], 'workflow': {'entry': 'read_table_1', 'nodes': nodes,
+               'edges': [{'source': 'read_table_1', 'target': 'filter_sort_1', 'branch': 'next'},
+                         {'source': 'filter_sort_1', 'target': 'write_result_1', 'branch': 'next'}]}}
+    captured = run_capturing(monkeypatch, s, compact)
+    for variant in captured['schema']['$defs']['WorkflowNode']['anyOf']:
+        tool = variant['properties']['tool']['enum'][0]
+        settings = variant['properties']['settings']
+        assert list(settings['properties']) == settings['required'] == list(SCOPED_SETTINGS[tool])
+    produced = captured['result']['draft']['workflow']['nodes']
+    assert [n['id'] for n in produced] == ['read_table_1', 'filter_sort_1', 'write_result_1']
+    for n in produced:
+        NodeSettings.model_validate(n['settings'])
+        # canonical_table_draft writes the plan into filter_sort.instructions for display.
+        unchanged = set(SETTINGS_DEFAULTS) - set(SCOPED_SETTINGS[n['tool']]) - ({'instructions'} if n['tool'] == 'filter_sort' else set())
+        assert {k: n['settings'][k] for k in unchanged} == {k: SETTINGS_DEFAULTS[k] for k in unchanged}
+    assert produced[1]['settings']['execution_plan'] == full['execution_plan']
+    assert produced[2]['settings']['format'] == 'json'
+    assert captured['result']['semantic_issues'] == []
+
+
 def test_requests_outside_the_ready_table_contract_keep_the_full_catalog(monkeypatch):
     from workflow_engine.catalog.registry import TOOLS
     captured = run_capturing(monkeypatch, state([{'role': 'user', 'content': '문서에서 근거를 찾아 답해줘'}]),
@@ -393,3 +424,4 @@ def test_requests_outside_the_ready_table_contract_keep_the_full_catalog(monkeyp
     assert captured['context']['supported_tools'] == TOOLS
     assert 'enum' not in schema['$defs']['WorkflowDefinition']['properties']['entry']
     assert schema['$defs']['WorkflowNode']['anyOf'][0]['properties']['id']['pattern'] == r'^[a-zA-Z][\w-]{0,39}$'
+    assert len(schema['$defs']['WorkflowNode']['anyOf'][0]['properties']['settings']['properties']) > 4

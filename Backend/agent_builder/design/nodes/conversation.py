@@ -5,7 +5,7 @@ from infrastructure.llm.model_factory import create_chat_model
 from langchain_core.tools import tool
 from langchain.agents.structured_output import ProviderStrategy
 from langchain.agents.middleware import wrap_model_call
-from contracts.models import AgentDraft, WorkflowDefinition
+from contracts.models import AgentDraft, NodeSettings, WorkflowDefinition
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.design.presentation import canonical_table_draft
 from workflow_engine.workflow import normalize_connections, workflow_errors
@@ -15,6 +15,11 @@ from agent_builder.design.planner_constraints import ready_table_slots, table_pl
 # fixed (read_table_1, ...): live drafts copied 36-char library UUIDs as IDs, corrupted
 # them mid-string, and invented nodes such as start_node_1 or filter_sort_flow_1.
 SCOPED_NODE_IDS={tool:tool+'_1' for tool in TABLE_PLAN_TOOLS}
+# Settings each scoped tool reads at run time (executors/sources.py file_ids, runner.py
+# execution_plan/format, executors/control/finish.py instructions). The other ~30 keys
+# were 62% of the generated draft as nulls.
+SCOPED_SETTINGS={'read_table':('file_ids',),'filter_sort':('execution_plan',),'write_result':('format',),'finish':('instructions',)}
+SETTINGS_DEFAULTS={name:([] if getattr(field.annotation,'__origin__',None) is list else None) for name,field in NodeSettings.model_fields.items()}
 
 SYSTEM="""당신은 A4B의 사용자 대화와 워크플로우 설계를 총괄하는 Deep Agent입니다.
 매 턴 전체 사용자 대화, 현재 초안, 연결 자료, 검증 오류를 함께 확인하고 다음 행동을 직접 결정합니다.
@@ -209,6 +214,10 @@ def make_conversation(api_key,model,model_factory=None):
             if tool_name in ('write_result','export_result') and 'output.format' in confirmed:
                 variant['properties']['settings']['properties']['format']={'enum':[confirmed['output.format']]}
             variant['properties']['settings']['properties']['node_ref']={'enum':[None,*[n['ref'] for n in state.get('node_library',[]) if n['spec']['tool']==tool_name and (tool_name=='agent_node' or n['ref'] in state.get('required_node_refs',[]))]]}
+            if scoped:
+                settings=variant['properties']['settings']
+                settings['properties']={k:settings['properties'][k] for k in SCOPED_SETTINGS[tool_name]}
+                settings['required']=list(SCOPED_SETTINGS[tool_name])
             variants.append(variant)
         schema['$defs']['WorkflowNode']={'anyOf':variants}
         if scoped:
@@ -338,6 +347,10 @@ def make_conversation(api_key,model,model_factory=None):
             raw['tool_ids']=[]
         if raw.get('questions') or raw.get('unsupported'):
             raw['execution_plan']={'filters':[],'sort':[],'match':'all','missing_policy':'keep','duplicate_policy':'keep','duplicate_field':None,'output_format':raw.get('execution_plan',{}).get('output_format','json')}
+        if scoped and raw.get('workflow'):
+            # The scoped schema decodes only the settings each table tool reads at run time;
+            # the rest are the NodeSettings defaults, filled here rather than generated.
+            for node in raw['workflow']['nodes']:node['settings']={**SETTINGS_DEFAULTS,**node['settings']}
         raw['workflow']=normalize_connections(raw.get('workflow'))
         repair_mode=os.getenv('A4B_BINDING_REPAIR_MODE','off')
         if repair_mode not in ('off','safe'):

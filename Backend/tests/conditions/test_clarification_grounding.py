@@ -179,7 +179,8 @@ def test_actual_conversation_schema_pins_verified_settings_and_excludes_unused_p
     for v in variants:
         tool=v['properties']['tool']['enum'][0]
         setting=v['properties']['settings']['properties']
-        assert setting['execution_plan']==({'$ref':'#/$defs/ExecutionPlan'} if tool=='filter_sort' else {'type':'null'})
+        # Outside filter_sort the plan is not decoded at all in the table scope (filled as null).
+        assert setting.get('execution_plan',{'type':'null'})==({'$ref':'#/$defs/ExecutionPlan'} if tool=='filter_sort' else {'type':'null'})
         if tool=='write_result':assert setting['format']=={'enum':['json']}
 
 

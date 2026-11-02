@@ -237,7 +237,11 @@ def main():
         for r in data + extra:
             preds = original_predictions if r['record_id'] in byid else extra_predictions
             f.write(json.dumps({'record_id': r['record_id'], 'selected': sorted(preds[r['record_id']]), 'fold': next(f['fold'] for f in lineage if r['record_id'] in f['validation_ids'])})+'\n')
-    from ml.training.provenance import write_manifest
+    # Support the documented direct script invocation as well as -m execution.
+    if __package__:
+        from .provenance import write_manifest
+    else:
+        from provenance import write_manifest
     write_manifest(output, files, lineage)
     print(json.dumps({k: v for k, v in result.items() if k != 'folds' and 'oof' not in k}, indent=2))
 

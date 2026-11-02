@@ -78,3 +78,20 @@ def test_failed_training_never_publishes_completed_experiment(experiment, monkey
     assert not (output/'COMPLETE.json').exists()
     with pytest.raises(FileNotFoundError):
         load_verified_predictions(output, files, splits, ids, ['one'])
+
+
+def test_direct_script_finishes_without_ml_import_root(experiment, monkeypatch):
+    import runpy
+    from pathlib import Path
+    _, output, files, splits, ids = experiment
+    script = Path(trainer.__file__)
+    # Python's direct-file entry point puts this directory, not Backend, first.
+    monkeypatch.syspath_prepend(str(script.parent))
+    namespace = runpy.run_path(str(script))
+    entry = namespace['main']
+    for name in ['DATA_SHA', 'CATALOG_SHA', 'SPLITS_SHA', 'supplement']:
+        monkeypatch.setitem(entry.__globals__, name, getattr(trainer, name))
+    monkeypatch.setitem(sys.modules, 'ml', None)
+    entry()
+    assert (output/'COMPLETE.json').is_file()
+    assert set(load_verified_predictions(output, files, splits, ids, ['one'])) == ids

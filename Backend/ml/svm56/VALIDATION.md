@@ -44,3 +44,11 @@
 3. 전달받은 원본 통합 패키지의 데이터/카탈로그/고정 분할을 사용해 `Backend/ml/training/README.md`의 새 디렉터리 학습·비교 절차를 실행합니다.
 4. Docker는 `.env.example`의 선택 ML 빌드/마운트 설정과 정확한 모델 SHA256을 사용합니다. 기본 Qwen 프로필은 `Backend/scripts/setup-ollama-model.sh`로 준비합니다.
 5. 컨테이너의 `/app/Backend`에서 `python -m ml.svm56.verify_service --bundle /app/ml-bundle --model /app/ml-bundle/model/candidate.joblib --model-sha256 <검증한 SHA256>`로 실제 모델 진단을 실행합니다.
+
+## PR #21 후속 수정 (1af944a 리뷰)
+
+- Docker의 condition enforce가 좁은 선별·중복·예약 검사 밖의 문서 작업까지 차단한 회귀를 수정했습니다. 유효한 `other` 판정은 조건 검사 승인이 아니라 기존 설계 경로로 넘깁니다. 이전 표 조건·질문은 해제하고, 기존 지원 판정·설계·검증·승인 절차를 거칩니다. 혼합 작업·명시적 미지원·취소·입력 장애는 이 경로로 우회하지 않습니다. shadow의 진단 결과도 보존합니다.
+- 영수증→CSV 요청이 `other`로 분류됐을 때 실제 설계 그래프가 기존 항목 질문까지 도달하는 회귀 테스트를 추가했습니다. 이후 표 선별 요청에서는 다시 조건 검사가 적용되는 것도 검사합니다. 이 테스트의 분류/설계 응답은 고정 fixture이며 실제 LLM 분류 정확도 시험은 아닙니다.
+- 학습 안내를 `PYTHONPATH=Backend python -m ml.training.train_candidate`로 수정했습니다. 직접 파일 실행도 완료 매니페스트 모듈을 정상 import하도록 지원합니다.
+- `PYTHONPATH`를 제거한 실제 직접 명령으로 원본 5,431건+보강 48건의 5-fold 학습·모델 저장·`COMPLETE.json` 생성과 후속 비교기의 파일/fold/모델 재계산 검증을 통과했습니다. 이 실행은 CLI 검증용 char 후보이며 기존 운영 설정이나 모델을 바꾸지 않습니다.
+- 후속 검사: 조건·학습 무결성 관련 230개 통과, Python 전체 949개와 하위 테스트 4개 통과, 최소 ML 환경 74개 통과·3개 선택 모듈 건너뜀, 타입 검사·빌드 통과. 직접 파일 실행에서 `ml` import 루트가 없는 상황도 자동 회귀 검사합니다.

@@ -6,12 +6,12 @@
 
 ```sh
 python -m pip install -r Backend/requirements/ml-svm56.txt
-python Backend/ml/training/train_candidate.py \
+PYTHONPATH=Backend python -m ml.training.train_candidate \
   --baseline /absolute/path/to/08_서비스연동패키지 \
   --output /absolute/path/outside-baseline/candidate
 ```
 
-기준 폴더 내부에는 출력할 수 없습니다. `PLAN.json`, 보강 JSONL, `RESULTS.json`, OOF 예측, `candidate.joblib`을 별도 생성합니다. 기존 기록의 OOF와 비교할 때 원본 5,431건의 지표를 비교하고 새 합성 사례는 별도로 봅니다. 합성 보강은 대부분 부분 라벨이므로 해당 지표를 전체 도구 정밀도·최종 성공률로 부르면 안 됩니다.
+저장소 루트에서 위 명령을 실행합니다. 직접 스크립트 실행도 지원하지만 모듈 실행을 권장합니다. 기준 폴더 내부에는 출력할 수 없습니다. `PLAN.json`, 보강 JSONL, `RESULTS.json`, OOF 예측, `candidate.joblib`을 별도 생성합니다. 기존 기록의 OOF와 비교할 때 원본 5,431건의 지표를 비교하고 새 합성 사례는 별도로 봅니다. 합성 보강은 대부분 부분 라벨이므로 해당 지표를 전체 도구 정밀도·최종 성공률로 부르면 안 됩니다.
 
 이미 검토한 개발 fold에서 모델을 선택하는 과정이며 독립 테스트가 아닙니다. 원본에도 사람 검수 정답·실행 검증이 없습니다. 통계가 좋아져도 일반화나 실제 앱 실행 개선을 입증하지 않습니다. 원본의 복합 누락·취약 도구 오류는 별도 사람 검토 대상으로 유지하세요.
 

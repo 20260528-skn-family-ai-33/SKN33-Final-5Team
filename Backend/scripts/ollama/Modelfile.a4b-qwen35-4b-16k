@@ -1,0 +1,7 @@
+# A4B baseline model: qwen3.5:4b with a 16k context window.
+# The app's OpenAI-compatible /v1 calls cannot set num_ctx per request, and
+# Ollama's VRAM-based default (4096) silently drops the long context message.
+# Only num_ctx/num_predict differ from qwen3.5:4b; sampling is set per request.
+FROM qwen3.5:4b
+PARAMETER num_ctx 16384
+PARAMETER num_predict 4096

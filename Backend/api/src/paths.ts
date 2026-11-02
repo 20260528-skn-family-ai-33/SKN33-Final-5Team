@@ -1,6 +1,7 @@
 import {existsSync,mkdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {AsyncLocalStorage} from 'node:async_hooks';
 
 // Both src/ source files and the bundled build-server/ entry live one level below Backend/api.
 export const API_ROOT=resolve(fileURLToPath(new URL('..',import.meta.url)));
@@ -13,7 +14,11 @@ export const frontendPath=(...parts:string[])=>resolve(FRONTEND_ROOT,...parts);
 export const backendPath=(...parts:string[])=>resolve(BACKEND_ROOT,...parts);
 // Sample files for tests and dev scripts; the server never reads them.
 export const examplePath=(...parts:string[])=>resolve(BACKEND_ROOT,'tests','fixtures','examples',...parts);
-export const dataDirectory=(...parts:string[])=>resolve(PROJECT_ROOT,process.env.EASYFLOW_DATA_DIR||'data',...parts);
+const workspaceDirectory=new AsyncLocalStorage<string>();
+export const baseDataDirectory=(...parts:string[])=>resolve(PROJECT_ROOT,process.env.EASYFLOW_DATA_DIR||'data',...parts);
+export const dataDirectory=(...parts:string[])=>resolve(workspaceDirectory.getStore()||baseDataDirectory(),...parts);
+/** Request, worker and timer callbacks inherit the authenticated user's directory. */
+export const withDataDirectory=<T>(directory:string,action:()=>T):T=>workspaceDirectory.run(resolve(directory),action);
 // Live-check reports from dev scripts go to the (git-ignored) data directory.
 export const documentationPath=(...parts:string[])=>{
  const path=dataDirectory('live-checks',...parts);mkdirSync(dirname(path),{recursive:true});return path;

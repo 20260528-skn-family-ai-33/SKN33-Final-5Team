@@ -1,4 +1,5 @@
 import {WorkspaceBrandMark} from './workspace-header';
+import {AccountMenu} from './auth';
 import {useEffect,useRef,useState,type CSSProperties,type KeyboardEvent,type MouseEvent,type RefObject} from 'react';
 import {IntroPreview} from './intro-preview';
 import {ArrowDown,ArrowRight,ArrowUp,ArrowUpRight,CalendarClock,Check,CheckCircle2,Database,FileOutput,FileText,Filter,MessageSquare,Paperclip,Search,ShieldCheck,Workflow} from 'lucide-react';
@@ -103,7 +104,7 @@ export default function LandingPage({onStart,onPreview,onRoute}:LandingProps){
   <header className="a4b-landing-header" ref={header}><div className="a4b-landing-header-inner">
    <a className="a4b-landing-brand" href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')} aria-label="A4B 서비스 소개 맨 위로"><WorkspaceBrandMark/><span>A4B</span></a>
    <nav className="a4b-landing-nav" aria-label="페이지 메뉴">{sections.map(({id,label})=><a key={id} href={'#'+id} onClick={scrollTo(id)} aria-current={current===id?'location':undefined} className={current===id?'is-current':undefined}>{label}</a>)}</nav>
-   <div className="a4b-landing-header-actions"><button type="button" className="a4b-landing-button a4b-button-header a4b-button-quiet" onClick={()=>onPreview(false)}>제품 살펴보기</button><button type="button" className="a4b-landing-button a4b-button-header" onClick={onStart}>워크플로우 열기<ArrowUpRight size={16} aria-hidden="true"/></button></div>
+   <div className="a4b-landing-header-actions"><AccountMenu/><button type="button" className="a4b-landing-button a4b-button-header a4b-button-quiet" onClick={()=>onPreview(false)}>제품 살펴보기</button><button type="button" className="a4b-landing-button a4b-button-header" onClick={onStart}>워크플로우 열기<ArrowUpRight size={16} aria-hidden="true"/></button></div>
   </div><span className="a4b-scroll-progress" aria-hidden="true"/></header>
   <main id="a4b-landing-main">
    <section className="a4b-landing-hero" aria-labelledby="a4b-hero-title">

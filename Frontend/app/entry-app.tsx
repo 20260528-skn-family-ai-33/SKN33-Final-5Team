@@ -8,12 +8,14 @@ import {request} from '../components/flow/connection-panel';
 import './entry-app.css';
 import LandingPage from './landing-page';
 import {IntroDemo} from './intro-demo';
+import {useAuth,SignIn} from './auth';
 export type EntryRoute='intro'|'preview'|'workflows'|'history'|'nodes'|'workflow'|'run';
 type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
 function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','workflows','history','nodes','workflow','run'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
 export default function EntryApp(){
+ const auth=useAuth();
  const [route,setRoute]=useState<EntryRoute>(routeFromLocation),[navigationKey,setNavigationKey]=useState(0);
  const guard=useRef<()=>boolean>(()=>true);
  const routeRef=useRef(route);routeRef.current=route;
@@ -32,6 +34,7 @@ export default function EntryApp(){
   const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('previewNode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);
   historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});
  }
+ if(!['intro','preview'].includes(route)&&(auth.loading||auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
  if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onHome={()=>navigate('intro')} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('workflows')}/>;
  const newFlow=()=>navigate('workflow',undefined,true);

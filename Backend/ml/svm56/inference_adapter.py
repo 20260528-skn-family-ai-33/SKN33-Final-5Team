@@ -1,6 +1,8 @@
 """Advisory inference adapter for the pinned A4B 56-tool catalog."""
 from __future__ import annotations
 import json
+import math
+from numbers import Real
 from pathlib import Path
 from typing import Any
 import joblib
@@ -15,6 +17,15 @@ class ToolRecommender:
             raise ValueError("Pinned model labels/order do not match the supplied tool catalog")
         if len(self.model["heads"]) != len(self.labels):
             raise ValueError("Model head count does not match label count")
+        scalar = self.model['threshold']
+        if isinstance(scalar, bool) or not isinstance(scalar, Real) or not math.isfinite(scalar):
+            raise ValueError('Model threshold must be finite')
+        values = self.model.get('thresholds', [scalar] * len(self.labels))
+        if not isinstance(values, (list, tuple)) or len(values) != len(self.labels):
+            raise ValueError('Model thresholds must match label order and count')
+        if any(isinstance(v, bool) or not isinstance(v, Real) or not math.isfinite(v) for v in values):
+            raise ValueError('Model thresholds must be finite real numbers')
+        self.thresholds = [float(v) for v in values]
         self.catalog_by_id = {row["id"]: row for row in self.catalog}
         self.untrained_tool_ids = [tool_id for tool_id, head in zip(self.labels, self.model["heads"]) if head is None]
         self.trained_tool_ids = [tool_id for tool_id, head in zip(self.labels, self.model["heads"]) if head is not None]
@@ -27,7 +38,7 @@ class ToolRecommender:
         x = self.model["vectorizer"].transform([request_text])
         scored = []
         threshold = float(self.model["threshold"])
-        for tool_id, head in zip(self.labels, self.model["heads"]):
+        for tool_id, head, cutoff in zip(self.labels, self.model["heads"], self.thresholds):
             if head is None:
                 continue
             score = float(head.decision_function(x)[0])
@@ -35,13 +46,16 @@ class ToolRecommender:
                 "tool_id": tool_id,
                 "name": self.catalog_by_id[tool_id].get("name", tool_id),
                 "decision_score": score,
-                "selected_by_threshold": score >= threshold,
+                "selection_threshold": cutoff,
+                "selected_by_threshold": score >= cutoff,
             })
         scored.sort(key=lambda row: (-row["decision_score"], row["tool_id"]))
         selected = [row["tool_id"] for row in scored if row["selected_by_threshold"]]
         return {
             "model_method": self.model["method"],
             "threshold": threshold,
+            "thresholds": dict(zip(self.labels, self.thresholds)),
+            "selection_policy": self.model.get('selection_policy', 'global_threshold'),
             "score_semantics": "raw, uncalibrated LinearSVC decision_function margin; not a probability",
             "selected_tool_ids": selected,
             "ranked_tools": scored[:top_k],

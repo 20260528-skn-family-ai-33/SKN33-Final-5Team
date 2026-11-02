@@ -1,0 +1,6 @@
+# Matches the 2026-10-31 baseline integration package.
+joblib==1.5.0
+numpy==2.2.5
+scipy==1.15.2
+scikit-learn==1.6.1
+threadpoolctl==3.6.0

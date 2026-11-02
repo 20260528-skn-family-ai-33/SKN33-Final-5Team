@@ -146,6 +146,8 @@ def test_native_context_and_transport_do_not_mutate_global_model(monkeypatch,thi
     assert payload['options']['num_ctx']==16384 and payload['options']['num_predict']==4096
     assert payload['think'] is thinking and not payload.get('tools')
     assert result['content']=='{}'
+    # urllib's default agent is rejected (403) by the RunPod proxy.
+    assert seen[0][0].get_header('User-agent')=='A4B/0.1'
 
 
 def test_direct_requires_explicit_local_provider(monkeypatch):

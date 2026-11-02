@@ -23,6 +23,15 @@ test('local model health distinguishes ready, missing model and unreachable with
   const {localModelHealth}=await import('../src/builder-local-model');
   globalThis.fetch=(async()=>new Response(JSON.stringify({data:[{id:'qwen-test'}]}))) as any;
   assert.equal((await localModelHealth()).status,'ready');
+  globalThis.fetch=(async()=>new Response(JSON.stringify({data:[{id:'qwen-test:latest'}]}))) as any;
+  assert.equal((await localModelHealth()).status,'ready');
+  process.env.A4B_MAIN_MODEL='qwen-test:other';
+  assert.equal((await localModelHealth()).status,'unavailable');
+  process.env.A4B_MAIN_MODEL='qwen-test';process.env.A4B_MAIN_PROVIDER='vllm';
+  assert.equal((await localModelHealth()).status,'unavailable');
+  process.env.A4B_MAIN_PROVIDER='ollama';process.env.A4B_MAIN_MODEL='registry.test:443/team/qwen-test';
+  globalThis.fetch=(async()=>new Response(JSON.stringify({data:[{id:'registry.test:443/team/qwen-test:latest'}]}))) as any;
+  assert.equal((await localModelHealth()).status,'ready');
   globalThis.fetch=(async()=>new Response(JSON.stringify({data:[]}))) as any;
   assert.equal((await localModelHealth()).status,'unavailable');
   globalThis.fetch=(async()=>{throw Error('hidden-health-key');}) as any;

@@ -21,6 +21,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY Backend/requirements/agent-lock.txt Backend/requirements/document-analysis.txt /app/Backend/requirements/
 RUN python3 -m venv /app/Backend/.venv-agent && /app/Backend/.venv-agent/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/agent-lock.txt
+# Optional pinned SVM56 runtime. Weights stay in a read-only host mount.
+ARG A4B_WITH_ML=0
+COPY Backend/requirements/ml-svm56.txt /app/Backend/requirements/
+RUN case "$A4B_WITH_ML" in 1) /app/Backend/.venv-agent/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/ml-svm56.txt ;; 0) : ;; *) exit 1 ;; esac
 # Native document readers (CSV/Excel/PDF text/Word/PowerPoint). Every upload is routed here
 # (A4B_DOCUMENT_ROUTING defaults to on), so the image cannot accept files without it.
 RUN python3 -m venv /app/Backend/.venv-document-analysis && /app/Backend/.venv-document-analysis/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/document-analysis.txt

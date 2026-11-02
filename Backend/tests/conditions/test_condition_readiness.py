@@ -487,3 +487,60 @@ def test_fourth_unresolved_condition_is_kept_and_asked_on_the_next_turn():
                'missing.policy': ('exclude', '제외'), 'output.format': ('csv', 'CSV')}
     second = judge(s, {k: (answers[k] if k not in left else (None, '')) for k in answers})
     assert second['unresolved'] == left and [q['key'] for q in second['questions']] == left
+
+
+def test_other_document_work_reaches_existing_item_clarification_in_enforce_mode(tmp_path):
+    s = state('첨부 영수증에서 항목을 추출해 CSV로 저장해줘.')
+    raw = {'operation': 'other', 'conditions': [], 'unsupported_actions': []}
+    calls = []
+    def document_design(current):
+        calls.append(current)
+        return {'draft': {**draft(), 'tool_ids': ['read_document', 'extract_information', 'export_result'],
+                          'workflow': None, 'questions': ['영수증에서 어떤 항목을 추출할까요?']}}
+    store = Storage(tmp_path)
+    graph, conn = build_graph(store, conversation=document_design,
+                             condition_transport=Fake([raw]), condition_mode='enforce')
+    try:
+        result = graph.invoke(s, {'configurable': {'thread_id': s['session_id']}})
+        assert len(calls) == 1
+        assert result['status'] == 'needs_clarification'
+        assert result['draft']['questions'] == ['영수증에서 어떤 항목을 추출할까요?']
+        assert not result['condition_enforced'] and not result['condition_required']
+        assert result['condition_ledger'] is None
+        assert not store.agents()
+    finally:
+        conn.close(); store.close()
+
+
+@pytest.mark.parametrize(('operation', 'unsupported', 'text', 'expected'), [
+    ('mixed', [], '문서 요약과 표 선별을 함께 해줘.', 'validation_failed'),
+    ('other', ['외부 발송 도구 없음'], '문서를 외부로 발송해줘.', 'unsupported'),
+    ('other', [], '작업 취소해줘.', 'validation_failed'),
+])
+def test_outside_scope_handoff_does_not_bypass_mixed_unsupported_or_cancellation(operation, unsupported, text, expected):
+    result = make_condition_check(mode='enforce', transport=Fake([
+        {'operation': operation, 'conditions': [], 'unsupported_actions': unsupported}]))(state(text))
+    assert result['status'] == expected
+    assert result['condition_enforced']
+
+
+def test_outside_scope_clears_stale_table_conditions_but_later_filter_is_enforced():
+    s = state('영수증을 CSV로 바꿔줘.')
+    s.update(condition_required=True, condition_enforced=True, pending_questions=[{'key': 'filter.value'}],
+             condition_ledger={'operations': ['filter'], 'slots': {}, 'decision': 'clarify'})
+    update = make_condition_check(mode='enforce', transport=Fake([
+        {'operation': 'other', 'conditions': [], 'unsupported_actions': []}]))(s)
+    assert not update['condition_required'] and update['condition_ledger'] is None
+    next_state = {**s, **update, 'messages': [{'role': 'user', 'content': '비용이 큰 행을 골라줘.'}]}
+    followup = make_condition_check(mode='enforce', transport=Fake([
+        {'operation': 'filter', 'conditions': [], 'unsupported_actions': []}]))(next_state)
+    assert followup['condition_enforced'] and followup['status'] == 'needs_clarification'
+
+
+
+def test_shadow_other_keeps_diagnostic_ledger_without_blocking_design():
+    result = make_condition_check(mode='shadow', transport=Fake([
+        {'operation': 'other', 'conditions': [], 'unsupported_actions': []}]))(state('영수증을 CSV로 바꿔줘.'))
+    assert result['condition_route'] == 'conversation'
+    assert result['condition_ledger']['outside_scope']
+    assert not result['condition_enforced']

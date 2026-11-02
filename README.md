@@ -400,7 +400,7 @@ flowchart LR
 
 Deep Agent가 설계하기 전에 요청이 등록 도구로 가능한지, 필수 조건이 정해졌는지 판정합니다. 결과는 질문 ID가 붙은 질문, 확정·미정·충돌 조건 장부, 미지원 안내로 화면에 전달됩니다. 설계 초안을 만들거나 저장·실행을 승인하지는 않습니다.
 
-`resources → capability_check → condition_check → (Deep Agent 설계)` 경로에 연결되어 있으며 환경변수로 동작을 선택합니다. 루트 `.env.example`은 두 값을 `enforce`로 켜고, Docker도 `.env`의 값을 그대로 받습니다.
+`resources → capability_check → condition_check → (Deep Agent 설계)` 경로에 연결되어 있으며 환경변수로 동작을 선택합니다. Docker는 두 값이 없거나 비어 있으면 `off`로 실행합니다. 루트 `.env.example`을 `.env`로 복사하면 두 값이 `enforce`로 켜지고, Docker도 `.env`의 값을 그대로 받습니다.
 
 | 설정 | `off` (코드 기본값) | `enforce` (`.env.example`) |
 | --- | --- | --- |

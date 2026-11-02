@@ -43,6 +43,33 @@ def test_attached_document_asks_fields_then_builds_the_fixed_flow_without_the_mo
     connection.close();store.close()
 
 
+def test_enforced_condition_check_delegates_the_fixed_flow_without_a_model_call(tmp_path):
+    class NoConditionModel:
+        def invoke(self, messages): pytest.fail('the fixed flow must not call the condition model')
+    store=Storage(tmp_path);s={**initial(),'messages':[{'role':'user','content':REQUEST}],'resources':[DOC]}
+    cfg={'configurable':{'thread_id':s['session_id']}}
+    graph,connection=build_graph(store,conversation=no_planner,condition_transport=NoConditionModel(),condition_mode='enforce',capability_mode='off')
+    first=graph.invoke(s,cfg)
+    assert first['draft']['questions']==[QUESTION]
+    done=graph.invoke(Command(resume={'type':'message','content':'상품명, 수량, 단가, 금액'}),cfg)
+    assert done['draft']['workflow']['nodes'][1]['settings']['fields']==['상품명','수량','단가','금액']
+    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='review'
+    checks=[t for t in done['trace'] if t['node']=='condition_check' and t.get('model_calls')==0 and 'outside_scope' in t['detail']]
+    assert len(checks)==2 and done['condition_enforced'] is False
+    connection.close();store.close()
+
+
+def test_fixed_flow_scope_excludes_cancellations_tables_and_other_requests():
+    from agent_builder.design.document_rows_template import document_rows_applies, ASK_EXPLANATION
+    asked=lambda answer,resources=[DOC]:{**initial(),'resources':resources,'messages':[{'role':'user','content':REQUEST},
+        {'role':'assistant','content':ASK_EXPLANATION+'\n• '+QUESTION},{'role':'user','content':answer}]}
+    assert document_rows_applies(asked('상품명, 금액'))
+    assert document_rows_applies(asked('다 뽑아줘')) and document_rows_applies(asked('전체 다'))
+    assert not document_rows_applies(asked('취소해줘'))
+    assert not document_rows_applies(asked('상품명, 금액',[DOC,{**DOC,'id':'t','kind':'table'}]))
+    assert not document_rows_applies({**initial(),'resources':[DOC],'messages':[{'role':'user','content':'이 문서 내용을 요약해줘'}]})
+
+
 @pytest.mark.parametrize('answer',['취소해줘','취소','그만할래','다른 걸로 바꿀래','아니, 요약으로 바꿔줘','아니, 요약만 해줘','아니요','처음부터 다시 할게요'])
 def test_cancel_or_change_after_field_question_returns_to_the_planner(answer):
     from agent_builder.design.document_rows_template import document_rows_reply, is_request_change, ASK_EXPLANATION
@@ -57,6 +84,37 @@ def test_cancel_or_change_after_field_question_returns_to_the_planner(answer):
 def test_field_answers_are_not_mistaken_for_commands(answer):
     from agent_builder.design.document_rows_template import is_request_change
     assert not is_request_change(answer)
+
+
+def asked_state(answer,request=REQUEST,doc=DOC):
+    from agent_builder.design.document_rows_template import ASK_EXPLANATION
+    return {**initial(),'resources':[doc],'messages':[{'role':'user','content':request},
+                                                      {'role':'assistant','content':ASK_EXPLANATION+'\n• '+QUESTION},
+                                                      {'role':'user','content':answer}]}
+
+
+@pytest.mark.parametrize('answer',['전체 다','전체','다','전부 다','모두','모든 항목','알아서','다 뽑아줘','전부 다 정리해주세요','영수증에 있는 거 다','전체 다요.'])
+def test_all_fields_answer_on_a_receipt_uses_the_receipt_columns(answer):
+    from agent_builder.design.document_rows_template import document_rows_reply, wants_all_fields, RECEIPT_FIELDS
+    assert wants_all_fields(answer)
+    reply=document_rows_reply(asked_state(answer))
+    fields=reply['draft']['workflow']['nodes'][1]['settings']['fields']
+    assert fields==RECEIPT_FIELDS and answer not in fields
+    assert '영수증 기본 항목' in reply['messages'][-1]['content']
+
+
+def test_all_fields_answer_without_a_receipt_asks_for_field_names_again():
+    from agent_builder.design.document_rows_template import document_rows_reply, ALL_FIELDS_NOTE
+    doc={**DOC,'id':'contract','name':'contract.pdf'}
+    reply=document_rows_reply(asked_state('전체 다',request='계약서 내용을 엑셀로 정리해줘',doc=doc))
+    assert reply['draft']['questions']==[QUESTION] and ALL_FIELDS_NOTE in reply['messages'][-1]['content']
+    assert reply['messages'][-1]['content'].endswith(QUESTION)
+
+
+@pytest.mark.parametrize('answer',['전체 금액','다른 걸로 바꿀래','모델명, 금액','상품명'])
+def test_field_names_that_start_like_all_are_not_all_fields(answer):
+    from agent_builder.design.document_rows_template import wants_all_fields
+    assert not wants_all_fields(answer)
 
 
 def test_reserved_row_field_is_asked_again_instead_of_overwritten():

@@ -48,6 +48,13 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         setting='enforce' if state.get('condition_required') or state.get('condition_enforced') else configured
         if setting == 'off':
             return {'condition_enforced': False, 'condition_route': 'conversation', 'condition_ledger': None, 'condition_template': False}
+        from agent_builder.design.document_rows_template import document_rows_applies
+        if setting == 'enforce' and document_rows_applies(state):
+            # Document-to-table work is outside this checker's table scope; the fixed flow decides it in code.
+            return {'condition_ledger': None, 'condition_enforced': False, 'condition_required': False,
+                    'condition_route': 'conversation', 'condition_template': False, 'pending_questions': [],
+                    'trace': state.get('trace', []) + [{'node': 'condition_check', 'label': '업무 조건 확인', 'status': 'completed',
+                        'detail': 'outside_scope: 문서 표 정리 고정 흐름으로 위임', 'mode': setting, 'model_calls': 0, 'metrics': {}}]}
         try:
             # Build a transport lazily: a failed input never calls the model.
             from agent_builder.conditions.condition_readiness import input_issues
@@ -73,6 +80,14 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
                   'trace': state.get('trace', []) + [{'node': 'condition_check', 'label': '업무 조건 확인',
                      'status': 'completed' if ledger['decision'] == 'ready' else 'needs_input',
                      'detail': detail, 'mode': setting, 'model_calls': result['model_calls'], 'metrics': result['metrics']}]}
+        if setting == 'enforce' and ledger.get('outside_scope'):
+            # This checker covers table filtering/deduplication/scheduling only.
+            # Other work still goes through capability checks, normal design,
+            # validation and approval; it is not a READY condition verdict.
+            update.update(condition_ledger=None, condition_enforced=False,
+                          condition_required=False, pending_questions=[])
+            update['trace'][-1].update(status='completed', detail='outside_scope: 기존 설계 경로로 위임')
+            return update
         if setting == 'shadow' or ledger['decision'] == 'ready':
             if setting == 'enforce':
                 update['pending_questions'] = []

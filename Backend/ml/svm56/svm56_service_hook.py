@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -22,9 +23,11 @@ def _sha256(path: Path) -> str:
 
 
 @lru_cache(maxsize=1)
-def _load_pinned(model_path: str, catalog_path: str):
+def _load_pinned(model_path: str, catalog_path: str, expected_model_sha256: str = MODEL_SHA256):
+    if not re.fullmatch(r'[0-9a-f]{64}', expected_model_sha256):
+        raise ValueError('Expected model hash must be a SHA256 digest')
     model, catalog = Path(model_path), Path(catalog_path)
-    if _sha256(model) != MODEL_SHA256 or _sha256(catalog) != CATALOG_SHA256:
+    if _sha256(model) != expected_model_sha256 or _sha256(catalog) != CATALOG_SHA256:
         raise ValueError("model or catalog hash differs from pinned candidate")
     from .inference_adapter import ToolRecommender
     return ToolRecommender(model, catalog)
@@ -37,8 +40,9 @@ def recommend_svm_for_state(state: dict, registry: list[dict]) -> dict:
         return {"ml_candidates": [], "ml_status": "missing_configuration", "advisory_only": True,
                 "ml_usage": "추천 모델이 설정되지 않았습니다. 전체 등록 도구와 요청을 기준으로 검토하세요."}
     try:
-        model = _load_pinned(model_path, catalog_path)
-        return build_svm_advice(state, registry, model)
+        expected = os.getenv('A4B_SVM_EXPECTED_MODEL_SHA256') or MODEL_SHA256
+        model = _load_pinned(model_path, catalog_path, expected)
+        return {**build_svm_advice(state, registry, model), 'ml_model_sha256': expected}
     except Exception as error:
         return {"ml_candidates": [], "ml_status": "failed", "ml_error_type": type(error).__name__,
                 "advisory_only": True,

@@ -56,7 +56,8 @@ class OpenAICompatibleProvider:
    {"role":"user","content":content if images else content[0]["text"]}]}
   if self.transport is not None:response=self.transport(request)
   else:
-   headers={"Content-Type":"application/json"}
+   # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent.
+   headers={"Content-Type":"application/json","User-Agent":"A4B/0.1"}
    if self.api_key:headers["Authorization"]="Bearer "+self.api_key
    req=urllib.request.Request(self.url,data=json.dumps(request,ensure_ascii=False).encode(),headers=headers,method="POST")
    try:

@@ -20,11 +20,16 @@ foreach ($key in $settings.Keys) {
 }
 Get-Process | Where-Object { $_.ProcessName -like 'ollama*' } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep 2
-Start-Process (Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama app.exe')
+Start-Process (Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama app.exe') -WindowStyle Hidden
 for ($i = 0; $i -lt 30; $i++) {
     try { Invoke-WebRequest http://127.0.0.1:11434/api/version -UseBasicParsing -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep 1 }
 }
 & $exe pull qwen3:8b-q4_K_M
+if ($LASTEXITCODE -ne 0) { throw 'qwen3:8b-q4_K_M 다운로드 실패' }
 & $exe pull qwen3.5:4b
+if ($LASTEXITCODE -ne 0) { throw 'qwen3.5:4b 다운로드 실패' }
+$modelFile = Join-Path $PSScriptRoot '..\Backend\scripts\ollama\Modelfile.a4b-qwen35-4b-16k'
+& $exe create a4b-qwen35-4b-16k -f $modelFile
+if ($LASTEXITCODE -ne 0) { throw '16k 기본 모델 생성 실패' }
 & $exe list
 Write-Host 'Ollama 준비 완료. 저장소 루트에서 docker compose up -d 를 실행하세요.'

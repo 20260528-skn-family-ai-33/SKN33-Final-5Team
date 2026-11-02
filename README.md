@@ -74,7 +74,7 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. 영수증처럼 �
    cd final_test
    ```
 
-3. Ollama 설정과 Qwen 모델 2개(약 8.5GB)를 준비합니다. 문맥 16384·KV 캐시 q8_0·모델 상주 설정이 함께 들어갑니다.
+3. Ollama 설정과 Qwen 모델 2개(약 8.5GB)를 준비합니다. 스크립트는 `qwen3.5:4b`에 문맥 16384를 고정한 `a4b-qwen35-4b-16k`도 만듭니다(기본 모델 가중치 공유). 이 모델을 기본 설계 모델로 사용합니다.
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\prepare-ollama.ps1
@@ -204,6 +204,7 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. 영수증처럼 �
 - 데이터는 Docker 볼륨 `a4b-data`에 저장되어 컨테이너를 다시 만들어도 유지됩니다. 중지는 `docker compose down`입니다(`-v`를 붙이면 데이터도 삭제).
 - 검증 모드 기본값은 `defer`입니다. 쌓인 검증 기록은 한가한 시간에 `docker compose exec app /app/Backend/.venv-agent/bin/python scripts/run-deferred-verifications.py`로 판정합니다.
 - 모델 이름·포트·Ollama 주소는 루트 `.env`의 `A4B_LLM_MODEL`, `A4B_VERIFIER_MODEL`, `A4B_DOCKER_PORT`, `A4B_DOCKER_OLLAMA_URL`로 바꿀 수 있습니다.
+- 기본 설계 모델은 문맥 16k를 모델에 고정한 `a4b-qwen35-4b-16k`입니다. 준비 스크립트가 이 모델을 만듭니다. RunPod 등 원격 Ollama를 쓰면 저장소를 받은 **Ollama 서버에서** `ollama pull qwen3.5:4b` 후 `ollama create a4b-qwen35-4b-16k -f Backend/scripts/ollama/Modelfile.a4b-qwen35-4b-16k`를 실행하세요. 모델이 없으면 오류가 나며 일반 모델명으로 자동 대체하지 않습니다. 다른 모델명을 쓰면 Deep Agent의 `/v1` 경로를 위해 서버 또는 모델의 문맥을 별도로 16k 이상 설정해야 합니다. 지원·조건 판정의 `/api/chat` 경로는 요청에 `num_ctx=16384`를 직접 지정합니다.
 - 이미지에는 일반 문서 읽기(CSV·Excel·글자가 있는 PDF·Word·PowerPoint)와 사진·스캔용 OCR(PaddleOCR 3.7.0, CPU, 한국어 인식 모델)이 포함됩니다. OCR 모델(약 145MB)은 빌드 때 받아 두고 실행 중에는 내려받지 않습니다. 이미지 크기는 약 4.2GB입니다.
 - 포함하지 않은 엔진: MinerU·Docling(스캔 PDF의 표 구조, HWP 변환 등)은 없어 해당 단계는 "부분 처리"로 표시될 수 있습니다.
 
@@ -257,6 +258,7 @@ npm run dev
    ```bash
    ollama pull qwen3:8b-q4_K_M
    ollama pull qwen3.5:4b
+   ollama create a4b-qwen35-4b-16k -f Backend/scripts/ollama/Modelfile.a4b-qwen35-4b-16k
    ```
 
 3. 문맥 길이 설정 — Ollama는 VRAM에 맞춰 기본 문맥을 작게(8GB 기준 4096) 잡아 설계 입력이 잘립니다. 사용자 환경변수 `OLLAMA_CONTEXT_LENGTH=16384`, `OLLAMA_NUM_PARALLEL=1`을 설정한 뒤 Ollama를 종료했다가 다시 실행합니다. 서버 로그(Windows: `%LOCALAPPDATA%\Ollama\server.log`)에 `truncating input prompt`가 보이면 설정이 적용되지 않은 것입니다.
@@ -400,7 +402,7 @@ flowchart LR
 
 Deep Agent가 설계하기 전에 요청이 등록 도구로 가능한지, 필수 조건이 정해졌는지 판정합니다. 결과는 질문 ID가 붙은 질문, 확정·미정·충돌 조건 장부, 미지원 안내로 화면에 전달됩니다. 설계 초안을 만들거나 저장·실행을 승인하지는 않습니다.
 
-`resources → capability_check → condition_check → (Deep Agent 설계)` 경로에 연결되어 있으며 환경변수로 동작을 선택합니다. Docker는 두 값이 없거나 비어 있으면 `off`로 실행합니다. 루트 `.env.example`을 `.env`로 복사하면 두 값이 `enforce`로 켜지고, Docker도 `.env`의 값을 그대로 받습니다.
+`resources → capability_check → condition_check → (Deep Agent 설계)` 경로에 연결되어 있으며 환경변수로 동작을 선택합니다. Docker는 두 값이 없거나 비어 있으면 main과 동일하게 `enforce`로 실행합니다. 루트 `.env.example`도 두 값을 `enforce`로 켭니다. 끄려면 `.env`에 `off`를 명시하세요. `npm run dev` 등 직접 실행에서는 값을 비워 두면 설정 오류가 나므로 `off` 또는 `enforce`를 명시하거나 해당 줄을 제거하세요(`A4B_CONDITION_MODE`는 `shadow`도 허용).
 
 | 설정 | `off` (코드 기본값) | `enforce` (`.env.example`) |
 | --- | --- | --- |
@@ -408,7 +410,8 @@ Deep Agent가 설계하기 전에 요청이 등록 도구로 가능한지, 필�
 | `A4B_CONDITION_MODE` | 판정하지 않습니다. `shadow`는 판정을 기록만 합니다. | 기준값·비교 방식·빈 값·중복·출력 형식 등 필수 조건을 근거와 함께 장부로 관리합니다. 미정·충돌이면 질문하고, 확정 조건과 다른 초안은 저장 전에 차단합니다. |
 
 - "모르겠어"·보류 답변에는 값을 임의로 정하지 않고 미정으로 유지합니다. 서로 모순된 조건은 기능 부족이 아니라 사용자에게 묻는 조건으로 처리합니다.
-- 질문은 한 번에 최대 3개이며 남은 미정 조건은 다음 차례에 묻습니다.
+- 조건 판정은 한 번에 최대 3개 질문을 표시하고, 나머지 미정 조건을 장부에 유지해 다음 차례에 묻습니다.
+- 지원 판정은 세 번째 이후 질문을 세 번째 표시 항목에 묶어 한 번에 모두 묻습니다. 조건 판정의 질문 제한과 다릅니다.
 - 되묻기·미지원으로 끝나는 요청은 설계 단계를 건너뛰어 응답이 짧아집니다. 조건이 모두 확정된 요청은 판정 시간만큼 더해집니다.
 - **현재 Ollama 연결에서만 사용합니다.** OpenAI 연결에서 `A4B_CAPABILITY_MODE=enforce`를 켜면 지원 판정이 시스템 오류로 중단됩니다.
 

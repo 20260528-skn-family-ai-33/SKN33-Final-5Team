@@ -548,6 +548,7 @@ def _grounded_enum(key, value, quote):
 
 def validate_conditions(raw, state, catalog):
     scope_review=False
+    outside_scope = raw.get("operation") == "other"
     if 'operation' in raw:
         single=SingleWorkProposal.model_validate(raw).model_dump()
         scope_review=single['operation'] in ('mixed','other')
@@ -709,6 +710,7 @@ def validate_conditions(raw, state, catalog):
                               'options': (resolution_options(state) if not resolution['deferred'] else []) if is_resolution
                                          else [] if key == 'input.table' else choice_options(key, state)})
     return {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
+            'outside_scope': outside_scope and decision == 'manual_review' and not cancelled and resolution is None,
             'unresolved': unresolved, 'questions': questions, 'issues': issues,
             'resolution': resolution,
             'validated_user_turn': accepted_turn if issues else latest,

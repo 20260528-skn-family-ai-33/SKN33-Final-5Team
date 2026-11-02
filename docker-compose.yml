@@ -4,7 +4,10 @@
 # Values below can be overridden from a repository-root .env (Compose reads it for ${...}).
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        A4B_WITH_ML: ${A4B_WITH_ML:-0}
     image: a4b-agent-studio:local
     ports:
       # Host and container port must match: the server only accepts its own 127.0.0.1:<PORT> host.
@@ -30,11 +33,22 @@ services:
       A4B_CONDITION_MODE: ${A4B_CONDITION_MODE:-off}
       A4B_MAIN_TIMEOUT_S: ${A4B_MAIN_TIMEOUT_S:-180}
       A4B_DESIGN_TIMEOUT_MS: ${A4B_DESIGN_TIMEOUT_MS:-600000}
+      A4B_CAPABILITY_MODE: ${A4B_CAPABILITY_MODE:-enforce}
+      A4B_CONDITION_MODE: ${A4B_CONDITION_MODE:-enforce}
+      A4B_TOOL_ADVICE_MODE: ${A4B_TOOL_ADVICE_MODE:-off}
+      A4B_TOOL_ADVICE_BACKEND: ${A4B_TOOL_ADVICE_BACKEND:-svm56}
+      A4B_SVM_MODEL_PATH: ${A4B_DOCKER_SVM_MODEL_PATH:-/app/ml-bundle/model/recommender_char_svm_5431.joblib}
+      A4B_SVM_CATALOG_PATH: /app/ml-bundle/catalog/catalog_56.json
+      A4B_SVM_EXPECTED_MODEL_SHA256: ${A4B_SVM_EXPECTED_MODEL_SHA256:-}
     extra_hosts:
       # Docker Desktop provides host.docker.internal; this makes it resolve on Linux engines too.
       - "host.docker.internal:host-gateway"
     volumes:
       - a4b-data:/app/data
+      - type: bind
+        source: ${A4B_ML_BUNDLE_DIR:-./runtime/ml-bundle}
+        target: /app/ml-bundle
+        read_only: true
     restart: unless-stopped
 
 volumes:

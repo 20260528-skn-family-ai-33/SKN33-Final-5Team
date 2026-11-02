@@ -12,6 +12,11 @@ def compatible_schema_payload(payload):
     intact. Lengths are still checked by the original Pydantic/schema validator.
     """
     result = deepcopy(payload)
+    # LangChain converts max_tokens to OpenAI's max_completion_tokens. Ollama
+    # 0.33.x ignores that newer field and falls back to the model's num_predict.
+    # Keep the application-selected budget on the Ollama wire copy only.
+    if 'max_completion_tokens' in result:
+        result.setdefault('max_tokens', result.pop('max_completion_tokens'))
     format_spec = result.get('response_format')
     if not isinstance(format_spec, dict) or not isinstance(format_spec.get('json_schema'), dict):
         return result

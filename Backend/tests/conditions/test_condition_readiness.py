@@ -464,6 +464,91 @@ def test_latest_user_change_is_explicit_without_changing_original_history():
     assert s==before and original['messages'][0]==s['messages'][0]
 
 
+def test_condition_questions_are_limited_to_three_and_recomputed_after_answers():
+    """Pure question selection; checkpoint persistence is tested separately below."""
+    def judge(s, values):
+        catalog, _ = source_catalog(s)
+        def evidence(needle):
+            return [e['id'] for e in catalog if e['source_id'] == 'user' and needle in e['quote']][-1:]
+        conditions = [{'key': k, 'value': v, 'status': 'missing' if v is None else 'specified',
+                       'evidence_ids': evidence(needle) if v is not None else []} for k, (v, needle) in values.items()]
+        return validate_conditions({'operations': ['filter'], 'conditions': conditions, 'unsupported_actions': []}, s, catalog)
+    table = {'id': 'f1', 'kind': 'table', 'name': '거래.csv', 'columns': ['거래ID', '비용'],
+             'profile': {'비용': {'types': ['string'], 'missing': 1, 'duplicateValues': 0, 'numericStrings': 5}}}
+    s = state('비용 큰 것들만 골라서 파일로 만들어줘.'); s['resources'] = [table]
+    first = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, ''), 'output.format': (None, '')})
+    assert first['decision'] == 'clarify' and len(first['unresolved']) == 4 and len(first['questions']) == 3
+    left = [k for k in first['unresolved'] if k not in {q['key'] for q in first['questions']}]
+    # The reply answers only the three visible questions; the deferred one stays unanswered.
+    phrases = {'filter.operator': '초과로', 'filter.value': '100만원', 'missing.policy': '빈 값은 제외해.', 'output.format': 'CSV로 저장해.'}
+    reply = ' '.join(phrases[q['key']] for q in first['questions'])
+    s['messages'] += [{'role': 'assistant', 'content': '질문'}, {'role': 'user', 'content': reply}]
+    answers = {'filter.field': ('비용', '비용'), 'filter.operator': ('gt', '초과'), 'filter.value': ('1000000', '100만원'),
+               'missing.policy': ('exclude', '제외'), 'output.format': ('csv', 'CSV')}
+    second = judge(s, {k: (answers[k] if k not in left else (None, '')) for k in answers})
+    assert second['unresolved'] == left and [q['key'] for q in second['questions']] == left
+
+
+def test_deferred_condition_survives_checkpoint_restart_and_partial_answer(tmp_path):
+    s = state('비용 큰 것들만 골라서 파일로 만들어줘.')
+    s['resources'] = [{'id': 'f1', 'kind': 'table', 'name': '거래.csv', 'columns': ['거래ID', '비용'],
+                       'profile': {'비용': {'types': ['string'], 'missing': 1, 'duplicateValues': 0, 'numericStrings': 5}}}]
+    raw = proposal(s, {'filter.field': '비용', 'filter.operator': None, 'filter.value': None, 'output.format': None})
+    cfg = {'configurable': {'thread_id': s['session_id']}}
+    def no_design(_):
+        pytest.fail('Unresolved conditions must block design')
+
+    store = Storage(tmp_path)
+    graph, conn = build_graph(store, conversation=no_design, capability_mode='off',
+                             condition_transport=Fake([raw]), condition_mode='enforce')
+    try:
+        first = graph.invoke(s, cfg)
+        ledger = deepcopy(first['condition_ledger'])
+        visible = first['pending_questions']
+        deferred = [key for key in ledger['unresolved'] if key not in {q['key'] for q in visible}]
+        assert first['status'] == 'needs_clarification' and len(visible) == 3 and len(deferred) == 1
+        assert ledger['slots'][deferred[0]]['status'] == 'missing'
+    finally:
+        conn.close(); store.close()
+
+    # Reopen the actual SQLite checkpoint; do not manually transfer the ledger.
+    store = Storage(tmp_path)
+    class PartialAnswer:
+        calls = 0
+        def invoke(self, messages):
+            self.calls += 1
+            case = json.loads(messages[-1]['content'])['target_case']
+            assert case['previous_ledger'] == ledger
+            assert case['previous_ledger']['slots'][deferred[0]]['status'] == 'missing'
+            # The model reports only the visible answers, omitting the deferred
+            # slot and the previously confirmed field. Both must survive in state.
+            values = {'filter.operator': 'gt', 'filter.value': '1000000',
+                      'output.format': 'csv', 'missing.policy': 'exclude'}
+            quote = next(e['id'] for e in case['evidence_catalog'] if e['source_id'] == 'user' and e['turn'] == 2)
+            response = {'operation': 'filter', 'conditions': [
+                {'key': q['key'], 'value': values[q['key']], 'status': 'specified', 'evidence_ids': [quote]}
+                for q in visible], 'unsupported_actions': []}
+            return {'content': json.dumps(response, ensure_ascii=False)}
+    transport = PartialAnswer()
+    graph, conn = build_graph(store, conversation=no_design, capability_mode='off',
+                             condition_transport=transport, condition_mode='enforce')
+    try:
+        assert graph.get_state(cfg).values['condition_ledger'] == ledger
+        phrases = {'filter.operator': '초과로', 'filter.value': '100만원',
+                   'output.format': 'CSV로 저장해.', 'missing.policy': '빈 값은 제외해.'}
+        reply = ' '.join(phrases[q['key']] for q in visible)
+        second = graph.invoke(Command(resume={'type': 'message', 'content': reply}), cfg)
+        assert transport.calls == 1
+        assert second['status'] == 'needs_clarification', second['condition_ledger']
+        assert second['condition_ledger']['unresolved'] == deferred
+        assert [q['key'] for q in second['pending_questions']] == deferred
+        assert second['condition_ledger']['slots']['filter.field'] == ledger['slots']['filter.field']
+        assert second['condition_ledger']['slots'][deferred[0]]['status'] == 'missing'
+        assert not store.agents()
+    finally:
+        conn.close(); store.close()
+
+
 def test_other_document_work_reaches_existing_item_clarification_in_enforce_mode(tmp_path):
     s = state('첨부 영수증에서 항목을 추출해 CSV로 저장해줘.')
     raw = {'operation': 'other', 'conditions': [], 'unsupported_actions': []}

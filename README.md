@@ -74,7 +74,7 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. 영수증처럼 �
    cd final_test
    ```
 
-3. Ollama 설정과 Qwen 모델 2개(약 8.5GB)를 준비합니다. 문맥 16384·KV 캐시 q8_0·모델 상주 설정이 함께 들어갑니다.
+3. Ollama 설정과 Qwen 모델 2개(약 8.5GB)를 준비합니다. 스크립트는 `qwen3.5:4b`에 문맥 16384를 고정한 `a4b-qwen35-4b-16k`도 만듭니다(기본 모델 가중치 공유). 이 모델을 기본 설계 모델로 사용합니다.
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\prepare-ollama.ps1
@@ -95,8 +95,6 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. 영수증처럼 �
 | 5 | `Backend/workflow_engine/` (`catalog/registry.py`, `runner.py`, `executors/`) | 저장된 워크플로우 실행과 도구 22종 |
 | 6 | `Backend/documents/analysis/pipeline.py` | 파일 형식별 파서 라우터 |
 
-**3단계 — 작업 고르기**: 아래 "이어서 할 일"에서 하나를 맡습니다. 첫 작업으로는 2번(파서 엔진 통합)이나 3번(Mac 재현)이 다른 작업과 겹치지 않아 시작하기 좋습니다.
-
 **개발 시 지켜 주세요**
 
 - Python 테스트: `cd Backend` 후 `.venv-agent/Scripts/python.exe -X utf8 -m pytest -q`(macOS·Linux는 `.venv-agent/bin/python -m pytest -q`). 기준선은 **821개 통과, 실패 1개**(`test_csv_quoted_newline_and_leading_zero_use_no_models`, Windows 줄바꿈 문제로 원본에서도 실패)입니다. Node 테스트는 저장소 루트에서 `npm test`(703/704).
@@ -111,52 +109,6 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. 영수증처럼 �
 - Mac 실행은 아직 검증 완료가 아닙니다. 특히 Apple Silicon의 ARM64와 일반적인 Windows PC의 AMD64 차이 때문에 PaddleOCR 의존성과 모델 초기화까지 확인해야 합니다. Windows에서 만든 이미지를 Mac에서도 그대로 실행할 수 있다고 가정하지 않습니다.
 - Ollama를 Mac에 직접 두는 이유는 일반 Ollama Docker 컨테이너의 Mac GPU 가속 제약 때문입니다. 서버 배포에서는 Linux·NVIDIA GPU 환경을 기준으로 앱과 Ollama를 별도 컨테이너로 구성하는 방안을 검토합니다. 참고: [Ollama GPU 안내](https://docs.ollama.com/faq#how-do-i-use-ollama-with-gpu-acceleration-in-docker), [Docker CPU 구조별 이미지 안내](https://docs.docker.com/build/building/multi-platform/).
 - Git에는 코드·Dockerfile·Compose·requirements·잠금 파일·설정 예시를 공유하고, 실제 `.env`·가상환경·`node_modules`·모델 캐시·사용자 데이터는 제외합니다. 기존 추적 파일도 별도로 확인합니다. 완성 이미지 공유는 GHCR 같은 이미지 저장소를 사용할 수 있습니다.
-
-### 2026-11-02 이어서 할 일
-
-아래 순서로 진행하고, 각 단계의 실제 결과를 기록합니다.
-
-1. **작업 시작 상태 확인**
-   - 최신 코드와 이 문서 이후 변경 사항을 확인하고, 시험할 코드 버전·Docker 이미지·모델 버전을 기록합니다.
-   - 개발용 Compose는 현재 로컬 PC 접속용입니다. 사내 다른 PC가 접속할 서버 배포 구성과 구분합니다.
-2. **파서 엔진을 Docker 이미지에 통합**(위 "파서 엔진 시험 결과" 표 기준)
-   - Dockerfile에 `.venv-docling`(parser.txt, CPU torch)·`.venv-mineru`(mineru 4.0.12)를 만들고, 모델을 빌드 때 받아 `A4B_PDF_ARTIFACTS_DIR`·`A4B_PDF_OCR_MODEL_DIR`·`MINERU_HOME`에 둡니다. 실행 중에는 내려받지 않습니다(엔진 코드가 오프라인 설정을 강제).
-   - rhwp는 Rust 빌드 단계를 따로 두어 `v0.8.7` 소스를 빌드하고 실행 파일만 복사합니다. LibreOffice·한글 글꼴은 apt로 설치합니다.
-   - 빌드 후 PDF·DOCX·XLSX·XLS·HWP·사진을 하나씩 올려 `processing_status`·경고·처리 시간을 기록합니다.
-3. **Mac 팀원 한 명의 환경에서 재현**
-   - Mac의 Intel/Apple Silicon 여부와 메모리, Docker·Ollama 버전을 기록합니다.
-   - 이미지 빌드 → 화면 접속 → CSV/Excel 업로드 → 글자 PDF 읽기 → 영수증 사진 OCR → Qwen 설계 응답 순으로 확인합니다.
-   - 설치 실패는 설치 단계·오류 로그·CPU 구조를 기록하고, 설치 성공만으로 실제 OCR·모델 실행도 성공했다고 처리하지 않습니다.
-4. **대표 업무의 정확도 올리기**
-   - 업로드 → 항목 추출 → CSV 생성까지는 동작합니다(위 기록). 남은 것은 정확도입니다: OCR 글자 좌표로 같은 줄을 묶어 상품명·단가·수량·금액을 맞추고, 날짜·상호·합계 같은 단일 항목을 목록과 함께 뽑는 방법을 정합니다.
-   - 문서에서 읽을 수 있는 실제 값을 사용자에게 다시 입력하도록 요구하지 않는지 확인합니다. 충돌·누락이 있거나 사용자가 정할 업무 기준만 확인 질문으로 구분합니다.
-   - 잘못된 도구 연결과 실제 출력 지원부터 해결하고, 파인튜닝 필요성을 먼저 단정하지 않습니다. CSV 파일을 `.xlsx`로 이름만 바꿔 제공하지 않습니다.
-5. **사용자별 자료 폴더·폴더 예약 기능 추가**
-   - 사용자 인증과 소유권, 논리적 폴더·하위 폴더·파일 소속을 마련합니다. 원본은 서버 저장소에 두고 DB에는 소유권·위치·상태를 연결합니다. S3는 필수가 아닙니다.
-   - 저장된 워크플로우에 대상 폴더를 연결하고, 예를 들어 `Asia/Seoul` 기준 매일 09:00에 미처리 파일을 선택합니다.
-   - 예약 시 대상 파일·버전을 확정하고 기존 실행기로 파일별 처리합니다. 중복 방지·실패 재시도·재시작 복구·사용자 간 접근 차단을 검증합니다.
-   - 예약 시각에 작업을 등록하는 것과 실제 시작·완료 시각을 구분합니다. 서버가 켜져 있으면 브라우저 종료 후에도 동작해야 합니다.
-6. **AWS에서 서버 배포 검증 후 온프레미스 이관 준비**
-   - 대표 업무가 동작한 뒤 EC2 등 Linux 서버에 같은 배포 구성을 설치하고, GPU·모델 연결·영구 저장·다른 PC 접속을 확인합니다.
-   - AWS는 사내 서버를 대신한 사전 검증 환경이며 실제 온프레미스 운영과 구분합니다. S3에 파일만 올리는 시험과 서버에서 프로그램 전체를 실행하는 시험도 구분합니다.
-   - 이후 사내 서버에 적용할 때 모델 주소·저장 위치·접속 정책 등을 조정하고 실제 내부망에서 검증합니다.
-
-### 추가로 준비할 자료와 완료 기준
-
-- 영수증·표·문서 대표 표본과 기대 결과: 정상 자료뿐 아니라 흐린 사진·누락 값·지원하지 않는 형식도 포함하고 원본과 대조합니다.
-- 처리 시간 기록: 최초 준비·업로드/파싱·설계/되묻기·추출/출력·별도 검증을 구분하고 첫 실행과 재실행을 각각 측정합니다. 과거의 약 100초를 현재 성능으로 재사용하지 않습니다.
-- 재시작·백업 기록: 컨테이너 재생성 후 자료 보존과 DB·원본·결과·필요 키를 포함한 백업 복구를 확인합니다.
-- 되묻기 전용 경로·Python 작업 프로세스 재사용·모델 성능 개선은 후속 과제로 남깁니다. 폴더 예약 기능과 한 번에 묶어서 변경하지 않습니다.
-
-| 다음 확인 결과 | Windows | Mac | Linux/AWS |
-| --- | --- | --- | --- |
-| 앱 실행·Qwen 연결 | 확인됨 | 미확인 | 미확인 |
-| 대표 표본 OCR 정확도·시간 | 영수증 1장 기록(18.7초), 표본 확대 필요 | 미확인 | 미확인 |
-| 영수증 추출→CSV 생성 | 완주 확인(6줄 중 4줄 정확) | 미확인 | 미확인 |
-| PDF·Office·HWP 파서 엔진 | 시험 컨테이너에서만 확인, 이미지 통합 필요 | 미확인 | 미확인 |
-| 사용자별 폴더·폴더 예약 | 추가 구현 필요 | 추가 구현 필요 | 추가 구현 필요 |
-
-후속 작업을 완료할 때는 날짜·환경·코드/모델 버전·입력 표본·실제 결과·남은 문제를 갱신합니다. 단순 설치 성공, 자동 테스트 통과, 실제 업무 성공률은 각각 구분해 기록합니다.
 
 ## 주요 기능
 
@@ -204,6 +156,7 @@ OCR 성공은 정리 파일 생성 성공과 구분합니다. 영수증처럼 �
 - 데이터는 Docker 볼륨 `a4b-data`에 저장되어 컨테이너를 다시 만들어도 유지됩니다. 중지는 `docker compose down`입니다(`-v`를 붙이면 데이터도 삭제).
 - 검증 모드 기본값은 `defer`입니다. 쌓인 검증 기록은 한가한 시간에 `docker compose exec app /app/Backend/.venv-agent/bin/python scripts/run-deferred-verifications.py`로 판정합니다.
 - 모델 이름·포트·Ollama 주소는 루트 `.env`의 `A4B_LLM_MODEL`, `A4B_VERIFIER_MODEL`, `A4B_DOCKER_PORT`, `A4B_DOCKER_OLLAMA_URL`로 바꿀 수 있습니다.
+- 기본 설계 모델은 문맥 16k를 모델에 고정한 `a4b-qwen35-4b-16k`입니다. 준비 스크립트가 이 모델을 만듭니다. RunPod 등 원격 Ollama를 쓰면 저장소를 받은 **Ollama 서버에서** `ollama pull qwen3.5:4b` 후 `ollama create a4b-qwen35-4b-16k -f Backend/scripts/ollama/Modelfile.a4b-qwen35-4b-16k`를 실행하세요. 모델이 없으면 오류가 나며 일반 모델명으로 자동 대체하지 않습니다. 다른 모델명을 쓰면 Deep Agent의 `/v1` 경로를 위해 서버 또는 모델의 문맥을 별도로 16k 이상 설정해야 합니다. 지원·조건 판정의 `/api/chat` 경로는 요청에 `num_ctx=16384`를 직접 지정합니다.
 - 이미지에는 일반 문서 읽기(CSV·Excel·글자가 있는 PDF·Word·PowerPoint)와 사진·스캔용 OCR(PaddleOCR 3.7.0, CPU, 한국어 인식 모델)이 포함됩니다. OCR 모델(약 145MB)은 빌드 때 받아 두고 실행 중에는 내려받지 않습니다. 이미지 크기는 약 4.2GB입니다.
 - 포함하지 않은 엔진: MinerU·Docling(스캔 PDF의 표 구조, HWP 변환 등)은 없어 해당 단계는 "부분 처리"로 표시될 수 있습니다.
 
@@ -257,6 +210,7 @@ npm run dev
    ```bash
    ollama pull qwen3:8b-q4_K_M
    ollama pull qwen3.5:4b
+   ollama create a4b-qwen35-4b-16k -f Backend/scripts/ollama/Modelfile.a4b-qwen35-4b-16k
    ```
 
 3. 문맥 길이 설정 — Ollama는 VRAM에 맞춰 기본 문맥을 작게(8GB 기준 4096) 잡아 설계 입력이 잘립니다. 사용자 환경변수 `OLLAMA_CONTEXT_LENGTH=16384`, `OLLAMA_NUM_PARALLEL=1`을 설정한 뒤 Ollama를 종료했다가 다시 실행합니다. 서버 로그(Windows: `%LOCALAPPDATA%\Ollama\server.log`)에 `truncating input prompt`가 보이면 설정이 적용되지 않은 것입니다.
@@ -387,13 +341,33 @@ flowchart LR
 
 | 구성 | 실제 역할 |
 | --- | --- |
-| **Deep Agents** | 부족한 업무 조건 판단·질문·답변 반영, 도구 선택, 워크플로우 설계·수정을 담당합니다. |
+| **Deep Agents** | 부족한 업무 조건 판단·질문·답변 반영, 도구 선택, 워크플로우 설계·수정을 담당합니다. 판정을 켜면 지원 여부·필수 조건 질문은 앞 단계 판정이 먼저 맡습니다. |
+| **요청 검증·되묻기 판정** | 선택 기능. 지원 여부와 필수 조건을 판정해 질문 ID·조건 장부·미지원 안내를 만들고, 확정 조건과 다른 초안의 저장을 막습니다. |
 | **검증 코드** | 스키마·자료·근거·노드 연결을 검사하고 오류를 돌려줍니다. |
 | **LangGraph** | 생성 단계의 상태·대기·저장과 저장된 워크플로우의 실행·분기·재개를 관리합니다. |
 | **등록 실행 코드** | 파일 읽기·필터·집계·추출·출력 등 실제 처리를 수행합니다. |
 | **Node.js API·SQLite** | 업로드·계정 연결·worker 호출 및 설정 버전·체크포인트·실행 기록을 관리합니다. |
 
-생성 대화는 별도 질문 모델을 앞에 두지 않고 Deep Agents가 총괄합니다. `list_tools`, `inspect_resource`, `validate_workflow`로 도구·자료·연결을 확인합니다. 업무 수행 시에는 저장된 흐름에 따라 등록 코드를 호출하며, 필요한 AI 노드에서 모델을 사용합니다.
+생성 대화는 Deep Agents가 총괄합니다. 코드 기본값에서는 별도 판정 단계 없이 Deep Agents가 질문과 설계를 맡고, [요청 검증·되묻기 판정](#요청-검증되묻기-판정)을 켜면 그 앞에서 지원 여부와 필수 조건을 먼저 확인합니다. `list_tools`, `inspect_resource`, `validate_workflow`로 도구·자료·연결을 확인합니다. 업무 수행 시에는 저장된 흐름에 따라 등록 코드를 호출하며, 필요한 AI 노드에서 모델을 사용합니다.
+
+### 요청 검증·되묻기 판정
+
+Deep Agent가 설계하기 전에 요청이 등록 도구로 가능한지, 필수 조건이 정해졌는지 판정합니다. 결과는 질문 ID가 붙은 질문, 확정·미정·충돌 조건 장부, 미지원 안내로 화면에 전달됩니다. 설계 초안을 만들거나 저장·실행을 승인하지는 않습니다.
+
+`resources → capability_check → condition_check → (Deep Agent 설계)` 경로에 연결되어 있으며 환경변수로 동작을 선택합니다. Docker는 두 값이 없거나 비어 있으면 main과 동일하게 `enforce`로 실행합니다. 루트 `.env.example`도 두 값을 `enforce`로 켭니다. 끄려면 `.env`에 `off`를 명시하세요. `npm run dev` 등 직접 실행에서는 값을 비워 두면 설정 오류가 나므로 `off` 또는 `enforce`를 명시하거나 해당 줄을 제거하세요(`A4B_CONDITION_MODE`는 `shadow`도 허용).
+
+| 설정 | `off` (코드 기본값) | `enforce` (`.env.example`) |
+| --- | --- | --- |
+| `A4B_CAPABILITY_MODE` | 판정 없이 설계로 진행합니다. | 등록 도구·앱 기능으로 가능한지 판정합니다. 미지원 동작이 있으면 설계하지 않고 제작·재설계·보류 선택지를 안내합니다. |
+| `A4B_CONDITION_MODE` | 판정하지 않습니다. `shadow`는 판정을 기록만 합니다. | 기준값·비교 방식·빈 값·중복·출력 형식 등 필수 조건을 근거와 함께 장부로 관리합니다. 미정·충돌이면 질문하고, 확정 조건과 다른 초안은 저장 전에 차단합니다. |
+
+- "모르겠어"·보류 답변에는 값을 임의로 정하지 않고 미정으로 유지합니다. 서로 모순된 조건은 기능 부족이 아니라 사용자에게 묻는 조건으로 처리합니다.
+- 조건 판정은 한 번에 최대 3개 질문을 표시하고, 나머지 미정 조건을 장부에 유지해 다음 차례에 묻습니다.
+- 지원 판정은 세 번째 이후 질문을 세 번째 표시 항목에 묶어 한 번에 모두 묻습니다. 조건 판정의 질문 제한과 다릅니다.
+- 되묻기·미지원으로 끝나는 요청은 설계 단계를 건너뛰어 응답이 짧아집니다. 조건이 모두 확정된 요청은 판정 시간만큼 더해집니다.
+- **현재 Ollama 연결에서만 사용합니다.** OpenAI 연결에서 `A4B_CAPABILITY_MODE=enforce`를 켜면 지원 판정이 시스템 오류로 중단됩니다.
+
+구현은 [지원 판정](Backend/agent_builder/capabilities/capability_judgement.py), [조건 판정](Backend/agent_builder/conditions/condition_readiness.py), [연결 규격 v1 초안(팀 합의 대기)](Backend/tests/fixtures/clarification-handoff/README.md)에서 확인할 수 있습니다.
 
 ### 선택적 Qwen 분류·검증
 

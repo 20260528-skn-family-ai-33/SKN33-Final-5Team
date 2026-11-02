@@ -20,5 +20,7 @@ else
 fi
 ollama pull qwen3:8b-q4_K_M
 ollama pull qwen3.5:4b
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ollama create a4b-qwen35-4b-16k -f "$script_dir/../Backend/scripts/ollama/Modelfile.a4b-qwen35-4b-16k"
 ollama list
 echo 'Ollama 준비 완료. 저장소 루트에서 docker compose up -d 를 실행하세요.'

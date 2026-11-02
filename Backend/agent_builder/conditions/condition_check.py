@@ -111,7 +111,8 @@ def audit_conditions(state):
     if not ledger or ledger.get('decision') != 'ready':
         return {}
     from agent_builder.conditions.condition_readiness import literal_condition_issues
-    issues = literal_condition_issues(state) + plan_issues(ledger, state['draft'])
+    from agent_builder.design.planner_constraints import table_tool_issues
+    issues = literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
     update = {'trace': state.get('trace', []) + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
                'issues': issues, 'enforced': state.get('condition_enforced', False)}]}

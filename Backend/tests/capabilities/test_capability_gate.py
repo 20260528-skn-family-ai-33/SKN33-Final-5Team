@@ -26,6 +26,26 @@ def complete(calls):
     return conversation
 
 
+def test_missing_fingerprint_requires_real_reassessment_and_survives_persistence(tmp_path):
+    from agent_builder.capabilities.capability_check import make_capability_check
+    s=state();s.update(capability_enforced=True,capability_assessment=assessment(s))
+    assert blocking_issue(s) and generation_gate(s)['capability_generation_route']=='recheck'
+    # Re-run the real assessment node; never bless an old result by stamping a hash.
+    transport=Fake([assessment(s)])
+    s.update(make_capability_check('test',transport=transport,mode='enforce')(s))
+    assert transport.calls==1 and blocking_issue(s) is None
+    store=Storage(tmp_path);session=store.new_session('test','fixture')
+    s['id']=session['id'];s['session_id']=session['id']
+    store.update_session(s,session['revision']);store.close()
+    store=Storage(tmp_path);restored=store.session(session['id']);store.close()
+    assert restored['capability_fingerprint']==s['capability_fingerprint']
+    assert blocking_issue(restored) is None
+    changed=deepcopy(restored);changed['messages'].append({'role':'user','content':'이메일 발송도 추가해줘.'})
+    assert blocking_issue(changed) and generation_gate(changed)['capability_generation_route']=='recheck'
+    changed=deepcopy(restored);changed['resources']=[{'id':'new-file','kind':'table','version':2}]
+    assert blocking_issue(changed)
+
+
 def setup(store,s,calls,cap,condition_mode='off',mode='enforce'):
     return build_graph(store,conversation=complete(calls),capability_mode=mode,capability_transport=cap,
                        condition_mode=condition_mode,condition_transport=Fake([proposal(s)]),verifier_mode='off')

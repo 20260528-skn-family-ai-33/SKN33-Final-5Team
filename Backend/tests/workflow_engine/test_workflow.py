@@ -157,3 +157,20 @@ def test_receipt_style_mistakes_explain_the_wrong_link_and_the_document_path():
     assert any(s.startswith('입출력 포트가 존재하지 않습니다: save') and 'write_result 대신 export_result(records)' in s for s in workflow_errors(extracted,tools3,[]))
     w['nodes'][1]['bindings']=[bind('rows','read','documents')]
     assert any('write_result에는 rows 입력이 없습니다. 받을 수 있는 입력: table' in s for s in workflow_errors(w,['read_document','write_result'],[]))
+
+
+def test_node_port_edge_references_resolve_only_to_a_real_node_port():
+    """Real Deep Agent draft: edges 'read_table_1:table' → 'filter_sort_1:table'."""
+    from workflow_engine.workflow import normalize_connections
+    nodes=[node('read_table_1','read_table',file_ids=['f']),node('filter_sort_1','filter_sort',[bind('table','read_table_1','table')]),
+           node('write_result_1','write_result',[bind('table','filter_sort_1','table')],format='json')]
+    wf={'entry':'read_table_1','nodes':copy.deepcopy(nodes),
+        'edges':[edge('read_table_1:table','filter_sort_1:table'),edge('filter_sort_1:table','write_result_1:table')]}
+    assert workflow_errors(wf,['read_table','filter_sort','write_result'],[{'id':'f','kind':'table','columns':['거래ID','비용']}])
+    fixed=normalize_connections(copy.deepcopy(wf))
+    assert fixed['edges']==[edge('read_table_1','filter_sort_1'),edge('filter_sort_1','write_result_1')]
+    assert not workflow_errors(fixed,['read_table','filter_sort','write_result'],[{'id':'f','kind':'table','columns':['거래ID','비용']}])
+    # Unknown node, a port the node does not own, or no port: left for validation to reject.
+    for source in ('missing_1:table','read_table_1:artifact','read_table_1:','start'):
+        kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(nodes),'edges':[edge(source,'filter_sort_1')]})
+        assert kept['edges'][0]['source']==source

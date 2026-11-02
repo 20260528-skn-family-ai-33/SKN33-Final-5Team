@@ -319,15 +319,18 @@ def explicit_policies(state, catalog):
     for turn, message in enumerate(state.get('messages', [])):
         if message['role'] != 'user': continue
         per_turn = {}
-        # Only an explicitly named attached table column immediately following
-        # "중복" is evidence for the deduplication key; do not guess synonyms.
+        # Only a literally named attached column adjacent to "중복" is evidence.
+        # Accept both "중복 거래ID" and "거래ID 중복"; never guess synonyms.
         text = message['content']
         columns = {col for resource in state.get('resources', []) if resource.get('kind') == 'table'
                    for col in resource.get('columns', []) if isinstance(col, str) and col.strip()}
-        matches = [col for col in columns if re.search(
-            r'중복\s*' + re.escape(col) + r'(?=은|는|을|를|으로|로|[\s,.:]|$)', text, re.IGNORECASE)]
+        def column_pattern(col):
+            return (r'(?:중복\s*' + re.escape(col) + r'(?=은|는|을|를|으로|로|[\s,.:]|$)|'
+                    r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) +
+                    r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|[\s,.:]|$))')
+        matches = [col for col in columns if re.search(column_pattern(col), text, re.IGNORECASE)]
         refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
-                and any(re.search(r'중복\s*' + re.escape(col) + r'(?=은|는|을|를|으로|로|[\s,.:]|$)', e['quote'], re.IGNORECASE) for col in matches)]
+                and any(re.search(column_pattern(col), e['quote'], re.IGNORECASE) for col in matches)]
         if len(matches) == 1 and refs and not re.search(r'중복[^.!?\n]{0,30}(?:말고|아니|않|제외)', text):
             per_turn['duplicate.field'] = {'key':'duplicate.field','status':'specified','value':matches[0],
                 'evidence_ids':[refs[0]['id']],'evidence':[refs[0]],'extraction':'literal_column_rule'}

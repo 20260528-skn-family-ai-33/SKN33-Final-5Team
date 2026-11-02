@@ -8,12 +8,14 @@ import os
 import re
 
 from contracts.models import AgentDraft, NodeSettings
+from workflow_engine.executors.document.extract_information import reserved_field_issue
 
 # The user wants a table-shaped result, not a summary.
 _TABLE_INTENT = re.compile(r'(엑셀|excel|xlsx|csv|표로|표 형태|표 형식|목록으로|한 줄씩|행으로|스프레드시트)', re.IGNORECASE)
 _SPLIT = re.compile(r'\s*(?:,|，|、|·|/|\n|\s및\s|\s그리고\s)\s*')
 # A reply to the field question that cancels or changes the request instead of naming fields.
 _CHANGE = re.compile(r'(취소|그만|중단|됐어|됐습니다|필요\s*없|안\s*할래|하지\s*마|말고|대신|바꿔|바꿀|처음부터)')
+_NEGATION = re.compile(r'^(아니|아뇨|아냐|노노|no\b)', re.IGNORECASE)
 _SENTENCE_END = re.compile(r'(줘|주세요|해요|세요|하자|할게|싶어|싶어요|싶다|니다|네요|까요|나요|[?？!])$')
 
 QUESTION = '어떤 항목을 한 줄씩 뽑을까요? 쉼표로 구분해 적어 주세요. (예: 상품명, 단가, 수량, 금액)'
@@ -41,10 +43,11 @@ def is_request_change(text):
     parts = [p for p in parts if p]
     if not parts:
         return False
-    sentences = [p for p in parts if _SENTENCE_END.search(p) or _ends_with_l_rae(p)]
-    # "취소 여부, 금액" names fields; "아니, 취소할래" and a lone "취소" do not.
-    return (len(sentences) == len(parts) or any(_CHANGE.search(p) for p in sentences)
-            or (len(parts) == 1 and bool(_CHANGE.search(parts[0]))))
+    # Field names are nouns: any sentence-like part ("요약만 해줘") or a leading "아니"
+    # means the user is talking, not listing. "취소 여부, 금액" still names fields.
+    if any(_SENTENCE_END.search(p) or _ends_with_l_rae(p) for p in parts) or _NEGATION.match(parts[0]):
+        return True
+    return len(parts) == 1 and bool(_CHANGE.search(parts[0]))
 
 
 def _settings(**values):
@@ -78,14 +81,15 @@ def _draft(request, answer, fields, documents):
         workflow={'entry': 'read', 'nodes': nodes, 'edges': edges}).model_dump()
 
 
-def _ask(state, request):
+def _ask(state, request, note=None):
     draft = AgentDraft(
         name='문서 항목을 표로 정리', purpose=request[:2000], instructions=request[:12000], tool_ids=[], document_ids=[],
         requirements=[{'description': '사용자 요청', 'source_id': 'user', 'quote': request[:2000]}],
         questions=[QUESTION], question_options=[], unsupported=[], explanation=ASK_EXPLANATION,
         execution_plan={'filters': [], 'sort': [], 'match': 'all', 'missing_policy': 'ask',
                         'duplicate_policy': 'keep', 'duplicate_field': None, 'output_format': 'csv'}).model_dump()
-    return {'messages': state['messages'] + [{'role': 'assistant', 'content': ASK_EXPLANATION + '\n• ' + QUESTION}],
+    # The message must keep ending with QUESTION; that is how the next answer is recognized.
+    return {'messages': state['messages'] + [{'role': 'assistant', 'content': ASK_EXPLANATION + ('\n' + note if note else '') + '\n• ' + QUESTION}],
             'draft': draft, 'confirmed': False, 'saved_agent_id': None,
             'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 항목 확인', 'status': 'needs_input',
                                                 'detail': '고정 흐름(문서 읽기 → 목록 추출 → CSV 저장)에 쓸 항목을 모델 호출 없이 묻습니다.', 'model_calls': 0}]}
@@ -108,10 +112,12 @@ def document_rows_reply(state):
     if asked:
         if is_request_change(users[-1]['content']):
             return None  # leave the fixed flow; the planner handles the cancellation or new request
-        request =next((m['content'] for m in users[:-1][::-1] if _TABLE_INTENT.search(m['content'])), users[0]['content'])
+        request = next((m['content'] for m in users[:-1][::-1] if _TABLE_INTENT.search(m['content'])), users[0]['content'])
         fields = requested_fields(users[-1]['content'])
         if not fields:
             return _ask(state, request)
+        if reserved_field_issue(fields):
+            return _ask(state, request, note=reserved_field_issue(fields))
         draft = _draft(request, users[-1]['content'], fields, documents)
         return {'messages': messages + [{'role': 'assistant', 'content': EXPLANATION}], 'draft': draft,
                 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],

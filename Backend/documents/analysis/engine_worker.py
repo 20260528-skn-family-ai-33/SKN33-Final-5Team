@@ -72,7 +72,7 @@ def mineru(request):
 
 
 def docling(request):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1].parent / 'parsers'))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'parsers'))
     from parser_converter import make_converter, parser_config
     from docling.datamodel.base_models import ConversionStatus
     from docling_core.types.doc import TableItem

@@ -43,7 +43,7 @@ def test_attached_document_asks_fields_then_builds_the_fixed_flow_without_the_mo
     connection.close();store.close()
 
 
-@pytest.mark.parametrize('answer',['취소해줘','취소','그만할래','다른 걸로 바꿀래','아니, 요약으로 바꿔줘','처음부터 다시 할게요'])
+@pytest.mark.parametrize('answer',['취소해줘','취소','그만할래','다른 걸로 바꿀래','아니, 요약으로 바꿔줘','아니, 요약만 해줘','아니요','처음부터 다시 할게요'])
 def test_cancel_or_change_after_field_question_returns_to_the_planner(answer):
     from agent_builder.design.document_rows_template import document_rows_reply, is_request_change, ASK_EXPLANATION
     assert is_request_change(answer)
@@ -57,6 +57,24 @@ def test_cancel_or_change_after_field_question_returns_to_the_planner(answer):
 def test_field_answers_are_not_mistaken_for_commands(answer):
     from agent_builder.design.document_rows_template import is_request_change
     assert not is_request_change(answer)
+
+
+def test_reserved_row_field_is_asked_again_instead_of_overwritten():
+    from agent_builder.design.document_rows_template import document_rows_reply, ASK_EXPLANATION
+    state={**initial(),'resources':[DOC],'messages':[{'role':'user','content':REQUEST},
+                                                    {'role':'assistant','content':ASK_EXPLANATION+'\n• '+QUESTION},
+                                                    {'role':'user','content':'상품명, status'}]}
+    reply=document_rows_reply(state)
+    assert reply['draft']['questions']==[QUESTION] and 'status' in reply['messages'][-1]['content']
+    assert reply['messages'][-1]['content'].endswith(QUESTION)
+
+
+def test_rows_mode_rejects_fields_that_collide_with_record_keys():
+    node={'tool':'extract_information','bindings':[{'input':'documents','node_id':'read','output':'documents'}],
+          'settings':{'fields':['상품명','status'],'instructions':None,'extraction_mode':'rows'}}
+    part={'source_id':'s1','file_id':'receipt','file_name':'receipt.jpg','text':RECEIPT}
+    with pytest.raises(ValueError,match='status'):
+        extract_information.execute(node,{'outputs':{'read':{'documents':[part]}},'request':REQUEST},None,{},RowsLLM([]))
 
 
 def test_table_files_and_summary_requests_keep_the_model_planner():

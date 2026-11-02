@@ -72,6 +72,8 @@ def choice_options(key, state):
     return []
 
 
+SUPPORTED_OPERATION_NAMES = {'filter', 'deduplicate', 'schedule', 'output', 'sort'}
+
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
     'deduplicate': ['duplicate.field', 'duplicate.policy'],
@@ -317,6 +319,66 @@ def _value(key, value):
     return value
 
 
+_NEG = r'[^\s.,]{0,3}\s*(?:하)?지\s*(?:마|말|않)|[^\s.,]{0,3}\s*(?:않|아니)'
+_MISSING_ACTS = {'exclude': r'제외|빼|삭제|지우|지워|제거|걸러|거르|버려|버리',
+                 'keep': r'유지|그대로|남겨|남기|포함|두세요|둬|놔두|놔둬',
+                 'error': r'오류|에러|중단|멈춰|멈추|실패'}
+_MISSING_VAGUE = r'알아서|적당히|나중에\s*정|모르|상관\s*없|확인만|무시|채워|채우|대체|평균|0으로'
+_DUP_ORDER = {'first': r'첫|처음|맨\s*위|먼저\s*나온', 'last': r'마지막|맨\s*아래|나중에\s*나온|끝\s*행'}
+_DUP_OTHER = {'error': r'오류|에러|중단|멈춰|멈추|실패',
+              'keep': r'유지|그대로|지우지\s*(?:마|말)|삭제하지\s*(?:마|말)|(?:다|모두|전부)\s*남'}
+_DUP_VAGUE = r'알아서|나중에\s*정|상관\s*없|확인만|합쳐|합치|최신|최근|큰\s*행|작은\s*행|높은|낮은'
+_KEEP_AS_IS = r'지우지\s*(?:마|말)|삭제하지\s*(?:마|말)'
+
+
+def _acts(segment, table):
+    """Policy categories named in a clause; a verb followed by 지 마/않 is a negation,
+    except the keep phrases that are themselves negated deletions (지우지 마)."""
+    found, negated = set(), set()
+    for name, pattern in table.items():
+        for m in re.finditer(pattern, segment):
+            if re.fullmatch(_KEEP_AS_IS, m.group(0)) or not re.match(_NEG, segment[m.end():m.end() + 8]):
+                found.add(name)
+            else:
+                negated.add(name)
+    return found, negated
+
+
+def policy_clauses(text, columns):
+    """Missing/duplicate policy per clause. A clause runs from its subject (빈 값·빈칸·결측·누락 /
+    중복·같은 <열>·<열>이 겹치면) to the next subject or sentence end. Exactly one named policy is
+    specified; two are a conflict; vague, fill or negated-only wording is left to the model or a question."""
+    cols = '|'.join(re.escape(c) for c in sorted(columns, key=len, reverse=True)) or r'(?!)'
+    missing = r'빈\s*(?:값|칸|셀|행|' + cols + r')|빈\s+[가-힣A-Za-z_][가-힣A-Za-z0-9_]{0,15}|비어\s*있|값이\s*없|누락|결측(?:치|값)?'
+    dup = r'중복|같은\s*(?:' + cols + r')|(?:' + cols + r')\s*(?:이|가)?\s*(?:같|겹치)'
+    subjects = sorted([(m.start(), 'missing.policy') for m in re.finditer(missing, text)] +
+                      [(m.start(), 'duplicate.policy') for m in re.finditer(dup, text)])
+    ends = [m.start() for m in re.finditer(r'[.!?\n]', text)] + [len(text)]
+    out = []
+    for i, (start, key) in enumerate(subjects):
+        if i and subjects[i - 1][1] == key and start - subjects[i - 1][0] < 12:
+            continue  # two subject words of one clause ("거래ID가 같은 중복")
+        end = min([p for p, k in subjects[i + 1:] if k != key or p - start >= 12] + [e for e in ends if e > start])
+        segment = text[start:end]
+        if key == 'missing.policy':
+            if re.search(_MISSING_VAGUE, segment):
+                out.append((key, 'conflict', segment.strip())); continue
+            found, negated = _acts(segment, _MISSING_ACTS)
+        else:
+            if re.search(_DUP_VAGUE, segment):
+                out.append((key, 'conflict', segment.strip())); continue
+            found, negated = _acts(segment, _DUP_ORDER)
+            if re.search(r'(?:남기|남겨|유지하)지\s*(?:마|말|않)', segment):
+                negated |= found; found = set()  # "첫 행만 남기지 마": the keep verb is negated
+            if not found and not negated:
+                found, negated = _acts(segment, _DUP_OTHER)
+        if len(found) == 1:
+            out.append((key, found.pop(), segment.strip()))
+        elif found or negated:
+            out.append((key, 'conflict', segment.strip()))
+    return out
+
+
 def explicit_policies(state, catalog):
     """Only literal, narrow policy phrases; ambiguity stays unresolved.
 
@@ -325,16 +387,10 @@ def explicit_policies(state, catalog):
     """
     result = {}
     patterns = [
-        ('missing.policy', r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?)\s*(?:은|는|을|:)?\s*(오류|에러|제외|유지)',
-         {'오류': 'error', '에러': 'error', '제외': 'exclude', '유지': 'keep'}),
-        ('duplicate.policy', r'중복(?:\s*행)?\s*(?:은|는|을|:)?\s*(유지|오류|에러)',
-         {'유지': 'keep', '오류': 'error', '에러': 'error'}),
         ('output.format', r'(CSV|JSON)\s*(?:파일|산출물)?\s*(?:으로|로|저장|생성|만들)',
          {'CSV': 'csv', 'JSON': 'json'}),
-        ('duplicate.policy', r'중복[^.!?\n]{0,40}?(첫|마지막)\s*행(?:만|을)?\s*(?:남|유지)',
-         {'첫': 'first', '마지막': 'last'}),
-        ('sort.policy', r'정렬\s*(?:은|을)?\s*(하지\s*말|하지\s*않|안\s*해|없이)',
-         {'하지 말': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
+        ('sort.policy', r'정렬\s*(?:은|을)?\s*(하지\s*말|하지\s*마|하지\s*않|안\s*해|없이)',
+         {'하지 말': 'none', '하지 마': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
         ('filter.operator', r'\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개)?\s*(초과|이상|미만|이하)',
          {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}),
     ]
@@ -347,9 +403,11 @@ def explicit_policies(state, catalog):
         columns = {col for resource in state.get('resources', []) if resource.get('kind') == 'table'
                    for col in resource.get('columns', []) if isinstance(col, str) and col.strip()}
         def column_pattern(col):
-            return (r'(?:중복\s*' + re.escape(col) + r'(?=은|는|을|를|으로|로|[\s,.:]|$)|'
+            return (r'(?:중복\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|도|으로|로|[\s,.:]|$)|'
                     r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) +
-                    r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|[\s,.:]|$))')
+                    r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|[\s,.:]|$)|'
+                    r'같은\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|[\s,.:]|$)|'
+                    r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) + r'\s*(?:이|가)?\s*(?:같|겹치))')
         matches = [col for col in columns if re.search(column_pattern(col), text, re.IGNORECASE)]
         refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
                 and any(re.search(column_pattern(col), e['quote'], re.IGNORECASE) for col in matches)]
@@ -369,6 +427,14 @@ def explicit_policies(state, catalog):
                 per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
+        for key, value, span in policy_clauses(text, columns):
+            refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
+            if not refs: continue
+            old = per_turn.get(key)
+            conflict = value == 'conflict' or bool(old and old['value'] != value)
+            per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
+                             'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
+                             'evidence': [refs[0]], 'extraction': 'literal_policy_clause'}
         result.update(per_turn)
     # An explicit correction to the one recorded conflicting duplicate policy
     # can be short ("마지막 행으로 해줘"). Do not interpret unrelated replies or
@@ -441,8 +507,14 @@ def validate_conditions(raw, state, catalog):
         raw={'operations':[] if scope_review else [single['operation']],
              'conditions':single['conditions'],'unsupported_actions':single['unsupported_actions']}
     proposal = Proposal.model_validate(raw).model_dump()
-    by_id = {e['id']: e for e in catalog}
     slots, invalid = {}, []
+    # A supported operation name ("deduplicate") is not an unsupported external action; live
+    # runs put it there for "중복이 있으면 오류로 멈춰" and stopped a supported request.
+    misplaced = [a for a in proposal['unsupported_actions'] if a.strip().lower() in SUPPORTED_OPERATION_NAMES]
+    if misplaced:
+        proposal['unsupported_actions'] = [a for a in proposal['unsupported_actions'] if a not in misplaced]
+        invalid.append('unsupported_actions: 지원 작업 이름은 미지원 동작이 아님 ('+', '.join(misplaced)+')')
+    by_id = {e['id']: e for e in catalog}
     previous = deepcopy(state.get('condition_ledger') or {})
     for key, old in previous.get('slots', {}).items():
         if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
@@ -544,6 +616,8 @@ def validate_conditions(raw, state, catalog):
         required.append('missing.policy')
     if slots.get('schedule.frequency', {}).get('value') == 'weekly':
         required.append('schedule.weekday')
+    if slots.get('duplicate.policy', {}).get('value') in ('first', 'last', 'error'):
+        required.append('duplicate.field')  # which column decides a duplicate
     for key in required:
         slots.setdefault(key, {'key': key, 'status': 'missing', 'value': None, 'evidence_ids': [], 'evidence': []})
     if any(re.search(r'(?:파일|CSV|JSON).{0,16}(?:저장|만들|생성)|(?:CSV|JSON)(?:으로|로)', m['content'], re.I)

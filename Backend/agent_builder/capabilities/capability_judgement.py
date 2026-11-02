@@ -81,6 +81,29 @@ def normalize_native_claims(result):
 # No registered tool sends anything outside the app (write_result/export_result only make files).
 # A channel followed closely by a send verb is a request for external delivery; a negation
 # right after it ("보내지 마", "말고") is not.
+# filter_sort already implements every missing/duplicate policy (registry: missing_policy
+# exclude/keep/error, duplicate_policy first/last/keep/error). A refusal whose only items name
+# such a policy, while the request states that policy in a form code reads, is corrected.
+_POLICY_ITEM = re.compile(r'(빈|결측|누락|중복|같은|겹치)')
+_NOT_POLICY = re.compile(r'메일|슬랙|slack|전송|발송|조인|join|합치|합쳐|병합|월간|cron|채우|채워|평균|대체|보간|외부|상충|모순|충돌|우선순위|vs|또는|둘 중', re.I)
+
+def registered_policy_claims(result,state):
+    """Only ever moves a policy-only refusal/clarification to existing_tools, when code reads the
+    stated policy from the latest request; anything else is returned unchanged."""
+    if result['decision'] not in ('missing_capability','clarify'):return result
+    items=result['missing_actions'] if result['decision']=='missing_capability' else result['missing_conditions']
+    if not items or any(not _POLICY_ITEM.search(i) or _NOT_POLICY.search(i) for i in items):return result
+    from agent_builder.conditions.condition_readiness import policy_clauses
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    columns={c for r in state.get('resources',[]) if r.get('kind')=='table' for c in r.get('columns',[]) if isinstance(c,str)}
+    stated={k for k,v,_ in policy_clauses(user[-1],columns) if v!='conflict'} if user else set()
+    named={'missing.policy' if re.search(r'빈|결측|누락',i) else 'duplicate.policy' for i in items}
+    if not stated or not named<=stated:return result
+    tools=list(dict.fromkeys([*result['tool_ids'],'read_table','filter_sort']))
+    return {**result,'decision':'existing_tools','tool_ids':tools,'missing_conditions':[],'missing_actions':[],
+        'model_decision':result['decision'],'model_items':list(items),'code_registered_policy':sorted(named),
+        'reason':result['reason']+' 요청한 빈 값·중복 정책은 filter_sort에 등록된 정책이라 코드 대조 후 지원으로 바로잡았습니다.'}
+
 _EXTERNAL_DELIVERY=re.compile(
     r'(이메일|e-?mail|메일|슬랙|slack|문자\s*메시지|문자|sms|카카오톡|카톡|텔레그램|팩스|웹훅|webhook)'
     r'[^.!?\n]{0,12}?(보내|발송|전송|공유|전달|알려|알림|올려)(?!\S{0,3}\s*(?:지\s*마|말고|않|안\s*해))',re.I)
@@ -99,7 +122,7 @@ def external_delivery_claims(result,state):
 
 SYSTEM='현재 작업은 실행 전의 도구 지원 검토입니다. 도구는 전부 설치·등록된 상태이며 tools에 제공된 기능을 실제 사용할 수 있습니다.\n파일이 아직 없더라도 실행 때 연결할 수 있습니다. 파일·자료 부재는 도구 부재가 아닙니다.\nexisting_tools: 현재 등록 도구 한 개 또는 조합으로 요청한 기능을 지원. tool_ids를 선택하고 missing_conditions/actions는 빈 배열.\nclarify: 지원되는 작업이지만 사용자가 정해야 하는 기준이 빠짐. missing_conditions만 질문하며 missing_actions는 빈 배열.\nmissing_capability: 실제 요청된 동작이 등록 도구/조합에 없음. missing_actions만 적고 missing_conditions는 빈 배열.\nmanual_review: 불확실성·범위 검토가 필요. 지원된 작업을 없는 도구로 바꾸지 않음.\nread_table→filter_sort→write_result로 상수 선별/중복제거/JSON·CSV 파일 생성이 가능합니다. 파일 저장은 외부 전송과 다릅니다.\nread_table→aggregate_table→write_result로 그룹 건수·합계가 가능합니다.\nread_document→search_document→compose_answer로 문서 근거 답변이 가능합니다.\ncalculate_columns는 명시된 열과 숫자의 사칙연산·나머지로 새 열을 만들거나 열 하나의 이름을 바꾸고, 입력 형식·시간대가 명시된 날짜 열을 변환합니다. text_transform은 앞 단계 텍스트에서 지정된 문자열을 그대로 바꿉니다. base64_codec은 텍스트 Base64 인코딩·디코딩, text_hash는 UTF-8 텍스트 SHA-256을 지원합니다. 그 밖의 문자열 처리나 파일 직접 편집을 지원한다고 가정하지 않습니다. 식이나 결과 열이 빠지면 확인합니다. 다른 임의 셀 변환과 수식 함수는 지원한다고 가정하지 않습니다. 외부 이메일·Slack 전송과 두 표 join은 현재 카탈로그가 지원하지 않습니다. agent_node의 일반 텍스트 응답을 검증된 표 변환 도구와 같다고 취급하지 않습니다.\n금지된 동작은 요청된 동작이 아닙니다. 숫자가 미정이면 질문하고 임의 기준을 넣지 않습니다.\n설명과 사용자 원문 근거를 반환하되 user_quotes는 목록의 원문을 그대로 선택합니다. 실행·설계·코드생성·저장 허가는 주지 않습니다.'
 SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 일·주 단위 예약은 Tool ID 없이 서버가 지원합니다. 예약 자체를 부족 도구로 판정하거나 가짜 예약 Tool ID를 만들지 않습니다. 실제 처리에 필요한 등록 tool_ids를 선택합니다. 시각·요일·시간대가 미정이면 clarify이며, 파일 미첨부는 도구 부재가 아닙니다. 활성화 전 관리 자료 연결은 후속 조건 검사에서 확인합니다. 월간·cron·외부 이벤트 트리거는 일·주 예약으로 임의 대체하지 않습니다. 예약이 있어도 이메일·Slack 외부 발송이나 최신 외부 자료 자동 수집까지 지원되는 것은 아닙니다.'
-SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 일·주 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 오류·중복 유지는 이미 정의된 정책입니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 관리 표 연결 검사는 후속 단계에 맡깁니다.'
+SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 일·주 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 제외·유지·오류와 중복 첫 행·마지막 행·유지·오류(중복이 있으면 실행 중단)는 filter_sort에 이미 정의된 정책입니다. 이 정책을 요청한 것은 기능 부족이 아닙니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 관리 표 연결 검사는 후속 단계에 맡깁니다.'
 SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 일·주 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 monthly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
 SYSTEM+='\n조건끼리 서로 모순되거나(예: 같은 대상에 두 가지 정책) 기준·값·단위가 미정인 것은 기능 부족이 아니라 사용자가 정할 조건이므로 clarify입니다. 모순 해결, 기준 선택, 값 명시, 정책 우선순위 결정을 missing_actions에 적지 않고 missing_conditions에 적습니다. 등록 도구가 지원하는 작업(상수 비교 선별, 빈 값 정책, 첫 행·마지막 행 중복 제거, 파일 저장)을 조건이 모순이라는 이유로 미지원이라 하지 않습니다.'
 DEMOS=[
@@ -158,4 +181,4 @@ user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 �
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1
         result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
-    return {**validate_assessment_result(external_delivery_claims(normalize_native_claims(result),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}
+    return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(normalize_native_claims(result),state),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

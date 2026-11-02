@@ -43,6 +43,22 @@ def test_attached_document_asks_fields_then_builds_the_fixed_flow_without_the_mo
     connection.close();store.close()
 
 
+@pytest.mark.parametrize('answer',['취소해줘','취소','그만할래','다른 걸로 바꿀래','아니, 요약으로 바꿔줘','처음부터 다시 할게요'])
+def test_cancel_or_change_after_field_question_returns_to_the_planner(answer):
+    from agent_builder.design.document_rows_template import document_rows_reply, is_request_change, ASK_EXPLANATION
+    assert is_request_change(answer)
+    state={**initial(),'resources':[DOC],'messages':[{'role':'user','content':REQUEST},
+                                                    {'role':'assistant','content':ASK_EXPLANATION+'\n• '+QUESTION},
+                                                    {'role':'user','content':answer}]}
+    assert document_rows_reply(state) is None
+
+
+@pytest.mark.parametrize('answer',['상품명, 단가, 수량, 금액','거래처, 금액','취소 여부, 금액','주소'])
+def test_field_answers_are_not_mistaken_for_commands(answer):
+    from agent_builder.design.document_rows_template import is_request_change
+    assert not is_request_change(answer)
+
+
 def test_table_files_and_summary_requests_keep_the_model_planner():
     from agent_builder.design.document_rows_template import document_rows_reply
     base={**initial(),'messages':[{'role':'user','content':REQUEST}]}

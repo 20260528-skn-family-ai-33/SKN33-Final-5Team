@@ -24,8 +24,8 @@ venv/
 
 # Original uploads, local databases and generated outputs
 uploads/
-output/
-outputs/
+/output/
+/outputs/
 *.sqlite*
 *.db
 *.db-*

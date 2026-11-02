@@ -43,6 +43,32 @@ def test_attached_document_asks_fields_then_builds_the_fixed_flow_without_the_mo
     connection.close();store.close()
 
 
+def test_enforced_condition_check_delegates_the_fixed_flow_without_a_model_call(tmp_path):
+    class NoConditionModel:
+        def invoke(self, messages): pytest.fail('the fixed flow must not call the condition model')
+    store=Storage(tmp_path);s={**initial(),'messages':[{'role':'user','content':REQUEST}],'resources':[DOC]}
+    cfg={'configurable':{'thread_id':s['session_id']}}
+    graph,connection=build_graph(store,conversation=no_planner,condition_transport=NoConditionModel(),condition_mode='enforce',capability_mode='off')
+    first=graph.invoke(s,cfg)
+    assert first['draft']['questions']==[QUESTION]
+    done=graph.invoke(Command(resume={'type':'message','content':'상품명, 수량, 단가, 금액'}),cfg)
+    assert done['draft']['workflow']['nodes'][1]['settings']['fields']==['상품명','수량','단가','금액']
+    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='review'
+    checks=[t for t in done['trace'] if t['node']=='condition_check' and t.get('model_calls')==0 and 'outside_scope' in t['detail']]
+    assert len(checks)==2 and done['condition_enforced'] is False
+    connection.close();store.close()
+
+
+def test_fixed_flow_scope_excludes_cancellations_tables_and_other_requests():
+    from agent_builder.design.document_rows_template import document_rows_applies, ASK_EXPLANATION
+    asked=lambda answer,resources=[DOC]:{**initial(),'resources':resources,'messages':[{'role':'user','content':REQUEST},
+        {'role':'assistant','content':ASK_EXPLANATION+'\n• '+QUESTION},{'role':'user','content':answer}]}
+    assert document_rows_applies(asked('상품명, 금액'))
+    assert not document_rows_applies(asked('취소해줘'))
+    assert not document_rows_applies(asked('상품명, 금액',[DOC,{**DOC,'id':'t','kind':'table'}]))
+    assert not document_rows_applies({**initial(),'resources':[DOC],'messages':[{'role':'user','content':'이 문서 내용을 요약해줘'}]})
+
+
 @pytest.mark.parametrize('answer',['취소해줘','취소','그만할래','다른 걸로 바꿀래','아니, 요약으로 바꿔줘','아니, 요약만 해줘','아니요','처음부터 다시 할게요'])
 def test_cancel_or_change_after_field_question_returns_to_the_planner(answer):
     from agent_builder.design.document_rows_template import document_rows_reply, is_request_change, ASK_EXPLANATION

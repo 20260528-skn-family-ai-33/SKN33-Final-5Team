@@ -95,6 +95,26 @@ def _ask(state, request, note=None):
                                                 'detail': '고정 흐름(문서 읽기 → 목록 추출 → CSV 저장)에 쓸 항목을 모델 호출 없이 묻습니다.', 'model_calls': 0}]}
 
 
+def document_rows_applies(state):
+    """True when this turn is handled by the fixed flow below (its request or its field answer).
+
+    The condition checker only covers table filtering/deduplication/scheduling; with
+    A4B_CONDITION_MODE=enforce its model read the field answer "상품명, 수량, 단가, 금액" as a filter and
+    asked nine questions or failed its output contract, so this turn is delegated without a model call.
+    """
+    if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
+        return False
+    resources = state.get('resources') or []
+    if not any(r.get('kind') == 'document' for r in resources) or any(r.get('kind') == 'table' for r in resources):
+        return False
+    messages = state.get('messages', [])
+    if not messages or messages[-1]['role'] != 'user':
+        return False
+    if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'].endswith(QUESTION):
+        return not is_request_change(messages[-1]['content'])
+    return bool(_TABLE_INTENT.search(messages[-1]['content']))
+
+
 def document_rows_reply(state):
     """Return the fixed-flow result, or None to continue with the model planner."""
     if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':

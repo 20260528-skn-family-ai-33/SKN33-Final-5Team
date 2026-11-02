@@ -18,6 +18,8 @@ MISSING = [
     ('빈 비용은 지우지 말고 그대로 둬', 'keep'), ('빈 비용은 빼지 말고 그대로 둬', 'keep'), ('빈칸은 그대로 두세요', 'keep'),
     ('빈 비용이 있으면 오류로 처리해', 'error'), ('빈 값이 있으면 에러로 처리해', 'error'), ('빈 비용이 있으면 멈춰', 'error'),
     ('빈 값이 하나라도 있으면 실행을 멈춰줘', 'error'), ('빈칸이 있으면 실패로 처리해', 'error'), ('결측치가 있으면 오류로 멈춰', 'error'),
+    ('빈 값이 포함된 행은 제외해줘', 'exclude'), ('빈 값은 제외해둬', 'exclude'),
+    ('빈 값은 빼둬', 'exclude'), ('빈 값은 제외하고 나머지는 유지해', 'exclude'),
 ]
 DUPLICATE = [
     ('중복 거래ID는 첫 행만 남겨', 'first'), ('중복 거래ID는 첫 번째만 남기고 지워', 'first'), ('같은 거래ID는 처음 것만 남겨', 'first'),
@@ -34,6 +36,9 @@ UNRESOLVED = [
     ('duplicate.policy', '중복은 알아서 정리해'), ('duplicate.policy', '중복 거래ID는 최신 것만 남겨'), ('duplicate.policy', '중복 처리는 나중에 정할게'),
     ('duplicate.policy', '중복 거래ID는 합쳐줘'), ('duplicate.policy', '중복 거래ID는 첫 행만 남기지 마'), ('duplicate.policy', '중복은 상관없어'),
     ('duplicate.policy', '중복 거래ID는 금액이 큰 행만 남겨'),
+    ('duplicate.policy', '중복 거래ID는 첫 행을 삭제해'),
+    ('duplicate.policy', '중복 거래ID는 마지막 행을 지워줘'),
+    ('duplicate.policy', '중복 거래ID는 첫 행만 남기고 오류로 중단해'),
 ]
 
 
@@ -121,3 +126,22 @@ def test_registered_policy_refusal_is_corrected_by_code(decision, items):
     ('비용 100만원 초과만 골라줘. 빈 비용은 0으로 채워줘.', 'missing_capability', ['빈 비용 0으로 채우기'])])  # fill is not a policy
 def test_other_refusals_are_unchanged(text, decision, items):
     assert capability(text, decision, items)['decision'] == decision
+
+
+@pytest.mark.parametrize('order', ['첫', '마지막'])
+def test_deleting_an_ordered_duplicate_is_not_confirmed_as_retaining_it(order):
+    text = f'비용이 100만원 초과인 행만 골라줘. 빈 값은 제외해. 중복 거래ID는 {order} 행을 삭제해. CSV로 저장해.'
+    s = {**state(text), 'resources': [TABLE]}
+    ledger = checked(s, proposal(s, {'filter.field': '비용', 'filter.operator': 'gt', 'filter.value': '1000000',
+                                    'missing.policy': 'exclude', 'duplicate.policy': None, 'output.format': 'csv'}))
+    assert ledger['decision'] == 'clarify'
+    assert ledger['slots']['duplicate.policy']['status'] == 'conflict'
+
+
+def test_comparison_does_not_invent_duplicate_conditions():
+    text = '금액이 같거나 큰 행만 골라줘. 기준은 100만원 이상이야. 빈 값은 제외해. CSV로 저장해.'
+    s = {**state(text), 'resources': [{**TABLE, 'columns': ['금액', '거래ID']}]}
+    ledger = checked(s, proposal(s, {'filter.field': '금액', 'filter.operator': 'gte', 'filter.value': '1000000',
+                                    'missing.policy': 'exclude', 'output.format': 'csv'}))
+    assert ledger['decision'] == 'ready'
+    assert not any(k.startswith('duplicate.') for k in ledger['slots'])

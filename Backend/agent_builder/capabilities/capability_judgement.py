@@ -105,14 +105,29 @@ def registered_policy_claims(result,state):
         'reason':result['reason']+' 요청한 빈 값·중복 정책은 filter_sort에 등록된 정책이라 코드 대조 후 지원으로 바로잡았습니다.'}
 
 _EXTERNAL_DELIVERY=re.compile(
+    r'(?<![가-힣A-Za-z0-9_])'
     r'(이메일|e-?mail|메일|슬랙|slack|문자\s*메시지|문자|sms|카카오톡|카톡|텔레그램|팩스|웹훅|webhook)'
-    r'[^.!?\n]{0,12}?(보내|발송|전송|공유|전달|알려|알림|올려)(?!\S{0,3}\s*(?:지\s*마|말고|않|안\s*해))',re.I)
+    r'(?:(?:\s*(?:으?로|에(?:게|다)?|을|를)\s*)[^.!?\n]{0,24}?|\s+)'
+    r'((?:보내|알려|올려)(?:줘|주세|라|요|야|줄|기|고|지|(?=\s|[.!?\n]|$))|'
+    r'(?:발송|전송|공유|전달)(?:해|하))',re.I)
+
+
+def _external_delivery(text):
+    # Quoted column values are data, not requests to send them. Keep offsets so
+    # separated text cannot become a new apparent channel/action pair.
+    text=re.sub(r'(["\']).*?\1',lambda m:' '*len(m.group(0)),text)
+    for match in _EXTERNAL_DELIVERY.finditer(text):
+        after=text[match.end():]
+        before=text[match.end(1):match.start(2)]
+        if re.search(r'(?:안|못)\s*$',before):continue
+        if re.match(r'\s*(?:지\s*)?(?:마|말|않)|\s*지는\s*(?:마|말|않)',after):continue
+        yield match
 
 def external_delivery_claims(result,state):
     """Code checks the registered catalogue; only ever moves toward missing_capability."""
     if result['decision']=='missing_capability':return result
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
-    match=_EXTERNAL_DELIVERY.search(user[-1]) if user else None
+    match=next(_external_delivery(user[-1]),None) if user else None
     if not match:return result
     return {**result,'decision':'missing_capability','missing_conditions':[],
         'missing_actions':['외부 '+match.group(1)+' 전송'],

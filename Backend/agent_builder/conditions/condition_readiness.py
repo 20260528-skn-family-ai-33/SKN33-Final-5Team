@@ -295,6 +295,11 @@ _KO_RUN = re.compile(r'(?<![가-힣A-Za-z0-9_.])[\d.,일이삼사오육칠팔구
 _AMOUNT_UNIT = re.compile(r'\s*(?:원|개|점|명|건|kg|킬로)')
 
 
+def _approximate_amount(text, start, end):
+    return bool(re.search(r'(?:약|대략|대충|대강)\s*$', text[:start]) or
+                re.match(r'\s*(?:원|개|점|명|건|kg|킬로)?\s*(?:정도|쯤|가량)', text[end:]))
+
+
 def _korean_amount(run):
     """Value of a numeral run such as 백만, 오십만, 천오백, 3천만, 1억 5천만; None if malformed."""
     total, section, current = Decimal(0), Decimal(0), None
@@ -325,6 +330,10 @@ def _korean_amounts(text):
         for k in range(len(parts), 0, -1):
             run = ' '.join(parts[:k])
             if not re.search(r'[일이삼사오육칠팔구십백천만억]', run): continue
+            # A standalone "이" in "이 건/이 점" is demonstrative, not evidence
+            # for an invented threshold of 2. Require an unambiguous numeral run.
+            if run == '이': continue
+            if _approximate_amount(text, m.start(), m.start() + len(run)): break
             rest = text[m.start() + len(run):]
             if not (_AMOUNT_UNIT.match(rest) or (run[-1] in _KO_BIG and not re.match(r'[가-힣]', rest))): continue
             value = _korean_amount(run)
@@ -336,9 +345,14 @@ def _korean_amounts(text):
 
 def _amounts(text):
     result = set(_korean_amounts(text))
-    for number, unit in re.findall(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(천만|백만|십만|만|천|백)?', text):
+    approximate_runs=[(m.start(),m.end()) for m in _KO_RUN.finditer(text)
+                      if _approximate_amount(text,m.start(),m.end())]
+    for match in re.finditer(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(천만|백만|십만|만|천|백)?', text):
+        if _approximate_amount(text, match.start(), match.end()): continue
+        if any(start<=match.start()<end for start,end in approximate_runs): continue
+        number, unit = match.groups()
         result.add(Decimal(number.replace(',', '')) * {'천만': 10000000, '백만': 1000000,
-                   '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}[unit])
+                   '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}[unit or ''])
     return result
 
 
@@ -374,7 +388,7 @@ def _value(key, value):
 
 _NEG = r'[^\s.,]{0,3}\s*(?:하)?지\s*(?:마|말|않)|[^\s.,]{0,3}\s*(?:않|아니)'
 _MISSING_ACTS = {'exclude': r'제외|빼|삭제|지우|지워|제거|걸러|거르|버려|버리',
-                 'keep': r'유지|그대로|남겨|남기|포함|두세요|둬|놔두|놔둬',
+                 'keep': r'유지|그대로|남겨|남기|포함(?!된|되|돼|한)|(?<![가-힣])(?:두세요|둬|놔두|놔둬)',
                  'error': r'오류|에러|중단|멈춰|멈추|실패'}
 _MISSING_VAGUE = r'알아서|적당히|나중에\s*정|모르|상관\s*없|확인만|무시|채워|채우|대체|평균|0으로'
 _DUP_ORDER = {'first': r'첫|처음|맨\s*위|먼저\s*나온', 'last': r'마지막|맨\s*아래|나중에\s*나온|끝\s*행'}
@@ -403,7 +417,7 @@ def policy_clauses(text, columns):
     specified; two are a conflict; vague, fill or negated-only wording is left to the model or a question."""
     cols = '|'.join(re.escape(c) for c in sorted(columns, key=len, reverse=True)) or r'(?!)'
     missing = r'빈\s*(?:값|칸|셀|행|' + cols + r')|빈\s+[가-힣A-Za-z_][가-힣A-Za-z0-9_]{0,15}|비어\s*있|값이\s*없|누락|결측(?:치|값)?'
-    dup = r'중복|같은\s*(?:' + cols + r')|(?:' + cols + r')\s*(?:이|가)?\s*(?:같|겹치)'
+    dup = r'중복|같은\s*(?:' + cols + r')|(?:' + cols + r')\s*(?:이|가)?\s*(?:같(?!거나)|겹치)'
     subjects = sorted([(m.start(), 'missing.policy') for m in re.finditer(missing, text)] +
                       [(m.start(), 'duplicate.policy') for m in re.finditer(dup, text)])
     ends = [m.start() for m in re.finditer(r'[.!?\n]', text)] + [len(text)]
@@ -416,13 +430,24 @@ def policy_clauses(text, columns):
         if key == 'missing.policy':
             if re.search(_MISSING_VAGUE, segment):
                 out.append((key, 'conflict', segment.strip())); continue
-            found, negated = _acts(segment, _MISSING_ACTS)
+            # A policy about the remaining rows is not a second policy for the
+            # missing rows ("빈 값은 제외하고 나머지는 유지").
+            action_segment = re.split(r'나머지|그\s*외', segment, maxsplit=1)[0]
+            found, negated = _acts(action_segment, _MISSING_ACTS)
         else:
             if re.search(_DUP_VAGUE, segment):
                 out.append((key, 'conflict', segment.strip())); continue
             found, negated = _acts(segment, _DUP_ORDER)
+            retention = re.search(r'남(?:겨|기|김)|유지|보존', segment)
+            if found and not retention:
+                if not re.search(r'삭제|제외|지우|지워|제거|빼', segment):
+                    continue  # An incomplete/other verb is left to the model, not guessed.
+                negated |= found; found = set()
             if re.search(r'(?:남기|남겨|유지하)지\s*(?:마|말|않)', segment):
                 negated |= found; found = set()  # "첫 행만 남기지 마": the keep verb is negated
+            if found:
+                other, _ = _acts(segment, _DUP_OTHER)
+                if 'error' in other:found.add('error')
             if not found and not negated:
                 found, negated = _acts(segment, _DUP_OTHER)
         if len(found) == 1:
@@ -460,7 +485,7 @@ def explicit_policies(state, catalog):
                     r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) +
                     r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|[\s,.:]|$)|'
                     r'같은\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|[\s,.:]|$)|'
-                    r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) + r'\s*(?:이|가)?\s*(?:같|겹치))')
+                    r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) + r'\s*(?:이|가)?\s*(?:같(?!거나)|겹치))')
         matches = [col for col in columns if re.search(column_pattern(col), text, re.IGNORECASE)]
         refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
                 and any(re.search(column_pattern(col), e['quote'], re.IGNORECASE) for col in matches)]
@@ -598,7 +623,7 @@ def validate_conditions(raw, state, catalog):
                     raise ValueError('기준 값에 대응하는 원문 수치를 확인하지 못했습니다.')
                 # A text threshold (상태 '완료') must be written in the request too; live runs returned
                 # '}', '{200 만원}', 'kgs' as filter.value and they were confirmed unchecked.
-                if key == 'filter.value' and isinstance(value, str) and (not re.search(r'[0-9A-Za-z가-힣]', value) or value.strip() not in quote):
+                if key == 'filter.value' and isinstance(value, str) and value not in quote:
                     raise ValueError('기준 값이 원문에 그대로 있지 않습니다.')
                 if key=='schedule.timezone':
                     compact=re.sub(r'\s+','',quote)

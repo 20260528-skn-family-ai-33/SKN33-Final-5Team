@@ -323,6 +323,88 @@ def test_seed_counts_attempts_within_the_same_user_turn(monkeypatch):
     assert seeds[-1]==42
 
 
+@pytest.mark.parametrize('sequence', [
+    ['schema', 'schema', 'length', 'ok'],
+    ['length', 'schema', 'schema', 'ok'],
+    ['schema', 'length', 'schema', 'ok'],
+])
+def test_mixed_schema_and_length_failures_return_a_draft(monkeypatch, sequence):
+    from langchain.agents.structured_output import StructuredOutputValidationError
+    from langchain_core.messages import AIMessage
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    calls = []
+    class Agent:
+        def invoke(self, payload, config):
+            outcome = sequence[len(calls)]; calls.append(outcome)
+            if outcome == 'schema':
+                raise StructuredOutputValidationError('response_format', ValueError('bad JSON'), AIMessage(content='{} {}'))
+            if outcome == 'length':
+                raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[], usage=None))
+            return {'structured_response': draft(questions=['기준은 얼마인가요?'])}
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE', 'direct')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    result = make_conversation(None, 'test', model_factory=lambda: object())(state([{'role': 'user', 'content': '업무 요청'}]))
+    assert calls == sequence and result['draft']['questions'] == ['기준은 얼마인가요?']
+
+
+def test_mixed_retry_exhaustion_reports_length_error_instead_of_none(monkeypatch):
+    from langchain.agents.structured_output import StructuredOutputValidationError
+    from langchain_core.messages import AIMessage
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    calls = []
+    class Agent:
+        def invoke(self, payload, config):
+            calls.append(1)
+            if len(calls) <= 2:
+                raise StructuredOutputValidationError('response_format', ValueError('bad JSON'), AIMessage(content='{} {}'))
+            raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[], usage=None))
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE', 'direct')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    with pytest.raises(ValueError, match='길이 제한'):
+        make_conversation(None, 'test', model_factory=lambda: object())(state([{'role': 'user', 'content': '업무 요청'}]))
+    assert len(calls) == 4
+
+
+def test_seed_is_not_reused_after_successful_length_retry(monkeypatch):
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    seeds, calls = [], []
+    class Agent:
+        def invoke(self, payload, config):
+            calls.append(1)
+            if len(calls) == 1:
+                raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[], usage=None))
+            return {'structured_response': draft(questions=['기준은 얼마인가요?'])}
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE', 'direct')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model', lambda **kw: seeds.append(kw['seed']) or object())
+    node = make_conversation(None, 'test')
+    original = state([{'role': 'user', 'content': '업무 요청'}])
+    first = node(original)
+    node({**original, 'trace': first['trace']})
+    assert seeds == [42, 43, 44]
+
+
+@pytest.mark.parametrize('value', ['', '   '])
+def test_empty_design_seed_uses_default(monkeypatch, value):
+    seeds = []
+    class Agent:
+        def invoke(self, payload, config):return {'structured_response': draft(questions=['기준은 얼마인가요?'])}
+    monkeypatch.setenv('A4B_DESIGN_SEED', value)
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model', lambda **kw: seeds.append(kw['seed']) or object())
+    make_conversation(None, 'test')(state([{'role': 'user', 'content': '업무 요청'}]))
+    assert seeds == [42]
+
+
+def test_invalid_design_seed_reports_configuration_error(monkeypatch):
+    monkeypatch.setenv('A4B_DESIGN_SEED', 'not-a-number')
+    with pytest.raises(ValueError, match='A4B_DESIGN_SEED.*정수'):
+        make_conversation(None, 'test', model_factory=lambda: object())
+
+
 def run_capturing(monkeypatch, s, response):
     captured = {}
     def factory(**kwargs):

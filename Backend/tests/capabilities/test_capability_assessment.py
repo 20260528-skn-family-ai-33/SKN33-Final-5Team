@@ -179,6 +179,13 @@ def test_missed_external_delivery_is_recorded_as_missing_capability(text,channel
     '메일로 받은 파일에서 비용 100만원 초과만 JSON으로 저장해.',
     '이메일로 보내지 말고 파일로만 저장해.',
     '슬랙 말고 CSV로 저장해줘.',
+    '문자열을 변환해서 결과를 알려줘.',
+    "문자열에 '알림'이 포함된 행을 CSV로 저장해줘.",
+    '문자 열에서 결과를 알려줘.',
+    '슬랙으로 알림을 보내지 마. CSV로만 저장해.',
+    '이메일 발송 여부 열만 CSV로 저장해줘.',
+    '이메일로 안 보내고 CSV로만 저장해.',
+    "내용이 '이메일로 보내줘'인 행을 CSV로 저장해.",
     '비용이 100만원 초과인 행을 JSON으로 저장해.'])
 def test_files_and_negated_delivery_are_not_reclassified(text):
     s=state(text)

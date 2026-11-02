@@ -121,7 +121,7 @@ def answer_value(s, ledger, text):
 
 @pytest.mark.parametrize('text,value', [
     ('100만원', 1000000), ('1,000,000', 1000000), ('1000000원', 1000000), ('85점', 85), ('85', 85),
-    ('100만', 1000000), ('1.5만원', 15000), ('0', 0), ('100 만원', 1000000), ('약 100만원', 1000000),
+    ('100만', 1000000), ('1.5만원', 15000), ('0', 0), ('100 만원', 1000000),
     ('100만원으로', 1000000), ('1백만원', 1000000)])
 def test_plain_amount_answer_is_read_exactly(text, value):
     s, ledger = vague()
@@ -131,7 +131,7 @@ def test_plain_amount_answer_is_read_exactly(text, value):
 
 @pytest.mark.parametrize('text', [
     '백만원', '삼십만원', '1억', '1억 2천만원', '-5', '50%', '100k', '$100', '100만원에서 200만원',
-    '2026-11-02', '100만원 초과', '100만원 이상으로 바꿔줘', '1,00'])
+    '2026-11-02', '100만원 초과', '100만원 이상으로 바꿔줘', '1,00', '약 100만원', '100만원 정도'])
 def test_ambiguous_amounts_keep_the_model_path(text):
     """The raw parser reads 1억 as 1 and -5 as 5; such answers must never be parsed here."""
     s, ledger = vague()

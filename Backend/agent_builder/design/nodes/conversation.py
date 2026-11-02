@@ -93,12 +93,16 @@ def make_conversation(api_key,model,model_factory=None):
     # Seed = base + attempt number within the current user turn: the first attempt of a given
     # input is reproducible, and every retry samples differently instead of repeating the same
     # failure. Temperature stays the shared model_factory setting. A4B_DESIGN_SEED sets the base.
-    base_seed=int(os.getenv('A4B_DESIGN_SEED','42'))
+    try:
+        base_seed=int((os.getenv('A4B_DESIGN_SEED') or '').strip() or '42')
+    except ValueError as error:
+        raise ValueError('A4B_DESIGN_SEED는 정수로 설정하거나 비워 두세요(기본값 42).') from error
     def chat_model(seed):
         return model_factory() if model_factory else create_chat_model(model=model,api_key=api_key,timeout=70,max_retries=1,max_tokens=9000,seed=seed)
     def conversation_node(state):
         latest_turn=max((i for i,m in enumerate(state['messages']) if m['role']=='user'),default=-1)
-        seed=base_seed+sum(1 for t in state.get('trace',[]) if t.get('node')=='conversation' and t.get('user_turn')==latest_turn and 'seed' in t)
+        used_seeds=[t['seed'] for t in state.get('trace',[]) if t.get('node')=='conversation' and t.get('user_turn')==latest_turn and 'seed' in t]
+        seed=max([base_seed-1,*used_seeds])+1
         resources={}
         for r in state['resources']:
             evidence_text=(r.get('text','')[:12000] or '\n'.join(['파일명: '+r['name'],'열: '+', '.join(r.get('columns',[]))]+[k+': '+json.dumps(v,ensure_ascii=False,sort_keys=True) for k,v in r.get('profile',{}).items()]))
@@ -273,10 +277,13 @@ def make_conversation(api_key,model,model_factory=None):
         length_retried=False
         def invoke_agent(active_agent,messages):
             nonlocal seed,length_retried
-            for attempt in range(3):
+            schema_failures=0;attempt=0
+            while True:
+                attempt+=1
                 try:return active_agent.invoke({'messages':messages},{'recursion_limit':40})
                 except StructuredOutputValidationError:
-                    if attempt==2:raise
+                    schema_failures+=1
+                    if schema_failures==3:raise
                     messages=[*messages,{'role':'user','content':'최종 응답의 JSON 스키마 검증에 실패했습니다. 스키마를 충족하는 JSON 객체 하나만 반환하세요. 여러 JSON 객체나 코드 블록을 붙이지 마세요. 사용자 조건은 유지하고 미정 조건은 questions에, 미지원 이유는 unsupported에 적으세요.'}]
                 except Exception as error:
                     from openai import LengthFinishReasonError
@@ -284,7 +291,7 @@ def make_conversation(api_key,model,model_factory=None):
                         from agent_builder.design.graph import _timing_event
                         completion=error.completion
                         usage=getattr(completion,'usage',None)
-                        _timing_event({'event':'model_length_error','attempt':attempt+1,
+                        _timing_event({'event':'model_length_error','attempt':attempt,
                             'stage':'final_draft' if registry_read else 'tool_selection',
                             'finish_reasons':[getattr(choice,'finish_reason',None) for choice in (getattr(completion,'choices',None) or [])],
                             'prompt_tokens':getattr(usage,'prompt_tokens',None),

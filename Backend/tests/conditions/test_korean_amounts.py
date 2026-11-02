@@ -15,7 +15,8 @@ def test_korean_numeral_amounts(text, value):
 
 
 @pytest.mark.parametrize('text', ['백업 파일을 만들어줘', '천천히 처리해', '만약 비용이 크면', '비용이 큰 행만', '이상한 값은 빼',
-                                  '오류가 있으면 멈춰', '만족도 열', '십분 뒤에', '억지로 하지 마', '비용이 이백', '삼성 주식'])
+                                  '오류가 있으면 멈춰', '만족도 열', '십분 뒤에', '억지로 하지 마', '비용이 이백', '삼성 주식',
+                                  '이 건만', '이 점만 확인해줘'])
 def test_words_are_not_numbers(text):
     assert _amounts(text) == set()
 
@@ -54,3 +55,33 @@ def test_text_threshold_written_in_the_request_is_kept():
     s = state('상태가 완료인 행만 남겨줘. CSV로 저장해.')
     ledger = checked(s, proposal(s, {'filter.field': '상태', 'filter.operator': 'eq', 'filter.value': '완료', 'output.format': 'csv'}))
     assert ledger['slots']['filter.value']['status'] == 'specified' and ledger['slots']['filter.value']['value'] == '완료'
+
+
+@pytest.mark.parametrize('value', ['-', '✅', '完了', '}', '  완료  '])
+def test_literal_text_thresholds_are_not_limited_to_an_alphabet(value):
+    s = state(f"상태가 '{value}'인 행만 골라 CSV로 저장해줘.")
+    ledger = checked(s, proposal(s, {'filter.field': '상태', 'filter.operator': 'eq', 'filter.value': value, 'output.format': 'csv'}))
+    assert ledger['decision'] == 'ready'
+    assert ledger['slots']['filter.value']['value'] == value
+
+
+def test_demonstrative_does_not_ground_a_fabricated_threshold():
+    s = state('이 건만 처리해줘. 비용은 기준보다 큰 행, 빈 값은 제외해. CSV로 저장해.')
+    ledger = checked(s, proposal(s, {'filter.field': '비용', 'filter.operator': 'gt', 'filter.value': '2',
+                                    'missing.policy': 'exclude', 'output.format': 'csv'}))
+    assert ledger['decision'] == 'clarify'
+    assert ledger['slots']['filter.value']['status'] == 'missing'
+
+
+@pytest.mark.parametrize('amount', ['약 100만원', '대략 100만원', '100만원 정도', '100만원쯤', '약 백만 원'])
+def test_approximate_amount_does_not_ground_an_exact_threshold(amount):
+    s = state(f'비용이 {amount} 초과인 행만 골라줘. 빈 값은 제외해. CSV로 저장해.')
+    ledger = checked(s, proposal(s, {'filter.field': '비용', 'filter.operator': 'gt', 'filter.value': '1000000',
+                                    'missing.policy': 'exclude', 'output.format': 'csv'}))
+    assert ledger['decision'] == 'clarify'
+    assert ledger['slots']['filter.value']['status'] == 'missing'
+
+
+@pytest.mark.parametrize('text', ['약 1억 5천만 원', '1억 5천만원 정도', '대략 백만 원', '100만원쯤'])
+def test_parts_of_an_approximate_amount_are_not_exact_evidence(text):
+    assert _amounts(text) == set()

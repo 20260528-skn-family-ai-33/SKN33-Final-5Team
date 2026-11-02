@@ -8,7 +8,7 @@
 | `contract.json` | 워크플로우 초안의 제안 규약 v0.1 |
 | `tool_registry.json` | 합성 예제에 사용하는 도구 명세 |
 
-합성 예제와 출처·검증 범위는 [docs/examples/workflow_preprocessing](../../../docs/examples/workflow_preprocessing/README.md)에 있습니다. 실제 앱 데이터는 프로젝트 루트의 `data/` 또는 `EASYFLOW_DATA_DIR`에서 관리합니다.
+합성 예제와 출처·검증 범위는 [Backend/tests/fixtures/examples/workflow_preprocessing](../../../tests/fixtures/examples/workflow_preprocessing/DATASET_NOTES.md)에 있습니다. 실제 앱 데이터는 프로젝트 루트의 `data/` 또는 `EASYFLOW_DATA_DIR`에서 관리합니다.
 
 프로젝트 루트에서 재현합니다. Python 표준 라이브러리만 사용합니다.
 

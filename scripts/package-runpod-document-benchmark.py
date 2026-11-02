@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def permitted(name):
     path = Path(name)
     return (not path.is_absolute() and '..' not in path.parts
-            and path.parts[0] in {'Backend', 'Frontend', 'scripts', 'docs'}
+            and path.parts[0] in {'Backend', 'Frontend', 'scripts'}
             and not any(p in {'.git', '.ssh', '.aws', 'node_modules', '__pycache__'} or p.startswith('.venv') for p in path.parts)
             and not path.name.startswith('.env')
             and path.suffix.lower() not in {'.pem', '.key', '.p12', '.pfx', '.sqlite', '.db', '.log'}

@@ -305,7 +305,7 @@ node scripts/run-configured.mjs
 
 환경 파일은 저장소 루트의 `.env` 하나입니다. 이 실행기와 `npm run dev`·`npm start`가 모두 같은 파일을 읽으며(`A4B_ENV_FILE`로 다른 파일 지정 가능), 이미 설정된 프로세스 환경변수가 파일보다 우선합니다.
 
-연결 상세와 Ollama `/v1`·vLLM 설정 차이는 [RunPod 연결 안내](docs/local-integration/RUNPOD.md)를 참고하세요. 주소·키를 바꾼 뒤에는 서버를 재시작합니다.
+주소·키를 바꾼 뒤에는 서버를 재시작합니다.
 
 
 ## 사용 예시
@@ -416,7 +416,7 @@ Backend/.venv-agent/bin/python scripts/run-deferred-verifications.py
 
 Windows는 `Backend\.venv-agent\Scripts\python.exe scripts\run-deferred-verifications.py`를 사용합니다.
 
-검증기의 `execution_allowed`는 항상 `false`입니다. 검증 결과를 실행 승인으로 사용하지 않습니다. [통합 기록과 한계](docs/local-integration/README.md), [원본 계약 대조](docs/local-integration/ZIP_ALIGNMENT.md)를 참고하세요.
+검증기의 `execution_allowed`는 항상 `false`입니다. 검증 결과를 실행 승인으로 사용하지 않습니다.
 
 ### Tool · Node · Workflow
 
@@ -526,7 +526,7 @@ npm run demo
 | 파서 보존본 무결성 | manifest 31개 항목 일치 |
 | Qwen 검증 계약 | 보존본의 계약·판정 코드·SYSTEM 지시문과 일치 검사 통과 |
 
-이 확인에는 전체 브라우저 E2E, 새 Qwen/OpenAI 응답, 전체 PDF 정확도 평가가 포함되지 않습니다. 과거 통합 실험의 시간 초과·검증 보류 기록은 [통합 실험 기록](docs/local-integration/README.md)에 남아 있습니다.
+이 확인에는 전체 브라우저 E2E, 새 Qwen/OpenAI 응답, 전체 PDF 정확도 평가가 포함되지 않습니다.
 
 이전 main `ee27158`의 합성 업무 100문항은 기대 동작 충족 **80/100**이었습니다. 표 40/40, TXT·MD 추출 20/20, 첨부 없는 글쓰기·변환 10/20, 질문 대기 1/10, 미지원 안내 9/10입니다. 현재 코드의 점수로 재사용하지 않습니다. 질문 문항은 최초 질문·대기까지만 평가했으며 후속 답변부터 저장·실행까지의 성공률이 아닙니다. 별도 매뉴얼 RAG 실험과 개발에 사용한 50문항 재평가도 현재 앱 성능과 구분합니다.
 
@@ -583,11 +583,10 @@ $env:PYTHONPATH="tests/fixtures/qwen_verifier"
 │   ├── verification/        # workflow(구 a4b_verifier)·reply_review(A4 응대 검수)
 │   ├── infrastructure/      # llm(모델 연결)·persistence(SQLite 저장·체크포인트)
 │   ├── contracts/           # 여러 기능이 공유하는 데이터 규격
-│   ├── tests/               # pytest(fixtures/에 parser_handoff·qwen_verifier 전달본 보존)
+│   ├── tests/               # pytest(fixtures/에 예제 파일·계약 예제·parser_handoff·qwen_verifier 전달본 보존)
 │   ├── scripts/             # 설치·모델 준비·점검 스크립트
 │   └── requirements/        # agent-lock·parser·document-analysis·local-integration·ml-legacy
 ├── scripts/                 # 실행기(launch-demo·run-configured)·로컬/RunPod·벤치마크 도구
-├── docs/
 ├── images/
 ├── package.json             # 화면 빌드·API 서버·테스트 명령(의존성은 원본과 동일)
 ├── .env.example
@@ -595,18 +594,3 @@ $env:PYTHONPATH="tests/fixtures/qwen_verifier"
 ```
 
 설치·실행 과정에서 생성되는 Python 가상환경, `node_modules/`, `Frontend/dist-app/`, `Backend/api/build-server/`, `runtime/`와 기본 데이터 폴더 `data/`는 Git 추적 대상에서 제외됩니다.
-
-## 프로젝트 문서
-
-구현·연결 안내:
-
-- [통합 구성과 과거 검증 기록](docs/local-integration/README.md)
-- [로컬·RunPod 모델 연결](docs/local-integration/RUNPOD.md)
-- [전달본 계약 대조와 변경 범위](docs/local-integration/ZIP_ALIGNMENT.md)
-
-`docs/`에 포함된 프로젝트 PDF 산출물입니다. 초안 문서의 계획·수치는 현재 코드 상태와 구분합니다.
-
-- [요구사항 정의서(초안)](<docs/1. 요구사항 정의서(초안).pdf>)
-- [WBS(초안)](<docs/2. WBS(초안).pdf>)
-- [프로젝트 기획서](docs/3.프로젝트_기획서.pdf)
-- [수집 데이터 보고서](docs/4.수집_데이터_보고서.pdf)

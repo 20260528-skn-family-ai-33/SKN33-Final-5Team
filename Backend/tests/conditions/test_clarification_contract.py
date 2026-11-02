@@ -10,7 +10,7 @@ from agent_builder.conditions.clarification_contract import CONTRACT, Clarificat
 from agent_builder.conditions.condition_readiness import source_catalog
 from agent_builder.conditions.condition_check import make_condition_check
 
-EXAMPLES=Path(__file__).resolve().parents[3]/'docs/clarification-handoff/examples'
+EXAMPLES=Path(__file__).resolve().parents[1]/'fixtures/clarification-handoff/examples'
 
 
 def load(name,suffix='input'):

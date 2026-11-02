@@ -10,7 +10,7 @@ from agent_builder.conditions.clarification_contract import CONTRACT, Clarificat
 from agent_builder.conditions.condition_readiness import source_catalog
 from agent_builder.conditions.condition_check import make_condition_check
 
-DEST=ROOT/'docs/clarification-handoff'
+DEST=ROOT/'Backend/tests/fixtures/clarification-handoff'
 
 class Fixture:
     def __init__(self,raw):self.raw=raw;self.calls=0

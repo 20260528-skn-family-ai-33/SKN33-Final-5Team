@@ -9,7 +9,7 @@ sys.path.insert(0,str(ROOT/'Backend'))
 from agent_builder.conditions.clarification_contract import ClarificationInput, ClarificationOutput, to_builder_state
 from agent_builder.conditions.condition_readiness import input_issues
 
-base=ROOT/'docs/clarification-handoff'
+base=ROOT/'Backend/tests/fixtures/clarification-handoff'
 records=json.loads(subprocess.check_output(['node','--import','tsx','Backend/api/scripts/clarification-contract-fixtures.ts'],cwd=ROOT,text=True,timeout=60))
 checks=[]
 for record in records:

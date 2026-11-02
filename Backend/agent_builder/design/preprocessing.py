@@ -6,7 +6,7 @@ from workflow_engine.workflow import workflow_errors
 from workflow_engine.scheduling.schedules import schedule_errors
 
 CODE_ROOT=Path(__file__).resolve().parent/'pilot'
-DATA_ROOT=Path(__file__).resolve().parents[3]/'docs/examples/workflow_preprocessing'
+DATA_ROOT=Path(__file__).resolve().parents[2]/'tests/fixtures/examples/workflow_preprocessing'
 ROOT=DATA_ROOT
 spec=importlib.util.spec_from_file_location('a4b_pilot_preprocessing',CODE_ROOT/'build_dataset.py')
 pilot=importlib.util.module_from_spec(spec);spec.loader.exec_module(pilot)

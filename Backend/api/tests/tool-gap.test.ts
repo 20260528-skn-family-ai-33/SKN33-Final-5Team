@@ -179,9 +179,9 @@ test('public choice request is strict and never accepts execution permission',as
 test('published choice requests match the actual frontend contract',async()=>{
  const {parseToolGapChoiceRequest}=await import('../src/tool-gap-contract');
  for(const name of ['01-defer','02-redesign_workflow','03-create_tool']){
-  const request=JSON.parse(await readFile(new URL('../../../docs/tool-gap-choice-handoff/examples/'+name+'.request.json',import.meta.url),'utf8'));
+  const request=JSON.parse(await readFile(new URL('../../tests/fixtures/tool-gap-choice-handoff/examples/'+name+'.request.json',import.meta.url),'utf8'));
   assert.deepEqual(parseToolGapChoiceRequest(request),request);
-  const response=JSON.parse(await readFile(new URL('../../../docs/tool-gap-choice-handoff/examples/'+name+'.response.json',import.meta.url),'utf8'));
+  const response=JSON.parse(await readFile(new URL('../../tests/fixtures/tool-gap-choice-handoff/examples/'+name+'.response.json',import.meta.url),'utf8'));
   assert.equal(response.revision,request.revision+1);
   assert.equal(response.tool_gap_choice.selection.choice,request.choice);
  }
@@ -194,9 +194,9 @@ test('redesign decision request never includes implicit execution approval',asyn
 });
 test('published redesign confirmation matches current request contract',async()=>{
  const {parseRedesignDecisionRequest}=await import('../src/tool-gap-contract');
- const request=JSON.parse(await readFile(new URL('../../../docs/tool-gap-choice-handoff/redesign-examples/02-accept.request.json',import.meta.url),'utf8'));
+ const request=JSON.parse(await readFile(new URL('../../tests/fixtures/tool-gap-choice-handoff/redesign-examples/02-accept.request.json',import.meta.url),'utf8'));
  assert.deepEqual(parseRedesignDecisionRequest(request),request);
- const response=JSON.parse(await readFile(new URL('../../../docs/tool-gap-choice-handoff/redesign-examples/02-accept.response.json',import.meta.url),'utf8'));
+ const response=JSON.parse(await readFile(new URL('../../tests/fixtures/tool-gap-choice-handoff/redesign-examples/02-accept.response.json',import.meta.url),'utf8'));
  assert.equal(response.revision,request.revision+1);assert.equal(response.redesign_proposal.status,'accepted');
  assert.equal(response.redesign_generation.requires_condition_recheck,true);assert.equal(response.redesign_generation.allows_execution,false);
 });

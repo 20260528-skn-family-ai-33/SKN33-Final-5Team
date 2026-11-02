@@ -17,7 +17,7 @@ from pathlib import Path
 
 CODE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-ROOT = PROJECT_ROOT / 'docs/examples/workflow_preprocessing'
+ROOT = PROJECT_ROOT / 'Backend/tests/fixtures/examples/workflow_preprocessing'
 VERSION = 'workflow-draft-v0.1'
 
 def dump(name, obj):
@@ -297,6 +297,6 @@ def main(output_directory=None):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description='합성 전처리 데이터와 검수 결과를 생성합니다.')
-    parser.add_argument('--output',type=Path,default=ROOT,help='결과 폴더 (기본: docs/examples/workflow_preprocessing)')
+    parser.add_argument('--output',type=Path,default=ROOT,help='결과 폴더 (기본: Backend/tests/fixtures/examples/workflow_preprocessing)')
     args=parser.parse_args()
     main(args.output)

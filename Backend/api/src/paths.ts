@@ -1,5 +1,5 @@
-import {existsSync} from 'node:fs';
-import {resolve} from 'node:path';
+import {existsSync,mkdirSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 // Both src/ source files and the bundled build-server/ entry live one level below Backend/api.
@@ -11,9 +11,13 @@ export const FRONTEND_ROOT=resolve(PROJECT_ROOT,'Frontend');
 export const apiPath=(...parts:string[])=>resolve(API_ROOT,...parts);
 export const frontendPath=(...parts:string[])=>resolve(FRONTEND_ROOT,...parts);
 export const backendPath=(...parts:string[])=>resolve(BACKEND_ROOT,...parts);
-export const examplePath=(...parts:string[])=>resolve(PROJECT_ROOT,'docs','examples',...parts);
-export const documentationPath=(...parts:string[])=>resolve(PROJECT_ROOT,'docs',...parts);
+// Sample files for tests and dev scripts; the server never reads them.
+export const examplePath=(...parts:string[])=>resolve(BACKEND_ROOT,'tests','fixtures','examples',...parts);
 export const dataDirectory=(...parts:string[])=>resolve(PROJECT_ROOT,process.env.EASYFLOW_DATA_DIR||'data',...parts);
+// Live-check reports from dev scripts go to the (git-ignored) data directory.
+export const documentationPath=(...parts:string[])=>{
+ const path=dataDirectory('live-checks',...parts);mkdirSync(dirname(path),{recursive:true});return path;
+};
 const pythonExecutable=process.platform==='win32'?'Scripts/python.exe':'bin/python';
 
 export function agentPython():string {

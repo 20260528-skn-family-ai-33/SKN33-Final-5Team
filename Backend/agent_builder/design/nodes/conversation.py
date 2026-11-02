@@ -80,7 +80,10 @@ def make_conversation(api_key,model,model_factory=None):
         from agent_builder.design.nodes.direct_conversation import make_direct_conversation
         return make_direct_conversation(api_key,model,model_factory)
     if mode!='deepagent':raise ValueError('A4B_PLANNER_MODE는 deepagent/direct여야 합니다.')
-    llm=model_factory() if model_factory else create_chat_model(model=model,api_key=api_key,timeout=70,max_retries=1,max_tokens=9000)
+    # A fixed seed makes the same design input reproducible (temperature stays the shared
+    # model_factory setting). A4B_DESIGN_SEED changes it for experiments.
+    seed=int(os.getenv('A4B_DESIGN_SEED','42'))
+    llm=model_factory() if model_factory else create_chat_model(model=model,api_key=api_key,timeout=70,max_retries=1,max_tokens=9000,seed=seed)
     def conversation_node(state):
         resources={}
         for r in state['resources']:

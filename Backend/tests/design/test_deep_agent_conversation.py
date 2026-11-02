@@ -302,3 +302,49 @@ def test_length_error_is_not_parsed_as_json_or_retried(monkeypatch):
     with pytest.raises(ValueError,match='길이 제한'):
         make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
     assert len(calls)==1
+
+
+def run_capturing(monkeypatch, s, response):
+    captured = {}
+    def factory(**kwargs):
+        captured['schema'] = kwargs['response_format'].schema
+        tools = {t.name: t for t in kwargs['tools']}
+        class Agent:
+            def invoke(self, payload, config):
+                captured['context'] = json.loads(payload['messages'][0]['content'].split('\n', 1)[1])
+                captured['list_tools'] = tools['list_tools'].invoke({})
+                return {'structured_response': response}
+        return Agent()
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', factory)
+    make_conversation(None, 'test', model_factory=lambda: object())(s)
+    return captured
+
+
+def test_ready_table_contract_bounds_deep_agent_output_and_catalog(monkeypatch):
+    """Real failures: one-node truncation, extra finish nodes, re-asking confirmed conditions,
+    and a ~9.5k-token prompt from the 22-tool catalogue in a 16k context."""
+    from tests.design.test_linear_plan import context
+    from agent_builder.design.planner_constraints import TABLE_PLAN_TOOLS
+    s = context()
+    captured = run_capturing(monkeypatch, s, draft(questions=['다시 묻기']))
+    schema = captured['schema']; defs = schema['$defs']
+    tools = {defs['WorkflowNode']['anyOf'][i]['properties']['tool']['enum'][0] for i in range(len(defs['WorkflowNode']['anyOf']))}
+    assert tools == set(TABLE_PLAN_TOOLS)
+    for key in ('questions', 'question_options', 'unsupported'):
+        assert schema['properties'][key]['maxItems'] == 0
+    assert schema['properties']['workflow'] == {'$ref': '#/$defs/WorkflowDefinition'}
+    nodes, edges = defs['WorkflowDefinition']['properties']['nodes'], defs['WorkflowDefinition']['properties']['edges']
+    assert (nodes['minItems'], nodes['maxItems'], edges['minItems'], edges['maxItems']) == (3, 4, 2, 3)  # format confirmed
+    assert [t['id'] for t in captured['context']['supported_tools']] == list(TABLE_PLAN_TOOLS)
+    assert [t['id'] for t in captured['list_tools']] == list(TABLE_PLAN_TOOLS)
+
+
+def test_requests_outside_the_ready_table_contract_keep_the_full_catalog(monkeypatch):
+    from workflow_engine.catalog.registry import TOOLS
+    captured = run_capturing(monkeypatch, state([{'role': 'user', 'content': '문서에서 근거를 찾아 답해줘'}]),
+                             draft(questions=['어떤 문서인가요?']))
+    schema = captured['schema']
+    assert len(schema['$defs']['WorkflowNode']['anyOf']) == len(TOOLS)
+    assert schema['properties']['questions']['maxItems'] == 3
+    assert 'minItems' not in schema['$defs']['WorkflowDefinition']['properties']['nodes']
+    assert captured['context']['supported_tools'] == TOOLS

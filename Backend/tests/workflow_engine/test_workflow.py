@@ -174,3 +174,18 @@ def test_node_port_edge_references_resolve_only_to_a_real_node_port():
     for source in ('missing_1:table','read_table_1:artifact','read_table_1:','start'):
         kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(nodes),'edges':[edge(source,'filter_sort_1')]})
         assert kept['edges'][0]['source']==source
+
+
+def test_dotted_node_port_references_resolve_like_colon_ones():
+    """Real Deep Agent draft (repro run 6): edges 'read_table_1.table' → 'filter_sort_1.table'."""
+    from workflow_engine.workflow import normalize_connections
+    nodes=[node('read_table_1','read_table',file_ids=['f']),node('filter_sort_1','filter_sort',[bind('table','read_table_1','table')]),
+           node('write_result_1','write_result',[bind('table','filter_sort_1','table')],format='json')]
+    wf={'entry':'read_table_1','nodes':copy.deepcopy(nodes),
+        'edges':[edge('read_table_1.table','filter_sort_1.table'),edge('filter_sort_1.table','write_result_1.table')]}
+    fixed=normalize_connections(copy.deepcopy(wf))
+    assert fixed['edges']==[edge('read_table_1','filter_sort_1'),edge('filter_sort_1','write_result_1')]
+    assert not workflow_errors(fixed,['read_table','filter_sort','write_result'],[{'id':'f','kind':'table','columns':['거래ID','비용']}])
+    for source in ('missing_1.table','read_table_1.artifact','read_table_1.','read_table_1.table.x'):
+        kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(nodes),'edges':[edge(source,'filter_sort_1')]})
+        assert kept['edges'][0]['source']==source

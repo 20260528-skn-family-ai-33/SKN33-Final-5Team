@@ -208,9 +208,10 @@ def normalize_connections(workflow):
     if not workflow:return workflow
     by={n['id']:n for n in workflow['nodes']}
     def node_of(reference,side):
-        # "node:port" names one real node only when that node owns the port.
-        if reference in by or not isinstance(reference,str) or ':' not in reference:return reference
-        identifier,port=reference.rsplit(':',1)
+        # "node:port" or "node.port" names one real node only when that node owns the port.
+        # Node IDs cannot contain ':' or '.', so the separator is unambiguous.
+        if reference in by or not isinstance(reference,str) or not re.search(r'[:.]',reference):return reference
+        identifier,port=re.split(r'[:.](?=[^:.]*$)',reference)
         return identifier if identifier in by and port in node_ports(by[identifier])[side] else reference
     for edge in workflow['edges']:
         edge['source']=node_of(edge['source'],1);edge['target']=node_of(edge['target'],0)

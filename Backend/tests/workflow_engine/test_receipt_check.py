@@ -46,6 +46,18 @@ def test_item_misread_against_correct_subtotal():
     assert '상품 금액 합 7,580 ≠ 영수증 합계 7,500' in message
 
 
+def test_misread_total_label_still_confirms_an_exact_sum_but_never_claims_a_mismatch():
+    # Dongdaemun mart receipt: "합 계 11,400" and "현 금 50,000" came back as "게 11,400" and "회 50,000".
+    text = '\n'.join(['광천)해저파래도 1 2,950 2,950', '롯데)파스타스150 2 1,200 2,400', '농심)우육탕큰사 1 950 950',
+                      '빙)바나나우유혼 — 4,300 4,300', '롯데)누드빼빼로1 1 800 800', '과세액 10,364', '부가세 1,036',
+                      '면 0', '게 11,400', '회 50,000', '38,600'])
+    assert receipt_check.totals(text) == (None, 0, [])
+    assert receipt_check.check(rows('2,950', '2,400', '950', '4,300', '800'), ['상품명', '금액'], text) == '일치 (합계 라벨 미인식, 11,400 줄 확인)'
+    assert receipt_check.check(rows('2,950', '2,400', '950', '4,300', '900'), ['상품명', '금액'], text) is None
+    # An item row's own amount is not mistaken for a total line.
+    assert receipt_check.check(rows('2,950'), ['상품명', '금액'], '광천)해저파래도 1 2,950 2,950') is None
+
+
 def test_correct_receipt_agrees_and_unknown_cases_are_not_guessed():
     assert receipt_check.check(rows('2,100', '3,300', '2,100'), ['상품명', '금액'], CORRECT_TEXT) == '일치'
     assert receipt_check.check(rows('2,100', None, '2,100'), ['상품명', '금액'], CORRECT_TEXT) == '확인 불가 (금액 없는 행 1개)'

@@ -52,6 +52,16 @@ def totals(text):
     return subtotal, discount, paid
 
 
+def _line_amounts(text):
+    """Last number of each line that has at most one number (total lines, not item rows)."""
+    found = set()
+    for line in (text or '').splitlines():
+        numbers = _NUMBER.findall(line)
+        if len(numbers) == 1 and '번호' not in line:
+            found.add(amount(numbers[0]))
+    return found
+
+
 def won(value):
     return f'{value:,}'
 
@@ -62,9 +72,13 @@ def check(records, fields, text):
     if not field or not records:
         return None
     subtotal, discount, paid = totals(text)
-    if subtotal is None and not paid:
-        return None
     values = [amount(r.get(field)) for r in records]
+    if subtotal is None and not paid:
+        # Large-font labels are often misread ("합 계" -> "게"); an exact item sum on its own line
+        # still confirms the rows, but a mismatch is never claimed without a readable label.
+        if all(v is not None for v in values) and sum(values) in _line_amounts(text):
+            return f'일치 (합계 라벨 미인식, {won(sum(values))} 줄 확인)'
+        return None
     if any(v is None for v in values):
         return f'확인 불가 ({field} 없는 행 {sum(v is None for v in values)}개)'
     items = sum(values)

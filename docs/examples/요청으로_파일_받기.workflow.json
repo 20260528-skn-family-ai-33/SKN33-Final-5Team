@@ -1,0 +1,136 @@
+{
+  "name": "요청으로 파일 받기",
+  "description": "실제 UTF-8 CSV 파일을 요청으로 받아 표의 각 행을 읽고 JSON 목록으로 돌려주는 예제예요. 자동 실행을 켠 뒤 Webhook 주소의 예시 요청 보내기에서 파일만 보내기를 선택하거나 파일 + 추가 정보의 파일 항목 이름을 data로 설정하세요. CSV 첫 줄에는 name,score처럼 열 이름이 있어야 해요.",
+  "active": false,
+  "nodes": [
+    {
+      "id": "7410812d-204c-4ca3-89db-452511055b49",
+      "name": "CSV 파일 요청 받기",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "files/csv",
+        "authentication": "easyflowToken",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "e5576db2-e3ab-4284-bbcd-c903d460fd79",
+      "name": "받은 CSV 읽기",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        350,
+        320
+      ],
+      "parameters": {
+        "operation": "csv",
+        "binaryPropertyName": "data",
+        "headerRow": "true",
+        "encoding": "utf8",
+        "stripBOM": "true",
+        "skipEmptyLines": "true",
+        "keepSource": "none"
+      }
+    },
+    {
+      "id": "1b8cd52b-5f75-4b5f-8c64-87c1ad26744d",
+      "name": "읽은 표 돌려주기",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        580,
+        320
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "enableResponseOutput": true,
+        "options": {
+          "responseCode": 201,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-Easyflow-Example",
+                "value": "csv-upload"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "b0cf239f-c662-4c5a-b6ae-f7c4a05d281e",
+      "name": "읽은 행 확인",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        840,
+        230
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "e53a6cb8-28f5-43c3-80b6-eab9c29f5eae",
+      "name": "보낸 응답 확인",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        840,
+        430
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "CSV 파일 요청 받기": {
+      "main": [
+        [
+          {
+            "node": "받은 CSV 읽기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "받은 CSV 읽기": {
+      "main": [
+        [
+          {
+            "node": "읽은 표 돌려주기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "읽은 표 돌려주기": {
+      "main": [
+        [
+          {
+            "node": "읽은 행 확인",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "보낸 응답 확인",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul"
+  }
+}

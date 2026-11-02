@@ -1,5 +1,6 @@
 """Shared source resolution for the registered document/table entrypoints."""
 from ..workflow_runtime import document_chunks
+from ..document_resources import supports
 
 
 def read_source(node,state,storage,config,external_port):
@@ -9,8 +10,8 @@ def read_source(node,state,storage,config,external_port):
     if external_port in state.get('external_inputs',{}):
         return {external_port:state['external_inputs'][external_port]}
     expected='document' if tool=='read_document' else 'table'
-    provided=[id for id in state['file_ids'] if storage.asset(id)['kind']==expected]
-    ids=provided or [id for id in settings['file_ids'] or config['document_ids'] if storage.asset(id)['kind']==expected]
+    provided=[id for id in state['file_ids'] if supports(storage.asset(id),expected)]
+    ids=provided or [id for id in settings['file_ids'] or config['document_ids'] if supports(storage.asset(id),expected)]
     if not ids:
         raise ValueError('이번 실행에 사용할 '+('문서' if expected=='document' else '표 파일')+'를 연결하세요.')
     if tool=='read_document':return {'documents':document_chunks(storage,ids)}

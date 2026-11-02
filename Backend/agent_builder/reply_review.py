@@ -1,4 +1,5 @@
 """Junghyun reply diagnostics integrated into A4B's existing worker and model."""
+from .document_resources import supports
 from pydantic import BaseModel
 from langchain_core.tools import tool
 from langchain_core.messages import AIMessage, ToolMessage
@@ -107,7 +108,7 @@ def review_node(node,state,storage,config,llm):
     docs=inputs.get('documents',[])
     if 'documents' not in inputs:
         from .workflow_runtime import document_chunks
-        ids=[id for id in state.get('file_ids',[]) if storage.asset(id)['kind']=='document'] or [id for id in config['document_ids'] if storage.asset(id)['kind']=='document']
+        ids=[id for id in state.get('file_ids',[]) if supports(storage.asset(id),'document')] or [id for id in config['document_ids'] if supports(storage.asset(id),'document')]
         docs=document_chunks(storage,ids)
     if sum(len(d['text']) for d in docs)>12000:raise ValueError('검수 정책 범위는 12,000자까지입니다. 검색 노드로 관련 구간을 선택하세요.')
     policy='\n'.join(d['text'] for d in docs)

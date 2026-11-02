@@ -68,17 +68,8 @@ def original_quote(text,quote):
     return text[positions[start]:positions[start+len(needle)-1]+1]
 
 def document_chunks(storage,ids):
-    chunks=[]
-    for id in ids:
-        asset=storage.asset(id)
-        if asset['kind']!='document':raise ValueError('문서 읽기에는 PDF/TXT/MD 문서를 연결하세요.')
-        pages=asset.get('pages') or [asset.get('text','')]
-        for page,text in enumerate(pages,1):
-            # Overlap retains context; offsets remain exact within the parsed page.
-            for start in range(0,len(text),1400):
-                chunk=text[start:start+1800]
-                if chunk.strip():chunks.append({'source_id':f'{id}:{page}:{start}','file_id':id,'file_name':asset['name'],'page':page if asset['format']=='pdf' else None,'offset':start,'text':chunk})
-    return chunks
+    from .document_resources import chunks_for_asset
+    return [chunk for id in ids for chunk in chunks_for_asset(storage.asset(id))]
 
 def execute_node(node,state,storage,config,llm):
     from importlib import import_module

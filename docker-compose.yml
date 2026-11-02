@@ -24,6 +24,10 @@ services:
       # direct: the registered catalogue is passed in the design input. With files attached the
       # model often inspects the file and never calls list_tools, which the model mode rejects.
       A4B_TOOL_CATALOG_MODE: ${A4B_TOOL_CATALOG_MODE:-direct}
+      # Request validation/clarification (question IDs, condition ledger, unsupported checks).
+      # Off unless the root .env turns it on (.env.example sets enforce).
+      A4B_CAPABILITY_MODE: ${A4B_CAPABILITY_MODE:-off}
+      A4B_CONDITION_MODE: ${A4B_CONDITION_MODE:-off}
       A4B_MAIN_TIMEOUT_S: ${A4B_MAIN_TIMEOUT_S:-180}
       A4B_DESIGN_TIMEOUT_MS: ${A4B_DESIGN_TIMEOUT_MS:-600000}
     extra_hosts:

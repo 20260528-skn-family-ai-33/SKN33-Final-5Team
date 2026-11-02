@@ -117,6 +117,7 @@ output.format=csv/json. 관련 없는 항목은 만들지 않습니다.
 specified만 value를 넣고 근거 evidence_ids를 실제 이번 요청 목록에서 선택합니다.
 미정/충돌은 value=null입니다. 큰 금액을 0원으로, 중복 제거를 첫 행으로 임의 확정하지 않습니다.
 초과=gt, 이상=gte, 미만=lt, 이하=lte를 구분합니다. 큰 것/높은 것만으로 비교 방식을 확정하지 않습니다.
+filter.value는 원문에 쓴 숫자를 그대로 적습니다. 미만·초과는 operator로만 나타내고 숫자에 1을 빼거나 더하지 않습니다(50개 미만은 value 50, operator lt).
 파일로 저장하라는 요청만으로 CSV/JSON을 정하지 않습니다. 형식 미정은 output.format missing입니다.
 빈 비용/빈 금액 등 특정 열의 빈 값 처리도 missing.policy에 기록합니다. 정렬 금지는 sort.policy=none입니다.
 사용자가 명시한 조건, 문서 근거와 이전 확정 조건을 사용하고 이미 해결한 내용은 재질문하지 않습니다.
@@ -139,6 +140,12 @@ DEMOS = [
          {'key': 'filter.field', 'status': 'specified', 'value': '점수', 'evidence_ids': ['demo1']},
          {'key': 'filter.operator', 'status': 'specified', 'value': 'gte', 'evidence_ids': ['demo1']},
          {'key': 'filter.value', 'status': 'specified', 'value': '45', 'evidence_ids': ['demo1']}], 'unsupported_actions': []}},
+    # Live: "50개 미만" came back as value 49 with operator lt in 3 of 4 runs (2026-11-02).
+    {'input': {'message': '재고가 30개 미만인 품목만 골라줘.', 'evidence': [{'id': 'demo5', 'quote': '재고가 30개 미만인 품목만 골라줘.'}]},
+     'output': {'operations': ['filter'], 'conditions': [
+         {'key': 'filter.field', 'status': 'specified', 'value': '재고', 'evidence_ids': ['demo5']},
+         {'key': 'filter.operator', 'status': 'specified', 'value': 'lt', 'evidence_ids': ['demo5']},
+         {'key': 'filter.value', 'status': 'specified', 'value': '30', 'evidence_ids': ['demo5']}], 'unsupported_actions': []}},
     {'input': {'message': '점수가 높은 행만 골라줘. 기준은 아직 미정이야.', 'evidence': [{'id': 'demo2', 'quote': '점수가 높은 행만 골라줘. 기준은 아직 미정이야.'}]},
      'output': {'operations': ['filter'], 'conditions': [
          {'key': 'filter.field', 'status': 'specified', 'value': '점수', 'evidence_ids': ['demo2']},
@@ -281,8 +288,54 @@ def prepare_conditions(state):
             {'role': 'user', 'content': json.dumps({'target_case': context}, ensure_ascii=False)}], schema, catalog
 
 
+_KO_DIGIT = {'일': 1, '이': 2, '삼': 3, '사': 4, '오': 5, '육': 6, '칠': 7, '팔': 8, '구': 9}
+_KO_SMALL = {'십': 10, '백': 100, '천': 1000}
+_KO_BIG = {'만': 10000, '억': 100000000}
+_KO_RUN = re.compile(r'(?<![가-힣A-Za-z0-9_.])[\d.,일이삼사오육칠팔구십백천만억]+(?:\s(?<=[만억]\s)[\d.,일이삼사오육칠팔구십백천만억]+)*')
+_AMOUNT_UNIT = re.compile(r'\s*(?:원|개|점|명|건|kg|킬로)')
+
+
+def _korean_amount(run):
+    """Value of a numeral run such as 백만, 오십만, 천오백, 3천만, 1억 5천만; None if malformed."""
+    total, section, current = Decimal(0), Decimal(0), None
+    for token in re.findall(r'[\d.,]+|[일이삼사오육칠팔구십백천만억]', run.replace(' ', '')):
+        if token[0].isdigit():
+            if current is not None: return None
+            try: current = Decimal(token.replace(',', ''))
+            except InvalidOperation: return None
+        elif token in _KO_DIGIT:
+            if current is not None: return None
+            current = Decimal(_KO_DIGIT[token])
+        elif token in _KO_SMALL:
+            section += (current if current is not None else 1) * _KO_SMALL[token]; current = None
+        else:
+            part = section + (current or 0)
+            total += (part if part else 1) * _KO_BIG[token]; section, current = Decimal(0), None
+    return total + section + (current or 0)
+
+
+def _korean_amounts(text):
+    """Amounts written with Korean numerals. A run counts only when a unit (원·개·점·명·건·kg) follows
+    or it ends in 만/억 with no Hangul right after, so 백업·천천히·만약·비용이 are not numbers."""
+    found = set()
+    for m in _KO_RUN.finditer(text):
+        parts = m.group(0).rstrip(' ').split(' ')
+        # "오십만 이상": a later space-separated part may be a word (이상), so try the longest
+        # prefix that is followed by a unit or ends in 만/억.
+        for k in range(len(parts), 0, -1):
+            run = ' '.join(parts[:k])
+            if not re.search(r'[일이삼사오육칠팔구십백천만억]', run): continue
+            rest = text[m.start() + len(run):]
+            if not (_AMOUNT_UNIT.match(rest) or (run[-1] in _KO_BIG and not re.match(r'[가-힣]', rest))): continue
+            value = _korean_amount(run)
+            if value:
+                found.add(value)
+                break
+    return found
+
+
 def _amounts(text):
-    result = set()
+    result = set(_korean_amounts(text))
     for number, unit in re.findall(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(천만|백만|십만|만|천|백)?', text):
         result.add(Decimal(number.replace(',', '')) * {'천만': 10000000, '백만': 1000000,
                    '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}[unit])
@@ -391,7 +444,7 @@ def explicit_policies(state, catalog):
          {'CSV': 'csv', 'JSON': 'json'}),
         ('sort.policy', r'정렬\s*(?:은|을)?\s*(하지\s*말|하지\s*마|하지\s*않|안\s*해|없이)',
          {'하지 말': 'none', '하지 마': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
-        ('filter.operator', r'\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개)?\s*(초과|이상|미만|이하)',
+        ('filter.operator', r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?\s*(초과|이상|미만|이하)',
          {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}),
     ]
     for turn, message in enumerate(state.get('messages', [])):
@@ -542,6 +595,10 @@ def validate_conditions(raw, state, catalog):
                     raise ValueError('원문에 없는 열 이름입니다.')
                 if key == 'filter.value' and isinstance(value, float) and Decimal(str(value)) not in _amounts(quote):
                     raise ValueError('기준 값에 대응하는 원문 수치를 확인하지 못했습니다.')
+                # A text threshold (상태 '완료') must be written in the request too; live runs returned
+                # '}', '{200 만원}', 'kgs' as filter.value and they were confirmed unchecked.
+                if key == 'filter.value' and isinstance(value, str) and (not re.search(r'[0-9A-Za-z가-힣]', value) or value.strip() not in quote):
+                    raise ValueError('기준 값이 원문에 그대로 있지 않습니다.')
                 if key=='schedule.timezone':
                     compact=re.sub(r'\s+','',quote)
                     aliases={'Asia/Seoul':['한국시간','한국표준시','서울시간'], 'UTC':['협정세계시','UTC'],

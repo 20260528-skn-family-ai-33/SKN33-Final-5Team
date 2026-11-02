@@ -358,6 +358,30 @@ def test_ready_table_contract_bounds_deep_agent_output_and_catalog(monkeypatch):
     assert [t['id'] for t in captured['list_tools']] == list(TABLE_PLAN_TOOLS)
 
 
+def test_ready_table_contract_fixes_node_ids_and_single_typed_bindings(monkeypatch):
+    """Real failures (live runs, 2026-11-02): library UUIDs copied as node IDs and corrupted
+    ('c2f3e8c4-5d2 B, '), invented nodes (start_node_1, filter_sort_flow_1), and finish
+    bindings in the valid shape in only 7 of 24 drafts (text port, two sources, duplicates)."""
+    from tests.design.test_linear_plan import context
+    from agent_builder.design.nodes.conversation import SCOPED_NODE_IDS
+    captured = run_capturing(monkeypatch, context(), draft(questions=['다시 묻기']))
+    defs = captured['schema']['$defs']
+    variants = {v['properties']['tool']['enum'][0]: v['properties'] for v in defs['WorkflowNode']['anyOf']}
+    assert {tool: props['id'] for tool, props in variants.items()} == {
+        tool: {'type': 'string', 'enum': [tool + '_1']} for tool in variants}
+    assert defs['WorkflowDefinition']['properties']['entry']['enum'] == ['read_table_1']
+    for key in ('source', 'target'):
+        assert defs['WorkflowEdge']['properties'][key]['enum'] == list(SCOPED_NODE_IDS.values())
+    assert variants['read_table']['bindings']['maxItems'] == 0
+    expected = {'filter_sort': ['table'], 'write_result': ['table'], 'finish': ['artifact']}
+    for tool, ports in expected.items():
+        bindings = variants[tool]['bindings']
+        assert (bindings['minItems'], bindings['maxItems']) == (1, 1)
+        item = bindings['items']['properties']
+        assert item['input']['enum'] == ports and item['output']['enum'] == ports
+        assert tool + '_1' not in item['node_id']['enum']  # no self-binding
+
+
 def test_requests_outside_the_ready_table_contract_keep_the_full_catalog(monkeypatch):
     from workflow_engine.catalog.registry import TOOLS
     captured = run_capturing(monkeypatch, state([{'role': 'user', 'content': '문서에서 근거를 찾아 답해줘'}]),
@@ -367,3 +391,5 @@ def test_requests_outside_the_ready_table_contract_keep_the_full_catalog(monkeyp
     assert schema['properties']['questions']['maxItems'] == 3
     assert 'minItems' not in schema['$defs']['WorkflowDefinition']['properties']['nodes']
     assert captured['context']['supported_tools'] == TOOLS
+    assert 'enum' not in schema['$defs']['WorkflowDefinition']['properties']['entry']
+    assert schema['$defs']['WorkflowNode']['anyOf'][0]['properties']['id']['pattern'] == r'^[a-zA-Z][\w-]{0,39}$'

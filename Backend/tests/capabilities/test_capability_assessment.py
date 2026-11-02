@@ -156,3 +156,39 @@ def test_condition_conflict_is_a_user_decision_not_a_missing_capability():
     for prompt in (initial,review):
         assert '모순' in prompt and 'missing_conditions' in prompt
     assert '정책 선택은 기능이 아니라 사용자 결정' in review
+
+
+@pytest.mark.parametrize('text,channel',[
+    ('비용 큰 거래만 골라서 매주 이메일로 보내줘.','이메일'),
+    ('결과를 슬랙에 공유해줘.','슬랙'),
+    ('정리한 표를 담당자에게 문자로 발송해.','문자'),
+    ('매일 9시에 요약을 Slack으로 알려줘.','Slack')])
+@pytest.mark.parametrize('model_decision',['existing_tools','clarify','manual_review'])
+def test_missed_external_delivery_is_recorded_as_missing_capability(text,channel,model_decision):
+    """Real failure: the email request was judged existing_tools/clarify in 1 of 5 runs."""
+    s=state(text)
+    raw=packet(s,model_decision,conditions=['선별 기준'] if model_decision=='clarify' else None)
+    result=assess_capability(s,Fake([raw]))
+    assert result['decision']=='missing_capability' and result['missing_conditions']==[]
+    assert result['missing_actions']==['외부 '+channel+' 전송'] and result['model_decision']==model_decision
+    assert result['allows_generation'] is False and result['model_calls']==1
+
+
+@pytest.mark.parametrize('text',[
+    '이메일 주소 열만 CSV로 저장해줘.',
+    '메일로 받은 파일에서 비용 100만원 초과만 JSON으로 저장해.',
+    '이메일로 보내지 말고 파일로만 저장해.',
+    '슬랙 말고 CSV로 저장해줘.',
+    '비용이 100만원 초과인 행을 JSON으로 저장해.'])
+def test_files_and_negated_delivery_are_not_reclassified(text):
+    s=state(text)
+    result=assess_capability(s,Fake([packet(s,'existing_tools')]))
+    assert result['decision']=='existing_tools' and 'code_external_delivery' not in result
+
+
+def test_model_refusal_is_never_turned_into_support_by_the_delivery_check():
+    s=state('비용 100만원 초과만 JSON으로 저장해.')
+    refusal=packet(s,'missing_capability',actions=['표 join'])
+    review=packet(s,'missing_capability',actions=['표 join'])
+    result=assess_capability(s,Fake([refusal,review]))
+    assert result['decision']=='missing_capability' and result['missing_actions']==['표 join']

@@ -78,6 +78,25 @@ def normalize_native_claims(result):
         'native_app_claims_removed':removed,'missing_actions':remaining,
         'reason':result['reason']+' 일·주 예약 자체는 앱의 지원 기능이므로 코드 대조 후 부족 목록에서 제외했습니다.'}
 
+# No registered tool sends anything outside the app (write_result/export_result only make files).
+# A channel followed closely by a send verb is a request for external delivery; a negation
+# right after it ("보내지 마", "말고") is not.
+_EXTERNAL_DELIVERY=re.compile(
+    r'(이메일|e-?mail|메일|슬랙|slack|문자\s*메시지|문자|sms|카카오톡|카톡|텔레그램|팩스|웹훅|webhook)'
+    r'[^.!?\n]{0,12}?(보내|발송|전송|공유|전달|알려|알림|올려)(?!\S{0,3}\s*(?:지\s*마|말고|않|안\s*해))',re.I)
+
+def external_delivery_claims(result,state):
+    """Code checks the registered catalogue; only ever moves toward missing_capability."""
+    if result['decision']=='missing_capability':return result
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    match=_EXTERNAL_DELIVERY.search(user[-1]) if user else None
+    if not match:return result
+    return {**result,'decision':'missing_capability','missing_conditions':[],
+        'missing_actions':['외부 '+match.group(1)+' 전송'],
+        'model_decision':result['decision'],'model_missing_conditions':list(result['missing_conditions']),
+        'code_external_delivery':match.group(0),
+        'reason':result['reason']+' 등록 도구에는 외부 전송 기능이 없어 코드 대조 후 외부 전송을 부족 기능으로 기록했습니다.'}
+
 SYSTEM='현재 작업은 실행 전의 도구 지원 검토입니다. 도구는 전부 설치·등록된 상태이며 tools에 제공된 기능을 실제 사용할 수 있습니다.\n파일이 아직 없더라도 실행 때 연결할 수 있습니다. 파일·자료 부재는 도구 부재가 아닙니다.\nexisting_tools: 현재 등록 도구 한 개 또는 조합으로 요청한 기능을 지원. tool_ids를 선택하고 missing_conditions/actions는 빈 배열.\nclarify: 지원되는 작업이지만 사용자가 정해야 하는 기준이 빠짐. missing_conditions만 질문하며 missing_actions는 빈 배열.\nmissing_capability: 실제 요청된 동작이 등록 도구/조합에 없음. missing_actions만 적고 missing_conditions는 빈 배열.\nmanual_review: 불확실성·범위 검토가 필요. 지원된 작업을 없는 도구로 바꾸지 않음.\nread_table→filter_sort→write_result로 상수 선별/중복제거/JSON·CSV 파일 생성이 가능합니다. 파일 저장은 외부 전송과 다릅니다.\nread_table→aggregate_table→write_result로 그룹 건수·합계가 가능합니다.\nread_document→search_document→compose_answer로 문서 근거 답변이 가능합니다.\ncalculate_columns는 명시된 열과 숫자의 사칙연산·나머지로 새 열을 만들거나 열 하나의 이름을 바꾸고, 입력 형식·시간대가 명시된 날짜 열을 변환합니다. text_transform은 앞 단계 텍스트에서 지정된 문자열을 그대로 바꿉니다. base64_codec은 텍스트 Base64 인코딩·디코딩, text_hash는 UTF-8 텍스트 SHA-256을 지원합니다. 그 밖의 문자열 처리나 파일 직접 편집을 지원한다고 가정하지 않습니다. 식이나 결과 열이 빠지면 확인합니다. 다른 임의 셀 변환과 수식 함수는 지원한다고 가정하지 않습니다. 외부 이메일·Slack 전송과 두 표 join은 현재 카탈로그가 지원하지 않습니다. agent_node의 일반 텍스트 응답을 검증된 표 변환 도구와 같다고 취급하지 않습니다.\n금지된 동작은 요청된 동작이 아닙니다. 숫자가 미정이면 질문하고 임의 기준을 넣지 않습니다.\n설명과 사용자 원문 근거를 반환하되 user_quotes는 목록의 원문을 그대로 선택합니다. 실행·설계·코드생성·저장 허가는 주지 않습니다.'
 SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 일·주 단위 예약은 Tool ID 없이 서버가 지원합니다. 예약 자체를 부족 도구로 판정하거나 가짜 예약 Tool ID를 만들지 않습니다. 실제 처리에 필요한 등록 tool_ids를 선택합니다. 시각·요일·시간대가 미정이면 clarify이며, 파일 미첨부는 도구 부재가 아닙니다. 활성화 전 관리 자료 연결은 후속 조건 검사에서 확인합니다. 월간·cron·외부 이벤트 트리거는 일·주 예약으로 임의 대체하지 않습니다. 예약이 있어도 이메일·Slack 외부 발송이나 최신 외부 자료 자동 수집까지 지원되는 것은 아닙니다.'
 SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 일·주 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 오류·중복 유지는 이미 정의된 정책입니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 관리 표 연결 검사는 후속 단계에 맡깁니다.'
@@ -139,4 +158,4 @@ user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 �
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1
         result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
-    return {**validate_assessment_result(normalize_native_claims(result),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}
+    return {**validate_assessment_result(external_delivery_claims(normalize_native_claims(result),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

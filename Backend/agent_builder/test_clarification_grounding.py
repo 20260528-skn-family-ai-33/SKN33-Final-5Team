@@ -260,3 +260,28 @@ def test_manual_review_explains_conflicting_policy_without_creating_or_saving():
     assert update['condition_ledger']['slots']['duplicate.policy']['status']=='conflict'
     assert '첫 행' in update['messages'][-1]['content']
     assert not update['confirmed'] and update['saved_agent_id'] is None
+
+
+@pytest.mark.parametrize('phrase',['중복 학생ID는 마지막 행만 남겨','학생ID 중복은 원본 마지막 행만 남겨','학생ID 열 중복은 마지막 행만 남겨'])
+def test_explicit_attached_dedup_column_is_recovered_when_model_omits_it(phrase):
+    s=state('점수가 85 이상인 행만 JSON으로 저장해. 빈 점수는 제외해. '+phrase+'. 정렬하지 마.')
+    s['resources']=[{'id':'scores','kind':'table','columns':['학생ID','ID','점수'],'profile':{}}]
+    raw=proposal(s,{'filter.field':'점수','filter.operator':'gte','filter.value':'85'})
+    ledger=checked(s,raw)
+    assert ledger['decision']=='ready'
+    assert ledger['slots']['duplicate.field']['value']=='학생ID'
+    assert ledger['slots']['duplicate.policy']['value']=='last'
+
+
+@pytest.mark.parametrize('phrase',[
+    '학생ID 중복과 수험번호 중복은 마지막 행만 남겨',
+    '학생ID 중복은 마지막 행만 남기는 것이 아니야',
+    '중복은 마지막 행만 남겨',
+    '가짜학생ID 중복은 마지막 행만 남겨',
+])
+def test_ambiguous_negated_or_nonexistent_dedup_column_is_not_guessed(phrase):
+    from agent_builder.condition_readiness import explicit_policies,source_catalog
+    s=state(phrase)
+    s['resources']=[{'id':'scores','kind':'table','columns':['학생ID','수험번호','ID'],'profile':{}}]
+    policies=explicit_policies(s,source_catalog(s)[0])
+    assert 'duplicate.field' not in policies

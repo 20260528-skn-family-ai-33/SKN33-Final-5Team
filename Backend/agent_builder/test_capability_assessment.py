@@ -139,3 +139,20 @@ def test_condition_overlap_priorities_keep_all_causes(case,expected):
     p['unsupported_actions']=['외부 이메일 전송'];result=checked(s,p)
     assert result['decision']==expected and 'filter.value' in result['unresolved']
     assert result['unsupported_actions']==['외부 이메일 전송']
+
+
+def test_condition_conflict_is_a_user_decision_not_a_missing_capability():
+    """Real failure shape: conflicting duplicate policies reported as missing actions."""
+    s=state()
+    class Recording(Fake):
+        def __init__(self,packets):super().__init__(packets);self.messages=[]
+        def invoke(self,messages):self.messages.append(messages);return super().invoke(messages)
+    wrong=packet(s,'missing_capability',actions=['중복 기준 상충 조건 해결 (첫 행 vs 마지막 행)'],tools=['filter_sort'])
+    reviewed=packet(s,'clarify',conditions=['중복 기준 상충 조건 해결 (첫 행 vs 마지막 행)'],tools=['filter_sort'])
+    transport=Recording([wrong,reviewed])
+    result=assess_capability(s,transport)
+    assert result['decision']=='clarify' and result['missing_actions']==[] and transport.calls==2
+    initial,review=(m[0]['content'] for m in transport.messages)
+    for prompt in (initial,review):
+        assert '모순' in prompt and 'missing_conditions' in prompt
+    assert '정책 선택은 기능이 아니라 사용자 결정' in review

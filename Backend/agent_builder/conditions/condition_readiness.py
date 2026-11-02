@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from workflow_engine.catalog.registry import TOOLS
-from agent_builder.conditions.input_resolution import latest_resolution, resolution_question, resolution_options
+from agent_builder.conditions.input_resolution import latest_resolution, option_answer, resolution_question, resolution_options
 
 
 class ConditionContractError(ValueError):
@@ -50,6 +50,28 @@ ENUMS = {
     'output.format': {'csv', 'json'},
     'sort.policy': {'none'},
 }
+# Clickable answers for closed-vocabulary questions. Each label maps to exactly one
+# value and passes _grounded_enum on its own, so a clicked label is its own evidence.
+# filter.value has no candidates: suggesting thresholds would invent the criterion.
+CHOICES = {
+    'filter.operator': {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'},
+    'missing.policy': {'빈 값 제외': 'exclude', '빈 값 유지': 'keep', '빈 값이면 오류': 'error'},
+    'duplicate.policy': {'첫 행만 남김': 'first', '마지막 행만 남김': 'last', '모두 유지': 'keep', '중복이면 오류': 'error'},
+    'output.format': {'CSV': 'csv', 'JSON': 'json'},
+    'schedule.frequency': {'매일': 'daily', '매주': 'weekly'},
+}
+
+
+def choice_options(key, state):
+    if key in CHOICES:
+        return list(CHOICES[key])
+    if key in ('filter.field', 'duplicate.field'):
+        tables = [r for r in state.get('resources', []) if r.get('kind') == 'table']
+        columns = tables[0].get('columns', []) if len(tables) == 1 else []
+        return list(columns) if 2 <= len(columns) <= 6 else []
+    return []
+
+
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
     'deduplicate': ['duplicate.field', 'duplicate.policy'],
@@ -484,6 +506,13 @@ def validate_conditions(raw, state, catalog):
         if key not in slots or slots[key]['status']!=item['status'] or slots[key]['value']!=item['value']:
             invalid.append(f'{key}: 사용자의 명시적 정책 구절로 보존·대조')
         slots[key]=item
+    choice = option_answer(state)
+    if choice:
+        evidence = [e for e in catalog if e['source_id'] == 'user' and e.get('turn') == choice['turn']][:1]
+        if evidence and choice['label'] in choice_options(choice['key'], state):
+            value = CHOICES[choice['key']][choice['label']] if choice['key'] in CHOICES else choice['label']
+            slots[choice['key']] = {'key': choice['key'], 'status': 'specified', 'value': value,
+                                    'evidence_ids': [evidence[0]['id']], 'evidence': evidence}
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
     # A follow-up may focus on deduplication and omit the earlier filter from
     # the model's single-operation label. Preserve it whenever its three
@@ -540,7 +569,8 @@ def validate_conditions(raw, state, catalog):
             is_resolution = resolution and key in resolution['keys']
             questions.append({'id': hashlib.sha256((identity + key).encode()).hexdigest()[:24], 'key': key,
                               'text': resolution_question(key, resolution, text) if is_resolution else text,
-                              'options': resolution_options(state) if is_resolution and not resolution['deferred'] else []})
+                              'options': (resolution_options(state) if not resolution['deferred'] else []) if is_resolution
+                                         else [] if key == 'input.table' else choice_options(key, state)})
     return {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
             'unresolved': unresolved, 'questions': questions, 'issues': issues,
             'resolution': resolution,
@@ -554,7 +584,7 @@ def judge_conditions(state, transport, max_contract_repairs=0):
     if type(max_contract_repairs) is not int or not 0 <= max_contract_repairs <= 1:
         raise ValueError('조건 응답 수정 한도는 0~1회입니다.')
     messages, schema, catalog = prepare_conditions(state)
-    if input_issues(state) or latest_resolution(state):
+    if input_issues(state) or latest_resolution(state) or option_answer(state):
         result = validate_conditions({'operations': [], 'conditions': [], 'unsupported_actions': []}, state, catalog)
         return {'ledger': result, 'model_calls': 0, 'messages': messages, 'metrics': {}}
     transport.schema = schema

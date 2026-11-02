@@ -6,8 +6,12 @@ ordinary data, not a refusal. Values remain missing until real evidence arrives.
 import re
 
 
+def _compact(content):
+    return re.sub(r'[\s.!?。]+', '', content).lower()
+
+
 def answer_kind(content):
-    text = re.sub(r'[\s.!?。]+', '', content).lower()
+    text = _compact(content)
     if text in {'모르겠어', '모르겠어요', '모르겠습니다', '잘모르겠어', '잘모르겠어요',
                 '몰라', '몰라요', '아직몰라요', '아직모르겠어요', '미정', '아직미정', '아직안정했어',
                 '아직결정못했어요', '아직결정못했어', '결정하지못했어요', '아직정하지못했어요'}:
@@ -47,6 +51,26 @@ def latest_resolution(state):
             counts[key] += 1
     deferred = kind == 'defer' or kind == 'unknown' and any(n >= 2 for n in counts.values())
     return {'kind': kind, 'keys': keys, 'unknown_counts': counts, 'deferred': deferred, 'turn': latest}
+
+
+def option_answer(state):
+    """The latest user turn is exactly one offered choice of one pending question.
+
+    Free text, non-answers and a label shared by several pending questions are
+    not choices; they keep the model path so nothing is guessed from them.
+    """
+    messages = state.get('messages', [])
+    latest = max((i for i, m in enumerate(messages) if m['role'] == 'user'), default=-1)
+    if latest < 0 or answer_kind(messages[latest]['content']) != 'answer':
+        return None
+    events = state.get('condition_answers', [])
+    event = next((e for e in reversed(events) if e.get('turn') == latest), None)
+    text = _compact(messages[latest]['content'])
+    matches = [{'key': q['key'], 'label': option, 'question_id': q['id'], 'turn': latest}
+               for q in state.get('pending_questions', [])
+               if not event or q['id'] in event.get('question_ids', [])
+               for option in q.get('options', []) if _compact(option) == text]
+    return matches[0] if len(matches) == 1 else None
 
 
 def resolution_question(key, resolution, base):

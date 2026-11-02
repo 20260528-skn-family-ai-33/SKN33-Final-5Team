@@ -462,3 +462,28 @@ def test_latest_user_change_is_explicit_without_changing_original_history():
     assert case['messages']==s['messages']
     assert case['latest_user_update']=={'turn':2,'content':s['messages'][2]['content'],'evidence_ids':['user:2:0']}
     assert s==before and original['messages'][0]==s['messages'][0]
+
+
+def test_fourth_unresolved_condition_is_kept_and_asked_on_the_next_turn():
+    """Only 3 questions are visible per turn; the rest stay unresolved, not dropped."""
+    def judge(s, values):
+        catalog, _ = source_catalog(s)
+        def evidence(needle):
+            return [e['id'] for e in catalog if e['source_id'] == 'user' and needle in e['quote']][-1:]
+        conditions = [{'key': k, 'value': v, 'status': 'missing' if v is None else 'specified',
+                       'evidence_ids': evidence(needle) if v is not None else []} for k, (v, needle) in values.items()]
+        return validate_conditions({'operations': ['filter'], 'conditions': conditions, 'unsupported_actions': []}, s, catalog)
+    table = {'id': 'f1', 'kind': 'table', 'name': '거래.csv', 'columns': ['거래ID', '비용'],
+             'profile': {'비용': {'types': ['string'], 'missing': 1, 'duplicateValues': 0, 'numericStrings': 5}}}
+    s = state('비용 큰 것들만 골라서 파일로 만들어줘.'); s['resources'] = [table]
+    first = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, ''), 'output.format': (None, '')})
+    assert first['decision'] == 'clarify' and len(first['unresolved']) == 4 and len(first['questions']) == 3
+    left = [k for k in first['unresolved'] if k not in {q['key'] for q in first['questions']}]
+    # The reply answers only the three visible questions; the deferred one stays unanswered.
+    phrases = {'filter.operator': '초과로', 'filter.value': '100만원', 'missing.policy': '빈 값은 제외해.', 'output.format': 'CSV로 저장해.'}
+    reply = ' '.join(phrases[q['key']] for q in first['questions'])
+    s['messages'] += [{'role': 'assistant', 'content': '질문'}, {'role': 'user', 'content': reply}]
+    answers = {'filter.field': ('비용', '비용'), 'filter.operator': ('gt', '초과'), 'filter.value': ('1000000', '100만원'),
+               'missing.policy': ('exclude', '제외'), 'output.format': ('csv', 'CSV')}
+    second = judge(s, {k: (answers[k] if k not in left else (None, '')) for k in answers})
+    assert second['unresolved'] == left and [q['key'] for q in second['questions']] == left

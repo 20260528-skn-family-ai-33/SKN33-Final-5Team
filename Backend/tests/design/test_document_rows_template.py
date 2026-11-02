@@ -85,6 +85,37 @@ def test_field_answers_are_not_mistaken_for_commands(answer):
     assert not is_request_change(answer)
 
 
+def asked_state(answer,request=REQUEST,doc=DOC):
+    from agent_builder.design.document_rows_template import ASK_EXPLANATION
+    return {**initial(),'resources':[doc],'messages':[{'role':'user','content':request},
+                                                      {'role':'assistant','content':ASK_EXPLANATION+'\n• '+QUESTION},
+                                                      {'role':'user','content':answer}]}
+
+
+@pytest.mark.parametrize('answer',['전체 다','전체','다','전부 다','모두','모든 항목','알아서','다 뽑아줘','전부 다 정리해주세요','영수증에 있는 거 다','전체 다요.'])
+def test_all_fields_answer_on_a_receipt_uses_the_receipt_columns(answer):
+    from agent_builder.design.document_rows_template import document_rows_reply, wants_all_fields, RECEIPT_FIELDS
+    assert wants_all_fields(answer)
+    reply=document_rows_reply(asked_state(answer))
+    fields=reply['draft']['workflow']['nodes'][1]['settings']['fields']
+    assert fields==RECEIPT_FIELDS and answer not in fields
+    assert '영수증 기본 항목' in reply['messages'][-1]['content']
+
+
+def test_all_fields_answer_without_a_receipt_asks_for_field_names_again():
+    from agent_builder.design.document_rows_template import document_rows_reply, ALL_FIELDS_NOTE
+    doc={**DOC,'id':'contract','name':'contract.pdf'}
+    reply=document_rows_reply(asked_state('전체 다',request='계약서 내용을 엑셀로 정리해줘',doc=doc))
+    assert reply['draft']['questions']==[QUESTION] and ALL_FIELDS_NOTE in reply['messages'][-1]['content']
+    assert reply['messages'][-1]['content'].endswith(QUESTION)
+
+
+@pytest.mark.parametrize('answer',['전체 금액','다른 걸로 바꿀래','모델명, 금액','상품명'])
+def test_field_names_that_start_like_all_are_not_all_fields(answer):
+    from agent_builder.design.document_rows_template import wants_all_fields
+    assert not wants_all_fields(answer)
+
+
 def test_reserved_row_field_is_asked_again_instead_of_overwritten():
     from agent_builder.design.document_rows_template import document_rows_reply, ASK_EXPLANATION
     state={**initial(),'resources':[DOC],'messages':[{'role':'user','content':REQUEST},

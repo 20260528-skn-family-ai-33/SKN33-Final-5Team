@@ -46,8 +46,10 @@ test('frontend authentication gates private screens and clears state when identi
    assert.match(document.body.textContent||'',/일시적인 로그아웃 실패/);assert.ok(document.body.textContent?.includes('Alice'));assert.equal(stops,0);
   });
   localStorage.setItem('a4b-builder-session','alice-private-session');localStorage.setItem('a4b-selected-agent','alice-private-agent');localStorage.setItem('a4b-chat-session-example','alice-chat');
+  // Another tab may write Bob's ID before this tab receives its storage event.
+  localStorage.setItem('a4b-auth-member',bob.id);
   current={enabled:true,authenticated:true,user:bob};await focus();
-  await t.test('switching accounts removes old navigation IDs and remounts private UI',()=>{
+  await t.test('switching accounts clears old navigation even when another tab already stored the new member ID',()=>{
    assert.ok(document.body.textContent?.includes('Bob'));assert.equal(starts,2);assert.equal(stops,1);assert.equal(localStorage.getItem('a4b-selected-agent'),null);assert.equal(localStorage.getItem('a4b-builder-session'),null);assert.equal(localStorage.getItem('a4b-chat-session-example'),null);
   });
   await act(async()=>{window.dispatchEvent(new Event('a4b:unauthenticated'));await tick();});
@@ -75,5 +77,26 @@ test('actual product entry does not fetch private data before authentication fin
  }finally{
   await act(async()=>ui.unmount());dom.window.close();globalThis.fetch=originalFetch;
   for(const [name,descriptor] of original)if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete (globalThis as any)[name];
+ }
+});
+
+test('initial authentication preserves saved design navigation for the same member only',async()=>{
+ for(const storedMember of [alice.id,bob.id]){
+  install();localStorage.setItem('a4b-auth-member',storedMember);
+  const saved={'a4b-builder-session':'saved-design','a4b-selected-agent':'saved-agent','a4b-chat-session-example':'saved-chat'};
+  for(const [key,value] of Object.entries(saved))localStorage.setItem(key,value);
+  globalThis.fetch=(async()=>Response.json({enabled:true,authenticated:true,user:alice})) as typeof fetch;
+  const ui=createRoot(document.getElementById('root'));
+  try{
+   await act(async()=>{ui.render(createElement(AuthProvider,null,createElement(App)));await tick();});
+   assert.ok(document.body.textContent?.includes('Alice'));
+   for(const [key,value] of Object.entries(saved))assert.equal(localStorage.getItem(key),storedMember===alice.id?value:null,key);
+   assert.equal(localStorage.getItem('a4b-auth-member'),alice.id);
+   await act(async()=>{window.dispatchEvent(new Event('focus'));await tick();});
+   for(const [key,value] of Object.entries(saved))assert.equal(localStorage.getItem(key),storedMember===alice.id?value:null,key);
+  }finally{
+   await act(async()=>ui.unmount());dom.window.close();globalThis.fetch=originalFetch;
+   for(const [name,descriptor] of original)if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete (globalThis as any)[name];
+  }
  }
 });

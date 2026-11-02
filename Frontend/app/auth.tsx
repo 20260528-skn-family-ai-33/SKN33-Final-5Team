@@ -11,7 +11,7 @@ function clearMemberNavigation(){
 }
 export function AuthProvider({children}:{children:ReactNode}){
  const [state,setState]=useState<Omit<AuthState,'refresh'>>({loading:true,enabled:true,user:null,error:''});
- const generation=useRef(0),member=useRef<string|null>(null);
+ const generation=useRef(0),member=useRef<string|null|undefined>(undefined);
  const refresh=useCallback(async()=>{
   const current=++generation.current;
   try{
@@ -22,7 +22,8 @@ export function AuthProvider({children}:{children:ReactNode}){
    const id=value.user?.id||null;
    if(value.enabled){
     let previous:string|null=null;try{previous=localStorage.getItem('a4b-auth-member');}catch{}
-    if(previous!==id||member.current!==id){clearMemberNavigation();try{if(id)localStorage.setItem('a4b-auth-member',id);else localStorage.removeItem('a4b-auth-member');}catch{}}
+    if((member.current===undefined?previous:member.current)!==id)clearMemberNavigation();
+    try{if(id)localStorage.setItem('a4b-auth-member',id);else localStorage.removeItem('a4b-auth-member');}catch{}
    }
    member.current=id;setState({loading:false,enabled:value.enabled,user:value.user||null,error:''});
   }catch(error){if(current===generation.current)setState({loading:false,enabled:true,user:null,error:(error as Error).message});}

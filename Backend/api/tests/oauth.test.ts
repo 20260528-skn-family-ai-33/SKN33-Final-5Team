@@ -4,11 +4,12 @@ import {createHash,randomUUID} from 'node:crypto';
 import {mkdtempSync,readFileSync,readdirSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {OAuthManager,getUsableCredential,validateOAuthEndpoint,GOOGLE_SHEETS_OAUTH,OAUTH_STATE_TTL_MS,type OAuthBeginInput} from '../src/oauth';
+import {OAuthManager,createCredentialRefresher,validateOAuthEndpoint,GOOGLE_SHEETS_OAUTH,OAUTH_STATE_TTL_MS,type OAuthBeginInput} from '../src/oauth';
 import {Store} from '../src/store';
 import type {CredentialSecret} from '../src/contracts';
 
 const authority='127.0.0.1:3010';
+const getUsableCredential=createCredentialRefresher();
 const generic:OAuthBeginInput={name:'외부 API',clientId:'registered-client-id',clientSecret:'private-client-secret',authorizationUrl:'https://oauth.example.com/authorize',tokenUrl:'https://oauth.example.com/token',scope:'records:read records:write'};
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 const mock=(fn:(url:string,init:RequestInit)=>Response|Promise<Response>)=>((url:any,init:any)=>fn(String(url),init)) as typeof fetch;
@@ -63,6 +64,47 @@ test('each loopback authority has its own callback and a state cannot switch aut
  assert.equal(calls,3);
  assert.throws(()=>manager.begin(generic,'attacker.example.com:3010'),/로컬 프로그램/);
  assert.throws(()=>manager.begin(generic,'127.0.0.1:3011'),/로컬 프로그램/);
+});
+
+test('a configured public origin uses its HTTPS callback and rejects other callback hosts',async()=>{
+ const publicOrigin='https://app.example.com:8443',host=new URL(publicOrigin).host;
+ const options={port:3010,publicOrigin,fetch:mock((_url,init)=>{
+  assert.equal(new URLSearchParams(String(init.body)).get('redirect_uri'),publicOrigin+'/api/oauth/callback');
+  return json({access_token:'public-access',expires_in:3600});
+ })};
+ const manager=new OAuthManager(options),begin=manager.begin(generic,host);
+ assert.equal(begin.redirectUri,publicOrigin+'/api/oauth/callback');
+ assert.equal(new URL(begin.authorizationUrl).searchParams.get('redirect_uri'),begin.redirectUri);
+ for(const other of ['attacker.example.com:8443',authority]){
+  assert.throws(()=>manager.begin(generic,other));
+  await assert.rejects(manager.complete({state:begin.stateId,code:'code'},other));
+ }
+ const result=await manager.complete({state:begin.stateId,code:'code'},host);
+ assert.equal(result.data.redirectUri,begin.redirectUri);
+});
+
+test('configured OAuth origins reject insecure or non-origin URLs and allow exact local development origins',()=>{
+ for(const publicOrigin of ['http://app.example.com','https://app.example.com/path','https://user:secret@app.example.com','https://app.example.com?next=evil','https://app.example.com#fragment','ftp://app.example.com'])assert.throws(()=>new OAuthManager({port:3010,publicOrigin}));
+ const manager=new OAuthManager({port:3010,publicOrigin:'http://localhost:3041/'});
+ assert.equal(manager.begin(generic,'localhost:3041').redirectUri,'http://localhost:3041/api/oauth/callback');
+ assert.throws(()=>manager.begin(generic,authority));
+});
+
+test('two workspaces with the same connection ID never share refreshed tokens or persistence',async()=>{
+ const aliceRefresh=createCredentialRefresher(),bobRefresh=createCredentialRefresher();
+ let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+ const alice=secret({refreshToken:'alice-refresh'}),bob={...secret({refreshToken:'bob-refresh'}),id:alice.id};
+ const saved:CredentialSecret[]=[];let calls=0;
+ const request=mock(async(_url,init)=>{
+  calls++;const token=new URLSearchParams(String(init.body)).get('refresh_token');await gate;
+  return json({access_token:token==='alice-refresh'?'alice-access':'bob-access',refresh_token:token+'-rotated',expires_in:3600});
+ });
+ const first=aliceRefresh(alice,updated=>{saved.push(updated);},{fetch:request});
+ const second=bobRefresh(bob,updated=>{saved.push(updated);},{fetch:request});
+ release();const [a,b]=await Promise.all([first,second]);
+ assert.equal(a.data.token,'alice-access');assert.equal(b.data.token,'bob-access');
+ assert.equal(calls,2);assert.equal(saved.length,2);
+ assert.deepEqual(saved.map(value=>value.data.refreshToken).sort(),['alice-refresh-rotated','bob-refresh-rotated']);
 });
 
 test('expired, unknown, denied and concurrently reused states never repeat token exchange',async()=>{

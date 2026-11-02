@@ -13,20 +13,21 @@ import type {WebhookResponse} from './contracts';
 import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
 import {SqliteCheckpointSaver} from './graph-checkpointer';
-import {OAuthManager,getUsableCredential} from './oauth';
+import {OAuthManager,createCredentialRefresher} from './oauth';
 import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems} from './binary';
 import {runCode} from './sandbox';
 import {nextRunAt,validateSchedule} from './schedule';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
 /** Each member has independent stores, credentials, execution queues and OAuth state. */
-export function createWorkspaceRuntime(port:number,ownerId?:string){
+export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string){
 const store=new Store(dataDirectory());
 const scheduleState=createBuilderScheduleState();
 const stopScheduler=startBuilderScheduler(store,scheduleState);
 const agentCheckpointer=new SqliteCheckpointSaver(dataDirectory('agent-checkpoints.sqlite'));
 const chatInFlight=new Set<string>();
-const oauth=new OAuthManager({port});
+const oauth=new OAuthManager({port,publicOrigin});
+const getUsableCredential=createCredentialRefresher();
 const usableCredential=(id:string,signal?:AbortSignal)=>getUsableCredential(store.getCredential(id),updated=>store.saveCredential(updated),{signal});
 const controllers=new Map<string,AbortController>();
 const inFlight=new Set<string>();

@@ -63,6 +63,8 @@ A4B_AUTH_SESSION_SECONDS=28800
 
 작업 공간은 인증된 회원 ID로만 선택한다. 요청의 userId/ownerId 및 다른 사용자의 자료 ID로 저장소를 바꾸지 않는다. Python 작업에 동일한 사용자 디렉터리를 전달하고, 예약 실행과 실행 큐도 작업 공간별로 분리한다. 재시작 시 기존 사용자 디렉터리의 예약을 다시 시작한다. 기존 공유 루트 자료를 새 계정으로 자동 이전하지 않는다.
 
+외부 서비스 OAuth의 토큰 갱신 잠금도 작업 공간별로 보관한다. 같은 회원의 동일 연결 요청은 한 번만 갱신하고, 다른 회원이 같은 연결 ID를 사용해도 토큰과 저장 결과를 공유하지 않는다. 같은 회원으로 페이지를 새로고침하면 저장된 설계·대화·선택 ID를 유지하고, 계정이 바뀌거나 로그아웃하면 지운다.
+
 외부 Webhook은 `/hooks/MEMBER_UUID/WORKFLOW_ID/PATH` 주소를 사용한다. 로그인 쿠키 대신 기존 Webhook 토큰·인증 설정을 검사한다. 비활성 회원의 Webhook은 거부한다. 인증 없음으로 설정한 Webhook은 해당 사용자의 워크플로우를 외부에서 호출할 수 있으므로 워크플로우의 의도에 맞게 설정한다.
 
 로그아웃하면 서버 세션을 즉시 삭제하고 Refresh Token을 폐기한 뒤 Cognito 로그아웃 화면으로 이동한다. 복사한 세션 쿠키도 더 이상 사용할 수 없다. 관리자·회원 모두 자기 작업 공간에만 접근하며, 다른 회원 자료에 접근하는 관리자 UI는 추가하지 않는다.
@@ -73,12 +75,14 @@ A4B_AUTH_SESSION_SECONDS=28800
 
 운영 도메인으로 CloudFormation의 PublicOrigin과 앱의 EASYFLOW_PUBLIC_URL을 함께 변경한다. HTTPS 프록시는 원래 Host를 전달해야 하며, 서버는 X-Forwarded-Host로 접속 출처를 변경하지 않는다. 변경 API와 로그아웃은 정확한 Origin을 요구한다. 인증 없이 조회 가능한 API는 `/api/auth/me`와 최소 상태만 반환하는 `/api/health`다.
 
+Google Sheets 등 외부 서비스의 OAuth 콜백은 `EASYFLOW_PUBLIC_URL/api/oauth/callback`이다. 공급자 콘솔의 승인된 리디렉션 URI에도 이 주소를 정확히 등록한다. Cognito의 `/auth/callback`과는 별도 주소다. 운영에서는 설정된 HTTPS 주소를 사용하며, 요청의 Host나 X-Forwarded-* 값으로 콜백 출처를 바꾸지 않는다. 인증을 끈 로컬 데모에서는 기존 localhost·127.0.0.1·IPv6 루프백 콜백을 유지한다.
+
 서명된 테스트 JWT로 다음을 검증한다. 실제 Cognito 이메일 인증과 RDS 연결은 유효한 AWS 계정·리소스·DB 설정에서 별도로 완주해야 한다.
 
 ```bash
 npm run check
 npm run build
-node --import tsx --test Backend/api/tests/cognito-auth.test.ts Backend/api/tests/oauth.test.ts Backend/api/tests/webhook-api.test.ts Frontend/tests/auth.test.ts Frontend/tests/frontend-dom.test.ts
+node --import tsx --test Backend/api/tests/cognito-auth.test.ts Backend/api/tests/oauth.test.ts Backend/api/tests/workspace-oauth.test.ts Backend/api/tests/webhook-api.test.ts Frontend/tests/auth.test.ts Frontend/tests/frontend-dom.test.ts
 ```
 
 두 사용자 간 워크플로우·연결 계정·실행/다운로드 접근 차단, 요청 출처 검사, 잘못된 토큰 거부, 콜백 재사용 방지, 동시 갱신, 로그아웃, 비활성 계정 접근 차단을 확인한다.

@@ -238,7 +238,10 @@ def test_final_generated_graph_is_code_validated_without_model_rewriting_tool_ar
     from agent_builder.design.nodes import conversation
     s=state();s['resources']=[];s['node_library']=[]
     raw=workflow_draft(s);raw['requirements']=[{'description':'조건','evidence_id':'e1'}]
-    if invalid:raw['workflow']['edges'][0]['target']='unknown-node'
+    if invalid:
+        # A broken edge alone is now rebuilt from a unique binding chain (normalize_connections);
+        # also drop the last node's binding so no unique chain exists and validation must reject.
+        raw['workflow']['edges'][0]['target']='unknown-node';raw['workflow']['nodes'][-1]['bindings']=[]
     class Agent:
         def invoke(self,*args,**kwargs):return {'structured_response':raw,'messages':[AIMessage(content=json.dumps(raw,ensure_ascii=False))]}
     monkeypatch.setattr(conversation,'create_deep_agent',lambda **kwargs:Agent())

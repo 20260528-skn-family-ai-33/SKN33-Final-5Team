@@ -171,8 +171,10 @@ def test_node_port_edge_references_resolve_only_to_a_real_node_port():
     assert fixed['edges']==[edge('read_table_1','filter_sort_1'),edge('filter_sort_1','write_result_1')]
     assert not workflow_errors(fixed,['read_table','filter_sort','write_result'],[{'id':'f','kind':'table','columns':['거래ID','비용']}])
     # Unknown node, a port the node does not own, or no port: left for validation to reject.
+    # (write_result has no binding here, so no single binding chain can replace the edges.)
+    unchained=copy.deepcopy(nodes);unchained[2]['bindings']=[]
     for source in ('missing_1:table','read_table_1:artifact','read_table_1:','start'):
-        kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(nodes),'edges':[edge(source,'filter_sort_1')]})
+        kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(unchained),'edges':[edge(source,'filter_sort_1')]})
         assert kept['edges'][0]['source']==source
 
 
@@ -186,6 +188,49 @@ def test_dotted_node_port_references_resolve_like_colon_ones():
     fixed=normalize_connections(copy.deepcopy(wf))
     assert fixed['edges']==[edge('read_table_1','filter_sort_1'),edge('filter_sort_1','write_result_1')]
     assert not workflow_errors(fixed,['read_table','filter_sort','write_result'],[{'id':'f','kind':'table','columns':['거래ID','비용']}])
+    unchained=copy.deepcopy(nodes);unchained[2]['bindings']=[]
     for source in ('missing_1.table','read_table_1.artifact','read_table_1.','read_table_1.table.x'):
-        kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(nodes),'edges':[edge(source,'filter_sort_1')]})
+        kept=normalize_connections({'entry':'read_table_1','nodes':copy.deepcopy(unchained),'edges':[edge(source,'filter_sort_1')]})
         assert kept['edges'][0]['source']==source
+
+
+def _drafted(nodes,edges,entry):
+    """Real post-fix drafts (live repro after G1-G4): correct bindings, broken edges."""
+    names=[n for n,_ in nodes];chain=[]
+    for i,(id,tool) in enumerate(nodes):
+        extra={'file_ids':['f']} if tool=='read_table' else {'format':'json'} if tool=='write_result' else {}
+        port={'filter_sort':'table','write_result':'table','finish':'artifact'}.get(tool)
+        src_out={'read_table':'table','filter_sort':'table','write_result':'artifact'}
+        bindings=[bind(port,names[i-1],src_out[nodes[i-1][1]])] if i else []
+        chain.append(node(id,tool,bindings,**extra))
+    return {'entry':entry,'nodes':chain,'edges':[edge(a,b) for a,b in edges]}
+
+
+@pytest.mark.parametrize('ids,edges,entry,duplicate',[
+    (['read_table_1','filter_sort_1','write_result_1','finish_1'],[('start','read_table_1'),('read_table_1','filter_sort_1'),('filter_sort_1','write_result_')],'read_table_1',False),
+    (['read_table_node','filter_sort_node','write_result_node','finish_node'],[('read_table_node','filter_sort_node'),('filter_sort_node','write_result_node')],'read_table_node',False),
+    (['read_table_node_1','filter_sort_node_2','write_result_node_3','finish_node_4'],[('read_table_node_1','filter_sort_node_2'),('filter_sort_node_0','write_result_node_3')],'read_table_node_1',True),
+    (['read_table_1','filter_sort_1','write_result_1','finish_1'],[('read_table_1','filter_sort_1'),('filter_sort_1','write_result_1'),('write_result_1','finish_1')],'read_table_1',True)])
+def test_unusable_edges_follow_an_unbranched_binding_chain(ids,edges,entry,duplicate):
+    from workflow_engine.workflow import normalize_connections
+    tools=['read_table','filter_sort','write_result','finish']
+    wf=_drafted(list(zip(ids,tools)),edges,entry)
+    if duplicate:wf['nodes'][3]['bindings']*=2  # exact repeat seen in the draft
+    tool_ids=tools
+    assert workflow_errors(wf,tool_ids,[{'id':'f','kind':'table','columns':['비용']}])
+    fixed=normalize_connections(copy.deepcopy(wf))
+    assert fixed['edges']==[edge(a,b) for a,b in zip(ids,ids[1:])] and fixed['entry']==ids[0]
+    assert len(fixed['nodes'][3]['bindings'])==1
+    assert not workflow_errors(fixed,tool_ids,[{'id':'f','kind':'table','columns':['비용']}])
+
+
+def test_usable_branched_or_ambiguous_workflows_keep_their_edges():
+    from workflow_engine.workflow import normalize_connections
+    ok=_drafted([('r','read_table'),('s','filter_sort'),('w','write_result')],[('r','s'),('s','w')],'r')
+    assert normalize_connections(copy.deepcopy(ok))==ok
+    branched=copy.deepcopy(ok);branched['nodes'].append(node('c','condition',[bind('table','s','table')],condition_operator='empty'))
+    branched['edges']=[edge('r','s'),edge('s','zzz')]
+    assert normalize_connections(copy.deepcopy(branched))['edges']==branched['edges']
+    fanout=copy.deepcopy(ok);fanout['nodes'].append(node('w2','write_result',[bind('table','s','table')],format='csv'))
+    fanout['edges']=[edge('r','s'),edge('s','missing')]
+    assert normalize_connections(copy.deepcopy(fanout))['edges']==fanout['edges']

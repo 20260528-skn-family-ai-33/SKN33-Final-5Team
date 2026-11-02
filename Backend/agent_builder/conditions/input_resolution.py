@@ -4,6 +4,7 @@ Only entire answers match. A request filtering the literal text '모르겠어' i
 ordinary data, not a refusal. Values remain missing until real evidence arrives.
 """
 import re
+from decimal import Decimal
 
 
 def _compact(content):
@@ -71,6 +72,39 @@ def option_answer(state):
                if not event or q['id'] in event.get('question_ids', [])
                for option in q.get('options', []) if _compact(option) == text]
     return matches[0] if len(matches) == 1 else None
+
+
+_UNITS = {'천만': 10000000, '백만': 1000000, '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}
+_PLAIN_AMOUNT = re.compile(r'(?:약\s*)?(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(천만|백만|십만|만|천|백)?'
+                           r'\s*(?:원|점|개|건|명)?\s*(?:으로|로|요|이요)?')
+
+
+def value_answer(state):
+    """The latest turn is only one plain amount for the pending threshold of a numeric column.
+
+    Anything else (억·조, %, k, currency signs, a sign, ranges, dates, extra words, a
+    text column) keeps the model path; nothing is parsed by guessing.
+    """
+    messages = state.get('messages', [])
+    latest = max((i for i, m in enumerate(messages) if m['role'] == 'user'), default=-1)
+    if latest < 0:
+        return None
+    match = _PLAIN_AMOUNT.fullmatch(messages[latest]['content'].strip().rstrip('.!?。'))
+    if not match:
+        return None
+    events = state.get('condition_answers', [])
+    event = next((e for e in reversed(events) if e.get('turn') == latest), None)
+    pending = [q for q in state.get('pending_questions', []) if q['key'] == 'filter.value'
+               and (not event or q['id'] in event.get('question_ids', []))]
+    field = (state.get('condition_ledger') or {}).get('slots', {}).get('filter.field', {})
+    profile = lambda r: (r.get('profile', {}).get(field.get('value')) or {})
+    numeric = field.get('status') == 'specified' and any(
+        r.get('kind') == 'table' and (profile(r).get('numericStrings', 0) > 0 or 'number' in profile(r).get('types', []))
+        for r in state.get('resources', []))
+    if len(pending) != 1 or not numeric:
+        return None
+    number = Decimal(match.group(1).replace(',', '') + (match.group(2) or '')) * _UNITS[match.group(3) or '']
+    return {'key': 'filter.value', 'value': number, 'question_id': pending[0]['id'], 'turn': latest}
 
 
 def resolution_question(key, resolution, base):

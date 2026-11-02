@@ -2,7 +2,7 @@
 from copy import deepcopy
 import pytest
 from agent_builder.conditions.condition_readiness import CHOICES, ENUMS, judge_conditions, source_catalog, validate_conditions
-from agent_builder.conditions.input_resolution import option_answer
+from agent_builder.conditions.input_resolution import option_answer, value_answer
 from agent_builder.capabilities.capability_check import make_capability_check
 from agent_builder.capabilities.capability_gate import input_fingerprint
 from tests.conditions.test_condition_readiness import state, Fake
@@ -112,3 +112,49 @@ def test_capability_judgement_is_reused_for_a_clicked_choice_only_with_unchanged
     # Changed resources are never reused: the version check stops for re-validation first.
     assert 'answer_resolution' not in blocked['capability_assessment']
     assert blocked['capability_assessment']['decision'] == 'system_error'
+
+
+def answer_value(s, ledger, text):
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.value')
+    return click(s, question, text)
+
+
+@pytest.mark.parametrize('text,value', [
+    ('100만원', 1000000), ('1,000,000', 1000000), ('1000000원', 1000000), ('85점', 85), ('85', 85),
+    ('100만', 1000000), ('1.5만원', 15000), ('0', 0), ('100 만원', 1000000), ('약 100만원', 1000000),
+    ('100만원으로', 1000000), ('1백만원', 1000000)])
+def test_plain_amount_answer_is_read_exactly(text, value):
+    s, ledger = vague()
+    found = value_answer(answer_value(s, ledger, text))
+    assert found and float(found['value']) == value
+
+
+@pytest.mark.parametrize('text', [
+    '백만원', '삼십만원', '1억', '1억 2천만원', '-5', '50%', '100k', '$100', '100만원에서 200만원',
+    '2026-11-02', '100만원 초과', '100만원 이상으로 바꿔줘', '1,00'])
+def test_ambiguous_amounts_keep_the_model_path(text):
+    """The raw parser reads 1억 as 1 and -5 as 5; such answers must never be parsed here."""
+    s, ledger = vague()
+    assert value_answer(answer_value(s, ledger, text)) is None
+
+
+def test_amount_for_a_text_column_keeps_the_model_path():
+    s, ledger = vague()
+    ledger['slots']['filter.field'] = {**ledger['slots']['filter.field'], 'value': '상태'}
+    s['condition_ledger'] = ledger
+    assert value_answer(answer_value(s, ledger, '100')) is None
+
+
+def test_typed_amount_is_confirmed_without_a_model_call_and_reused_by_capability():
+    s, ledger = vague()
+    transport = Fake([])
+    result = judge_conditions(answer_value(s, ledger, '100만원'), transport)
+    slot = result['ledger']['slots']['filter.value']
+    assert transport.calls == 0 and result['model_calls'] == 0
+    assert slot['status'] == 'specified' and slot['value'] == 1000000.0 and slot['evidence'][0]['quote'] == '100만원'
+    previous = {'decision': 'existing_tools', 'tool_ids': ['read_table', 'filter_sort'], 'missing_conditions': [],
+                'missing_actions': [], 'reason': '지원', 'user_quotes': [s['messages'][0]['content']]}
+    s.update(capability_assessment=previous, capability_fingerprint=input_fingerprint(s), capability_enforced=True)
+    capability = Fake([])
+    reused = make_capability_check('qwen3.5:4b', capability, 'enforce')(answer_value(s, ledger, '100만원'))
+    assert capability.calls == 0 and reused['capability_assessment']['answer_resolution'] == 'condition_choice'

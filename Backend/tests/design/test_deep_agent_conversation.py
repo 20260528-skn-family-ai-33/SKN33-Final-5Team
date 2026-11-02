@@ -286,11 +286,13 @@ def test_optional_binding_repair_in_generation_is_audited(monkeypatch,mode,expec
     assert len(result['trace'][-1]['binding_repairs'])==expected_count
     assert not result['confirmed'] and result['saved_agent_id'] is None
 
-def test_length_error_is_not_parsed_as_json_or_retried(monkeypatch):
+def test_length_error_is_not_parsed_as_json_and_retries_once_with_the_next_seed(monkeypatch):
+    """A failed attempt leaves no state, so the next seed is tried here once, then reported."""
     from openai import LengthFinishReasonError
     from openai.types.chat import ChatCompletion
-    calls=[]
+    calls=[];seeds=[];factories=[]
     def factory(**kwargs):
+        factories.append(kwargs)
         tools={t.name:t for t in kwargs['tools']}
         class Agent:
             def invoke(self,payload,config):
@@ -299,6 +301,209 @@ def test_length_error_is_not_parsed_as_json_or_retried(monkeypatch):
                 raise LengthFinishReasonError(completion=completion)
         return Agent()
     monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model',lambda **kw:seeds.append(kw['seed']) or object())
     with pytest.raises(ValueError,match='길이 제한'):
-        make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
-    assert len(calls)==1
+        make_conversation(None,'test')(state([{'role':'user','content':'업무 요청'}]))
+    assert len(calls)==2 and seeds==[42,43] and factories[1]['checkpointer'] is False
+
+
+def test_seed_counts_attempts_within_the_same_user_turn(monkeypatch):
+    seeds=[]
+    class Agent:
+        def invoke(self,payload,config):return {'structured_response':draft(questions=['기준을 알려주세요'])}
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model',lambda **kw:seeds.append(kw['seed']) or object())
+    node=make_conversation(None,'test')
+    first=node(state([{'role':'user','content':'업무 요청'}]))
+    assert seeds==[42] and first['trace'][-1]['seed']==42 and first['trace'][-1]['user_turn']==0
+    retry=node({**state([{'role':'user','content':'업무 요청'}]),'trace':first['trace']})  # same turn again
+    assert seeds[-1]==43 and retry['trace'][-1]['seed']==43
+    later=state([{'role':'user','content':'업무 요청'},{'role':'assistant','content':'?'},{'role':'user','content':'100만원 초과'}])
+    node({**later,'trace':retry['trace']})  # a new user turn starts again from the base
+    assert seeds[-1]==42
+
+
+@pytest.mark.parametrize('sequence', [
+    ['schema', 'schema', 'length', 'ok'],
+    ['length', 'schema', 'schema', 'ok'],
+    ['schema', 'length', 'schema', 'ok'],
+])
+def test_mixed_schema_and_length_failures_return_a_draft(monkeypatch, sequence):
+    from langchain.agents.structured_output import StructuredOutputValidationError
+    from langchain_core.messages import AIMessage
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    calls = []
+    class Agent:
+        def invoke(self, payload, config):
+            outcome = sequence[len(calls)]; calls.append(outcome)
+            if outcome == 'schema':
+                raise StructuredOutputValidationError('response_format', ValueError('bad JSON'), AIMessage(content='{} {}'))
+            if outcome == 'length':
+                raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[], usage=None))
+            return {'structured_response': draft(questions=['기준은 얼마인가요?'])}
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE', 'direct')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    result = make_conversation(None, 'test', model_factory=lambda: object())(state([{'role': 'user', 'content': '업무 요청'}]))
+    assert calls == sequence and result['draft']['questions'] == ['기준은 얼마인가요?']
+
+
+def test_mixed_retry_exhaustion_reports_length_error_instead_of_none(monkeypatch):
+    from langchain.agents.structured_output import StructuredOutputValidationError
+    from langchain_core.messages import AIMessage
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    calls = []
+    class Agent:
+        def invoke(self, payload, config):
+            calls.append(1)
+            if len(calls) <= 2:
+                raise StructuredOutputValidationError('response_format', ValueError('bad JSON'), AIMessage(content='{} {}'))
+            raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[], usage=None))
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE', 'direct')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    with pytest.raises(ValueError, match='길이 제한'):
+        make_conversation(None, 'test', model_factory=lambda: object())(state([{'role': 'user', 'content': '업무 요청'}]))
+    assert len(calls) == 4
+
+
+def test_seed_is_not_reused_after_successful_length_retry(monkeypatch):
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    seeds, calls = [], []
+    class Agent:
+        def invoke(self, payload, config):
+            calls.append(1)
+            if len(calls) == 1:
+                raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[], usage=None))
+            return {'structured_response': draft(questions=['기준은 얼마인가요?'])}
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE', 'direct')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model', lambda **kw: seeds.append(kw['seed']) or object())
+    node = make_conversation(None, 'test')
+    original = state([{'role': 'user', 'content': '업무 요청'}])
+    first = node(original)
+    node({**original, 'trace': first['trace']})
+    assert seeds == [42, 43, 44]
+
+
+@pytest.mark.parametrize('value', ['', '   '])
+def test_empty_design_seed_uses_default(monkeypatch, value):
+    seeds = []
+    class Agent:
+        def invoke(self, payload, config):return {'structured_response': draft(questions=['기준은 얼마인가요?'])}
+    monkeypatch.setenv('A4B_DESIGN_SEED', value)
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kw: Agent())
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model', lambda **kw: seeds.append(kw['seed']) or object())
+    make_conversation(None, 'test')(state([{'role': 'user', 'content': '업무 요청'}]))
+    assert seeds == [42]
+
+
+def test_invalid_design_seed_reports_configuration_error(monkeypatch):
+    monkeypatch.setenv('A4B_DESIGN_SEED', 'not-a-number')
+    with pytest.raises(ValueError, match='A4B_DESIGN_SEED.*정수'):
+        make_conversation(None, 'test', model_factory=lambda: object())
+
+
+def run_capturing(monkeypatch, s, response):
+    captured = {}
+    def factory(**kwargs):
+        captured['schema'] = kwargs['response_format'].schema
+        tools = {t.name: t for t in kwargs['tools']}
+        class Agent:
+            def invoke(self, payload, config):
+                captured['context'] = json.loads(payload['messages'][0]['content'].split('\n', 1)[1])
+                captured['list_tools'] = tools['list_tools'].invoke({})
+                return {'structured_response': response}
+        return Agent()
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', factory)
+    captured['result'] = make_conversation(None, 'test', model_factory=lambda: object())(s)
+    return captured
+
+
+def test_ready_table_contract_bounds_deep_agent_output_and_catalog(monkeypatch):
+    """Real failures: one-node truncation, extra finish nodes, re-asking confirmed conditions,
+    and a ~9.5k-token prompt from the 22-tool catalogue in a 16k context."""
+    from tests.design.test_linear_plan import context
+    from agent_builder.design.planner_constraints import TABLE_PLAN_TOOLS
+    s = context()
+    captured = run_capturing(monkeypatch, s, draft(questions=['다시 묻기']))
+    schema = captured['schema']; defs = schema['$defs']
+    tools = {defs['WorkflowNode']['anyOf'][i]['properties']['tool']['enum'][0] for i in range(len(defs['WorkflowNode']['anyOf']))}
+    assert tools == set(TABLE_PLAN_TOOLS)
+    for key in ('questions', 'question_options', 'unsupported'):
+        assert schema['properties'][key]['maxItems'] == 0
+    assert schema['properties']['workflow'] == {'$ref': '#/$defs/WorkflowDefinition'}
+    nodes, edges = defs['WorkflowDefinition']['properties']['nodes'], defs['WorkflowDefinition']['properties']['edges']
+    assert (nodes['minItems'], nodes['maxItems'], edges['minItems'], edges['maxItems']) == (3, 4, 2, 3)  # format confirmed
+    assert [t['id'] for t in captured['context']['supported_tools']] == list(TABLE_PLAN_TOOLS)
+    assert [t['id'] for t in captured['list_tools']] == list(TABLE_PLAN_TOOLS)
+
+
+def test_ready_table_contract_fixes_node_ids_and_single_typed_bindings(monkeypatch):
+    """Real failures (live runs, 2026-11-02): library UUIDs copied as node IDs and corrupted
+    ('c2f3e8c4-5d2 B, '), invented nodes (start_node_1, filter_sort_flow_1), and finish
+    bindings in the valid shape in only 7 of 24 drafts (text port, two sources, duplicates)."""
+    from tests.design.test_linear_plan import context
+    from agent_builder.design.nodes.conversation import SCOPED_NODE_IDS
+    captured = run_capturing(monkeypatch, context(), draft(questions=['다시 묻기']))
+    defs = captured['schema']['$defs']
+    variants = {v['properties']['tool']['enum'][0]: v['properties'] for v in defs['WorkflowNode']['anyOf']}
+    assert {tool: props['id'] for tool, props in variants.items()} == {
+        tool: {'type': 'string', 'enum': [tool + '_1']} for tool in variants}
+    assert defs['WorkflowDefinition']['properties']['entry']['enum'] == ['read_table_1']
+    for key in ('source', 'target'):
+        assert defs['WorkflowEdge']['properties'][key]['enum'] == list(SCOPED_NODE_IDS.values())
+    assert variants['read_table']['bindings']['maxItems'] == 0
+    expected = {'filter_sort': ['table'], 'write_result': ['table'], 'finish': ['artifact']}
+    for tool, ports in expected.items():
+        bindings = variants[tool]['bindings']
+        assert (bindings['minItems'], bindings['maxItems']) == (1, 1)
+        item = bindings['items']['properties']
+        assert item['input']['enum'] == ports and item['output']['enum'] == ports
+        assert tool + '_1' not in item['node_id']['enum']  # no self-binding
+
+
+def test_ready_table_contract_decodes_only_runtime_settings_and_fills_the_rest(monkeypatch):
+    """62% of a live draft was null settings keys the four table tools never read."""
+    from tests.design.test_linear_plan import context
+    from tests.conditions.test_condition_readiness import workflow_draft
+    from agent_builder.design.nodes.conversation import SCOPED_SETTINGS, SETTINGS_DEFAULTS
+    from contracts.models import NodeSettings
+    s = context(); full = workflow_draft(s)
+    ids = {'read': 'read_table_1', 'filter': 'filter_sort_1', 'out': 'write_result_1'}
+    nodes = [{'id': ids[n['id']], 'tool': n['tool'], 'label': n['label'],
+              'bindings': [{**b, 'node_id': ids[b['node_id']]} for b in n['bindings']],
+              'settings': {k: n['settings'][k] for k in SCOPED_SETTINGS[n['tool']]}} for n in full['workflow']['nodes']]
+    compact = {**draft(), 'execution_plan': full['execution_plan'], 'workflow': {'entry': 'read_table_1', 'nodes': nodes,
+               'edges': [{'source': 'read_table_1', 'target': 'filter_sort_1', 'branch': 'next'},
+                         {'source': 'filter_sort_1', 'target': 'write_result_1', 'branch': 'next'}]}}
+    captured = run_capturing(monkeypatch, s, compact)
+    for variant in captured['schema']['$defs']['WorkflowNode']['anyOf']:
+        tool = variant['properties']['tool']['enum'][0]
+        settings = variant['properties']['settings']
+        assert list(settings['properties']) == settings['required'] == list(SCOPED_SETTINGS[tool])
+    produced = captured['result']['draft']['workflow']['nodes']
+    assert [n['id'] for n in produced] == ['read_table_1', 'filter_sort_1', 'write_result_1']
+    for n in produced:
+        NodeSettings.model_validate(n['settings'])
+        # canonical_table_draft writes the plan into filter_sort.instructions for display.
+        unchanged = set(SETTINGS_DEFAULTS) - set(SCOPED_SETTINGS[n['tool']]) - ({'instructions'} if n['tool'] == 'filter_sort' else set())
+        assert {k: n['settings'][k] for k in unchanged} == {k: SETTINGS_DEFAULTS[k] for k in unchanged}
+    assert produced[1]['settings']['execution_plan'] == full['execution_plan']
+    assert produced[2]['settings']['format'] == 'json'
+    assert captured['result']['semantic_issues'] == []
+
+
+def test_requests_outside_the_ready_table_contract_keep_the_full_catalog(monkeypatch):
+    from workflow_engine.catalog.registry import TOOLS
+    captured = run_capturing(monkeypatch, state([{'role': 'user', 'content': '문서에서 근거를 찾아 답해줘'}]),
+                             draft(questions=['어떤 문서인가요?']))
+    schema = captured['schema']
+    assert len(schema['$defs']['WorkflowNode']['anyOf']) == len(TOOLS)
+    assert schema['properties']['questions']['maxItems'] == 3
+    assert 'minItems' not in schema['$defs']['WorkflowDefinition']['properties']['nodes']
+    assert captured['context']['supported_tools'] == TOOLS
+    assert 'enum' not in schema['$defs']['WorkflowDefinition']['properties']['entry']
+    assert schema['$defs']['WorkflowNode']['anyOf'][0]['properties']['id']['pattern'] == r'^[a-zA-Z][\w-]{0,39}$'
+    assert len(schema['$defs']['WorkflowNode']['anyOf'][0]['properties']['settings']['properties']) > 4

@@ -3,7 +3,7 @@ import hashlib
 import os
 from agent_builder.capabilities.capability_judgement import assess_capability, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
-from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution
+from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, value_answer
 from agent_builder.conditions.condition_check import _pending_draft
 
 
@@ -22,14 +22,14 @@ def make_capability_check(model,transport=None,mode=None):
             event=events[-1] if events and events[-1]['turn']==len(state.get('messages',[]))-1 else None
             previous=state.get('capability_assessment') or {}
             if faults:result=assess_capability(state,None)
-            elif (previous.get('decision')=='existing_tools' and latest_resolution(state)
+            elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or value_answer(state))
                   and state.get('messages', [])[-1].get('role')=='user'
                   and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
-                # A non-answer to a condition question changes no business facts.
-                # Reuse only with the original request/resources/catalog intact;
-                # condition_check still preserves missing/deferred slots and blocks save.
+                # A non-answer or an offered closed-vocabulary choice for a condition question
+                # changes no supported-action facts. Reuse only with the original
+                # request/resources/catalog intact; condition_check still validates the slots.
                 validate_assessment_result(previous,state)
-                result={**previous,'model_calls':0,'answer_resolution':'condition_nonanswer'}
+                result={**previous,'model_calls':0,'answer_resolution':'condition_choice' if option_answer(state) or value_answer(state) else 'condition_nonanswer'}
             elif event and previous.get('decision')=='clarify' and event['kind'] in ('unknown','defer','guidance'):
                 validate_assessment_result(previous,state)
                 ids=set(event['question_ids'])

@@ -203,20 +203,65 @@ def legacy_workflow(draft):
         previous=id
     return {'entry':nodes[0]['id'],'nodes':nodes,'edges':edges} if nodes else None
 
+def _binding_chain(nodes,by):
+    """The single linear order implied by bindings, or None if it is not unique."""
+    if not nodes or any(n['tool'] in ('condition','ask_user') for n in nodes):return None
+    parent={}
+    for n in nodes:
+        sources={b['node_id'] for b in n['bindings']}
+        if not sources<=set(by) or len(sources)>1:return None
+        if sources:parent[n['id']]=sources.pop()
+    roots=[n['id'] for n in nodes if n['id'] not in parent]
+    children={}
+    for child,source in parent.items():
+        if source in children:return None  # fan-out
+        children[source]=child
+    if len(roots)!=1:return None
+    chain=[roots[0]]
+    while chain[-1] in children and len(chain)<=len(nodes):chain.append(children[chain[-1]])
+    return chain if len(chain)==len(nodes) and len(set(chain))==len(nodes) else None
+
+
+def _edges_usable(workflow,by):
+    """Edges reach every node from entry and order each binding source before its node."""
+    edges=workflow['edges']
+    if workflow['entry'] not in by or any(e['source'] not in by or e['target'] not in by for e in edges):return False
+    after={id:set() for id in by}
+    for e in edges:after[e['source']].add(e['target'])
+    def reach(start):
+        seen,stack=set(),[start]
+        while stack:
+            for nxt in after[stack.pop()]:
+                if nxt not in seen:seen.add(nxt);stack.append(nxt)
+        return seen
+    if reach(workflow['entry'])|{workflow['entry']}!=set(by):return False
+    return all(n['id'] in reach(b['node_id']) for n in workflow['nodes'] for b in n['bindings'])
+
+
 def normalize_connections(workflow):
     """Resolve unambiguous port aliases using registered types; never invent topology."""
     if not workflow:return workflow
     by={n['id']:n for n in workflow['nodes']}
     def node_of(reference,side):
-        # "node:port" names one real node only when that node owns the port.
-        if reference in by or not isinstance(reference,str) or ':' not in reference:return reference
-        identifier,port=reference.rsplit(':',1)
+        # "node:port" or "node.port" names one real node only when that node owns the port.
+        # Node IDs cannot contain ':' or '.', so the separator is unambiguous.
+        if reference in by or not isinstance(reference,str) or not re.search(r'[:.]',reference):return reference
+        identifier,port=re.split(r'[:.](?=[^:.]*$)',reference)
         return identifier if identifier in by and port in node_ports(by[identifier])[side] else reference
     for edge in workflow['edges']:
         edge['source']=node_of(edge['source'],1);edge['target']=node_of(edge['target'],0)
     for node in workflow['nodes']:
         for binding in node['bindings']:
             binding['node_id']=node_of(binding['node_id'],1)
+        # An exact repeat of the same binding adds nothing; keep one copy.
+        node['bindings']=[b for i,b in enumerate(node['bindings']) if b not in node['bindings'][:i]]
+    chain=_binding_chain(workflow['nodes'],by)
+    if chain and not _edges_usable(workflow,by):
+        # The model states the data path twice (bindings and edges). When the edges are
+        # unusable but the bindings name one unbranched chain through every node, that
+        # chain is the model's own topology; anything else is left for validation.
+        workflow['edges']=[{'source':a,'target':b,'branch':'next'} for a,b in zip(chain,chain[1:])]
+        workflow['entry']=chain[0]
     if workflow['entry'] not in by:
         targets={e['target'] for e in workflow['edges']}
         roots=[id for id in by if id not in targets]

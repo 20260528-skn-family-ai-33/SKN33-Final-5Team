@@ -179,7 +179,8 @@ def test_actual_conversation_schema_pins_verified_settings_and_excludes_unused_p
     for v in variants:
         tool=v['properties']['tool']['enum'][0]
         setting=v['properties']['settings']['properties']
-        assert setting['execution_plan']==({'$ref':'#/$defs/ExecutionPlan'} if tool=='filter_sort' else {'type':'null'})
+        # Outside filter_sort the plan is not decoded at all in the table scope (filled as null).
+        assert setting.get('execution_plan',{'type':'null'})==({'$ref':'#/$defs/ExecutionPlan'} if tool=='filter_sort' else {'type':'null'})
         if tool=='write_result':assert setting['format']=={'enum':['json']}
 
 
@@ -238,7 +239,10 @@ def test_final_generated_graph_is_code_validated_without_model_rewriting_tool_ar
     from agent_builder.design.nodes import conversation
     s=state();s['resources']=[];s['node_library']=[]
     raw=workflow_draft(s);raw['requirements']=[{'description':'조건','evidence_id':'e1'}]
-    if invalid:raw['workflow']['edges'][0]['target']='unknown-node'
+    if invalid:
+        # A broken edge alone is now rebuilt from a unique binding chain (normalize_connections);
+        # also drop the last node's binding so no unique chain exists and validation must reject.
+        raw['workflow']['edges'][0]['target']='unknown-node';raw['workflow']['nodes'][-1]['bindings']=[]
     class Agent:
         def invoke(self,*args,**kwargs):return {'structured_response':raw,'messages':[AIMessage(content=json.dumps(raw,ensure_ascii=False))]}
     monkeypatch.setattr(conversation,'create_deep_agent',lambda **kwargs:Agent())

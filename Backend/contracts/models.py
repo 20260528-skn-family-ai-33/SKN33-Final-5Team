@@ -178,3 +178,9 @@ class BuilderState(TypedDict, total=False):
     capability_answers: list[dict]
     capability_deferred: bool
     capability_generation_route: str
+    requirement_required: bool
+    requirement_route: str
+    requirement_ledger: dict | None
+    requirement_fingerprint: str | None
+    requirement_digest: str | None
+    requirement_coverage: dict

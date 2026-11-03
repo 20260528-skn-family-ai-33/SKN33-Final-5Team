@@ -178,6 +178,11 @@ def make_verification_node(storage, verifier=None, mode=None):
                         node['settings']['file_ids']=[i for i in raw.get('document_ids',[]) if i in assets and supports(assets[i],kind)]
                 version=hashlib.sha256(json.dumps(raw,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
                 snapshot,_=project_operations(snapshot,strict=label!='previous')
+                # Optional unset compatibility keys have no execution meaning.
+                # Sending them for every node can exceed the verifier's context
+                # budget. Preserve empty lists/false/zero and the original draft.
+                for node in snapshot['workflow']['nodes']:
+                    node['settings']={key:value for key,value in node['settings'].items() if value is not None}
                 return draft_from_backend(snapshot, draft_id=state['session_id'], version=version)
             previous_adapted = adapt(previous, 'previous')
             candidate_adapted = adapt(draft, 'candidate')

@@ -41,6 +41,30 @@ def fixture_verifier(data):
     return verify(data,mode='fixture',fixture=output)
 
 
+def test_unset_settings_do_not_consume_verifier_context_or_mutate_saved_draft(tmp_path):
+    store=Storage(tmp_path)
+    try:
+        state,raw=seed(store)
+        state['draft']=raw
+        before=deepcopy(raw)
+        result=make_verification_node(store,mode='defer')(state)
+        assert result['verification_route']=='pending'
+        payload=json.loads(store.db.execute('SELECT input_json FROM builder_verifications').fetchone()[0])
+        projected=payload['candidate_draft']['workflow']['nodes']
+        assert all(value is not None for n in projected for value in n['settings'].values())
+        assert projected[1]['settings']['execution_plan']['sort']==[]
+        assert raw==before
+        from verification.workflow.client import SYSTEM,grounded_output_schema,OllamaConfig
+        from verification.workflow.contracts import VerificationInput
+        from verification.workflow.validation import evidence_bank
+        data=VerificationInput.model_validate(payload)
+        content=json.dumps({'input':data.model_dump(mode='json'),'evidence_bank':evidence_bank(data)},ensure_ascii=False,separators=(',',':'))
+        budget=len((SYSTEM+content+json.dumps(grounded_output_schema(data),ensure_ascii=False)).encode())+4096+2048
+        assert budget<=OllamaConfig().num_ctx
+    finally:
+        store.close()
+
+
 def test_gate_then_explicit_approval_then_real_execution(tmp_path):
     store=Storage(tmp_path); state,raw=seed(store)
     graph,connection=build_graph(store,conversation=lambda s:dict(draft=deepcopy(raw),repair_count=1),

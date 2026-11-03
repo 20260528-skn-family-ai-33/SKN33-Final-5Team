@@ -8,6 +8,7 @@ export type WebhookResponseContext={resolveValue?:(value:any,item:Json)=>any;cre
 const MAX_RESPONSE_BYTES=4_000_000,MAX_HEADERS=100,MAX_HEADER_BYTES=32_768;
 const forbidden=new Set(['__proto__','prototype','constructor']);
 const transportHeaders=new Set(['transfer-encoding','connection','trailer','upgrade','keep-alive','proxy-connection']);
+const browserStateHeaders=new Set(['set-cookie','set-cookie2','clear-site-data']);
 
 /** Native Buffer JSON uses the binary byte budget, rather than its expanded text size. */
 export function assertWebhookJsonSize(value:unknown):void {
@@ -42,7 +43,7 @@ function headers(value:any):Record<string,string> {
  if(entries!==undefined&&!Array.isArray(entries))throw new Error('응답 헤더 목록을 확인해주세요.');
  const list=entries??Object.entries(source).map(([name,value])=>({name,value}));if(list.length>MAX_HEADERS)throw new Error('응답 헤더는 100개 이하로 설정해주세요.');
  const pairs:[string,string][]=[];let bytes=0;
- for(const entry of list){const row=plainRecord(entry,'응답 헤더');if(!['string','number','boolean'].includes(typeof row.name)||!['string','number','boolean'].includes(typeof row.value))throw new Error('응답 헤더 이름과 값은 글자 또는 숫자로 입력해주세요.');const name=String(row.name).toLowerCase(),value=String(row.value);if(forbidden.has(name)||transportHeaders.has(name))throw new Error('이 응답 헤더 이름은 사용할 수 없어요.');try{validateHeaderName(name);validateHeaderValue(name,value);}catch{throw new Error('응답 헤더 이름과 값에 올바른 문자를 입력해주세요. 줄바꿈은 사용할 수 없어요.');}bytes+=Buffer.byteLength(name+value,'utf8')+4;if(bytes>MAX_HEADER_BYTES)throw new Error('응답 헤더 전체 크기는 32KB 이하로 줄여주세요.');pairs.push([name,value]);}
+ for(const entry of list){const row=plainRecord(entry,'응답 헤더');if(!['string','number','boolean'].includes(typeof row.name)||!['string','number','boolean'].includes(typeof row.value))throw new Error('응답 헤더 이름과 값은 글자 또는 숫자로 입력해주세요.');const name=String(row.name).toLowerCase(),value=String(row.value);if(forbidden.has(name)||transportHeaders.has(name)||browserStateHeaders.has(name))throw new Error('이 응답 헤더 이름은 사용할 수 없어요.');try{validateHeaderName(name);validateHeaderValue(name,value);}catch{throw new Error('응답 헤더 이름과 값에 올바른 문자를 입력해주세요. 줄바꿈은 사용할 수 없어요.');}bytes+=Buffer.byteLength(name+value,'utf8')+4;if(bytes>MAX_HEADER_BYTES)throw new Error('응답 헤더 전체 크기는 32KB 이하로 줄여주세요.');pairs.push([name,value]);}
  return Object.fromEntries(pairs);
 }
 function statusCode(value:any,fallback=200):number {const code=value===undefined?fallback:value;if(typeof code!=='number'||!Number.isInteger(code)||code<200||code>599)throw new Error('최종 응답 상태 코드는 200부터 599 사이의 정수로 입력해주세요. 100대 중간 응답은 아직 지원하지 않아요.');return code;}

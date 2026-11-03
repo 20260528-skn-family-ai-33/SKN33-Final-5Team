@@ -30,6 +30,10 @@ flowchart LR
 
 > 문서 확인 기준: 2026-10-23, main [`134895b`](https://github.com/20260528-skn-family-ai-33/SKN33-Final-5Team/commit/134895b62e3235e1ed904a2d26b8f93faf235b9d). 파서·Qwen 통합은 [PR #8](https://github.com/20260528-skn-family-ai-33/SKN33-Final-5Team/pull/8)로 병합됐습니다. 코드 연결 여부와 실제 모델의 업무 정확도는 구분합니다.
 
+## Cognito 로그인
+
+Cognito Managed login과 사용자별 작업 공간을 지원합니다. [설정·배포·검증 안내](docs/cognito-login.md)에 따라 기존 RDS와 같은 AWS 계정에 사용자 풀을 만들고 앱에 연결합니다. 회원 정보는 기존 RDS `a4b.users`에 연결하며, 현재 Node/Python 업무 저장소는 회원별 디렉터리로 격리합니다. 업무 데이터 전체의 PostgreSQL 이관은 별도 작업입니다. 기존 로컬 데모는 `A4B_AUTH_MODE=off`로 실행할 수 있습니다.
+
 ## 개발 진행과 다음 작업
 
 기록 기준: **2026-11-01, 한국 시간**. 다음 작업은 **2026-11-02 오전에 이어서 확인**합니다. 아래는 현재 확인한 상태와 후속 계획이며, 미완료 항목을 구현 완료로 해석하지 않습니다.

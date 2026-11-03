@@ -1,5 +1,6 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {isIP} from 'node:net';
+import {isLoopback} from './auth-config';
 import type {CredentialInput,CredentialSecret} from './contracts';
 import type {Json} from '../../../shared/workflow';
 
@@ -121,11 +122,21 @@ export class OAuthManager {
  private port:number;
  private request:typeof fetch;
  private now:()=>number;
- constructor(options:{port:number;fetch?:typeof fetch;now?:()=>number}) {
+ private publicOrigin?:URL;
+ constructor(options:{port:number;publicOrigin?:string;fetch?:typeof fetch;now?:()=>number}) {
   if(!Number.isInteger(options.port)||options.port<1||options.port>65535)throw new Error('로컬 프로그램의 포트 번호를 확인해주세요.');
+  if(options.publicOrigin!==undefined){
+   const origin=new URL(options.publicOrigin);
+   if(origin.username||origin.password||origin.search||origin.hash||origin.pathname!=='/'||origin.protocol!=='https:'&&!(origin.protocol==='http:'&&isLoopback(origin.hostname)))throw new Error('OAuth 서비스 주소는 HTTPS 출처여야 합니다. HTTP는 로컬 개발에서만 사용할 수 있습니다.');
+   this.publicOrigin=origin;
+  }
   this.port=options.port;this.request=options.fetch||fetch;this.now=options.now||Date.now;
  }
  private checkAuthority(authority:string):void {
+  if(this.publicOrigin){
+   if(authority!==this.publicOrigin.host)throw new Error('등록된 서비스 주소에서 계정을 연결해주세요.');
+   return;
+  }
   if(![`127.0.0.1:${this.port}`,`localhost:${this.port}`,`[::1]:${this.port}`].includes(authority))throw new Error('로그인은 이 로컬 프로그램에서 시작해주세요.');
  }
  begin(input:OAuthBeginInput,initiatingAuthority:string):OAuthBeginResult {
@@ -137,7 +148,7 @@ export class OAuthManager {
   const now=this.now();for(const [state,pending] of this.pending)if(pending.expiresAt<=now)this.pending.delete(state);
   if(this.pending.size>=MAX_PENDING)throw new Error('진행 중인 로그인 요청이 많아요. 잠시 후 다시 연결해주세요.');
   const stateId=randomBytes(32).toString('base64url'),verifier=randomBytes(32).toString('base64url');
-  const redirectUri=`http://${initiatingAuthority}/api/oauth/callback`,expiresAt=now+OAUTH_STATE_TTL_MS;
+  const redirectUri=`${this.publicOrigin?.origin||`http://${initiatingAuthority}`}/api/oauth/callback`,expiresAt=now+OAUTH_STATE_TTL_MS;
   this.pending.set(stateId,{input:{...oauth,name,...(id?{id}:{})},config:oauth,authority:initiatingAuthority,redirectUri,verifier,expiresAt});
   const authorization=new URL(oauth.authorizationUrl);
   authorization.searchParams.set('client_id',oauth.clientId);authorization.searchParams.set('response_type','code');authorization.searchParams.set('redirect_uri',redirectUri);authorization.searchParams.set('state',stateId);
@@ -164,7 +175,6 @@ export class OAuthManager {
  }
 }
 
-const refreshLocks=new Map<string,Promise<CredentialSecret>>();
 function withAbort<T>(promise:Promise<T>,signal?:AbortSignal):Promise<T> {
  if(!signal)return promise;
  if(signal.aborted)return Promise.reject(canceledError());
@@ -175,29 +185,32 @@ function withAbort<T>(promise:Promise<T>,signal?:AbortSignal):Promise<T> {
  });
 }
 
-/** Refreshes OAuth bearer credentials in the server, then persists them through the encrypted Store callback. */
-export async function getUsableCredential(credential:CredentialSecret,saveCallback:(updated:CredentialSecret)=>unknown|Promise<unknown>,options:OAuthRequestOptions={}):Promise<CredentialSecret> {
- if(options.signal?.aborted)throw canceledError();
- if(credential.data.authType!=='oauth2')return credential;
- if(credential.provider!=='bearer')throw new Error('OAuth 로그인은 Bearer 연결 계정으로 저장해주세요.');
- const data=credential.data;
- const accessToken=typeof data.accessToken==='string'&&data.accessToken?data.accessToken:typeof data.token==='string'?data.token:'';
- const expiresAt=data.expiresAt===undefined?undefined:typeof data.expiresAt==='number'?data.expiresAt:typeof data.expiresAt==='string'?Date.parse(data.expiresAt):NaN;
- if(expiresAt!==undefined&&!Number.isFinite(expiresAt))throw new Error('로그인 만료 시각을 확인할 수 없어요. 계정을 다시 연결해주세요.');
- if(accessToken&&(expiresAt===undefined||expiresAt>(options.now||Date.now)()+TOKEN_EXPIRY_BUFFER_MS))return {...credential,data:{...data,token:accessToken,accessToken}};
- if(typeof data.refreshToken!=='string'||!data.refreshToken)throw new Error('로그인이 만료됐어요. 계정을 다시 연결해주세요.');
- if(typeof credential.id!=='string'||!credential.id)throw new Error('저장된 연결 계정을 다시 선택해주세요.');
- const existing=refreshLocks.get(credential.id);if(existing)return withAbort(existing,options.signal);
- const refresh=(async()=>{
-  const oauth=config({name:credential.name,clientId:data.clientId,clientSecret:data.clientSecret,service:credential.service||data.service,authorizationUrl:data.authorizationUrl,tokenUrl:data.tokenUrl,scope:data.scope,tokenAuthMethod:data.tokenAuthMethod});
-  const body=new URLSearchParams({grant_type:'refresh_token',refresh_token:data.refreshToken});
-  const tokens=await requestToken(oauth.tokenUrl,body,oauth,options,refreshError);
-  const updated:CredentialSecret={...credential,data:tokenData({...data,...oauth},tokens,(options.now||Date.now)()),updatedAt:new Date((options.now||Date.now)()).toISOString()};
+/** Create once per workspace: connection IDs are unique only inside that workspace. */
+export function createCredentialRefresher(){
+ const refreshLocks=new Map<string,Promise<CredentialSecret>>();
+ return async function getUsableCredential(credential:CredentialSecret,saveCallback:(updated:CredentialSecret)=>unknown|Promise<unknown>,options:OAuthRequestOptions={}):Promise<CredentialSecret> {
   if(options.signal?.aborted)throw canceledError();
-  try{await saveCallback(updated);}catch{throw new Error('갱신한 로그인 정보를 저장하지 못했어요. 계정을 다시 연결해주세요.');}
-  return updated;
- })();
- refreshLocks.set(credential.id,refresh);
- void refresh.finally(()=>{if(refreshLocks.get(credential.id)===refresh)refreshLocks.delete(credential.id);}).catch(()=>{});
- return withAbort(refresh,options.signal);
+  if(credential.data.authType!=='oauth2')return credential;
+  if(credential.provider!=='bearer')throw new Error('OAuth 로그인은 Bearer 연결 계정으로 저장해주세요.');
+  const data=credential.data;
+  const accessToken=typeof data.accessToken==='string'&&data.accessToken?data.accessToken:typeof data.token==='string'?data.token:'';
+  const expiresAt=data.expiresAt===undefined?undefined:typeof data.expiresAt==='number'?data.expiresAt:typeof data.expiresAt==='string'?Date.parse(data.expiresAt):NaN;
+  if(expiresAt!==undefined&&!Number.isFinite(expiresAt))throw new Error('로그인 만료 시각을 확인할 수 없어요. 계정을 다시 연결해주세요.');
+  if(accessToken&&(expiresAt===undefined||expiresAt>(options.now||Date.now)()+TOKEN_EXPIRY_BUFFER_MS))return {...credential,data:{...data,token:accessToken,accessToken}};
+  if(typeof data.refreshToken!=='string'||!data.refreshToken)throw new Error('로그인이 만료됐어요. 계정을 다시 연결해주세요.');
+  if(typeof credential.id!=='string'||!credential.id)throw new Error('저장된 연결 계정을 다시 선택해주세요.');
+  const existing=refreshLocks.get(credential.id);if(existing)return withAbort(existing,options.signal);
+  const refresh=(async()=>{
+   const oauth=config({name:credential.name,clientId:data.clientId,clientSecret:data.clientSecret,service:credential.service||data.service,authorizationUrl:data.authorizationUrl,tokenUrl:data.tokenUrl,scope:data.scope,tokenAuthMethod:data.tokenAuthMethod});
+   const body=new URLSearchParams({grant_type:'refresh_token',refresh_token:data.refreshToken});
+   const tokens=await requestToken(oauth.tokenUrl,body,oauth,options,refreshError);
+   const updated:CredentialSecret={...credential,data:tokenData({...data,...oauth},tokens,(options.now||Date.now)()),updatedAt:new Date((options.now||Date.now)()).toISOString()};
+   if(options.signal?.aborted)throw canceledError();
+   try{await saveCallback(updated);}catch{throw new Error('갱신한 로그인 정보를 저장하지 못했어요. 계정을 다시 연결해주세요.');}
+   return updated;
+  })();
+  refreshLocks.set(credential.id,refresh);
+  void refresh.finally(()=>{if(refreshLocks.get(credential.id)===refresh)refreshLocks.delete(credential.id);}).catch(()=>{});
+  return withAbort(refresh,options.signal);
+ };
 }

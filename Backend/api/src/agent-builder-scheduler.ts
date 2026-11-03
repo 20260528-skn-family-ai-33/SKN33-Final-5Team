@@ -2,10 +2,12 @@ import {localModelConnection,LOCAL_MODEL_ID} from './builder-local-model';
 import {builderNeedsModel} from './builder-model-requirements';
 import type {Store} from './store';
 import {builderWorker} from './agent-builder';
-const state={running:false,lastCheckAt:null as string|null,lastError:null as string|null};
+export const createBuilderScheduleState=()=>({running:false,lastCheckAt:null as string|null,lastError:null as string|null});
+const state=createBuilderScheduleState();
 export function builderScheduleHealth(){return {...state};}
 type Worker=(payload:Record<string,unknown>)=>Promise<any>;
-export function createBuilderScheduleRunner(store:Store,worker:Worker=builderWorker){
+export function createBuilderScheduleRunner(store:Store,worker:Worker=builderWorker,scheduleState=state){
+ const state=scheduleState;
  let busy=false;
  const tick=async()=>{
   if(busy)return;busy=true;state.running=true;
@@ -25,7 +27,7 @@ export function createBuilderScheduleRunner(store:Store,worker:Worker=builderWor
  };
  return {tick};
 }
-export function startBuilderScheduler(store:Store){
- const {tick}=createBuilderScheduleRunner(store);
+export function startBuilderScheduler(store:Store,scheduleState=state){
+ const {tick}=createBuilderScheduleRunner(store,builderWorker,scheduleState);
  const timer=setInterval(()=>void tick(),5000);timer.unref();void tick();return()=>clearInterval(timer);
 }

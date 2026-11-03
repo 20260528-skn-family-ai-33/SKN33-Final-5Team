@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import {Plus, HelpCircle} from 'lucide-react';
 import {ProductTour, shouldStartTour, type TourPanel} from './product-tour';
 import './workspace-chrome.css';
+import {AccountMenu} from './auth';
 
 /** One cached vector asset for all product marks and the favicon. */
 export function WorkspaceBrandMark() {
@@ -33,6 +34,7 @@ export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = 
         <WorkspaceBrandMark/><strong>A4B</strong>
       </button>
       <div className="workspace-header-actions">
+        <AccountMenu/>
         <button data-tour="help" className="as-text-button" onClick={() => setHelp(true)}>
           <HelpCircle size={16} aria-hidden="true"/>사용 안내
         </button>

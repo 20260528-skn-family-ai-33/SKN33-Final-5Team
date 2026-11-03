@@ -14,6 +14,7 @@ export type CredentialProvider = Provider;
 export async function request<T = any>(path: string, body?: unknown, method?: string): Promise<T> {
   const hasBody = body !== undefined;
   const response = await fetch(path, {
+    credentials:'same-origin',
     method: method || (hasBody ? 'POST' : 'GET'),
     headers: hasBody ? {'Content-Type': 'application/json'} : undefined,
     body: hasBody ? JSON.stringify(body) : undefined,
@@ -22,6 +23,7 @@ export async function request<T = any>(path: string, body?: unknown, method?: st
   let result: any;
   try { result = text ? JSON.parse(text) : null; }
   catch { throw new Error('응답을 읽지 못했어요. 잠시 후 다시 시도해주세요.'); }
+  if(response.status===401)window.dispatchEvent(new Event('a4b:unauthenticated'));
   if (!response.ok) throw new Error(result?.error || '요청에 실패했어요. 다시 시도해주세요.');
   return result as T;
 }

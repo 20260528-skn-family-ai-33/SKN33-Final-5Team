@@ -17,6 +17,7 @@ import {readXlsx,extractPdfText} from './document-files';
 
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const locks=new Set<string>();
+const builderLockKey=(id:string,test=false)=>dataDirectory()+':'+(test?'test:':'')+id;
 export function builderWorkerTimeout(action:string,env:NodeJS.ProcessEnv=process.env):number {
  const execution=['test','scheduled_run','retry_run','resume_run'].includes(action);
  const localDesign=['message','confirm'].includes(action)&&['ollama','vllm'].includes(env.A4B_MAIN_PROVIDER||'');
@@ -37,7 +38,7 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
    try{const dir=dataDirectory('builder-timing');mkdirSync(dir,{recursive:true,mode:0o700});timingPath=dataDirectory('builder-timing',randomUUID()+'.jsonl');}catch{}
   const timing=(event:string)=>{if(timingPath)try{appendFileSync(timingPath,JSON.stringify({event,at:Date.now()/1000})+'\n',{mode:0o600});}catch{}};
   timing('worker_start');
-  const child=spawn(python,[backendPath('service/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,A4B_TIMING_LOG:timingPath,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});
+  const child=spawn(python,[backendPath('service/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,EASYFLOW_DATA_DIR:dataDirectory(),A4B_TIMING_LOG:timingPath,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});
   let stdout='',settled=false,heartbeatBusy=false;
   let heartbeat:ReturnType<typeof setInterval>|undefined;
   const clear=()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat);};
@@ -132,19 +133,21 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  if(action==='agents'&&method==='GET'){json(res,200,await builderWorker({action:'agents'}));return true;}
  if(action==='tool_gap_replan_decision'&&method==='POST'){
   const data=parseRedesignDecisionRequest(await readBody(req,10000));
-  if(locks.has(data.id)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다.'});return true;}
-  locks.add(data.id);
+  const lockKey=builderLockKey(data.id);
+  if(locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다.'});return true;}
+  locks.add(lockKey);
   try{res.setHeader('Cache-Control','no-store');json(res,200,await builderWorker({action:'tool_gap_replan_decide',id:data.id,
    revision:data.revision,request_id:data.requestId,proposal_id:data.proposalId,decision:data.decision}));}
-  finally{locks.delete(data.id);}return true;
+  finally{locks.delete(lockKey);}return true;
  }
  if(action==='tool_gap_choice'&&method==='POST'){
   const data=parseToolGapChoiceRequest(await readBody(req,10000));
-  if(locks.has(data.id)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
-  locks.add(data.id);
+  const lockKey=builderLockKey(data.id);
+  if(locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
+  locks.add(lockKey);
   try{res.setHeader('Cache-Control','no-store');json(res,200,await builderWorker({action:'tool_gap_choice',id:data.id,
    revision:data.revision,request_id:data.requestId,gap_id:data.gapId,state_fingerprint:data.stateFingerprint,choice:data.choice}));}
-  finally{locks.delete(data.id);}
+  finally{locks.delete(lockKey);}
   return true;
  }
  if(action==='tool_gap'&&method==='GET'){
@@ -158,7 +161,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  const workerAction=action==='sessions'&&method==='POST'?'new_session':action;
  if(!['new_session','session','agent','upload','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
  if(workerAction!=='new_session'&&!idPattern.test(data.id||''))throw new Error('항목 ID를 확인하세요.');
- const lockKey=['session','agent','run'].includes(workerAction)?undefined:workerAction==='test'?'test:'+data.id:data.id;
+ const lockKey=['session','agent','run'].includes(workerAction)?undefined:builderLockKey(data.id,workerAction==='test');
  if(lockKey&&locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
  if(lockKey)locks.add(lockKey);
  try{

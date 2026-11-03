@@ -1,0 +1,77 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "A4B Cognito email login with authorization code, PKCE and managed login. No AWS credentials are issued to browsers.",
+  "Parameters": {
+    "PublicOrigin": {
+      "Type": "String",
+      "Description": "Exact application origin without a trailing slash, e.g. https://app.example.com or http://localhost:3030",
+      "AllowedPattern": "^(https://[A-Za-z0-9.-]+(:[0-9]+)?|http://(localhost|127\\.0\\.0\\.1):[0-9]+)$"
+    },
+    "DomainPrefix": {
+      "Type": "String",
+      "Description": "Globally unique Cognito domain prefix",
+      "AllowedPattern": "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
+    }
+  },
+  "Resources": {
+    "UserPool": {
+      "Type": "AWS::Cognito::UserPool",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "UserPoolName": {"Fn::Sub": "${AWS::StackName}-users"},
+        "UserPoolTier": "ESSENTIALS",
+        "DeletionProtection": "ACTIVE",
+        "UsernameAttributes": ["email"],
+        "UsernameConfiguration": {"CaseSensitive": false},
+        "AutoVerifiedAttributes": ["email"],
+        "UserAttributeUpdateSettings": {"AttributesRequireVerificationBeforeUpdate": ["email"]},
+        "Schema": [{"Name": "email", "AttributeDataType": "String", "Required": true, "Mutable": true}],
+        "AdminCreateUserConfig": {"AllowAdminCreateUserOnly": false},
+        "AccountRecoverySetting": {"RecoveryMechanisms": [{"Name": "verified_email", "Priority": 1}]},
+        "Policies": {"PasswordPolicy": {"MinimumLength": 12, "RequireLowercase": true, "RequireUppercase": true, "RequireNumbers": true, "RequireSymbols": true, "TemporaryPasswordValidityDays": 1}},
+        "EmailConfiguration": {"EmailSendingAccount": "COGNITO_DEFAULT"},
+        "VerificationMessageTemplate": {"DefaultEmailOption": "CONFIRM_WITH_CODE"},
+        "UserPoolTags": {"project": "a4b"}
+      }
+    },
+    "AppClient": {
+      "Type": "AWS::Cognito::UserPoolClient",
+      "Properties": {
+        "ClientName": "a4b-web",
+        "UserPoolId": {"Ref": "UserPool"},
+        "GenerateSecret": false,
+        "SupportedIdentityProviders": ["COGNITO"],
+        "AllowedOAuthFlowsUserPoolClient": true,
+        "AllowedOAuthFlows": ["code"],
+        "AllowedOAuthScopes": ["openid", "email", "profile"],
+        "CallbackURLs": [{"Fn::Sub": "${PublicOrigin}/auth/callback"}],
+        "LogoutURLs": [{"Fn::Sub": "${PublicOrigin}/"}],
+        "PreventUserExistenceErrors": "ENABLED",
+        "EnableTokenRevocation": true,
+        "AccessTokenValidity": 15,
+        "IdTokenValidity": 15,
+        "RefreshTokenValidity": 1,
+        "TokenValidityUnits": {"AccessToken": "minutes", "IdToken": "minutes", "RefreshToken": "days"},
+        "RefreshTokenRotation": {"Feature": "ENABLED", "RetryGracePeriodSeconds": 10},
+        "ReadAttributes": ["email", "email_verified", "name"],
+        "WriteAttributes": ["email", "name"]
+      }
+    },
+    "Domain": {
+      "Type": "AWS::Cognito::UserPoolDomain",
+      "Properties": {"Domain": {"Ref": "DomainPrefix"}, "UserPoolId": {"Ref": "UserPool"}, "ManagedLoginVersion": 2}
+    },
+    "Branding": {
+      "Type": "AWS::Cognito::ManagedLoginBranding",
+      "DependsOn": "Domain",
+      "Properties": {"UserPoolId": {"Ref": "UserPool"}, "ClientId": {"Ref": "AppClient"}, "UseCognitoProvidedValues": true}
+    }
+  },
+  "Outputs": {
+    "UserPoolId": {"Value": {"Ref": "UserPool"}},
+    "ClientId": {"Value": {"Ref": "AppClient"}},
+    "Domain": {"Value": {"Fn::Sub": "https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com"}},
+    "PublicOrigin": {"Value": {"Ref": "PublicOrigin"}}
+  }
+}

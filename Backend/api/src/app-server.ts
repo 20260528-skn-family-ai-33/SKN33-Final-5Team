@@ -7,6 +7,7 @@ import {PostgresAuthUsers,SqliteAuthUsers,type AuthUsers} from './auth-users';
 import {CognitoAuth,AuthError,authJson} from './cognito-auth';
 import {baseDataDirectory,frontendPath,withDataDirectory} from './paths';
 import {createWorkspaceRuntime} from './workspace-runtime';
+import {validateWorkspaceFiles} from './workspace-files';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Runtime=ReturnType<typeof createWorkspaceRuntime>;
@@ -41,6 +42,7 @@ async function frontend(req:IncomingMessage,res:ServerResponse,path:string){
 export function createApplication(options:{port:number;config?:AuthConfig;auth?:CognitoAuth;users?:AuthUsers;restore?:boolean}){
  const config=options.config||options.auth?.config,users=options.users||options.auth?.users||(config?(config.userStore==='postgres'?new PostgresAuthUsers(config):new SqliteAuthUsers(baseDataDirectory())):undefined);
  const auth=options.auth||(config&&users?new CognitoAuth(config,users):undefined),registry=new WorkspaceRegistry(options.port,!!auth,config?.origin);
+ validateWorkspaceFiles(!!auth);
  if(options.restore!==false)registry.restore();
  const server=createServer(async(req,res)=>{
   try{

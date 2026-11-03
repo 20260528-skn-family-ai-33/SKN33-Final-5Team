@@ -24,6 +24,7 @@
     "tool-lab:gap": "node --import tsx Backend/api/src/tool-lab/gap-cli.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1161.0",
     "@base-ui/react": "^1.7.0",
     "@hookform/resolvers": "^5.7.1",
     "@langchain/core": "1.2.17",

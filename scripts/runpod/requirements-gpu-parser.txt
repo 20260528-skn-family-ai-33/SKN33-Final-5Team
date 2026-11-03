@@ -1,0 +1,5 @@
+# GPU layout/OCR server on the RunPod pod (scripts/runpod/gpu_parser_server.py).
+# Same PaddleOCR/PaddleX versions as the Docker CPU parser (Backend/requirements/paddle-cpu.txt).
+# paddlepaddle-gpu is installed separately by start-runpod-qwen-parser.sh from Paddle's CUDA 12.6 package index.
+paddleocr==3.7.0
+paddlex==3.7.2

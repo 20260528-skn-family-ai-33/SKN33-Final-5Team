@@ -13,6 +13,7 @@ import {localModelConnection,localModelHealth,LOCAL_MODEL_ID} from './builder-lo
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {Store} from './store';
 import {parseCsv} from './binary';
+import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {readXlsx,extractPdfText} from './document-files';
 
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,7 +64,13 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
   child.on('close',()=>{
    if(settled)return;
    timing('worker_exit');
-   try{const data=JSON.parse(stdout.trim());if(!data.ok){void fail(data.error||'에이전트 실행에 실패했습니다.');return;}settled=true;clear();accept(data.result);}
+   try{const data=JSON.parse(stdout.trim());if(!data.ok){void fail(data.error||'에이전트 실행에 실패했습니다.');return;}settled=true;clear();
+    // The worker has committed the run and produced the local report before returning.
+    const report=data.result?.artifact?.content;
+    if(execution&&workspaceFilesEnabled&&data.result?.report_path&&typeof report==='string'){
+     const bytes=Buffer.from(report,'utf8');
+     void saveWorkspaceFile(binaryObjectPath('results',bytes),bytes).then(()=>accept(data.result),reject);
+    }else accept(data.result);}
    catch{void fail('에이전트 응답을 읽지 못했습니다. 실행 기록과 Python 환경을 확인하세요.');}
   });
   child.stdin.end(JSON.stringify({...workerPayload,directory:dataDirectory()}));
@@ -112,7 +119,13 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
   const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');
-  let content:Buffer;try{content=await readFile(dataDirectory(run.report_path));}catch{throw new Error('서버 보고서 파일을 찾지 못했습니다. 실행 기록을 확인하세요.');}
+  const legacy=()=>readFile(dataDirectory(run.report_path)).catch(()=>{throw new Error('서버 보고서 파일을 찾지 못했습니다. 실행 기록을 확인하세요.');});
+  const report=run.artifact?.content;
+  let content:Buffer;
+  if(workspaceFilesEnabled&&typeof report==='string'){
+   const bytes=Buffer.from(report,'utf8');
+   content=await readWorkspaceFile(binaryObjectPath('results',bytes),()=>bytes);
+  }else content=await legacy();
   res.writeHead(200,{'Content-Type':run.artifact?.mime||'application/octet-stream','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(run.artifact?.name||'report.csv')}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;
  }
  if(['approved_replies','review_report'].includes(action)&&method==='GET'){
@@ -122,7 +135,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   else {const {run}=await builderWorker({action:'run',id});if(!run.reviews?.length)throw new Error('검수 보고서가 없습니다.');artifact={name:'검수_보고서_'+id+'.json',mime:'application/json; charset=utf-8',content:JSON.stringify({id:run.id,agent_version:run.agent_version,source_version:run.source_version,created_at:run.created_at,status:run.status,reviews:run.reviews},null,2)};}
   res.writeHead(200,{'Content-Type':artifact.mime,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(artifact.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(artifact.content);return true;
  }
- if(action==='original'&&method==='GET'){const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');const {asset}=await builderWorker({action:'asset',id});if(!/^builder-originals\/[a-f0-9]{64}\.[a-z0-9]+$/.test(asset.original_path||''))throw new Error('원본 파일이 없는 이전 자료입니다. 다시 연결하세요.');const content=await readFile(dataDirectory(asset.original_path));res.writeHead(200,{'Content-Type':originalMime(asset.format),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;}
+ if(action==='original'&&method==='GET'){const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');const {asset}=await builderWorker({action:'asset',id});if(!/^builder-originals\/[a-f0-9]{64}\.[a-z0-9]+$/.test(asset.original_path||''))throw new Error('원본 파일이 없는 이전 자료입니다. 다시 연결하세요.');const content=await readWorkspaceFile(asset.original_path,()=>readFile(dataDirectory(asset.original_path)));res.writeHead(200,{'Content-Type':originalMime(asset.format),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;}
  if(action==='nodes'&&method==='GET'){json(res,200,await builderWorker({action:'nodes'}));return true;}
  if(action==='nodes'&&method==='POST'){
   const data=await readBody(req,50000);
@@ -194,7 +207,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     payload.api_key=credential.data.apiKey||credential.data.token;
    }
   }
-  if(['upload','run_upload','source_upload'].includes(workerAction)){Object.assign(payload,await parseBuilderAsset(data));const relative='builder-originals/'+payload.asset.hash+'.'+payload.asset.format;await mkdir(dataDirectory('builder-originals'),{recursive:true});await writeFile(dataDirectory(relative),Buffer.from(data.data,'base64'));payload.asset.original_path=relative;payload.asset.version=1;payload.asset.processing_status=payload.asset.parser_status==='partial'?'partial':'ready';}
+  if(['upload','run_upload','source_upload'].includes(workerAction)){Object.assign(payload,await parseBuilderAsset(data));const relative='builder-originals/'+payload.asset.hash+'.'+payload.asset.format;const bytes=Buffer.from(data.data,'base64');await saveWorkspaceFile(relative,bytes);await mkdir(dataDirectory('builder-originals'),{recursive:true});await writeFile(dataDirectory(relative),bytes);payload.asset.original_path=relative;payload.asset.version=1;payload.asset.processing_status=payload.asset.parser_status==='partial'?'partial':'ready';}
   if(workerAction==='test'&&data.replyDraft!==undefined){if(typeof data.replyDraft!=='string'||data.replyDraft.length>12000)throw new Error('검수 초안은 12,000자 이하로 입력하세요.');payload.reply_draft=data.replyDraft;}
   if(workerAction==='review_decision'){
    if(typeof data.reviewId!=='string'||!/^[-\w]+:\d+$/.test(data.reviewId)||data.reviewId.length>60)throw new Error('검수 항목 ID를 확인하세요.');

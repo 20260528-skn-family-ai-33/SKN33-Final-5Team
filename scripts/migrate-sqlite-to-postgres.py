@@ -190,16 +190,18 @@ def copy_python_checkpoints(conninfo, workspace, business):
         for item in tuples:
             conf = item.config['configurable']
             key = (conf['thread_id'], conf.get('checkpoint_ns', ''), conf['checkpoint_id'])
-            if key in existing:
-                continue
             parent = item.parent_config or {'configurable': {'thread_id': conf['thread_id'], 'checkpoint_ns': conf.get('checkpoint_ns', '')}}
-            saved = saver.put(parent, item.checkpoint, item.metadata, dict(item.checkpoint.get('channel_versions', {})))
             writes = defaultdict(list)
             for task_id, channel, value in item.pending_writes or []:
                 writes[task_id].append((channel, value))
-            for task_id, values in writes.items():
-                saver.put_writes(saved, values, task_id)
-            count += 1
+            # Existing checkpoints are rewritten too: put/put_writes are upserts, so a rerun
+            # after an interrupted copy restores pending writes (e.g. __interrupt__) it missed.
+            # One transaction per checkpoint keeps a checkpoint and its writes together.
+            with connection.transaction():
+                saved = saver.put(parent, item.checkpoint, item.metadata, dict(item.checkpoint.get('channel_versions', {})))
+                for task_id, values in writes.items():
+                    saver.put_writes(saved, values, task_id)
+            count += key not in existing
         return count
 
 

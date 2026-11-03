@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import {storageConfig,workerLimits} from '../src/storage-config';
+import {storageConfig,workerLimits,checkBuilderDatabase} from '../src/storage-config';
+import {spawnSync} from 'node:child_process';
+import {API_ROOT} from '../src/paths';
 import {WorkerSlots} from '../src/worker-slots';
 import {PostgresCheckpointSaver} from '../src/graph-checkpointer';
 import {createAgentGraph,orchestrateWorkflow} from '../src/agents';
@@ -68,4 +70,43 @@ test('assistant checkpoints persist in PostgreSQL per workspace',{skip:!testUrl&
    assert.equal((await client.query('SELECT count(*)::int AS n FROM a4b_builder.agent_checkpoints')).rows[0].n,0);await client.query('ROLLBACK');}
   finally{client.release();}
  }finally{await pool.end();}
+});
+
+test('a failed first checkpoint load is retried on the next request',async()=>{
+ let attempts=0;
+ const client={query:async(sql:string)=>({rows:[]}),release:()=>{}};
+ const pool:any={connect:async()=>{attempts++;if(attempts===1)throw new Error('RDS briefly unreachable');return client;}};
+ const saver=new PostgresCheckpointSaver(pool,'local');
+ const config={configurable:{thread_id:'t1'}};
+ await assert.rejects(saver.getTuple(config),/unreachable/);
+ assert.equal(await saver.getTuple(config),undefined);
+ assert.equal(attempts,2);
+});
+test('startup refuses an unreachable business-data DB',async()=>{
+ const pool:any={query:async()=>{throw new Error('ECONNREFUSED');}};
+ await assert.rejects(checkBuilderDatabase({kind:'postgres',databaseUrl:'postgresql://app@127.0.0.1:1/a4b'},pool),/접속하지 못했습니다/);
+ await checkBuilderDatabase({kind:'sqlite'});
+});
+test('preflight exits non-zero before serving when the DB is unreachable',()=>{
+ const child=spawnSync(process.execPath,['--import','tsx','src/index.ts','--preflight'],{cwd:API_ROOT,encoding:'utf8',timeout:60000,
+  env:{...process.env,A4B_STORAGE:'postgres',A4B_DATABASE_URL:'postgresql://app@127.0.0.1:1/a4b',EASYFLOW_PUBLIC_URL:'',A4B_AUTH_MODE:'off'}});
+ assert.notEqual(child.status,0);assert.match(child.stderr,/접속하지 못했습니다/);
+ const sqlite=spawnSync(process.execPath,['--import','tsx','src/index.ts','--preflight'],{cwd:API_ROOT,encoding:'utf8',timeout:60000,
+  env:{...process.env,A4B_STORAGE:'sqlite',EASYFLOW_PUBLIC_URL:'https://service.example.com',A4B_AUTH_MODE:'off'}});
+ assert.notEqual(sqlite.status,0);assert.match(sqlite.stderr,/로컬 개발에서만/);
+});
+test('startup accepts only a migrated schema and an account bound by row-level security',{skip:!testUrl&&'A4B_TEST_DATABASE_URL이 없으면 건너뜁니다.'},async()=>{
+ const config={kind:'postgres' as const,databaseUrl:testUrl!};
+ const admin=new pg.Pool({connectionString:testUrl,max:1});
+ const url=new URL(testUrl!);url.username='a4b_test_app';url.password='a4b-test-app';
+ const app=new pg.Pool({connectionString:url.toString(),max:1});
+ try{
+  await assert.rejects(checkBuilderDatabase(config,admin),/행 수준 보안을 우회/);
+  await checkBuilderDatabase(config,app);
+  // Pretend migration 002 was never applied.
+  const {rows:[latest]}=await admin.query('DELETE FROM a4b_builder.schema_migrations WHERE version=2 RETURNING version,name,applied_at');
+  try{await assert.rejects(checkBuilderDatabase(config,app),/스키마가 최신이 아니거나/);}
+  finally{await admin.query('INSERT INTO a4b_builder.schema_migrations(version,name,applied_at) VALUES($1,$2,$3)',[latest.version,latest.name,latest.applied_at]);}
+  await checkBuilderDatabase(config,app);
+ }finally{await admin.end();await app.end();}
 });

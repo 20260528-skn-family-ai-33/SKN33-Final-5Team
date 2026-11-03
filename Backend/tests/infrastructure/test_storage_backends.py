@@ -363,3 +363,94 @@ def test_migration_copies_workspaces_once(tmp_path, monkeypatch, postgres_app_co
         store.close()
         database.close_pools()
         database.use_conninfo(None)
+
+
+def test_cancel_during_claim_never_runs_the_cancelled_job(backend, tmp_path):
+    """A test job cancelled while claim_due holds it must not be returned as running."""
+    import threading
+    folder = workspace(tmp_path)
+    store, _, agent_id = seed(folder)
+    job = Schedules(store).enqueue_test(agent_id, 0)
+    store.close()
+    claimer = Storage(folder)
+    outcome = {}
+
+    def cancel():
+        other = Storage(folder)
+        try:
+            outcome['cancel'] = Schedules(other).cancel_test(agent_id, job['id'])['status']
+        except ValueError as error:
+            outcome['cancel'] = str(error)
+        finally:
+            other.close()
+    original, started = claimer.db.execute, []
+
+    def execute(sql, params=()):
+        result = original(sql, params)
+        # Right after claim_due has read the candidate job, a second connection cancels it.
+        if not started and 'ORDER BY {seq} LIMIT 1' in sql:
+            thread = threading.Thread(target=cancel)
+            thread.start()
+            thread.join(timeout=1)  # blocks behind the claim's write lock on both backends
+            started.append(thread)
+        return result
+    claimer.db.execute = execute
+    try:
+        claimed = Schedules(claimer).claim_due(datetime.now(timezone.utc) + timedelta(seconds=30))
+    finally:
+        claimer.db.execute = original
+        claimer.close()
+    started[0].join(timeout=15)
+    check = Storage(folder)
+    try:
+        [stored] = Schedules(check).jobs(agent_id)
+    finally:
+        check.close()
+    if claimed:
+        assert stored['status'] == 'running' and outcome['cancel'] != 'cancelled'
+    else:
+        assert stored['status'] == 'cancelled' and outcome['cancel'] == 'cancelled'
+
+
+@pytest.mark.skipif(not TEST_URL, reason='A4B_TEST_DATABASE_URL이 없으면 이전 스크립트 실DB 검증을 건너뜁니다.')
+def test_interrupted_checkpoint_copy_is_completed_by_a_rerun(tmp_path, monkeypatch, postgres_app_conninfo):
+    """A copy that stops after a checkpoint but before its writes must restore them on rerun."""
+    import psycopg
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from langgraph.types import interrupt
+    from typing import TypedDict
+    from langgraph.graph import StateGraph, START, END
+    monkeypatch.delenv('A4B_STORAGE', raising=False)
+    folder = workspace(tmp_path / 'data')
+    store = Storage(folder)
+
+    class State(TypedDict):
+        answer: str
+    graph = StateGraph(State)
+    graph.add_node('ask', lambda state: {'answer': interrupt('기준 점수를 알려주세요.')})
+    graph.add_edge(START, 'ask')
+    graph.add_edge('ask', END)
+    connection = checkpoint_connection(store)
+    compiled = graph.compile(checkpointer=checkpointer(connection))
+    compiled.invoke({'answer': ''}, THREAD)
+    source = [w for t in compiled.checkpointer.list(None) for w in t.pending_writes or []]
+    connection.close()
+    store.close()
+    assert any(channel == '__interrupt__' for _, channel, _ in source)
+
+    migrator = load_migrator()
+    original = PostgresSaver.put_writes
+    def lost_connection(self, config, writes, task_id, *args, **kwargs):
+        # The checkpoint itself was saved; the connection drops before its pending interrupt.
+        if any(channel == '__interrupt__' for channel, _ in writes):
+            raise psycopg.OperationalError('connection lost during copy')
+        return original(self, config, writes, task_id, *args, **kwargs)
+    monkeypatch.setattr(PostgresSaver, 'put_writes', lost_connection)
+    with pytest.raises(psycopg.OperationalError):
+        migrator.copy_workspace(postgres_app_conninfo, folder.name, folder)
+    monkeypatch.setattr(PostgresSaver, 'put_writes', original)
+    migrator.copy_workspace(postgres_app_conninfo, folder.name, folder)
+    with psycopg.connect(postgres_app_conninfo, autocommit=True) as target:
+        target.execute("SELECT set_config('a4b.workspace_id',%s,false)", (folder.name,))
+        copied = target.execute("SELECT count(*) FROM checkpoint_writes WHERE thread_id='shared-thread' AND channel='__interrupt__'").fetchone()[0]
+    assert copied == sum(1 for _, channel, _ in source if channel == '__interrupt__')

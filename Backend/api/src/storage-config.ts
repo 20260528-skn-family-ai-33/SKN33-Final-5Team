@@ -45,3 +45,27 @@ export function builderDatabase(config:Extract<StorageConfig,{kind:'postgres'}>)
  return pool;
 }
 export async function closeBuilderDatabase(){const current=pool;pool=undefined;await current?.end();}
+
+// Must match REQUIRED_SCHEMA_VERSION in Backend/infrastructure/persistence/db.py.
+export const REQUIRED_SCHEMA_VERSION=2;
+/**
+ * Connects as the app account before the server takes traffic: the schema must be migrated,
+ * the account must not bypass row-level security, and it must be able to use the tables.
+ * Without this an unreachable or unmigrated RDS would pass the health check.
+ */
+export async function checkBuilderDatabase(config:StorageConfig,database:pg.Pool|undefined=config.kind==='postgres'?builderDatabase(config):undefined){
+ if(config.kind!=='postgres'||!database)return;
+ let row:any;
+ try{
+  ({rows:[row]}=await database.query(`SELECT r.rolsuper OR r.rolbypassrls AS bypass,
+   to_regclass('a4b_builder.schema_migrations') IS NOT NULL AS migrated,
+   has_schema_privilege(current_user,'a4b_builder','USAGE') AS usage
+   FROM pg_roles r WHERE r.rolname=current_user`));
+ }catch{throw new Error('업무 데이터 DB에 접속하지 못했습니다. A4B_DATABASE_URL·CA 파일·네트워크를 확인하세요.');}
+ if(!row||row.bypass)throw new Error('업무 데이터 DB 계정이 행 수준 보안을 우회할 수 있습니다. superuser나 BYPASSRLS가 아닌 앱 전용 계정으로 접속하세요.');
+ const version=row.migrated&&row.usage?Number((await database.query('SELECT max(version) AS v FROM a4b_builder.schema_migrations')).rows[0]?.v):NaN;
+ if(!(version>=REQUIRED_SCHEMA_VERSION))throw new Error(`업무 데이터 DB 스키마가 최신이 아니거나 권한이 없습니다(필요 ${REQUIRED_SCHEMA_VERSION}). scripts/apply-builder-migrations.py와 a4b_app 권한을 확인하세요.`);
+ const {rows:[access]}=await database.query(`SELECT bool_and(has_table_privilege(current_user,'a4b_builder.'||t,'SELECT,INSERT,UPDATE,DELETE')) AS ok
+  FROM unnest(ARRAY['builder_sessions','agent_tests','builder_schedule_jobs','agent_checkpoints','checkpoints','checkpoint_writes']) t`);
+ if(!access?.ok)throw new Error('업무 데이터 DB 계정에 a4b_builder 표 읽기·쓰기 권한이 없습니다. a4b_app 역할을 부여하세요.');
+}

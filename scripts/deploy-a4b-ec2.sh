@@ -87,20 +87,43 @@ else
 
     # Docker's env-file format is one assignment per line. Abort before cutover if
     # the running container's configuration cannot be represented without changes.
+    # $state/env-overrides (root-only, KEY=VALUE per line) adds or replaces settings, e.g.
+    # A4B_STORAGE=postgres after the business-data migration (README "업무 데이터 저장소").
+    overrides="$state/env-overrides"
+    if [[ -e "$overrides" && $(stat -c '%u %a' "$overrides") != '0 600' ]]; then
+        echo "$overrides must be owned by root with mode 600." >&2
+        exit 1
+    fi
     docker inspect -f '{{json .Config.Env}}' "$old_id" | python3 -c '
-import json, sys
+import json, os, re, sys
 values = json.load(sys.stdin)
 if not all("=" in value and "\n" not in value and "\r" not in value for value in values):
     raise SystemExit("Unsupported container environment format")
 if "EASYFLOW_PUBLIC_URL=" + sys.argv[1] not in values or "PORT=3041" not in values:
     raise SystemExit("Running container does not match the expected A4B deployment")
-print("\n".join(values))
-' "$public_url" > "$env_file"
+settings = dict(value.split("=", 1) for value in values)
+if os.path.exists(sys.argv[2]):
+    for line in open(sys.argv[2], encoding="utf-8").read().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or key in ("EASYFLOW_PUBLIC_URL", "PORT"):
+            raise SystemExit("Unsupported line in env-overrides: " + key)
+        settings[key] = value
+print("\n".join(key + "=" + value for key, value in settings.items()))
+' "$public_url" "$overrides" > "$env_file"
 
     if ! docker image inspect "$image" >/dev/null 2>&1; then
         registry=${image%%/*}
         aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry"
         docker pull "$image"
+    fi
+    # The new image checks its own settings and connects to the business-data DB (schema
+    # version, row-level security, privileges) before the running container is stopped.
+    # A missing A4B_STORAGE=postgres or an unmigrated RDS stops the deploy here.
+    if ! docker run --rm --network host --env-file "$env_file" "${mount_args[@]}" "$image" node Backend/api/build-server/index.mjs --preflight; then
+        echo 'Preflight failed; the running A4B container was left unchanged.' >&2
+        exit 1
     fi
     new_id=$(docker create --network host --restart unless-stopped --env-file "$env_file" "${mount_args[@]}" "$image")
     if [[ "$mode" == test && -z "$baseline" ]]; then

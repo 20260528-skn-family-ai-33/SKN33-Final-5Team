@@ -31,10 +31,15 @@ export class SqliteCheckpointSaver extends MemorySaver {
  * Loading is asynchronous, so every read and write first waits for it.
  */
 export class PostgresCheckpointSaver extends MemorySaver {
- private ready:Promise<void>;
+ private loading?:Promise<void>;
  private pendingWrites=new Map<string,Promise<void>>();
- constructor(private pool:pg.Pool,private workspaceId:string){
-  super();this.ready=this.load();this.ready.catch(()=>{});
+ constructor(private pool:Pick<pg.Pool,'connect'>,private workspaceId:string){
+  super();this.ready().catch(()=>{});
+ }
+ /** A failed load is forgotten, so the next request retries instead of failing forever. */
+ private ready(){
+  this.loading??=this.load().catch(error=>{this.loading=undefined;throw error;});
+  return this.loading;
  }
  private async query(sql:string,params:unknown[]){
   const client=await this.pool.connect();
@@ -59,12 +64,12 @@ export class PostgresCheckpointSaver extends MemorySaver {
   void next.finally(()=>{if(this.pendingWrites.get(id)===next)this.pendingWrites.delete(id);}).catch(()=>{});
   return next;
  }
- override async getTuple(...args:Parameters<MemorySaver['getTuple']>):ReturnType<MemorySaver['getTuple']>{await this.ready;return super.getTuple(...args);}
- override async *list(...args:Parameters<MemorySaver['list']>):ReturnType<MemorySaver['list']>{await this.ready;yield* super.list(...args);}
- override async put(...args:Parameters<MemorySaver['put']>):ReturnType<MemorySaver['put']>{await this.ready;const config=await super.put(...args);await this.persist(String(config.configurable?.thread_id));return config;}
- override async putWrites(...args:Parameters<MemorySaver['putWrites']>):ReturnType<MemorySaver['putWrites']>{await this.ready;await super.putWrites(...args);await this.persist(String(args[0].configurable?.thread_id));}
+ override async getTuple(...args:Parameters<MemorySaver['getTuple']>):ReturnType<MemorySaver['getTuple']>{await this.ready();return super.getTuple(...args);}
+ override async *list(...args:Parameters<MemorySaver['list']>):ReturnType<MemorySaver['list']>{await this.ready();yield* super.list(...args);}
+ override async put(...args:Parameters<MemorySaver['put']>):ReturnType<MemorySaver['put']>{await this.ready();const config=await super.put(...args);await this.persist(String(config.configurable?.thread_id));return config;}
+ override async putWrites(...args:Parameters<MemorySaver['putWrites']>):ReturnType<MemorySaver['putWrites']>{await this.ready();await super.putWrites(...args);await this.persist(String(args[0].configurable?.thread_id));}
  override async deleteThread(id:string){
-  await this.ready;await super.deleteThread(id);await this.pendingWrites.get(id)?.catch(()=>{});
+  await this.ready();await super.deleteThread(id);await this.pendingWrites.get(id)?.catch(()=>{});
   await this.query('DELETE FROM a4b_builder.agent_checkpoints WHERE workspace_id=$1 AND thread_id=$2',[this.workspaceId,id]);
  }
  async close(){await Promise.allSettled(this.pendingWrites.values());}

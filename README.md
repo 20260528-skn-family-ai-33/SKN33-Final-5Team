@@ -495,7 +495,7 @@ npm run demo
 
 ### 스키마 적용
 
-앱은 PostgreSQL 표를 직접 만들지 않습니다. 스키마는 [infrastructure/db/migrations](infrastructure/db/migrations)의 SQL 파일로 관리하고, 새 마이그레이션이 생길 때마다 관리자 계정으로 한 번 적용합니다. 앱은 시작할 때 적용 여부만 확인하고, 안 되어 있으면 안내 메시지를 내고 멈춥니다. 앱 접속 계정은 [prerequisites.sql](infrastructure/db/prerequisites.sql)의 `a4b_app` 역할 멤버여야 합니다.
+앱은 PostgreSQL 표를 직접 만들지 않습니다. 스키마는 [infrastructure/db/migrations](infrastructure/db/migrations)의 SQL 파일로 관리하고, 새 마이그레이션이 생길 때마다 관리자 계정으로 한 번 적용합니다. 앱은 트래픽을 받기 전에 앱 계정으로 접속해 스키마 버전, 행 수준 보안 우회 여부, 표 권한을 확인하고, 하나라도 맞지 않으면 시작하지 않습니다. 그래서 RDS에 접속할 수 없을 때 `/api/health`가 통과하는 일이 없습니다. `node Backend/api/build-server/index.mjs --preflight`는 이 확인만 하고 끝납니다. 앱 접속 계정은 [prerequisites.sql](infrastructure/db/prerequisites.sql)의 `a4b_app` 역할 멤버여야 합니다.
 
 ```bash
 # EC2: 스키마를 만들 수 있는 관리자 주소. 앱의 A4B_DATABASE_URL과 다른 계정이어야 합니다.
@@ -513,7 +513,11 @@ docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /a
 1. 앱을 멈추고 `a4b-data` 볼륨을 백업합니다.
 2. `--dry-run`으로 작업 공간·표별 건수를 확인합니다. dry-run은 PostgreSQL에 접속하지 않습니다.
 3. 위의 스키마 적용을 마친 뒤 실제로 복사합니다. 앱 계정(`A4B_DATABASE_URL`)으로 접속하고, 작업 공간마다 한 트랜잭션으로 넣습니다.
-4. `.env.aws`의 `A4B_STORAGE=postgres`로 앱을 다시 시작하고 로그인해 자료를 확인합니다.
+4. `A4B_STORAGE=postgres`를 적용하고 로그인해서 자료를 확인합니다.
+   - `docker compose --env-file .env.aws`로 운영하면 `.env.aws`에 넣고 다시 시작합니다.
+   - GitHub Actions EC2 자동 배포(`scripts/deploy-a4b-ec2.sh`)는 실행 중인 컨테이너의 환경을 복사합니다. 그래서 EC2의 `/var/lib/a4b-deploy/env-overrides`(root 소유, 권한 600, 한 줄에 `KEY=VALUE`)에 `A4B_STORAGE=postgres`를 넣은 뒤 배포를 실행합니다.
+
+자동 배포는 기존 컨테이너를 멈추기 전에 새 이미지로 `--preflight`를 실행합니다. `A4B_STORAGE`가 없거나, 스키마·데이터 이전 전이거나, RDS에 접속할 수 없으면 배포를 멈추고 기존 컨테이너를 그대로 둡니다. 따라서 이 변경을 병합한 뒤 첫 배포 전에 위 1~4단계를 마쳐야 합니다.
 
 ```bash
 docker compose --env-file .env.aws run --rm app /app/Backend/.venv-agent/bin/python /app/scripts/migrate-sqlite-to-postgres.py --dry-run

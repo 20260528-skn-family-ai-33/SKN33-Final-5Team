@@ -84,11 +84,16 @@ class Schedules:
         job={'id':id,'agent_id':agent_id,'agent_snapshot':agent,'kind':'schedule_test','due_at':due,'created_at':now()}
         self.db.execute('INSERT INTO builder_schedule_jobs({wsc}id,agent_id,slot_key,state,lease_until,lease_token,json) VALUES({wsv}?,?,?,\'queued\',NULL,NULL,?)',(id,agent_id,'test:'+id,json.dumps(job,ensure_ascii=False)));self.db.commit();return job
     def cancel_test(self,agent_id,job_id):
+        # Same write lock as claim_due: a claim that already read this job finishes first.
+        self.storage.begin_write()
+        try:return self._cancel_test(agent_id,job_id)
+        except Exception:self.db.rollback();raise
+    def _cancel_test(self,agent_id,job_id):
         row=self.db.execute("SELECT json,state FROM builder_schedule_jobs WHERE {ws} AND id=? AND agent_id=?",(job_id,agent_id)).fetchone()
         if not row:raise ValueError("해당 자동화의 시험 예약을 찾을 수 없습니다.")
         job=json.loads(row[0])
         if job["kind"]!="schedule_test":raise ValueError("정규 예약은 예약 중지 버튼을 사용하세요.")
-        if row[1]=="cancelled":return {**job,"status":"cancelled"}
+        if row[1]=="cancelled":self.db.commit();return {**job,"status":"cancelled"}
         job["finished_at"]=now()
         changed=self.db.execute("UPDATE builder_schedule_jobs SET state='cancelled',json=? WHERE {ws} AND id=? AND agent_id=? AND state='queued'",(json.dumps(job,ensure_ascii=False),job_id,agent_id))
         if not changed.rowcount:raise ValueError("이미 실행 중이거나 종료된 예약은 취소할 수 없습니다.")
@@ -108,8 +113,9 @@ class Schedules:
                 job=json.loads(body)
                 if job['due_at']>stamp:continue
                 token=uid();lease=(current+timedelta(minutes=5)).isoformat()
-                self.db.execute("UPDATE builder_schedule_jobs SET state='running',lease_token=?,lease_until=? WHERE {ws} AND id=?",(token,lease,id))
-                jobs.append({**job,'lease_token':token})
+                # Re-check eligibility in the UPDATE itself and hand out only rows it changed.
+                changed=self.db.execute("UPDATE builder_schedule_jobs SET state='running',lease_token=?,lease_until=? WHERE {ws} AND id=? AND (state='queued' OR (state='running' AND lease_until<=?))",(token,lease,id,stamp))
+                if changed.rowcount==1:jobs.append({**job,'lease_token':token})
             self.db.commit();return jobs
         except Exception:self.db.rollback();raise
     def heartbeat(self,id,token,current=None):

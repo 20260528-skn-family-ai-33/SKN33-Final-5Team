@@ -72,7 +72,9 @@ def choice_options(key, state):
     return []
 
 
-SUPPORTED_OPERATION_NAMES = {'filter', 'deduplicate', 'schedule', 'output', 'sort'} | {tool['id'] for tool in TOOLS}
+_INVENTED_ACTION = re.compile(r'[A-Za-z][A-Za-z0-9]*(?:[_.][A-Za-z0-9]+)+')
+
+SUPPORTED_OPERATION_NAMES ={'filter', 'deduplicate', 'schedule', 'output', 'sort'} | {tool['id'] for tool in TOOLS}
 
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
@@ -497,6 +499,8 @@ def explicit_policies(state, catalog):
                 'evidence_ids':[refs[0]['id']],'evidence':[refs[0]],'extraction':'literal_column_rule'}
         for key, pattern, mapping in patterns:
             for match in re.finditer(pattern, message['content'], re.IGNORECASE):
+                if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
+                    continue  # the named range is dropped; leave the operator to a question
                 tail = message['content'][match.end():match.end() + 16]
                 negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
                 token = re.sub(r'\s+', ' ', match.group(1))
@@ -508,6 +512,13 @@ def explicit_policies(state, catalog):
                 per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
+        for key, value, span in schedule_literals(text):
+            refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
+            if not refs: continue
+            conflict = value == 'conflict'
+            per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
+                             'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
+                             'evidence': [refs[0]], 'extraction': 'literal_schedule_rule'}
         for key, value, span in policy_clauses(text, columns):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
             if not refs: continue
@@ -555,6 +566,76 @@ def literal_condition_issues(state):
     return issues
 
 
+# "100만원 미만인 행은 빼고" removes the named range, so the kept rows are the opposite of "미만".
+# Live 2026-11-03 (qwen3.5:4b): this sentence was confirmed as lt and kept the wrong rows.
+# The clause ends at punctuation, a keep verb or a following empty/duplicate policy clause,
+# so "미만인 행만 남기고 빈 값은 제외" stays lt. The inverted meaning is asked, never guessed.
+_RANGE_CLAUSE_END = re.compile(r'[.!?,\n]|남기|남겨|남긴|골라|고르|뽑|추려|빈\s*(?:값|칸)|빈\s|결측|중복')
+_RANGE_EXCLUSION = re.compile(r'빼|제외|말고|지우|지워|삭제|버리|버려|없애|걸러')
+
+
+_MONTHLY_SCHEDULE = re.compile(r'매월|매달|매년|월간\s*(?:예약|실행|반복)|cron|크론', re.I)
+_DAILY = re.compile(r'매일|날마다|하루\s*한\s*번|daily', re.I)
+_WEEKLY = re.compile(r'매주|주마다|[월화수목금토일]요일\s*마다|매\s*[월화수목금토일]요일|weekly', re.I)
+_SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
+_TIME = re.compile(r'(오전|오후|아침|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?!간)(?:\s*(\d{1,2})\s*분|\s*(반))?')
+_WEEKDAY_NAMES = '월화수목금토일'
+_TIMEZONES = [(r'한국\s*(?:시간|표준시)|서울\s*시간|KST', 'Asia/Seoul'), (r'(?<![A-Za-z])UTC(?![A-Za-z])|협정\s*세계시', 'UTC')]
+
+
+def last_user_request(state):
+    return next((m['content'] for m in reversed(state.get('messages', [])) if m.get('role') == 'user'), '')
+
+
+def schedule_literals(text):
+    """Code-read daily/weekly schedule values with the span that proves each one.
+
+    Only written values are returned: "오전 8시" is 8, "오후 6시" is 18, but a bare "8시" could be
+    08:00 or 20:00 and is left for a question. Two different values for one key are a conflict.
+    A monthly/yearly recurrence yields nothing here; validate_conditions records it as unsupported.
+    """
+    if _MONTHLY_SCHEDULE.search(text):
+        return []
+    found = {}
+    def add(key, value, span):
+        if key in found and found[key][0] != value:
+            found[key] = ('conflict', found[key][1])
+        else:
+            found.setdefault(key, (value, span))
+    for pattern, value in ((_DAILY, 'daily'), (_WEEKLY, 'weekly')):
+        for m in pattern.finditer(text):
+            if not _SCHEDULE_NEGATED.match(text[m.end():m.end() + 8]):
+                add('schedule.frequency', value, m.group(0))
+    if 'schedule.frequency' not in found:
+        return []
+    if found['schedule.frequency'][0] == 'weekly':
+        for m in re.finditer(r'([월화수목금토일])요일', text):
+            add('schedule.weekday', _WEEKDAY_NAMES.index(m.group(1)), m.group(0))
+    for m in _TIME.finditer(text):
+        period, hour, minute, half = m.group(1), int(m.group(2)), m.group(3), m.group(4)
+        if hour > 23 or (minute and int(minute) > 59):
+            continue
+        if period in ('오후', '저녁', '밤') and hour < 12:
+            hour += 12
+        elif period in ('오전', '아침', '새벽') and hour == 12:
+            hour = 0
+        elif not period and 1 <= hour <= 12:
+            continue  # 08:00 or 20:00 is the user's decision
+        add('schedule.hour', hour, m.group(0))
+        add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
+    for pattern, zone in _TIMEZONES:
+        m = re.search(pattern, text, re.I)
+        if m:
+            add('schedule.timezone', zone, m.group(0))
+    return [(key, value, span) for key, (value, span) in found.items()]
+
+
+def _excludes_named_range(text, end):
+    """True when the operator word ending at `end` names rows to drop, not rows to keep."""
+    clause = _RANGE_CLAUSE_END.split(text[end:end + 20], maxsplit=1)[0]
+    return bool(_RANGE_EXCLUSION.search(clause))
+
+
 def _grounded_enum(key, value, quote):
     """Check narrow literal meanings, not just the existence of an evidence ID.
 
@@ -566,11 +647,20 @@ def _grounded_enum(key, value, quote):
     if key == 'missing.policy':
         policy={'exclude':r'제외|빼|삭제','keep':r'유지|포함|그대로','error':r'오류|에러|중단'}[value]
         return bool(re.search(r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?).{0,20}(?:'+policy+r')',quote))
+    if key == 'schedule.frequency':
+        # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
+        # match; a monthly/yearly one never grounds daily or weekly.
+        if _MONTHLY_SCHEDULE.search(quote):
+            return False
+        return bool((_DAILY if value == 'daily' else _WEEKLY).search(quote))
     if key == 'filter.operator':
         aliases = {'gt': r'초과|보다\s*큰', 'gte': r'이상', 'lt': r'미만|보다\s*작은',
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
-        return bool(re.search(aliases[value], quote))
+        matches = list(re.finditer(aliases[value], quote))
+        if value in ('gt', 'gte', 'lt', 'lte') and any(_excludes_named_range(quote, m.end()) for m in matches):
+            return False
+        return bool(matches)
     return True
 
 
@@ -596,6 +686,13 @@ def validate_conditions(raw, state, catalog):
     if misplaced:
         proposal['unsupported_actions'] = [a for a in proposal['unsupported_actions'] if a not in misplaced]
         invalid.append('unsupported_actions: 지원 작업 이름은 미지원 동작이 아님 ('+', '.join(misplaced)+')')
+    # An identifier the model made up ("delete_duplicates_by_multiple_fields", "create_data") is not a
+    # request the user wrote. Live 2026-11-03 it ended a session with "지원 범위: create_data /
+    # inference_generation". It is dropped as a stated gap, but its presence never lets the turn be READY.
+    invented = [a for a in proposal['unsupported_actions'] if _INVENTED_ACTION.fullmatch(a.strip())]
+    if invented:
+        proposal['unsupported_actions'] = [a for a in proposal['unsupported_actions'] if a not in invented]
+        invalid.append('unsupported_actions: 원문에 없는 식별자 형태의 동작 ('+', '.join(invented)+')')
     by_id = {e['id']: e for e in catalog}
     previous = deepcopy(state.get('condition_ledger') or {})
     for key, old in previous.get('slots', {}).items():
@@ -688,6 +785,14 @@ def validate_conditions(raw, state, catalog):
     if 'duplicate.policy' in literals and slots['duplicate.policy'].get('value') in ('first', 'last'):
         if 'deduplicate' not in operations:
             operations.append('deduplicate')
+    # A written daily/weekly schedule must not disappear because the single-operation proposal
+    # labelled the request "filter": live 2026-11-03, 17 of 17 READY schedule requests were
+    # confirmed without their schedule. The literal values above are its evidence; anything not
+    # written is asked. A monthly/yearly recurrence is a known unsupported schedule.
+    if 'schedule.frequency' in literals and 'schedule' not in operations:
+        operations.append('schedule')
+    if _MONTHLY_SCHEDULE.search(last_user_request(state)) and '월간 예약' not in proposal['unsupported_actions']:
+        proposal['unsupported_actions'].append('월간 예약')
     if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
         # Do not lose a requested filter simply because the model labelled the
         # request as deduplication; ask for absent conditions rather than guess.
@@ -729,6 +834,8 @@ def validate_conditions(raw, state, catalog):
                 'manual_review' if scope_review else
                 'ready' if not operations and slots.get('duplicate.policy',{}).get('value')=='keep' and not unresolved else
                 'manual_review' if not operations else 'clarify' if unresolved else 'ready')
+    if invented and decision == 'ready':
+        decision = 'manual_review'  # a dropped model claim may still hide a real gap; never auto-READY
     identity = json.dumps({'session': state.get('session_id', 'isolated'), 'messages': state.get('messages', []),
                            'versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}, sort_keys=True, ensure_ascii=False)
     questions = []

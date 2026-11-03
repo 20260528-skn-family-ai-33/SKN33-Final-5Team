@@ -65,8 +65,30 @@ def _native_schedule_label(action):
     """
     text=re.sub(r'[\s()·:,.]', '', action).casefold()
     text=re.sub(r'[월화수목금토일]요일|\d+(?:시|분)', '', text)
+    # Time-of-day words are part of the recurrence label ("매주 월요일 오전 8 시 예약", live 2026-11-03).
     return bool(re.search(r'매주|매일|주간|일간|weekly|daily',text)
-        and re.fullmatch(r'(?:매주|매일|주간|일간|weekly|daily|예약|schedule|스케줄링|스케줄)+',text))
+        and re.fullmatch(r'(?:매주|매일|주간|일간|weekly|daily|예약|schedule|스케줄링|스케줄'
+                         r'|오전|오후|아침|저녁|정오|자정|마다|에|한국시간|kst|시각)+',text))
+
+_NATIVE_SCHEDULE_REQUEST=re.compile(r'매일|매주|[월화수목금토일]요일\s*마다|daily|weekly',re.I)
+_NOT_NATIVE_SCHEDULE=re.compile(r'매월|매달|월간|매년|cron|크론',re.I)
+
+def reconcile_native_schedule(result,state):
+    """A refusal whose only gap was the app's own daily/weekly schedule goes to the condition checker.
+
+    Live 2026-11-03 (B-8): "매주 월요일 오전 8시마다 … 저장해줘" was refused twice (initial and review)
+    with only "주간 예약"/"매주 월요일 오전 8 시 예약" as the gap, although the app implements it.
+    This is not READY: the result is marked so the grounded condition checker must validate the
+    schedule slots (frequency, weekday, time, timezone, managed table) before any draft.
+    """
+    if (result['decision']!='manual_review' or not result.get('native_app_claims_removed')
+            or result['missing_actions'] or result['missing_conditions'] or not result['tool_ids']):
+        return result
+    if any(t not in {tool['id'] for tool in TOOLS} for t in result['tool_ids']):return result
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    if not user or not _NATIVE_SCHEDULE_REQUEST.search(user[-1]) or _NOT_NATIVE_SCHEDULE.search(user[-1]):return result
+    return {**result,'decision':'existing_tools','native_schedule_reconciled':True,
+        'reason':result['reason']+' 부족 항목이 앱의 일·주 예약뿐이라 예약 조건 검사로 넘깁니다.'}
 
 def normalize_native_claims(result):
     """Code checks explicit app facts; never turn a model refusal into READY."""
@@ -121,7 +143,9 @@ def _external_delivery(text):
         after=text[match.end():]
         before=text[match.end(1):match.start(2)]
         if re.search(r'(?:안|못)\s*$',before):continue
-        if re.match(r'\s*(?:지\s*)?(?:마|말|않)|\s*지는\s*(?:마|말|않)',after):continue
+        # A particle may sit between the verb stem and the negation: "보내지는 마", "보내지도 말고".
+        # Live 2026-11-03 (B-6 n01): "메일로 보내지는 마" was recorded as an external send request.
+        if re.match(r'\s*(?:지\s*)?(?:는|도)?\s*(?:마|말|않)|\s*지(?:는|도)\s*(?:마|말|않)',after):continue
         yield match
 
 def external_delivery_claims(result,state):
@@ -196,4 +220,4 @@ user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 �
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1
         result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
-    return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(normalize_native_claims(result),state),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}
+    return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

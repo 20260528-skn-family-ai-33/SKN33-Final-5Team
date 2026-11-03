@@ -19,11 +19,12 @@ def test_keep_does_not_require_duplicate_key():
     assert 'deduplicate' not in result['operations']
 
 
-def test_yes_to_column_question_reasks_without_model_unsupported():
+@pytest.mark.parametrize('reply',['네','네.',' 예! ','알겠습니다.'])
+def test_yes_to_column_question_reasks_without_model_unsupported(reply):
     s=state('중복된 행을 첫 행만 남겨줘')
     first=validate_conditions(proposal(s,{'duplicate.policy':'first','duplicate.field':None},['deduplicate']),s,source_catalog(s)[0])
     s.update(condition_ledger=first,pending_questions=first['questions'])
-    s['messages'] += [{'role':'assistant','content':'어느 열의 값이 같으면 중복으로 볼까요?'},{'role':'user','content':'네'}]
+    s['messages'] += [{'role':'assistant','content':'어느 열의 값이 같으면 중복으로 볼까요?'},{'role':'user','content':reply}]
     result=judge_conditions(s,None)['ledger']
     assert result['decision']=='clarify' and not result['unsupported_actions']
     assert any(q['key']=='duplicate.field' for q in result['questions'])
@@ -92,3 +93,24 @@ def test_comparison_and_summary_bypass_single_table_condition_model(user_request
         def invoke(self,*a):pytest.fail('범위 밖 작업을 중복 제거로 분류하면 안 됨')
     r=make_condition_check(transport=Forbidden(),mode='enforce')(state(user_request))
     assert r['condition_route']=='conversation' and r['condition_ledger'] is None
+
+
+def test_planner_refusal_cannot_override_current_supported_assessment(tmp_path):
+    from tests.design.test_builder import initial,draft
+    from agent_builder.capabilities.capability_gate import input_fingerprint
+    from agent_builder.design.nodes.validation import validate_node
+    from agent_builder.design.nodes.supervisor import supervisor_node
+    from agent_builder.design.nodes.save import make_save_node
+    from infrastructure.persistence.storage import Storage
+    s=initial()
+    s.update(capability_enforced=True,capability_assessment={'decision':'existing_tools','tool_ids':['read_table'],'missing_conditions':[],'missing_actions':[]})
+    s['capability_fingerprint']=input_fingerprint(s)
+    s.update(draft={**draft(),'tool_ids':[],'unsupported':['사용자 입력이 없어 미지원입니다.']},repair_count=2,confirmed=True)
+    checked=validate_node(s)
+    assert checked['status']=='validation_failed' and any('충돌' in i for i in checked['issues'])
+    assert supervisor_node({**s,**checked})['route']=='invalid'
+    store=Storage(tmp_path)
+    try:
+        with pytest.raises(ValueError):make_save_node(store)(s)
+        assert not store.agents()
+    finally:store.close()

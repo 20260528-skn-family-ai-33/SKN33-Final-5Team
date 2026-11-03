@@ -39,3 +39,35 @@ def test_two_runtime_files_read_separately_and_join(tmp_path):
         assert result['status']=='succeeded',result.get('error')
         assert result['outputs']['join']['table']['rows']==[{'id':1,'amount':10,'name':'A'}]
     finally:store.close()
+
+
+@pytest.mark.parametrize('keys',[[],[''],['   ']])
+@pytest.mark.parametrize('tool,operation,extra',[
+    ('join_tables','join_records',{'left':[],'right':[]}),
+    ('compare_tables','diff',{'baseline':{'rows':[]},'candidate':{'rows':[]},'compare_columns':[],'absolute_tolerance':0}),
+])
+def test_alternate_join_and_compare_reject_empty_keys(tool,operation,extra,keys):
+    n=node('combine',tool,operation=operation,arguments_json=json.dumps({**extra,'keys':keys}))
+    with pytest.raises(ValueError,match='keys'):validate_settings(n)
+
+
+@pytest.mark.parametrize('tool,operation,args',[
+    ('join_tables','join',{'left':{'rows':[]},'right':{'rows':[]},'keys':[],'how':'left','cardinality':'many_to_one','null_keys':'error','max_rows':10}),
+    ('join_tables','join_records',{'left':[],'right':[],'keys':[]}),
+    ('compare_tables','diff',{'baseline':{'rows':[]},'candidate':{'rows':[]},'keys':[],'compare_columns':[],'absolute_tolerance':0}),
+])
+def test_save_route_rejects_empty_keys_without_persisting(tmp_path,tool,operation,args):
+    from tests.design.test_builder import initial,draft
+    from infrastructure.persistence.storage import Storage
+    from agent_builder.design.nodes.save import make_save_node
+    from agent_builder.design.nodes.validation import validate_node
+    store=Storage(tmp_path)
+    n=node('combine',tool,operation=operation,arguments_json=json.dumps(args))
+    d={**draft(),'tool_ids':[tool],'workflow':{'entry':'combine','nodes':[n],'edges':[]}}
+    s={**initial(),'draft':d,'confirmed':True}
+    try:
+        checked=validate_node(s)
+        assert checked['status']!='ready' and any('keys' in i for i in checked['issues'])
+        with pytest.raises(ValueError):make_save_node(store)(s)
+        assert not store.agents()
+    finally:store.close()

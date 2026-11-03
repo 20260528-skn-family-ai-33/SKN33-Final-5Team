@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from workflow_engine.catalog.registry import TOOLS
-from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, resolution_question, resolution_options
+from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, resolution_question, resolution_options, pending_nonanswer
 
 
 class ConditionContractError(ValueError):
@@ -755,9 +755,7 @@ def judge_conditions(state, transport, max_contract_repairs=0):
     if type(max_contract_repairs) is not int or not 0 <= max_contract_repairs <= 1:
         raise ValueError('조건 응답 수정 한도는 0~1회입니다.')
     messages, schema, catalog = prepare_conditions(state)
-    pending=state.get('pending_questions',[])
-    latest_user=next((m['content'].strip() for m in reversed(state.get('messages',[])) if m['role']=='user'),'')
-    nonanswer=bool(pending and latest_user in ('네','예','응','확인','알겠어','알겠습니다') and any(q.get('key') in ('filter.field','duplicate.field','filter.value') for q in pending))
+    nonanswer=pending_nonanswer(state)
     if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state) or nonanswer:
         result = validate_conditions({'operations': [], 'conditions': [], 'unsupported_actions': []}, state, catalog)
         return {'ledger': result, 'model_calls': 0, 'messages': messages, 'metrics': {}}

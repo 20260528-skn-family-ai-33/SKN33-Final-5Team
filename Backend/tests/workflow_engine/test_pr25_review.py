@@ -35,6 +35,10 @@ def test_two_runtime_files_read_separately_and_join(tmp_path):
     try:
         store.add_asset({'id':left_id,'name':'left.csv','kind':'table','format':'csv','columns':['id','amount']},[{'id':1,'amount':10}])
         store.add_asset({'id':right_id,'name':'right.csv','kind':'table','format':'csv','columns':['id','name']},[{'id':1,'name':'A'}])
+        from agent_builder.conditions.input_requirements import preflight_execution
+        requirements=preflight_execution(store.agent(identifier)['config'],store,[left_id,right_id])
+        assert all(r['ready'] for r in requirements)
+        assert [r['file_ids'] for r in requirements] == [[left_id],[right_id]]
         result=run_workflow(store,identifier,'실행','unused',file_ids=[left_id,right_id])
         assert result['status']=='succeeded',result.get('error')
         assert result['outputs']['join']['table']['rows']==[{'id':1,'amount':10,'name':'A'}]
@@ -89,6 +93,25 @@ def test_single_saved_table_reads_new_run_file(tmp_path):
     finally:store.close()
 
 
+@pytest.mark.parametrize('file_id', [None, 'original-id'])
+def test_native_aggregation_and_sort_accept_derived_tables_without_file_id(file_id):
+    from workflow_engine.executors.table.aggregate_table import execute as aggregate
+    from workflow_engine.executors.table.filter_sort import execute as sort
+    table = {'rows':[{'item':'A','amount':30},{'item':'A','amount':10},{'item':'B','amount':10}],
+             'columns':['item','amount'], 'review_report':True}
+    if file_id is not None:table['file_id']=file_id
+    plan = {'filters':[], 'sort':[{'field':'item','direction':'ascending','value_type':'text'}],
+            'match':'all','missing_policy':'keep','duplicate_policy':'keep','duplicate_field':None,'output_format':'json'}
+    a=node('aggregate','aggregate_table',[bind('table','upstream','table')],fields=['item'],aggregation='sum',sum_field='amount')
+    grouped=aggregate(a,{'outputs':{'upstream':{'table':table}}},None,{'execution_plan':plan},None)
+    s=node('sort','filter_sort',[bind('table','aggregate','table')],execution_plan=plan)
+    result=sort(s,{'outputs':{'aggregate':grouped}},None,{'execution_plan':plan},None)['table']
+    assert result['rows']==[{'item':'A','sum':40},{'item':'B','sum':10}]
+    assert result['review_report'] is True
+    assert result.get('file_id')==file_id
+    assert ('file_id' in result)==(file_id is not None)
+
+
 def test_single_saved_document_reads_new_run_file(tmp_path):
     from infrastructure.persistence.storage import Storage
     from workflow_engine.executors.sources import read_source
@@ -135,3 +158,38 @@ def test_wrong_kind_run_input_cannot_silently_reuse_saved_table(tmp_path):
         with pytest.raises(ValueError,match='새 실행 자료의 종류'):
             read_source(node('read','read_table',file_ids=['old']),{'file_ids':['new'],'outputs':{}},store,{'document_ids':['old']},'table')
     finally:store.close()
+
+
+@pytest.mark.parametrize('inputs', ['replacement_only', 'one_exact', 'both_exact', 'shared_original'])
+def test_saved_join_duplicate_names_require_distinct_source_mapping(tmp_path, inputs):
+    from infrastructure.persistence.ids import uid
+    old_left, old_right, new = uid(), uid(), uid()
+    right_source = old_left if inputs == 'shared_original' else old_right
+    left = node('left', 'read_table', file_ids=[old_left])
+    right = node('right', 'read_table', file_ids=[right_source])
+    combine = node('join', 'join_tables', [bind('left', 'left', 'table'), bind('right', 'right', 'table')],
+                   operation='join', arguments_json=json.dumps({'keys':['id'], 'how':'left',
+                       'cardinality':'many_to_one', 'null_keys':'error', 'max_rows':10}))
+    out = node('out', 'write_result', [bind('table', 'join', 'table')], format='json')
+    workflow = {'entry':'left', 'nodes':[left, right, combine, out],
+                'edges':[edge('left', 'right'), edge('right', 'join'), edge('join', 'out')]}
+    store, identifier, _ = saved(tmp_path, workflow)
+    try:
+        for identifier_, amount in [(old_left, 10), (old_right, 20), (new, 99)]:
+            store.add_asset({'id':identifier_, 'name':'report.csv', 'kind':'table',
+                             'columns':['id', 'amount']}, [{'id':1, 'amount':amount}])
+        agent = store.agent(identifier)
+        agent['config']['document_ids'] = [old_left, old_right]
+        files = [old_left, old_right] if inputs == 'both_exact' else [old_left] if inputs == 'one_exact' else [new]
+        result = run_workflow(store, identifier, '이번 실행 자료 사용', 'unused',
+                              file_ids=files, agent_snapshot=agent)
+        if inputs in ('replacement_only', 'one_exact'):
+            assert result['status'] == 'failed', result
+            assert '새 실행 파일' in result['error']
+            assert not result['outputs']
+        else:
+            assert result['status'] == 'succeeded', result.get('error')
+            expected = [old_left, old_right] if inputs == 'both_exact' else [new, new]
+            assert [result['outputs'][name]['table']['file_id'] for name in ('left', 'right')] == expected
+    finally:
+        store.close()

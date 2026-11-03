@@ -230,7 +230,8 @@ class OllamaPlanner:
 
 
 def _normalize(raw, state):
-    draft = AgentDraft.model_validate(raw).model_dump()
+    from agent_builder.design.native_settings import expand_node_settings
+    draft = AgentDraft.model_validate(expand_node_settings(raw)).model_dump()
     if draft['unsupported']:
         draft['questions'] = [];draft['question_options'] = []
     if draft['questions'] or draft['unsupported']:

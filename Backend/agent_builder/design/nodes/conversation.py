@@ -6,11 +6,12 @@ from langchain_core.tools import tool
 from langchain.agents.structured_output import ProviderStrategy
 from langchain.agents.middleware import wrap_model_call
 from contracts.models import AgentDraft, NodeSettings, WorkflowDefinition
-from workflow_engine.catalog.registry import TOOLS
+from workflow_engine.catalog.registry import TOOLS, NATIVE_IDS
 from workflow_engine.catalog.canonical import PLANNER_INSTRUCTIONS, planner_catalog
 from agent_builder.design.presentation import canonical_table_draft
 from workflow_engine.workflow import normalize_connections, workflow_errors
 from agent_builder.design.planner_constraints import ready_table_slots, table_plan_scope, TABLE_PLAN_TOOLS
+from agent_builder.design.native_settings import SCOPED_SETTINGS, NATIVE_SETTINGS, decoded_resource_tools
 
 # Inside the READY single-table scope each tool appears at most once, so its node ID is
 # fixed (read_table_1, ...): live drafts copied 36-char library UUIDs as IDs, corrupted
@@ -19,19 +20,6 @@ SCOPED_NODE_IDS={tool:tool+'_1' for tool in TABLE_PLAN_TOOLS}
 # Settings each scoped tool reads at run time (executors/sources.py file_ids, runner.py
 # execution_plan/format, executors/control/finish.py instructions). The other ~30 keys
 # were 62% of the generated draft as nulls.
-SCOPED_SETTINGS={'read_table':('file_ids',),'filter_sort':('execution_plan',),'write_result':('format',),'finish':('instructions',)}
-NATIVE_SETTINGS={
-    **SCOPED_SETTINGS, 'read_document':('file_ids',), 'search_document':('query',),
-    'extract_information':('fields','extraction_mode','instructions'), 'compose_answer':('instructions',),
-    'aggregate_table':('fields','aggregation','sum_field'),
-    'calculate_columns':('table_operation','calculation_formula','output_column','rename_from','rename_to','fields','date_input_format','date_timezone'),
-    'text_transform':('text_find','text_replacement'), 'text_statistics':('statistics_unit','include_whitespace'),
-    'date_transform':('date_operation','date_seconds','date_output_format'), 'base64_codec':('codec_mode',),
-    'text_hash':(), 'export_result':('format',), 'reply_review':('fields','instructions'),
-    'review_summary':(), 'agent_node':('instructions',), 'condition':('condition_field','condition_operator','instructions'),
-    'ask_user':('question','instructions'),
-    'saved_workflow':('agent_id','agent_version','output_node','output_port'),
-}
 SETTINGS_DEFAULTS={name:([] if getattr(field.annotation,'__origin__',None) is list else None) for name,field in NodeSettings.model_fields.items()}
 
 SYSTEM="""당신은 A4B의 사용자 대화와 워크플로우 설계를 총괄하는 Deep Agent입니다.
@@ -102,6 +90,26 @@ def draft_response(result):
         raw['workflow']=compile_workflow(raw['workflow'])
     return raw
 
+
+def validated_draft_response(result, evidence):
+    """Check application constraints inside the bounded generation-repair path."""
+    from copy import deepcopy
+    from pydantic import ValidationError
+    raw = draft_response(result)
+    from agent_builder.design.native_settings import expand_node_settings
+    candidate = expand_node_settings(raw)
+    try:
+        candidate['requirements'] = [
+            {'description': item['description'], **evidence[item['evidence_id']]}
+            for item in candidate['requirements']]
+        AgentDraft.model_validate(candidate)
+    except (KeyError, TypeError) as error:
+        raise DraftResponseError('invalid_evidence', 'requirements에는 실제 evidence_id와 짧은 description이 필요합니다.') from error
+    except ValidationError as error:
+        details = json.dumps(error.errors(include_input=False, include_url=False), ensure_ascii=False, default=str)
+        raise DraftResponseError('invalid_draft', details[:1200]) from error
+    return raw
+
 def make_conversation(api_key,model,model_factory=None):
     mode=os.getenv('A4B_PLANNER_MODE','deepagent')
     if mode=='direct':
@@ -157,6 +165,7 @@ def make_conversation(api_key,model,model_factory=None):
         inline_contracts=bool(os.getenv('A4B_MAIN_PROVIDER')=='ollama' and selected_contract_ids)
         selected_contracts_read=inline_contracts
         active_operation_ids=(selected_contract_ids|{'finish'}) if inline_contracts else None
+        inspected_operation_ids=set()
         variable_names=set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{0,39})(?=\s*(?:[=+*/%]|값))',' '.join(m['content'] for m in state['messages'] if m['role']=='user')))
         variable_names.update(c for r in resources.values() for c in r.get('columns',[]))
         variable_names=set(sorted(variable_names)[:64])
@@ -179,10 +188,12 @@ def make_conversation(api_key,model,model_factory=None):
             """설계할 도구의 실제 operation·필수 인자·입출력 계약을 조회합니다."""
             nonlocal final_format
             selected=next((t for t in catalog if t['id']==tool_id),None)
-            if selected and active_operation_ids is not None and tool_id not in active_operation_ids:
-                active_operation_ids.add(tool_id)
-                native=[v for v in native_variants if v['properties']['tool']['enum'][0] in active_operation_ids]
-                schema['$defs']['WorkflowNode']={'anyOf':native+operation_variants(operation_node_schema,schema['$defs']['Binding'],active_operation_ids,variable_names)}
+            if selected and not scoped and (tool_id in NATIVE_IDS or active_operation_ids is not None and tool_id not in active_operation_ids):
+                inspected_operation_ids.add(tool_id)
+                if active_operation_ids is not None:active_operation_ids.add(tool_id)
+                native=[v for v in native_variants if active_operation_ids is None or v['properties']['tool']['enum'][0] in active_operation_ids]
+                operation_ids = ((active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS) | inspected_operation_ids
+                schema['$defs']['WorkflowNode']={'anyOf':native+operation_variants(operation_node_schema,schema['$defs']['Binding'],operation_ids,variable_names)}
                 final_format=planner_format()
             return planner_catalog([selected],details=True)[0] if selected else {'error':'등록되지 않은 도구입니다.'}
         @tool
@@ -257,6 +268,16 @@ def make_conversation(api_key,model,model_factory=None):
             inputs=list(PORTS[tool_name][0])
             if inputs:binding_schema['properties']['input']={'type':'string','enum':inputs}
             variant['properties']['bindings']['items']=binding_schema
+            if inputs and not scoped:
+                bindings=[]
+                for port,kind in PORTS[tool_name][0].items():
+                    compatible=sorted({name for _,outs in PORTS.values() for name,output_kind in outs.items() if output_kind==kind})
+                    if not compatible:continue
+                    typed=deepcopy(binding_schema)
+                    typed['properties']['input']={'type':'string','enum':[port]}
+                    typed['properties']['output']={'type':'string','enum':compatible}
+                    bindings.append(typed)
+                if bindings:variant['properties']['bindings']['items']={'anyOf':bindings}
             if tool_name in ['read_table','read_document']:variant['properties']['bindings']['maxItems']=0
             if tool_name in ['filter_sort','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','write_result','search_document','extract_information','compose_answer','review_summary']:variant['properties']['bindings']['minItems']=1
             if scoped and tool_name!='read_table':
@@ -300,8 +321,14 @@ def make_conversation(api_key,model,model_factory=None):
             native_variants=deepcopy(variants)
             if active_operation_ids is not None:
                 variants=[v for v in variants if v['properties']['tool']['enum'][0] in active_operation_ids]
-            variants.extend(operation_variants(operation_node_schema,schema['$defs']['Binding'],active_operation_ids,variable_names))
+            # Native-ready tools start with their service contract. Inspecting a
+            # tool explicitly unlocks its alternative operation contracts.
+            operation_ids = (active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS
+            variants.extend(operation_variants(operation_node_schema,schema['$defs']['Binding'],operation_ids,variable_names))
         schema['$defs']['WorkflowNode']={'anyOf':variants}
+        if not scoped:
+            from agent_builder.design.planner_constraints import typed_filter_conditions
+            typed_filter_conditions(schema)
         if scoped:
             # Conditions are confirmed: no re-asking or support reversal at this stage, and a
             # node floor/ceiling matching the existing audit (read, filter_sort, write_result if
@@ -375,7 +402,20 @@ def make_conversation(api_key,model,model_factory=None):
         for n in ((context['current_draft'] or {}).get('workflow') or {}).get('nodes',[]):
             n['settings']=compact_settings(n['settings'])
         if inline_contracts:
-            context['selected_tool_contracts']=planner_catalog([t for t in catalog if t['id'] in selected_contract_ids],details=True)
+            context['selected_tool_contracts']=planner_catalog([t for t in catalog if t['id'] in selected_contract_ids],details=True,native_first=True)
+            for contract in context['selected_tool_contracts']:
+                if 'native_contract' in contract:
+                    contract['native_contract']['settings_fields'] = list(NATIVE_SETTINGS[contract['id']])
+            context['native_settings_contract'] = {
+                'read_table': {'file_ids': '사용할 실제 자료 ID 목록; bindings=[]; 출력 table'},
+                'calculate_columns': {'table_operation': 'compute', 'calculation_formula': '실제 열 이름으로 된 수식', 'output_column': '새 열 이름'},
+                'aggregate_table': {'fields': '그룹 열 목록', 'aggregation': 'sum 또는 count', 'sum_field': 'sum인 경우 합계 원본 열; 결과 열은 sum'},
+                'filter_sort': {'execution_plan': '이 단계의 filters·sort·missing_policy·duplicate_policy·output_format'},
+                'write_result': {'format': 'json 또는 csv; table을 받아 artifact 출력'},
+            }
+            context['extension_contract_instruction'] = ('기본 동작이 업무를 지원하면 native_contract의 설정만 씁니다. '
+                '기본 동작으로 할 수 없는 작업은 inspect_tool로 확장 operation의 계약을 먼저 확인합니다. '
+                '기본 설정 키를 arguments_json에 넣거나 기본 동작에 operation을 붙이지 않습니다.')
             context['capability_assessment']={k:v for k,v in (state.get('capability_assessment') or {}).items()
                 if k in ('decision','tool_ids','reason','missing_conditions','missing_actions','scope')}
         if state.get('condition_enforced'):
@@ -430,7 +470,7 @@ def make_conversation(api_key,model,model_factory=None):
         content_fallback=result.get('structured_response') is None
         conversation_tool_calls=[call['name'] for message in result.get('messages',[]) for call in getattr(message,'tool_calls',[])]
         parse_error=None
-        try:raw=draft_response(result)
+        try:raw=validated_draft_response(result,evidence)
         except ValueError as error:
             from agent_builder.design.graph import _timing_event
             _timing_event({'event':'draft_parse_error','attempt':'initial','code':getattr(error,'code','other'),'detail':str(error)[:400]})
@@ -454,7 +494,7 @@ def make_conversation(api_key,model,model_factory=None):
             content_fallback=content_fallback or retry.get('structured_response') is None
             conversation_tool_calls.extend(call['name'] for message in retry.get('messages',[]) for call in getattr(message,'tool_calls',[]))
             result=retry
-            try:raw=draft_response(result)
+            try:raw=validated_draft_response(result,evidence)
             except ValueError as error:
                 from agent_builder.design.graph import _timing_event
                 _timing_event({'event':'draft_parse_error','attempt':'retry','code':getattr(error,'code','other'),'detail':str(error)[:400]})

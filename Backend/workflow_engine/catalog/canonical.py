@@ -150,6 +150,10 @@ def contract(tool, spec):
 
 
 PLANNER_INSTRUCTIONS = '''
+도구마다 native_contract와 operation_contracts는 서로 다른 실행 계약입니다. 한 노드에서 두 계약의 설정·포트를 섞지 않습니다.
+이미 첨부된 표(kind=table)는 read_table의 기본 동작으로 읽습니다. file_ids에 실제 자료 ID를 넣고 bindings=[]로 두면 출력은 table입니다. source나 table_ids로 다시 파싱하거나 자료 ID를 노드 ID로 연결하지 않습니다.
+native_contract가 요청을 지원하면 기본 동작의 settings와 포트를 사용합니다. 확장 동작이 필요하면 해당 operation의 필수 인자·출력 포트만 따릅니다. 인자를 binding으로 연결했다면 arguments_json에 같은 키를 상수로 중복 작성하지 않습니다.
+filter_sort에서 정렬만 요청했다면 execution_plan.filters=[]입니다. 결합의 null_keys=error와 빈 값 오류 정책은 is_empty/not_empty 선별 조건이 아닙니다. 사용자가 빈 행만 선택하거나 빈 행을 제외하라고 요청한 경우에만 해당 선별 조건을 추가합니다. 정렬이나 오류 정책을 구현하려고 임의의 필터를 추가하지 않습니다.
 56개 업무 도구와 제어·호환 도구는 supported_tools의 실제 계약을 따릅니다.
 이 앱에서 "화면에 보여줘", "결과를 출력해줘"는 실행 결과 영역에 text/표를 표시한다는 뜻입니다. 화면 종류·웹 브라우저·외부 시스템 중 선택하라고 다시 묻지 않습니다. 사용자가 외부 시스템을 명시한 경우만 별도 도구·연결을 확인합니다. 단순 계산은 formula와 variables가 주어졌으면 즉시 설계하며 출력용 파일이나 추가 역할이 필요하지 않습니다.
 create_spreadsheet.create의 sheets는 [{"name":"Data","table":{"columns":["id","amount"],"rows":[{"id":"A","amount":10}]}}] 형태입니다. 시트의 table 안에 columns와 rows를 지정하며 rows는 열 이름을 키로 하는 행 객체 목록입니다.
@@ -208,6 +212,18 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
                 settings['operation']={'type':'string','enum':[spec['id']]}
                 names=sorted(arguments_spec(identifier,spec))
                 properties={name:{} for name in names}
+                for name,kind in ports(identifier,spec)[0].items():
+                    if kind=='table':
+                        # A predecessor name is not a literal Table. References
+                        # remain explicit and are resolved by the normal executor.
+                        cell={'anyOf':[{'type':'null'},{'type':'boolean'},{'type':'number'},{'type':'string'}]}
+                        literal={'type':'object','properties':{
+                            'columns':{'type':'array','items':{'type':'string'}},
+                            'rows':{'type':'array','items':{'type':'object','additionalProperties':cell}}},
+                            'required':['rows'],'additionalProperties':False}
+                        reference={'type':'object','properties':{'$binding':{'type':'string','enum':[name]}},
+                                   'required':['$binding'],'additionalProperties':False}
+                        properties[name]={'anyOf':[reference,literal]}
                 for name,rule in ARGUMENT_CONSTRAINTS.get((identifier,spec['id']),{}).items():
                     kind=rule.get('type');prop={}
                     if kind=='positive_integer':prop={'type':'integer','minimum':1}
@@ -216,6 +232,7 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
                         prop['items']={'type':rule['items']}
                         if rule['items']=='object':prop['items']['additionalProperties']=True
                     if 'enum' in rule:prop['enum']=rule['enum']
+                    if 'min_items' in rule:prop['minItems']=rule['min_items']
                     properties[name]=prop
                 if identifier=='scalar_calculate':properties['variables']={'type':'object',
                     'properties':{name:{'type':'number'} for name in sorted(variable_names)},
@@ -240,7 +257,7 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
     return [variant,projection]
 
 
-def planner_catalog(tools, *, details=False):
+def planner_catalog(tools, *, details=False, native_first=False):
     """Full ID discovery without repeating paths, versions and large descriptions."""
     result=[]
     for tool in tools:
@@ -250,9 +267,13 @@ def planner_catalog(tools, *, details=False):
         # Native ports remain discoverable; exact operation ports are inspected.
         if tool.get('execution_status')=='native_ready' or not tool.get('operation_contracts'):
             item.update(input_ports=tool['input_ports'],output_ports=tool['output_ports'])
+        if tool.get('execution_status')=='native_ready':
+            item['native_contract'] = {'operation': None, 'arguments_json': None,
+                'input_ports': tool['input_ports'], 'output_ports': tool['output_ports'],
+                'description': tool['description'].split(' 확장 동작은')[0]}
         contracts=tool.get('operation_contracts',[])
         if contracts:
-            if details:item['operation_contracts']=contracts
+            if details and not (native_first and tool.get('execution_status')=='native_ready'):item['operation_contracts']=contracts
             else:item['operations']=[o['id'] for o in contracts]
         result.append(item)
     return result

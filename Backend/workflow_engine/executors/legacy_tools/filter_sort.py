@@ -76,5 +76,5 @@ def filter_sort_node(context,filters,sort,match='all',missing_policy='ask',dupli
     if sort:rows.sort(key=cmp_to_key(compare))
     context['rows']=rows;context['filtered']=True;context['artifact']=None
     params={'filters':filters,'sort':sort,'match':match,'missing_policy':missing_policy,'duplicate_policy':duplicate_policy,'duplicate_field':duplicate_field}
-    context['trace'].append({'node':'filter_sort','label':'조건에 따라 정리','status':'completed','detail':f'{len(source)}행에서 {len(rows)}행으로 처리했습니다.','source_file_id':context['file_id'],'parameters':params})
+    context['trace'].append({'node':'filter_sort','label':'조건에 따라 정리','status':'completed','detail':f'{len(source)}행에서 {len(rows)}행으로 처리했습니다.','source_file_id':context.get('file_id'),'parameters':params})
     return {'row_count':len(rows),'preview':rows[:20],'applied_conditions':params}

@@ -14,6 +14,24 @@ def state(messages):
     return {'messages':messages,'resources':[],'issues':[],'repair_count':0,'node_library':[]}
 
 
+def test_overlong_requirement_is_retried_before_state_update(monkeypatch):
+    calls = []
+    class Agent:
+        def invoke(self, payload, config):
+            calls.append(payload)
+            value = draft(questions=['실제 미정 조건은 무엇인가요?'])
+            if len(calls) == 1:
+                value['requirements'][0]['description'] = 'x' * 1001
+            return {'structured_response': value}
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kwargs: Agent())
+    original = state([{'role':'user','content':'업무 조건을 확인해줘'}])
+    result = make_conversation(None,'test',model_factory=lambda:object())(original)
+    assert len(calls) == 2
+    assert result['trace'][-1]['response_relation_repairs'] == 1
+    assert result['draft']['requirements'][0]['description'] == '실제 사용자 요청'
+    assert '1000' in calls[-1]['messages'][-1]['content']
+
+
 def draft(questions=None,unsupported=None,workflow=None):
     return {'name':'업무 설계','purpose':'요청 처리','instructions':'사용자 조건 적용','tool_ids':[],
         'document_ids':[],'requirements':[{'description':'실제 사용자 요청','evidence_id':'e1'}],

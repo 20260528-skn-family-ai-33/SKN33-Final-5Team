@@ -14,13 +14,34 @@ from .contracts import AnalysisError, MAX_RESULT, MAX_BYTES, sha256
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 REMOTE_ENGINES = ('layout', 'paddleocr')
 REMOTE_TIMEOUT = 90  # below the RunPod proxy's ~100 s request limit
-REMOTE_UNAVAILABLE = 'remote_parser_unavailable'  # the only error that falls back to CPU
+REMOTE_UNAVAILABLE = 'remote_parser_unavailable'
+REMOTE_TOO_LARGE = 'remote_parser_payload_too_large'
+# Match the decoded image and HTTP body limits in scripts/runpod/gpu_parser_server.py.
+REMOTE_MAX_IMAGE = 12 * 1024 * 1024
+REMOTE_MAX_BODY = 48 * 1024 * 1024
+
+
+def remote_request_body(names):
+    prefix, suffix = b'{"sources":[', b']}'
+    size = len(prefix) + len(suffix)
+    encoded_sources = []
+    for name in names:
+        with Path(name).open('rb') as image:
+            data = image.read(REMOTE_MAX_IMAGE + 1)
+        if len(data) > REMOTE_MAX_IMAGE:
+            raise AnalysisError(REMOTE_TOO_LARGE, '변환된 이미지가 GPU 파서의 이미지 크기 제한을 넘었습니다.')
+        source = json.dumps({'name': name, 'data': base64.b64encode(data).decode('ascii')}).encode('utf-8')
+        size += len(source) + (1 if encoded_sources else 0)  # Include each comma between sources.
+        if size > REMOTE_MAX_BODY:
+            raise AnalysisError(REMOTE_TOO_LARGE, '인코딩된 요청이 GPU 파서의 본문 크기 제한을 넘었습니다.')
+        encoded_sources.append(source)
+    return prefix + b','.join(encoded_sources) + suffix
 
 
 def remote_engine(url, engine, sources):
     """Layout/OCR on the GPU parser server (scripts/runpod/gpu_parser_server.py), same contract as engine_worker."""
     names = [str(p) for p in sources]
-    body = json.dumps({'sources': [{'name': n, 'data': base64.b64encode(Path(n).read_bytes()).decode()} for n in names]}).encode()
+    body = remote_request_body(names)
     # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent.
     request = urllib.request.Request(url.rstrip('/') + '/v1/' + engine, data=body, method='POST', headers={
         'Content-Type': 'application/json', 'User-Agent': 'A4B/0.1',
@@ -30,7 +51,9 @@ def remote_engine(url, engine, sources):
             raw = response.read(MAX_RESULT + 1)
     except urllib.error.HTTPError as exc:
         # 5xx is a server fault; the RunPod proxy answers 404 while the pod is stopped. Both are outages.
-        # 401/403/400/413 mean a wrong key, URL or request and must surface instead of silently using CPU.
+        # A proxy may enforce a lower body limit than the parser itself.
+        if exc.code == 413:
+            raise AnalysisError(REMOTE_TOO_LARGE, 'GPU 파서 요청이 서버의 크기 제한을 넘었습니다(HTTP 413).') from exc
         if exc.code >= 500 or exc.code == 404:
             raise AnalysisError(REMOTE_UNAVAILABLE, 'GPU 파서 서버를 사용할 수 없습니다(HTTP ' + str(exc.code) + ').') from exc
         raise AnalysisError('remote_parser_rejected_' + str(exc.code),
@@ -82,8 +105,7 @@ class LocalEngines:
                     attempt.update(status='succeeded', version=data['version'], model=data.get('model', {}))
                     return data
                 except AnalysisError as exc:
-                    # Only an outage (pod stopped after hours, server fault) falls back; the attempt keeps why.
-                    if exc.code != REMOTE_UNAVAILABLE or os.environ.get('A4B_PARSER_FALLBACK', 'cpu') == 'off':
+                    if exc.code not in (REMOTE_UNAVAILABLE, REMOTE_TOO_LARGE) or os.environ.get('A4B_PARSER_FALLBACK', 'cpu') == 'off':
                         raise
                     attempt['remote_error'] = exc.code
             attempt['route'] = 'cpu_local'

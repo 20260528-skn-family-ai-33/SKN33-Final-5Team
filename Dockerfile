@@ -1,21 +1,24 @@
-FROM node:24-bookworm-slim AS build-deps
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
-FROM build-deps AS build-frontend
+FROM build AS build-frontend
 COPY Frontend/ ./Frontend/
 COPY shared/ ./shared/
 RUN npm run build:app
+ARG A4B_FRONTEND_COMMIT
+RUN if [ -n "$A4B_FRONTEND_COMMIT" ]; then printf '\n<!-- a4b-release=%s -->\n' "$A4B_FRONTEND_COMMIT" >> Frontend/dist-app/index.html; fi
 
-FROM build-deps AS build-backend
+FROM build AS build-backend
 COPY shared/ ./shared/
 COPY Backend/api/ ./Backend/api/
 RUN npm run build:server
-FROM node:24-bookworm-slim AS system
+
+FROM node:24-bookworm-slim AS backend
 WORKDIR /app
+RUN mkdir -p /app/Frontend/dist-app
 # libgl1/libglib2.0-0/libgomp1 are runtime libraries of the Paddle OCR stack (OpenCV, OpenMP).
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv libgl1 libglib2.0-0 libgomp1 poppler-utils && rm -rf /var/lib/apt/lists/*
-FROM system AS paddle
 # OCR for photos and scanned pages: PaddleOCR on CPU (the host GPU is left to Ollama).
 # Models are downloaded at build time; engine_worker.py runs them offline from A4B_PADDLE_MODEL_DIR.
 ENV PADDLE_PDX_CACHE_HOME=/app/models/paddlex A4B_PADDLE_MODEL_DIR=/app/models/paddlex/official_models A4B_PADDLE_DEVICE=cpu
@@ -23,7 +26,6 @@ COPY Backend/requirements/paddle-cpu.txt /app/Backend/requirements/
 RUN python3 -m venv /app/Backend/.venv-paddle && /app/Backend/.venv-paddle/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/paddle-cpu.txt \
  && /app/Backend/.venv-paddle/bin/python -c "from paddleocr import LayoutDetection, PaddleOCR; LayoutDetection(model_name='PP-DocLayout_plus-L', device='cpu'); PaddleOCR(text_detection_model_name='PP-OCRv5_mobile_det', text_recognition_model_name='korean_PP-OCRv5_mobile_rec', use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False, device='cpu')" \
  && ls /app/models/paddlex/official_models/PP-DocLayout_plus-L /app/models/paddlex/official_models/PP-OCRv5_mobile_det /app/models/paddlex/official_models/korean_PP-OCRv5_mobile_rec >/dev/null
-FROM system AS backend
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY Backend/requirements/agent-lock.txt Backend/requirements/canonical-tools.txt Backend/requirements/document-analysis.txt /app/Backend/requirements/
@@ -55,19 +57,9 @@ ENV HOST=0.0.0.0 PORT=3030 EASYFLOW_DATA_DIR=/app/data A4B_FOCUSED_DEMO=1
 EXPOSE 3030
 CMD ["node","Backend/api/build-server/index.mjs"]
 
+
 FROM scratch AS frontend
 COPY --from=build-frontend /app/Frontend/dist-app /dist
 
-FROM paddle AS ocr-cpu
-COPY scripts/runpod/gpu_parser_server.py /app/scripts/runpod/gpu_parser_server.py
-COPY Backend/documents/analysis/engine_worker.py Backend/documents/analysis/tables.py /app/Backend/documents/analysis/
-COPY ocr_service/server.py /app/ocr_service/server.py
-ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-CMD ["/app/Backend/.venv-paddle/bin/python", "/app/ocr_service/server.py"]
-
-# Preserve the existing single-image entry point for local and legacy deployments.
 FROM backend AS standalone
-COPY --from=paddle /app/Backend/.venv-paddle /app/Backend/.venv-paddle
-COPY --from=paddle /app/models /app/models
-ENV PADDLE_PDX_CACHE_HOME=/app/models/paddlex A4B_PADDLE_MODEL_DIR=/app/models/paddlex/official_models A4B_PADDLE_DEVICE=cpu
 COPY --from=frontend /dist /app/Frontend/dist-app

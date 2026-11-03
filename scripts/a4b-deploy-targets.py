@@ -1,63 +1,33 @@
-#!/usr/bin/env python3
-"""Select components by comparing their actual deployed commits to the requested commit."""
-import json
+"""Choose deployable areas by comparing each live version to the requested commit."""
 import re
 import subprocess
 import sys
-from pathlib import Path
-
-COMPONENTS = ('frontend', 'backend', 'ocr')
-OCR_FILES = {
-    'Backend/documents/analysis/engine_worker.py',
-    'Backend/documents/analysis/tables.py',
-    'Backend/requirements/paddle-cpu.txt',
-    'scripts/runpod/gpu_parser_server.py',
-}
 
 
 def areas(path):
-    if path.startswith('Frontend/'):
+    if path.startswith(b'Frontend/'):
         return {'frontend'}
-    if path.startswith('ocr_service/') or path in OCR_FILES:
-        return {'backend', 'ocr'} if path.startswith('Backend/documents/') else {'ocr'}
-    if path.startswith('Backend/'):
+    if path.startswith(b'Backend/') or path == b'scripts/run-deferred-verifications.py':
         return {'backend'}
-    if path.startswith('shared/') or path in {'package.json', 'package-lock.json', 'tsconfig.json'}:
+    if path.startswith(b'shared/') or path in {
+        b'Dockerfile', b'.dockerignore', b'package.json', b'package-lock.json', b'tsconfig.json',
+    }:
         return {'frontend', 'backend'}
-    if path.startswith('.github/workflows/') or path in {'Dockerfile', '.dockerignore', 'docker-compose.production.yml'}:
-        return set(COMPONENTS)
-    if path == 'scripts/run-deferred-verifications.py':
-        return {'backend'}
     return set()
 
 
-def changed(component, previous, commit):
-    if not re.fullmatch('[0-9a-f]{40}', previous):
+def changed(area, deployed, requested):
+    if not re.fullmatch(r'[0-9a-f]{40}', deployed):
         return True
-    if previous == commit:
+    if deployed == requested:
         return False
-    try:
-        paths = subprocess.check_output(['git', 'diff', '--name-only', '-z', '--no-renames', previous, commit, '--'])
-    except subprocess.CalledProcessError:
-        return True  # A deleted branch may no longer be fetchable.
-    return any(component in areas(path.decode()) for path in paths.split(b'\0') if path)
+    result = subprocess.run(
+        ['git', 'diff', '--name-only', '-z', '--no-renames', deployed, requested, '--'],
+        capture_output=True, check=False,
+    )
+    return result.returncode != 0 or any(area in areas(path) for path in result.stdout.split(b'\0'))
 
 
-def main():
-    state_path, target, commit, mode = sys.argv[1:]
-    deployed = json.loads(Path(state_path).read_text())
-    if not deployed and (mode != 'production' or target not in ('all', 'auto')):
-        sys.exit('Run the first split deployment with branch=main and target=all.')
-    if not deployed or target == 'all':
-        selected = COMPONENTS
-    elif target == 'auto':
-        selected = [name for name in COMPONENTS if changed(name, deployed.get(name, {}).get('commit', ''), commit)]
-    elif target in COMPONENTS:
-        selected = [target]
-    else:
-        sys.exit('Invalid deployment target')
-    print(json.dumps(selected, separators=(',', ':')))
-
-
-if __name__ == '__main__':
-    main()
+commit, frontend, backend = sys.argv[1:]
+selected = [area for area, deployed in [('frontend', frontend), ('backend', backend)] if changed(area, deployed, commit)]
+print('all' if len(selected) == 2 else next(iter(selected), 'none'))

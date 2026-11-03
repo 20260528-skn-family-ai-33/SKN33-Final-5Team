@@ -54,13 +54,14 @@ def load_models(device):
     return {'layout': (layout, LAYOUT), 'paddleocr': (ocr, DET + '+' + REC)}
 
 
-def run(engine, payload, models, device, version, lock, *, max_image=MAX_IMAGE, infer=None):
+def run(engine, payload, models, device, version, lock):
     """Validate one request and return the engine_worker.paddle() response for it."""
     if engine not in ENGINES:
         raise RequestError(404, 'unknown_engine')
     sources = payload.get('sources') if isinstance(payload, dict) else None
     if not isinstance(sources, list) or not 1 <= len(sources) <= MAX_SOURCES:
         raise RequestError(400, 'invalid_sources')
+    model, name = models[engine]
     outputs = []
     with tempfile.TemporaryDirectory(prefix='a4b-parser-') as folder:
         files = []
@@ -71,7 +72,7 @@ def run(engine, payload, models, device, version, lock, *, max_image=MAX_IMAGE, 
                 data = base64.b64decode(source['data'], validate=True)
             except (binascii.Error, ValueError):
                 raise RequestError(400, 'invalid_image') from None
-            if not data or len(data) > max_image:
+            if not data or len(data) > MAX_IMAGE:
                 raise RequestError(413, 'image_too_large')
             # The client's path is only echoed back; it never names a file here.
             path = Path(folder) / f'{index}.png'
@@ -79,9 +80,6 @@ def run(engine, payload, models, device, version, lock, *, max_image=MAX_IMAGE, 
             files.append((source['name'], path))
         # One GPU, one predictor at a time; concurrent uploads queue here instead of sharing state.
         with lock:
-            if infer is not None:
-                return infer(engine, files, Path(folder))
-            model, name = models[engine]
             for name_given, path in files:
                 for predicted in model.predict(str(path)):
                     raw = predicted.json
@@ -89,7 +87,7 @@ def run(engine, payload, models, device, version, lock, *, max_image=MAX_IMAGE, 
     return {'engine': engine, 'version': version, 'model': {'name': name, 'device': device, 'remote': True}, 'outputs': outputs}
 
 
-def make_handler(key, models, device, version, *, max_body=MAX_BODY, max_image=MAX_IMAGE, infer=None):
+def make_handler(key, models, device, version):
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -118,11 +116,11 @@ def make_handler(key, models, device, version, *, max_body=MAX_BODY, max_image=M
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
                 length = -1
-            if not 0 < length <= max_body:
+            if not 0 < length <= MAX_BODY:
                 return self.reply(413, {'error': 'request_too_large'})
             try:
                 payload = json.loads(self.rfile.read(length))
-                self.reply(200, run(self.path[4:], payload, models, device, version, lock, max_image=max_image, infer=infer))
+                self.reply(200, run(self.path[4:], payload, models, device, version, lock))
             except RequestError as error:
                 self.reply(error.status, {'error': error.code})
             except json.JSONDecodeError:

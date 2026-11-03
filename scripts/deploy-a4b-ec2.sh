@@ -7,7 +7,7 @@ image=${1:?ECR image or restore required}
 public_url=${2:?Public HTTPS URL required}
 mode=${3:-production}
 [[ "$mode" == production || "$mode" == test ]]
-[[ "$image" == restore || "$image" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+[[ "$image" == restore || "$image" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:((verified|backend|frontend)-[0-9a-f]{40}|[0-9a-f]{40}-[0-9]+-[0-9]+)$ ]]
 [[ "$public_url" =~ ^https://[a-z0-9.-]+$ ]]
 host=${public_url#https://}
 app=a4b-jhd-aws
@@ -29,11 +29,15 @@ old_id=
 new_id=
 cutover=0
 restore_name=
+frontend_pending=
 
 cleanup() {
     local result=$?
     trap - EXIT
     if (( result != 0 )); then
+        if [[ -n "$frontend_pending" ]]; then
+            frontend "$frontend_pending" recover || result=1
+        fi
         if [[ -n "$new_id" ]]; then
             if [[ -n "$restore_name" ]]; then
                 if (( cutover )); then
@@ -63,9 +67,50 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+pull_image() {
+    local ref=$1 registry
+    if ! docker image inspect "$ref" >/dev/null 2>&1; then
+        registry=${ref%%/*}
+        aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry"
+        docker pull "$ref"
+    fi
+}
+
+verify_health() {
+    local commit=${1:-} home
+    for ((attempt=0; attempt<30; attempt++)); do
+        if home=$(curl -fsS --max-time 4 -H "Host: $host" http://127.0.0.1:3041/) &&
+           { [[ -z "$commit" ]] || [[ "$home" == *"a4b-release=$commit"* ]]; } &&
+           { [[ -z "$commit" ]] || { home=$(curl -fsS --max-time 6 "$public_url/?a4b-release=$commit") &&
+              [[ "$home" == *"a4b-release=$commit"* ]]; }; } &&
+           curl -fsS --max-time 6 "$public_url/api/health" >/dev/null; then
+            echo 'A4B homepage and public health check passed.'
+            return 0
+        fi
+        sleep 2
+    done
+    echo 'A4B health checks failed.' >&2
+    return 1
+}
+
 old_id=$(docker inspect -f '{{.Id}}' "$app")
 [[ $(docker inspect -f '{{.State.Running}} {{.HostConfig.NetworkMode}} {{.HostConfig.RestartPolicy.Name}}' "$old_id") == 'true host unless-stopped' ]]
+if [[ "$image" == *:frontend-* ]]; then
+    deploy_frontend
+    exit 0
+fi
 if [[ "$image" == restore ]]; then
+    if [[ -z "$baseline" || "$baseline" == "$old_id" ]] &&
+       [[ $(frontend "$old_id" probe-baseline) == yes ]]; then
+        frontend_pending=$old_id
+        frontend "$old_id" restore
+        verify_health
+        frontend "$old_id" finish-restore
+        frontend_pending=
+        rm -f "$baseline_file"
+        echo 'Restored the pre-test frontend without restarting the backend.'
+        exit 0
+    fi
     if [[ -z "$baseline" ]]; then
         echo 'No saved pre-test version to restore.' >&2
         exit 1
@@ -97,10 +142,11 @@ if "EASYFLOW_PUBLIC_URL=" + sys.argv[1] not in values or "PORT=3041" not in valu
 print("\n".join(values))
 ' "$public_url" > "$env_file"
 
-    registry=${image%%/*}
-    aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry"
-    docker pull "$image"
+    pull_image "$image"
     new_id=$(docker create --network host --restart unless-stopped --env-file "$env_file" "${mount_args[@]}" "$image")
+    if [[ "$image" == *:backend-* ]]; then
+        docker cp -L "$old_id:/app/Frontend/dist-app/." - | docker cp - "$new_id:/app/Frontend/dist-app/"
+    fi
     if [[ "$mode" == test && -z "$baseline" ]]; then
         printf '%s\n' "$old_id" > "$baseline_file.tmp"
         mv -f "$baseline_file.tmp" "$baseline_file"
@@ -113,22 +159,29 @@ docker rename "$old_id" "$app-previous-${old_id:0:12}"
 docker rename "$new_id" "$app"
 docker start "$new_id" >/dev/null
 
-for ((attempt=0; attempt<30; attempt++)); do
-    if curl -fsS --max-time 4 -H "Host: $host" http://127.0.0.1:3041/ >/dev/null &&
-       curl -fsS --max-time 6 "$public_url/api/health" >/dev/null; then
-        echo 'A4B homepage and public health check passed.'
-        if [[ "$image" == restore || "$mode" == production ]]; then
-            rm -f "$baseline_file"
-            baseline=
-        fi
-        # Keep the immediate rollback container and any pre-test baseline.
-        while IFS= read -r previous; do
-            [[ -z "$previous" || "$previous" == "$app-previous-${old_id:0:12}" || "$previous" == "$app-previous-${baseline:0:12}" ]] && continue
-            docker rm "$previous" >/dev/null || echo "Could not remove older rollback container: $previous" >&2
-        done < <(docker ps -a --filter status=exited --format '{{.Names}}' | awk '/^a4b-jhd-aws-previous-[0-9a-f]+$/')
-        exit 0
+if [[ "$image" == restore && $(frontend "$new_id" probe-baseline) == yes ]]; then
+    frontend_pending=$new_id
+    frontend "$new_id" restore
+fi
+verify_health
+if [[ -n "$frontend_pending" ]]; then
+    frontend "$frontend_pending" finish-restore
+    frontend_pending=
+fi
+if [[ "$image" == restore || "$mode" == production ]]; then
+    rm -f "$baseline_file"
+    baseline=
+fi
+# Keep the immediate rollback container and any pre-test baseline.
+while IFS= read -r previous; do
+    [[ -z "$previous" || "$previous" == "$app-previous-${old_id:0:12}" || "$previous" == "$app-previous-${baseline:0:12}" ]] && continue
+    previous_image=$(docker inspect -f '{{.Config.Image}}' "$previous") || continue
+    if ! docker rm "$previous" >/dev/null; then
+        echo "Could not remove older rollback container: $previous" >&2
+        continue
     fi
-    sleep 2
-done
-echo 'A4B health checks failed.' >&2
-exit 1
+    # Docker refuses removal when a container still references the image.
+    if [[ "$previous_image" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:(verified|backend)-[0-9a-f]{40}$ ]]; then
+        docker image rm "$previous_image" >/dev/null 2>&1 || true
+    fi
+done < <(docker ps -a --filter status=exited --format '{{.Names}}' | awk '/^a4b-jhd-aws-previous-[0-9a-f]+$/')

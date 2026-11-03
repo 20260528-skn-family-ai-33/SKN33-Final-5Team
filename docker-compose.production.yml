@@ -1,0 +1,29 @@
+# The host reverse proxy and EC2 instance-role access keep the existing app network.
+services:
+  app:
+    image: ${A4B_APP_IMAGE:?app image required}
+    network_mode: host
+    env_file:
+      - path: ${A4B_APP_ENV_FILE:?app environment file required}
+        format: raw
+    environment:
+      A4B_FRONTEND_DIR: /app/frontend-releases/current
+      A4B_CPU_PARSER_URL: http://127.0.0.1:8101
+      A4B_CPU_PARSER_API_KEY: ${A4B_CPU_PARSER_API_KEY:?internal OCR key required}
+    volumes:
+      - data:/app/data
+      - ${A4B_CA_MOUNT:?existing RDS CA mount required}
+      - ${A4B_FRONTEND_ROOT:?frontend release root required}:/app/frontend-releases:ro
+    restart: unless-stopped
+  ocr:
+    image: ${A4B_OCR_IMAGE:?OCR image required}
+    environment:
+      A4B_CPU_PARSER_API_KEY: ${A4B_CPU_PARSER_API_KEY:?internal OCR key required}
+    ports:
+      - '127.0.0.1:8101:8100'
+    restart: unless-stopped
+
+volumes:
+  data:
+    external: true
+    name: ${A4B_DATA_VOLUME:?existing data volume required}

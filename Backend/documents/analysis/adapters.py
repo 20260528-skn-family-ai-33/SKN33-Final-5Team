@@ -19,47 +19,54 @@ REMOTE_TOO_LARGE = 'remote_parser_payload_too_large'
 # Match the decoded image and HTTP body limits in scripts/runpod/gpu_parser_server.py.
 REMOTE_MAX_IMAGE = 12 * 1024 * 1024
 REMOTE_MAX_BODY = 48 * 1024 * 1024
+CPU_MAX_IMAGE = 64 * 1024 * 1024
+CPU_MAX_BODY = 88 * 1024 * 1024
 
 
-def remote_request_body(names):
+def remote_request_body(names, *, cpu=False):
+    max_image = CPU_MAX_IMAGE if cpu else REMOTE_MAX_IMAGE
+    max_body = CPU_MAX_BODY if cpu else REMOTE_MAX_BODY
+    parser = 'CPU OCR' if cpu else 'GPU 파서'
     prefix, suffix = b'{"sources":[', b']}'
     size = len(prefix) + len(suffix)
     encoded_sources = []
     for name in names:
         with Path(name).open('rb') as image:
-            data = image.read(REMOTE_MAX_IMAGE + 1)
-        if len(data) > REMOTE_MAX_IMAGE:
-            raise AnalysisError(REMOTE_TOO_LARGE, '변환된 이미지가 GPU 파서의 이미지 크기 제한을 넘었습니다.')
+            data = image.read(max_image + 1)
+        if len(data) > max_image:
+            raise AnalysisError(REMOTE_TOO_LARGE, '변환된 이미지가 ' + parser + '의 이미지 크기 제한을 넘었습니다.')
         source = json.dumps({'name': name, 'data': base64.b64encode(data).decode('ascii')}).encode('utf-8')
         size += len(source) + (1 if encoded_sources else 0)  # Include each comma between sources.
-        if size > REMOTE_MAX_BODY:
-            raise AnalysisError(REMOTE_TOO_LARGE, '인코딩된 요청이 GPU 파서의 본문 크기 제한을 넘었습니다.')
+        if size > max_body:
+            raise AnalysisError(REMOTE_TOO_LARGE, '인코딩된 요청이 ' + parser + '의 본문 크기 제한을 넘었습니다.')
         encoded_sources.append(source)
     return prefix + b','.join(encoded_sources) + suffix
 
 
-def remote_engine(url, engine, sources):
+def remote_engine(url, engine, sources, *, cpu=False):
     """Layout/OCR on the GPU parser server (scripts/runpod/gpu_parser_server.py), same contract as engine_worker."""
     names = [str(p) for p in sources]
-    body = remote_request_body(names)
+    body = remote_request_body(names, cpu=cpu)
+    key = 'A4B_CPU_PARSER_API_KEY' if cpu else 'A4B_PARSER_API_KEY'
+    parser = 'CPU OCR' if cpu else 'GPU 파서'
     # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent.
     request = urllib.request.Request(url.rstrip('/') + '/v1/' + engine, data=body, method='POST', headers={
         'Content-Type': 'application/json', 'User-Agent': 'A4B/0.1',
-        'Authorization': 'Bearer ' + os.environ.get('A4B_PARSER_API_KEY', '')})
+        'Authorization': 'Bearer ' + os.environ.get(key, '')})
     try:
-        with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=240 if cpu else REMOTE_TIMEOUT) as response:
             raw = response.read(MAX_RESULT + 1)
     except urllib.error.HTTPError as exc:
         # 5xx is a server fault; the RunPod proxy answers 404 while the pod is stopped. Both are outages.
         # A proxy may enforce a lower body limit than the parser itself.
         if exc.code == 413:
-            raise AnalysisError(REMOTE_TOO_LARGE, 'GPU 파서 요청이 서버의 크기 제한을 넘었습니다(HTTP 413).') from exc
+            raise AnalysisError(REMOTE_TOO_LARGE, parser + ' 요청이 서버의 크기 제한을 넘었습니다(HTTP 413).') from exc
         if exc.code >= 500 or exc.code == 404:
-            raise AnalysisError(REMOTE_UNAVAILABLE, 'GPU 파서 서버를 사용할 수 없습니다(HTTP ' + str(exc.code) + ').') from exc
+            raise AnalysisError(REMOTE_UNAVAILABLE, parser + ' 서버를 사용할 수 없습니다(HTTP ' + str(exc.code) + ').') from exc
         raise AnalysisError('remote_parser_rejected_' + str(exc.code),
-                            'GPU 파서 서버가 요청을 거부했습니다(HTTP ' + str(exc.code) + '). A4B_PARSER_URL·A4B_PARSER_API_KEY를 확인하세요.') from exc
+                            parser + ' 서버가 요청을 거부했습니다(HTTP ' + str(exc.code) + '). 연결 설정을 확인하세요.') from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise AnalysisError(REMOTE_UNAVAILABLE, 'GPU 파서 서버에 연결하지 못했습니다.') from exc
+        raise AnalysisError(REMOTE_UNAVAILABLE, parser + ' 서버에 연결하지 못했습니다.') from exc
     if len(raw) > MAX_RESULT:
         raise AnalysisError('invalid_engine_result', '엔진 응답이 크기 제한을 넘었습니다.')
     try:
@@ -108,6 +115,24 @@ class LocalEngines:
                     if exc.code not in (REMOTE_UNAVAILABLE, REMOTE_TOO_LARGE) or os.environ.get('A4B_PARSER_FALLBACK', 'cpu') == 'off':
                         raise
                     attempt['remote_error'] = exc.code
+            cpu_service = os.environ.get('A4B_CPU_PARSER_URL') if engine in REMOTE_ENGINES else None
+            if cpu_service:
+                attempt['route'] = 'cpu_service'
+                # Use one image per call so a GPU batch rejected by the body cap can still be processed.
+                data = None
+                outputs = []
+                for path in sources or []:
+                    data = remote_engine(cpu_service, engine, [path], cpu=True)
+                    outputs.extend(data['outputs'])
+                if data is None:
+                    raise AnalysisError('invalid_engine_result', 'CPU OCR에 전달할 이미지가 없습니다.')
+                data['outputs'] = outputs
+                raw = json.dumps(outputs, ensure_ascii=False, allow_nan=False).encode()
+                if len(raw) > MAX_RESULT:
+                    raise AnalysisError('invalid_engine_result', '엔진 응답이 크기 제한을 넘었습니다.')
+                (folder / 'raw.json').write_bytes(raw)
+                attempt.update(status='succeeded', version=data['version'], model=data.get('model', {}))
+                return data
             attempt['route'] = 'cpu_local'
             with (folder / 'engine.log').open('wb') as log:
                 completed = subprocess.run([executable, str(Path(__file__).with_name('engine_worker.py')), str(request_file), str(output)],

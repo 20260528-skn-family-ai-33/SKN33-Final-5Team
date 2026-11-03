@@ -33,7 +33,7 @@ export class WorkspaceRegistry {
  async close(){await Promise.all([...this.entries.values()].map(entry=>withDataDirectory(entry.directory,()=>entry.runtime.close())));this.entries.clear();}
 }
 async function frontend(req:IncomingMessage,res:ServerResponse,path:string){
- const root=frontendPath('dist-app');let file=resolve(root,'.'+decodeURIComponent(path));
+ const root=resolve(process.env.A4B_FRONTEND_DIR||frontendPath('dist-app'));let file=resolve(root,'.'+decodeURIComponent(path));
  if(!file.startsWith(root+sep))file=resolve(root,'index.html');
  try{if(!(await stat(file)).isFile())file=resolve(root,'index.html');}catch{file=resolve(root,'index.html');}
  const content=await readFile(file),mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};

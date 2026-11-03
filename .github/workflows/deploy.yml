@@ -1,17 +1,13 @@
 name: Deploy A4B to EC2
+run-name: A4B ${{ inputs.operation == 'restore' && 'restore' || format('{0} ({1})', inputs.branch || 'main', inputs.target || 'auto') }}
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - .github/workflows/deploy.yml
-      - scripts/deploy-a4b-ec2.sh
-      - scripts/a4b-ssm-command.sh
-      - docs/a4b-automatic-deployment.md
   workflow_dispatch:
     inputs:
       operation:
-        description: Deploy a branch or restore the version saved before testing
+        description: Deploy or restore the version saved before testing
         type: choice
         default: deploy
         options: [deploy, restore]
@@ -20,6 +16,11 @@ on:
         required: true
         default: main
         type: string
+      target:
+        description: Deployment area (ignored for restore)
+        type: choice
+        default: auto
+        options: [auto, all, frontend, backend, ocr]
 
 permissions:
   contents: read
@@ -28,34 +29,86 @@ concurrency:
   group: a4b-ec2-production
   cancel-in-progress: false
 
+env:
+  AWS_REGION: ap-northeast-2
+
 jobs:
-  verify-and-build:
+  plan:
     if: github.ref == 'refs/heads/main' && inputs.operation != 'restore'
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
     outputs:
-      commit: ${{ steps.source.outputs.commit }}
+      commit: ${{ steps.select.outputs.commit }}
+      targets: ${{ steps.select.outputs.targets }}
+      mode: ${{ steps.select.outputs.mode }}
+      build: ${{ steps.select.outputs.build }}
     steps:
-      - name: Select the source branch
-        id: ref
-        shell: bash
-        env:
-          DEPLOY_BRANCH: ${{ inputs.branch }}
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            ref="$GITHUB_SHA"
-          else
-            git check-ref-format "refs/heads/$DEPLOY_BRANCH"
-            ref="refs/heads/$DEPLOY_BRANCH"
-          fi
-          printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Record the commit to test and deploy
-        id: source
-        run: printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Read deployed commits and select components
+        id: select
+        shell: bash
+        env:
+          INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
+          ECR_REPOSITORY: ${{ vars.A4B_ECR_REPOSITORY }}
+          DEPLOY_BRANCH: ${{ inputs.branch || 'main' }}
+          TARGET: ${{ inputs.target || 'auto' }}
+        run: |
+          set -euo pipefail
+          mode=production
+          commit="$GITHUB_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$DEPLOY_BRANCH" != main ]]; then
+            mode=test
+            git check-ref-format "refs/heads/$DEPLOY_BRANCH"
+            commit=$(git rev-parse --verify "refs/remotes/origin/$DEPLOY_BRANCH^{commit}")
+          fi
+          bash scripts/a4b-ssm-command.sh 'p=/var/lib/a4b-deploy/components.json; if test -f "$p"; then cat "$p"; else echo "{}"; fi' > "$RUNNER_TEMP/deployed.json"
+          targets=$(python3 scripts/a4b-deploy-targets.py "$RUNNER_TEMP/deployed.json" "$TARGET" "$commit" "$mode")
+          if [[ "$targets" != '[]' ]]; then
+            bash scripts/a4b-ssm-command.sh 'set -e
+              docker compose version
+              df -h /
+              free -m
+              if [ ! -f /var/lib/a4b-deploy/components.json ]; then
+                available_kib=$(awk "\$1 == \"MemAvailable:\" {print \$2}" /proc/meminfo)
+                free_kib=$(df -Pk / | awk "NR == 2 {print \$4}")
+                if [ "$available_kib" -lt 2097152 ] || [ "$free_kib" -lt 6291456 ]; then
+                  echo "Split migration requires 2 GiB available RAM and 6 GiB free disk" >&2
+                  exit 1
+                fi
+              fi'
+          fi
+          [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
+          build='[]'
+          while IFS= read -r component; do
+            digest=$(aws ecr batch-get-image --repository-name "${ECR_REPOSITORY#*/}" \
+              --image-ids "imageTag=$component-$commit" --query 'images[0].imageId.imageDigest' --output text)
+            if [[ "$digest" == None ]]; then
+              build=$(jq -c --arg component "$component" '. + [$component]' <<< "$build")
+            fi
+          done < <(jq -r '.[]' <<< "$targets")
+          printf 'commit=%s\ntargets=%s\nmode=%s\nbuild=%s\n' "$commit" "$targets" "$mode" "$build" >> "$GITHUB_OUTPUT"
+          printf 'Selected commit %s and components %s\n' "$commit" "$targets"
+
+  verify-and-build:
+    needs: plan
+    if: needs.plan.outputs.build != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -70,27 +123,50 @@ jobs:
           bash Backend/scripts/setup-document-analysis.sh
       - run: npm run check
       - run: npm test
-      - name: Build and package the tested commit
+      - uses: docker/setup-buildx-action@v3
+      - name: Generate BuildKit configuration
         shell: bash
         env:
-          DEPLOY_SHA: ${{ steps.source.outputs.commit }}
+          TARGETS: ${{ needs.plan.outputs.build }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/a4b-images"
+          jq 'def settings($c): {
+                context: ".", target: (if $c=="ocr" then "ocr-cpu" else $c end),
+                tags: ["a4b-ci:"+$c], output: ["type=docker"],
+                "cache-from": ["type=gha,scope=a4b-"+$c],
+                "cache-to": ["type=gha,scope=a4b-"+$c+",mode=max"]
+              }; {group:{default:{targets:.}},target:(map({key:.,value:settings(.)})|from_entries)}' \
+            <<< "$TARGETS" > "$RUNNER_TEMP/a4b-bake.json"
+      - name: Build selected components
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: ${{ runner.temp }}/a4b-bake.json
+      - name: Package selected components
+        shell: bash
+        env:
+          TARGETS: ${{ needs.plan.outputs.build }}
         run: |
           set -euo pipefail
-          docker build -t "a4b-ci:$DEPLOY_SHA" .
-          docker save "a4b-ci:$DEPLOY_SHA" | gzip > "$RUNNER_TEMP/a4b-image.tar.gz"
-      - name: Upload the image for the deployment job
-        uses: actions/upload-artifact@v4
+          while IFS= read -r component; do
+            docker save "a4b-ci:$component" | gzip > "$RUNNER_TEMP/a4b-images/$component.tar.gz"
+          done < <(jq -r '.[]' <<< "$TARGETS")
+      - uses: actions/upload-artifact@v4
         with:
-          name: a4b-image
-          path: ${{ runner.temp }}/a4b-image.tar.gz
+          name: a4b-components
+          path: ${{ runner.temp }}/a4b-images
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
           overwrite: true
 
   deploy:
-    if: github.ref == 'refs/heads/main' && inputs.operation != 'restore'
-    needs: verify-and-build
+    needs: [plan, verify-and-build]
+    if: >-
+      ${{ !cancelled() && github.ref == 'refs/heads/main' &&
+          (inputs.operation == 'restore' ||
+           (needs.plan.result == 'success' && needs.plan.outputs.targets != '[]' &&
+            (needs.plan.outputs.build == '[]' || needs.verify-and-build.result == 'success'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -98,103 +174,56 @@ jobs:
       contents: read
       id-token: write
     env:
-      AWS_REGION: ap-northeast-2
       ECR_REPOSITORY: ${{ vars.A4B_ECR_REPOSITORY }}
       INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
       PUBLIC_URL: ${{ vars.A4B_PUBLIC_URL }}
-      DEPLOY_SHA: ${{ needs.verify-and-build.outputs.commit }}
-    steps:
-      - name: Check out the deployment script from main
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: deployment
-          persist-credentials: false
-      - name: Download the tested image
-        uses: actions/download-artifact@v4
-        with:
-          name: a4b-image
-          path: ${{ runner.temp }}
-      - name: Load the tested image
-        run: docker load --input "$RUNNER_TEMP/a4b-image.tar.gz"
-      - name: Authenticate to AWS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Publish the tested commit to ECR
-        id: publish
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
-          registry=${ECR_REPOSITORY%%/*}
-          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
-          image="$ECR_REPOSITORY:$DEPLOY_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          docker tag "a4b-ci:$DEPLOY_SHA" "$image"
-          docker push "$image"
-          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
-      - name: Deploy over AWS Systems Manager
-        shell: bash
-        env:
-          IMAGE: ${{ steps.publish.outputs.image }}
-          DEPLOY_BRANCH: ${{ inputs.branch || 'main' }}
-        run: |
-          set -euo pipefail
-          [[ "$INSTANCE_ID" =~ ^i-[0-9a-f]+$ ]]
-          [[ "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+$ ]]
-          [[ "$IMAGE" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
-          mode=production
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$DEPLOY_BRANCH" != main ]]; then
-            mode=test
-          fi
-          payload=$(base64 -w 0 deployment/scripts/deploy-a4b-ec2.sh)
-          remote="printf '%s' '$payload' | base64 -d | bash -s -- '$IMAGE' '$PUBLIC_URL' '$mode'"
-          params=$(jq -cn --arg cmd "$remote" '{commands:[$cmd],executionTimeout:["900"]}')
-          command_id=$(aws ssm send-command --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript --parameters "$params" \
-            --comment "Deploy A4B $DEPLOY_SHA" --query 'Command.CommandId' --output text)
-          for ((attempt=0; attempt<110; attempt++)); do
-            if state=$(aws ssm get-command-invocation --command-id "$command_id" \
-              --instance-id "$INSTANCE_ID" --query Status --output text 2>&1); then
-              case "$state" in
-                Success) echo "EC2 deployment and health checks passed"; exit 0 ;;
-                Pending|InProgress|Delayed|Cancelling) ;;
-                *) echo "EC2 deployment failed: $state (SSM command $command_id)" >&2; exit 1 ;;
-              esac
-            elif [[ "$state" != *InvocationDoesNotExist* ]]; then
-              printf '%s\n' "$state" >&2
-              exit 1
-            fi
-            sleep 10
-          done
-          echo "No terminal SSM status for command $command_id" >&2
-          exit 1
-
-  restore:
-    if: github.ref == 'refs/heads/main' && inputs.operation == 'restore'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      AWS_REGION: ap-northeast-2
-      INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
-      PUBLIC_URL: ${{ vars.A4B_PUBLIC_URL }}
+      DEPLOY_SHA: ${{ needs.plan.outputs.commit }}
+      DEPLOY_MODE: ${{ needs.plan.outputs.mode }}
+      TARGETS: ${{ needs.plan.outputs.targets }}
+      OPERATION: ${{ inputs.operation || 'deploy' }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: inputs.operation != 'restore' && needs.plan.outputs.build != '[]'
+        with:
+          name: a4b-components
+          path: ${{ runner.temp }}/a4b-images
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Restart the saved production container
+      - name: Publish selected images and apply release
         shell: bash
         run: |
           set -euo pipefail
           [[ "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+$ ]]
-          payload=$(base64 -w 0 scripts/deploy-a4b-ec2.sh)
-          bash scripts/a4b-ssm-command.sh "printf '%s' '$payload' | base64 -d | bash -s -- restore '$PUBLIC_URL'"
+          [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
+          [[ "$OPERATION" =~ ^(deploy|restore)$ ]]
+          images='{}'
+          if [[ "$OPERATION" == deploy ]]; then
+            [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+            registry=${ECR_REPOSITORY%%/*}
+            aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+            while IFS= read -r component; do
+              [[ "$component" =~ ^(frontend|backend|ocr)$ ]]
+              tag="$component-$DEPLOY_SHA"
+              image="$ECR_REPOSITORY:$tag"
+              digest=$(aws ecr batch-get-image --repository-name "${ECR_REPOSITORY#*/}" \
+                --image-ids "imageTag=$tag" --query 'images[0].imageId.imageDigest' --output text)
+              if [[ "$digest" == None ]]; then
+                docker load --input "$RUNNER_TEMP/a4b-images/$component.tar.gz"
+                docker tag "a4b-ci:$component" "$image"
+                docker push "$image"
+              fi
+              images=$(jq -c --arg key "$component" --arg value "$image" '.[$key]=$value' <<< "$images")
+            done < <(jq -r '.[]' <<< "$TARGETS")
+          fi
+          request=$(jq -cn --arg operation "$OPERATION" --arg mode "$DEPLOY_MODE" --arg repo "$ECR_REPOSITORY" --argjson images "$images" \
+            '{operation:$operation, mode:$mode, repository:$repo, images:$images}' | base64 -w 0)
+          script=$(base64 -w 0 scripts/deploy-a4b-components.py)
+          compose=$(base64 -w 0 docker-compose.production.yml)
+          legacy=$(base64 -w 0 scripts/deploy-a4b-ec2.sh)
+          remote="if [ '$OPERATION' = restore ] && [ ! -f /var/lib/a4b-deploy/components.json ]; then printf '%s' '$legacy' | base64 -d | bash -s -- restore '$PUBLIC_URL'; else printf '%s' '$script' | base64 -d | python3 - '$request' '$PUBLIC_URL' '$compose'; fi"
+          bash scripts/a4b-ssm-command.sh "$remote"

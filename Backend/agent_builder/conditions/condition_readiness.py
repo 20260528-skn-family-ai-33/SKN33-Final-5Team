@@ -727,6 +727,7 @@ def validate_conditions(raw, state, catalog):
     cancelled = bool(re.search(r'그만\s*(해|할)|예약.{0,8}(취소|하지\s*마)|작업.{0,8}취소', last_user))
     decision = ('system_error' if issues else 'manual_review' if cancelled else 'deferred' if resolution and resolution['deferred'] else 'unsupported' if proposal['unsupported_actions'] else
                 'manual_review' if scope_review else
+                'ready' if not operations and slots.get('duplicate.policy',{}).get('value')=='keep' and not unresolved else
                 'manual_review' if not operations else 'clarify' if unresolved else 'ready')
     identity = json.dumps({'session': state.get('session_id', 'isolated'), 'messages': state.get('messages', []),
                            'versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}, sort_keys=True, ensure_ascii=False)

@@ -13,6 +13,9 @@ services:
       # Host and container port must match: the server only accepts its own 127.0.0.1:<PORT> host.
       - "127.0.0.1:${A4B_DOCKER_PORT:-3030}:${A4B_DOCKER_PORT:-3030}"
     environment:
+      PYTHONUTF8: "1"
+      A4B_LINK_ALLOWED_HOSTS: ${A4B_LINK_ALLOWED_HOSTS:-}
+      # Google credentials must come from authorized user-scoped connectors, never shared env tokens.
       HOST: 0.0.0.0
       PORT: ${A4B_DOCKER_PORT:-3030}
       EASYFLOW_DATA_DIR: /app/data

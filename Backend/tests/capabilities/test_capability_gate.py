@@ -297,7 +297,7 @@ def test_existing_tools_without_fingerprint_and_contradictory_payload_cannot_sav
     assert not store.agents();store.close()
 
 
-@pytest.mark.parametrize('reply',['모르겠어','나중에 결정'])
+@pytest.mark.parametrize('reply',['모르겠어','나중에 결정','네'])
 def test_condition_nonanswer_survives_capability_recheck_and_restart(tmp_path,reply):
     store=Storage(tmp_path);s=state();cfg={'configurable':{'thread_id':s['session_id']}};calls=[]
     raw=proposal(s,{'filter.field':'비용','filter.operator':'gt','filter.value':None,

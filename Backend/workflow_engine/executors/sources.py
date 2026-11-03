@@ -11,7 +11,10 @@ def read_source(node,state,storage,config,external_port):
         return {external_port:state['external_inputs'][external_port]}
     expected='document' if tool=='read_document' else 'table'
     provided=[id for id in state['file_ids'] if supports(storage.asset(id),expected)]
-    ids=provided or [id for id in settings['file_ids'] or config['document_ids'] if supports(storage.asset(id),expected)]
+    # An explicit node selection identifies each side of a multi-file join.
+    selected=settings.get('file_ids') or []
+    ids=([id for id in selected if supports(storage.asset(id),expected)] if selected else
+         provided or [id for id in config['document_ids'] if supports(storage.asset(id),expected)])
     if not ids:
         raise ValueError('이번 실행에 사용할 '+('문서' if expected=='document' else '표 파일')+'를 연결하세요.')
     if tool=='read_document':return {'documents':document_chunks(storage,ids)}

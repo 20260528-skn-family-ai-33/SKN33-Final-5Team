@@ -45,12 +45,9 @@ def canonical_table_draft(draft,messages,resources):
 
 
 def public_draft_explanation(draft):
-    """Render a short status when a model places planning analysis in explanation."""
-    import re
-    result=dict(draft);text=result.get('explanation','')
-    reasoning=re.search(r'<think>|</think>|따라서 사용자에게|사용자에게 명확한 질문|질문을 해야 합니다|분석해 보|생각 과정|chain.of.thought',text,re.I)
-    if reasoning or len(text)>800:
-        result['explanation']=('아래 항목을 확인해 주세요.' if result.get('questions') else
-            '요청한 작업의 지원 범위를 확인해 주세요.' if result.get('unsupported') else
-            '업무 조건과 처리 순서를 확인해 주세요.')
+    """Only application-owned status text is rendered; model analysis stays private."""
+    result=dict(draft)
+    result['explanation']=('아래 항목을 확인해 주세요.' if result.get('questions') else
+        '요청한 작업의 지원 범위를 확인해 주세요.' if result.get('unsupported') else
+        '업무 조건과 처리 순서를 확인해 주세요.')
     return result

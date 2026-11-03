@@ -8,11 +8,11 @@ import json
 import re
 from pathlib import Path
 
-BUSINESS_TOOLS = json.loads(Path(__file__).with_name('business56.json').read_text())
+BUSINESS_TOOLS = json.loads(Path(__file__).with_name('business56.json').read_text(encoding="utf-8"))
 BUSINESS_IDS = tuple(t['id'] for t in BUSINESS_TOOLS)
 CONTROL_IDS = ('agent_node', 'finish', 'condition', 'ask_user', 'saved_workflow', 'write_result')
 TOOL_IDS = tuple(dict.fromkeys((*BUSINESS_IDS, *CONTROL_IDS)))
-CATALOG = json.loads((Path(__file__).parents[1] / 'unified_tools/catalog.json').read_text())
+CATALOG = json.loads((Path(__file__).parents[1] / 'unified_tools/catalog.json').read_text(encoding="utf-8"))
 OPERATIONS = {t['id']: [o for o in t['operations'] if not o.get('backend_tool')]
               for t in CATALOG['tools']}
 
@@ -92,7 +92,7 @@ def ports(tool, spec, selected=None):
 # Scalar policies whose domain must be checked before saving, even when table
 # inputs will only be supplied later. The executor still validates actual data.
 ARGUMENT_CONSTRAINTS = {
- ('join_tables','join'):{'keys':{'type':'array','items':'string'},'how':{'enum':['inner','left']},
+ ('join_tables','join'):{'keys':{'type':'array','items':'string','min_items':1},'how':{'enum':['inner','left']},
      'cardinality':{'enum':['one_to_one','many_to_one']},'null_keys':{'enum':['error']},'max_rows':{'type':'positive_integer'}},
  ('scalar_calculate','evaluate'):{'formula':{'type':'string'},'variables':{'type':'object'}},
  ('url_transform','parse'):{'url':{'type':'string'}},
@@ -109,6 +109,7 @@ def validate_constant_domains(tool,operation,args,placeholder_names):
         if 'enum' in rule:valid=value in rule['enum']
         if valid and rule.get('items')=='string':valid=all(isinstance(v,str) for v in value)
         if valid and rule.get('items')=='object':valid=all(isinstance(v,dict) for v in value)
+        if valid and 'min_items' in rule:valid=len(value)>=rule['min_items'] and all(v.strip() for v in value)
         if not valid:raise ValueError(key+' 실행 인자의 허용 규격: '+json.dumps(rule,ensure_ascii=False))
     if (tool,operation)==('create_spreadsheet','create') and 'sheets' in args:
         sheets=args['sheets']

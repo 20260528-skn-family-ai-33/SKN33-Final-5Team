@@ -50,7 +50,9 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             return {'condition_enforced': False, 'condition_route': 'conversation', 'condition_ledger': None, 'condition_template': False}
         user_requests=' '.join(m['content'] for m in state.get('messages',[]) if m['role']=='user')
         import re
-        if setting=='enforce' and re.search(r'증감|전주.{0,15}비교|그 전주|반품|정정\s*(?:내역|반영)|매출.{0,15}비교',user_requests):
+        outside_table_scope=(re.search(r'비교|증감|증가율|감소율|변화율|반품|환불|정정|그 전주',user_requests) or
+            ('요약' in user_requests and not re.search(r'선별|중복|필터',user_requests)))
+        if setting=='enforce' and outside_table_scope:
             return {'condition_ledger':None,'condition_enforced':False,'condition_required':False,
                     'condition_route':'conversation','condition_template':False,'pending_questions':[]}
         assessment=state.get('capability_assessment') or {}
@@ -74,8 +76,8 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         try:
             # Build a transport lazily: a failed input never calls the model.
             from agent_builder.conditions.condition_readiness import input_issues
-            from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer
-            if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state):
+            from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, pending_nonanswer
+            if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state) or pending_nonanswer(state):
                 result = judge_conditions(state, None)
             else:
                 result = judge_conditions(state, transport or _transport(api_key, model), max_contract_repairs=1)
@@ -109,8 +111,8 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
                 update['pending_questions'] = []
                 plan_mode=os.getenv('A4B_CONDITION_PLAN_MODE','llm')
                 if plan_mode not in ('llm','template'):raise ValueError('A4B_CONDITION_PLAN_MODE는 llm/template이어야 합니다.')
-                update['condition_template']=plan_mode=='template'
-                if plan_mode=='template':update['condition_route']='template_plan'
+                update['condition_template']=plan_mode=='template' and bool(ledger.get('operations'))
+                if update['condition_template']:update['condition_route']='template_plan'
             return update
         update.update(condition_route='supervisor', confirmed=False, saved_agent_id=None,
                       draft=_pending_draft(state, ledger), pending_questions=ledger.get('questions', []),

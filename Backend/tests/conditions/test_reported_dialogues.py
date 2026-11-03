@@ -57,3 +57,38 @@ def test_capability_file_id_is_an_upload_instruction_not_internal_noun():
     from agent_builder.capabilities.capability_check import _question_text
     assert _question_text('파일 ID')=='처리할 파일을 자료 연결에서 업로드해 주세요.'
     assert _question_text('비교할 기간')=='비교할 기간에 대해 알려주세요.'
+
+
+def test_keep_only_is_ready_without_empty_review():
+    s=state('중복된 행은 모두 유지해')
+    r=validate_conditions(proposal(s,{'duplicate.policy':'keep','duplicate.field':None},['deduplicate']),s,source_catalog(s)[0])
+    assert r['decision']=='ready' and not r['questions']
+
+
+def test_short_unrecognised_reasoning_is_never_public():
+    from agent_builder.design.presentation import public_draft_explanation
+    text='먼저 사용자의 의도를 분석하고 필요한 정보를 파악해야 한다.'
+    assert text not in public_draft_explanation({'explanation':text,'questions':[]})['explanation']
+
+
+def test_upload_precedes_enforced_capability_model(tmp_path):
+    from infrastructure.persistence.storage import Storage
+    from agent_builder.design.graph import build_graph
+    from tests.design.test_builder import initial
+    class Forbidden:
+        def invoke(self,*a):pytest.fail('파일 안내 전에 모델 호출')
+    store=Storage(tmp_path);s=initial();s['messages']=[{'role':'user','content':'영수증 올려줄테니까 엑셀로 정리해줘'}]
+    graph,connection=build_graph(store,capability_transport=Forbidden(),capability_mode='enforce',condition_mode='enforce')
+    try:
+        r=graph.invoke(s,{'configurable':{'thread_id':s['session_id']}})
+        assert r['status']=='needs_clarification' and r['__interrupt__'][0].value['kind']=='clarification'
+        assert '파일' in r['draft']['questions'][0]
+    finally:connection.close();store.close()
+
+
+@pytest.mark.parametrize('user_request',['이번 달과 지난달의 실적 차이를 비교해줘','환불을 반영한 매출 요약을 만들어줘','매장별 증가율을 계산해줘'])
+def test_comparison_and_summary_bypass_single_table_condition_model(user_request):
+    class Forbidden:
+        def invoke(self,*a):pytest.fail('범위 밖 작업을 중복 제거로 분류하면 안 됨')
+    r=make_condition_check(transport=Forbidden(),mode='enforce')(state(user_request))
+    assert r['condition_route']=='conversation' and r['condition_ledger'] is None

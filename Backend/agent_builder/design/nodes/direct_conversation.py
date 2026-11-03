@@ -448,7 +448,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
         draft=public_draft_explanation(draft)
         checked = validate_node({**state,'draft':draft,'node_library':pool,'semantic_issues':semantic_issues})
         reply = draft['explanation'] + '\n' + '\n'.join('• '+q for q in draft['questions'])
-        if draft['unsupported']:reply += '\n지원 범위: '+' / '.join(draft['unsupported'])
+        if draft['unsupported']:reply += '\n요청한 작업에 필요한 기능과 연결 상태를 추가로 확인해야 합니다.'
         prior = state['messages'][:-1] if state.get('issues') and state['messages'] and state['messages'][-1]['role']=='assistant' else state['messages']
         return {'draft':draft,'node_library':pool,'semantic_issues':semantic_issues,
                 'messages':prior+[{'role':'assistant','content':reply.strip()}],

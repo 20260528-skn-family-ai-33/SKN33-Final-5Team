@@ -126,7 +126,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
             if 'records' in supplied and settings['format'] not in ['csv','json']:issues.append('표 결과는 CSV/JSON을 선택하세요: '+id)
             if 'records' not in supplied and supplied.intersection({'text','answer'}) and settings['format'] not in ['markdown','json']:issues.append('텍스트 결과는 Markdown 또는 JSON을 선택하세요: '+id)
         if tool in ['read_document','read_table']:
-            lookup={r['id']:r for r in resources}
+            lookup={r['id']:r for r in [*resources,*runtime_resources]}
             if any(f not in lookup for f in settings['file_ids']):issues.append('연결되지 않은 파일 ID가 있습니다: '+id+'. file_ids에는 노드 ID가 아닌 이번 대화에 연결된 자료의 실제 ID만 사용하세요.')
             expected='document' if tool=='read_document' else 'table'
             if any(not supports(lookup[f],expected) for f in settings['file_ids'] if f in lookup):issues.append('읽기 노드와 파일 종류가 맞지 않습니다: '+id)

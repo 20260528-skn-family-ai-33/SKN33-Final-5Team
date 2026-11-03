@@ -520,7 +520,7 @@ def make_conversation(api_key,model,model_factory=None):
         draft=public_draft_explanation(draft)
         if draft.get('workflow') and draft.get('explanation')=='지원 범위 또는 입력 상태를 확인하세요.':
             draft['explanation']='업무 조건과 처리 순서를 확인해주세요.'
-        reply=draft['explanation']+'\n'+('\n'.join('• '+q for q in draft['questions']))+('\n지원 범위: '+ ' / '.join(draft['unsupported']) if draft['unsupported'] else '')
+        reply=draft['explanation']+'\n'+('\n'.join('• '+q for q in draft['questions']))+('\n요청한 작업에 필요한 기능과 연결 상태를 추가로 확인해야 합니다.' if draft['unsupported'] else '')
         prior=state['messages'][:-1] if state.get('issues') and state['messages'] and state['messages'][-1]['role']=='assistant' else state['messages']
         return {'node_library':pool,'semantic_issues':list(dict.fromkeys(final_validation['issues']+([ref_issue] if ref_issue else []))),'messages':prior+[{'role':'assistant','content':reply.strip()}],'draft':draft,'confirmed':False,'saved_agent_id':None,'repair_count':state.get('repair_count',0)+1,'trace':state.get('trace',[])+[{'node':'conversation','label':'대화로 설정 구성','status':'completed','detail':'Deep Agents가 대화를 검토하고 질문 또는 설정 초안을 구성했습니다.','tool_calls':conversation_tool_calls,'seed':seed,'user_turn':latest_turn,'json_content_fallback':content_fallback,'tool_selection_fallback':catalog_fallback,'response_relation_repairs':relation_repairs,'binding_repairs':binding_changes,'final_code_validation':final_validation['valid'],'tool_advice_candidates':[{'tool_id':c['tool_id'],'source':c.get('source',os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy'))} for c in (advice or {}).get('ml_candidates',[])], 'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
     return conversation_node

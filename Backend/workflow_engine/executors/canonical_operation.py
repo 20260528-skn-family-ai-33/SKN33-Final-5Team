@@ -75,11 +75,8 @@ def execution_context(storage):
     root = Path(storage.path).parent / 'operation-files'
     root.mkdir(parents=True, exist_ok=True)
     context = Context(root, dict(getattr(storage, 'workflow_connectors', {})))
-    # No network call occurs during configuration. Tokens never enter node settings.
-    sender = os.getenv('A4B_GOOGLE_SENDER_EMAIL', '').strip()
-    if sender and os.getenv('A4B_GOOGLE_ACCESS_TOKEN', '').strip() and not context.connectors:
-        from workflow_engine.unified_tools.expansion.google_adapters import configure_context
-        configure_context(context, sender)
+    # Only connectors injected by the scoped service storage are executable.
+    # Never fall back to a process-wide Google identity in a multi-user service.
     hosts = [v.strip() for v in os.getenv('A4B_LINK_ALLOWED_HOSTS', '').split(',') if v.strip()]
     if hosts and 'http_head' not in context.connectors:
         from workflow_engine.unified_tools.remote_operations import HTTPHeadProvider

@@ -14,8 +14,9 @@ import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
 import {SqliteCheckpointSaver} from './graph-checkpointer';
 import {OAuthManager,createCredentialRefresher} from './oauth';
-import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems} from './binary';
+import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems,splitBinaryItem} from './binary';
 import {runCode} from './sandbox';
+import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
@@ -87,12 +88,47 @@ function enqueue(flow:Flow,input:Json[],mode:'learning'|'live',extra:Json={},onR
  if(!store.reserveExecution(e,clone(flow),input,extra.dedupeKey))return null;
  onReserved?.(e);void pump();return e;
 }
+async function archiveExecutionFiles(execution:Execution){
+ const archived=new Set<string>();
+ for(const record of execution.runs){
+  for(const items of record.output){
+   for(const item of items){
+    for(const file of Object.values(splitBinaryItem(item).binary)){
+     const bytes=decodeBinaryFile(file),path=binaryObjectPath('results',bytes);
+     if(archived.has(path))continue;
+     await saveWorkspaceFile(path,bytes);
+     archived.add(path);
+    }
+   }
+  }
+ }
+}
 async function run(e:Execution){
  const snapshot=store.getExecutionSnapshot(e.id);if(!snapshot)return;
  const controller=new AbortController();controllers.set(e.id,controller);inFlight.add(e.id);
  const pending=pendingWebhooks.get(e.id);
  const metadata={trigger:e.trigger,onlyNode:e.onlyNode,retryOf:e.retryOf,parentExecutionId:e.parentExecutionId,errorWorkflowOf:e.errorWorkflowOf,dedupeKey:e.dedupeKey};
- try{const result={...await executeFlow(snapshot.flow,snapshot.input,{mode:e.mode,signal:controller.signal,executionId:e.id,onlyNode:e.onlyNode,resume:e.status==='waiting'?e:undefined,credential:id=>usableCredential(id,controller.signal),getFlow:id=>store.getFlow(id),code:runCode,webhookResponseMode:pending?.mode,onWebhookResponse:pending?.mode==='responseNode'?response=>completeWebhook(e.id,response):undefined,onProgress:update=>{store.saveExecution({...update,...metadata});settleWebhook(update);}}),...metadata};settleWebhook(result);if(pending?.responseError){result.status='error';result.error=pending.responseError;}store.saveExecution(result);const dispatched=await dispatchErrorWorkflow(result,snapshot.flow,id=>store.getFlow(id),enqueue);if(dispatched.executionId||dispatched.notificationError)store.saveExecution({...result,...(dispatched.executionId?{errorExecutionId:dispatched.executionId}:{}),...(dispatched.notificationError?{notificationError:dispatched.notificationError}:{})});}
+ try{
+  const result={...await executeFlow(snapshot.flow,snapshot.input,{mode:e.mode,signal:controller.signal,executionId:e.id,onlyNode:e.onlyNode,resume:e.status==='waiting'?e:undefined,credential:id=>usableCredential(id,controller.signal),getFlow:id=>store.getFlow(id),code:runCode,webhookResponseMode:pending?.mode,onWebhookResponse:pending?.mode==='responseNode'?response=>completeWebhook(e.id,response):undefined,onProgress:update=>{if(workspaceFilesEnabled&&update.status==='success')return;store.saveExecution({...update,...metadata});settleWebhook(update);}}),...metadata};
+  if(workspaceFilesEnabled){
+   try{await archiveExecutionFiles(result);}
+   catch(error){
+    if(result.status!=='error')throw error;
+    console.warn('실패한 실행의 결과 파일을 보관하지 못했습니다.',result.id);
+   }
+   controller.signal.throwIfAborted();
+  }
+  settleWebhook(result);
+  if(pending?.responseError){result.status='error';result.error=pending.responseError;}
+  store.saveExecution(result);
+  const dispatched=await dispatchErrorWorkflow(result,snapshot.flow,id=>store.getFlow(id),enqueue);
+  if(dispatched.executionId||dispatched.notificationError){
+   store.saveExecution({...result,
+    ...(dispatched.executionId?{errorExecutionId:dispatched.executionId}:{}),
+    ...(dispatched.notificationError?{notificationError:dispatched.notificationError}:{}),
+   });
+  }
+ }
  catch(err){const failed:Execution={...store.getExecution(e.id)!,status:controller.signal.aborted?'canceled':'error',error:(err as Error).message};store.saveExecution(failed);settleWebhook(failed);}
  finally{controllers.delete(e.id);inFlight.delete(e.id);void pump();}
 }
@@ -126,10 +162,10 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'');return json(res,200,{ok:true});}
    }
    if(path==='/api/files'&&method==='POST'){
-    const data=await body(req,12*1024*1024);const file=createBinaryFileFromBase64(data.data,{mimeType:data.mimeType||'application/octet-stream',fileName:data.fileName});return json(res,200,{input:[withBinary({},data.property||'data',file)]});
+    const data=await body(req,12*1024*1024);const file=createBinaryFileFromBase64(data.data,{mimeType:data.mimeType||'application/octet-stream',fileName:data.fileName});const item=withBinary({},data.property||'data',file);if(workspaceFilesEnabled){const bytes=decodeBinaryFile(file);await saveWorkspaceFile(binaryObjectPath('uploads',bytes),bytes);}return json(res,200,{input:[item]});
    }
    if(path==='/api/files/download'&&method==='GET'){
-    const execution=store.getExecution(url.searchParams.get('executionId')||'');if(!execution)return json(res,404,{error:'파일이 저장된 실행 기록을 찾을 수 없어요.'});const integer=(key:string)=>{const raw=url.searchParams.get(key)||'0';if(!/^\d{1,6}$/.test(raw))throw new Error('파일 위치를 확인해주세요.');return Number(raw);};const record=execution.runs[integer('runIndex')];if(!record)throw new Error('파일 단계의 실행 기록을 찾을 수 없어요.');const side=url.searchParams.get('side')||'output';if(!['input','output'].includes(side))throw new Error('파일 위치를 확인해주세요.');const items=side==='input'?record.input:record.output[integer('output')];const item=items?.[integer('item')];if(!item)throw new Error('선택한 파일 결과를 찾을 수 없어요.');const file=getBinary(item,url.searchParams.get('property')||'data');const bytes=decodeBinaryFile(file);res.writeHead(200,{'Content-Type':file.mimeType,'Content-Length':bytes.length,'Content-Disposition':`attachment; filename="download.${file.fileExtension?.replace(/[^a-z0-9]/gi,'')||'bin'}"; filename*=UTF-8''${encodeURIComponent(file.fileName).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(bytes);return;
+    const execution=store.getExecution(url.searchParams.get('executionId')||'');if(!execution)return json(res,404,{error:'파일이 저장된 실행 기록을 찾을 수 없어요.'});const integer=(key:string)=>{const raw=url.searchParams.get(key)||'0';if(!/^\d{1,6}$/.test(raw))throw new Error('파일 위치를 확인해주세요.');return Number(raw);};const record=execution.runs[integer('runIndex')];if(!record)throw new Error('파일 단계의 실행 기록을 찾을 수 없어요.');const side=url.searchParams.get('side')||'output';if(!['input','output'].includes(side))throw new Error('파일 위치를 확인해주세요.');const items=side==='input'?record.input:record.output[integer('output')];const item=items?.[integer('item')];if(!item)throw new Error('선택한 파일 결과를 찾을 수 없어요.');const file=getBinary(item,url.searchParams.get('property')||'data');const local=decodeBinaryFile(file);const bytes=await readWorkspaceFile(binaryObjectPath(side==='input'?'uploads':'results',local),()=>local);res.writeHead(200,{'Content-Type':file.mimeType,'Content-Length':bytes.length,'Content-Disposition':`attachment; filename="download.${file.fileExtension?.replace(/[^a-z0-9]/gi,'')||'bin'}"; filename*=UTF-8''${encodeURIComponent(file.fileName).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(bytes);return;
    }
    if(path==='/api/activation'&&method==='POST'){const data=await body(req);return json(res,200,{workflow:activate(getFlow(data.workflowId),!!data.active)});}
    if(path==='/api/credentials'){

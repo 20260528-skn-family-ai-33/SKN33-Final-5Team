@@ -71,3 +71,67 @@ def test_save_route_rejects_empty_keys_without_persisting(tmp_path,tool,operatio
         with pytest.raises(ValueError):make_save_node(store)(s)
         assert not store.agents()
     finally:store.close()
+
+
+def test_single_saved_table_reads_new_run_file(tmp_path):
+    from infrastructure.persistence.ids import uid
+    old,new=uid(),uid()
+    w={'entry':'read','nodes':[node('read','read_table',file_ids=[old]),node('out','write_result',[bind('table','read','table')],format='json')],'edges':[edge('read','out')]}
+    store,identifier,_=saved(tmp_path,w)
+    try:
+        for i,value in [(old,10),(new,99)]:
+            store.add_asset({'id':i,'name':i+'.csv','kind':'table','columns':['amount']},[{'amount':value}])
+        agent=store.agent(identifier);agent['config']['document_ids']=[old]
+        r=run_workflow(store,identifier,'새 자료로 실행','unused',file_ids=[new],agent_snapshot=agent)
+        assert r['status']=='succeeded',r.get('error')
+        assert r['rows']==[{'amount':99}]
+        assert r['outputs']['read']['table']['file_id']==new
+    finally:store.close()
+
+
+def test_single_saved_document_reads_new_run_file(tmp_path):
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.executors.sources import read_source
+    store=Storage(tmp_path)
+    try:
+        for i,text in [('old','이전 문서'),('new','새 문서')]:
+            store.add_asset({'id':i,'kind':'document','name':i+'.txt','format':'txt','text':text},[])
+        result=read_source(node('read','read_document',file_ids=['old']),{'file_ids':['new'],'outputs':{}},store,{'document_ids':['old']},'documents')
+        assert [d['text'] for d in result['documents']]==['새 문서']
+    finally:store.close()
+
+
+@pytest.mark.parametrize('replacement',['reversed','ambiguous','renamed'])
+def test_saved_join_replacement_never_reads_old_files(tmp_path,replacement):
+    from infrastructure.persistence.ids import uid
+    old_left,old_right,new_left,new_right,extra=[uid() for _ in range(5)]
+    left=node('left','read_table',file_ids=[old_left]);right=node('right','read_table',file_ids=[old_right])
+    join=node('join','join_tables',[bind('left','left','table'),bind('right','right','table')],operation='join',arguments_json=json.dumps({'keys':['id'],'how':'left','cardinality':'many_to_one','null_keys':'error','max_rows':10}))
+    out=node('out','write_result',[bind('table','join','table')],format='json')
+    w={'entry':'left','nodes':[left,right,join,out],'edges':[edge('left','right'),edge('right','join'),edge('join','out')]}
+    store,identifier,_=saved(tmp_path,w)
+    try:
+        for i,name,rows in [(old_left,'left.csv',[{'id':1,'amount':1}]),(old_right,'right.csv',[{'id':1,'name':'OLD'}]),(new_left,'left.csv' if replacement!='renamed' else 'unknown.csv',[{'id':1,'amount':99}]),(new_right,'right.csv',[{'id':1,'name':'NEW'}]),(extra,'left.csv',[{'id':1,'amount':500}])]:
+            store.add_asset({'id':i,'name':name,'kind':'table','columns':list(rows[0])},rows)
+        agent=store.agent(identifier);agent['config']['document_ids']=[old_left,old_right]
+        ids=[new_right,new_left]+([extra] if replacement=='ambiguous' else [])
+        r=run_workflow(store,identifier,'새 자료 결합','unused',file_ids=ids,agent_snapshot=agent)
+        if replacement=='reversed':
+            assert r['status']=='succeeded',r.get('error')
+            assert r['rows']==[{'id':1,'amount':99,'name':'NEW'}]
+        else:
+            assert r['status']=='failed' and '새 실행 파일' in r['error']
+            assert not r['outputs']
+    finally:store.close()
+
+
+def test_wrong_kind_run_input_cannot_silently_reuse_saved_table(tmp_path):
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.executors.sources import read_source
+    store=Storage(tmp_path)
+    try:
+        store.add_asset({'id':'old','name':'old.csv','kind':'table','columns':['amount']},[{'amount':10}])
+        store.add_asset({'id':'new','name':'new.txt','kind':'document','text':'새 문서'},[])
+        with pytest.raises(ValueError,match='새 실행 자료의 종류'):
+            read_source(node('read','read_table',file_ids=['old']),{'file_ids':['new'],'outputs':{}},store,{'document_ids':['old']},'table')
+    finally:store.close()

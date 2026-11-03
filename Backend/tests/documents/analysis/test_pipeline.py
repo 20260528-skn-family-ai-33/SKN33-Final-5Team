@@ -1,8 +1,12 @@
 """Real source fixtures; model doubles test routing, not recognition accuracy."""
 import io
+import json
+import random
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 from zipfile import ZipFile
 from PIL import Image
 from openpyxl import Workbook
@@ -10,7 +14,8 @@ from openpyxl.drawing.image import Image as ExcelImage
 from docx import Document
 from pptx import Presentation
 from pptx.util import Inches
-from documents.analysis.contracts import AnalysisError, validate, sha256
+from documents.analysis.adapters import LocalEngines, REMOTE_MAX_IMAGE, REMOTE_TOO_LARGE, remote_engine, remote_request_body
+from documents.analysis.contracts import AnalysisError, MAX_BYTES, validate, sha256
 from documents.analysis.pipeline import run
 from documents.analysis.readers import Package
 
@@ -50,6 +55,43 @@ class PipelineTests(unittest.TestCase):
         path = self.root / name
         Image.new('RGB', (100, 90), 'white').save(path)
         return path
+
+    def test_jpeg_with_oversized_png_uses_cpu_for_layout_and_ocr(self):
+        source = self.root / 'large-photo.jpg'
+        size = (2500, 2400)
+        Image.frombytes('RGB', size, random.Random(42).randbytes(3 * size[0] * size[1])).save(source, quality=85)
+        self.assertLess(source.stat().st_size, MAX_BYTES)
+
+        def cpu_worker(args, **kwargs):
+            request = json.loads(Path(args[-2]).read_text())
+            self.assertTrue(all(Path(name).stat().st_size > REMOTE_MAX_IMAGE for name in request['sources']))
+            result = {'boxes': []} if request['engine'] == 'layout' else {'rec_texts': ['추출 본문'], 'rec_scores': [.99]}
+            outputs = [dict(source=name, result=result) for name in request['sources']]
+            Path(args[-1]).write_text(json.dumps(dict(version='cpu-test-double', outputs=outputs)))
+            return SimpleNamespace(returncode=0)
+
+        engines = LocalEngines(self.work)
+        with patch.dict('os.environ', {'A4B_PARSER_URL': 'http://gpu.invalid', 'A4B_PARSER_FALLBACK': 'cpu'}), \
+                patch('urllib.request.urlopen') as remote, \
+                patch('documents.analysis.adapters.subprocess.run', side_effect=cpu_worker):
+            payload = run(source, self.work, engines=engines)
+        remote.assert_not_called()
+        self.assertIn('추출 본문', payload['text'])
+        self.assertEqual([(a['processor'], a['route'], a['remote_error']) for a in engines.attempts],
+                         [('layout', 'cpu_local', REMOTE_TOO_LARGE), ('paddleocr', 'cpu_local', REMOTE_TOO_LARGE)])
+
+    def test_gpu_request_body_limit_includes_base64_and_json(self):
+        sources = [str(self.picture('영수증 한 장.png')), str(self.picture('other.png'))]
+        body = remote_request_body(sources)
+        self.assertGreater(len(body), sum(Path(name).stat().st_size for name in sources))
+        self.assertEqual([entry['name'] for entry in json.loads(body)['sources']], sources)
+        with patch('documents.analysis.adapters.REMOTE_MAX_BODY', len(body)):
+            self.assertEqual(remote_request_body(sources), body)
+        with patch('documents.analysis.adapters.REMOTE_MAX_BODY', len(body) - 1), \
+                patch('urllib.request.urlopen') as remote, self.assertRaises(AnalysisError) as error:
+            remote_engine('http://gpu.invalid', 'paddleocr', sources)
+        remote.assert_not_called()
+        self.assertEqual(error.exception.code, REMOTE_TOO_LARGE)
 
     def spreadsheet(self, image=True):
         source = self.root / 'mixed.xlsx'

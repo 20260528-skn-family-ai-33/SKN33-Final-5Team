@@ -212,8 +212,12 @@ class OllamaPlanner:
                    'options': {'num_ctx': 16384, 'num_predict': 4096,
                                'temperature': 0.7, 'top_p': 0.8, 'seed': 42}}
         # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent; same header as the verifier client.
+        headers = {'Content-Type': 'application/json', 'User-Agent': 'A4B/0.1'}
+        api_key = os.getenv('A4B_MAIN_API_KEY')
+        if api_key:
+            headers['Authorization'] = 'Bearer ' + api_key
         request = urllib.request.Request(self.url, data=json.dumps(payload).encode(),
-                                         headers={'Content-Type': 'application/json', 'User-Agent': 'A4B/0.1'})
+                                         headers=headers)
         started = time.perf_counter()
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:raw = json.load(response)

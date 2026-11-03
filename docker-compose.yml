@@ -21,6 +21,8 @@ services:
       EASYFLOW_DATA_DIR: /app/data
       A4B_AUTH_MODE: ${A4B_AUTH_MODE:-off}
       EASYFLOW_PUBLIC_URL: ${EASYFLOW_PUBLIC_URL:-}
+      A4B_S3_BUCKET: ${A4B_S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       A4B_COGNITO_USER_POOL_ID: ${A4B_COGNITO_USER_POOL_ID:-}
       A4B_COGNITO_CLIENT_ID: ${A4B_COGNITO_CLIENT_ID:-}
       A4B_COGNITO_DOMAIN: ${A4B_COGNITO_DOMAIN:-}
@@ -30,16 +32,20 @@ services:
       A4B_DATABASE_CA_FILE: ${A4B_DATABASE_CA_FILE:-}
       A4B_DATABASE_TLS_SERVER_NAME: ${A4B_DATABASE_TLS_SERVER_NAME:-}
       A4B_AUTH_SESSION_SECONDS: ${A4B_AUTH_SESSION_SECONDS:-28800}
-      A4B_MAIN_PROVIDER: ollama
-      A4B_MAIN_BASE_URL: ${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}/v1
-      A4B_MAIN_MODEL: ${A4B_LLM_MODEL:-a4b-qwen35-4b-16k}
-      A4B_VERIFIER_PROVIDER: ollama
-      A4B_VERIFIER_BASE_URL: ${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}
+      A4B_MAIN_PROVIDER: ${A4B_MAIN_PROVIDER:-ollama}
+      A4B_MAIN_BASE_URL: ${A4B_MAIN_BASE_URL:-${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}/v1}
+      A4B_MAIN_API_KEY: ${A4B_MAIN_API_KEY:-}
+      A4B_MAIN_MODEL: ${A4B_MAIN_MODEL:-${A4B_LLM_MODEL:-a4b-qwen35-4b-16k}}
+      A4B_VERIFIER_PROVIDER: ${A4B_VERIFIER_PROVIDER:-ollama}
+      A4B_VERIFIER_BASE_URL: ${A4B_VERIFIER_BASE_URL:-${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}}
+      A4B_VERIFIER_API_KEY: ${A4B_VERIFIER_API_KEY:-${A4B_LLM_API_KEY:-}}
       A4B_VERIFIER_MODEL: ${A4B_VERIFIER_MODEL:-qwen3.5:4b}
       # defer records verifier input; run scripts/run-deferred-verifications.py later (see README).
       A4B_VERIFIER_MODE: ${A4B_VERIFIER_MODE:-defer}
       # direct: the registered catalogue is passed in the design input. With files attached the
       # model often inspects the file and never calls list_tools, which the model mode rejects.
+      A4B_PLANNER_MODE: ${A4B_PLANNER_MODE:-deepagent}
+      A4B_PLANNER_PROMPT: ${A4B_PLANNER_PROMPT:-v1}
       A4B_TOOL_CATALOG_MODE: ${A4B_TOOL_CATALOG_MODE:-direct}
       # Request validation/clarification (question IDs, condition ledger, unsupported checks).
       # Preserve main's enforced default; the root .env can explicitly turn either check off.
@@ -47,6 +53,9 @@ services:
       A4B_CONDITION_MODE: ${A4B_CONDITION_MODE:-enforce}
       A4B_MAIN_TIMEOUT_S: ${A4B_MAIN_TIMEOUT_S:-180}
       A4B_DESIGN_TIMEOUT_MS: ${A4B_DESIGN_TIMEOUT_MS:-600000}
+      A4B_PARSER_URL: ${A4B_PARSER_URL:-}
+      A4B_PARSER_API_KEY: ${A4B_PARSER_API_KEY:-}
+      A4B_PARSER_FALLBACK: ${A4B_PARSER_FALLBACK:-cpu}
       A4B_TOOL_ADVICE_MODE: ${A4B_TOOL_ADVICE_MODE:-hint}
       A4B_TOOL_ADVICE_BACKEND: ${A4B_TOOL_ADVICE_BACKEND:-svm56}
       A4B_SVM_MODEL_PATH: ${A4B_DOCKER_SVM_MODEL_PATH:-/app/ml-bundle/model/recommender_char_svm_5431.joblib}

@@ -9,3 +9,10 @@ test('builder accepts JSON rows and rule documents with original text',async()=>
 test('builder rejects unsupported, malformed and unsafe file contents',async()=>{for(const input of [encoded('file.exe','binary'),encoded('file.json','{"rows":[]}'),encoded('file.json','[{"x":{"nested":1}}]'),encoded('../file.csv','a\n1'),{fileName:'file.csv',data:'garbage!'},encoded('file.csv','x,x\n1,2')])await assert.rejects(()=>parseBuilderAsset(input));});
 
 test('large document base64 validation avoids recursive regular-expression stack overflow',async()=>{const {asset}=await parseBuilderAsset(encoded('large.txt','검증 원문 '.repeat(20000)));assert.ok(asset.text.length>100000);});
+
+test('S3 builder reports decode base64 binary while preserving UTF-8 text',async()=>{
+ const {builderReportBytes}=await import('../src/agent-builder');
+ const bytes=Buffer.from([0x50,0x4b,0,0xff,0x80,10]);
+ assert.deepEqual(builderReportBytes({content:bytes.toString('base64'),encoding:'base64'}),bytes);
+ assert.equal(builderReportBytes({content:'매출 요약'}).toString('utf8'),'매출 요약');
+});

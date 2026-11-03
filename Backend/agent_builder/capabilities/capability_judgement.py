@@ -4,12 +4,13 @@ import re
 from pydantic import BaseModel,ConfigDict,Field
 from typing import Literal
 from workflow_engine.catalog.registry import TOOLS
+from workflow_engine.catalog.canonical import planner_catalog
 from agent_builder.conditions.condition_readiness import input_issues
 
 class Assessment(BaseModel):
     model_config=ConfigDict(extra='forbid')
     decision:Literal['existing_tools','clarify','missing_capability','manual_review']
-    tool_ids:list[str]=Field(max_length=22)
+    tool_ids:list[str]=Field(max_length=62)
     missing_conditions:list[str]=Field(max_length=5)
     missing_actions:list[str]=Field(max_length=3)
     reason:str=Field(min_length=1,max_length=1500)
@@ -78,7 +79,7 @@ def normalize_native_claims(result):
         'native_app_claims_removed':removed,'missing_actions':remaining,
         'reason':result['reason']+' 일·주 예약 자체는 앱의 지원 기능이므로 코드 대조 후 부족 목록에서 제외했습니다.'}
 
-# No registered tool sends anything outside the app (write_result/export_result only make files).
+# Unsupported channels remain gaps; registered Gmail operations are checked separately.
 # A channel followed closely by a send verb is a request for external delivery; a negation
 # right after it ("보내지 마", "말고") is not.
 # filter_sort already implements every missing/duplicate policy (registry: missing_policy
@@ -129,25 +130,24 @@ def external_delivery_claims(result,state):
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     match=next(_external_delivery(user[-1]),None) if user else None
     if not match:return result
+    if match.group(1).lower() in ('이메일','email','e-mail','메일') and any(t['id']=='email.send' for t in TOOLS):return result
     return {**result,'decision':'missing_capability','missing_conditions':[],
         'missing_actions':['외부 '+match.group(1)+' 전송'],
         'model_decision':result['decision'],'model_missing_conditions':list(result['missing_conditions']),
         'code_external_delivery':match.group(0),
         'reason':result['reason']+' 등록 도구에는 외부 전송 기능이 없어 코드 대조 후 외부 전송을 부족 기능으로 기록했습니다.'}
 
-SYSTEM='현재 작업은 실행 전의 도구 지원 검토입니다. 도구는 전부 설치·등록된 상태이며 tools에 제공된 기능을 실제 사용할 수 있습니다.\n파일이 아직 없더라도 실행 때 연결할 수 있습니다. 파일·자료 부재는 도구 부재가 아닙니다.\nexisting_tools: 현재 등록 도구 한 개 또는 조합으로 요청한 기능을 지원. tool_ids를 선택하고 missing_conditions/actions는 빈 배열.\nclarify: 지원되는 작업이지만 사용자가 정해야 하는 기준이 빠짐. missing_conditions만 질문하며 missing_actions는 빈 배열.\nmissing_capability: 실제 요청된 동작이 등록 도구/조합에 없음. missing_actions만 적고 missing_conditions는 빈 배열.\nmanual_review: 불확실성·범위 검토가 필요. 지원된 작업을 없는 도구로 바꾸지 않음.\nread_table→filter_sort→write_result로 상수 선별/중복제거/JSON·CSV 파일 생성이 가능합니다. 파일 저장은 외부 전송과 다릅니다.\nread_table→aggregate_table→write_result로 그룹 건수·합계가 가능합니다.\nread_document→search_document→compose_answer로 문서 근거 답변이 가능합니다.\ncalculate_columns는 명시된 열과 숫자의 사칙연산·나머지로 새 열을 만들거나 열 하나의 이름을 바꾸고, 입력 형식·시간대가 명시된 날짜 열을 변환합니다. text_transform은 앞 단계 텍스트에서 지정된 문자열을 그대로 바꿉니다. base64_codec은 텍스트 Base64 인코딩·디코딩, text_hash는 UTF-8 텍스트 SHA-256을 지원합니다. 그 밖의 문자열 처리나 파일 직접 편집을 지원한다고 가정하지 않습니다. 식이나 결과 열이 빠지면 확인합니다. 다른 임의 셀 변환과 수식 함수는 지원한다고 가정하지 않습니다. 외부 이메일·Slack 전송과 두 표 join은 현재 카탈로그가 지원하지 않습니다. agent_node의 일반 텍스트 응답을 검증된 표 변환 도구와 같다고 취급하지 않습니다.\n금지된 동작은 요청된 동작이 아닙니다. 숫자가 미정이면 질문하고 임의 기준을 넣지 않습니다.\n설명과 사용자 원문 근거를 반환하되 user_quotes는 목록의 원문을 그대로 선택합니다. 실행·설계·코드생성·저장 허가는 주지 않습니다.'
-SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 일·주 단위 예약은 Tool ID 없이 서버가 지원합니다. 예약 자체를 부족 도구로 판정하거나 가짜 예약 Tool ID를 만들지 않습니다. 실제 처리에 필요한 등록 tool_ids를 선택합니다. 시각·요일·시간대가 미정이면 clarify이며, 파일 미첨부는 도구 부재가 아닙니다. 활성화 전 관리 자료 연결은 후속 조건 검사에서 확인합니다. 월간·cron·외부 이벤트 트리거는 일·주 예약으로 임의 대체하지 않습니다. 예약이 있어도 이메일·Slack 외부 발송이나 최신 외부 자료 자동 수집까지 지원되는 것은 아닙니다.'
+SYSTEM='현재 작업은 실행 전의 도구 지원 검토입니다. tools에 등록된 실행 동작·입출력·범위를 확인합니다. 계정 연결이 필요한 도구는 등록된 기능이지만 실행 전 연결이 필요합니다.\n파일이 아직 없더라도 실행 때 연결할 수 있습니다. 파일·자료 부재는 도구 부재가 아닙니다.\nexisting_tools: 현재 등록 도구 한 개 또는 조합으로 요청한 기능을 지원. tool_ids를 선택하고 missing_conditions/actions는 빈 배열.\nclarify: 지원되는 작업이지만 사용자가 정해야 하는 기준이 빠짐. missing_conditions만 질문하며 missing_actions는 빈 배열.\nmissing_capability: 실제 요청된 동작이 등록 도구/조합에 없음. missing_actions만 적고 missing_conditions는 빈 배열.\nmanual_review: 불확실성·범위 검토가 필요. 지원된 작업을 없는 도구로 바꾸지 않음.\nread_table→filter_sort→write_result로 상수 선별/중복제거/JSON·CSV 파일 생성이 가능합니다. 파일 저장은 외부 전송과 다릅니다.\nread_table→aggregate_table→write_result로 그룹 건수·합계가 가능합니다.\nread_document→search_document→compose_answer로 문서 근거 답변이 가능합니다.\ncalculate_columns는 명시된 열과 숫자의 사칙연산·나머지로 새 열을 만들거나 열 하나의 이름을 바꾸고, 입력 형식·시간대가 명시된 날짜 열을 변환합니다. text_transform은 앞 단계 텍스트에서 지정된 문자열을 그대로 바꿉니다. base64_codec은 텍스트 Base64 인코딩·디코딩, text_hash는 UTF-8 텍스트 SHA-256을 지원합니다. 추가 문자열·문서 편집은 해당 등록 도구의 operation_contracts 범위에서 지원합니다. 식이나 결과 열이 빠지면 확인합니다. 다른 임의 셀 변환과 수식 함수는 지원한다고 가정하지 않습니다. 두 표 join은 join_tables, 이메일은 email.* 등록 도구를 사용합니다. 메일·캘린더 실행에는 계정 연결이 필요합니다. Slack 전송은 지원하지 않습니다. agent_node의 일반 텍스트 응답을 검증된 표 변환 도구와 같다고 취급하지 않습니다.\n금지된 동작은 요청된 동작이 아닙니다. 숫자가 미정이면 질문하고 임의 기준을 넣지 않습니다.\n설명과 사용자 원문 근거를 반환하되 user_quotes는 목록의 원문을 그대로 선택합니다. 실행·설계·코드생성·저장 허가는 주지 않습니다.'
+SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 일·주 단위 예약은 Tool ID 없이 서버가 지원합니다. 예약 자체를 부족 도구로 판정하거나 가짜 예약 Tool ID를 만들지 않습니다. 실제 처리에 필요한 등록 tool_ids를 선택합니다. 시각·요일·시간대가 미정이면 clarify이며, 파일 미첨부는 도구 부재가 아닙니다. 활성화 전 관리 자료 연결은 후속 조건 검사에서 확인합니다. 월간·cron·외부 이벤트 트리거는 일·주 예약으로 임의 대체하지 않습니다. 예약 자체가 계정 연결 권한을 제공하지는 않습니다. 이메일은 등록 Gmail 도구와 연결 계정을, 캘린더는 Google Calendar 계정을 사용합니다. Slack·자동 원격 자료 수집은 별도 등록 도구 없이는 지원하지 않습니다.'
 SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 일·주 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 제외·유지·오류와 중복 첫 행·마지막 행·유지·오류(중복이 있으면 실행 중단)는 filter_sort에 이미 정의된 정책입니다. 이 정책을 요청한 것은 기능 부족이 아닙니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 관리 표 연결 검사는 후속 단계에 맡깁니다.'
 SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 일·주 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 monthly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
 SYSTEM+='\n조건끼리 서로 모순되거나(예: 같은 대상에 두 가지 정책) 기준·값·단위가 미정인 것은 기능 부족이 아니라 사용자가 정할 조건이므로 clarify입니다. 모순 해결, 기준 선택, 값 명시, 정책 우선순위 결정을 missing_actions에 적지 않고 missing_conditions에 적습니다. 등록 도구가 지원하는 작업(상수 비교 선별, 빈 값 정책, 첫 행·마지막 행 중복 제거, 파일 저장)을 조건이 모순이라는 이유로 미지원이라 하지 않습니다.'
 DEMOS=[
- {'request':'한국 시간 매주 화요일 오전 11시에 CSV로 저장하고 이메일로 발송해줘.', 'output':{'decision':'missing_capability','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':['외부 이메일 발송'],'reason':'앱 주간 예약과 파일 저장은 지원하지만 외부 발송만 미지원. 활성화와 관리 자료 연결은 후속 전제.','user_quotes':['한국 시간 매주 화요일 오전 11시에 CSV로 저장하고 이메일로 발송해줘.']}},
  {'request':'매월 말일 오전 10시 한국 시간에 표를 JSON 저장. 일간이나 주간으로 바꾸지 마.', 'output':{'decision':'missing_capability','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':['월간 예약'],'reason':'표 저장은 지원하나 앱 예약은 daily/weekly만 지원하므로 월간 주기는 미지원.','user_quotes':['매월 말일 오전 10시 한국 시간에 표를 JSON 저장. 일간이나 주간으로 바꾸지 마.']}},
  {'request':'한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.', 'output':{'decision':'existing_tools','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'앱 주간 예약과 등록 표 읽기·저장 도구로 지원. 관리 자료 연결과 활성화는 후속 검사.','user_quotes':['한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.']}},
  {'request':'한국 시간 매일 11시에 수량이 12개 초과인 행만 JSON으로 저장. 빈 값 오류, 중복 유지. 파일은 나중에 연결.', 'output':{'decision':'existing_tools','tool_ids':['read_table','filter_sort','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'앱 일간 예약과 선별·저장 조합. 이미 정한 정책과 실행 전 파일 연결을 다시 묻지 않음.','user_quotes':['한국 시간 매일 11시에 수량이 12개 초과인 행만 JSON으로 저장. 빈 값 오류, 중복 유지. 파일은 나중에 연결.']}},
  {'request':'자료는 나중에 올릴게. 판매액이 27000원 이상인 행만 JSON 저장.','output':{'decision':'existing_tools','tool_ids':['read_table','filter_sort','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'자료는 실행 전에 받고 등록 도구로 선별·파일 생성','user_quotes':['자료는 나중에 올릴게. 판매액이 27000원 이상인 행만 JSON 저장.']}},
  {'request':'가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.','output':{'decision':'clarify','tool_ids':['filter_sort'],'missing_conditions':['선별할 가격 기준과 포함 여부'],'missing_actions':[],'reason':'가격 기준은 사용자 결정 사항','user_quotes':['가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.']}},
- {'request':'최종 문서를 이메일로 실제 보내줘.','output':{'decision':'missing_capability','tool_ids':[],'missing_conditions':[],'missing_actions':['외부 이메일 전송'],'reason':'등록 카탈로그에 전송 기능 없음','user_quotes':['최종 문서를 이메일로 실제 보내줘.']}}
 ]
 
 def assess_capability(state,transport):
@@ -174,7 +174,7 @@ def assess_capability(state,transport):
         'messages':state['messages'],'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,
         'app_capabilities':APP_CAPABILITIES,
-        'tools':[{k:t[k] for k in ['id','description','input_ports','output_ports']} for t in TOOLS],
+        'tools':planner_catalog(TOOLS),
         'authoritative_request':user[-1],'user_quote_catalog':user},ensure_ascii=False)}]
     reply=transport.invoke(messages)
     content=reply.get('content') if isinstance(reply,dict) else reply.content

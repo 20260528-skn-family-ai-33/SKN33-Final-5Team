@@ -65,13 +65,13 @@ def export():
     record('03-parser-error',partial)
     db=request('db-error','비용을 선별해줘.');db['source_health']={'db_status':'timeout','messages_loaded':False}
     record('04-db-error',db)
-    record('05-unsupported',request('unsupported','비용 결과 파일을 이메일로 자동 발송해줘.'),unsupported=['등록 도구에 외부 이메일 자동 발송이 없습니다.'])
+    record('05-unsupported',request('unsupported','비용 결과 파일을 Slack으로 자동 전송해줘.'),unsupported=['등록 도구에 Slack 전송이 없습니다.'])
     deferred=deepcopy(missing);deferred.update(request_id='defer',revision=1)
     deferred['messages']=first['messages']+[{'role':'user','content':'나중에 결정할게'}]
     deferred['previous_state']={'session_id':deferred['session_id'],'revision':1,'ledger':first['condition_ledger'],
         'pending_questions':first['pending_questions'],'answer_events':first.get('condition_answers',[])}
     record('06-deferred',deferred)
-    record('07-manual-review',request('scope','업무를 정리해줘.'),operation='other')
+    record('07-manual-review',request('scope','비용 선별과 부서별 집계를 함께 설계해줘.'),operation='mixed')
     answer=deepcopy(deferred);answer.update(request_id='answer',revision=1)
     answer['messages']=first['messages']+[{'role':'user','content':'20만원 초과로 해줘.'}]
     answer['answer_question_id']=next(q['id'] for q in first['pending_questions'] if q['key']=='filter.value')

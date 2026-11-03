@@ -7,12 +7,15 @@ services:
     build:
       context: .
       args:
-        A4B_WITH_ML: ${A4B_WITH_ML:-0}
+        A4B_WITH_ML: ${A4B_WITH_ML:-1}
     image: a4b-agent-studio:local
     ports:
       # Host and container port must match: the server only accepts its own 127.0.0.1:<PORT> host.
       - "127.0.0.1:${A4B_DOCKER_PORT:-3030}:${A4B_DOCKER_PORT:-3030}"
     environment:
+      PYTHONUTF8: "1"
+      A4B_LINK_ALLOWED_HOSTS: ${A4B_LINK_ALLOWED_HOSTS:-}
+      # Google credentials must come from authorized user-scoped connectors, never shared env tokens.
       HOST: 0.0.0.0
       PORT: ${A4B_DOCKER_PORT:-3030}
       EASYFLOW_DATA_DIR: /app/data
@@ -53,7 +56,7 @@ services:
       A4B_PARSER_URL: ${A4B_PARSER_URL:-}
       A4B_PARSER_API_KEY: ${A4B_PARSER_API_KEY:-}
       A4B_PARSER_FALLBACK: ${A4B_PARSER_FALLBACK:-cpu}
-      A4B_TOOL_ADVICE_MODE: ${A4B_TOOL_ADVICE_MODE:-off}
+      A4B_TOOL_ADVICE_MODE: ${A4B_TOOL_ADVICE_MODE:-hint}
       A4B_TOOL_ADVICE_BACKEND: ${A4B_TOOL_ADVICE_BACKEND:-svm56}
       A4B_SVM_MODEL_PATH: ${A4B_DOCKER_SVM_MODEL_PATH:-/app/ml-bundle/model/recommender_char_svm_5431.joblib}
       A4B_SVM_CATALOG_PATH: /app/ml-bundle/catalog/catalog_56.json

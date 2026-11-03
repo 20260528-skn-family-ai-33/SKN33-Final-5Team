@@ -209,7 +209,7 @@ def test_partial_parsing_fault_during_question_never_resolves_unknown(tmp_path):
 
 def test_all_five_questions_are_delivered_and_wrong_id_stays_pending(tmp_path):
     store=Storage(tmp_path);s=state();cfg={'configurable':{'thread_id':s['session_id']}};calls=[]
-    questions=['확인 항목 '+str(i) for i in range(5)]
+    questions=['확인 항목 '+str(i)+'을 알려주세요.' for i in range(5)]
     graph,conn=setup(store,s,calls,Fake([assessment(s,'clarify',questions)]))
     current=graph.invoke(s,cfg)
     assert current['__interrupt__'][0].value['questions']==questions
@@ -297,7 +297,7 @@ def test_existing_tools_without_fingerprint_and_contradictory_payload_cannot_sav
     assert not store.agents();store.close()
 
 
-@pytest.mark.parametrize('reply',['모르겠어','나중에 결정'])
+@pytest.mark.parametrize('reply',['모르겠어','나중에 결정','네','네.'])
 def test_condition_nonanswer_survives_capability_recheck_and_restart(tmp_path,reply):
     store=Storage(tmp_path);s=state();cfg={'configurable':{'thread_id':s['session_id']}};calls=[]
     raw=proposal(s,{'filter.field':'비용','filter.operator':'gt','filter.value':None,

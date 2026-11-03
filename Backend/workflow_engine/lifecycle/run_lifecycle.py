@@ -74,7 +74,9 @@ class RunLifecycle:
         try:
             self.assert_owner(id,token)
             target.parent.mkdir(exist_ok=True)
-            temp.write_text(content,encoding='utf-8');os.replace(temp,target)
+            if isinstance(content,bytes):temp.write_bytes(content)
+            else:temp.write_text(content,encoding='utf-8')
+            os.replace(temp,target)
             self.db.commit()
         except Exception:
             self.db.rollback()

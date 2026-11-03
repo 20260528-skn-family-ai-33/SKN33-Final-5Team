@@ -3,6 +3,792 @@
   "counting_unit": "대표 도구 ID. 한 도구의 여러 operation은 중복 도구로 세지 않음.",
   "tools": [
     {
+      "id": "read_document",
+      "name_ko": "문서 내용 읽기",
+      "category": "business",
+      "role_ko": "실제 본문·페이지·표 위치를 읽음. 스캔 여부는 옵션/프로필이며 별도 업무 Tool이 아님",
+      "operations": [
+        {
+          "id": "extract_content",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset format:DocumentFormat profile_id?:str page_numbers?:PageNumbers",
+          "outputs": "document:Document",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. UTF-8 TXT/MD/HTML, DOCX, text-layer PDF only; no HWP, legacy DOC or OCR",
+          "side_effect": false,
+          "scope": "UTF-8 TXT/MD/HTML, DOCX, text-layer PDF only; no HWP, legacy DOC or OCR",
+          "dependencies": [
+            "python-docx",
+            "pypdf"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "format",
+              "required": true
+            },
+            {
+              "name": "profile_id",
+              "required": false
+            },
+            {
+              "name": "page_numbers",
+              "required": false
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "native_read_document",
+          "status": "backend_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "read_document",
+          "inputs": "{} + settings/state/storage",
+          "outputs": "{\"documents\": \"documents\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "read_text",
+          "runtime_id": "file.read_text",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "path (필수)",
+          "outputs": "UTF-8 text",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "extract_content",
+          "fields": "asset:Asset format:DocumentFormat profile_id?:str page_numbers?:PageNumbers"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "extract_content",
+          "fields": "document:Document"
+        }
+      ],
+      "formats": [
+        "txt",
+        "pdf",
+        "docx",
+        "hwp",
+        "hwpx",
+        "html",
+        "png",
+        "jpeg"
+      ],
+      "limitations": [
+        "TXT만 참조 실행. PDF/DOCX 본문·표·페이지 보존 계약 추가 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 3
+    },
+    {
+      "id": "read_table",
+      "name_ko": "표 데이터 읽기",
+      "category": "business",
+      "role_ko": "계산에 쓸 행·열 추출. CSV나 PDF라는 확장자 자체로 다른 Tool을 만들지 않음",
+      "operations": [
+        {
+          "id": "parse",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "source:TableSource format:TableFormat profile_id?:str sheet_names?:str[] header_row?:Positive table_ids?:str[]",
+          "outputs": "tables:Table[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. CSV/TSV, JSON records, XLSX; unique text headers; XLSX formulas preserved as text",
+          "side_effect": false,
+          "scope": "CSV/TSV, JSON records, XLSX; unique text headers; XLSX formulas preserved as text",
+          "dependencies": [
+            "openpyxl"
+          ],
+          "arguments": [
+            {
+              "name": "source",
+              "required": true
+            },
+            {
+              "name": "format",
+              "required": true
+            },
+            {
+              "name": "profile_id",
+              "required": false
+            },
+            {
+              "name": "sheet_names",
+              "required": false
+            },
+            {
+              "name": "header_row",
+              "required": false
+            },
+            {
+              "name": "table_ids",
+              "required": false
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "native_read_table",
+          "status": "backend_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "read_table",
+          "inputs": "{\"file_id\": \"file\"} + settings/state/storage",
+          "outputs": "{\"table\": \"table\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "read_csv",
+          "runtime_id": "file.read_csv",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "path (필수)",
+          "outputs": "rows:object[] (기본 값은 문자열)",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "parse",
+          "fields": "source:TableSource format:TableFormat profile_id?:str sheet_names?:str[] header_row?:Positive table_ids?:str[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "parse",
+          "fields": "tables:Table[]"
+        }
+      ],
+      "formats": [
+        "csv",
+        "tsv",
+        "xlsx",
+        "xls",
+        "json_table",
+        "pdf",
+        "docx",
+        "html"
+      ],
+      "limitations": [
+        "JSON은 행·열 배열인 경우에 한정. XLSX/JSON 파싱 미실행",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 3
+    },
+    {
+      "id": "read_web",
+      "name_ko": "HTML 본문·표 읽기",
+      "category": "business",
+      "role_ko": "확보된 HTML에서 본문·표 추출. URL 다운로드는 download_remote_file",
+      "operations": [
+        {
+          "id": "extract_html",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset selector?:str extract:HtmlExtract",
+          "outputs": "document:Document tables:Table[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Local HTML file; text/tables/both; no implicit network or CSS selectors",
+          "side_effect": false,
+          "scope": "Local HTML file; text/tables/both; no implicit network or CSS selectors",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "extract",
+              "required": true
+            },
+            {
+              "name": "selector",
+              "required": false
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "extract_html",
+          "fields": "asset:Asset selector?:str extract:HtmlExtract"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "extract_html",
+          "fields": "document:Document tables:Table[]"
+        }
+      ],
+      "formats": [
+        "html"
+      ],
+      "limitations": [
+        "selector 누락·복수 표의 처리 기준 및 원격 접근 분리 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "search_document",
+      "name_ko": "문서 안의 내용 검색",
+      "category": "business",
+      "role_ko": "문서 내부 관련 근거 구간 검색. 파일명 검색/공개 문서 검색과 다름",
+      "operations": [
+        {
+          "id": "retrieve_passages",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "documents:Document[] query:str top_k:Positive",
+          "outputs": "passages:Evidence[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Lexical token-overlap retrieval only; no semantic embeddings",
+          "side_effect": false,
+          "scope": "Lexical token-overlap retrieval only; no semantic embeddings",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "documents",
+              "required": true
+            },
+            {
+              "name": "query",
+              "required": true
+            },
+            {
+              "name": "top_k",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "native_search_document",
+          "status": "model_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "search_document",
+          "inputs": "{\"documents\": \"documents\"} + settings/state/storage",
+          "outputs": "{\"documents\": \"documents\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태 및 모델 연결",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "keyword_search",
+          "implementation": "keyword_search",
+          "status": "local_ready",
+          "inputs": "documents:[{text,source_id?,page?}], keywords:string[], top_k:int=3",
+          "outputs": "원문·출처와 score가 있는 문서 목록",
+          "requirements": "정확 문자열 기반 검색. LLM rewrite/임베딩/의미 검색 아님.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "retrieve_passages",
+          "fields": "documents:Document[] query:str top_k:Positive"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "retrieve_passages",
+          "fields": "passages:Evidence[]"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "검색 색인·검색 방식·근거 부족 기준 미확정",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 3
+    },
+    {
+      "id": "extract_information",
+      "name_ko": "문서의 항목 추출",
+      "category": "business",
+      "role_ko": "필드별 값·자료형·출처 추출. 자유 요약과 구분",
+      "operations": [
+        {
+          "id": "extract_fields",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "documents:Document[] fields:FieldSpec[] missing_policy:MissingPolicy",
+          "outputs": "values:ExtractedValue[]",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        },
+        {
+          "id": "native_extract_information",
+          "status": "model_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "extract_information",
+          "inputs": "{\"documents\": \"documents\"} + settings/state/storage",
+          "outputs": "{\"records\": \"records\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태 및 모델 연결",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "extract_fields",
+          "fields": "documents:Document[] fields:FieldSpec[] missing_policy:MissingPolicy"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "extract_fields",
+          "fields": "values:ExtractedValue[]"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "허용 자료형·복수 값·근거 인용의 검증 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 2
+    },
+    {
+      "id": "compose_answer",
+      "name_ko": "근거 기반 답변·요약",
+      "category": "business",
+      "role_ko": "특정 질문에 근거로 답변. 요약은 같은 Tool의 summarize 동작 / 문서 전체/일부 요약. summarize_document는 이 동작의 별칭",
+      "operations": [
+        {
+          "id": "answer",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "question:str evidence:Evidence[]",
+          "outputs": "answer:Answer",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        },
+        {
+          "id": "summarize",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "documents:Document[] scope:str max_characters:Positive",
+          "outputs": "answer:Answer",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        },
+        {
+          "id": "native_compose_answer",
+          "status": "model_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "compose_answer",
+          "inputs": "{\"reviews\": \"reviews\", \"documents\": \"documents\", \"answer\": \"text\"} + settings/state/storage",
+          "outputs": "{\"text\": \"text\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태 및 모델 연결",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "answer",
+          "fields": "question:str evidence:Evidence[]"
+        },
+        {
+          "operation": "summarize",
+          "fields": "documents:Document[] scope:str max_characters:Positive"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "answer",
+          "fields": "answer:Answer"
+        },
+        {
+          "operation": "summarize",
+          "fields": "answer:Answer"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "summarize_document와 기존 실행 ID 공유. 라벨 단위를 먼저 합의",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 3
+    },
+    {
+      "id": "filter_sort",
+      "name_ko": "표 조건 정리",
+      "category": "business",
+      "role_ko": "행 조건 선택. 그룹별 합계/열 삭제/그래프 분기와 구분 / 행 순서 변경. '~별로'만으로 집계라고 판단하지 않음 / 지정 열 기준 중복 제거 / 결측 행 제거 또는 지정값 채우기",
+      "operations": [
+        {
+          "id": "deduplicate",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table columns:str[] keep:KeepPolicy",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Exact equality on explicit columns; keep=first/last/none",
+          "side_effect": false,
+          "scope": "Exact equality on explicit columns; keep=first/last/none",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "columns",
+              "required": true
+            },
+            {
+              "name": "keep",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "handle_missing",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table columns:str[] action:MissingAction fill_value?:Scalar",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Missing=null/absent key; action=drop_rows/fill/error/keep",
+          "side_effect": false,
+          "scope": "Missing=null/absent key; action=drop_rows/fill/error/keep",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "columns",
+              "required": true
+            },
+            {
+              "name": "action",
+              "required": true
+            },
+            {
+              "name": "fill_value",
+              "required": false
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "native_filter_sort",
+          "status": "backend_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "filter_sort",
+          "inputs": "{\"table\": \"table\"} + settings/state/storage",
+          "outputs": "{\"table\": \"table\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "filter",
+          "runtime_id": "table.filter",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "rows (필수), predicates (필수), combine='and'",
+          "outputs": "rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "sort",
+          "runtime_id": "table.sort",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "rows (필수), keys (필수)",
+          "outputs": "rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "select_columns",
+          "runtime_id": "table.select_columns",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "rows (필수), columns (필수)",
+          "outputs": "선택 열 rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "filter",
+          "fields": "table:Table predicates:Predicate[] combine:Combine"
+        },
+        {
+          "operation": "sort",
+          "fields": "table:Table keys:SortKey[]"
+        },
+        {
+          "operation": "deduplicate",
+          "fields": "table:Table columns:str[] keep:KeepPolicy"
+        },
+        {
+          "operation": "handle_missing",
+          "fields": "table:Table columns:str[] action:MissingAction fill_value?:Scalar"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "filter",
+          "fields": "table:Table"
+        },
+        {
+          "operation": "sort",
+          "fields": "table:Table"
+        },
+        {
+          "operation": "deduplicate",
+          "fields": "table:Table"
+        },
+        {
+          "operation": "handle_missing",
+          "fields": "table:Table"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "결측 처리는 옵션과 독립 동작 경계 결정. pilot 3동작만 존재",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 6
+    },
+    {
+      "id": "aggregate_table",
+      "name_ko": "표 집계",
+      "category": "business",
+      "role_ko": "그룹별/전체 합계. 행별 수식은 calculate_columns / 행 수/비결측 값 수/고유값 수 집계",
+      "operations": [
+        {
+          "id": "sum",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table group_by:str[] value_column:str null_policy:NullPolicy",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Grouped finite numeric sum; null_policy=error/exclude",
+          "side_effect": false,
+          "scope": "Grouped finite numeric sum; null_policy=error/exclude",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "group_by",
+              "required": true
+            },
+            {
+              "name": "value_column",
+              "required": true
+            },
+            {
+              "name": "null_policy",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "count",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table group_by:str[] mode:CountMode column?:str",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Grouped rows/non_null/distinct counting",
+          "side_effect": false,
+          "scope": "Grouped rows/non_null/distinct counting",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "group_by",
+              "required": true
+            },
+            {
+              "name": "mode",
+              "required": true
+            },
+            {
+              "name": "column",
+              "required": false
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "native_aggregate_table",
+          "status": "backend_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "aggregate_table",
+          "inputs": "{\"table\": \"table\"} + settings/state/storage",
+          "outputs": "{\"table\": \"table\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "group_aggregate",
+          "runtime_id": "table.aggregate",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "rows (필수), group_by (필수), operation (필수), column=None, null_policy='error'",
+          "outputs": "집계 rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "sum",
+          "fields": "table:Table group_by:str[] value_column:str null_policy:NullPolicy"
+        },
+        {
+          "operation": "count",
+          "fields": "table:Table group_by:str[] mode:CountMode column?:str"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "sum",
+          "fields": "table:Table"
+        },
+        {
+          "operation": "count",
+          "fields": "table:Table"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "count의 행/비결측/고유값 의미 및 원본별 차이를 추가 확인",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 4
+    },
+    {
       "id": "calculate_columns",
       "name_ko": "열 계산·변환",
       "category": "business",
@@ -87,6 +873,28 @@
             }
           ],
           "code_implemented": true
+        },
+        {
+          "id": "calculate_records",
+          "runtime_id": "table.calculate",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "rows (필수), output_column (필수), formula (필수), overwrite=False",
+          "outputs": "계산 열을 포함한 rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "cast_numbers",
+          "runtime_id": "table.cast",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "rows (필수), columns (필수)",
+          "outputs": "숫자 변환된 rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
         }
       ],
       "legacy_inputs": [
@@ -133,7 +941,2152 @@
       ],
       "status": "local_ready",
       "all_operations_ready": true,
+      "operation_count": 5
+    },
+    {
+      "id": "join_tables",
+      "name_ko": "두 표 연결",
+      "category": "business",
+      "role_ko": "키로 두 표 연결. 차이 보고/단순 스트림 합치기와 구분",
+      "operations": [
+        {
+          "id": "join",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "left:Table right:Table keys:JoinKey[] how:JoinHow cardinality:Cardinality null_keys:NullKeyPolicy max_rows:Positive",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap",
+          "side_effect": false,
+          "scope": "inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "left",
+              "required": true
+            },
+            {
+              "name": "right",
+              "required": true
+            },
+            {
+              "name": "keys",
+              "required": true
+            },
+            {
+              "name": "how",
+              "required": true
+            },
+            {
+              "name": "cardinality",
+              "required": true
+            },
+            {
+              "name": "null_keys",
+              "required": true
+            },
+            {
+              "name": "max_rows",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "join_records",
+          "runtime_id": "table.join",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "left (필수), right (필수), keys (필수), how='inner', cardinality='many_to_one'",
+          "outputs": "결합 rows:object[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "join",
+          "fields": "left:Table right:Table keys:JoinKey[] how:JoinHow cardinality:Cardinality null_keys:NullKeyPolicy max_rows:Positive"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "join",
+          "fields": "table:Table"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "다대다 폭증·동명이 열·null 키 정책 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "compare_tables",
+      "name_ko": "두 표 비교",
+      "category": "business",
+      "role_ko": "두 표의 추가·삭제·변경 보고",
+      "operations": [
+        {
+          "id": "diff",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "baseline:Table candidate:Table keys:str[] compare_columns:str[] absolute_tolerance:NonNegative",
+          "outputs": "differences:TableDiff",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Unique non-null keys; added/deleted/changed cells; absolute numeric tolerance",
+          "side_effect": false,
+          "scope": "Unique non-null keys; added/deleted/changed cells; absolute numeric tolerance",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "baseline",
+              "required": true
+            },
+            {
+              "name": "candidate",
+              "required": true
+            },
+            {
+              "name": "keys",
+              "required": true
+            },
+            {
+              "name": "compare_columns",
+              "required": true
+            },
+            {
+              "name": "absolute_tolerance",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "diff",
+          "fields": "baseline:Table candidate:Table keys:str[] compare_columns:str[] absolute_tolerance:NonNegative"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "diff",
+          "fields": "differences:TableDiff"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "중복 키·숫자 오차·행 순서 비교 정책 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "create_spreadsheet",
+      "name_ko": "새 엑셀·표 파일 만들기",
+      "category": "business",
+      "role_ko": "Table로 XLSX 통합문서 생성. 단순 CSV 직렬화와 구분",
+      "operations": [
+        {
+          "id": "create",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "sheets:SheetSpec[]",
+          "outputs": "artifact:Artifact",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. XLSX named sheets of literal scalar cells; formulas not evaluated",
+          "side_effect": true,
+          "scope": "XLSX named sheets of literal scalar cells; formulas not evaluated",
+          "dependencies": [
+            "openpyxl"
+          ],
+          "arguments": [
+            {
+              "name": "sheets",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "create",
+          "fields": "sheets:SheetSpec[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "create",
+          "fields": "artifact:Artifact"
+        }
+      ],
+      "formats": [
+        "xlsx"
+      ],
+      "limitations": [
+        "export_result와 XLSX 경계를 합의. 실제 XLSX 실행 미검증",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "edit_spreadsheet",
+      "name_ko": "기존 스프레드시트 수정",
+      "category": "business",
+      "role_ko": "기존 XLSX에 새 시트 추가 / 기존 XLSX 시트에 행 추가 / 지정 셀 값/수식 수정 / 지정 범위 숫자 수열 채움",
+      "operations": [
+        {
+          "id": "add_sheet",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "workbook:Asset expected_version:str sheet:SheetSpec",
+          "outputs": "artifact:Artifact changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Copy-on-write XLSX with SHA-256 version check",
+          "side_effect": true,
+          "scope": "Copy-on-write XLSX with SHA-256 version check",
+          "dependencies": [
+            "openpyxl"
+          ],
+          "arguments": [
+            {
+              "name": "workbook",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "sheet",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "append_rows",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "workbook:Asset expected_version:str sheet_name:str table:Table",
+          "outputs": "artifact:Artifact changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Append to existing XLSX headers; rejects unknown columns",
+          "side_effect": true,
+          "scope": "Append to existing XLSX headers; rejects unknown columns",
+          "dependencies": [
+            "openpyxl"
+          ],
+          "arguments": [
+            {
+              "name": "workbook",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "sheet_name",
+              "required": true
+            },
+            {
+              "name": "table",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "set_cells",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "workbook:Asset expected_version:str cells:CellEdit[]",
+          "outputs": "artifact:Artifact changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. CellEdit={sheet_name,cell,value}; literal scalars",
+          "side_effect": true,
+          "scope": "CellEdit={sheet_name,cell,value}; literal scalars",
+          "dependencies": [
+            "openpyxl"
+          ],
+          "arguments": [
+            {
+              "name": "workbook",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "cells",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "fill_sequence",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "workbook:Asset expected_version:str sheet_name:str cell_range:str start:number step:number",
+          "outputs": "artifact:Artifact changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Row-major numeric sequence; at most 100000 cells",
+          "side_effect": true,
+          "scope": "Row-major numeric sequence; at most 100000 cells",
+          "dependencies": [
+            "openpyxl"
+          ],
+          "arguments": [
+            {
+              "name": "workbook",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "sheet_name",
+              "required": true
+            },
+            {
+              "name": "cell_range",
+              "required": true
+            },
+            {
+              "name": "start",
+              "required": true
+            },
+            {
+              "name": "step",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "add_sheet",
+          "fields": "workbook:Asset expected_version:str sheet:SheetSpec"
+        },
+        {
+          "operation": "append_rows",
+          "fields": "workbook:Asset expected_version:str sheet_name:str table:Table"
+        },
+        {
+          "operation": "set_cells",
+          "fields": "workbook:Asset expected_version:str cells:CellEdit[]"
+        },
+        {
+          "operation": "fill_sequence",
+          "fields": "workbook:Asset expected_version:str sheet_name:str cell_range:str start:number step:number"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "add_sheet",
+          "fields": "artifact:Artifact changes:Change[]"
+        },
+        {
+          "operation": "append_rows",
+          "fields": "artifact:Artifact changes:Change[]"
+        },
+        {
+          "operation": "set_cells",
+          "fields": "artifact:Artifact changes:Change[]"
+        },
+        {
+          "operation": "fill_sequence",
+          "fields": "artifact:Artifact changes:Change[]"
+        }
+      ],
+      "formats": [
+        "xlsx"
+      ],
+      "limitations": [
+        "in-place 저장 분리·수식/서식 보존·operation별 원본 확인 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "derived_edit"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 4
+    },
+    {
+      "id": "create_document",
+      "name_ko": "새 문서·보고서 만들기",
+      "category": "business",
+      "role_ko": "새 내용을 DOCX/PDF/Markdown 문서로 구성. 기존 파일 변환과 다름",
+      "operations": [
+        {
+          "id": "compose",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "sections:Section[] format:OutputDocumentFormat",
+          "outputs": "artifact:Artifact",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. TXT/MD/DOCX heading+text sections; no content generation",
+          "side_effect": true,
+          "scope": "TXT/MD/DOCX heading+text sections; no content generation",
+          "dependencies": [
+            "python-docx"
+          ],
+          "arguments": [
+            {
+              "name": "sections",
+              "required": true
+            },
+            {
+              "name": "format",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "compose",
+          "fields": "sections:Section[] format:OutputDocumentFormat"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "compose",
+          "fields": "artifact:Artifact"
+        }
+      ],
+      "formats": [
+        "docx",
+        "pdf",
+        "markdown"
+      ],
+      "limitations": [
+        "템플릿에서 새 문서 생성과 빈칸 채우기를 구분. 형식별 미검증",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "edit_document",
+      "name_ko": "기존 문서 내용 수정",
+      "category": "business",
+      "role_ko": "기존 본문의 지정 문자열 치환 / 지정 앵커 앞/뒤 본문 삽입 / 지정 구간 삭제",
+      "operations": [
+        {
+          "id": "replace_text",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "document:Document expected_version:str find:str replacement:str occurrence:Occurrence",
+          "outputs": "document:Document changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Versioned logical text; literal first/all replacement",
+          "side_effect": false,
+          "scope": "Versioned logical text; literal first/all replacement",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "document",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "find",
+              "required": true
+            },
+            {
+              "name": "replacement",
+              "required": true
+            },
+            {
+              "name": "occurrence",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "insert_text",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "document:Document expected_version:str anchor:str position:InsertPosition text:str",
+          "outputs": "document:Document changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Versioned logical text; unique literal anchor; before/after",
+          "side_effect": false,
+          "scope": "Versioned logical text; unique literal anchor; before/after",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "document",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "anchor",
+              "required": true
+            },
+            {
+              "name": "position",
+              "required": true
+            },
+            {
+              "name": "text",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "delete_text",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "document:Document expected_version:str target:str occurrence:Occurrence",
+          "outputs": "document:Document changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Versioned logical text; first/all literal deletion",
+          "side_effect": false,
+          "scope": "Versioned logical text; first/all literal deletion",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "document",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "target",
+              "required": true
+            },
+            {
+              "name": "occurrence",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "replace_text",
+          "fields": "document:Document expected_version:str find:str replacement:str occurrence:Occurrence"
+        },
+        {
+          "operation": "insert_text",
+          "fields": "document:Document expected_version:str anchor:str position:InsertPosition text:str"
+        },
+        {
+          "operation": "delete_text",
+          "fields": "document:Document expected_version:str target:str occurrence:Occurrence"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "replace_text",
+          "fields": "document:Document changes:Change[]"
+        },
+        {
+          "operation": "insert_text",
+          "fields": "document:Document changes:Change[]"
+        },
+        {
+          "operation": "delete_text",
+          "fields": "document:Document changes:Change[]"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "replace_text만 참조 실행. 삽입/삭제·DOCX 레이아웃 미구현",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "derived_edit"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
       "operation_count": 3
+    },
+    {
+      "id": "format_document",
+      "name_ko": "문서 서식 적용",
+      "category": "business",
+      "role_ko": "글꼴·단락·정렬·여백 변경. 내용 교정과 구분",
+      "operations": [
+        {
+          "id": "apply_formatting",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "document:Asset expected_version:str rules:FormatRule[]",
+          "outputs": "artifact:Artifact changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. DOCX paragraph font/style/alignment; no table/header or page-layout formatting",
+          "side_effect": true,
+          "scope": "DOCX paragraph font/style/alignment; no table/header or page-layout formatting",
+          "dependencies": [
+            "python-docx"
+          ],
+          "arguments": [
+            {
+              "name": "document",
+              "required": true
+            },
+            {
+              "name": "expected_version",
+              "required": true
+            },
+            {
+              "name": "rules",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "apply_formatting",
+          "fields": "document:Asset expected_version:str rules:FormatRule[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "apply_formatting",
+          "fields": "artifact:Artifact changes:Change[]"
+        }
+      ],
+      "formats": [
+        "docx"
+      ],
+      "limitations": [
+        "원문 의미 불변 확인·형식별 지원 범위 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "derived_edit"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "fill_template",
+      "name_ko": "양식에 값 채우기",
+      "category": "business",
+      "role_ko": "식별 가능한 양식 빈칸에 값 채우기",
+      "operations": [
+        {
+          "id": "fill_fields",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "template:Asset field_values:ValueMap missing_policy:MissingPolicy",
+          "outputs": "artifact:Artifact missing_fields:str[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. TXT/MD {{identifier}} templates; missing_policy=error/keep/empty",
+          "side_effect": true,
+          "scope": "TXT/MD {{identifier}} templates; missing_policy=error/keep/empty",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "template",
+              "required": true
+            },
+            {
+              "name": "field_values",
+              "required": true
+            },
+            {
+              "name": "missing_policy",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "fill_fields",
+          "fields": "template:Asset field_values:ValueMap missing_policy:MissingPolicy"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "fill_fields",
+          "fields": "artifact:Artifact missing_fields:str[]"
+        }
+      ],
+      "formats": [
+        "docx"
+      ],
+      "limitations": [
+        "템플릿 필드 식별·레이아웃 보존·누락/넘침 정책 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "convert_format",
+      "name_ko": "내용을 보존하는 형식 변환",
+      "category": "business",
+      "role_ko": "같은 내용을 다른 파일 형식으로 변환. 전체 형식 간 무손실 보장은 하지 않음",
+      "operations": [
+        {
+          "id": "convert",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset source_format:FileFormat target_format:FileFormat loss_policy:LossPolicy",
+          "outputs": "artifact:Artifact loss_report:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. TXT/MD/DOCX/PDF->text; TXT/MD->DOCX; CSV<->JSON; lossy conversion requires allow",
+          "side_effect": true,
+          "scope": "TXT/MD/DOCX/PDF->text; TXT/MD->DOCX; CSV<->JSON; lossy conversion requires allow",
+          "dependencies": [
+            "python-docx",
+            "pypdf"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "source_format",
+              "required": true
+            },
+            {
+              "name": "target_format",
+              "required": true
+            },
+            {
+              "name": "loss_policy",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "convert",
+          "fields": "asset:Asset source_format:FileFormat target_format:FileFormat loss_policy:LossPolicy"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "convert",
+          "fields": "artifact:Artifact loss_report:Review"
+        }
+      ],
+      "formats": [
+        "pair_allowlist_required"
+      ],
+      "limitations": [
+        "모든 형식 간 무손실 보장 금지. 형식 쌍별 실행 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "export_result",
+      "name_ko": "처리 결과 파일로 내보내기",
+      "category": "business",
+      "role_ko": "CSV/JSON/Markdown/TXT/HTML 바이트 생성. 경로 저장은 write_file",
+      "operations": [
+        {
+          "id": "native_write_result",
+          "status": "backend_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "write_result",
+          "inputs": "{\"table\": \"table\"} + settings/state/storage",
+          "outputs": "{\"artifact\": \"artifact\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태",
+          "side_effect": true,
+          "code_implemented": true
+        },
+        {
+          "id": "native_export_result",
+          "status": "backend_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "export_result",
+          "inputs": "{\"records\": \"records\", \"text\": \"text\", \"documents\": \"documents\", \"answer\": \"text\"} + settings/state/storage",
+          "outputs": "{\"artifact\": \"artifact\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태",
+          "side_effect": true,
+          "code_implemented": true
+        },
+        {
+          "id": "write_json",
+          "runtime_id": "file.write_json",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "path (필수), value (필수), overwrite=False",
+          "outputs": "relative path object",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": true,
+          "code_implemented": true
+        },
+        {
+          "id": "write_csv",
+          "runtime_id": "file.write_csv",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "path (필수), rows (필수), columns (필수), overwrite=False",
+          "outputs": "relative path object",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": true,
+          "code_implemented": true
+        },
+        {
+          "id": "serialize",
+          "implementation": "export_serialize",
+          "status": "local_ready",
+          "inputs": "value:JSON, format:csv|json, filename:string",
+          "outputs": "상대 파일 경로 object",
+          "requirements": "Context.root 필요. CSV는 object[]만 허용. 기존 파일 덮어쓰기 금지.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "serialize",
+          "fields": "value:ExportValue format:SerializationFormat filename:str"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "serialize",
+          "fields": "artifact:Artifact"
+        }
+      ],
+      "formats": [
+        "csv",
+        "json",
+        "markdown",
+        "txt",
+        "html"
+      ],
+      "limitations": [
+        "output_path를 저장 옵션으로 사용하지 않음. pilot 3형식만 실행",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16",
+        "expansion"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 5
+    },
+    {
+      "id": "proofread_document",
+      "name_ko": "맞춤법·문법 점검",
+      "category": "business",
+      "role_ko": "맞춤법·문법 문제와 제안만 보고",
+      "operations": [
+        {
+          "id": "report_only",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "document:Document language:str checks:str[]",
+          "outputs": "review:Review",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "report_only",
+          "fields": "document:Document language:str checks:str[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "report_only",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "수정 반영은 edit_document. 실행 엔진 없음",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "translate_document",
+      "name_ko": "문서 번역",
+      "category": "business",
+      "role_ko": "본문 언어 변경. 파일 형식 변환과 다름",
+      "operations": [
+        {
+          "id": "translate",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "document:Document source_language:str target_language:str glossary?:StringMap",
+          "outputs": "document:Document alignments:Alignment[]",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "derived_edit"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "translate",
+          "fields": "document:Document source_language:str target_language:str glossary?:StringMap"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "translate",
+          "fields": "document:Document alignments:Alignment[]"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "용어집·누락·서식 보존 기준 필요. 원본 파일 저장과 분리",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "derived_edit"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "compare_documents",
+      "name_ko": "문서·파일 내용 대조",
+      "category": "business",
+      "role_ko": "본문의 문자/의미 차이 보고",
+      "operations": [
+        {
+          "id": "diff",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "baseline:Document candidate:Document mode:DocumentDiffMode",
+          "outputs": "review:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Logical text/line diff; no layout/semantic judgment",
+          "side_effect": false,
+          "scope": "Logical text/line diff; no layout/semantic judgment",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "baseline",
+              "required": true
+            },
+            {
+              "name": "candidate",
+              "required": true
+            },
+            {
+              "name": "mode",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "diff",
+          "fields": "baseline:Document candidate:Document mode:DocumentDiffMode"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "diff",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "의미/문자/레이아웃 비교의 operation 분리 여부 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "verify_content_requirements",
+      "name_ko": "필수·기대 내용 확인",
+      "category": "business",
+      "role_ko": "명시 필수 문자열/정규식 포함 여부 / 추출값과 명시 기대값 비교",
+      "operations": [
+        {
+          "id": "check_required",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "document:Document requirements:ContentRequirement[]",
+          "outputs": "review:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Literal contains/not_contains conditions; semantic conditions rejected",
+          "side_effect": false,
+          "scope": "Literal contains/not_contains conditions; semantic conditions rejected",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "document",
+              "required": true
+            },
+            {
+              "name": "requirements",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "check_expected",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "extracted:ExtractedValue[] expected:ExpectedValue[]",
+          "outputs": "review:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Exact unique extracted field/value comparisons; no coercion",
+          "side_effect": false,
+          "scope": "Exact unique extracted field/value comparisons; no coercion",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "extracted",
+              "required": true
+            },
+            {
+              "name": "expected",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "check_required",
+          "fields": "document:Document requirements:ContentRequirement[]"
+        },
+        {
+          "operation": "check_expected",
+          "fields": "extracted:ExtractedValue[] expected:ExpectedValue[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "check_required",
+          "fields": "review:Review"
+        },
+        {
+          "operation": "check_expected",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "단순 문자열/수치/의미 일치의 판정 방식 분리 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "review_document",
+      "name_ko": "문서 내용 검토",
+      "category": "business",
+      "role_ko": "정확성·완결성 등 기준에 따른 내용 검토",
+      "operations": [
+        {
+          "id": "review",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "document:Document rubric:RubricCriterion[] evidence:Evidence[]",
+          "outputs": "review:Review",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "review",
+          "fields": "document:Document rubric:RubricCriterion[] evidence:Evidence[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "review",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "기준 없는 정오 판정 금지. 사실 정답 출처와 검수자 합의 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "reply_review",
+      "name_ko": "고객 응대 초안 검수",
+      "category": "business",
+      "role_ko": "문의·정책·답변 초안의 대응 검수",
+      "operations": [
+        {
+          "id": "review_reply",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "customer_request:str policy:Evidence[] draft:Answer rubric:RubricCriterion[]",
+          "outputs": "review:Review",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        },
+        {
+          "id": "native_reply_review",
+          "status": "model_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "reply_review",
+          "inputs": "{\"documents\": \"documents\", \"text\": \"text\", \"table\": \"table\"} + settings/state/storage",
+          "outputs": "{\"reviews\": \"reviews\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태 및 모델 연결",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "review_reply",
+          "fields": "customer_request:str policy:Evidence[] draft:Answer rubric:RubricCriterion[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "review_reply",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "행별 대응·최종 수정문 연결·판정 기준 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 2
+    },
+    {
+      "id": "review_summary",
+      "name_ko": "검수 보고서 표 정리",
+      "category": "business",
+      "role_ko": "기존 검수 결과를 표로 정리",
+      "operations": [
+        {
+          "id": "tabulate_reviews",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "reviews:Review[] columns:str[] dedup_key:str",
+          "outputs": "table:Table",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Flatten explicit review issues and deduplicate non-null keys",
+          "side_effect": false,
+          "scope": "Flatten explicit review issues and deduplicate non-null keys",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "reviews",
+              "required": true
+            },
+            {
+              "name": "columns",
+              "required": true
+            },
+            {
+              "name": "dedup_key",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "native_review_summary",
+          "status": "backend_connection_required",
+          "implementation": "legacy_backend_callback",
+          "backend_tool": "review_summary",
+          "inputs": "{\"reviews\": \"reviews\"} + settings/state/storage",
+          "outputs": "{\"table\": \"table\"}",
+          "requirements": "기존 백엔드 의존성·Storage·실행 상태",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "tabulate_reviews",
+          "fields": "reviews:Review[] columns:str[] dedup_key:str"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "tabulate_reviews",
+          "fields": "table:Table"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "검수 수행과 보고서 작성 분리. 중복 보고 ID 정책 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "backend16"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 2
+    },
+    {
+      "id": "validate_document_format",
+      "name_ko": "양식·서식 기준 검증",
+      "category": "business",
+      "role_ko": "지정 양식의 서식 준수 여부만 검사",
+      "operations": [
+        {
+          "id": "report_only",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset reference:Asset checks:FormatCheck[]",
+          "outputs": "review:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Compare DOCX paragraph font/name/bold/italic/style/alignment; no pixel judgment",
+          "side_effect": false,
+          "scope": "Compare DOCX paragraph font/name/bold/italic/style/alignment; no pixel judgment",
+          "dependencies": [
+            "python-docx"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "reference",
+              "required": true
+            },
+            {
+              "name": "checks",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "report_only",
+          "fields": "asset:Asset reference:Asset checks:FormatCheck[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "report_only",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "docx"
+      ],
+      "limitations": [
+        "기존 apply_changes는 이 후보에서 제거 제안. 수정은 format_document로 연결",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "check_document_links",
+      "name_ko": "문서 하이퍼링크 검사",
+      "category": "business",
+      "role_ko": "내부 앵커/제공 자산 링크 유효성 검사 / 문서의 원격 링크 접근 상태 검사",
+      "operations": [
+        {
+          "id": "check_local_targets",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "document:Document local_assets:Asset[]",
+          "outputs": "review:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Explicit/Markdown links against local assets; URL fragments not checked",
+          "side_effect": false,
+          "scope": "Explicit/Markdown links against local assets; URL fragments not checked",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "document",
+              "required": true
+            },
+            {
+              "name": "local_assets",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "check_remote_targets",
+          "status": "external_connection_required",
+          "implementation": "canonical_remote_operation",
+          "inputs": "document:Document timeout_seconds:Positive credential_ref?:str",
+          "outputs": "review:Review",
+          "requirements": "Explicit Context.connectors.http_head provider and allowed host list.",
+          "side_effect": [
+            "network_read",
+            "return_only"
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "check_local_targets",
+          "fields": "document:Document local_assets:Asset[]"
+        },
+        {
+          "operation": "check_remote_targets",
+          "fields": "document:Document timeout_seconds:Positive credential_ref?:str"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "check_local_targets",
+          "fields": "review:Review"
+        },
+        {
+          "operation": "check_remote_targets",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "내부 앵커와 원격 URL 검사 분리. 원격 링크 개인정보/접근 조건 확인",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "network_read",
+        "return_only"
+      ],
+      "status": "local_ready_partial",
+      "all_operations_ready": false,
+      "operation_count": 2
+    },
+    {
+      "id": "text_statistics",
+      "name_ko": "문자·단어 수 계산",
+      "category": "business",
+      "role_ko": "Unicode 문자/공백 단위 단어 수",
+      "operations": [
+        {
+          "id": "measure",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "document:Document units:TextUnit[] whitespace:WhitespacePolicy word_policy:WordPolicy",
+          "outputs": "counts:Counts",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Unicode code points, whitespace words, splitlines; explicit whitespace policy",
+          "side_effect": false,
+          "scope": "Unicode code points, whitespace words, splitlines; explicit whitespace policy",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "document",
+              "required": true
+            },
+            {
+              "name": "units",
+              "required": true
+            },
+            {
+              "name": "whitespace",
+              "required": true
+            },
+            {
+              "name": "word_policy",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "measure_text",
+          "runtime_id": "text.statistics",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수), unit (필수), include_whitespace=True",
+          "outputs": "integer",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "measure",
+          "fields": "document:Document units:TextUnit[] whitespace:WhitespacePolicy word_policy:WordPolicy"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "measure",
+          "fields": "counts:Counts"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "공백·문장부호·한국어 단어 분할 기준 합의 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38",
+        "expansion"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "detect_language",
+      "name_ko": "문서 언어 판별",
+      "category": "business",
+      "role_ko": "본문 언어 후보 판별",
+      "operations": [
+        {
+          "id": "detect",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "document:Document allowed_languages:str[]",
+          "outputs": "result:LanguageResult",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "detect",
+          "fields": "document:Document allowed_languages:str[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "detect",
+          "fields": "result:LanguageResult"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "짧은 문장·혼합 언어·모름 처리와 점수 보정 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "document_visual_qa",
+      "name_ko": "문서 이미지 기반 질문 답변",
+      "category": "business",
+      "role_ko": "배치·도형 등 페이지 시각 정보 기반 답변",
+      "operations": [
+        {
+          "id": "answer_visual",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "pages:PageImage[] question:str",
+          "outputs": "answer:Answer",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "answer_visual",
+          "fields": "pages:PageImage[] question:str"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "answer_visual",
+          "fields": "answer:Answer"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "OCR로 답할 수 있는 요청과 구분. 비전 모델 입력/근거 검증 미정",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "classify_document",
+      "name_ko": "문서·본문 분류",
+      "category": "business",
+      "role_ko": "문서 자체의 업무 범주 분류. 도구 추천기와 다른 과제",
+      "operations": [
+        {
+          "id": "classify",
+          "status": "model_connection_required",
+          "implementation": "canonical_model_operation",
+          "inputs": "document:Document classes:ClassSpec[] mode:ClassificationMode",
+          "outputs": "result:Classification",
+          "requirements": "Explicit model provider, endpoint and model ID. No automatic cloud deployment.",
+          "side_effect": [
+            "return_only"
+          ],
+          "scope": "JSON model output is validated; semantic quality requires a real model evaluation.",
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "classify",
+          "fields": "document:Document classes:ClassSpec[] mode:ClassificationMode"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "classify",
+          "fields": "result:Classification"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "단일/다중 라벨·기타·점수 기준 정의 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "model_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "verify_table_calculations",
+      "name_ko": "표 계산값 검증",
+      "category": "business",
+      "role_ko": "기존 합계·수식을 독립 규칙으로 재검산",
+      "operations": [
+        {
+          "id": "check_totals",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "table:Table checks:CalculationCheck[] absolute_tolerance:NonNegative",
+          "outputs": "review:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Explicit sum/count/mean/min/max versus expected; finite absolute tolerance",
+          "side_effect": false,
+          "scope": "Explicit sum/count/mean/min/max versus expected; finite absolute tolerance",
+          "dependencies": [],
+          "arguments": [
+            {
+              "name": "table",
+              "required": true
+            },
+            {
+              "name": "checks",
+              "required": true
+            },
+            {
+              "name": "absolute_tolerance",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "check_totals",
+          "fields": "table:Table checks:CalculationCheck[] absolute_tolerance:NonNegative"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "check_totals",
+          "fields": "review:Review"
+        }
+      ],
+      "formats": [
+        "logical_payloads_see_contract"
+      ],
+      "limitations": [
+        "원본 수식/정답값·허용 오차·검사 범위 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "return_only"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "split_pdf",
+      "name_ko": "PDF 페이지 분리·추출",
+      "category": "business",
+      "role_ko": "PDF에서 지정 페이지를 한 PDF로 추출 / PDF를 지정 페이지 묶음별 여러 파일로 분할",
+      "operations": [
+        {
+          "id": "extract_pages",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset page_numbers:PageNumbers",
+          "outputs": "artifact:Artifact",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. One-based PDF extraction, preserves specified order",
+          "side_effect": true,
+          "scope": "One-based PDF extraction, preserves specified order",
+          "dependencies": [
+            "pypdf"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "page_numbers",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        },
+        {
+          "id": "split",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset groups:PageGroup[]",
+          "outputs": "artifacts:Artifact[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. PageGroup={page_numbers:[one-based integers]}; new files",
+          "side_effect": true,
+          "scope": "PageGroup={page_numbers:[one-based integers]}; new files",
+          "dependencies": [
+            "pypdf"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "groups",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "extract_pages",
+          "fields": "asset:Asset page_numbers:PageNumbers"
+        },
+        {
+          "operation": "split",
+          "fields": "asset:Asset groups:PageGroup[]"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "extract_pages",
+          "fields": "artifact:Artifact"
+        },
+        {
+          "operation": "split",
+          "fields": "artifacts:Artifact[]"
+        }
+      ],
+      "formats": [
+        "pdf"
+      ],
+      "limitations": [
+        "페이지 번호·암호·빈 범위·출력 순서 테스트 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "merge_documents",
+      "name_ko": "문서·PDF 합치기",
+      "category": "business",
+      "role_ko": "순서대로 PDF 또는 DOCX 파일 병합",
+      "operations": [
+        {
+          "id": "merge",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "assets:Asset[] format:MergeFormat",
+          "outputs": "artifact:Artifact",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. PDF concatenation, UTF-8 TXT/MD concatenation; no mixed formats",
+          "side_effect": true,
+          "scope": "PDF concatenation, UTF-8 TXT/MD concatenation; no mixed formats",
+          "dependencies": [
+            "pypdf"
+          ],
+          "arguments": [
+            {
+              "name": "assets",
+              "required": true
+            },
+            {
+              "name": "format",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "merge",
+          "fields": "assets:Asset[] format:MergeFormat"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "merge",
+          "fields": "artifact:Artifact"
+        }
+      ],
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "limitations": [
+        "PDF 결합과 DOCX 병합의 서식/페이지 보존 분리 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "compress_pdf",
+      "name_ko": "PDF 용량 최적화",
+      "category": "business",
+      "role_ko": "PDF 자체 용량 최적화. ZIP 압축과 구분",
+      "operations": [
+        {
+          "id": "optimize",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset target_bytes:Positive quality_policy:PdfQualityPolicy",
+          "outputs": "artifact:Artifact target_met:bool loss_report:Review",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. Lossless PDF stream compression; target size measured, not guaranteed",
+          "side_effect": true,
+          "scope": "Lossless PDF stream compression; target size measured, not guaranteed",
+          "dependencies": [
+            "pypdf"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "target_bytes",
+              "required": true
+            },
+            {
+              "name": "quality_policy",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "optimize",
+          "fields": "asset:Asset target_bytes:Positive quality_policy:PdfQualityPolicy"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "optimize",
+          "fields": "artifact:Artifact target_met:bool loss_report:Review"
+        }
+      ],
+      "formats": [
+        "pdf"
+      ],
+      "limitations": [
+        "목표 용량 보장·손실 허용·최소 품질 기준 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "render_document_pages",
+      "name_ko": "문서 페이지를 이미지로 만들기",
+      "category": "business",
+      "role_ko": "문서 페이지를 PNG 이미지로 렌더",
+      "operations": [
+        {
+          "id": "render",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset page_numbers:PageNumbers dpi:Positive",
+          "outputs": "pages:PageImage[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. PDF->PNG via A4B_PDFTOPPM/PATH; pages one-based, dpi 36..300, max dimension 6000",
+          "side_effect": true,
+          "scope": "PDF->PNG via A4B_PDFTOPPM/PATH; pages one-based, dpi 36..300, max dimension 6000",
+          "dependencies": [
+            "pypdf",
+            "pdftoppm"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "page_numbers",
+              "required": true
+            },
+            {
+              "name": "dpi",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "render",
+          "fields": "asset:Asset page_numbers:PageNumbers dpi:Positive"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "render",
+          "fields": "pages:PageImage[]"
+        }
+      ],
+      "formats": [
+        "pdf",
+        "docx"
+      ],
+      "limitations": [
+        "DPI·글꼴·암호·형식별 렌더 재현 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "new_artifact"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "annotate_document",
+      "name_ko": "PDF·이미지에 주석 달기",
+      "category": "business",
+      "role_ko": "PDF/PNG/JPEG에 주석·하이라이트 추가",
+      "operations": [
+        {
+          "id": "add_annotations",
+          "status": "local_ready",
+          "implementation": "canonical_local_operation",
+          "inputs": "asset:Asset annotations:Annotation[] flatten:bool",
+          "outputs": "artifact:Artifact changes:Change[]",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. PDF text notes/highlights with point rectangles; flatten=False only",
+          "side_effect": true,
+          "scope": "PDF text notes/highlights with point rectangles; flatten=False only",
+          "dependencies": [
+            "pypdf"
+          ],
+          "arguments": [
+            {
+              "name": "asset",
+              "required": true
+            },
+            {
+              "name": "annotations",
+              "required": true
+            },
+            {
+              "name": "flatten",
+              "required": true
+            }
+          ],
+          "code_implemented": true
+        }
+      ],
+      "legacy_inputs": [
+        {
+          "operation": "add_annotations",
+          "fields": "asset:Asset annotations:Annotation[] flatten:bool"
+        }
+      ],
+      "legacy_outputs": [
+        {
+          "operation": "add_annotations",
+          "fields": "artifact:Artifact changes:Change[]"
+        }
+      ],
+      "formats": [
+        "pdf",
+        "png",
+        "jpeg"
+      ],
+      "limitations": [
+        "원문 수정·주석 flatten의 차이와 위치 정확도 필요",
+        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
+      ],
+      "origin": [
+        "catalog38"
+      ],
+      "effects": [
+        "derived_edit"
+      ],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
+    },
+    {
+      "id": "scalar_calculate",
+      "name_ko": "단일 수식 계산",
+      "role_ko": "숫자 변수로 제한된 산술식을 계산합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "evaluate",
+          "runtime_id": "math.calculate",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "formula (필수), variables (필수)",
+          "outputs": "number",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 1
     },
     {
       "id": "text_transform",
@@ -151,6 +3104,28 @@
           "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
           "side_effect": false,
           "code_implemented": true
+        },
+        {
+          "id": "split",
+          "runtime_id": "text.split",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수), separator (필수)",
+          "outputs": "string[]",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "combine",
+          "runtime_id": "text.combine",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "items (필수), separator (필수)",
+          "outputs": "string",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
         }
       ],
       "origin": [
@@ -159,7 +3134,155 @@
       "limitations": [],
       "status": "local_ready",
       "all_operations_ready": true,
-      "operation_count": 1
+      "operation_count": 3
+    },
+    {
+      "id": "json_transform",
+      "name_ko": "JSON 해석·값 조회",
+      "role_ko": "JSON을 파싱하거나 지정한 키/인덱스 경로를 조회합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "parse",
+          "runtime_id": "json.parse",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "text (필수)",
+          "outputs": "JSON value",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "lookup",
+          "runtime_id": "json.lookup",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "value (필수), path (필수)",
+          "outputs": "JSON value",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "list_transform",
+      "name_ko": "목록 선택·개수",
+      "role_ko": "목록의 0 기반 인덱스 선택과 항목 개수를 처리합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "select",
+          "runtime_id": "list.select",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "items (필수), index (필수)",
+          "outputs": "선택 항목",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "count",
+          "runtime_id": "list.count",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "items (필수)",
+          "outputs": "integer",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "date_transform",
+      "name_ko": "날짜·시간 변환",
+      "role_ko": "ISO 시간에 초를 더하거나 지정한 형식으로 표시합니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "adjust",
+          "runtime_id": "date.adjust",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "timestamp (필수), seconds (필수)",
+          "outputs": "offset이 있는 ISO timestamp",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "format",
+          "runtime_id": "date.format",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "timestamp (필수), format (필수)",
+          "outputs": "string",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
+    },
+    {
+      "id": "url_transform",
+      "name_ko": "URL 분석·구성",
+      "role_ko": "URL 구성요소를 분석하거나 query를 포함한 주소를 만듭니다. 웹 접속은 하지 않습니다.",
+      "category": "primitive",
+      "operations": [
+        {
+          "id": "parse",
+          "runtime_id": "url.parse",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "url (필수)",
+          "outputs": "scheme/host/path/query/fragment object",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "build",
+          "runtime_id": "url.build",
+          "status": "local_ready",
+          "implementation": "runtime.invoke",
+          "inputs": "scheme (필수), host (필수), path (필수), query=None",
+          "outputs": "URL string",
+          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "expansion"
+      ],
+      "limitations": [],
+      "status": "local_ready",
+      "all_operations_ready": true,
+      "operation_count": 2
     },
     {
       "id": "base64_codec",
@@ -214,85 +3337,368 @@
       "operation_count": 1
     },
     {
-      "id": "text_statistics",
-      "name_ko": "문자·단어 수 계산",
+      "id": "email.prepare",
+      "name_ko": "메일 구성",
       "category": "business",
-      "role_ko": "Unicode 문자/공백 단위 단어 수",
+      "role_ko": "Build UTF-8 MIME and Base64URL message without sending it.",
       "operations": [
         {
-          "id": "measure_text",
-          "runtime_id": "text.statistics",
+          "id": "execute",
+          "runtime_id": "email.prepare",
           "status": "local_ready",
           "implementation": "runtime.invoke",
-          "inputs": "text (필수), unit (필수), include_whitespace=True",
-          "outputs": "integer",
+          "inputs": "sender (필수), to (필수), subject (필수), body (필수), cc=None, bcc=None, attachments=None",
+          "outputs": "Gmail/Calendar API JSON 응답",
           "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
           "side_effect": false,
           "code_implemented": true
         }
       ],
-      "legacy_inputs": [],
-      "legacy_outputs": [],
-      "formats": [
-        "logical_payloads_see_contract"
-      ],
-      "limitations": [
-        "공백·문장부호·한국어 단어 분할 기준 합의 필요",
-        "형식별 엔진·옵션·어댑터를 구현하고 실제 입력과 출력으로 검증. namespace와 보류 항목은 활성화하지 않음."
-      ],
       "origin": [
-        "catalog38",
+        "google_adapters",
         "expansion"
       ],
-      "effects": [
-        "return_only"
+      "limitations": [
+        "실제 전송하지 않는 MIME 구성 동작."
       ],
       "status": "local_ready",
       "all_operations_ready": true,
       "operation_count": 1
     },
     {
-      "id": "date_transform",
-      "name_ko": "날짜·시간 변환",
-      "role_ko": "ISO 시간에 초를 더하거나 지정한 형식으로 표시합니다.",
-      "category": "primitive",
+      "id": "email.send",
+      "name_ko": "메일 발송",
+      "category": "business",
+      "role_ko": "Send a Gmail message using a configured Google account.",
       "operations": [
         {
-          "id": "adjust",
-          "runtime_id": "date.adjust",
-          "status": "local_ready",
+          "id": "execute",
+          "runtime_id": "email.send",
+          "status": "external_connection_required",
           "implementation": "runtime.invoke",
-          "inputs": "timestamp (필수), seconds (필수)",
-          "outputs": "offset이 있는 ISO timestamp",
-          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
-          "side_effect": false,
+          "inputs": "to (필수), subject (필수), body (필수), cc=None, bcc=None, attachments=None",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 gmail 연결",
+          "side_effect": true,
           "code_implemented": true
-        },
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "email.list",
+      "name_ko": "메일 목록 검색",
+      "category": "business",
+      "role_ko": "List Gmail message IDs, search query and pagination token.",
+      "operations": [
         {
-          "id": "format",
-          "runtime_id": "date.format",
-          "status": "local_ready",
+          "id": "execute",
+          "runtime_id": "email.list",
+          "status": "external_connection_required",
           "implementation": "runtime.invoke",
-          "inputs": "timestamp (필수), format (필수)",
-          "outputs": "string",
-          "requirements": "파일 작업 시 Context.root 및 실제 입력 파일. 수치·정책은 명시적으로 입력.",
+          "inputs": "query=None, max_results=20, page_token=None",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 gmail 연결",
           "side_effect": false,
           "code_implemented": true
         }
       ],
       "origin": [
+        "google_adapters",
         "expansion"
       ],
-      "limitations": [],
-      "status": "local_ready",
-      "all_operations_ready": true,
-      "operation_count": 2
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "email.get",
+      "name_ko": "메일 상세 읽기",
+      "category": "business",
+      "role_ko": "Read a specified Gmail message.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "email.get",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "message_id (필수), format='full'",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 gmail 연결",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "email.attachment.get",
+      "name_ko": "메일 첨부파일 조회",
+      "category": "business",
+      "role_ko": "Retrieve a specified Gmail attachment as provider Base64URL data.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "email.attachment.get",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "message_id (필수), attachment_id (필수)",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 gmail 연결",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "calendar.create_event",
+      "name_ko": "일정 생성",
+      "category": "business",
+      "role_ko": "Create a Google Calendar event with explicit start/end and timezone offsets.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "calendar.create_event",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "summary (필수), start (필수), end (필수), calendar_id='primary', all_day=False, time_zone=None, description=None, location=None, attendees=None, notify_attendees=False, event_id=None",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 google_calendar 연결",
+          "side_effect": true,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "calendar.list_events",
+      "name_ko": "일정 목록 검색",
+      "category": "business",
+      "role_ko": "List calendar events with time bounds and pagination.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "calendar.list_events",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "calendar_id='primary', time_min=None, time_max=None, max_results=100, page_token=None, query=None",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 google_calendar 연결",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "calendar.get_event",
+      "name_ko": "일정 상세 조회",
+      "category": "business",
+      "role_ko": "Read a Google Calendar event by ID.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "calendar.get_event",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "event_id (필수), calendar_id='primary'",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 google_calendar 연결",
+          "side_effect": false,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "calendar.update_event",
+      "name_ko": "일정 변경",
+      "category": "business",
+      "role_ko": "Patch supported event fields; optional ETag concurrency control.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "calendar.update_event",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "event_id (필수), changes (필수), calendar_id='primary', notify_attendees=False, etag=None",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 google_calendar 연결",
+          "side_effect": true,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
+      "id": "calendar.delete_event",
+      "name_ko": "일정 삭제",
+      "category": "business",
+      "role_ko": "Delete a specified Google Calendar event; optional ETag.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "calendar.delete_event",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "event_id (필수), calendar_id='primary', notify_attendees=False, etag=None",
+          "outputs": "Gmail/Calendar API JSON 응답",
+          "requirements": "Context 및 google_calendar 연결",
+          "side_effect": true,
+          "code_implemented": true
+        }
+      ],
+      "origin": [
+        "google_adapters",
+        "expansion"
+      ],
+      "limitations": [
+        "Gmail/Google Calendar 전용. OAuth 공급자와 토큰 설정 필요. 실제 로컬 REST 검증은 미완료."
+      ],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
     }
   ],
   "aliases": {
+    "table.filter": {
+      "tool_id": "filter_sort",
+      "operation": "filter"
+    },
+    "table.sort": {
+      "tool_id": "filter_sort",
+      "operation": "sort"
+    },
+    "table.aggregate": {
+      "tool_id": "aggregate_table",
+      "operation": "group_aggregate"
+    },
+    "table.join": {
+      "tool_id": "join_tables",
+      "operation": "join_records"
+    },
+    "math.calculate": {
+      "tool_id": "scalar_calculate",
+      "operation": "evaluate"
+    },
+    "table.calculate": {
+      "tool_id": "calculate_columns",
+      "operation": "calculate_records"
+    },
+    "table.select_columns": {
+      "tool_id": "filter_sort",
+      "operation": "select_columns"
+    },
     "text.replace": {
       "tool_id": "text_transform",
       "operation": "replace"
+    },
+    "text.split": {
+      "tool_id": "text_transform",
+      "operation": "split"
+    },
+    "text.combine": {
+      "tool_id": "text_transform",
+      "operation": "combine"
+    },
+    "text.statistics": {
+      "tool_id": "text_statistics",
+      "operation": "measure_text"
+    },
+    "json.parse": {
+      "tool_id": "json_transform",
+      "operation": "parse"
+    },
+    "json.lookup": {
+      "tool_id": "json_transform",
+      "operation": "lookup"
+    },
+    "list.select": {
+      "tool_id": "list_transform",
+      "operation": "select"
+    },
+    "date.adjust": {
+      "tool_id": "date_transform",
+      "operation": "adjust"
+    },
+    "date.format": {
+      "tool_id": "date_transform",
+      "operation": "format"
+    },
+    "url.parse": {
+      "tool_id": "url_transform",
+      "operation": "parse"
+    },
+    "url.build": {
+      "tool_id": "url_transform",
+      "operation": "build"
     },
     "codec.base64": {
       "tool_id": "base64_codec",
@@ -302,17 +3708,73 @@
       "tool_id": "text_hash",
       "operation": "sha256"
     },
-    "text.statistics": {
-      "tool_id": "text_statistics",
-      "operation": "measure_text"
+    "file.read_text": {
+      "tool_id": "read_document",
+      "operation": "read_text"
     },
-    "date.adjust": {
-      "tool_id": "date_transform",
-      "operation": "adjust"
+    "file.read_csv": {
+      "tool_id": "read_table",
+      "operation": "read_csv"
     },
-    "date.format": {
-      "tool_id": "date_transform",
-      "operation": "format"
+    "file.write_json": {
+      "tool_id": "export_result",
+      "operation": "write_json"
+    },
+    "file.write_csv": {
+      "tool_id": "export_result",
+      "operation": "write_csv"
+    },
+    "list.count": {
+      "tool_id": "list_transform",
+      "operation": "count"
+    },
+    "table.cast": {
+      "tool_id": "calculate_columns",
+      "operation": "cast_numbers"
+    },
+    "email.prepare": {
+      "tool_id": "email.prepare",
+      "operation": "execute"
+    },
+    "email.send": {
+      "tool_id": "email.send",
+      "operation": "execute"
+    },
+    "email.list": {
+      "tool_id": "email.list",
+      "operation": "execute"
+    },
+    "email.get": {
+      "tool_id": "email.get",
+      "operation": "execute"
+    },
+    "email.attachment.get": {
+      "tool_id": "email.attachment.get",
+      "operation": "execute"
+    },
+    "calendar.create_event": {
+      "tool_id": "calendar.create_event",
+      "operation": "execute"
+    },
+    "calendar.list_events": {
+      "tool_id": "calendar.list_events",
+      "operation": "execute"
+    },
+    "calendar.get_event": {
+      "tool_id": "calendar.get_event",
+      "operation": "execute"
+    },
+    "calendar.update_event": {
+      "tool_id": "calendar.update_event",
+      "operation": "execute"
+    },
+    "calendar.delete_event": {
+      "tool_id": "calendar.delete_event",
+      "operation": "execute"
+    },
+    "write_result": {
+      "tool_id": "export_result",
+      "operation": "native_write_result"
     }
   },
   "status_legend": {

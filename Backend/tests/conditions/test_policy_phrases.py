@@ -145,3 +145,13 @@ def test_comparison_does_not_invent_duplicate_conditions():
                                     'missing.policy': 'exclude', 'output.format': 'csv'}))
     assert ledger['decision'] == 'ready'
     assert not any(k.startswith('duplicate.') for k in ledger['slots'])
+
+
+@pytest.mark.parametrize('wording', ['빈 값은 절대 안 지워', '빈 값은 안 빼', '빈 값은 삭제 안 해',
+                                    '빈 값은 안 유지해', '빈 값은 오류로 안 해'])
+def test_negated_policy_is_not_forced_over_model_or_confirmed(wording):
+    s = {**state('비용이 100만원 초과인 행을 JSON으로 저장해줘. ' + wording), 'resources': [TABLE]}
+    ledger = checked(s, proposal(s, {'filter.field': '비용', 'filter.operator': 'gt',
+                                    'filter.value': '1000000', 'missing.policy': 'keep', 'output.format': 'json'}))
+    assert ledger['decision'] == 'clarify'
+    assert ledger['slots']['missing.policy']['status'] == 'conflict'

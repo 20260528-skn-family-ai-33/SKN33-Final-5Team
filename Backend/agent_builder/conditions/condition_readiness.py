@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from workflow_engine.catalog.registry import TOOLS
-from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, resolution_question, resolution_options
+from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, resolution_question, resolution_options, pending_nonanswer
 
 
 class ConditionContractError(ValueError):
@@ -72,11 +72,11 @@ def choice_options(key, state):
     return []
 
 
-SUPPORTED_OPERATION_NAMES = {'filter', 'deduplicate', 'schedule', 'output', 'sort'}
+SUPPORTED_OPERATION_NAMES = {'filter', 'deduplicate', 'schedule', 'output', 'sort'} | {tool['id'] for tool in TOOLS}
 
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
-    'deduplicate': ['duplicate.field', 'duplicate.policy'],
+    'deduplicate': ['duplicate.policy'],
     'schedule': ['schedule.frequency', 'schedule.hour', 'schedule.minute', 'schedule.timezone'],
 }
 
@@ -404,7 +404,10 @@ def _acts(segment, table):
     found, negated = set(), set()
     for name, pattern in table.items():
         for m in re.finditer(pattern, segment):
-            if re.fullmatch(_KEEP_AS_IS, m.group(0)) or not re.match(_NEG, segment[m.end():m.end() + 8]):
+            prefix_negated = bool(re.search(r'(?<![가-힣])(?:안|못)\s*$', segment[:m.start()]))
+            suffix_negated = bool(re.match(_NEG, segment[m.end():m.end() + 8]) or
+                                  re.match(r'\s*(?:으?로)?\s*(?:안|못)\s*(?:해|하)', segment[m.end():]))
+            if not prefix_negated and (re.fullmatch(_KEEP_AS_IS, m.group(0)) or not suffix_negated):
                 found.add(name)
             else:
                 negated.add(name)
@@ -712,6 +715,9 @@ def validate_conditions(raw, state, catalog):
             if key in slots:
                 slots[key] = {'key': key, 'status': 'missing', 'value': None, 'evidence_ids': [], 'evidence': []}
                 invalid.append(f'{key}: 미정·보류 답변을 확정값으로 사용하지 않음')
+    if slots.get('duplicate.policy',{}).get('value')=='keep':
+        slots.pop('duplicate.field',None)
+        operations=[op for op in operations if op!='deduplicate']
     unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified']
     needs_table = 'schedule' in operations and not any(r.get('kind') == 'table' for r in state.get('resources', []))
     if needs_table:
@@ -721,6 +727,7 @@ def validate_conditions(raw, state, catalog):
     cancelled = bool(re.search(r'그만\s*(해|할)|예약.{0,8}(취소|하지\s*마)|작업.{0,8}취소', last_user))
     decision = ('system_error' if issues else 'manual_review' if cancelled else 'deferred' if resolution and resolution['deferred'] else 'unsupported' if proposal['unsupported_actions'] else
                 'manual_review' if scope_review else
+                'ready' if not operations and slots.get('duplicate.policy',{}).get('value')=='keep' and not unresolved else
                 'manual_review' if not operations else 'clarify' if unresolved else 'ready')
     identity = json.dumps({'session': state.get('session_id', 'isolated'), 'messages': state.get('messages', []),
                            'versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}, sort_keys=True, ensure_ascii=False)
@@ -748,7 +755,8 @@ def judge_conditions(state, transport, max_contract_repairs=0):
     if type(max_contract_repairs) is not int or not 0 <= max_contract_repairs <= 1:
         raise ValueError('조건 응답 수정 한도는 0~1회입니다.')
     messages, schema, catalog = prepare_conditions(state)
-    if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state):
+    nonanswer=pending_nonanswer(state)
+    if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state) or nonanswer:
         result = validate_conditions({'operations': [], 'conditions': [], 'unsupported_actions': []}, state, catalog)
         return {'ledger': result, 'model_calls': 0, 'messages': messages, 'metrics': {}}
     transport.schema = schema

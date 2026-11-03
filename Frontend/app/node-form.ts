@@ -19,7 +19,16 @@ export function nodeSpecFromForm(form:NodeForm,editing:LibraryNode|null){
   const first={field:field.trim(),operator,value:Number(value),compare_field:null,value_type:'number'};
   execution_plan=execution_plan?{...execution_plan,filters:[first,...execution_plan.filters.slice(1)]}:{filters:[first],sort:[],match:'all',missing_policy:'error',duplicate_policy:'keep',duplicate_field:null,output_format:'json'};
  }
- const settings={...defaults,...(prior?.settings||{})};
- if(tool==='aggregate_table')Object.assign(settings,{fields:group.split(',').map(v=>v.trim()).filter(Boolean),aggregation,sum_field:aggregation==='sum'?sumField.trim():null});
- return {kind,name,purpose,tool,instructions:kind==='agent'?instructions:'',reference:kind==='agent'?reference:'',model:kind==='agent'&&model.trim()?model.trim():null,settings,execution_plan};
+ const settings:Record<string,any>={...defaults,...(prior?.settings||{})};
+ if(tool==='aggregate_table'){
+  const groups=group.split(',').map(v=>v.trim()).filter(Boolean);
+  if(settings.operation){
+   if(!['sum','count'].includes(settings.operation)||aggregation!==settings.operation)throw new Error('확장 집계의 동작 변경은 대화로 요청해주세요.');
+   const args=JSON.parse(settings.arguments_json||'{}');
+   if(!args||Array.isArray(args)||typeof args!=='object')throw new Error('저장된 집계 인자가 올바르지 않습니다.');
+   if(aggregation==='sum'&&!sumField.trim())throw new Error('합계 열을 입력하세요.');
+   settings.arguments_json=JSON.stringify({...args,group_by:groups,...(aggregation==='sum'?{value_column:sumField.trim()}:{})});
+  }else Object.assign(settings,{fields:groups,aggregation,sum_field:aggregation==='sum'?sumField.trim():null});
+ }
+ return {kind,name,purpose:purpose.trim()||(kind==='agent'?instructions.trim().slice(0,1000):`${name.trim()} 자료 처리 작업`),tool,instructions:kind==='agent'?instructions:'',reference:kind==='agent'?reference:'',model:kind==='agent'&&model.trim()?model.trim():null,settings,execution_plan};
 }

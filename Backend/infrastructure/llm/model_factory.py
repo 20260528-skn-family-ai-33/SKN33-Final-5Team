@@ -40,7 +40,7 @@ def create_chat_model(api_key, model, **limits):
             })
             return QwenChatOpenAI(**options)
         # /v1 uses reasoning_effort; think is retained for compatible Ollama versions.
-        options.update(temperature=0.7, top_p=0.8, reasoning_effort='none', extra_body={'think': False},
+        options.update(temperature=options.get('temperature',0.7), top_p=0.8, reasoning_effort='none', extra_body={'think': False},
                        streaming=True, stream_usage=True, max_retries=0)
         from infrastructure.llm.ollama_chat_model import OllamaChatOpenAI
         return OllamaChatOpenAI(**options)

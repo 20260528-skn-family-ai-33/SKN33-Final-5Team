@@ -16,3 +16,25 @@ for(const value of ['0','-12.5','1e3'])test(`finite numeric filter ${value} acce
 test('changing processing tool starts a fresh config',()=>{const result=nodeSpecFromForm({...form,tool:'read_table'},node());assert.equal(result.execution_plan,null);assert.equal(result.settings.query,null);});
 test('aggregate edits preserve hidden settings while updating grouping and sum',()=>{const result=nodeSpecFromForm({...form,tool:'aggregate_table',aggregation:'sum',sumField:'total'},node(null,'aggregate_table'));assert.deepEqual(result.settings.fields,['team','category']);assert.equal(result.settings.sum_field,'total');assert.equal(result.settings.query,'preserved');});
 test('agent edits preserve hidden settings and empty model inheritance',()=>{const n=node(null,'agent_node');n.spec.kind='agent';const result=nodeSpecFromForm({...form,kind:'agent'},n);assert.equal(result.model,null);assert.equal(result.settings.query,'preserved');assert.equal(result.reference,'기준');});
+
+
+test('simplified editor derives a purpose for new work while preserving saved descriptions',()=>{
+ assert.equal(nodeSpecFromForm({...form,kind:'agent',purpose:''},null).purpose,form.instructions);
+ assert.ok(nodeSpecFromForm({...form,purpose:''},null).purpose.length>=5);
+ assert.equal(nodeSpecFromForm(form,node()).purpose,form.purpose);
+});
+
+
+test('canonical sum edits update executed arguments and preserve policies and input',()=>{
+ const n=node(null,'aggregate_table');n.spec.settings={operation:'sum',arguments_json:JSON.stringify({group_by:['branch'],value_column:'amount',null_policy:'exclude',table:{$binding:'table'}})};
+ const before=structuredClone(n);
+ const result=nodeSpecFromForm({...form,tool:'aggregate_table',group:'channel',aggregation:'sum',sumField:'net_amount'},n);
+ assert.deepEqual(JSON.parse(result.settings.arguments_json),{group_by:['channel'],value_column:'net_amount',null_policy:'exclude',table:{$binding:'table'}});
+ assert.deepEqual(n,before);
+});
+test('canonical count edits preserve count mode and column',()=>{
+ const n=node(null,'aggregate_table');n.spec.settings={operation:'count',arguments_json:JSON.stringify({group_by:['branch'],mode:'distinct',column:'customer_id'})};
+ const result=nodeSpecFromForm({...form,tool:'aggregate_table',group:'channel',aggregation:'count'},n);
+ assert.deepEqual(JSON.parse(result.settings.arguments_json),{group_by:['channel'],mode:'distinct',column:'customer_id'});
+ assert.throws(()=>nodeSpecFromForm({...form,tool:'aggregate_table',aggregation:'sum',sumField:'amount'},n),/대화로/);
+});

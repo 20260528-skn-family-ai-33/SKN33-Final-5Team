@@ -3,8 +3,16 @@ import hashlib
 import os
 from agent_builder.capabilities.capability_judgement import assess_capability, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
-from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, value_answer
+from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, value_answer, pending_nonanswer
 from agent_builder.conditions.condition_check import _pending_draft
+
+
+def _question_text(text):
+    import re
+    text=text.strip()
+    if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
+    if text.endswith(('?', '주세요.', '알려주세요', '주세요')):return text
+    return text.rstrip('.')+'에 대해 알려주세요.'
 
 
 def make_capability_check(model,transport=None,mode=None):
@@ -22,7 +30,7 @@ def make_capability_check(model,transport=None,mode=None):
             event=events[-1] if events and events[-1]['turn']==len(state.get('messages',[]))-1 else None
             previous=state.get('capability_assessment') or {}
             if faults:result=assess_capability(state,None)
-            elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or value_answer(state))
+            elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or value_answer(state) or pending_nonanswer(state))
                   and state.get('messages', [])[-1].get('role')=='user'
                   and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
                 # A non-answer or an offered closed-vocabulary choice for a condition question
@@ -63,7 +71,7 @@ def make_capability_check(model,transport=None,mode=None):
             questions=(state.get('capability_questions',[]) if reuse_questions else [])
             if not questions:
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
-                            'key':'capability.condition.'+str(i),'source':'capability','text':text,
+                            'key':'capability.condition.'+str(i),'source':'capability','text':_question_text(text),
                             'options':resolution_options(state)} for i,text in enumerate(result['missing_conditions'])]
             # AgentDraft supports 3 visible questions; preserve every question record.
             grouped=questions[:2]+([{'text':'\n'.join(q['text'] for q in questions[2:]),'options':[]}] if len(questions)>2 else [])

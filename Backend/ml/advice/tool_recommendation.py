@@ -5,10 +5,10 @@ import sys
 
 
 def recommend_for_state(state):
-    mode=os.getenv('A4B_TOOL_ADVICE_MODE','off')
+    mode=os.getenv('A4B_TOOL_ADVICE_MODE','hint')
     if mode=='off':return None
     if mode!='hint':raise ValueError('A4B_TOOL_ADVICE_MODE는 off/hint이어야 합니다.')
-    backend=os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy')
+    backend=os.getenv('A4B_TOOL_ADVICE_BACKEND','svm56')
     if backend=='svm56':
         try:
             from workflow_engine.catalog.registry import TOOLS

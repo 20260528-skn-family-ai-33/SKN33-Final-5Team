@@ -24,7 +24,18 @@ def test_schema_file_ids_match_actual_resources(monkeypatch,resources):
     make_conversation(None,'test',model_factory=lambda:object())(s)
     variants=captured['schema']['$defs']['WorkflowNode']['anyOf']
     for variant in variants:
-        field=variant['properties']['settings']['properties']['file_ids']
+        field_schema=variant['properties']['settings']
+        if '$ref' in field_schema:field_schema=captured['schema']['$defs'][field_schema['$ref'].split('/')[-1]]
+        settings=field_schema['properties']
+        if 'file_ids' not in settings:
+            if 'operation' in settings:
+                assert set(settings)=={'operation','arguments_json','output_port'}
+            else:
+                from agent_builder.design.nodes.conversation import NATIVE_SETTINGS
+                identifier=variant['properties']['tool']['enum'][0]
+                assert set(settings)=={*NATIVE_SETTINGS[identifier],'node_ref'}
+            continue
+        field=settings['file_ids']
         if resources: assert field['items']['enum']==[r['id'] for r in resources]
         else: assert field['maxItems']==0
 

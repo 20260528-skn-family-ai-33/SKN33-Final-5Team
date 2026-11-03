@@ -90,3 +90,24 @@ def test_lens_style_shared_ollama_url(tmp_path,monkeypatch):
         monkeypatch.delenv(k,raising=False)
     monkeypatch.setenv('A4B_LLM_BASE_URL','https://example-pod-11434.proxy.runpod.net/v1')
     assert OllamaConfig.from_env().base_url=='https://example-pod-11434.proxy.runpod.net'
+
+
+def test_grounded_wire_schema_only_accepts_existing_source_and_exact_quotes():
+    from verification.workflow.client import grounded_output_schema
+    from verification.workflow.validation import evidence_bank
+    from jsonschema import Draft202012Validator
+    root=ROOT/'Backend/tests/fixtures/qwen_verifier/examples'
+    data=VerificationInput.model_validate_json((root/'inputs/01_ready.json').read_text())
+    before=data.model_dump()
+    schema=grounded_output_schema(data)
+    evidence=schema['$defs']['EvidenceRef']
+    validator=Draft202012Validator(evidence)
+    bank=evidence_bank(data)
+    for branch in evidence['anyOf']:
+        source=branch['properties']['evidence_id']['enum'][0]
+        for quote in branch['properties']['quote']['enum']:
+            assert quote in bank[source] and len(quote)<=1000
+            assert validator.is_valid({'evidence_id':source,'quote':quote})
+    assert not validator.is_valid({'evidence_id':'invented-source','quote':'made up'})
+    assert not validator.is_valid({'evidence_id':'user_request','quote':'not actually requested'})
+    assert data.model_dump()==before

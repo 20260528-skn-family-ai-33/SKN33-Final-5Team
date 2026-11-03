@@ -96,3 +96,43 @@ def node_ports(node):
     if node['tool']=='saved_workflow':
         port=node['settings'].get('output_port');return inputs,{port:outputs[port]} if port in outputs else {}
     return inputs,outputs
+
+# One catalogue for all 56 business tools; retain the six control/compatibility IDs.
+NATIVE_IDS = frozenset(EXECUTORS)
+from workflow_engine.catalog.canonical import BUSINESS_TOOLS, OPERATIONS, contract, operation_spec, ports
+for business in BUSINESS_TOOLS:
+    identifier = business['id']
+    contracts = [contract(identifier, spec) for spec in OPERATIONS[identifier]]
+    item = next((t for t in TOOLS if t['id'] == identifier), None)
+    if item is None:
+        EXECUTORS[identifier] = 'workflow_engine.executors.canonical_operation'
+        # Catalogue ports are the union for discovery; node_ports uses the selected operation.
+        inputs, outputs = {}, {}
+        for c in contracts:
+            for name,kind in c['input_ports'].items():
+                inputs[name]=kind if name not in inputs or inputs[name]==kind else 'json'
+            for name,kind in c['output_ports'].items():
+                outputs[name]=kind if name not in outputs or outputs[name]==kind else 'json'
+        PORTS[identifier] = inputs, outputs
+        item = {'id': identifier, 'name': business['name'], 'description': business['description'],
+                'version': 1, 'module_path': EXECUTORS[identifier]+':execute',
+                'inputs': inputs, 'outputs': outputs, 'input_ports': inputs, 'output_ports': outputs}
+        TOOLS.append(item)
+    item['business_tool'] = True
+    item['operation_contracts'] = contracts
+    item['description'] += ' 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.'
+    item['execution_status'] = ('native_ready' if identifier in NATIVE_IDS else
+                                'connection_required' if all(c['status'] == 'external_connection_required' for c in contracts)
+                                else 'registered')
+
+_native_node_ports = node_ports
+
+def uses_operation(node):
+    return bool(node['settings'].get('operation')) or node['tool'] not in NATIVE_IDS
+
+
+def node_ports(node):
+    if uses_operation(node):
+        try: return ports(node['tool'], operation_spec(node['tool'], node['settings'].get('operation')),node['settings'].get('output_port'))
+        except ValueError: return {}, {}
+    return _native_node_ports(node)

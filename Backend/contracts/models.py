@@ -1,5 +1,7 @@
+from workflow_engine.catalog.canonical import TOOL_IDS
+
 from typing import Literal, TypedDict
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 class Requirement(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -38,7 +40,20 @@ class Binding(BaseModel):
     output: str
 
 class NodeSettings(BaseModel):
+    @model_validator(mode='before')
+    @classmethod
+    def operation_defaults(cls, value):
+        if isinstance(value,dict) and value.get('operation'):
+            if isinstance(value.get('arguments_json'),dict):
+                import json
+                value={**value,'arguments_json':json.dumps(value['arguments_json'],ensure_ascii=False,allow_nan=False)}
+            return {'file_ids':[],'query':None,'fields':[],'instructions':None,'format':None,
+                    'question':None,'condition_field':None,'condition_operator':None,**value}
+        return value
+
     model_config = ConfigDict(extra='forbid')
+    operation: str | None = Field(default=None, max_length=80)
+    arguments_json: str | None = Field(default=None, max_length=24000)
     node_ref: str | None = Field(default=None,max_length=60)
     execution_plan: ExecutionPlan | None = None
     agent_id: str | None = None
@@ -76,7 +91,7 @@ class NodeSettings(BaseModel):
 class WorkflowNode(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str
-    tool: Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','reply_review','review_summary','saved_workflow','agent_node']
+    tool: Literal[TOOL_IDS]
     label: str
     bindings: list[Binding]
     settings: NodeSettings
@@ -106,7 +121,7 @@ class AgentDraft(BaseModel):
     name: str = Field(max_length=60)
     purpose: str = Field(max_length=2000)
     instructions: str = Field(max_length=12000)
-    tool_ids: list[Literal['read_table','filter_sort','write_result','read_document','search_document','extract_information','compose_answer','export_result','condition','ask_user','finish','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','reply_review','review_summary','saved_workflow','agent_node']] = Field(max_length=10)
+    tool_ids: list[Literal[TOOL_IDS]] = Field(max_length=10)
     document_ids: list[str] = Field(max_length=10)
     requirements: list[Requirement] = Field(max_length=30)
     questions: list[str] = Field(max_length=3)

@@ -79,6 +79,12 @@ def catalog(storage,model,credential_id):
 def requires_model(config):
     for node in config['workflow']['nodes']:
         tool=node['tool'];settings=node['settings']
+        from workflow_engine.catalog.registry import uses_operation
+        if uses_operation(node):
+            from workflow_engine.catalog.canonical import operation_spec
+            from workflow_engine.unified_tools.model_operations import SPECS
+            if (tool,operation_spec(tool,settings.get('operation'))['id']) in SPECS:return True
+            continue
         if tool in ['search_document','extract_information','compose_answer','reply_review','agent_node'] or tool=='condition' and settings['condition_operator']=='semantic' or tool=='ask_user' and settings['instructions']:return True
         if tool=='saved_workflow':
             agent=config.get('_saved_workflows',{}).get(node['id'])

@@ -39,7 +39,7 @@
           "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
         }
       ],
-      "extraction": "literal_policy_rule"
+      "extraction": "literal_policy_clause"
     },
     "duplicate.policy": {
       "key": "duplicate.policy",
@@ -56,7 +56,7 @@
           "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
         }
       ],
-      "extraction": "literal_policy_rule"
+      "extraction": "literal_policy_clause"
     },
     "output.format": {
       "key": "output.format",

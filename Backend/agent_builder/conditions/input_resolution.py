@@ -54,6 +54,14 @@ def latest_resolution(state):
     return {'kind': kind, 'keys': keys, 'unknown_counts': counts, 'deferred': deferred, 'turn': latest}
 
 
+def pending_nonanswer(state):
+    messages=state.get('messages',[])
+    text=next((m['content'] for m in reversed(messages) if m['role']=='user'),'')
+    return bool(_compact(text) in {'네','예','응','확인','알겠어','알겠습니다'} and
+                any(q.get('key') in {'filter.field','duplicate.field','filter.value'}
+                    for q in state.get('pending_questions',[])))
+
+
 def option_answer(state):
     """The latest user turn is exactly one offered choice of one pending question.
 

@@ -14,6 +14,8 @@ MODEL_SHA256 = "df14a313659394fcc9b9efda431da7643e692ad4b33ee923f02edc97cc1dbbea
 CATALOG_SHA256 = "cd956b51658051ecd95c642b5738238b3ae7f819c89799668280ba6d96f5dd2a"
 
 
+DEFAULT_BUNDLE = Path(__file__).resolve().parents[3] / 'runtime' / 'ml-bundle'
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -35,8 +37,10 @@ def _load_pinned(model_path: str, catalog_path: str, expected_model_sha256: str 
 
 def recommend_svm_for_state(state: dict, registry: list[dict]) -> dict:
     """Fail closed to full-catalog review if configuration/model is unavailable."""
-    model_path, catalog_path = os.getenv("A4B_SVM_MODEL_PATH"), os.getenv("A4B_SVM_CATALOG_PATH")
-    if not model_path or not catalog_path:
+    model_path = os.getenv("A4B_SVM_MODEL_PATH") or str(DEFAULT_BUNDLE / "model/recommender_char_svm_5431.joblib")
+    catalog_path = os.getenv("A4B_SVM_CATALOG_PATH") or str(DEFAULT_BUNDLE / "catalog/catalog_56.json")
+    if (not os.getenv("A4B_SVM_MODEL_PATH") and not Path(model_path).is_file() or
+        not os.getenv("A4B_SVM_CATALOG_PATH") and not Path(catalog_path).is_file()):
         return {"ml_candidates": [], "ml_status": "missing_configuration", "advisory_only": True,
                 "ml_usage": "추천 모델이 설정되지 않았습니다. 전체 등록 도구와 요청을 기준으로 검토하세요."}
     try:

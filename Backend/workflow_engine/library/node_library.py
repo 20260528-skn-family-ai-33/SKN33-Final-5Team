@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from contracts.models import NodeSettings, ExecutionPlan
+from workflow_engine.catalog.canonical import TOOL_IDS
 from infrastructure.persistence.ids import uid, now
 
 class NodeSpec(BaseModel):
@@ -12,7 +13,7 @@ class NodeSpec(BaseModel):
     kind: Literal['agent', 'processing']
     name: str = Field(min_length=1, max_length=60)
     purpose: str = Field(min_length=5, max_length=1000)
-    tool: Literal['agent_node', 'read_document', 'read_table', 'filter_sort', 'aggregate_table']
+    tool: Literal[TOOL_IDS]
     instructions: str = Field(default='', max_length=6000)
     reference: str = Field(default='', max_length=8000)
     model: str | None = Field(default=None, pattern=r'^[-\w.]{1,120}$')
@@ -27,9 +28,13 @@ class NodeSpec(BaseModel):
             raise ValueError('에이전트 지시사항은 10자 이상 입력하세요.')
         if self.kind == 'processing' and (self.model or self.reference):
             raise ValueError('처리 노드는 모델과 참고 텍스트를 사용하지 않습니다.')
-        if self.settings.node_ref or self.settings.file_ids or any(getattr(self.settings,key) is not None for key in ['agent_id','agent_version','output_node','output_port']):
+        projection_port=(self.tool in ('json_transform','list_transform') and bool(self.settings.operation))
+        if self.settings.node_ref or self.settings.file_ids or any(getattr(self.settings,key) is not None for key in ['agent_id','agent_version','output_node']) or (self.settings.output_port is not None and not projection_port):
             raise ValueError('노드는 다른 노드나 개인 자료 ID를 내장하지 않습니다. 파일은 워크플로우에서 연결하세요.')
-        if self.tool == 'filter_sort' and not self.execution_plan:
+        if self.settings.operation:
+            from workflow_engine.executors.canonical_operation import validate_settings
+            validate_settings({'tool':self.tool,'settings':self.settings.model_dump(),'bindings':[]},allow_unbound=True)
+        if self.tool == 'filter_sort' and not self.settings.operation and not self.execution_plan:
             raise ValueError('필터 노드는 실행 조건이 필요합니다.')
         if self.execution_plan:
             plan=self.execution_plan
@@ -40,7 +45,7 @@ class NodeSpec(BaseModel):
                     raise ValueError('열 비교에는 상수 값을 함께 지정할 수 없습니다.')
                 if not f.compare_field and f.operator not in ['is_empty','not_empty'] and f.value is None:
                     raise ValueError('필터 기준 값이 필요합니다.')
-        if self.tool == 'aggregate_table' and self.settings.aggregation == 'sum' and not self.settings.sum_field:
+        if self.tool == 'aggregate_table' and not self.settings.operation and self.settings.aggregation == 'sum' and not self.settings.sum_field:
             raise ValueError('합계할 열이 필요합니다.')
         return self
 

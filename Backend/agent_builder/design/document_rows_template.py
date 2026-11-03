@@ -29,7 +29,7 @@ RECEIPT_FIELDS = ['상품명', '단가', '수량', '금액']
 QUESTION = '어떤 항목을 한 줄씩 뽑을까요? 쉼표로 구분해 적어 주세요. (예: 상품명, 단가, 수량, 금액)'
 ASK_EXPLANATION = '첨부한 문서의 반복 항목을 한 줄씩 표로 정리합니다.'
 ALL_FIELDS_NOTE = '"전체"처럼 답하면 어떤 열을 만들지 정할 수 없어요. 표의 열이 될 항목 이름을 적어 주세요.'
-EXPLANATION = ('첨부한 문서에서 반복 항목을 한 줄씩 추출해 CSV로 저장합니다. 엑셀(xlsx) 파일은 아직 만들 수 없지만, '
+EXPLANATION = ('첨부한 문서에서 반복 항목을 한 줄씩 추출해 CSV로 저장합니다. '
                'CSV는 엑셀에서 바로 열립니다. 추출 값은 원문에서 확인된 것만 기록되고, 확인되지 않은 칸은 비워 둡니다.')
 DEFAULT_FIELDS_NOTE = ('항목을 따로 정하지 않아 영수증 기본 항목(' + ', '.join(RECEIPT_FIELDS) + ')으로 정리합니다. '
                        '다른 항목이 필요하면 항목 이름을 알려 주세요.')
@@ -120,6 +120,11 @@ def document_rows_applies(state):
     """
     if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
         return False
+    # The fixed flow writes CSV. Explicit XLSX requests belong to the full planner,
+    # which can now connect create_spreadsheet instead of changing the requested format.
+    if any(re.search(r'(?<![A-Za-z])xlsx(?![A-Za-z])',m.get('content',''),re.I)
+           for m in state.get('messages',[]) if m.get('role')=='user'):
+        return False
     resources = state.get('resources') or []
     if not any(r.get('kind') == 'document' for r in resources) or any(r.get('kind') == 'table' for r in resources):
         return False
@@ -129,12 +134,17 @@ def document_rows_applies(state):
     if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'].endswith(QUESTION):
         # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
         return wants_all_fields(messages[-1]['content']) or not is_request_change(messages[-1]['content'])
-    return bool(_TABLE_INTENT.search(messages[-1]['content']))
+    return bool(_TABLE_INTENT.search(messages[-1]['content']) or _upload_followup_request(messages))
 
 
 def document_rows_reply(state):
     """Return the fixed-flow result, or None to continue with the model planner."""
     if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
+        return None
+    # The fixed flow writes CSV. Explicit XLSX requests belong to the full planner,
+    # which can now connect create_spreadsheet instead of changing the requested format.
+    if any(re.search(r'(?<![A-Za-z])xlsx(?![A-Za-z])',m.get('content',''),re.I)
+           for m in state.get('messages',[]) if m.get('role')=='user'):
         return None
     resources = state.get('resources') or []
     documents = [r['id'] for r in resources if r.get('kind') == 'document']
@@ -169,6 +179,16 @@ def document_rows_reply(state):
                 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                 'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
                                                     'detail': '문서 읽기 → 목록 추출(' + ', '.join(fields) + ') → CSV 저장을 코드로 구성했습니다.', 'model_calls': 0}]}
-    if _TABLE_INTENT.search(users[-1]['content']):
-        return _ask(state, users[-1]['content'])
+    request=users[-1]['content'] if _TABLE_INTENT.search(users[-1]['content']) else _upload_followup_request(messages)
+    if request:
+        return _ask(state, request)
+    return None
+
+
+def _upload_followup_request(messages):
+    users=[m['content'] for m in messages if m['role']=='user']
+    if not users or not re.search(r'(?:올려|올렸|업로드|첨부).{0,12}(?:놨|놓|했|완료|어|어요)',users[-1]):return None
+    for text in reversed(users[:-1]):
+        if _TABLE_INTENT.search(text):return text
+        if _CHANGE.search(text):return None
     return None

@@ -74,7 +74,9 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
         for name,kind in outputs.items():output_types.setdefault(kind,set()).add(name)
     base=deepcopy(defs['WorkflowNode']);variants=[]
     base['properties']['id']={'type':'string','pattern':NODE_ID_PATTERN}
+    from workflow_engine.catalog.registry import NATIVE_IDS
     for tool,(inputs,_) in PORTS.items():
+        if tool not in NATIVE_IDS:continue
         if allowed_tools is not None and tool not in allowed_tools:continue
         node=deepcopy(base);props=node['properties'];props['tool']={'type':'string','enum':[tool]}
         binding_variants=[]
@@ -98,6 +100,11 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
         if tool in ('read_table','read_document'):
             props['bindings']['maxItems']=props['bindings']['minItems']=0
         key='NativeNode_'+tool;defs[key]=node;variants.append({'$ref':'#/$defs/'+key})
+    if allowed_tools is None:
+        from workflow_engine.catalog.canonical import operation_variants
+        for variant in operation_variants(base,defs['Binding']):
+            variant['properties']['id']={'type':'string','pattern':NODE_ID_PATTERN}
+            variants.append(variant)
     defs['WorkflowNode']={'anyOf':variants}
     if allowed_tools is not None:
         result['properties']['tool_ids']['items']['enum']=list(allowed_tools)

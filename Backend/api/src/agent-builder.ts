@@ -16,6 +16,10 @@ import {parseCsv} from './binary';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {readXlsx,extractPdfText} from './document-files';
 
+export function builderReportBytes(artifact:{content:string;encoding?:string}):Buffer {
+ return Buffer.from(artifact.content,artifact.encoding==='base64'?'base64':'utf8');
+}
+
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const locks=new Set<string>();
 const builderLockKey=(id:string,test=false)=>dataDirectory()+':'+(test?'test:':'')+id;
@@ -68,7 +72,7 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
     // The worker has committed the run and produced the local report before returning.
     const report=data.result?.artifact?.content;
     if(execution&&workspaceFilesEnabled&&data.result?.report_path&&typeof report==='string'){
-     const bytes=Buffer.from(report,'utf8');
+     const bytes=builderReportBytes(data.result.artifact);
      void saveWorkspaceFile(binaryObjectPath('results',bytes),bytes).then(()=>accept(data.result),reject);
     }else accept(data.result);}
    catch{void fail('에이전트 응답을 읽지 못했습니다. 실행 기록과 Python 환경을 확인하세요.');}
@@ -118,12 +122,12 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection(),...(url.searchParams.get('profile')==='1'?{}:{health:await localModelHealth()})});return true;}
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
-  const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');
+  const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt|docx|xlsx|pdf|png|zip|html|eml|bin)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');
   const legacy=()=>readFile(dataDirectory(run.report_path)).catch(()=>{throw new Error('서버 보고서 파일을 찾지 못했습니다. 실행 기록을 확인하세요.');});
   const report=run.artifact?.content;
   let content:Buffer;
   if(workspaceFilesEnabled&&typeof report==='string'){
-   const bytes=Buffer.from(report,'utf8');
+   const bytes=builderReportBytes(run.artifact);
    content=await readWorkspaceFile(binaryObjectPath('results',bytes),()=>bytes);
   }else content=await legacy();
   res.writeHead(200,{'Content-Type':run.artifact?.mime||'application/octet-stream','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(run.artifact?.name||'report.csv')}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;

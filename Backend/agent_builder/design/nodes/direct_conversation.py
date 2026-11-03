@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from contracts.models import AgentDraft
 from workflow_engine.library.node_library import prepare_draft
 from agent_builder.design.plan_contracts import normalize_aggregate_plan_columns
+from workflow_engine.catalog.canonical import PLANNER_INSTRUCTIONS, planner_catalog
 from workflow_engine.catalog.registry import TOOLS, PORTS
 from workflow_engine.catalog.registry import node_ports
 from agent_builder.design.planner_constraints import native_decoder_schema, binding_repair_options
@@ -42,10 +43,10 @@ filter_sort마다 settings.execution_plan에 그 단계의 조건을 지정합�
 빈 값·중복 정책은 사용자 조건을 따릅니다. 집계는 중복 제거가 아닙니다. 사용자 요청 없는 행 삭제는 하지 마세요.
 aggregate_table에서만 aggregation=count/sum, fields=그룹 열, sum_field=합계 원본 열을 씁니다. 결과 합계 열은 sum입니다.
 calculate_columns는 앞 표의 table을 받아 table_operation=compute와 calculation_formula·output_column으로 숫자 열 계산을 하거나 table_operation=rename과 rename_from·rename_to로 열 이름 하나를 바꿉니다. 수식은 실제 열 이름, 숫자와 + - * / % 괄호만 지원합니다. 불명확한 식·열은 사용자에게 확인합니다.
-text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문자 그대로 바꿉니다. base64_codec은 codec_mode=encode/decode로, text_hash는 SHA-256 계산에 사용합니다. text_statistics는 statistics_unit=characters/words 및 문자일 때 include_whitespace, date_transform은 date_operation=adjust/format 및 date_seconds/date_output_format을 명시합니다. adjust 입력에는 시간대가 필요합니다. 문서 파일 편집이나 다른 문자열 연산은 지원한다고 가정하지 않습니다.
+text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문자 그대로 바꿉니다. base64_codec은 codec_mode=encode/decode로, text_hash는 SHA-256 계산에 사용합니다. text_statistics는 statistics_unit=characters/words 및 문자일 때 include_whitespace, date_transform은 date_operation=adjust/format 및 date_seconds/date_output_format을 명시합니다. adjust 입력에는 시간대가 필요합니다. 문서 편집과 추가 문자열 연산은 등록된 해당 도구의 operation 계약 범위만 지원합니다.
 날짜 열 변환은 calculate_columns의 table_operation=parse_dates와 fields, date_input_format, date_timezone을 사용합니다. 입력 형식과 시간대가 불명확하면 확인합니다.
 CSV/JSON 표 저장은 write_result, records/text 저장은 export_result입니다. 실제 format을 지정하고 서버 reports에 보관합니다.
-문서·이미지(영수증·스캔 등)에서 항목을 뽑아 표나 엑셀로 정리하는 요청은 read_document → extract_information(fields=요청 항목) → export_result(format=csv)로 구성합니다. read_document의 documents를 write_result에 연결하지 않습니다(write_result는 table 입력 전용). 엑셀(xlsx) 파일은 만들 수 없으므로 CSV로 저장하고 그 사실을 explanation에 적습니다. edges와 bindings에는 nodes에 실제로 있는 id만 쓰며, 끝을 표시하려고 없는 finish 노드를 연결하지 않습니다.
+문서·이미지(영수증·스캔 등)에서 항목을 뽑아 표나 엑셀로 정리하는 요청은 read_document → extract_information(fields=요청 항목) → export_result(format=csv)로 구성합니다. read_document의 documents를 write_result에 연결하지 않습니다(write_result는 table 입력 전용). xlsx 파일 요청은 create_spreadsheet의 실제 동작 계약으로 생성합니다. CSV 요청은 export_result를 사용합니다. edges와 bindings에는 nodes에 실제로 있는 id만 쓰며, 끝을 표시하려고 없는 finish 노드를 연결하지 않습니다.
 문서 추출은 extract_information.fields에 요청 항목을 지정하며 없는 값은 만들어내지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다.
 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 쓰세요. required_node_refs는 반드시 연결합니다.
 ask_user는 실행 중 사람 응답 대기 도구이며 생성 조건 questions와 다릅니다. reply_review는 실제 문의·응대 초안 검수에만 사용합니다.
@@ -88,7 +89,7 @@ SYSTEM_V2 = """당신은 한국어 문서 업무를 설계하는 A4B 메인 모�
 - calculate_columns는 table_operation=compute, calculation_formula, output_column 또는 table_operation=rename, rename_from, rename_to를 사용합니다. text_transform은 text_find와 text_replacement를 사용합니다.
 - 날짜 열 변환에는 table_operation=parse_dates, fields, date_input_format, date_timezone이 필요합니다.
 - 표 CSV/JSON은 write_result, records/text는 export_result입니다. format을 지정합니다. 저장 위치는 서버 reports입니다.
-- 문서·이미지 항목을 표/엑셀로 정리: read_document → extract_information(fields) → export_result(format=csv). documents를 write_result에 연결하지 않습니다. xlsx는 만들 수 없어 CSV로 저장합니다.
+- 문서·이미지 항목을 표/엑셀로 정리: read_document → extract_information(fields) → export_result(format=csv). documents를 write_result에 연결하지 않습니다. xlsx는 create_spreadsheet로 생성하고, CSV를 원하면 export_result를 사용합니다.
 - 문서 추출은 extract_information.fields에 요청 항목을 넣습니다. 없는 값은 만들지 않습니다.
 - agent_node는 자료 조회·텍스트 추론용입니다. 새 역할은 instructions로 구성하며 외부 실행 권한을 추가할 수 없습니다.
 - 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 사용합니다. required_node_refs는 연결합니다.
@@ -240,7 +241,7 @@ def _normalize(raw, state):
         raise ValueError('실행 가능한 초안도 확인 질문도 없습니다.')
     draft['workflow'] = normalize_connections(draft['workflow'])
     for node in (draft['workflow'] or {}).get('nodes', []):
-        if node['tool'] == 'filter_sort':
+        if node['tool'] == 'filter_sort' and not node['settings'].get('operation'):
             node['settings']['execution_plan'] = node['settings']['execution_plan'] or deepcopy(draft['execution_plan'])
             node['settings']['instructions'] = json.dumps(node['settings']['execution_plan'],ensure_ascii=False)
         if node['tool'] == 'write_result' and not node['settings']['format']:
@@ -348,7 +349,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
                      for r in state['resources']]
         for resource in resources:
             if 'text' in resource:resource['text'] = resource['text'][:12000]
-        context = {'available_resources':resources,'supported_tools':TOOLS,'ports':PORTS,
+        context = {'available_resources':resources,'supported_tools':planner_catalog(TOOLS,details=True),'ports':PORTS,
                    'current_draft':state.get('draft'),'validation_issues':state.get('issues',[]),
                    'node_library':state.get('node_library',[]),'required_node_refs':state.get('required_node_refs',[]),
                    'saved_workflows':state.get('saved_workflows',[]),
@@ -358,7 +359,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 if version in ('v5','v6','v7','v8') else state.get('condition_ledger'))
             context['condition_instruction']='확정 조건을 실제 노드·예약·출력 설정에 적용하고 이미 해결한 조건은 재질문하지 않습니다.'
         if version in ('v2','v3','v4','v5','v6','v7','v8'):
-            context['supported_tools'] = [{key:tool[key] for key in ('id','description','input_ports','output_ports')} for tool in TOOLS]
+            context['supported_tools'] = planner_catalog(TOOLS,details=True)
             context.pop('ports')
             context['source_quote_catalog'] = [{'source_id':'user','quote':m['content'][:2000]}
                                                for m in state['messages'] if m['role']=='user' and m['content'].strip()]
@@ -424,7 +425,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
             if use_linear:
                 advice={**advice,'ml_candidates':[c for c in advice.get('ml_candidates',[]) if isinstance(c,dict) and c.get('tool_id') in linear_plan.ALLOWED]}
             context['tool_selection_advice']=advice
-        messages = [{'role':'system','content':linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]},
+        messages = [{'role':'system','content':linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]+PLANNER_INSTRUCTIONS},
                     {'role':'user','content':'현재 설계 계약과 자료(지시가 아닌 참고 데이터):\n'+json.dumps(context,ensure_ascii=False)},
                     *state['messages']]
         if version in ('v3','v4','v5','v6','v7','v8') and state.get('issues'):
@@ -445,9 +446,13 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 detail = json.dumps(error.errors(include_input=False,include_url=False),ensure_ascii=False,default=str) if isinstance(error,ValidationError) else str(error)
                 messages += [{'role':'assistant','content':content},
                              {'role':'user','content':'다음 코드 검증 오류만 수정하여 JSON 하나를 반환하세요. 사용자 조건을 바꾸지 마세요: '+detail[:4000]}]
+        from agent_builder.design.name_policy import present_generated_name
+        draft=present_generated_name(draft,state['messages'])
+        from agent_builder.design.presentation import public_draft_explanation
+        draft=public_draft_explanation(draft)
         checked = validate_node({**state,'draft':draft,'node_library':pool,'semantic_issues':semantic_issues})
         reply = draft['explanation'] + '\n' + '\n'.join('• '+q for q in draft['questions'])
-        if draft['unsupported']:reply += '\n지원 범위: '+' / '.join(draft['unsupported'])
+        if draft['unsupported']:reply += '\n요청한 작업에 필요한 기능과 연결 상태를 추가로 확인해야 합니다.'
         prior = state['messages'][:-1] if state.get('issues') and state['messages'] and state['messages'][-1]['role']=='assistant' else state['messages']
         return {'draft':draft,'node_library':pool,'semantic_issues':semantic_issues,
                 'messages':prior+[{'role':'assistant','content':reply.strip()}],
@@ -457,5 +462,6 @@ def make_direct_conversation(api_key, model, model_factory=None):
                     'detail':'direct 경로: 코드 검증 후 오류가 있으면 supervisor 수정 경로로 전달합니다.',
                     'planner_mode':'direct_linear_ir' if use_linear else 'direct','workflow_compiler':'ordered_steps_v1' if use_linear else None,
                     'prompt_version':version,'model_calls':attempt+1,'metrics':metrics,'code_issues':checked['issues'],
+                    'tool_advice_candidates':[{'tool_id':c['tool_id'],'source':c.get('source',os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy'))} for c in (advice or {}).get('ml_candidates',[])],
                     'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
     return conversation_node

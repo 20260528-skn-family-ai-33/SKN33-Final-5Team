@@ -170,3 +170,11 @@ def test_rows_mode_returns_one_verified_record_per_item_and_drops_invented_value
     table=list(csv.reader(io.StringIO(saved['content'].lstrip('﻿'))))
     assert table[0]==['file_name','row','상품명','금액','status','evidence']
     assert table[1][:5]==['receipt.jpg','1','굿모닝우유900ML','1.350','verified'] and table[2][:5]==['receipt.jpg','2','양파','','partial']
+
+
+def test_explicit_xlsx_request_delegates_to_registered_spreadsheet_planner():
+    from agent_builder.design.document_rows_template import document_rows_applies,document_rows_reply
+    state={'resources':[{'id':'receipt','kind':'document','name':'영수증.png'}],
+           'messages':[{'role':'user','content':'영수증 상품을 xlsx 파일로 만들어줘'}]}
+    assert not document_rows_applies(state)
+    assert document_rows_reply(state) is None

@@ -48,6 +48,24 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         setting='enforce' if state.get('condition_required') or state.get('condition_enforced') else configured
         if setting == 'off':
             return {'condition_enforced': False, 'condition_route': 'conversation', 'condition_ledger': None, 'condition_template': False}
+        user_requests=' '.join(m['content'] for m in state.get('messages',[]) if m['role']=='user')
+        import re
+        outside_table_scope=(re.search(r'비교|증감|증가율|감소율|변화율|반품|환불|정정|그 전주',user_requests) or
+            ('요약' in user_requests and not re.search(r'선별|중복|필터',user_requests)))
+        if setting=='enforce' and outside_table_scope:
+            return {'condition_ledger':None,'condition_enforced':False,'condition_required':False,
+                    'condition_route':'conversation','condition_template':False,'pending_questions':[]}
+        assessment=state.get('capability_assessment') or {}
+        table_contract_tools={'read_table','filter_sort','write_result','finish'}
+        selected=set(assessment.get('tool_ids',[]))
+        if setting=='enforce' and assessment.get('decision')=='existing_tools' and selected-table_contract_tools:
+            # This checker only owns single-table filtering/deduplication/scheduling.
+            # A supported join, scalar, document or connector operation belongs to the
+            # full planner; it still goes through native validation and user approval.
+            return {'condition_ledger':None,'condition_enforced':False,'condition_required':False,
+                    'condition_route':'conversation','condition_template':False,'pending_questions':[],
+                    'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
+                        'detail':'outside_scope: 등록된 확장 도구 요청을 전체 설계기로 위임','mode':setting,'model_calls':0,'metrics':{}}]}
         from agent_builder.design.document_rows_template import document_rows_applies
         if setting == 'enforce' and document_rows_applies(state):
             # Document-to-table work is outside this checker's table scope; the fixed flow decides it in code.
@@ -58,8 +76,8 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         try:
             # Build a transport lazily: a failed input never calls the model.
             from agent_builder.conditions.condition_readiness import input_issues
-            from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer
-            if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state):
+            from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, pending_nonanswer
+            if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state) or pending_nonanswer(state):
                 result = judge_conditions(state, None)
             else:
                 result = judge_conditions(state, transport or _transport(api_key, model), max_contract_repairs=1)
@@ -93,8 +111,8 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
                 update['pending_questions'] = []
                 plan_mode=os.getenv('A4B_CONDITION_PLAN_MODE','llm')
                 if plan_mode not in ('llm','template'):raise ValueError('A4B_CONDITION_PLAN_MODE는 llm/template이어야 합니다.')
-                update['condition_template']=plan_mode=='template'
-                if plan_mode=='template':update['condition_route']='template_plan'
+                update['condition_template']=plan_mode=='template' and bool(ledger.get('operations'))
+                if update['condition_template']:update['condition_route']='template_plan'
             return update
         update.update(condition_route='supervisor', confirmed=False, saved_agent_id=None,
                       draft=_pending_draft(state, ledger), pending_questions=ledger.get('questions', []),
@@ -103,7 +121,7 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         if ledger['decision'] in ('clarify', 'deferred'):
             reply='\n'.join(q['text'] for q in ledger['questions'])
         elif ledger['decision']=='unsupported':
-            reply='지원 범위: '+' / '.join(ledger.get('unsupported_actions',[]))
+            reply='요청한 동작이 현재 도구로 가능한지 추가 확인이 필요합니다. 수행하려는 작업을 구체적으로 알려주세요.'
         else:
             conflicts=[q for q in ledger.get('unresolved',[]) if ledger.get('slots',{}).get(q,{}).get('status')=='conflict']
             from agent_builder.conditions.condition_readiness import QUESTIONS

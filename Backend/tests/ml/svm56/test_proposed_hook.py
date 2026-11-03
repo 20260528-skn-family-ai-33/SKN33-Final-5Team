@@ -24,13 +24,13 @@ class ProposedHookTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); return module
 
     def test_off_mode_unchanged(self):
-        with patch.dict(os.environ, {}, clear=True), patch.dict(sys.modules, self.modules):
+        with patch.dict(os.environ, {'A4B_TOOL_ADVICE_MODE':'off'}, clear=True), patch.dict(sys.modules, self.modules):
             self.assertIsNone(self.load().recommend_for_state({}))
 
-    def test_svm_opt_in_passes_current_registry(self):
+    def test_default_svm_passes_current_registry(self):
         service = types.ModuleType('ml.svm56.svm56_service_hook')
         service.recommend_svm_for_state = lambda state, registry: {'state':state, 'registry':registry}
-        with patch.dict(os.environ, {'A4B_TOOL_ADVICE_MODE':'hint', 'A4B_TOOL_ADVICE_BACKEND':'svm56'}, clear=True), \
+        with patch.dict(os.environ, {}, clear=True), \
              patch.dict(sys.modules, {**self.modules, service.__name__:service}):
             result = self.load().recommend_for_state({'messages':[]})
         self.assertEqual(result['registry'], self.registry.TOOLS)

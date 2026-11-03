@@ -235,7 +235,8 @@ def test_skipped_tool_selection_continues_once_with_context_catalog(monkeypatch)
                 calls.append(payload)
                 if len(calls)==1:return {'messages':[AIMessage(content='기준이 모호하여 질문합니다.')]}
                 context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
-                assert context['supported_tools']==TOOLS
+                from workflow_engine.catalog.canonical import planner_catalog
+                assert context['supported_tools']==planner_catalog(TOOLS)
                 return {'structured_response':draft(questions=['기준을 알려주세요'])}
         return Agent()
     monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
@@ -263,7 +264,8 @@ def test_direct_catalog_supplies_registry_without_model_tool_call(monkeypatch):
     class Agent:
         def invoke(self,payload,config):
             context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
-            assert context['supported_tools']==TOOLS
+            from workflow_engine.catalog.canonical import planner_catalog
+            assert context['supported_tools']==planner_catalog(TOOLS)
             return {'structured_response':draft(questions=['기준을 알려주세요'])}
     monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',lambda **kw:Agent())
     result=make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'업무 요청'}]))
@@ -500,10 +502,73 @@ def test_requests_outside_the_ready_table_contract_keep_the_full_catalog(monkeyp
     captured = run_capturing(monkeypatch, state([{'role': 'user', 'content': '문서에서 근거를 찾아 답해줘'}]),
                              draft(questions=['어떤 문서인가요?']))
     schema = captured['schema']
-    assert len(schema['$defs']['WorkflowNode']['anyOf']) == len(TOOLS)
+    assert {tool for v in schema['$defs']['WorkflowNode']['anyOf'] for tool in v['properties']['tool']['enum']} == {t['id'] for t in TOOLS}
     assert schema['properties']['questions']['maxItems'] == 3
     assert 'minItems' not in schema['$defs']['WorkflowDefinition']['properties']['nodes']
-    assert captured['context']['supported_tools'] == TOOLS
+    from workflow_engine.catalog.canonical import planner_catalog
+    assert captured['context']['supported_tools'] == planner_catalog(TOOLS)
     assert 'enum' not in schema['$defs']['WorkflowDefinition']['properties']['entry']
     assert schema['$defs']['WorkflowNode']['anyOf'][0]['properties']['id']['pattern'] == r'^[a-zA-Z][\w-]{0,39}$'
-    assert len(schema['$defs']['WorkflowNode']['anyOf'][0]['properties']['settings']['properties']) > 4
+    variants={v['properties']['tool']['enum'][0]:v for v in schema['$defs']['WorkflowNode']['anyOf'] if len(v['properties']['tool']['enum'])==1}
+    assert set(variants['read_table']['properties']['settings']['properties'])=={'file_ids','node_ref'}
+    assert set(variants['write_result']['properties']['settings']['properties'])=={'format','node_ref'}
+    assert schema['properties']['requirements']['minItems']==1
+
+
+def test_unscoped_compact_native_settings_expand_before_validation(monkeypatch):
+    workflow={'entry':'read','nodes':[
+        {'id':'read','tool':'read_table','label':'표 읽기','bindings':[], 'settings':{'file_ids':[],'node_ref':None}},
+        {'id':'out','tool':'write_result','label':'JSON 저장','bindings':[bind('table','read','table')],
+         'settings':{'format':'json','node_ref':None}}], 'edges':[edge('read','out')]}
+    original=state([{'role':'user','content':'실행할 때 받을 표를 JSON으로 저장해줘'}])
+    captured=run_capturing(monkeypatch,original,draft(workflow=workflow))
+    checked=validate_node({**original,**captured['result']})
+    assert checked['issues']==[]
+    assert checked['draft']['workflow']['nodes'][0]['settings']['query'] is None
+    assert checked['draft']['workflow']['nodes'][1]['settings']['format']=='json'
+
+
+@pytest.mark.parametrize('still_missing',[False,True])
+def test_support_disagreement_is_rechecked_without_automatic_approval(monkeypatch,still_missing):
+    calls=[]
+    def factory(**kwargs):
+        class Agent:
+            def invoke(self,payload,*args,**kw):
+                calls.append(payload)
+                if len(calls)==1:return {'structured_response':draft(unsupported=['등록된 도구로 구현 가능합니다.'])}
+                assert '지원 판정' in payload['messages'][-1]['content']
+                if still_missing:return {'structured_response':draft(unsupported=['필수 Slack 전송 도구가 등록되지 않았습니다.'])}
+                return {'structured_response':draft(workflow={'entry':'end','nodes':[node('end','finish')],'edges':[]})}
+        return Agent()
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    original={**state([{'role':'user','content':'현재 요청을 확인해줘'}]),
+              'capability_assessment':{'decision':'existing_tools','tool_ids':['finish']}}
+    result=make_conversation('','test',model_factory=lambda:object())(original)
+    assert len(calls)==2
+    assert bool(result['draft']['unsupported']) is still_missing
+    assert bool(result['draft']['workflow']) is not still_missing
+
+
+def test_user_variable_names_are_available_in_ollama_decoder_without_setting_values(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    original={**state([{'role':'user','content':'x 값은 7, y 값은 2로 x+y를 계산해줘'}]),
+              'capability_assessment':{'decision':'existing_tools','tool_ids':['scalar_calculate']}}
+    captured=run_capturing(monkeypatch,original,draft(questions=['어떤 결과 형식인가요?']))
+    variant=next(v for v in captured['schema']['$defs']['WorkflowNode']['anyOf'] if v['properties']['tool']['enum']==['scalar_calculate'])
+    variables=variant['properties']['settings']['properties']['arguments_json']['properties']['variables']
+    assert variables['properties']['x']==variables['properties']['y']=={'type':'number'}
+    assert variables['additionalProperties']=={'type':'number'}
+
+
+def test_ollama_default_catalog_mode_supplies_selected_contract_without_forced_lookup(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','model')
+    s={**state([{'role':'user','content':'x=3으로 x*2를 계산해줘'}]),
+       'capability_assessment':{'decision':'existing_tools','tool_ids':['scalar_calculate']}}
+    raw=draft(workflow={'first_step':{'tool':'scalar_calculate','label':'계산','settings':{
+        'operation':'evaluate','arguments_json':{'formula':'x*2','variables':{'x':3}},'output_port':None}},'next_steps':[]})
+    captured=run_capturing(monkeypatch,s,raw)
+    assert captured['context']['selected_tool_contracts'][0]['id']=='scalar_calculate'
+    assert set(captured['schema']['$defs']['WorkflowDefinition']['properties'])=={'first_step','next_steps'}
+    assert captured['result']['trace'][-1]['tool_selection_fallback'] is False
+    assert captured['result']['draft']['workflow']['nodes'][0]['id']=='step_1'

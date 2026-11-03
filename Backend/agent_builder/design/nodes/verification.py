@@ -31,7 +31,8 @@ def current_tools():
     result = []
     for tool in TOOLS:
         if tool['id'] not in reference:
-            raise ValueError('새 도구의 검증 범위를 먼저 정의하세요: ' + tool['id'])
+            if not tool.get('operation_contracts'):raise ValueError('새 도구의 검증 범위를 먼저 정의하세요: ' + tool['id'])
+            reference[tool['id']]=dict(id=tool['id'],check_scope='basic',required_input_ports=[],required_settings=[])
         item = reference[tool['id']]
         item.update(description=tool['description'], input_ports=tool['input_ports'],
                     output_ports=tool['output_ports'], enabled=True)
@@ -39,6 +40,56 @@ def current_tools():
             item['required_input_ports'] = ['documents']
         result.append(item)
     return result
+
+
+
+def project_operations(raw, *, strict=True):
+    """Adapt service operation nodes without changing the delivered verifier package."""
+    from workflow_engine.catalog.registry import uses_operation,node_ports
+    from workflow_engine.executors.canonical_operation import validate_settings
+    snapshot=deepcopy(raw);specs=[]
+    nodes={n['id']:n for n in snapshot['workflow']['nodes']}
+    for n in nodes.values():
+        if not uses_operation(n):continue
+        if strict:spec,_=validate_settings(n,[{'id':i} for i in snapshot.get('document_ids',[])])
+        else:
+            # An invalid historical draft is evidence of what was repaired,
+            # never an executable candidate or a reason to reject a valid fix.
+            from workflow_engine.catalog.canonical import operation_spec
+            spec=operation_spec(n['tool'],n['settings'].get('operation'))
+        identifier='operation_'+hashlib.sha256(json.dumps(n,sort_keys=True).encode()).hexdigest()[:24]
+        ins,outs=node_ports(n)
+        # The native validator already accepts JSON sinks. Project each actual bound
+        # type so the unchanged verifier can compare its strict port contracts.
+        for b in n['bindings']:
+            if ins.get(b['input'])=='json' and b['node_id'] in nodes:
+                ins[b['input']]=node_ports(nodes[b['node_id']])[1].get(b['output'],'json')
+        from workflow_engine.catalog.canonical import contract
+        scope=contract(n['tool'],spec)['scope']
+        specs.append(dict(id=identifier,description=n['tool']+'.'+spec['id']+' · '+scope+' · text 출력은 앱 실행 결과 영역에 표시됩니다.',enabled=True,input_ports=ins,
+            output_ports=outs,required_input_ports=[],required_settings=['operation','arguments_json'],check_scope='basic'))
+        n['settings']['operation']=spec['id'];n['settings']['arguments_json']=n['settings'].get('arguments_json') or '{}'
+    # Resolve source ports before changing any identity.
+    for n,spec in zip([n for n in nodes.values() if uses_operation(n)],specs):n['tool']=spec['id']
+    return snapshot,specs
+
+
+def tools_for_drafts(*drafts):
+    result={t['id']:t for t in current_tools()}
+    used=set()
+    for index,draft in enumerate(drafts):
+        if not draft or not draft.get('workflow'):continue
+        snapshot,specs=project_operations(draft,strict=index==len(drafts)-1)
+        used.update(n['tool'] for n in snapshot['workflow']['nodes'])
+        result.update({spec['id']:spec for spec in specs})
+    names={t['id']:t['name'] for t in TOOLS}
+    for identifier,item in result.items():
+        if identifier in used:continue
+        # Keep complete ID/name discovery; unused union ports cannot validate a
+        # node and repeated contracts exceed the verifier's context budget.
+        item.update(description=names.get(identifier,identifier),input_ports={},output_ports={},
+                    required_input_ports=[],required_settings=[],check_scope='basic')
+    return list(result.values())
 
 
 def resource_document(asset):
@@ -65,6 +116,8 @@ def resource_document(asset):
         return doc
     if asset['kind'] == 'table':
         doc['tables'] = [dict(id='table-1', columns=asset['columns'], sample_rows=asset.get('preview', [])[:20])]
+        if asset.get('name'):
+            doc['chunks']=[dict(id='upload-metadata',text='파일명: '+asset['name']+'\n연결 자료 ID: '+asset['id'],locator='upload-metadata')]
     if analysis_of(asset) and supports(asset,'document'):
         doc['chunks']=[dict(id=c['source_id'],text=c['text'],locator=locator(c)) for c in chunks_for_asset(asset)]
     elif asset['kind'] != 'table':
@@ -86,6 +139,14 @@ def pending_result(request_id):
     return dict(request_id=request_id, route='pending', execution_allowed=False, model_output=None,
                 findings=[dict(code='deferred', severity='info', detail='판정은 일괄 검증 실행 후 기록됩니다.')],
                 deferred=True)
+
+
+def request_text_evidence(messages):
+    """Plain request text is evidence, not an uploaded file or executable asset."""
+    users=[m for m in messages if m['role']=='user']
+    version=hashlib.sha256(json.dumps(users,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+    return dict(id='user-message-evidence',version=version,parse_status='ready',tables=[],
+                chunks=[dict(id=m['id'],text=m['content'],locator='user-message:'+m['id']) for m in users])
 
 
 def make_verification_node(storage, verifier=None, mode=None):
@@ -116,6 +177,7 @@ def make_verification_node(storage, verifier=None, mode=None):
                         kind='table' if node['tool']=='read_table' else 'document'
                         node['settings']['file_ids']=[i for i in raw.get('document_ids',[]) if i in assets and supports(assets[i],kind)]
                 version=hashlib.sha256(json.dumps(raw,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
+                snapshot,_=project_operations(snapshot,strict=label!='previous')
                 return draft_from_backend(snapshot, draft_id=state['session_id'], version=version)
             previous_adapted = adapt(previous, 'previous')
             candidate_adapted = adapt(draft, 'candidate')
@@ -126,8 +188,9 @@ def make_verification_node(storage, verifier=None, mode=None):
                 contract_version='a4b.verifier.v1', request_id=request_id,
                 user_request=users[0]['content'], messages=messages,
                 latest_user_answer_id=users[-1]['id'] if len(users) > 1 and has_pair else None,
-                documents=[resource_document(a) for a in state.get('resources', [])],
-                tools=current_tools(), previous_draft=previous_adapted,
+                documents=([resource_document(a) for a in state.get('resources', [])]
+                           if state.get('resources') else [request_text_evidence(messages)]),
+                tools=tools_for_drafts(previous,draft), previous_draft=previous_adapted,
                 candidate_draft=candidate_adapted))
             # defer records the same input as shadow but leaves the model call to
             # scripts/run-deferred-verifications.py, so the user does not wait for it.

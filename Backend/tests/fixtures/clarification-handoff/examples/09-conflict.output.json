@@ -55,7 +55,7 @@
           "quote": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
         }
       ],
-      "extraction": "literal_policy_rule"
+      "extraction": "literal_policy_clause"
     },
     "duplicate.policy": {
       "key": "duplicate.policy",
@@ -72,7 +72,7 @@
           "quote": "두 규정의 비용 기준은 모두 이상 조건인데 금액이 달라 아직 선택하지 않았어. JSON으로 저장하고 빈 값은 오류, 중복은 유지해."
         }
       ],
-      "extraction": "literal_policy_rule"
+      "extraction": "literal_policy_clause"
     },
     "output.format": {
       "key": "output.format",

@@ -15,17 +15,17 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Deploy a branch or restore the version saved before testing
+        description: 배포 또는 복귀
         type: choice
         default: deploy
         options: [deploy, restore]
       target:
-        description: Deployment area (ignored for restore)
+        description: 배포할 영역 (복귀 시 무시)
         type: choice
         default: auto
         options: [auto, all, frontend, backend]
       branch:
-        description: Branch to deploy (ignored for restore)
+        description: 배포할 브랜치 (복귀 시 무시)
         required: true
         default: main
         type: string

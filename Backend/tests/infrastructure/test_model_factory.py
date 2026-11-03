@@ -70,3 +70,11 @@ def test_selected_openai_account_is_not_routed_to_the_local_server(monkeypatch):
     assert 'base_url' not in model_factory.create_chat_model('sk-real','gpt-4.1-mini')
     for local_key in ('',None,model_factory.LOCAL_MODEL_API_KEY):
         assert model_factory.create_chat_model(local_key,'qwen3:8b')['target']=='local'
+
+
+def test_ollama_preserves_explicit_planner_sampling_options(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL','http://127.0.0.1:11434/v1')
+    monkeypatch.setattr('infrastructure.llm.ollama_chat_model.OllamaChatOpenAI',lambda **kw:kw)
+    result=model_factory.create_chat_model('','qwen3.5:4b',temperature=0.2,presence_penalty=0)
+    assert result['temperature']==0.2 and result['presence_penalty']==0

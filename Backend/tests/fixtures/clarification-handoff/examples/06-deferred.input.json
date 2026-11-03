@@ -22,7 +22,7 @@
     "db_status": "ok",
     "messages_loaded": true
   },
-  "tool_catalog_fingerprint": "edeebf46cefff7bf95e3b743f80103c9074c952783a6c09f046caab3f6e34ead",
+  "tool_catalog_fingerprint": "c8f927b9ac9d2648e646044d670c036753a8aa68b84a98ccde07c16b827ad20a",
   "ml_advice": {
     "status": "not_requested",
     "ml_candidates": [],
@@ -82,7 +82,7 @@
               "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
             }
           ],
-          "extraction": "literal_policy_rule"
+          "extraction": "literal_policy_clause"
         },
         "duplicate.policy": {
           "key": "duplicate.policy",
@@ -99,7 +99,7 @@
               "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
             }
           ],
-          "extraction": "literal_policy_rule"
+          "extraction": "literal_policy_clause"
         },
         "output.format": {
           "key": "output.format",
@@ -120,6 +120,7 @@
         }
       },
       "decision": "clarify",
+      "outside_scope": false,
       "unresolved": [
         "filter.operator",
         "filter.value"
@@ -129,7 +130,12 @@
           "id": "11bffecaf9217f98114d5362",
           "key": "filter.operator",
           "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
-          "options": []
+          "options": [
+            "초과",
+            "이상",
+            "미만",
+            "이하"
+          ]
         },
         {
           "id": "a5f92ca9c8523cba15851446",
@@ -150,7 +156,12 @@
         "id": "11bffecaf9217f98114d5362",
         "key": "filter.operator",
         "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
-        "options": []
+        "options": [
+          "초과",
+          "이상",
+          "미만",
+          "이하"
+        ]
       },
       {
         "id": "a5f92ca9c8523cba15851446",

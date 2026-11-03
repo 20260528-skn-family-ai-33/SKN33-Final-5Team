@@ -35,9 +35,9 @@ def test_consistent_misread_is_caught_by_the_paid_amount():
     # Items and subtotal both carry the 0 -> 8 misread, so only subtotal + discount vs paid disagrees.
     message = receipt_check.check(rows('2,100', '3,380', '2,100'), ['상품명', '금액'], REGION_TEXT)
     assert message == '불일치: 영수증 합계 7,580 + 할인 -420 = 7,160 ≠ 결제 금액 7,080'
-    # One agreeing paid line is enough when another paid line is misread.
+    # A conflicting paid line must remain visible even when another one agrees.
     assert receipt_check.check(rows('2,100', '3,300', '2,100'), ['상품명', '금액'],
-                               '합계수량/금액 3 7,500\n할인 -420\n합 계 7,080\n신용카드 7,088') == '일치'
+                               '합계수량/금액 3 7,500\n할인 -420\n합 계 7,080\n신용카드 7,088').startswith('불일치:')
 
 
 def test_item_misread_against_correct_subtotal():
@@ -52,7 +52,7 @@ def test_misread_total_label_still_confirms_an_exact_sum_but_never_claims_a_mism
                       '빙)바나나우유혼 — 4,300 4,300', '롯데)누드빼빼로1 1 800 800', '과세액 10,364', '부가세 1,036',
                       '면 0', '게 11,400', '회 50,000', '38,600'])
     assert receipt_check.totals(text) == (None, 0, [])
-    assert receipt_check.check(rows('2,950', '2,400', '950', '4,300', '800'), ['상품명', '금액'], text) == '일치 (합계 라벨 미인식, 11,400 줄 확인)'
+    assert receipt_check.check(rows('2,950', '2,400', '950', '4,300', '800'), ['상품명', '금액'], text) == '확인 필요 (합계 라벨 미인식, 11,400 줄 확인)'
     assert receipt_check.check(rows('2,950', '2,400', '950', '4,300', '900'), ['상품명', '금액'], text) is None
     # An item row's own amount is not mistaken for a total line.
     assert receipt_check.check(rows('2,950'), ['상품명', '금액'], '광천)해저파래도 1 2,950 2,950') is None
@@ -92,3 +92,23 @@ def test_rows_extraction_adds_the_check_column_before_status_and_keeps_values():
 
 def test_check_column_name_is_reserved():
     assert '합계_검산' in extract_information.reserved_field_issue(['상품명', '합계_검산'])
+
+
+def test_conflicting_paid_amount_cannot_be_confirmed_by_matching_total():
+    text = '소계 7,580\n할인 -420\n합계 7,160\n사용금액 7,080'
+    assert receipt_check.check(rows('2,100', '3,380', '2,100'), ['금액'], text).startswith('불일치:')
+
+
+@pytest.mark.parametrize('field', ['가격', 'price', '단가'])
+def test_unit_price_is_not_summed_as_line_amount(field):
+    assert receipt_check.check([{'수량': '3', field: '1,000'}], ['수량', field],
+                               '사과 3 1,000 3,000\n합계 3,000') is None
+
+
+def test_cash_tendered_and_change_are_not_payment_totals():
+    text = '소계 3,000\n합계 3,000\n현금 받은금액 10,000\n거스름돈 7,000'
+    assert receipt_check.check(rows('3,000'), ['금액'], text) == '일치'
+
+
+def test_unlabelled_item_amount_does_not_prove_total():
+    assert receipt_check.check(rows('1,000'), ['금액'], '사과 1,000\n배 2,000').startswith('확인 필요')

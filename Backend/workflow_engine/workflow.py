@@ -1,6 +1,6 @@
 """Validate and normalize workflow definitions without generating executable source."""
 import re
-from workflow_engine.catalog.registry import node_ports
+from workflow_engine.catalog.registry import node_ports, uses_operation
 from documents.resources.document_resources import supports
 
 def port_issue_detail(node,binding,source,ins):
@@ -24,11 +24,11 @@ def table_hint(needed,outs):
     return ''
 
 
-def workflow_errors(workflow,tool_ids,resources,default_plan=None):
+def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_resources=()):
     nodes=workflow['nodes'];edges=workflow['edges'];by={n['id']:n for n in nodes};issues=[]
     if not nodes or len(by)!=len(nodes):return ['워크플로우 노드가 없거나 ID가 중복되었습니다.']
     if any(not re.fullmatch(r'[a-zA-Z][\w-]{0,39}',n['id']) for n in nodes):issues.append('노드 ID 형식을 확인하세요.')
-    if workflow['entry'] not in by:return issues+['시작 노드가 없습니다. entry는 실제 nodes에 존재하는 노드 ID여야 합니다.']
+    if workflow['entry'] not in by:issues.append('시작 노드가 없습니다. entry는 실제 nodes에 존재하는 노드 ID여야 합니다.')
     outgoing={id:[] for id in by};parents={id:set() for id in by}
     if len({(e['source'],e['target'],e['branch']) for e in edges})!=len(edges):issues.append('중복된 연결이 있습니다.')
     for e in edges:
@@ -53,7 +53,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
         if id in reached:return
         reached.add(id)
         for edge in outgoing[id]:reach(edge['target'])
-    reach(workflow['entry'])
+    if workflow['entry'] in by:reach(workflow['entry'])
     if reached!=set(by):issues.append('시작 노드에서 실행할 수 없는 노드가 있습니다. entry에서 각 노드로 이어지는 edges를 확인하세요.')
     # This compiler executes one active path, not parallel fan-out/join.
     for n in nodes:
@@ -77,8 +77,13 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
             if b['input'] not in ins or not source or b['output'] not in node_ports(source)[1]:
                 issues.append('입출력 포트가 존재하지 않습니다: '+id+' · '+port_issue_detail(n,b,source,ins));continue
             if source['tool'] in ['condition','ask_user'] and b['output'] not in ({'decision'} if source['tool']=='condition' else {'answer'})|{x['input'] for x in source['bindings']}:issues.append('앞 노드가 실제로 전달하지 않는 출력입니다: '+id)
-            if ins[b['input']]!=node_ports(source)[1][b['output']]:issues.append('입출력 자료형이 맞지 않습니다: '+id+table_hint(ins[b['input']],node_ports(source)[1]))
+            if ins[b['input']]!='json' and ins[b['input']]!=node_ports(source)[1][b['output']]:issues.append('입출력 자료형이 맞지 않습니다: '+id+table_hint(ins[b['input']],node_ports(source)[1]))
             if b['node_id'] not in ancestors.get(id,set()):issues.append('앞 단계가 아닌 노드의 출력을 참조했습니다: '+id+' (참조: '+b['node_id']+'.'+b['output']+' → '+b['input']+'). 연결 순서를 확인하세요.')
+        if uses_operation(n):
+            from workflow_engine.executors.canonical_operation import validate_settings
+            try: validate_settings(n, [*resources,*runtime_resources])
+            except (ValueError, KeyError, TypeError) as error: issues.append(id+': '+str(error))
+            continue
         supplied={b['input'] for b in bindings}
         required={'filter_sort':{'table'},'aggregate_table':{'table'},'calculate_columns':{'table'},'text_transform':{'text'},'base64_codec':{'text'},'text_hash':{'text'},'date_transform':{'text'},'text_statistics':{'text'},'review_summary':{'reviews'},'write_result':{'table'},'search_document':{'documents'},'extract_information':{'documents'},'compose_answer':{'documents'}}.get(tool,set())
         if not required<=supplied:issues.append('필수 입력 연결이 없습니다: '+id)
@@ -144,6 +149,8 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
     def columns_for(id):
         if id in column_cache:return column_cache[id]
         node=by[id];tool=node['tool'];columns=None
+        if uses_operation(node):
+            column_cache[id]=None;return None
         if tool=='read_table':
             ids=node['settings']['file_ids'] or list(table_resources)
             if len(ids)>1:issues.append('표 읽기 노드는 한 데이터 소스를 선택해야 합니다: '+id)
@@ -188,7 +195,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None):
                     if any(f not in incoming for f in fields):issues.append('노드별 조건의 열이 앞 단계 출력에 없습니다: '+id)
         column_cache[id]=columns;return columns
     for node in nodes:
-        if node['tool'] in ['read_table','filter_sort','aggregate_table','calculate_columns','reply_review']:columns_for(node['id'])
+        if not uses_operation(node) and node['tool'] in ['read_table','filter_sort','aggregate_table','calculate_columns','reply_review']:columns_for(node['id'])
     return list(dict.fromkeys(issues))
 
 def legacy_workflow(draft):
@@ -238,6 +245,34 @@ def _edges_usable(workflow,by):
     return all(n['id'] in reach(b['node_id']) for n in workflow['nodes'] for b in n['bindings'])
 
 
+def _reader_join_chain(nodes,by):
+    """Serialize independent native reads already consumed by one explicit join.
+
+    Reading two local sources in array order changes no data operation. Other
+    ambiguous roots, branching, side effects and unused readers remain invalid.
+    """
+    roots=[n for n in nodes if not n['bindings']]
+    if len(roots)<2 or any(n['tool'] not in ('read_table','read_document') or uses_operation(n) for n in roots):return None
+    if any(n['tool'] in ('condition','ask_user','saved_workflow') for n in nodes):return None
+    joins=[n for n in nodes if n['tool']=='join_tables' and n['settings'].get('operation')=='join']
+    if len(joins)!=1:return None
+    sources={b['node_id'] for b in joins[0]['bindings']}
+    if sources!={n['id'] for n in roots}:return None
+    dependencies={n['id']:{b['node_id'] for b in n['bindings']} for n in nodes}
+    if any(not values<=set(by) for values in dependencies.values()):return None
+    order=[]
+    while len(order)<len(nodes):
+        ready=[n for n in nodes if n['id'] not in order and dependencies[n['id']]<=set(order)]
+        if not ready or len(ready)>1 and any(n not in roots for n in ready):return None
+        order.extend(n['id'] for n in ready)
+    # A single result chain must follow the join, with no extra consumers.
+    previous=joins[0]['id']
+    for identifier in order[len(roots)+1:]:
+        if dependencies[identifier]!={previous}:return None
+        previous=identifier
+    return order
+
+
 def normalize_connections(workflow):
     """Resolve unambiguous port aliases using registered types; never invent topology."""
     if not workflow:return workflow
@@ -255,11 +290,11 @@ def normalize_connections(workflow):
             binding['node_id']=node_of(binding['node_id'],1)
         # An exact repeat of the same binding adds nothing; keep one copy.
         node['bindings']=[b for i,b in enumerate(node['bindings']) if b not in node['bindings'][:i]]
-    chain=_binding_chain(workflow['nodes'],by)
+    chain=_binding_chain(workflow['nodes'],by) or _reader_join_chain(workflow['nodes'],by)
     if chain and not _edges_usable(workflow,by):
         # The model states the data path twice (bindings and edges). When the edges are
-        # unusable but the bindings name one unbranched chain through every node, that
-        # chain is the model's own topology; anything else is left for validation.
+        # unusable but bindings name one chain, or independent local readers feeding
+        # one explicit join, serialize that data path. Other ambiguity stays invalid.
         workflow['edges']=[{'source':a,'target':b,'branch':'next'} for a,b in zip(chain,chain[1:])]
         workflow['entry']=chain[0]
     if workflow['entry'] not in by:
@@ -275,6 +310,12 @@ def normalize_connections(workflow):
             if not source:continue
             outputs=node_ports(source)[1]
             output_type=outputs.get(binding['output'])
+            expected=inputs.get(binding['input'])
+            if uses_operation(source) and binding['output']=='result' and output_type=='json' and expected and expected!='json':
+                candidates=[name for name,kind in outputs.items() if kind==expected]
+                if len(candidates)==1:
+                    binding['output']=candidates[0]
+                    output_type=expected
             if output_type and inputs.get(binding['input'])!=output_type:
                 candidates=[name for name,type in inputs.items() if type==output_type]
                 if len(candidates)==1:binding['input']=candidates[0]

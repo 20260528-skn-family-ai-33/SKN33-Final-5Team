@@ -64,3 +64,15 @@ def test_repeated_bad_name_stops_and_can_recover_after_user_message(tmp_path):
     saved=graph.invoke(Command(resume={'type':'confirm'}),cfg)
     assert saved['status']=='saved'
     conn.close();store.close()
+
+
+def test_generated_display_name_can_use_purpose_without_touching_execution():
+    from agent_builder.design.name_policy import present_generated_name
+    s=state();raw=workflow_draft(s);raw['name']='read_table';raw['purpose']='조건에 맞는 거래 행을 JSON으로 정리합니다.'
+    before=deepcopy(raw)
+    result=present_generated_name(raw,[{'role':'user','content':'거래 행을 정리해줘'}])
+    assert result['name']==raw['purpose']
+    assert {k:v for k,v in result.items() if k!='name'}=={k:v for k,v in before.items() if k!='name'}
+    assert raw==before
+    explicit=present_generated_name(raw,[{'role':'user','content':'이름은 거래 정리로 해줘'}])
+    assert explicit==before

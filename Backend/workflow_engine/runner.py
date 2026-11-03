@@ -1,5 +1,6 @@
 """Compile stored node contracts to a real, checkpointed LangGraph execution."""
 import json
+import base64
 from pathlib import Path
 from typing import TypedDict
 from langgraph.graph import StateGraph,START,END
@@ -12,6 +13,7 @@ from infrastructure.persistence.ids import uid, now
 from workflow_engine.workflow import workflow_errors
 from verification.reply_review.state import collect_reviews, is_review_report_artifact
 from workflow_engine.executors.dispatch import execute_node
+from workflow_engine.catalog.registry import uses_operation
 
 
 class RunState(TypedDict,total=False):
@@ -24,10 +26,17 @@ class RunState(TypedDict,total=False):
     reply_draft:str
     external_inputs:dict
 
-def validate_node_result(tool,result):
+def validate_node_result(tool,result,node=None):
     """Reject broken public outputs before a downstream node can consume them."""
     if not isinstance(result,dict):raise ValueError('노드 결과는 포트별 객체여야 합니다.')
-    mandatory={'agent_node':'text','saved_workflow':result.get('_selected_port'),'review_summary':'table','reply_review':'reviews','read_table':'table','filter_sort':'table','aggregate_table':'table','calculate_columns':'table','text_transform':'text','base64_codec':'text','text_hash':'text','date_transform':'text','text_statistics':'records','write_result':'artifact','read_document':'documents','search_document':'documents','extract_information':'records','compose_answer':'text','export_result':'artifact','condition':'decision','ask_user':'answer','finish':'text'}[tool]
+    from workflow_engine.catalog.registry import uses_operation, node_ports
+    operation = bool(node and uses_operation(node))
+    mandatory='result' if operation else {'agent_node':'text','saved_workflow':result.get('_selected_port'),'review_summary':'table','reply_review':'reviews','read_table':'table','filter_sort':'table','aggregate_table':'table','calculate_columns':'table','text_transform':'text','base64_codec':'text','text_hash':'text','date_transform':'text','text_statistics':'records','write_result':'artifact','read_document':'documents','search_document':'documents','extract_information':'records','compose_answer':'text','export_result':'artifact','condition':'decision','ask_user':'answer','finish':'text'}[tool]
+    if operation:
+        import json
+        json.dumps(result, allow_nan=False)
+        missing=set(node_ports(node)[1])-set(result)
+        if missing: raise ValueError('노드 출력이 없습니다: '+', '.join(sorted(missing)))
     if mandatory not in result:raise ValueError('노드 필수 출력이 없습니다: '+mandatory)
     for port,value in result.items():
         if port=='table' and (not isinstance(value,dict) or not isinstance(value.get('rows'),list) or not isinstance(value.get('columns'),list) or any(not isinstance(row,dict) for row in value['rows'])):raise ValueError('표 출력 형식이 올바르지 않습니다.')
@@ -51,14 +60,14 @@ def port_summary(values):
         if port=='table':summaries[port]={'rows':len(value['rows']),'columns':value['columns']}
         elif isinstance(value,list):summaries[port]={'items':len(value)}
         elif isinstance(value,str):summaries[port]={'characters':len(value)}
-        elif port=='artifact':summaries[port]={'name':value['name'],'bytes':len(value['content'].encode())}
+        elif port=='artifact':summaries[port]={'name':value['name'],'bytes':len(base64.b64decode(value['content'])) if value.get('encoding')=='base64' else len(value['content'].encode())}
         elif isinstance(value,bool):summaries[port]=value
     return summaries
 
 def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inherit_checkpoint=False):
     from workflow_engine.library.reusable_workflows import reject_review_export
     reject_review_export(config,config.get('_saved_workflows',{}))
-    workflow=config['workflow'];issues=workflow_errors(workflow,config['tool_ids'],[storage.asset(id) for id in config['document_ids']],config['execution_plan'])
+    workflow=config['workflow'];issues=workflow_errors(workflow,config['tool_ids'],[storage.asset(id) for id in config['document_ids']],config['execution_plan'],runtime_resources=[storage.asset(id) for id in config.get('_runtime_file_ids',[])])
     if issues:raise ValueError(' / '.join(issues))
     connection=None if inherit_checkpoint else checkpoint_connection(storage)
     config={**config,'_ownership':ownership}
@@ -70,25 +79,25 @@ def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inh
             started=perf_counter()
             result=executor(n,state,storage,config,llm)
             if ownership:ownership()
-            validate_node_result(n['tool'],result)
+            validate_node_result(n['tool'],result,n)
             step={'node':n['id'],'label':n['label'],'status':'completed','detail':'등록된 '+n['tool']+' 코드를 실행했습니다.','parameters':n['settings'],'bindings':n['bindings']}
             step['elapsed_ms']=round((perf_counter()-started)*1000,2)
             step['input_summary']=port_summary({b['input']:state['outputs'][b['node_id']][b['output']] for b in n['bindings']})
             step['output_summary']=port_summary(result)
-            if n['tool']=='read_table':
+            if n['tool']=='read_table' and not n['settings'].get('operation'):
                 file_id=result['table'].get('file_id')
                 asset=storage.asset(file_id) if file_id else None
                 step['parameters']={'source_file_id':asset['id'],'file_name':asset['name'],'hash':asset.get('hash'),'row_count':len(result['table']['rows'])} if asset else {'input_source':'앞 노드 출력','row_count':len(result['table']['rows'])}
             if n['tool']=='filter_sort':step['parameters']=n['settings'].get('execution_plan') or config['execution_plan']
             if n['tool']=='write_result':step['parameters']={'format':n['settings'].get('format') or config['execution_plan']['output_format']}
-            if n['tool']=='search_document':step['parameters']={**n['settings'],'effective_query':result['query'],'keywords':result['keywords']};step['detail']=f"원문 {result['matched_count']}개 구간을 검색했습니다."
+            if n['tool']=='search_document' and not n['settings'].get('operation'):step['parameters']={**n['settings'],'effective_query':result['query'],'keywords':result['keywords']};step['detail']=f"원문 {result['matched_count']}개 구간을 검색했습니다."
             if n['tool']=='condition':step['detail']=('조건 충족 → yes' if result['decision'] else '조건 미충족 → no')+(' · '+result.get('reason','') if result.get('reason') else '')
             if n['tool']=='saved_workflow':step['child_steps']=result.get('_child_steps',[]);step['dependency']=result.get('_dependency')
             update={'outputs':{**state.get('outputs',{}),n['id']:result},'steps':state.get('steps',[])+[step]}
             if n['tool']=='ask_user' and not result.get('_already_answered'):
                 update['request']=state['request']+'\n사용자 확인 답변: '+result['answer']
                 update['messages']=state.get('messages',[])+[{'role':'user','content':result['answer']}]
-            if n['tool'] in ['compose_answer','agent_node']:
+            if n['tool'] in ['compose_answer','agent_node'] and 'text' in result:
                 update['request']=state['request']+'\n에이전트 답변: '+result['text']
                 update['messages']=state.get('messages',[])+[{'role':'assistant','content':result['text']}]
             return update
@@ -117,7 +126,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
                 if existing['status'] in ['succeeded','failed']:return existing
                 run=existing;config=run['config_snapshot'];model=run['model'];file_ids=run['file_ids']
             except ValueError:pass
-    config={**config,'_saved_workflows':run.get('workflow_dependencies',{})}
+    config={**config,'_saved_workflows':run.get('workflow_dependencies',{}),'_runtime_file_ids':run.get('file_ids',[])}
     from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
     lifecycle=RunLifecycle(storage);execution_token=execution_token or uid()
     lifecycle.start(run,execution_token)
@@ -138,7 +147,8 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         artifacts=[v['artifact'] for v in outputs.values() if v.get('artifact')]
         tools_by_id={n['id']:n['tool'] for n in config['workflow']['nodes']}
         transformed_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool'] in ('text_transform','base64_codec','text_hash','date_transform') and n['id'] in outputs for b in n['bindings'] if b['input']=='text' and b['output']=='text'}
-        texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources and tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform','base64_codec','text_hash','date_transform']))
+        operation_nodes={n['id'] for n in config['workflow']['nodes'] if uses_operation(n)}
+        texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources and (tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform','base64_codec','text_hash','date_transform'] or id in operation_nodes)))
         records=[v['records'] for v in outputs.values() if 'records' in v]
         tables=[v['table'] for v in outputs.values() if 'table' in v]
         result_rows=next((v['records'] if 'records' in v else v['table']['rows'] for v in reversed(list(outputs.values())) if 'records' in v or 'table' in v),[])
@@ -163,10 +173,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
 
         reports=Path(storage.path).parent/'reports'
         suffix=run['artifact']['name'].rsplit('.',1)[-1]
-        if suffix not in ['csv','json','md']:suffix='txt'
+        if suffix not in ['csv','json','md','txt','docx','xlsx','pdf','png','zip','html','eml']:suffix='bin'
         target=reports/(run['id']+'.'+suffix);temp=reports/(run['id']+'.tmp')
         try:
-            lifecycle.publish(run['id'],execution_token,target,run['artifact']['content']);run['report_path']='reports/'+target.name
+            lifecycle.publish(run['id'],execution_token,target,
+                base64.b64decode(run['artifact']['content'],validate=True) if run['artifact'].get('encoding')=='base64' else run['artifact']['content']);run['report_path']='reports/'+target.name
         except OSError:run.update(status='failed',error='보고서를 서버에 저장하지 못했습니다. 저장 공간과 권한을 확인하세요.')
     if run['status']=='succeeded' and reviews:
         run['answer']='응대 검수가 완료되었습니다. 보고서를 확인하고 수정·승인 또는 거절하세요.'

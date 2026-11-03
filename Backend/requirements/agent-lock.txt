@@ -1,3 +1,4 @@
+-r canonical-tools.txt
 # Reproducible worker and regression-test environment used by default setup.
 # Includes pytest; optional parser, SVM and JSON Schema checks use separate lists.
 aiosqlite==0.22.1

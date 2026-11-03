@@ -604,3 +604,21 @@ def test_shadow_other_keeps_diagnostic_ledger_without_blocking_design():
     assert result['condition_route'] == 'conversation'
     assert result['condition_ledger']['outside_scope']
     assert not result['condition_enforced']
+
+
+@pytest.mark.parametrize('tools',[['scalar_calculate'],['read_table','join_tables','write_result'],
+                                  ['create_spreadsheet'],['url_transform'],['email.send']])
+def test_registered_extended_work_is_delegated_without_a_false_condition_refusal(tools):
+    s=state('요청한 업무를 만들어줘.')
+    s['capability_assessment']={'decision':'existing_tools','tool_ids':tools}
+    result=make_condition_check(transport=Fake([]),mode='enforce')(s)
+    assert result['condition_route']=='conversation'
+    assert result['condition_ledger'] is None and not result['condition_enforced']
+    assert result['trace'][-1]['model_calls']==0
+    assert 'outside_scope' in result['trace'][-1]['detail']
+
+
+def test_registered_tool_ids_are_not_condition_unsupported_actions():
+    s=state('변수 x=7로 x*3+2를 계산해줘.')
+    result=checked(s,{'operation':'other','conditions':[], 'unsupported_actions':['scalar_calculate','finish']})
+    assert result['outside_scope'] and not result['unsupported_actions']

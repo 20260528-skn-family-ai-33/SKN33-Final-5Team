@@ -207,7 +207,7 @@ def test_tool_or_earlier_json_is_not_used_as_final_assistant_draft():
     with pytest.raises(ValueError):draft_response({'messages':[AIMessage(content='{}',tool_calls=[{'name':'validate_workflow','args':{},'id':'t'}])]})
 
 
-def test_conversation_switches_from_catalog_read_to_json_only_without_unread_resources(monkeypatch):
+def test_conversation_keeps_only_operation_inspection_with_final_json_without_unread_resources(monkeypatch):
     from agent_builder.design.nodes import conversation
     from langchain.agents.middleware.types import ModelRequest
     s=state();s['resources']=[];s['node_library']=[]
@@ -228,7 +228,8 @@ def test_conversation_switches_from_catalog_read_to_json_only_without_unread_res
     assert 'list_tools' not in [t.name for t in seen[-1].tools]
     assert 'validate_workflow' not in tools  # App code validates the actual final graph.
     middleware.wrap_model_call(request,handler)
-    assert seen[-1].tools==[]
+    assert [t.name for t in seen[-1].tools]==['inspect_tool']
+    assert tools['inspect_tool'].invoke({'tool_id':'join_tables'})['operation_contracts']
     assert seen[-1].response_format is captured['response_format']
 
 
@@ -289,3 +290,59 @@ def test_ambiguous_negated_or_nonexistent_dedup_column_is_not_guessed(phrase):
     s['resources']=[{'id':'scores','kind':'table','columns':['학생ID','수험번호','ID'],'profile':{}}]
     policies=explicit_policies(s,source_catalog(s)[0])
     assert 'duplicate.field' not in policies
+
+
+def test_extended_selected_contract_is_forced_before_final_json(monkeypatch):
+    from agent_builder.design.nodes import conversation
+    from langchain.agents.middleware.types import ModelRequest
+    s=state();s['resources']=[];s['node_library']=[]
+    s['capability_assessment']={'decision':'existing_tools','tool_ids':['url_transform']}
+    captured={}
+    class Stop(Exception):pass
+    def capture(**kwargs):captured.update(kwargs);raise Stop()
+    monkeypatch.setattr(conversation,'create_deep_agent',capture)
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','direct')
+    with pytest.raises(Stop):conversation.make_conversation('','fixture',lambda:object())(s)
+    tools={t.name:t for t in captured['tools']}
+    middleware=captured['middleware'][0]
+    request=ModelRequest(model=object(),messages=[],tools=list(tools.values()),response_format=captured['response_format'])
+    seen=[]
+    middleware.wrap_model_call(request,lambda r:seen.append(r) or r)
+    assert seen[-1].tool_choice['function']['name']=='inspect_selected_tools'
+    assert seen[-1].response_format is None
+    selected=tools['inspect_selected_tools'].invoke({})
+    assert [t['id'] for t in selected]==['url_transform']
+    assert any(o['id']=='parse' for o in selected[0]['operation_contracts'])
+    middleware.wrap_model_call(request,lambda r:seen.append(r) or r)
+    assert seen[-1].response_format is captured['response_format']
+
+
+def test_ollama_receives_selected_contract_without_unsupported_forced_tool_choice(monkeypatch):
+    from agent_builder.design.nodes import conversation
+    from langchain.agents.middleware.types import ModelRequest
+    s=state();s['resources']=[];s['node_library']=[]
+    s['capability_assessment']={'decision':'existing_tools','tool_ids':['scalar_calculate']}
+    captured={}
+    class Stop(Exception):pass
+    def capture(**kwargs):captured.update(kwargs);raise Stop()
+    monkeypatch.setattr(conversation,'create_deep_agent',capture)
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama');monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','direct')
+    with pytest.raises(Stop):conversation.make_conversation('','fixture',lambda:object())(s)
+    tools=captured['tools'];request=ModelRequest(model=object(),messages=[],tools=tools,response_format=captured['response_format'])
+    seen=[];captured['middleware'][0].wrap_model_call(request,lambda r:seen.append(r) or r)
+    assert seen[-1].tool_choice is None
+    assert seen[-1].response_format is captured['response_format']
+
+
+def test_ollama_wire_prunes_unused_definitions_and_large_string_grammars_only():
+    from copy import deepcopy
+    payload={'response_format':{'type':'json_schema','json_schema':{'name':'probe','schema':{
+        'type':'object','properties':{'item':{'$ref':'#/$defs/Used'}},'required':['item'],'additionalProperties':False,
+        '$defs':{'Used':{'type':'object','properties':{'text':{'type':'string','maxLength':12000},'next':{'$ref':'#/$defs/Nested'}},'required':['text','next']},
+                 'Nested':{'type':'string','enum':['ok']},'Unused':{'type':'string','maxLength':24000}}}}}}
+    original=deepcopy(payload);wire=compatible_schema_payload(payload)['response_format']['json_schema']['schema']
+    assert payload==original
+    assert set(wire['$defs'])=={'Used','Nested'}
+    assert 'maxLength' not in wire['$defs']['Used']['properties']['text']
+    assert wire['required']==['item'] and wire['additionalProperties'] is False
+    assert wire['$defs']['Nested']['enum']==['ok']

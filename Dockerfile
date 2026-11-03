@@ -9,7 +9,7 @@ RUN npm run build
 FROM node:24-bookworm-slim
 WORKDIR /app
 # libgl1/libglib2.0-0/libgomp1 are runtime libraries of the Paddle OCR stack (OpenCV, OpenMP).
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv libgl1 libglib2.0-0 libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv libgl1 libglib2.0-0 libgomp1 poppler-utils && rm -rf /var/lib/apt/lists/*
 # OCR for photos and scanned pages: PaddleOCR on CPU (the host GPU is left to Ollama).
 # Models are downloaded at build time; engine_worker.py runs them offline from A4B_PADDLE_MODEL_DIR.
 ENV PADDLE_PDX_CACHE_HOME=/app/models/paddlex A4B_PADDLE_MODEL_DIR=/app/models/paddlex/official_models A4B_PADDLE_DEVICE=cpu
@@ -19,7 +19,7 @@ RUN python3 -m venv /app/Backend/.venv-paddle && /app/Backend/.venv-paddle/bin/p
  && ls /app/models/paddlex/official_models/PP-DocLayout_plus-L /app/models/paddlex/official_models/PP-OCRv5_mobile_det /app/models/paddlex/official_models/korean_PP-OCRv5_mobile_rec >/dev/null
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-COPY Backend/requirements/agent-lock.txt Backend/requirements/document-analysis.txt /app/Backend/requirements/
+COPY Backend/requirements/agent-lock.txt Backend/requirements/canonical-tools.txt Backend/requirements/document-analysis.txt /app/Backend/requirements/
 RUN python3 -m venv /app/Backend/.venv-agent && /app/Backend/.venv-agent/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/agent-lock.txt
 # Optional pinned SVM56 runtime. Weights stay in a read-only host mount.
 ARG A4B_WITH_ML=0

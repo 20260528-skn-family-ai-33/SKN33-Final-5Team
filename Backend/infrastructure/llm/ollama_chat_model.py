@@ -7,9 +7,9 @@ from infrastructure.llm.qwen_chat_model import omit_empty_tools
 def compatible_schema_payload(payload):
     """Adapt only the Ollama wire copy; application validation stays strict.
 
-    Local 0.33.0 rejects the builder's Unicode shorthand and maxLength=2000
-    while compiling a JSON grammar. Required fields, enums and references stay
-    intact. Lengths are still checked by the original Pydantic/schema validator.
+    Avoid large bounded-string grammars and unused Pydantic definitions on the
+    local decoder. Required fields, enums and referenced definitions stay intact.
+    Lengths are still checked by the original Pydantic/schema validator.
     """
     result = deepcopy(payload)
     # LangChain converts max_tokens to OpenAI's max_completion_tokens. Ollama
@@ -25,14 +25,29 @@ def compatible_schema_payload(payload):
         if isinstance(value, dict):
             if value.get('pattern') == r'^[a-zA-Z][\w-]{0,39}$':
                 value['pattern'] = r'^[a-zA-Z][a-zA-Z0-9_-]{0,39}$'
-            if value.get('maxLength') == 2000:
-                value.pop('maxLength')
+            value.pop('maxLength',None)
             for child in value.values():
                 walk(child)
         elif isinstance(value, list):
             for child in value:
                 walk(child)
     walk(schema)
+    if isinstance(schema,dict) and isinstance(schema.get('$defs'),dict):
+        definitions=schema['$defs'];used=set()
+        def references(value):
+            if isinstance(value,dict):
+                ref=value.get('$ref','')
+                if isinstance(ref,str) and ref.startswith('#/$defs/'):
+                    name=ref.split('/')[2].replace('~1','/').replace('~0','~')
+                    if name not in used:
+                        used.add(name)
+                        references(definitions.get(name,{}))
+                for key,child in value.items():
+                    if key!='$defs':references(child)
+            elif isinstance(value,list):
+                for child in value:references(child)
+        references(schema)
+        schema['$defs']={k:v for k,v in definitions.items() if k in used}
     return result
 
 

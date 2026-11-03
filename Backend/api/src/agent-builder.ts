@@ -111,7 +111,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  if(action==='connection'&&method==='GET'){json(res,200,{connection:localModelConnection(),...(url.searchParams.get('profile')==='1'?{}:{health:await localModelHealth()})});return true;}
  if(action==='report'&&method==='GET'){
   const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('실행 ID를 확인하세요.');
-  const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');
+  const {run}=await builderWorker({action:'run',id});if(!/^reports\/[0-9a-f-]{36}\.(csv|json|md|txt|docx|xlsx|pdf|png|zip|html|eml|bin)$/.test(run.report_path||''))throw new Error('저장된 보고서가 없습니다.');
   let content:Buffer;try{content=await readFile(dataDirectory(run.report_path));}catch{throw new Error('서버 보고서 파일을 찾지 못했습니다. 실행 기록을 확인하세요.');}
   res.writeHead(200,{'Content-Type':run.artifact?.mime||'application/octet-stream','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(run.artifact?.name||'report.csv')}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;
  }

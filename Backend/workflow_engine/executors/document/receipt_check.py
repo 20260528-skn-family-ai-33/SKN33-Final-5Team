@@ -8,7 +8,7 @@ only reported so a person can look at the receipt.
 import re
 
 # Fields that hold an item's line amount; the first one present in the requested fields is used.
-AMOUNT_FIELDS = ('금액', '판매금액', '가격', 'amount', 'price')
+AMOUNT_FIELDS = ('금액', '판매금액', 'amount')
 CHECK_FIELD = '합계_검산'
 # Korean may touch a number ("7,080원", "1,182점"); ASCII letters, *, / and : mark card numbers, dates and times.
 _NUMBER = re.compile(r'(?<![0-9A-Za-z*])-?\d{1,3}(?:[,.]\d{3})+(?![0-9A-Za-z*])|(?<![0-9A-Za-z*.,/:-])-?\d+(?![0-9A-Za-z*.,/:])')
@@ -38,7 +38,7 @@ def totals(text):
     subtotal, discount, paid = None, 0, []
     for line in (text or '').splitlines():
         label = re.sub(r'\s+', '', line)
-        if '번호' in label:  # card and approval numbers
+        if '번호' in label or re.search(r'받은(?:금액|돈)|거스름|잔돈', label):  # not the purchase total
             continue
         value = _last_number(line)
         if value is None:
@@ -75,9 +75,9 @@ def check(records, fields, text):
     values = [amount(r.get(field)) for r in records]
     if subtotal is None and not paid:
         # Large-font labels are often misread ("합 계" -> "게"); an exact item sum on its own line
-        # still confirms the rows, but a mismatch is never claimed without a readable label.
+        # is only a review hint: an item line or unrelated figure can also equal the sum.
         if all(v is not None for v in values) and sum(values) in _line_amounts(text):
-            return f'일치 (합계 라벨 미인식, {won(sum(values))} 줄 확인)'
+            return f'확인 필요 (합계 라벨 미인식, {won(sum(values))} 줄 확인)'
         return None
     if any(v is None for v in values):
         return f'확인 불가 ({field} 없는 행 {sum(v is None for v in values)}개)'
@@ -86,8 +86,8 @@ def check(records, fields, text):
     if subtotal is not None and items != subtotal:
         problems.append(f'상품 {field} 합 {won(items)} ≠ 영수증 합계 {won(subtotal)}')
     expected = (subtotal if subtotal is not None else items) + discount
-    # Several paid lines are read (합계, 신용카드, 사용금액); one agreeing value is enough.
-    if paid and expected not in paid:
+    # Conflicting labelled amounts require review even when one matches the arithmetic.
+    if paid and any(value != expected for value in paid):
         base = '영수증 합계' if subtotal is not None else f'상품 {field} 합'
         problems.append(f'{base} {won(expected - discount)} + 할인 {won(discount)} = {won(expected)} ≠ 결제 금액 {"/".join(won(p) for p in dict.fromkeys(paid))}')
     return '불일치: ' + '; '.join(problems) if problems else '일치'

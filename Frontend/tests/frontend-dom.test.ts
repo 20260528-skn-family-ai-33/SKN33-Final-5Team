@@ -437,3 +437,17 @@ test('simplified settings render saved filter rules in overview and node inspect
  const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(saved):undefined);
  try{await click(button('설계'));assert.match(document.querySelector('.as-rule-summary')?.textContent||'',/amount/);await click(document.querySelector('.as-flow-node')!);assert.match(document.querySelector('.as-node-inspector .as-rule-summary')?.textContent||'',/amount/);}finally{await h.close();}
 });
+
+
+test('DOM: canonical aggregate loads executed grouping and saves edited sum arguments',async()=>{
+ const aggregate={...structuredClone(complex),spec:{...structuredClone(complex.spec),tool:'aggregate_table',name:'지점 합계',execution_plan:null,settings:{operation:'sum',arguments_json:JSON.stringify({group_by:['branch'],value_column:'amount',null_policy:'exclude'})}}};
+ const h=await setup('',{},(_p,body)=>body?{node:{...aggregate,version:2}}:undefined,createElement(NodeLibrary,{...libraryProps(),nodes:[aggregate]}));
+ try{
+  await click(button('설정 수정'));
+  assert.equal(field('그룹 열').value,'branch');assert.equal(field('합계 열').value,'amount');
+  await input(field('그룹 열'),'channel');await input(field('합계 열'),'net_amount');
+  await submit(document.querySelector('form')!);
+  const body=h.calls.find(c=>c.body)?.body;
+  assert.deepEqual(JSON.parse(body.spec.settings.arguments_json),{group_by:['channel'],value_column:'net_amount',null_policy:'exclude'});
+ }finally{await h.close();}
+});

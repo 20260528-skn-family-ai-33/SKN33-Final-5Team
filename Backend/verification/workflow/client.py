@@ -74,10 +74,26 @@ def health(config):
     return {'server_version':version.get('version'),'model':config.model,'model_present':model is not None,
         'model_digest':model.get('digest') if model else None,'auto_download':False}
 
+
+def grounded_output_schema(data):
+    """Constrain quoted evidence on the wire; original output checks remain authoritative."""
+    schema=VerificationOutput.model_json_schema();variants=[]
+    for identifier,text in evidence_bank(data).items():
+        # Every source remains present. Long sources are covered by overlapping
+        # exact spans, within the supplied quote contract's 1000-character limit.
+        spans=[text] if len(text)<=1000 else [text[i:i+900] for i in range(0,len(text),800)]
+        spans=list(dict.fromkeys(span for span in spans if span.strip()))
+        if not spans:continue
+        variants.append({'type':'object','additionalProperties':False,
+            'properties':{'evidence_id':{'type':'string','enum':[identifier]},
+                          'quote':{'type':'string','enum':spans}},'required':['evidence_id','quote']})
+    if variants:schema['$defs']['EvidenceRef']={'anyOf':variants}
+    return schema
+
 def call_qwen(data:VerificationInput,config:OllamaConfig):
     payload={'input':data.model_dump(mode='json'),'evidence_bank':evidence_bank(data)}
     content=json.dumps(payload,ensure_ascii=False,allow_nan=False,separators=(',',':'))
-    schema=VerificationOutput.model_json_schema()
+    schema=grounded_output_schema(data)
     # Conservative byte bound + reserved template room. No silent document truncation.
     budget=len((SYSTEM+content+json.dumps(schema,ensure_ascii=False)).encode('utf-8'))+4096+config.num_predict
     if budget>config.num_ctx:raise RuntimeError('context_budget_exceeded')

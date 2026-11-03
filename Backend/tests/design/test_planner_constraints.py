@@ -26,7 +26,7 @@ def test_unknown_file_ids_are_excluded_and_public_schema_is_unchanged():
 
 def test_all_native_tools_remain_available_with_type_compatible_bindings():
     schema=native_decoder_schema(decoder_schema('v6'),[]);defs=schema['$defs']
-    assert len(defs['WorkflowNode']['anyOf'])==len(PORTS)
+    assert {tool for v in defs['WorkflowNode']['anyOf'] for tool in ((defs[v['$ref'].split('/')[-1]]) if '$ref' in v else v)['properties']['tool']['enum']}==set(PORTS)
     finish=defs['NativeBinding_finish']['anyOf']
     assert {b['properties']['input']['enum'][0] for b in finish}=={'text','artifact'}
     artifact=next(b for b in finish if b['properties']['input']['enum']==['artifact'])
@@ -179,7 +179,8 @@ def test_ready_table_tool_scope_blocks_unrequested_aggregation_in_decoder_audit_
     with pytest.raises(ValueError,match='확정 업무 조건'):require_save_ready(s)
     # An explicit request outside this scoped contract must retain its full catalog.
     unrestricted=native_decoder_schema(decoder_schema('v7'),[],None,require_ready_draft=True)
-    assert len(unrestricted['$defs']['WorkflowNode']['anyOf'])==len(PORTS)
+    defs=unrestricted['$defs']
+    assert {tool for v in defs['WorkflowNode']['anyOf'] for tool in ((defs[v['$ref'].split('/')[-1]]) if '$ref' in v else v)['properties']['tool']['enum']}==set(PORTS)
 
 
 def test_node_ids_follow_validator_rule_and_scoped_graph_bounds_repetition():
@@ -188,7 +189,7 @@ def test_node_ids_follow_validator_rule_and_scoped_graph_bounds_repetition():
     full=native_decoder_schema(decoder_schema('v7'),[])
     assert full['$defs']['WorkflowDefinition']==decoder_schema('v7')['$defs']['WorkflowDefinition']
     for variant in full['$defs']['WorkflowNode']['anyOf']:
-        assert full['$defs'][variant['$ref'].split('/')[-1]]['properties']['id']['pattern']==NODE_ID_PATTERN
+        assert (full['$defs'][variant['$ref'].split('/')[-1]] if '$ref' in variant else variant)['properties']['id']['pattern']==NODE_ID_PATTERN
     for good in ('read','node_read_1','finish-2'):
         assert re.fullmatch(NODE_ID_PATTERN.strip('^$'),good)
     for bad in ('1','_a','a'*41):  # e.g. real failed draft used IDs "1".."4"

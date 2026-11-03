@@ -1,0 +1,282 @@
+[
+  {
+    "id": "read_document",
+    "name": "문서 내용 읽기",
+    "description": "실제 본문·페이지·표 위치를 읽음. 스캔 여부는 옵션/프로필이며 별도 업무 Tool이 아님"
+  },
+  {
+    "id": "read_table",
+    "name": "표 데이터 읽기",
+    "description": "계산에 쓸 행·열 추출. CSV나 PDF라는 확장자 자체로 다른 Tool을 만들지 않음"
+  },
+  {
+    "id": "read_web",
+    "name": "HTML 본문·표 읽기",
+    "description": "확보된 HTML에서 본문·표 추출. URL 다운로드는 download_remote_file"
+  },
+  {
+    "id": "search_document",
+    "name": "문서 안의 내용 검색",
+    "description": "문서 내부 관련 근거 구간 검색. 파일명 검색/공개 문서 검색과 다름"
+  },
+  {
+    "id": "extract_information",
+    "name": "문서의 항목 추출",
+    "description": "필드별 값·자료형·출처 추출. 자유 요약과 구분"
+  },
+  {
+    "id": "compose_answer",
+    "name": "근거 기반 답변·요약",
+    "description": "특정 질문에 근거로 답변. 요약은 같은 Tool의 summarize 동작 / 문서 전체/일부 요약. summarize_document는 이 동작의 별칭"
+  },
+  {
+    "id": "filter_sort",
+    "name": "표 조건 정리",
+    "description": "행 조건 선택. 그룹별 합계/열 삭제/그래프 분기와 구분 / 행 순서 변경. '~별로'만으로 집계라고 판단하지 않음 / 지정 열 기준 중복 제거 / 결측 행 제거 또는 지정값 채우기"
+  },
+  {
+    "id": "aggregate_table",
+    "name": "표 집계",
+    "description": "그룹별/전체 합계. 행별 수식은 calculate_columns / 행 수/비결측 값 수/고유값 수 집계"
+  },
+  {
+    "id": "calculate_columns",
+    "name": "열 계산·변환",
+    "description": "행별 사칙연산으로 새 열/기존 열 계산 / 열 이름 변경 / 날짜 문자열을 명시 형식으로 정규화"
+  },
+  {
+    "id": "join_tables",
+    "name": "두 표 연결",
+    "description": "키로 두 표 연결. 차이 보고/단순 스트림 합치기와 구분"
+  },
+  {
+    "id": "compare_tables",
+    "name": "두 표 비교",
+    "description": "두 표의 추가·삭제·변경 보고"
+  },
+  {
+    "id": "create_spreadsheet",
+    "name": "새 엑셀·표 파일 만들기",
+    "description": "Table로 XLSX 통합문서 생성. 단순 CSV 직렬화와 구분"
+  },
+  {
+    "id": "edit_spreadsheet",
+    "name": "기존 스프레드시트 수정",
+    "description": "기존 XLSX에 새 시트 추가 / 기존 XLSX 시트에 행 추가 / 지정 셀 값/수식 수정 / 지정 범위 숫자 수열 채움"
+  },
+  {
+    "id": "create_document",
+    "name": "새 문서·보고서 만들기",
+    "description": "새 내용을 DOCX/PDF/Markdown 문서로 구성. 기존 파일 변환과 다름"
+  },
+  {
+    "id": "edit_document",
+    "name": "기존 문서 내용 수정",
+    "description": "기존 본문의 지정 문자열 치환 / 지정 앵커 앞/뒤 본문 삽입 / 지정 구간 삭제"
+  },
+  {
+    "id": "format_document",
+    "name": "문서 서식 적용",
+    "description": "글꼴·단락·정렬·여백 변경. 내용 교정과 구분"
+  },
+  {
+    "id": "fill_template",
+    "name": "양식에 값 채우기",
+    "description": "식별 가능한 양식 빈칸에 값 채우기"
+  },
+  {
+    "id": "convert_format",
+    "name": "내용을 보존하는 형식 변환",
+    "description": "같은 내용을 다른 파일 형식으로 변환. 전체 형식 간 무손실 보장은 하지 않음"
+  },
+  {
+    "id": "export_result",
+    "name": "처리 결과 파일로 내보내기",
+    "description": "CSV/JSON/Markdown/TXT/HTML 바이트 생성. 경로 저장은 write_file"
+  },
+  {
+    "id": "proofread_document",
+    "name": "맞춤법·문법 점검",
+    "description": "맞춤법·문법 문제와 제안만 보고"
+  },
+  {
+    "id": "translate_document",
+    "name": "문서 번역",
+    "description": "본문 언어 변경. 파일 형식 변환과 다름"
+  },
+  {
+    "id": "compare_documents",
+    "name": "문서·파일 내용 대조",
+    "description": "본문의 문자/의미 차이 보고"
+  },
+  {
+    "id": "verify_content_requirements",
+    "name": "필수·기대 내용 확인",
+    "description": "명시 필수 문자열/정규식 포함 여부 / 추출값과 명시 기대값 비교"
+  },
+  {
+    "id": "review_document",
+    "name": "문서 내용 검토",
+    "description": "정확성·완결성 등 기준에 따른 내용 검토"
+  },
+  {
+    "id": "reply_review",
+    "name": "고객 응대 초안 검수",
+    "description": "문의·정책·답변 초안의 대응 검수"
+  },
+  {
+    "id": "review_summary",
+    "name": "검수 보고서 표 정리",
+    "description": "기존 검수 결과를 표로 정리"
+  },
+  {
+    "id": "validate_document_format",
+    "name": "양식·서식 기준 검증",
+    "description": "지정 양식의 서식 준수 여부만 검사"
+  },
+  {
+    "id": "check_document_links",
+    "name": "문서 하이퍼링크 검사",
+    "description": "내부 앵커/제공 자산 링크 유효성 검사 / 문서의 원격 링크 접근 상태 검사"
+  },
+  {
+    "id": "text_statistics",
+    "name": "문자·단어 수 계산",
+    "description": "Unicode 문자/공백 단위 단어 수"
+  },
+  {
+    "id": "detect_language",
+    "name": "문서 언어 판별",
+    "description": "본문 언어 후보 판별"
+  },
+  {
+    "id": "document_visual_qa",
+    "name": "문서 이미지 기반 질문 답변",
+    "description": "배치·도형 등 페이지 시각 정보 기반 답변"
+  },
+  {
+    "id": "classify_document",
+    "name": "문서·본문 분류",
+    "description": "문서 자체의 업무 범주 분류. 도구 추천기와 다른 과제"
+  },
+  {
+    "id": "verify_table_calculations",
+    "name": "표 계산값 검증",
+    "description": "기존 합계·수식을 독립 규칙으로 재검산"
+  },
+  {
+    "id": "split_pdf",
+    "name": "PDF 페이지 분리·추출",
+    "description": "PDF에서 지정 페이지를 한 PDF로 추출 / PDF를 지정 페이지 묶음별 여러 파일로 분할"
+  },
+  {
+    "id": "merge_documents",
+    "name": "문서·PDF 합치기",
+    "description": "순서대로 PDF 또는 DOCX 파일 병합"
+  },
+  {
+    "id": "compress_pdf",
+    "name": "PDF 용량 최적화",
+    "description": "PDF 자체 용량 최적화. ZIP 압축과 구분"
+  },
+  {
+    "id": "render_document_pages",
+    "name": "문서 페이지를 이미지로 만들기",
+    "description": "문서 페이지를 PNG 이미지로 렌더"
+  },
+  {
+    "id": "annotate_document",
+    "name": "PDF·이미지에 주석 달기",
+    "description": "PDF/PNG/JPEG에 주석·하이라이트 추가"
+  },
+  {
+    "id": "scalar_calculate",
+    "name": "단일 수식 계산",
+    "description": "숫자 변수로 제한된 산술식을 계산합니다."
+  },
+  {
+    "id": "text_transform",
+    "name": "문자열 변환",
+    "description": "문자열을 그대로 치환·분리·결합합니다. Word/PDF 파일 편집과 구분합니다."
+  },
+  {
+    "id": "json_transform",
+    "name": "JSON 해석·값 조회",
+    "description": "JSON을 파싱하거나 지정한 키/인덱스 경로를 조회합니다."
+  },
+  {
+    "id": "list_transform",
+    "name": "목록 선택·개수",
+    "description": "목록의 0 기반 인덱스 선택과 항목 개수를 처리합니다."
+  },
+  {
+    "id": "date_transform",
+    "name": "날짜·시간 변환",
+    "description": "ISO 시간에 초를 더하거나 지정한 형식으로 표시합니다."
+  },
+  {
+    "id": "url_transform",
+    "name": "URL 분석·구성",
+    "description": "URL 구성요소를 분석하거나 query를 포함한 주소를 만듭니다. 웹 접속은 하지 않습니다."
+  },
+  {
+    "id": "base64_codec",
+    "name": "Base64 변환",
+    "description": "UTF-8 문자열을 Base64로 인코딩·디코딩합니다."
+  },
+  {
+    "id": "text_hash",
+    "name": "텍스트 SHA-256",
+    "description": "UTF-8 텍스트의 SHA-256을 계산합니다."
+  },
+  {
+    "id": "email.prepare",
+    "name": "메일 구성",
+    "description": "Build UTF-8 MIME and Base64URL message without sending it."
+  },
+  {
+    "id": "email.send",
+    "name": "메일 발송",
+    "description": "Send a Gmail message using a configured Google account."
+  },
+  {
+    "id": "email.list",
+    "name": "메일 목록 검색",
+    "description": "List Gmail message IDs, search query and pagination token."
+  },
+  {
+    "id": "email.get",
+    "name": "메일 상세 읽기",
+    "description": "Read a specified Gmail message."
+  },
+  {
+    "id": "email.attachment.get",
+    "name": "메일 첨부파일 조회",
+    "description": "Retrieve a specified Gmail attachment as provider Base64URL data."
+  },
+  {
+    "id": "calendar.create_event",
+    "name": "일정 생성",
+    "description": "Create a Google Calendar event with explicit start/end and timezone offsets."
+  },
+  {
+    "id": "calendar.list_events",
+    "name": "일정 목록 검색",
+    "description": "List calendar events with time bounds and pagination."
+  },
+  {
+    "id": "calendar.get_event",
+    "name": "일정 상세 조회",
+    "description": "Read a Google Calendar event by ID."
+  },
+  {
+    "id": "calendar.update_event",
+    "name": "일정 변경",
+    "description": "Patch supported event fields; optional ETag concurrency control."
+  },
+  {
+    "id": "calendar.delete_event",
+    "name": "일정 삭제",
+    "description": "Delete a specified Google Calendar event; optional ETag."
+  }
+]

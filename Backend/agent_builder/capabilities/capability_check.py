@@ -7,6 +7,14 @@ from agent_builder.conditions.input_resolution import answer_kind, resolution_op
 from agent_builder.conditions.condition_check import _pending_draft
 
 
+def _question_text(text):
+    import re
+    text=text.strip()
+    if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
+    if text.endswith(('?', '주세요.', '알려주세요', '주세요')):return text
+    return text.rstrip('.')+'에 대해 알려주세요.'
+
+
 def make_capability_check(model,transport=None,mode=None):
     setting=mode or os.getenv('A4B_CAPABILITY_MODE','off')
     if setting not in ('off','enforce'):raise ValueError('A4B_CAPABILITY_MODE는 off/enforce이어야 합니다.')
@@ -63,7 +71,7 @@ def make_capability_check(model,transport=None,mode=None):
             questions=(state.get('capability_questions',[]) if reuse_questions else [])
             if not questions:
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
-                            'key':'capability.condition.'+str(i),'source':'capability','text':text,
+                            'key':'capability.condition.'+str(i),'source':'capability','text':_question_text(text),
                             'options':resolution_options(state)} for i,text in enumerate(result['missing_conditions'])]
             # AgentDraft supports 3 visible questions; preserve every question record.
             grouped=questions[:2]+([{'text':'\n'.join(q['text'] for q in questions[2:]),'options':[]}] if len(questions)>2 else [])

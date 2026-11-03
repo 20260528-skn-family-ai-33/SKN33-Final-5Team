@@ -4,7 +4,7 @@ PURE_TABLE={'read_table','filter_sort','aggregate_table','write_result','finish'
 OPS={'eq':'=','ne':'≠','lt':'<','lte':'≤','gt':'>','gte':'≥','contains':'포함','is_empty':'빈 값','not_empty':'값 있음'}
 def canonical_table_draft(draft,messages,resources):
     workflow=draft.get('workflow')
-    if not workflow or any(n['tool'] not in PURE_TABLE for n in workflow['nodes']):return draft
+    if not workflow or any(n['tool'] not in PURE_TABLE or n['settings'].get('operation') for n in workflow['nodes']):return draft
     plan=draft['execution_plan'];schedule=draft.get('schedule');lines=[]
     if schedule:
         frequency='매일' if schedule['frequency']=='daily' else '매주 '+(['월','화','수','목','금','토','일'][schedule['weekday']]+'요일' if schedule['weekday'] is not None else '요일 확인 필요')
@@ -42,3 +42,15 @@ def canonical_table_draft(draft,messages,resources):
     users=[m['content'] for m in messages if m['role']=='user'][-30:]
     draft['requirements']=[{'description':f'사용자 요청 {i+1}','source_id':'user','quote':text[:2000]} for i,text in enumerate(users) if text.strip()]
     return draft
+
+
+def public_draft_explanation(draft):
+    """Render a short status when a model places planning analysis in explanation."""
+    import re
+    result=dict(draft);text=result.get('explanation','')
+    reasoning=re.search(r'<think>|</think>|따라서 사용자에게|사용자에게 명확한 질문|질문을 해야 합니다|분석해 보|생각 과정|chain.of.thought',text,re.I)
+    if reasoning or len(text)>800:
+        result['explanation']=('아래 항목을 확인해 주세요.' if result.get('questions') else
+            '요청한 작업의 지원 범위를 확인해 주세요.' if result.get('unsupported') else
+            '업무 조건과 처리 순서를 확인해 주세요.')
+    return result

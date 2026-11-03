@@ -149,3 +149,65 @@ def test_malformed_parser_metadata_is_recorded_for_review_not_a_shadow_crash(tmp
     assert result['verification_enforced'] is False
     assert store.db.execute('SELECT count(*) FROM builder_verifications').fetchone()[0]==1
     store.close()
+
+
+def test_operation_verifier_input_fits_default_context_budget(tmp_path):
+    from verification.workflow.client import SYSTEM,OllamaConfig
+    from verification.workflow.contracts import VerificationInput,VerificationOutput
+    from verification.workflow.validation import evidence_bank
+    store=Storage(tmp_path)
+    try:
+        state=initial();request='Data 시트에 id=A, amount=10인 실제 XLSX를 만들어줘.'
+        n=node('xlsx','create_spreadsheet',operation='create',arguments_json=json.dumps({'sheets':[{'name':'Data','table':{'columns':['id','amount'],'rows':[{'id':'A','amount':10}]}}]}))
+        raw={**draft(),'tool_ids':['create_spreadsheet'],'workflow':{'entry':'xlsx','nodes':[n],'edges':[]},
+             'requirements':[{'description':'실제 엑셀 생성','source_id':'user','quote':request}]}
+        state.update(messages=[{'role':'user','content':request}],draft=raw)
+        result=make_verification_node(store,mode='defer')(state)
+        assert result['verification_route']=='pending'
+        payload=store.db.execute('select input_json from builder_verifications').fetchone()[0]
+        data=VerificationInput.model_validate_json(payload)
+        content=json.dumps({'input':data.model_dump(mode='json'),'evidence_bank':evidence_bank(data)},ensure_ascii=False,separators=(',',':'))
+        budget=len((SYSTEM+content+json.dumps(VerificationOutput.model_json_schema(),ensure_ascii=False)).encode())+4096+2048
+        assert budget<=OllamaConfig().num_ctx
+        assert {t['id'] for t in TOOLS}<={t.id for t in data.tools}
+    finally:store.close()
+
+
+def test_invalid_historical_operation_can_be_compared_with_fixed_candidate(tmp_path):
+    store=Storage(tmp_path)
+    try:
+        state=initial();request='x=3으로 x*2를 계산해줘.'
+        raw={**draft(),'tool_ids':['scalar_calculate'],'workflow':{'entry':'calc','nodes':[node('calc','scalar_calculate',operation='evaluate',arguments_json=json.dumps({'formula':'x*2','variables':{}}))],'edges':[]},
+             'requirements':[{'description':'계산','source_id':'user','quote':request}]}
+        state.update(messages=[{'role':'user','content':request}],draft=raw)
+        bridge=make_verification_node(store,mode='defer');first=bridge(state)
+        assert first['verification_route']=='manual_review'
+        fixed=deepcopy(raw);fixed['workflow']['nodes'][0]['settings']['arguments_json']=json.dumps({'formula':'x*2','variables':{'x':3}})
+        follow={**state,**first,'draft':fixed,'messages':state['messages']+[{'role':'user','content':'빠뜨린 x=3 값을 반영해줘.'}]}
+        result=bridge(follow)
+        assert result['verification_route']=='pending'
+    finally:store.close()
+
+
+def test_request_text_evidence_allows_pure_calculation_but_never_supplies_a_file(tmp_path):
+    store=Storage(tmp_path)
+    try:
+        request='x=3으로 x*2를 계산해줘.'
+        raw={**draft(),'name':'스칼라 계산','tool_ids':['scalar_calculate'],
+             'workflow':{'entry':'calc','nodes':[node('calc','scalar_calculate',operation='evaluate',arguments_json='{"formula":"x*2","variables":{"x":3}}')],'edges':[]},
+             'document_ids':[],'requirements':[{'description':'계산','source_id':'user','quote':request}]}
+        state={**initial(),'messages':[{'role':'user','content':request}],'draft':raw}
+        def verifier(data):
+            assert data.documents[0].id=='user-message-evidence'
+            assert data.documents[0].chunks[0].text==request
+            return verify(data,mode='fixture',fixture={'request_status':'ready','evidence_status':'sufficient',
+                'missing_conditions':[],'unsupported_actions':[],'draft_verdict':'pass','reflection_verdict':'not_applicable',
+                'evidence':[{'evidence_id':'user_request','quote':request}],'issues':[],'summary':'요청과 설정 확인'})
+        bridge=make_verification_node(store,verifier=verifier,mode='enforce')
+        assert bridge(state)['verification_route']=='continue_review'
+        # Request text is not an uploaded source: an actual file reader still blocks.
+        missing=deepcopy(raw);missing['workflow']={'entry':'read','nodes':[node('read','read_document')],'edges':[]};missing['tool_ids']=['read_document']
+        result=bridge({**state,'draft':missing})
+        assert result['verification_route']!='continue_review'
+        assert any(f['code']=='missing_file' for f in result['verification']['findings'])
+    finally:store.close()

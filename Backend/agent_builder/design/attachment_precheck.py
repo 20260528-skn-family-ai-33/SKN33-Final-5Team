@@ -18,7 +18,9 @@ EXPLANATION = '요청에 올린 파일이 언급됐지만 연결된 파일이 �
 
 
 def refers_to_attached_file(text):
-    return bool(_UPLOADED.search(text) and _OBJECT.search(text) and not _LATER.search(text))
+    imminent=bool(re.search(r'올려\s*줄\s*(?:게|테)|올릴\s*테|첨부해\s*줄\s*(?:게|테)',text))
+    later=bool(re.search(r'실행\s*(?:할\s*때|시)|나중에|예약',text))
+    return bool(_OBJECT.search(text) and ((imminent and not later) or (_UPLOADED.search(text) and not _LATER.search(text))))
 
 
 def missing_attachment_reply(state):

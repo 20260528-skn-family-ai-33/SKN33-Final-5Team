@@ -23,3 +23,18 @@ test('simplified editor derives a purpose for new work while preserving saved de
  assert.ok(nodeSpecFromForm({...form,purpose:''},null).purpose.length>=5);
  assert.equal(nodeSpecFromForm(form,node()).purpose,form.purpose);
 });
+
+
+test('canonical sum edits update executed arguments and preserve policies and input',()=>{
+ const n=node(null,'aggregate_table');n.spec.settings={operation:'sum',arguments_json:JSON.stringify({group_by:['branch'],value_column:'amount',null_policy:'exclude',table:{$binding:'table'}})};
+ const before=structuredClone(n);
+ const result=nodeSpecFromForm({...form,tool:'aggregate_table',group:'channel',aggregation:'sum',sumField:'net_amount'},n);
+ assert.deepEqual(JSON.parse(result.settings.arguments_json),{group_by:['channel'],value_column:'net_amount',null_policy:'exclude',table:{$binding:'table'}});
+ assert.deepEqual(n,before);
+});
+test('canonical count edits preserve count mode and column',()=>{
+ const n=node(null,'aggregate_table');n.spec.settings={operation:'count',arguments_json:JSON.stringify({group_by:['branch'],mode:'distinct',column:'customer_id'})};
+ const result=nodeSpecFromForm({...form,tool:'aggregate_table',group:'channel',aggregation:'count'},n);
+ assert.deepEqual(JSON.parse(result.settings.arguments_json),{group_by:['channel'],mode:'distinct',column:'customer_id'});
+ assert.throws(()=>nodeSpecFromForm({...form,tool:'aggregate_table',aggregation:'sum',sumField:'amount'},n),/대화로/);
+});

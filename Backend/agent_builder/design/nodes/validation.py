@@ -40,7 +40,7 @@ def validate_node(state):
     elif state.get('required_node_refs'):
         issues.append('선택한 노드를 연결할 워크플로우가 필요합니다.')
     if not draft.get('workflow') and any(id in draft['tool_ids'] for id in ['filter_sort','write_result']) and 'read_table' not in draft['tool_ids']:issues.append('자료 처리·결과 생성 전에 표 파일 읽기 도구가 필요합니다.')
-    filters=[n for n in (draft.get('workflow') or {}).get('nodes',[]) if n['tool']=='filter_sort']
+    filters=[n for n in (draft.get('workflow') or {}).get('nodes',[]) if n['tool']=='filter_sort' and not n['settings'].get('operation')]
     plans=[n['settings'].get('execution_plan') or draft['execution_plan'] for n in filters]
     if not draft.get('workflow'):plans=[draft['execution_plan']]
     elif not filters:

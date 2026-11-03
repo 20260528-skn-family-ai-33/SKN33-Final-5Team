@@ -159,7 +159,6 @@ def test_condition_conflict_is_a_user_decision_not_a_missing_capability():
 
 
 @pytest.mark.parametrize('text,channel',[
-    ('비용 큰 거래만 골라서 매주 이메일로 보내줘.','이메일'),
     ('결과를 슬랙에 공유해줘.','슬랙'),
     ('정리한 표를 담당자에게 문자로 발송해.','문자'),
     ('매일 9시에 요약을 Slack으로 알려줘.','Slack')])
@@ -199,3 +198,12 @@ def test_model_refusal_is_never_turned_into_support_by_the_delivery_check():
     review=packet(s,'missing_capability',actions=['표 join'])
     result=assess_capability(s,Fake([refusal,review]))
     assert result['decision']=='missing_capability' and result['missing_actions']==['표 join']
+
+
+@pytest.mark.parametrize('decision', ['existing_tools','clarify','manual_review'])
+def test_registered_gmail_delivery_is_not_overridden_as_missing_tool(decision):
+    s=state('결과를 이메일로 보내줘.')
+    raw=packet(s,decision,conditions=['받는 사람'] if decision=='clarify' else None)
+    result=assess_capability(s,Fake([raw]))
+    assert result['decision']==decision
+    assert 'code_external_delivery' not in result

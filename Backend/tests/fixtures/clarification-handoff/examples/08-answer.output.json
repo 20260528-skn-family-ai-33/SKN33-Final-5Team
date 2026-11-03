@@ -72,7 +72,7 @@
           "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
         }
       ],
-      "extraction": "literal_policy_rule"
+      "extraction": "literal_policy_clause"
     },
     "duplicate.policy": {
       "key": "duplicate.policy",
@@ -89,7 +89,7 @@
           "quote": "비용이 큰 행을 JSON으로 저장해줘. 어느 금액부터 큰지는 아직 정하지 않았어. 빈 값은 오류, 중복은 유지해."
         }
       ],
-      "extraction": "literal_policy_rule"
+      "extraction": "literal_policy_clause"
     },
     "output.format": {
       "key": "output.format",
@@ -229,7 +229,7 @@
       {
         "id": "read_table",
         "version": 1,
-        "description": "연결한 CSV·Excel·JSON 파일의 실제 행을 읽습니다.",
+        "description": "연결한 CSV·Excel·JSON 파일의 실제 행을 읽습니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "file_id": "file"
         },
@@ -240,7 +240,7 @@
       {
         "id": "filter_sort",
         "version": 1,
-        "description": "여러 조건의 값·열 비교, 숫자·문자 정렬, 중복 및 결측 정책을 적용합니다.",
+        "description": "여러 조건의 값·열 비교, 숫자·문자 정렬, 중복 및 결측 정책을 적용합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "table": "table"
         },
@@ -276,7 +276,7 @@
       {
         "id": "aggregate_table",
         "version": 1,
-        "description": "fields로 그룹별 집계합니다. aggregation=count는 건수, sum은 sum_field의 숫자 합계입니다. 빈 fields는 전체 집계. 출력 열은 fields와 count 또는 sum입니다. 합계 후 정렬·필터는 sum 열을 사용합니다. 빈값·비숫자 합계는 실패합니다.",
+        "description": "fields로 그룹별 집계합니다. aggregation=count는 건수, sum은 sum_field의 숫자 합계입니다. 빈 fields는 전체 집계. 출력 열은 fields와 count 또는 sum입니다. 합계 후 정렬·필터는 sum 열을 사용합니다. 빈값·비숫자 합계는 실패합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "table": "table"
         },
@@ -287,7 +287,7 @@
       {
         "id": "calculate_columns",
         "version": 1,
-        "description": "입력 표에 새 계산 열을 만들거나 열 이름 하나를 바꾸고, 날짜 문자열 열을 지정 형식과 시간대로 변환합니다. compute는 calculation_formula와 output_column, rename은 rename_from과 rename_to, parse_dates는 fields와 date_input_format, date_timezone이 필요합니다. 수식은 식별자 형태의 실제 열 이름과 숫자, + - * / % 및 괄호만 사용합니다. 입력 오류·계산 열 덮어쓰기는 실패합니다.",
+        "description": "입력 표에 새 계산 열을 만들거나 열 이름 하나를 바꾸고, 날짜 문자열 열을 지정 형식과 시간대로 변환합니다. compute는 calculation_formula와 output_column, rename은 rename_from과 rename_to, parse_dates는 fields와 date_input_format, date_timezone이 필요합니다. 수식은 식별자 형태의 실제 열 이름과 숫자, + - * / % 및 괄호만 사용합니다. 입력 오류·계산 열 덮어쓰기는 실패합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "table": "table"
         },
@@ -298,7 +298,7 @@
       {
         "id": "text_transform",
         "version": 1,
-        "description": "앞 단계 텍스트에서 text_find를 text_replacement로 그대로 바꿉니다. 빈 문자열로 교체하여 삭제할 수 있습니다. 문서 파일을 직접 편집하거나 정규식을 실행하지 않습니다.",
+        "description": "앞 단계 텍스트에서 text_find를 text_replacement로 그대로 바꿉니다. 빈 문자열로 교체하여 삭제할 수 있습니다. 문서 파일을 직접 편집하거나 정규식을 실행하지 않습니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "text": "text"
         },
@@ -309,7 +309,7 @@
       {
         "id": "base64_codec",
         "version": 1,
-        "description": "앞 단계 UTF-8 텍스트를 Base64로 인코딩하거나 디코딩합니다. codec_mode=encode 또는 decode가 필요합니다.",
+        "description": "앞 단계 UTF-8 텍스트를 Base64로 인코딩하거나 디코딩합니다. codec_mode=encode 또는 decode가 필요합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "text": "text"
         },
@@ -320,7 +320,7 @@
       {
         "id": "text_hash",
         "version": 1,
-        "description": "앞 단계 UTF-8 텍스트의 SHA-256 해시를 구합니다. 파일 전체의 해시는 구하지 않습니다.",
+        "description": "앞 단계 UTF-8 텍스트의 SHA-256 해시를 구합니다. 파일 전체의 해시는 구하지 않습니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "text": "text"
         },
@@ -331,7 +331,7 @@
       {
         "id": "date_transform",
         "version": 1,
-        "description": "앞 단계 ISO 날짜·시간 텍스트를 지정한 초만큼 조정하거나 지정한 형식으로 표시합니다. date_operation=adjust는 date_seconds와 시간대가 포함된 입력이 필요하고 format은 date_output_format이 필요합니다.",
+        "description": "앞 단계 ISO 날짜·시간 텍스트를 지정한 초만큼 조정하거나 지정한 형식으로 표시합니다. date_operation=adjust는 date_seconds와 시간대가 포함된 입력이 필요하고 format은 date_output_format이 필요합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "text": "text"
         },
@@ -342,7 +342,7 @@
       {
         "id": "text_statistics",
         "version": 1,
-        "description": "앞 단계 텍스트의 글자 수 또는 공백 기준 단어 수를 센 결과를 records로 반환합니다. statistics_unit은 characters 또는 words이며 글자 수는 include_whitespace를 명시합니다.",
+        "description": "앞 단계 텍스트의 글자 수 또는 공백 기준 단어 수를 센 결과를 records로 반환합니다. statistics_unit은 characters 또는 words이며 글자 수는 include_whitespace를 명시합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "text": "text"
         },
@@ -366,7 +366,7 @@
       {
         "id": "read_document",
         "version": 1,
-        "description": "연결 문서 또는 이번 실행의 새 문서를 페이지·출처와 함께 읽습니다.",
+        "description": "연결 문서 또는 이번 실행의 새 문서를 페이지·출처와 함께 읽습니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {},
         "output_ports": {
           "documents": "documents"
@@ -375,7 +375,7 @@
       {
         "id": "search_document",
         "version": 1,
-        "description": "질문과 일치하는 문서 구간을 단어 기반 검색합니다. 의미 검색은 아직 지원하지 않습니다.",
+        "description": "질문과 일치하는 문서 구간을 단어 기반 검색합니다. 의미 검색은 아직 지원하지 않습니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "documents": "documents"
         },
@@ -386,7 +386,7 @@
       {
         "id": "extract_information",
         "version": 1,
-        "description": "설정한 항목을 추출하고 실제 원문 인용을 검증합니다. 없는 값은 누락으로 표시합니다.",
+        "description": "설정한 항목을 추출하고 실제 원문 인용을 검증합니다. 없는 값은 누락으로 표시합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "documents": "documents"
         },
@@ -397,7 +397,7 @@
       {
         "id": "reply_review",
         "version": 1,
-        "description": "고객 원문·정책·초안을 조회해 판정·문제 구절·수정안을 보고합니다. fields=[문의 열, 초안 열]은 표 검수이며 최대 10행입니다. reviews를 후속 분기·보고서 정리·수정 단계로 전달합니다. 승인·거절은 실행 결과에서 사람이 결정합니다. 단일 검수의 고객 문의·초안은 실행 화면 외부 입력이므로 bindings=[] 또는 documents만 연결합니다. 가짜 start/request binding은 금지합니다.",
+        "description": "고객 원문·정책·초안을 조회해 판정·문제 구절·수정안을 보고합니다. fields=[문의 열, 초안 열]은 표 검수이며 최대 10행입니다. reviews를 후속 분기·보고서 정리·수정 단계로 전달합니다. 승인·거절은 실행 결과에서 사람이 결정합니다. 단일 검수의 고객 문의·초안은 실행 화면 외부 입력이므로 bindings=[] 또는 documents만 연결합니다. 가짜 start/request binding은 금지합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "documents": "documents",
           "text": "text",
@@ -410,7 +410,7 @@
       {
         "id": "compose_answer",
         "version": 1,
-        "description": "검색된 원문만 바탕으로 답변 또는 요약을 작성합니다.",
+        "description": "검색된 원문만 바탕으로 답변 또는 요약을 작성합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "reviews": "reviews",
           "documents": "documents",
@@ -423,7 +423,7 @@
       {
         "id": "export_result",
         "version": 1,
-        "description": "추출 표를 CSV/JSON, 답변을 Markdown 파일로 만듭니다.",
+        "description": "추출 표를 CSV/JSON, 답변을 Markdown 파일로 만듭니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "records": "records",
           "text": "text",
@@ -475,7 +475,7 @@
       {
         "id": "review_summary",
         "version": 1,
-        "description": "검수 결과를 보고서 표로 정리합니다. 수정안은 승인 전 후보이며 최종 승인 응대가 아닙니다.",
+        "description": "검수 결과를 보고서 표로 정리합니다. 수정안은 승인 전 후보이며 최종 승인 응대가 아닙니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "reviews": "reviews"
         },
@@ -503,9 +503,632 @@
           "reviews": "reviews",
           "artifact": "artifact"
         }
+      },
+      {
+        "id": "read_web",
+        "version": 1,
+        "description": "확보된 HTML에서 본문·표 추출. URL 다운로드는 download_remote_file 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "asset": "json",
+          "extract": "json",
+          "selector": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "document": "json",
+          "documents": "documents"
+        }
+      },
+      {
+        "id": "join_tables",
+        "version": 1,
+        "description": "키로 두 표 연결. 차이 보고/단순 스트림 합치기와 구분 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "left": "json",
+          "right": "json",
+          "keys": "json",
+          "how": "json",
+          "cardinality": "json",
+          "null_keys": "json",
+          "max_rows": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "table": "table",
+          "records": "records"
+        }
+      },
+      {
+        "id": "compare_tables",
+        "version": 1,
+        "description": "두 표의 추가·삭제·변경 보고 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "baseline": "table",
+          "candidate": "table",
+          "keys": "json",
+          "compare_columns": "json",
+          "absolute_tolerance": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "create_spreadsheet",
+        "version": 1,
+        "description": "Table로 XLSX 통합문서 생성. 단순 CSV 직렬화와 구분 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "sheets": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "edit_spreadsheet",
+        "version": 1,
+        "description": "기존 XLSX에 새 시트 추가 / 기존 XLSX 시트에 행 추가 / 지정 셀 값/수식 수정 / 지정 범위 숫자 수열 채움 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "workbook": "json",
+          "expected_version": "json",
+          "sheet": "json",
+          "sheet_name": "json",
+          "table": "table",
+          "cells": "json",
+          "cell_range": "json",
+          "start": "json",
+          "step": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "create_document",
+        "version": 1,
+        "description": "새 내용을 DOCX/PDF/Markdown 문서로 구성. 기존 파일 변환과 다름 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "sections": "json",
+          "format": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "edit_document",
+        "version": 1,
+        "description": "기존 본문의 지정 문자열 치환 / 지정 앵커 앞/뒤 본문 삽입 / 지정 구간 삭제 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "expected_version": "json",
+          "find": "json",
+          "replacement": "json",
+          "occurrence": "json",
+          "anchor": "json",
+          "position": "json",
+          "text": "text",
+          "target": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "document": "json",
+          "documents": "documents"
+        }
+      },
+      {
+        "id": "format_document",
+        "version": 1,
+        "description": "글꼴·단락·정렬·여백 변경. 내용 교정과 구분 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "expected_version": "json",
+          "rules": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "fill_template",
+        "version": 1,
+        "description": "식별 가능한 양식 빈칸에 값 채우기 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "template": "json",
+          "field_values": "json",
+          "missing_policy": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "convert_format",
+        "version": 1,
+        "description": "같은 내용을 다른 파일 형식으로 변환. 전체 형식 간 무손실 보장은 하지 않음 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "asset": "json",
+          "source_format": "json",
+          "target_format": "json",
+          "loss_policy": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "proofread_document",
+        "version": 1,
+        "description": "맞춤법·문법 문제와 제안만 보고 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "language": "json",
+          "checks": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "translate_document",
+        "version": 1,
+        "description": "본문 언어 변경. 파일 형식 변환과 다름 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "source_language": "json",
+          "target_language": "json",
+          "glossary": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "document": "json",
+          "documents": "documents"
+        }
+      },
+      {
+        "id": "compare_documents",
+        "version": 1,
+        "description": "본문의 문자/의미 차이 보고 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "baseline": "json",
+          "candidate": "json",
+          "mode": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "verify_content_requirements",
+        "version": 1,
+        "description": "명시 필수 문자열/정규식 포함 여부 / 추출값과 명시 기대값 비교 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "requirements": "json",
+          "extracted": "json",
+          "expected": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "review_document",
+        "version": 1,
+        "description": "정확성·완결성 등 기준에 따른 내용 검토 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "rubric": "json",
+          "evidence": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "validate_document_format",
+        "version": 1,
+        "description": "지정 양식의 서식 준수 여부만 검사 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "asset": "json",
+          "reference": "json",
+          "checks": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "check_document_links",
+        "version": 1,
+        "description": "내부 앵커/제공 자산 링크 유효성 검사 / 문서의 원격 링크 접근 상태 검사 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "local_assets": "json",
+          "timeout_seconds": "json",
+          "credential_ref": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "detect_language",
+        "version": 1,
+        "description": "본문 언어 후보 판별 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "allowed_languages": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "document_visual_qa",
+        "version": 1,
+        "description": "배치·도형 등 페이지 시각 정보 기반 답변 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "pages": "json",
+          "question": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "classify_document",
+        "version": 1,
+        "description": "문서 자체의 업무 범주 분류. 도구 추천기와 다른 과제 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "document": "json",
+          "classes": "json",
+          "mode": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "verify_table_calculations",
+        "version": 1,
+        "description": "기존 합계·수식을 독립 규칙으로 재검산 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "table": "table",
+          "checks": "json",
+          "absolute_tolerance": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "split_pdf",
+        "version": 1,
+        "description": "PDF에서 지정 페이지를 한 PDF로 추출 / PDF를 지정 페이지 묶음별 여러 파일로 분할 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "asset": "json",
+          "page_numbers": "json",
+          "groups": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "merge_documents",
+        "version": 1,
+        "description": "순서대로 PDF 또는 DOCX 파일 병합 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "assets": "json",
+          "format": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "compress_pdf",
+        "version": 1,
+        "description": "PDF 자체 용량 최적화. ZIP 압축과 구분 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "asset": "json",
+          "target_bytes": "json",
+          "quality_policy": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "render_document_pages",
+        "version": 1,
+        "description": "문서 페이지를 PNG 이미지로 렌더 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "asset": "json",
+          "page_numbers": "json",
+          "dpi": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "pages": "json"
+        }
+      },
+      {
+        "id": "annotate_document",
+        "version": 1,
+        "description": "PDF/PNG/JPEG에 주석·하이라이트 추가 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "asset": "json",
+          "annotations": "json",
+          "flatten": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text",
+          "asset": "json",
+          "artifact": "artifact"
+        }
+      },
+      {
+        "id": "scalar_calculate",
+        "version": 1,
+        "description": "숫자 변수로 제한된 산술식을 계산합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "formula": "text",
+          "variables": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "json_transform",
+        "version": 1,
+        "description": "JSON을 파싱하거나 지정한 키/인덱스 경로를 조회합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "text": "text",
+          "value": "json",
+          "path": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "list_transform",
+        "version": 1,
+        "description": "목록의 0 기반 인덱스 선택과 항목 개수를 처리합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "items": "json",
+          "index": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "url_transform",
+        "version": 1,
+        "description": "URL 구성요소를 분석하거나 query를 포함한 주소를 만듭니다. 웹 접속은 하지 않습니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "url": "text",
+          "scheme": "json",
+          "host": "json",
+          "path": "json",
+          "query": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "email.prepare",
+        "version": 1,
+        "description": "Build UTF-8 MIME and Base64URL message without sending it. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "sender": "json",
+          "to": "json",
+          "subject": "text",
+          "body": "text",
+          "cc": "json",
+          "bcc": "json",
+          "attachments": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "email.send",
+        "version": 1,
+        "description": "Send a Gmail message using a configured Google account. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "to": "json",
+          "subject": "text",
+          "body": "text",
+          "cc": "json",
+          "bcc": "json",
+          "attachments": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "email.list",
+        "version": 1,
+        "description": "List Gmail message IDs, search query and pagination token. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "query": "json",
+          "max_results": "json",
+          "page_token": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "email.get",
+        "version": 1,
+        "description": "Read a specified Gmail message. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "message_id": "json",
+          "format": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "email.attachment.get",
+        "version": 1,
+        "description": "Retrieve a specified Gmail attachment as provider Base64URL data. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "message_id": "json",
+          "attachment_id": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "calendar.create_event",
+        "version": 1,
+        "description": "Create a Google Calendar event with explicit start/end and timezone offsets. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "summary": "json",
+          "start": "json",
+          "end": "json",
+          "calendar_id": "json",
+          "all_day": "json",
+          "time_zone": "json",
+          "description": "json",
+          "location": "json",
+          "attendees": "json",
+          "notify_attendees": "json",
+          "event_id": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "calendar.list_events",
+        "version": 1,
+        "description": "List calendar events with time bounds and pagination. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "calendar_id": "json",
+          "time_min": "json",
+          "time_max": "json",
+          "max_results": "json",
+          "page_token": "json",
+          "query": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "calendar.get_event",
+        "version": 1,
+        "description": "Read a Google Calendar event by ID. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "event_id": "json",
+          "calendar_id": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "calendar.update_event",
+        "version": 1,
+        "description": "Patch supported event fields; optional ETag concurrency control. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "event_id": "json",
+          "changes": "json",
+          "calendar_id": "json",
+          "notify_attendees": "json",
+          "etag": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
+      },
+      {
+        "id": "calendar.delete_event",
+        "version": 1,
+        "description": "Delete a specified Google Calendar event; optional ETag. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "event_id": "json",
+          "calendar_id": "json",
+          "notify_attendees": "json",
+          "etag": "json"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        }
       }
     ],
-    "tool_catalog_fingerprint": "edeebf46cefff7bf95e3b743f80103c9074c952783a6c09f046caab3f6e34ead",
+    "tool_catalog_fingerprint": "c8f927b9ac9d2648e646044d670c036753a8aa68b84a98ccde07c16b827ad20a",
     "ml_advice": {
       "status": "not_requested",
       "ml_candidates": [],

@@ -103,7 +103,7 @@ jobs:
           printf 'commit=%s\ncached=%s\ntarget=%s\ntag=%s\n' "$commit" "$cached" "$target" "$tag" >> "$GITHUB_OUTPUT"
           echo "Commit $commit, verified image available: $cached"
 
-  verify-and-build:
+  verify:
     needs: resolve-image
     if: needs.resolve-image.outputs.cached == 'false'
     runs-on: ubuntu-latest
@@ -135,41 +135,55 @@ jobs:
         run: |
           npx tsc -p Frontend --noEmit --incremental false
           node --import tsx --test "Frontend/tests/*.test.ts"
+
+  publish-image:
+    needs: [resolve-image, verify]
+    if: github.ref == 'refs/heads/main' && needs.resolve-image.outputs.cached == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: image-publish
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ECR_REPOSITORY: ${{ vars.A4B_ECR_REPOSITORY }}
+      IMAGE_TAG: ${{ needs.resolve-image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-image.outputs.commit }}
+          persist-credentials: false
       - uses: docker/setup-buildx-action@v3
-      - name: Build the tested commit with layer caching
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.A4B_IMAGE_PUBLISH_ROLE_ARN }}
+          aws-region: ap-northeast-2
+      - name: Authenticate to ECR
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
+          [[ "$IMAGE_TAG" =~ ^(verified|backend|frontend)-[0-9a-f]{40}$ ]]
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_REPOSITORY%%/*}"
+      - name: Build the tested commit and push directly to ECR
         uses: docker/build-push-action@v6
         with:
           context: .
           target: ${{ needs.resolve-image.outputs.target == 'all' && 'standalone' || needs.resolve-image.outputs.target }}
           build-args: A4B_FRONTEND_COMMIT=${{ needs.resolve-image.outputs.commit }}
-          load: true
-          tags: a4b-ci:${{ needs.resolve-image.outputs.commit }}
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
           cache-from: |
             type=gha,scope=a4b-monolith
             type=gha,scope=a4b-frontend
           cache-to: type=gha,scope=${{ needs.resolve-image.outputs.target == 'frontend' && 'a4b-frontend' || 'a4b-monolith' }},mode=max,ignore-error=true
-      - name: Package the tested image
-        shell: bash
-        env:
-          DEPLOY_SHA: ${{ needs.resolve-image.outputs.commit }}
-        run: |
-          set -euo pipefail
-          docker save "a4b-ci:$DEPLOY_SHA" | gzip > "$RUNNER_TEMP/a4b-image.tar.gz"
-      - name: Upload the image for the deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: a4b-image
-          path: ${{ runner.temp }}/a4b-image.tar.gz
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 3
-          overwrite: true
 
   deploy:
     if: >-
       ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.resolve-image.result == 'success' &&
-          (needs.resolve-image.outputs.cached == 'true' || needs.verify-and-build.result == 'success') }}
-    needs: [resolve-image, verify-and-build]
+          (needs.resolve-image.outputs.cached == 'true' || needs.publish-image.result == 'success') }}
+    needs: [resolve-image, publish-image]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -181,8 +195,6 @@ jobs:
       ECR_REPOSITORY: ${{ vars.A4B_ECR_REPOSITORY }}
       INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
       PUBLIC_URL: ${{ vars.A4B_PUBLIC_URL }}
-      DEPLOY_SHA: ${{ needs.resolve-image.outputs.commit }}
-      IMAGE_CACHED: ${{ needs.resolve-image.outputs.cached }}
       IMAGE_TAG: ${{ needs.resolve-image.outputs.tag }}
     steps:
       - name: Check out the deployment script from main
@@ -191,45 +203,14 @@ jobs:
           ref: ${{ github.sha }}
           path: deployment
           persist-credentials: false
-      - name: Download the tested image
-        if: needs.resolve-image.outputs.cached != 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: a4b-image
-          path: ${{ runner.temp }}
-      - name: Load the tested image
-        if: needs.resolve-image.outputs.cached != 'true'
-        run: docker load --input "$RUNNER_TEMP/a4b-image.tar.gz"
       - name: Authenticate to AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Publish the tested commit to ECR
-        id: publish
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
-          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$IMAGE_TAG" =~ ^(verified|backend|frontend)-[0-9a-f]{40}$ ]]
-          image="$ECR_REPOSITORY:$IMAGE_TAG"
-          if [[ "$IMAGE_CACHED" != true ]]; then
-            # A failed deployment may already have published this immutable tag.
-            digest=$(aws ecr batch-get-image --repository-name "${ECR_REPOSITORY#*/}" \
-              --image-ids "imageTag=$IMAGE_TAG" --query 'images[0].imageId.imageDigest' --output text)
-            if [[ "$digest" == None ]]; then
-              registry=${ECR_REPOSITORY%%/*}
-              aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
-              docker tag "a4b-ci:$DEPLOY_SHA" "$image"
-              docker push "$image"
-            fi
-          fi
-          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
       - name: Deploy over AWS Systems Manager
         shell: bash
         env:
-          IMAGE: ${{ steps.publish.outputs.image }}
           DEPLOY_BRANCH: ${{ inputs.branch || 'main' }}
         run: |
           set -euo pipefail
@@ -237,7 +218,9 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$DEPLOY_BRANCH" != main ]]; then
             mode=test
           fi
-          bash deployment/scripts/a4b-ssm-release.sh "$IMAGE" "$PUBLIC_URL" "$mode"
+          [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
+          [[ "$IMAGE_TAG" =~ ^(verified|backend|frontend)-[0-9a-f]{40}$ ]]
+          bash deployment/scripts/a4b-ssm-release.sh "$ECR_REPOSITORY:$IMAGE_TAG" "$PUBLIC_URL" "$mode"
 
   restore:
     if: github.ref == 'refs/heads/main' && inputs.operation == 'restore'

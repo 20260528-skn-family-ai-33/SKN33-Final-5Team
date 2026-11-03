@@ -107,5 +107,26 @@
     "PR27_UPDATE_TYPES.log": "dedec7409ec73d451f9ea56357e16d0d5e5fc989227c4c40610e3ee620e109f5",
     "PR27_UPDATE_BUILD.log": "331ac59b49463130b59495c5bec1d0457c2f882023a8b7923d093dd940114570",
     "PR27_UPDATE_NODE_PYTHON.log": "ec536e6bc09aad6e4d150eb0d64bc4e5887a5cf3817df867879b1398e0632e3e"
-  }
+  },
+  "source_sha256_representation": "Local tested working-tree bytes; Git may normalize CRLF to LF. Use git_blob_sha256 for repository-byte comparisons.",
+  "git_blob_sha256": {
+    ".env.example": "e565b617b3ce4cec6f8ec23f3e62380eb84655ed9676b0a9066c2f2e3baef600",
+    "Backend/agent_builder/capabilities/capability_gate.py": "5f08daf96aa5572863f42155a3442167faf72b38ad92d10a82d663eaaeb8734e",
+    "Backend/agent_builder/design/graph.py": "4febede125e0ed641b3d961adb8f25a81d6281a852d0815e3fb21bbd86caabc8",
+    "Backend/agent_builder/design/nodes/conversation.py": "62b15b3923c6c7761691fba99dceb4bbcf72ab7d6e1d89c29499e8324b7c3b63",
+    "Backend/agent_builder/design/nodes/direct_conversation.py": "8b6a610f87734ec1ba1ffc76f8ef2c7182f0c5ada2dcddf70ad639072674166c",
+    "Backend/agent_builder/design/nodes/validation.py": "72f84ce96d3798932076f2c475264c0dbef4fcdcda5f95ba7c3d66e99b9db2ef",
+    "Backend/agent_builder/design/nodes/verification.py": "d00ac42c8038f3b6576c05782fa8d878946d77c94bc797bd3fb5bf6760d245d0",
+    "Backend/agent_builder/design/operation_steps.py": "abe02b2466526bd47316c4d532f179a31733164a2851f896e7e3e5459557f5c7",
+    "Backend/agent_builder/design/processing_guard.py": "5e44a97a4119f52c43cd2cc7a72b7fc7a25d7c5e5ac23ece300f0822c05dc9d7",
+    "Backend/agent_builder/design/requirement_contracts.py": "0e985b90c6300c2767ea9223a6b61c8c129fec3c86037078d710ddd4882f7bad",
+    "Backend/agent_builder/design/requirement_coverage.py": "7edac6c66224bc7a53388fe5367de1a2970d511ab12f475f3a76f1344fed5fc0",
+    "Backend/agent_builder/design/requirement_generation.py": "598d5df0a14510a2dbc51c7966843b6addec9d051e4f27b627639d0671b8a3c6",
+    "Backend/agent_builder/design/requirement_ledger.py": "0043038947375f87f2fd48ea22031d762fda448954fb0e964e3ac83bb9fe3467",
+    "Backend/contracts/models.py": "d56ed835243689e524ebef066267b99c65f8e32c46a6ca97abfcff41e97d1b91",
+    "Backend/tests/design/test_requirement_coverage.py": "86d1afb352d39c357f39d09186906e1c8b80e5b42d911a961598e1d5ab1b5b5e",
+    "Backend/tests/design/test_task_omission.py": "a92835933e7ba0c2a9ef0041ddb9e364eda818f54a2aa0e696901748ab8695b8",
+    "Backend/tests/verification/test_verifier_bridge.py": "2c6198950a6a9b5c1a2a8b7a744f12388fdb5c20024eb62b55093540c468aee2"
+  },
+  "source_commit": "1ec05dd3b48e9884e306211a5170bc6109502845"
 }

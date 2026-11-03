@@ -89,7 +89,6 @@ function enqueue(flow:Flow,input:Json[],mode:'learning'|'live',extra:Json={},onR
  onReserved?.(e);void pump();return e;
 }
 async function archiveExecutionFiles(execution:Execution){
- if(!workspaceFilesEnabled)return;
  const archived=new Set<string>();
  for(const record of execution.runs){
   for(const items of record.output){
@@ -109,7 +108,27 @@ async function run(e:Execution){
  const controller=new AbortController();controllers.set(e.id,controller);inFlight.add(e.id);
  const pending=pendingWebhooks.get(e.id);
  const metadata={trigger:e.trigger,onlyNode:e.onlyNode,retryOf:e.retryOf,parentExecutionId:e.parentExecutionId,errorWorkflowOf:e.errorWorkflowOf,dedupeKey:e.dedupeKey};
- try{const result={...await executeFlow(snapshot.flow,snapshot.input,{mode:e.mode,signal:controller.signal,executionId:e.id,onlyNode:e.onlyNode,resume:e.status==='waiting'?e:undefined,credential:id=>usableCredential(id,controller.signal),getFlow:id=>store.getFlow(id),code:runCode,webhookResponseMode:pending?.mode,onWebhookResponse:pending?.mode==='responseNode'?response=>completeWebhook(e.id,response):undefined,onProgress:update=>{if(workspaceFilesEnabled&&update.status==='success')return;store.saveExecution({...update,...metadata});settleWebhook(update);}}),...metadata};if(workspaceFilesEnabled){await archiveExecutionFiles(result);controller.signal.throwIfAborted();}settleWebhook(result);if(pending?.responseError){result.status='error';result.error=pending.responseError;}store.saveExecution(result);const dispatched=await dispatchErrorWorkflow(result,snapshot.flow,id=>store.getFlow(id),enqueue);if(dispatched.executionId||dispatched.notificationError)store.saveExecution({...result,...(dispatched.executionId?{errorExecutionId:dispatched.executionId}:{}),...(dispatched.notificationError?{notificationError:dispatched.notificationError}:{})});}
+ try{
+  const result={...await executeFlow(snapshot.flow,snapshot.input,{mode:e.mode,signal:controller.signal,executionId:e.id,onlyNode:e.onlyNode,resume:e.status==='waiting'?e:undefined,credential:id=>usableCredential(id,controller.signal),getFlow:id=>store.getFlow(id),code:runCode,webhookResponseMode:pending?.mode,onWebhookResponse:pending?.mode==='responseNode'?response=>completeWebhook(e.id,response):undefined,onProgress:update=>{if(workspaceFilesEnabled&&update.status==='success')return;store.saveExecution({...update,...metadata});settleWebhook(update);}}),...metadata};
+  if(workspaceFilesEnabled){
+   try{await archiveExecutionFiles(result);}
+   catch(error){
+    if(result.status!=='error')throw error;
+    console.warn('실패한 실행의 결과 파일을 보관하지 못했습니다.',result.id);
+   }
+   controller.signal.throwIfAborted();
+  }
+  settleWebhook(result);
+  if(pending?.responseError){result.status='error';result.error=pending.responseError;}
+  store.saveExecution(result);
+  const dispatched=await dispatchErrorWorkflow(result,snapshot.flow,id=>store.getFlow(id),enqueue);
+  if(dispatched.executionId||dispatched.notificationError){
+   store.saveExecution({...result,
+    ...(dispatched.executionId?{errorExecutionId:dispatched.executionId}:{}),
+    ...(dispatched.notificationError?{notificationError:dispatched.notificationError}:{}),
+   });
+  }
+ }
  catch(err){const failed:Execution={...store.getExecution(e.id)!,status:controller.signal.aborted?'canceled':'error',error:(err as Error).message};store.saveExecution(failed);settleWebhook(failed);}
  finally{controllers.delete(e.id);inFlight.delete(e.id);void pump();}
 }

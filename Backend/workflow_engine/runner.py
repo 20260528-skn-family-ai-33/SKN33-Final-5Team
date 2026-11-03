@@ -64,6 +64,14 @@ def port_summary(values):
         elif isinstance(value,bool):summaries[port]=value
     return summaries
 
+def execution_parameters(node,config):
+    if not node:return {}
+    if not uses_operation(node):
+        if node['tool']=='filter_sort':return node['settings'].get('execution_plan') or config['execution_plan']
+        if node['tool']=='write_result':return {'format':node['settings'].get('format') or config['execution_plan']['output_format']}
+    return node['settings']
+
+
 def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inherit_checkpoint=False):
     from workflow_engine.library.reusable_workflows import reject_review_export
     reject_review_export(config,config.get('_saved_workflows',{}))
@@ -80,7 +88,7 @@ def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inh
             result=executor(n,state,storage,config,llm)
             if ownership:ownership()
             validate_node_result(n['tool'],result,n)
-            step={'node':n['id'],'label':n['label'],'status':'completed','detail':'등록된 '+n['tool']+' 코드를 실행했습니다.','parameters':n['settings'],'bindings':n['bindings']}
+            step={'node':n['id'],'label':n['label'],'status':'completed','detail':'등록된 '+n['tool']+' 코드를 실행했습니다.','parameters':execution_parameters(n,config),'bindings':n['bindings']}
             step['elapsed_ms']=round((perf_counter()-started)*1000,2)
             step['input_summary']=port_summary({b['input']:state['outputs'][b['node_id']][b['output']] for b in n['bindings']})
             step['output_summary']=port_summary(result)
@@ -88,8 +96,6 @@ def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inh
                 file_id=result['table'].get('file_id')
                 asset=storage.asset(file_id) if file_id else None
                 step['parameters']={'source_file_id':asset['id'],'file_name':asset['name'],'hash':asset.get('hash'),'row_count':len(result['table']['rows'])} if asset else {'input_source':'앞 노드 출력','row_count':len(result['table']['rows'])}
-            if n['tool']=='filter_sort':step['parameters']=n['settings'].get('execution_plan') or config['execution_plan']
-            if n['tool']=='write_result':step['parameters']={'format':n['settings'].get('format') or config['execution_plan']['output_format']}
             if n['tool']=='search_document' and not n['settings'].get('operation'):step['parameters']={**n['settings'],'effective_query':result['query'],'keywords':result['keywords']};step['detail']=f"원문 {result['matched_count']}개 구간을 검색했습니다."
             if n['tool']=='condition':step['detail']=('조건 충족 → yes' if result['decision'] else '조건 미충족 → no')+(' · '+result.get('reason','') if result.get('reason') else '')
             if n['tool']=='saved_workflow':step['child_steps']=result.get('_child_steps',[]);step['dependency']=result.get('_dependency')
@@ -161,7 +167,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         import traceback
         frames=[{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)[-6:]]
         failed_node=next((n for n in config['workflow']['nodes'] if n['id']==pending),None)
-        run.update(outputs=state.get('outputs',{}),artifact=None,report_path=None,status='failed',error_type=type(error).__name__,diagnostic_frames=frames,error=public_error(error,api_key),steps=state.get('steps',[])+[{'node':pending,'label':failed_node['label'] if failed_node else pending,'status':'failed','detail':public_error(error,api_key),'parameters':(failed_node['settings'].get('execution_plan') or config['execution_plan']) if failed_node and failed_node['tool']=='filter_sort' else failed_node['settings'] if failed_node else {},'bindings':failed_node['bindings'] if failed_node else []}])
+        run.update(outputs=state.get('outputs',{}),artifact=None,report_path=None,status='failed',error_type=type(error).__name__,diagnostic_frames=frames,error=public_error(error,api_key),steps=state.get('steps',[])+[{'node':pending,'label':failed_node['label'] if failed_node else pending,'status':'failed','detail':public_error(error,api_key),'parameters':execution_parameters(failed_node,config),'bindings':failed_node['bindings'] if failed_node else []}])
     finally:
         if connection:connection.close()
     lifecycle.assert_owner(run['id'],execution_token)

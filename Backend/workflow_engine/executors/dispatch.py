@@ -3,6 +3,8 @@
 def execute_node(node,state,storage,config,llm):
     from importlib import import_module
     from workflow_engine.catalog.registry import TOOLS, uses_operation
+    from workflow_engine.catalog.settings import validate_execution_settings
+    validate_execution_settings(node,operation=uses_operation(node))
     if uses_operation(node):
         from workflow_engine.executors.canonical_operation import execute
         return execute(node,state,storage,config,llm)

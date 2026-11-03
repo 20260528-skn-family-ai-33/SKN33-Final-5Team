@@ -174,6 +174,39 @@ DEMOS=[
  {'request':'가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.','output':{'decision':'clarify','tool_ids':['filter_sort'],'missing_conditions':['선별할 가격 기준과 포함 여부'],'missing_actions':[],'reason':'가격 기준은 사용자 결정 사항','user_quotes':['가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.']}},
 ]
 
+REQUEST_UPDATE_RULE = """대화는 순서대로 적용합니다. authoritative_request는 가장 최근 사용자 발언입니다.
+최신 발언이 작업 일부를 취소하거나 범위를 좁히면 이전 요청의 해당 부분을 철회한 것으로 판단합니다.
+예: '매출을 요약하고 이메일로 보내줘' 뒤 '메일은 취소', '이메일은 안 해', '요약만'이면 매출 요약만 남습니다.
+취소된 이메일 발송이나 그 계정 연결을 missing_actions/missing_conditions에 남기지 않습니다.
+반대로 '메일은 취소하지 마', '메일로는 보내줘'는 취소가 아닙니다. 철회되지 않은 요구와 조건은 유지합니다.
+이전 assistant의 지원 불가 답변과 unverified_assessment는 판정 근거가 아닌 검토 대상입니다.
+user_quotes에는 최신 변경 발언도 정확히 포함해 변경을 반영했다는 근거를 남깁니다.
+남은 요청을 실제 카탈로그로 판단하며, 요청 축소만으로 지원 확정·실행·저장 허가를 부여하지 않습니다."""
+
+
+def retained_delivery(state):
+    """Recognize only standalone explicit delivery retention/reaffirmation."""
+    latest=next((m['content'] for m in reversed(state.get('messages',[])) if m.get('role')=='user'),'')
+    text=re.sub(r'[\s.!?~]+','',latest).casefold()
+    match=re.fullmatch(r'(이메일|메일|email|슬랙|slack)(?:은|는)?취소하지(?:마|마요|마세요|말아|말아줘)',text)
+    if not match:
+        match=re.fullmatch(r'(이메일|메일|email|슬랙|slack)(?:으?로(?:는|만)?)?(?:보내줘|보내주세요|발송해줘|전송해줘)',text)
+    if not match:return None
+    return {'channel':'email' if match[1] in ('이메일','메일','email') else 'slack',
+            'intent':'retain_delivery','quote':latest}
+
+
+def guard_retained_delivery(result,state):
+    directive=retained_delivery(state)
+    if not directive or result['decision']!='existing_tools':return result
+    # No account access or execution permission is added here. If an explicit send
+    # requirement disappears from an allegedly supported plan, stop for review.
+    if directive['channel']=='email' and 'email.send' in result['tool_ids']:return result
+    return {**result,'decision':'manual_review','model_decision':result['decision'],
+            'request_revision_conflict':directive,
+            'reason':'취소하지 말라는 최신 발송 유지 요청이 지원 도구에 반영되지 않아 재검토가 필요합니다.'}
+
+
 def assess_capability(state,transport):
     faults=input_issues(state)
     if faults:return {'decision':'system_error','issues':faults,'model_calls':0,'allows_execution':False,'allows_generation':False}
@@ -194,12 +227,12 @@ def assess_capability(state,transport):
             props['missing_actions']['minItems']=1;props['missing_conditions']['maxItems']=0
         variants.append(branch)
     transport.schema={'anyOf':variants}
-    messages=[{'role':'system','content':SYSTEM}, {'role':'user','content':json.dumps({
+    messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE}, {'role':'user','content':json.dumps({
         'messages':state['messages'],'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,
         'app_capabilities':APP_CAPABILITIES,
         'tools':planner_catalog(TOOLS),
-        'authoritative_request':user[-1],'user_quote_catalog':user},ensure_ascii=False)}]
+        'authoritative_request':user[-1],'latest_delivery_directive':retained_delivery(state),'user_quote_catalog':user},ensure_ascii=False)}]
     reply=transport.invoke(messages)
     content=reply.get('content') if isinstance(reply,dict) else reply.content
     result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=1)
@@ -215,9 +248,10 @@ def assess_capability(state,transport):
 등록 도구로 요청의 모든 기능이 가능하면 existing_tools와 실제 tool_ids를 반환합니다. 필수 정책이 미정이면 clarify입니다.
 외부 전송과 표 join은 미지원으로 유지합니다. calculate_columns의 명시적 사칙연산·열 이름 변경과 text_transform의 문자열 바꾸기는 등록된 지원 기능입니다. 그 밖의 임의 셀 변환은 지원한다고 가정하지 마세요. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
 user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 실행/제작 허가가 아닙니다.'''
-        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+review_prompt},
-            messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'task':'실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
+        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+review_prompt},
+            messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'authoritative_request':user[-1],'request_update_rule':REQUEST_UPDATE_RULE,'latest_delivery_directive':retained_delivery(state),'task':'최신 사용자 변경을 먼저 적용한 뒤 남은 요청을 실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1
         result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
+    result=guard_retained_delivery(result,state)
     return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

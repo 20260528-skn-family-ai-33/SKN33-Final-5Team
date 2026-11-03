@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from workflow_engine.catalog.registry import TOOLS
-from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, resolution_question, resolution_options, pending_nonanswer
+from agent_builder.conditions.input_resolution import latest_resolution, option_answer, numeric_answer, resolution_question, resolution_options, pending_nonanswer
 
 
 class ConditionContractError(ValueError):
@@ -494,7 +494,16 @@ def explicit_policies(state, catalog):
         matches = [col for col in columns if re.search(column_pattern(col), text, re.IGNORECASE)]
         refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
                 and any(re.search(column_pattern(col), e['quote'], re.IGNORECASE) for col in matches)]
-        if len(matches) == 1 and refs and not re.search(r'중복[^.!?\n]{0,30}(?:말고|아니|않|제외)', text):
+        # A negation must modify the named duplicate key itself, not a later
+        # independent instruction such as '정렬하지 말고' or '빈 비용은 제외'.
+        def duplicate_tail(match):
+            # Keep conservative handling of negated dedup policies, but stop at
+            # sentence boundaries or the next independently named policy.
+            return re.split(r'[.!?\n,;]|정렬|빈\s*|결측|누락|CSV|JSON',
+                            text[match.end():match.end()+30],maxsplit=1,flags=re.IGNORECASE)[0]
+        key_negated=any(re.search(r'말고|아니|않|제외',duplicate_tail(m))
+                        for col in matches for m in re.finditer(column_pattern(col),text,re.IGNORECASE))
+        if len(matches) == 1 and refs and not key_negated:
             per_turn['duplicate.field'] = {'key':'duplicate.field','status':'specified','value':matches[0],
                 'evidence_ids':[refs[0]['id']],'evidence':[refs[0]],'extraction':'literal_column_rule'}
         for key, pattern, mapping in patterns:
@@ -768,7 +777,7 @@ def validate_conditions(raw, state, catalog):
             value = CHOICES[choice['key']][choice['label']] if choice['key'] in CHOICES else choice['label']
             slots[choice['key']] = {'key': choice['key'], 'status': 'specified', 'value': value,
                                     'evidence_ids': [evidence[0]['id']], 'evidence': evidence}
-    amount = value_answer(state)
+    amount = numeric_answer(state)
     if amount:
         evidence = [e for e in catalog if e['source_id'] == 'user' and e.get('turn') == amount['turn']][:1]
         if evidence and amount['value'] in _amounts(evidence[0]['quote']):
@@ -863,7 +872,7 @@ def judge_conditions(state, transport, max_contract_repairs=0):
         raise ValueError('조건 응답 수정 한도는 0~1회입니다.')
     messages, schema, catalog = prepare_conditions(state)
     nonanswer=pending_nonanswer(state)
-    if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state) or nonanswer:
+    if input_issues(state) or latest_resolution(state) or option_answer(state) or numeric_answer(state) or nonanswer:
         result = validate_conditions({'operations': [], 'conditions': [], 'unsupported_actions': []}, state, catalog)
         return {'ledger': result, 'model_calls': 0, 'messages': messages, 'metrics': {}}
     transport.schema = schema

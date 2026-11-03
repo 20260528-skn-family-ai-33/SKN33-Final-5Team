@@ -87,7 +87,7 @@ _PLAIN_AMOUNT = re.compile(r'(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(천만|백만|�
                            r'\s*(?:원|점|개|건|명)?\s*(?:으로|로|요|이요)?')
 
 
-def value_answer(state):
+def value_answer(state, *, _allow_comparison=False):
     """The latest turn is only one plain amount for the pending threshold of a numeric column.
 
     Anything else (억·조, %, k, currency signs, a sign, ranges, dates, extra words, a
@@ -97,7 +97,12 @@ def value_answer(state):
     latest = max((i for i, m in enumerate(messages) if m['role'] == 'user'), default=-1)
     if latest < 0:
         return None
-    match = _PLAIN_AMOUNT.fullmatch(messages[latest]['content'].strip().rstrip('.!?。'))
+    text=messages[latest]['content'].strip().rstrip('.!?。')
+    if _allow_comparison:
+        comparison=re.fullmatch(r'(.+?)\s*(초과|이상|미만|이하)(?:으로|로)?(?:요)?',text)
+        if not comparison:return None
+        text=comparison[1]
+    match = _PLAIN_AMOUNT.fullmatch(text)
     if not match:
         return None
     events = state.get('condition_answers', [])
@@ -132,3 +137,12 @@ def resolution_options(state):
     if state.get('resources'):
         options[0] = '연결 자료에서 기준 확인 후 입력'
     return options
+
+
+def numeric_answer(state):
+    """A plain amount or exact amount+comparison for a pending numeric threshold.
+
+    The comparison is separately grounded by explicit_policies; this helper only
+    resolves the numeric slot. Negations, ranges and approximate amounts do not match.
+    """
+    return value_answer(state) or value_answer(state,_allow_comparison=True)

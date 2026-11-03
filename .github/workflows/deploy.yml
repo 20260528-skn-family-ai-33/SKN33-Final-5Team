@@ -3,10 +3,20 @@ name: Deploy A4B to EC2
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - .github/workflows/deploy.yml
+      - scripts/deploy-a4b-ec2.sh
+      - scripts/a4b-ssm-command.sh
+      - docs/a4b-automatic-deployment.md
   workflow_dispatch:
     inputs:
+      operation:
+        description: Deploy a branch or restore the version saved before testing
+        type: choice
+        default: deploy
+        options: [deploy, restore]
       branch:
-        description: Branch in this repository to deploy to the live EC2 (main restores production)
+        description: Branch to deploy (ignored for restore)
         required: true
         default: main
         type: string
@@ -19,33 +29,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify-and-build:
-    if: github.ref == 'refs/heads/main'
+  resolve-image:
+    if: github.ref == 'refs/heads/main' && inputs.operation != 'restore'
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       commit: ${{ steps.source.outputs.commit }}
+      cached: ${{ steps.source.outputs.cached }}
     steps:
-      - name: Select the source branch
-        id: ref
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-2
+      - name: Resolve the commit and check for a verified image
+        id: source
         shell: bash
         env:
           DEPLOY_BRANCH: ${{ inputs.branch }}
+          ECR_REPOSITORY: ${{ vars.A4B_ECR_REPOSITORY }}
+          AWS_REGION: ap-northeast-2
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            ref="$GITHUB_SHA"
-          else
+          commit="$GITHUB_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$DEPLOY_BRANCH" != main ]]; then
             git check-ref-format "refs/heads/$DEPLOY_BRANCH"
-            ref="refs/heads/$DEPLOY_BRANCH"
+            commit=$(git rev-parse --verify "refs/remotes/origin/$DEPLOY_BRANCH^{commit}")
           fi
-          printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          response=$(aws ecr batch-get-image --repository-name "${ECR_REPOSITORY#*/}" \
+            --image-ids "imageTag=verified-$commit" --output json)
+          if jq -e '.images[0].imageId.imageDigest | test("^sha256:[0-9a-f]{64}$")' <<< "$response" >/dev/null 2>&1; then
+            cached=true
+          elif jq -e '.failures | length == 1 and .[0].failureCode == "ImageNotFound"' <<< "$response" >/dev/null; then
+            cached=false
+          else
+            echo 'Unable to determine if the verified image exists' >&2
+            exit 1
+          fi
+          printf 'commit=%s\ncached=%s\n' "$commit" "$cached" >> "$GITHUB_OUTPUT"
+          echo "Commit $commit, verified image available: $cached"
+
+  verify-and-build:
+    needs: resolve-image
+    if: needs.resolve-image.outputs.cached == 'false'
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.ref.outputs.ref }}
+          ref: ${{ needs.resolve-image.outputs.commit }}
           persist-credentials: false
-      - name: Record the commit to test and deploy
-        id: source
-        run: printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -60,13 +99,21 @@ jobs:
           bash Backend/scripts/setup-document-analysis.sh
       - run: npm run check
       - run: npm test
-      - name: Build and package the tested commit
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the tested commit with layer caching
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: a4b-ci:${{ needs.resolve-image.outputs.commit }}
+          cache-from: type=gha,scope=a4b-monolith
+          cache-to: type=gha,scope=a4b-monolith,mode=max,ignore-error=true
+      - name: Package the tested image
         shell: bash
         env:
-          DEPLOY_SHA: ${{ steps.source.outputs.commit }}
+          DEPLOY_SHA: ${{ needs.resolve-image.outputs.commit }}
         run: |
           set -euo pipefail
-          docker build -t "a4b-ci:$DEPLOY_SHA" .
           docker save "a4b-ci:$DEPLOY_SHA" | gzip > "$RUNNER_TEMP/a4b-image.tar.gz"
       - name: Upload the image for the deployment job
         uses: actions/upload-artifact@v4
@@ -79,8 +126,10 @@ jobs:
           overwrite: true
 
   deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: verify-and-build
+    if: >-
+      ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.resolve-image.result == 'success' &&
+          (needs.resolve-image.outputs.cached == 'true' || needs.verify-and-build.result == 'success') }}
+    needs: [resolve-image, verify-and-build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -92,7 +141,8 @@ jobs:
       ECR_REPOSITORY: ${{ vars.A4B_ECR_REPOSITORY }}
       INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
       PUBLIC_URL: ${{ vars.A4B_PUBLIC_URL }}
-      DEPLOY_SHA: ${{ needs.verify-and-build.outputs.commit }}
+      DEPLOY_SHA: ${{ needs.resolve-image.outputs.commit }}
+      IMAGE_CACHED: ${{ needs.resolve-image.outputs.cached }}
     steps:
       - name: Check out the deployment script from main
         uses: actions/checkout@v4
@@ -101,11 +151,13 @@ jobs:
           path: deployment
           persist-credentials: false
       - name: Download the tested image
+        if: needs.resolve-image.outputs.cached != 'true'
         uses: actions/download-artifact@v4
         with:
           name: a4b-image
           path: ${{ runner.temp }}
       - name: Load the tested image
+        if: needs.resolve-image.outputs.cached != 'true'
         run: docker load --input "$RUNNER_TEMP/a4b-image.tar.gz"
       - name: Authenticate to AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -118,23 +170,36 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
-          registry=${ECR_REPOSITORY%%/*}
-          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
-          image="$ECR_REPOSITORY:$DEPLOY_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          docker tag "a4b-ci:$DEPLOY_SHA" "$image"
-          docker push "$image"
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          image="$ECR_REPOSITORY:verified-$DEPLOY_SHA"
+          if [[ "$IMAGE_CACHED" != true ]]; then
+            # A failed deployment may already have published this immutable tag.
+            digest=$(aws ecr batch-get-image --repository-name "${ECR_REPOSITORY#*/}" \
+              --image-ids "imageTag=verified-$DEPLOY_SHA" --query 'images[0].imageId.imageDigest' --output text)
+            if [[ "$digest" == None ]]; then
+              registry=${ECR_REPOSITORY%%/*}
+              aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+              docker tag "a4b-ci:$DEPLOY_SHA" "$image"
+              docker push "$image"
+            fi
+          fi
           printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
       - name: Deploy over AWS Systems Manager
         shell: bash
         env:
           IMAGE: ${{ steps.publish.outputs.image }}
+          DEPLOY_BRANCH: ${{ inputs.branch || 'main' }}
         run: |
           set -euo pipefail
           [[ "$INSTANCE_ID" =~ ^i-[0-9a-f]+$ ]]
           [[ "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+$ ]]
-          [[ "$IMAGE" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+          [[ "$IMAGE" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:verified-[0-9a-f]{40}$ ]]
+          mode=production
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$DEPLOY_BRANCH" != main ]]; then
+            mode=test
+          fi
           payload=$(base64 -w 0 deployment/scripts/deploy-a4b-ec2.sh)
-          remote="printf '%s' '$payload' | base64 -d | bash -s -- '$IMAGE' '$PUBLIC_URL'"
+          remote="printf '%s' '$payload' | base64 -d | bash -s -- '$IMAGE' '$PUBLIC_URL' '$mode'"
           params=$(jq -cn --arg cmd "$remote" '{commands:[$cmd],executionTimeout:["900"]}')
           command_id=$(aws ssm send-command --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript --parameters "$params" \
@@ -155,3 +220,31 @@ jobs:
           done
           echo "No terminal SSM status for command $command_id" >&2
           exit 1
+
+  restore:
+    if: github.ref == 'refs/heads/main' && inputs.operation == 'restore'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-northeast-2
+      INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
+      PUBLIC_URL: ${{ vars.A4B_PUBLIC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Restart the saved production container
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+$ ]]
+          payload=$(base64 -w 0 scripts/deploy-a4b-ec2.sh)
+          bash scripts/a4b-ssm-command.sh "printf '%s' '$payload' | base64 -d | bash -s -- restore '$PUBLIC_URL'"

@@ -1,8 +1,10 @@
 # SVM 도구 추천 참고 연동안
 
-기본값은 off이며 기존 legacy 동작을 보존합니다. A4B_TOOL_ADVICE_MODE=hint 및 A4B_TOOL_ADVICE_BACKEND=svm56을 모두 지정한 경우에만 SVM 후보를 사용합니다. A4B_SVM_MODEL_PATH와 A4B_SVM_CATALOG_PATH에 신뢰 가능한 로컬 파일을 지정하세요. 본 브랜치에는 모델 파일, 원본·합성 데이터, 카탈로그를 게시하지 않습니다. 파일은 별도 전달한 팀 공유 ZIP에서 확보하며 모델과 카탈로그 해시가 코드에 고정되어 있습니다. joblib는 신뢰할 수 있는 파일만 사용해야 합니다.
+기본값은 A4B_TOOL_ADVICE_MODE=hint, A4B_TOOL_ADVICE_BACKEND=svm56입니다. 명시적으로 A4B_TOOL_ADVICE_MODE=off를 지정한 경우에만 추천을 끕니다. 로컬 기본 파일 위치는 저장소의 runtime/ml-bundle/model/recommender_char_svm_5431.joblib 및 runtime/ml-bundle/catalog/catalog_56.json이며 실행 디렉터리에 의존하지 않습니다. 팀 패키지의 model·catalog 폴더를 이 위치에 복사하세요. A4B_SVM_MODEL_PATH와 A4B_SVM_CATALOG_PATH에 신뢰 가능한 로컬 파일을 지정하세요. 본 브랜치에는 모델 파일, 원본·합성 데이터, 카탈로그를 게시하지 않습니다. 파일은 별도 전달한 팀 공유 ZIP에서 확보하며 모델과 카탈로그 해시가 코드에 고정되어 있습니다. joblib는 신뢰할 수 있는 파일만 사용해야 합니다.
 
 이 코드는 56개 도구를 서비스 실행에 등록하지 않으며 등록된 도구에 대해서만 참고 후보를 반환합니다. 전체 도구 선택 경로를 유지해야 합니다. SVM margin은 확률이 아닙니다. 기준 패키지는 `A4B_ML_Qwen_전체작업자료_2026-10-31/08_서비스연동패키지`이며 고정 모델의 `reply_review`·`review_summary`는 양성 0건으로 미학습입니다.
+
+로컬 의존성 설치·갱신: 저장소 루트에서 `npm run setup` (기존 환경도 명시적으로 실행하면 ML 의존성을 설치합니다).
 
 로컬 검사: 저장소 루트에서 `python -m pytest Backend/tests/ml -q`.
 
@@ -18,7 +20,7 @@
 
 자료 유형은 실행기가 쓰는 `documents.resources.document_resources.supports`로 판단합니다. CSV·XLSX가 검증된 파서 본문을 함께 제공하면 표와 문서 읽기를 모두 지원하는 것으로 전달합니다. 파일명 언급이나 capabilities 문자열만으로 기능을 만들지 않습니다. 표/문서 양쪽 읽기가 가능해도 처리 도구의 실제 결과가 table로 확인되고 다른 결과 생산 후보가 없으면 표 저장 도구를 보완합니다.
 
-Docker에서 사용하려면 `.env`에 `A4B_WITH_ML=1`, `A4B_TOOL_ADVICE_MODE=hint`, `A4B_TOOL_ADVICE_BACKEND=svm56`, `A4B_ML_BUNDLE_DIR=/절대경로/08_서비스연동패키지`를 설정하고 `docker compose up --build -d`로 재빌드합니다. 모델 묶음은 읽기 전용으로 연결되며 이미지에는 포함되지 않습니다. 코드 기본값은 여전히 off입니다.
+Docker는 기본으로 ML 의존성과 SVM 힌트를 켭니다. `.env`에 `A4B_ML_BUNDLE_DIR=/절대경로/08_서비스연동패키지`를 설정하거나 기본 runtime/ml-bundle에 패키지를 배치하고 `docker compose up --build -d`로 재빌드합니다. 모델 묶음은 읽기 전용으로 연결되며 이미지에는 포함되지 않습니다. 기존 .env에 A4B_TOOL_ADVICE_MODE=off 또는 A4B_WITH_ML=0이 있으면 명시적 설정이 우선하므로 제거하거나 hint/1로 바꾸세요. 모델·해시·의존성 오류는 ml_status로 기록하며 성공으로 취급하지 않습니다.
 
 합성 보강·후보 학습과 평가 한계는 [학습 안내](../training/README.md)를 참고하세요. 후보 모델을 배포하려면 독립 평가와 고정 해시의 명시적 갱신이 필요하며 학습 스크립트가 자동 교체하지 않습니다.
 

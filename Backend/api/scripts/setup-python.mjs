@@ -52,7 +52,7 @@ try{
  }
  run(venvPython,['-m','pip','install','--upgrade','pip']);
  if(docling)run(venvPython,['-m','pip','install','-r',resolve(backend,'requirements','parser.txt')]);
- else run(venvPython,['-m','pip','install','-r',resolve(backend,'requirements','agent-lock.txt')]);
+ else run(venvPython,['-m','pip','install','-r',resolve(backend,'requirements','agent-lock.txt'),'-r',resolve(backend,'requirements','ml-svm56.txt')]);
  console.log(`\n설치 완료: ${venv}\n다음 실행: npm run dev`);
 }catch(error){
  console.error(`\n${error.message}`);

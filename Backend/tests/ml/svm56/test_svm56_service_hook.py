@@ -1,5 +1,6 @@
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from ml.svm56 import svm56_service_hook as hook
@@ -10,7 +11,7 @@ class HookTests(unittest.TestCase):
         hook._load_pinned.cache_clear()
 
     def test_missing_configuration_returns_safe_fallback(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True), patch.object(hook, 'DEFAULT_BUNDLE', Path('/nonexistent/a4b-test-bundle')):
             result = hook.recommend_svm_for_state({}, [])
         self.assertEqual(result['ml_status'], 'missing_configuration')
         self.assertEqual(result['ml_candidates'], [])
@@ -42,3 +43,20 @@ class HookTests(unittest.TestCase):
         self.assertNotIn('estimated_probability', result['ml_candidates'][0])
 
 if __name__ == '__main__': unittest.main()
+
+
+def test_default_bundle_paths_do_not_depend_on_working_directory(tmp_path,monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv('A4B_SVM_MODEL_PATH',raising=False)
+    monkeypatch.delenv('A4B_SVM_CATALOG_PATH',raising=False)
+    calls=[]
+    def load(model,catalog,expected):
+        calls.append((Path(model),Path(catalog),expected))
+        return object()
+    monkeypatch.setattr(Path,'is_file',lambda self:True)
+    monkeypatch.setattr(hook,'_load_pinned',load)
+    monkeypatch.setattr(hook,'build_svm_advice',lambda *args:{'ml_candidates':[],'ml_status':'checked'})
+    result=hook.recommend_svm_for_state({},[])
+    assert result['ml_status']=='checked'
+    assert calls[0][:2]==(hook.DEFAULT_BUNDLE/'model/recommender_char_svm_5431.joblib',hook.DEFAULT_BUNDLE/'catalog/catalog_56.json')
+    assert calls[0][0].is_absolute()

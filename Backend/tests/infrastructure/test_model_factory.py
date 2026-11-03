@@ -29,9 +29,10 @@ def test_vllm_uses_supplied_transport(monkeypatch):
     assert result['max_retries']==0
 
 
-def test_optional_svm_hints_do_not_treat_finish_as_a_prediction(monkeypatch):
+def test_legacy_hints_do_not_treat_finish_as_a_prediction(monkeypatch):
     from ml.advice.tool_recommendation import recommend_for_state
     monkeypatch.setenv('A4B_TOOL_ADVICE_MODE','hint')
+    monkeypatch.setenv('A4B_TOOL_ADVICE_BACKEND','legacy')
     result=recommend_for_state({'messages':[dict(role='user',content='stock이 3 이상인 행만 CSV로 저장해줘')],
                               'resources':[dict(kind='table',columns=['code','stock'])]})
     ids=[c['tool_id'] for c in result['ml_candidates']]

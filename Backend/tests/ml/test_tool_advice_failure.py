@@ -8,6 +8,7 @@ from workflow_engine.catalog.registry import TOOLS
 @pytest.mark.parametrize('error',[FileNotFoundError('model missing'),RuntimeError('model inference failed')])
 def test_optional_recommender_failure_retains_full_catalog_and_is_not_unsupported(monkeypatch,error):
     monkeypatch.setenv('A4B_TOOL_ADVICE_MODE','hint')
+    monkeypatch.setenv('A4B_TOOL_ADVICE_BACKEND','legacy')
     package=types.ModuleType('tool_rec');package.__path__=[]
     module=types.ModuleType('tool_rec.recommend');module.recommend_tools=Mock(side_effect=error)
     monkeypatch.setitem(sys.modules,'tool_rec',package);monkeypatch.setitem(sys.modules,'tool_rec.recommend',module)
@@ -26,6 +27,7 @@ def test_recommender_failure_does_not_narrow_tools_or_create_unsupported(monkeyp
     from agent_builder.design.nodes.conversation import make_conversation
     from tests.design.test_deep_agent_conversation import state, draft
     monkeypatch.setenv('A4B_TOOL_ADVICE_MODE','hint')
+    monkeypatch.setenv('A4B_TOOL_ADVICE_BACKEND','legacy')
     package=types.ModuleType('tool_rec');package.__path__=[]
     module=types.ModuleType('tool_rec.recommend');module.recommend_tools=Mock(side_effect=FileNotFoundError())
     monkeypatch.setitem(sys.modules,'tool_rec',package);monkeypatch.setitem(sys.modules,'tool_rec.recommend',module)

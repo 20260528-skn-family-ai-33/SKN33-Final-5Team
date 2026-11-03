@@ -3,10 +3,20 @@ name: Deploy A4B to EC2
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - .github/workflows/deploy.yml
+      - scripts/deploy-a4b-ec2.sh
+      - scripts/a4b-ssm-command.sh
+      - docs/a4b-automatic-deployment.md
   workflow_dispatch:
     inputs:
+      operation:
+        description: Deploy a branch or restore the version saved before testing
+        type: choice
+        default: deploy
+        options: [deploy, restore]
       branch:
-        description: Branch in this repository to deploy to the live EC2 (main restores production)
+        description: Branch to deploy (ignored for restore)
         required: true
         default: main
         type: string
@@ -20,7 +30,7 @@ concurrency:
 
 jobs:
   verify-and-build:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.operation != 'restore'
     runs-on: ubuntu-latest
     outputs:
       commit: ${{ steps.source.outputs.commit }}
@@ -79,7 +89,7 @@ jobs:
           overwrite: true
 
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.operation != 'restore'
     needs: verify-and-build
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -128,13 +138,18 @@ jobs:
         shell: bash
         env:
           IMAGE: ${{ steps.publish.outputs.image }}
+          DEPLOY_BRANCH: ${{ inputs.branch || 'main' }}
         run: |
           set -euo pipefail
           [[ "$INSTANCE_ID" =~ ^i-[0-9a-f]+$ ]]
           [[ "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+$ ]]
           [[ "$IMAGE" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+          mode=production
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$DEPLOY_BRANCH" != main ]]; then
+            mode=test
+          fi
           payload=$(base64 -w 0 deployment/scripts/deploy-a4b-ec2.sh)
-          remote="printf '%s' '$payload' | base64 -d | bash -s -- '$IMAGE' '$PUBLIC_URL'"
+          remote="printf '%s' '$payload' | base64 -d | bash -s -- '$IMAGE' '$PUBLIC_URL' '$mode'"
           params=$(jq -cn --arg cmd "$remote" '{commands:[$cmd],executionTimeout:["900"]}')
           command_id=$(aws ssm send-command --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript --parameters "$params" \
@@ -155,3 +170,31 @@ jobs:
           done
           echo "No terminal SSM status for command $command_id" >&2
           exit 1
+
+  restore:
+    if: github.ref == 'refs/heads/main' && inputs.operation == 'restore'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-northeast-2
+      INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
+      PUBLIC_URL: ${{ vars.A4B_PUBLIC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Restart the saved production container
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+$ ]]
+          payload=$(base64 -w 0 scripts/deploy-a4b-ec2.sh)
+          bash scripts/a4b-ssm-command.sh "printf '%s' '$payload' | base64 -d | bash -s -- restore '$PUBLIC_URL'"

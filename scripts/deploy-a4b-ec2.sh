@@ -7,7 +7,7 @@ image=${1:?ECR image or restore required}
 public_url=${2:?Public HTTPS URL required}
 mode=${3:-production}
 [[ "$mode" == production || "$mode" == test ]]
-[[ "$image" == restore || "$image" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+[[ "$image" == restore || "$image" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:(verified-[0-9a-f]{40}|[0-9a-f]{40}-[0-9]+-[0-9]+)$ ]]
 [[ "$public_url" =~ ^https://[a-z0-9.-]+$ ]]
 host=${public_url#https://}
 app=a4b-jhd-aws
@@ -97,9 +97,11 @@ if "EASYFLOW_PUBLIC_URL=" + sys.argv[1] not in values or "PORT=3041" not in valu
 print("\n".join(values))
 ' "$public_url" > "$env_file"
 
-    registry=${image%%/*}
-    aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry"
-    docker pull "$image"
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+        registry=${image%%/*}
+        aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry"
+        docker pull "$image"
+    fi
     new_id=$(docker create --network host --restart unless-stopped --env-file "$env_file" "${mount_args[@]}" "$image")
     if [[ "$mode" == test && -z "$baseline" ]]; then
         printf '%s\n' "$old_id" > "$baseline_file.tmp"
@@ -124,7 +126,15 @@ for ((attempt=0; attempt<30; attempt++)); do
         # Keep the immediate rollback container and any pre-test baseline.
         while IFS= read -r previous; do
             [[ -z "$previous" || "$previous" == "$app-previous-${old_id:0:12}" || "$previous" == "$app-previous-${baseline:0:12}" ]] && continue
-            docker rm "$previous" >/dev/null || echo "Could not remove older rollback container: $previous" >&2
+            previous_image=$(docker inspect -f '{{.Config.Image}}' "$previous") || continue
+            if ! docker rm "$previous" >/dev/null; then
+                echo "Could not remove older rollback container: $previous" >&2
+                continue
+            fi
+            # Docker refuses removal when a container still references the image.
+            if [[ "$previous_image" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:verified-[0-9a-f]{40}$ ]]; then
+                docker image rm "$previous_image" >/dev/null 2>&1 || true
+            fi
         done < <(docker ps -a --filter status=exited --format '{{.Names}}' | awk '/^a4b-jhd-aws-previous-[0-9a-f]+$/')
         exit 0
     fi

@@ -200,9 +200,9 @@ def make_verification_node(storage, verifier=None, mode=None):
             result = dict(request_id=request_id, route='manual_review', execution_allowed=False,
                           model_output=None, findings=[dict(code='integration_contract_error', severity='review',
                           detail='검증 입력 계약을 확인하세요: ' + str(error)[:400])], error_code='integration_contract_error')
-        storage.db.execute('CREATE TABLE IF NOT EXISTS builder_verifications '
-                           '(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, input_json TEXT, result_json TEXT NOT NULL)')
-        storage.db.execute('INSERT INTO builder_verifications VALUES(?,?,?,?)',
+        storage.ensure_schema('CREATE TABLE IF NOT EXISTS builder_verifications '
+                              '(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, input_json TEXT, result_json TEXT NOT NULL)')
+        storage.db.execute('INSERT INTO builder_verifications({wsc}id,session_id,input_json,result_json) VALUES({wsv}?,?,?,?)',
                            (request_id, state['session_id'], payload.model_dump_json() if payload else None,
                             json.dumps(result, ensure_ascii=False)))
         storage.db.commit()

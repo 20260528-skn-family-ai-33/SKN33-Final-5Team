@@ -1,11 +1,11 @@
-"""Final human decisions share A4B's SQLite database and immutable run snapshots."""
+"""Final human decisions share A4B's business-data database and immutable run snapshots."""
 import csv,io,json
 from infrastructure.persistence.ids import now
 from verification.reply_review.state import collect_reviews
 
 def decorate_run(storage,run):
     reviews=collect_reviews(run.get('outputs',{}))
-    decisions={row[0]:json.loads(row[1]) for row in storage.db.execute('SELECT review_id,json FROM reply_review_decisions WHERE run_id=?',(run['id'],))}
+    decisions={row[0]:json.loads(row[1]) for row in storage.db.execute('SELECT review_id,json FROM reply_review_decisions WHERE {ws} AND run_id=?',(run['id'],))}
     run['reviews']=[{**r,'decision':decisions.get(r['id'])} for r in reviews]
     run['approval_status']=('pending' if any(r['id'] not in decisions for r in reviews) else 'decided') if reviews else None
     return run
@@ -16,7 +16,7 @@ def decide(storage,run_id,review_id,decision,edited_reply):
     edited_reply=edited_reply.strip()
     if decision=='approve' and not edited_reply:raise ValueError('승인할 응대문을 입력하세요.')
     if decision=='reject':edited_reply=''
-    storage.db.execute('BEGIN IMMEDIATE')
+    storage.begin_write()
     try:
         run=storage.test(run_id)
         if run['status']!='succeeded':raise ValueError('검수에 성공한 실행만 승인·거절할 수 있습니다.')
@@ -27,7 +27,7 @@ def decide(storage,run_id,review_id,decision,edited_reply):
             if previous['decision']!=decision or previous['edited_reply']!=edited_reply:raise ValueError('이미 결정된 응대입니다. 새 실행으로 다시 검수하세요.')
         else:
             result={'decision':decision,'edited_reply':edited_reply,'decided_at':now()}
-            storage.db.execute('INSERT INTO reply_review_decisions VALUES(?,?,?)',(run_id,review_id,json.dumps(result,ensure_ascii=False)))
+            storage.db.execute('INSERT INTO reply_review_decisions({wsc}run_id,review_id,json) VALUES({wsv}?,?,?)',(run_id,review_id,json.dumps(result,ensure_ascii=False)))
         storage.db.commit()
     except Exception:
         storage.db.rollback();raise
@@ -40,7 +40,7 @@ def approved_csv(storage,agent_id):
     def cell(value):
         text=str(value if value is not None else '')
         return "'"+text if text.lstrip().startswith(('=','+','-','@','\t','\r')) else text
-    rows=storage.db.execute('SELECT t.json,d.review_id,d.json FROM reply_review_decisions d JOIN agent_tests t ON t.id=d.run_id WHERE t.agent_id=? ORDER BY d.rowid',(agent_id,)).fetchall()
+    rows=storage.db.execute('SELECT t.json,d.review_id,d.json FROM reply_review_decisions d JOIN agent_tests t ON {ws:t} AND t.id=d.run_id WHERE {ws:d} AND t.agent_id=? ORDER BY d.{seq}',(agent_id,)).fetchall()
     for raw,id,decision_json in rows:
         decision=json.loads(decision_json)
         if decision['decision']!='approve':continue

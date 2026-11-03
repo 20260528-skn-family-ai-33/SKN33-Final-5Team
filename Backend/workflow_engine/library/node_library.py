@@ -50,8 +50,7 @@ class NodeSpec(BaseModel):
         return self
 
 def init(storage):
-    storage.db.execute('CREATE TABLE IF NOT EXISTS reusable_nodes(id TEXT NOT NULL,version INTEGER NOT NULL,json TEXT NOT NULL,PRIMARY KEY(id,version))')
-    storage.db.commit()
+    storage.ensure_schema('CREATE TABLE IF NOT EXISTS reusable_nodes(id TEXT NOT NULL,version INTEGER NOT NULL,json TEXT NOT NULL,PRIMARY KEY(id,version))')
 
 def get(storage, ref):
     if not re.fullmatch(r'[0-9a-f-]{36}:[1-9][0-9]{0,5}', ref or ''):
@@ -60,13 +59,13 @@ def get(storage, ref):
         if default['ref']==ref:return deepcopy(default)
     init(storage)
     id,version=ref.rsplit(':',1)
-    row=storage.db.execute('SELECT json FROM reusable_nodes WHERE id=? AND version=?',(id,int(version))).fetchone()
+    row=storage.db.execute('SELECT json FROM reusable_nodes WHERE {ws} AND id=? AND version=?',(id,int(version))).fetchone()
     if not row: raise ValueError('저장된 노드 버전을 찾지 못했습니다.')
     return json.loads(row[0])
 
 def list_nodes(storage):
     init(storage)
-    return [json.loads(r[0]) for r in storage.db.execute('SELECT json FROM reusable_nodes n WHERE version=(SELECT MAX(version) FROM reusable_nodes WHERE id=n.id) ORDER BY rowid DESC')]
+    return [json.loads(r[0]) for r in storage.db.execute('SELECT json FROM reusable_nodes n WHERE {ws:n} AND version=(SELECT MAX(version) FROM reusable_nodes WHERE {ws} AND id=n.id) ORDER BY {seq} DESC')]
 
 def save(storage, raw, id=None, base_version=0):
     spec=NodeSpec.model_validate(raw).model_dump()
@@ -76,12 +75,12 @@ def save(storage, raw, id=None, base_version=0):
     if id and not re.fullmatch(r'[0-9a-f-]{36}',id): raise ValueError('노드 ID를 확인하세요.')
     if id in {n['id'] for n in default_nodes()}:raise ValueError('기본 노드는 새 노드로 복사해 저장하세요.')
     id=id or uid()
-    storage.db.execute('BEGIN IMMEDIATE')
+    storage.begin_write()
     try:
-        version=storage.db.execute('SELECT MAX(version) FROM reusable_nodes WHERE id=?',(id,)).fetchone()[0] or 0
+        version=storage.db.execute('SELECT MAX(version) FROM reusable_nodes WHERE {ws} AND id=?',(id,)).fetchone()[0] or 0
         if version!=base_version: raise ValueError('노드가 다른 요청에서 변경됐습니다. 최신 버전을 다시 열어주세요.')
         snapshot={'id':id,'version':version+1,'ref':f'{id}:{version+1}','spec':spec,'saved_at':now()}
-        storage.db.execute('INSERT INTO reusable_nodes VALUES(?,?,?)',(id,version+1,json.dumps(snapshot,ensure_ascii=False)))
+        storage.db.execute('INSERT INTO reusable_nodes({wsc}id,version,json) VALUES({wsv}?,?,?)',(id,version+1,json.dumps(snapshot,ensure_ascii=False)))
         storage.db.commit()
         return snapshot
     except Exception:
@@ -154,6 +153,6 @@ def persist_proposals(storage,snapshots):
     # Called inside save_agent's transaction, with schema initialized beforehand.
     for snapshot in snapshots:
         if snapshot.get('origin')!='proposed':continue
-        previous=storage.db.execute('SELECT json FROM reusable_nodes WHERE id=? AND version=?',(snapshot['id'],snapshot['version'])).fetchone()
+        previous=storage.db.execute('SELECT json FROM reusable_nodes WHERE {ws} AND id=? AND version=?',(snapshot['id'],snapshot['version'])).fetchone()
         if previous and json.loads(previous[0])['spec']!=snapshot['spec']:raise ValueError('이미 저장된 에이전트 노드 버전과 초안이 다릅니다.')
-        storage.db.execute('INSERT OR IGNORE INTO reusable_nodes VALUES(?,?,?)',(snapshot['id'],snapshot['version'],json.dumps(snapshot,ensure_ascii=False)))
+        storage.db.execute('INSERT INTO reusable_nodes({wsc}id,version,json) VALUES({wsv}?,?,?) ON CONFLICT DO NOTHING',(snapshot['id'],snapshot['version'],json.dumps(snapshot,ensure_ascii=False)))

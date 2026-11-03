@@ -13,7 +13,7 @@ def save_node(c):
     data=c.data
     return {'node':save(c.storage,data['spec'],data.get('id'),data.get('base_version',0))}
 
-def catalog(c):return {'tools':TOOLS,'business_tool_count':56,'control_compatibility_count':6,'engine':{'conversation':'deepagents','routing':'langgraph','storage':'sqlite'}}
+def catalog(c):return {'tools':TOOLS,'business_tool_count':56,'control_compatibility_count':6,'engine':{'conversation':'deepagents','routing':'langgraph','storage':c.storage.dialect}}
 
 def agents(c):return {'agents':c.storage.agents()}
 

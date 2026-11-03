@@ -42,6 +42,9 @@ COPY Backend/infrastructure/ /app/Backend/infrastructure/
 COPY Backend/contracts/ /app/Backend/contracts/
 # docs/ is not copied: the server and workers never read it (examples serve tests and dev scripts).
 COPY scripts/run-deferred-verifications.py /app/scripts/run-deferred-verifications.py
+# Business-data PostgreSQL migrations and the one-off SQLite import, run by operators only.
+COPY scripts/apply-builder-migrations.py scripts/migrate-sqlite-to-postgres.py /app/scripts/
+COPY infrastructure/db/migrations/ /app/infrastructure/db/migrations/
 # Fail the build if any registered tool's executor is missing from the image (a broad
 # .dockerignore rule once dropped workflow_engine/executors/output).
 RUN cd /app/Backend && /app/Backend/.venv-agent/bin/python -c "import importlib; from workflow_engine.catalog.registry import TOOLS; [importlib.import_module(t['module_path'].split(':')[0]) for t in TOOLS]; print(len(TOOLS), 'executors importable')"

@@ -32,6 +32,11 @@ services:
       A4B_DATABASE_CA_FILE: ${A4B_DATABASE_CA_FILE:-}
       A4B_DATABASE_TLS_SERVER_NAME: ${A4B_DATABASE_TLS_SERVER_NAME:-}
       A4B_AUTH_SESSION_SECONDS: ${A4B_AUTH_SESSION_SECONDS:-28800}
+      # Business data: sqlite (local default) or postgres (RDS, same A4B_DATABASE_* settings as above).
+      # postgres needs scripts/apply-builder-migrations.py first; see README "업무 데이터 저장소".
+      A4B_STORAGE: ${A4B_STORAGE:-sqlite}
+      A4B_WORKER_MAX_CONCURRENCY: ${A4B_WORKER_MAX_CONCURRENCY:-12}
+      A4B_WORKER_CONTROL_CONCURRENCY: ${A4B_WORKER_CONTROL_CONCURRENCY:-4}
       A4B_MAIN_PROVIDER: ${A4B_MAIN_PROVIDER:-ollama}
       A4B_MAIN_BASE_URL: ${A4B_MAIN_BASE_URL:-${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}/v1}
       A4B_MAIN_API_KEY: ${A4B_MAIN_API_KEY:-}
@@ -71,6 +76,26 @@ services:
         target: /app/ml-bundle
         read_only: true
     restart: unless-stopped
+
+  # Optional disposable PostgreSQL for storage tests only. Not started by `docker compose up`:
+  #   docker compose --profile test-db up -d postgres-test
+  #   A4B_TEST_DATABASE_URL=postgresql://postgres:a4b-test@127.0.0.1:55432/a4b_test npm run test:python
+  # Data lives in tmpfs and disappears when the container stops.
+  postgres-test:
+    profiles: ["test-db"]
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_PASSWORD: a4b-test
+      POSTGRES_DB: a4b_test
+    ports:
+      - "127.0.0.1:${A4B_TEST_DB_PORT:-55432}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d a4b_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
 volumes:
   a4b-data:

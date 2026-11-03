@@ -4,7 +4,7 @@ import base64
 from pathlib import Path
 from typing import TypedDict
 from langgraph.graph import StateGraph,START,END
-from infrastructure.persistence.checkpoints import checkpoint_connection, sqlite_checkpointer
+from infrastructure.persistence.checkpoints import checkpoint_connection, checkpointer
 from langgraph.types import Command
 from infrastructure.llm.model_factory import create_chat_model
 
@@ -108,7 +108,7 @@ def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inh
         if node['tool']=='condition':
             graph.add_conditional_edges(node['id'],lambda s,id=node['id']:'yes' if s['outputs'][id]['decision'] else 'no',{e['branch']:e['target'] for e in edges})
         else:graph.add_edge(node['id'],edges[0]['target'] if edges else END)
-    return graph.compile(checkpointer=True if inherit_checkpoint else sqlite_checkpointer(connection)),connection
+    return graph.compile(checkpointer=True if inherit_checkpoint else checkpointer(connection)),connection
 
 def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answer=None,executor=execute_node,llm=None,agent_snapshot=None,forced_run_id=None,run_tags=None,reply_draft=None,retry=False,execution_token=None):
     if run_id:

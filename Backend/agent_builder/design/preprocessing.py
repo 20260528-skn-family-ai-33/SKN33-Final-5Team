@@ -52,8 +52,8 @@ def adapt_example(row):
 
 class DatasetStore:
     def __init__(self,storage):
-        self.db=storage.db
-        self.db.executescript('''
+        self.storage=storage;self.db=storage.db
+        storage.ensure_schema('''
         CREATE TABLE IF NOT EXISTS preprocessing_batches(id TEXT PRIMARY KEY,source_path TEXT NOT NULL,contract_version TEXT NOT NULL,provenance TEXT NOT NULL,human_review TEXT NOT NULL,summary_json TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS preprocessing_examples(batch_id TEXT NOT NULL,example_id TEXT NOT NULL,scenario_group TEXT NOT NULL,split TEXT NOT NULL,content_hash TEXT NOT NULL,raw_json TEXT NOT NULL,clean_json TEXT NOT NULL,target_json TEXT NOT NULL,adapted_json TEXT NOT NULL,compatibility TEXT NOT NULL,issues_json TEXT NOT NULL,PRIMARY KEY(batch_id,example_id),UNIQUE(batch_id,content_hash),FOREIGN KEY(batch_id) REFERENCES preprocessing_batches(id));
         CREATE INDEX IF NOT EXISTS preprocessing_split ON preprocessing_examples(batch_id,split,compatibility);
@@ -84,11 +84,11 @@ class DatasetStore:
         from collections import Counter
         summary={'raw_rows':len(rows),'clean_rows':len(examples),'duplicates_removed':duplicates,'compatibility':dict(Counter(e[4]['status'] for e in examples)),'split_rows':dict(Counter(e[2] for e in examples)),'cross_split_group_overlap':0,'actual_llm_runs':0,'human_review':'pending','provenance':'synthetic','batch_id':batch}
         try:
-            self.db.execute('BEGIN IMMEDIATE')
-            self.db.execute('INSERT INTO preprocessing_batches VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',(batch,str(directory),'workflow-draft-v0.1','synthetic','pending',json.dumps(summary,ensure_ascii=False)))
+            self.storage.begin_write()
+            self.db.execute('INSERT INTO preprocessing_batches({wsc}id,source_path,contract_version,provenance,human_review,summary_json) VALUES({wsv}?,?,?,?,?,?) ON CONFLICT({wsc}id) DO NOTHING',(batch,str(directory),'workflow-draft-v0.1','synthetic','pending',json.dumps(summary,ensure_ascii=False)))
             for clean,raw,split,fingerprint,adapted in examples:
                 dump=lambda v:json.dumps(v,ensure_ascii=False)
-                self.db.execute('INSERT INTO preprocessing_examples VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(batch_id,example_id) DO NOTHING',(batch,clean['id'],clean['scenario_group'],split,fingerprint,dump(raw),dump(clean),dump(clean['target']),dump(adapted),adapted['status'],dump(adapted['issues'])))
+                self.db.execute('INSERT INTO preprocessing_examples({wsc}batch_id,example_id,scenario_group,split,content_hash,raw_json,clean_json,target_json,adapted_json,compatibility,issues_json) VALUES({wsv}?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT({wsc}batch_id,example_id) DO NOTHING',(batch,clean['id'],clean['scenario_group'],split,fingerprint,dump(raw),dump(clean),dump(clean['target']),dump(adapted),adapted['status'],dump(adapted['issues'])))
             self.db.commit()
         except Exception:self.db.rollback();raise
         return summary

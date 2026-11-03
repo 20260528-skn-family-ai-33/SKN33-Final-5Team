@@ -13,10 +13,9 @@ def public_job(job):
 
 
 def initialize(storage):
-    storage.db.execute('''CREATE TABLE IF NOT EXISTS builder_tool_gap_jobs(
+    storage.ensure_schema('''CREATE TABLE IF NOT EXISTS builder_tool_gap_jobs(
         id TEXT PRIMARY KEY, session_id TEXT NOT NULL, decision_id TEXT NOT NULL UNIQUE,
         input_sha256 TEXT NOT NULL, json TEXT NOT NULL)''')
-    storage.db.commit()
 
 
 def lease_seconds():
@@ -30,7 +29,7 @@ def claim(storage, state, session, input_sha256):
     if not isinstance(input_sha256, str) or not re.fullmatch('[a-f0-9]{64}', input_sha256):
         raise ValueError('검토 명세와 생성 설정의 해시를 확인하세요.')
     initialize(storage)
-    storage.db.execute('BEGIN IMMEDIATE')
+    storage.begin_write()
     try:
         # Re-read inside the transaction, not the stale session passed by the caller.
         expected_revision = session['revision']
@@ -40,7 +39,7 @@ def claim(storage, state, session, input_sha256):
         intent = creation_intent(state, session)
         if intent is None:
             raise ValueError('현재 요청의 새 도구 제작 선택이 필요합니다.')
-        old = storage.db.execute('SELECT json,input_sha256 FROM builder_tool_gap_jobs WHERE decision_id=?',
+        old = storage.db.execute('SELECT json,input_sha256 FROM builder_tool_gap_jobs WHERE {ws} AND decision_id=?',
                                  (intent['decision_id'],)).fetchone()
         if old:
             if old[1] != input_sha256:
@@ -52,7 +51,7 @@ def claim(storage, state, session, input_sha256):
                'state_fingerprint': intent['state_fingerprint'], 'revision': intent['revision'],
                'input_sha256': input_sha256, 'status': 'running', 'created_at': now(),
                'result': None, 'lease_token':uid(), 'lease_expires_at':time.time()+lease_seconds(), 'workflow_execution_allowed': False, 'automatic_registration': False}
-        storage.db.execute('INSERT INTO builder_tool_gap_jobs VALUES(?,?,?,?,?)',
+        storage.db.execute('INSERT INTO builder_tool_gap_jobs({wsc}id,session_id,decision_id,input_sha256,json) VALUES({wsv}?,?,?,?,?)',
             (job['id'], session['id'], intent['decision_id'], input_sha256, json.dumps(job, ensure_ascii=False)))
         storage.db.commit()
         return {'claimed': True, 'job': public_job(job), 'lease_token':job['lease_token']}
@@ -63,9 +62,9 @@ def claim(storage, state, session, input_sha256):
 
 def finish(storage, state, session, job_id, result, lease_token=None):
     initialize(storage)
-    storage.db.execute('BEGIN IMMEDIATE')
+    storage.begin_write()
     try:
-        row = storage.db.execute('SELECT json FROM builder_tool_gap_jobs WHERE id=? AND session_id=?', (job_id, session['id'])).fetchone()
+        row = storage.db.execute('SELECT json FROM builder_tool_gap_jobs WHERE {ws} AND id=? AND session_id=?', (job_id, session['id'])).fetchone()
         if not row:
             raise ValueError('현재 대화의 도구 제작 작업을 찾지 못했습니다.')
         job = json.loads(row[0])
@@ -99,7 +98,7 @@ def finish(storage, state, session, job_id, result, lease_token=None):
             storage.db.commit()
             return public_job(job)
         job.update(status=status, result=result, finished_at=now(), current_state_revalidated=current)
-        storage.db.execute('UPDATE builder_tool_gap_jobs SET json=? WHERE id=?', (json.dumps(job, ensure_ascii=False), job_id))
+        storage.db.execute('UPDATE builder_tool_gap_jobs SET json=? WHERE {ws} AND id=?', (json.dumps(job, ensure_ascii=False), job_id))
         storage.db.commit()
         return public_job(job)
     except Exception:
@@ -109,29 +108,28 @@ def finish(storage, state, session, job_id, result, lease_token=None):
 
 def current_job(storage, state, session):
     # Read-only before any job exists; session polling does not migrate schemas.
-    exists = storage.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='builder_tool_gap_jobs'").fetchone()
-    if not exists:
+    if not storage.db.table_exists('builder_tool_gap_jobs'):
         return None
     intent = creation_intent(state, session)
     if not intent:
         return None
-    row = storage.db.execute('SELECT json FROM builder_tool_gap_jobs WHERE session_id=? AND decision_id=?',
+    row = storage.db.execute('SELECT json FROM builder_tool_gap_jobs WHERE {ws} AND session_id=? AND decision_id=?',
                              (session['id'], intent['decision_id'])).fetchone()
     return public_job(json.loads(row[0])) if row else None
 
 
 def recover(storage,session):
     initialize(storage)
-    storage.db.execute('BEGIN IMMEDIATE')
+    storage.begin_write()
     try:
         changed=[]
-        rows=storage.db.execute('SELECT id,json FROM builder_tool_gap_jobs WHERE session_id=?',(session['id'],)).fetchall()
+        rows=storage.db.execute('SELECT id,json FROM builder_tool_gap_jobs WHERE {ws} AND session_id=?',(session['id'],)).fetchall()
         for identifier,text in rows:
             job=json.loads(text)
             if job['status']=='running' and job.get('lease_expires_at',0)<time.time():
                 job.update(status='interrupted',finished_at=now(),current_state_revalidated=False,
                            recovery_reason='제작 작업 제한 시간 초과. 새 선택 후 재시도 필요.')
-                storage.db.execute('UPDATE builder_tool_gap_jobs SET json=? WHERE id=?',(json.dumps(job,ensure_ascii=False),identifier))
+                storage.db.execute('UPDATE builder_tool_gap_jobs SET json=? WHERE {ws} AND id=?',(json.dumps(job,ensure_ascii=False),identifier))
                 changed.append(public_job(job))
         storage.db.commit()
         return {'recovered':changed,'automatic_retry':False}

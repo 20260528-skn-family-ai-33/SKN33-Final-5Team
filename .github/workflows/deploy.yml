@@ -1,0 +1,157 @@
+name: Deploy A4B to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch in this repository to deploy to the live EC2 (main restores production)
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a4b-ec2-production
+  cancel-in-progress: false
+
+jobs:
+  verify-and-build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Select the source branch
+        id: ref
+        shell: bash
+        env:
+          DEPLOY_BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            ref="$GITHUB_SHA"
+          else
+            git check-ref-format "refs/heads/$DEPLOY_BRANCH"
+            ref="refs/heads/$DEPLOY_BRANCH"
+          fi
+          printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+          persist-credentials: false
+      - name: Record the commit to test and deploy
+        id: source
+        run: printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - name: Set up Python workers for integration tests
+        run: |
+          bash Backend/scripts/setup-agent-demo.sh
+          bash Backend/scripts/setup-document-analysis.sh
+      - run: npm run check
+      - run: npm test
+      - name: Build and package the tested commit
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ steps.source.outputs.commit }}
+        run: |
+          set -euo pipefail
+          docker build -t "a4b-ci:$DEPLOY_SHA" .
+          docker save "a4b-ci:$DEPLOY_SHA" | gzip > "$RUNNER_TEMP/a4b-image.tar.gz"
+      - name: Upload the image for the deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: a4b-image
+          path: ${{ runner.temp }}/a4b-image.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+          overwrite: true
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: verify-and-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-northeast-2
+      ECR_REPOSITORY: ${{ vars.A4B_ECR_REPOSITORY }}
+      INSTANCE_ID: ${{ vars.A4B_EC2_INSTANCE_ID }}
+      PUBLIC_URL: ${{ vars.A4B_PUBLIC_URL }}
+      DEPLOY_SHA: ${{ needs.verify-and-build.outputs.commit }}
+    steps:
+      - name: Check out the deployment script from main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: deployment
+          persist-credentials: false
+      - name: Download the tested image
+        uses: actions/download-artifact@v4
+        with:
+          name: a4b-image
+          path: ${{ runner.temp }}
+      - name: Load the tested image
+        run: docker load --input "$RUNNER_TEMP/a4b-image.tar.gz"
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Publish the tested commit to ECR
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
+          registry=${ECR_REPOSITORY%%/*}
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          image="$ECR_REPOSITORY:$DEPLOY_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker tag "a4b-ci:$DEPLOY_SHA" "$image"
+          docker push "$image"
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+      - name: Deploy over AWS Systems Manager
+        shell: bash
+        env:
+          IMAGE: ${{ steps.publish.outputs.image }}
+        run: |
+          set -euo pipefail
+          [[ "$INSTANCE_ID" =~ ^i-[0-9a-f]+$ ]]
+          [[ "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+$ ]]
+          [[ "$IMAGE" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+          payload=$(base64 -w 0 deployment/scripts/deploy-a4b-ec2.sh)
+          remote="printf '%s' '$payload' | base64 -d | bash -s -- '$IMAGE' '$PUBLIC_URL'"
+          params=$(jq -cn --arg cmd "$remote" '{commands:[$cmd],executionTimeout:["900"]}')
+          command_id=$(aws ssm send-command --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript --parameters "$params" \
+            --comment "Deploy A4B $DEPLOY_SHA" --query 'Command.CommandId' --output text)
+          for ((attempt=0; attempt<110; attempt++)); do
+            if state=$(aws ssm get-command-invocation --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" --query Status --output text 2>&1); then
+              case "$state" in
+                Success) echo "EC2 deployment and health checks passed"; exit 0 ;;
+                Pending|InProgress|Delayed|Cancelling) ;;
+                *) echo "EC2 deployment failed: $state (SSM command $command_id)" >&2; exit 1 ;;
+              esac
+            elif [[ "$state" != *InvocationDoesNotExist* ]]; then
+              printf '%s\n' "$state" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "No terminal SSM status for command $command_id" >&2
+          exit 1

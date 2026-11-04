@@ -295,6 +295,57 @@ def test_workspace_markers_expand_per_dialect():
     assert database.workspace_id(Path('data')) == 'local'
 
 
+def test_malformed_member_folder_cannot_join_the_shared_local_workspace(monkeypatch):
+    monkeypatch.delenv('A4B_STORAGE', raising=False)
+    assert database.workspace_id(Path('data') / 'users' / 'not-a-member-id') == 'local'
+    monkeypatch.setenv('A4B_STORAGE', 'postgres')
+    with pytest.raises(ValueError, match='UUID'):
+        database.workspace_id(Path('data') / 'users' / 'not-a-member-id')
+    assert database.workspace_id(Path('data')) == 'local'
+
+
+def test_reopening_storage_rewrites_only_changed_tools(backend, tmp_path, monkeypatch):
+    folder = workspace(tmp_path)
+    first = Storage(folder)
+    tool_id, version = first.db.execute('SELECT id,version FROM registered_tools WHERE {ws} ORDER BY id').fetchone()
+    first.close()
+    writes = []
+    kind = database.PostgresDatabase if backend == 'postgres' else database.SqliteDatabase
+    execute = kind.execute
+    def recording(self, sql, params=()):
+        if 'INTO registered_tools' in sql:
+            writes.append(params[0])
+        return execute(self, sql, params)
+    monkeypatch.setattr(kind, 'execute', recording)
+    Storage(folder).close()
+    assert writes == []
+    stale = Storage(folder)
+    stale.db.execute('UPDATE registered_tools SET module_path=? WHERE {ws} AND id=? AND version=?', ('old.module', tool_id, version))
+    stale.db.commit()
+    stale.close()
+    repaired = Storage(folder)
+    try:
+        assert writes == [tool_id]
+        row = repaired.db.execute('SELECT module_path FROM registered_tools WHERE {ws} AND id=? AND version=?', (tool_id, version)).fetchone()
+        assert row[0] != 'old.module'
+    finally:
+        repaired.close()
+
+
+def test_deferred_verification_covers_member_workspaces(backend, tmp_path):
+    from verification.deferred import workspace_directories
+    member = workspace(tmp_path)
+    Storage(member).close()
+    (tmp_path / 'users' / 'not-a-member-id').mkdir()
+    if backend == 'postgres':
+        assert workspace_directories(tmp_path) == [member]
+    else:
+        assert workspace_directories(tmp_path) == [member]
+        Storage(tmp_path).close()
+        assert workspace_directories(tmp_path) == [tmp_path, member]
+    assert workspace_directories(tmp_path / 'empty') == [tmp_path / 'empty']
+
+
 def load_migrator():
     spec = importlib.util.spec_from_file_location('migrate_sqlite_to_postgres', ROOT / 'scripts' / 'deploy' / 'migrate-sqlite-to-postgres.py')
     module = importlib.util.module_from_spec(spec)

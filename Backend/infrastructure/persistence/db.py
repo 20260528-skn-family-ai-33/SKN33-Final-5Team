@@ -38,7 +38,11 @@ def storage_kind(env=None):
 def workspace_id(directory):
     """data/users/<member ID>/ is that member's workspace; any other folder is 'local'."""
     path=Path(directory).resolve()
-    return path.name.lower() if path.parent.name=='users' and WORKSPACE.fullmatch(path.name) else 'local'
+    if path.parent.name!='users':return 'local'
+    if WORKSPACE.fullmatch(path.name):return path.name.lower()
+    # The shared schema must not merge a malformed member folder into the 'local' workspace.
+    if storage_kind()=='postgres':raise ValueError('회원 작업 공간 폴더 이름은 회원 ID(UUID)여야 합니다.')
+    return 'local'
 
 
 def enable_wal(connection, timeout=10, io_timeout=2):

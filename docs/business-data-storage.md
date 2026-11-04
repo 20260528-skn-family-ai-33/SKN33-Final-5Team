@@ -64,3 +64,5 @@ docker compose --profile test-db down
 - JSON 원문 열은 `jsonb`가 아니라 `json` 타입입니다. `jsonb`는 객체 키 순서를 바꾸는데, 표의 열 순서(`export_result`)와 검증 지문이 저장된 키 순서에 의존하기 때문입니다. `->>` 조회는 `json`에서도 됩니다.
 - 실행 lease의 프로세스 생존 확인(`pid`)은 같은 서버를 기준으로 합니다. 서버 여러 대가 같은 작업 공간을 실행하려면 이 부분을 먼저 보완해야 합니다.
 - Node 워크플로 엔진의 `easyflow.sqlite`(워크플로·연결 계정)와 S3 파일 저장 방식은 바뀌지 않았습니다.
+- `scripts/run/run-deferred-verifications.py`는 `data/users/*/` 회원 작업 공간을 모두 처리합니다. PostgreSQL에서는 행 수준 보안 때문에 다른 작업 공간을 조회할 수 없어 회원 폴더 이름으로 대상을 정하므로, 회원 폴더가 있으면 `local` 작업 공간은 처리하지 않습니다.
+- `postgres`에서 `data/users/` 아래 폴더 이름이 회원 ID(UUID) 형식이 아니면 `local` 작업 공간에 합치지 않고 오류를 냅니다.

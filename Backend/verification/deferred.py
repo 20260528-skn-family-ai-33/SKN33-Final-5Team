@@ -3,8 +3,19 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from infrastructure.persistence.db import storage_kind
+from infrastructure.persistence.db import WORKSPACE, storage_kind
 from verification.workflow import VerificationInput, verify
+
+
+def workspace_directories(data_dir):
+    """Folders to verify: every member workspace plus the login-free root when it has data."""
+    root = Path(data_dir)
+    users = root / 'users'
+    members = [folder for folder in sorted(users.iterdir()) if folder.is_dir() and WORKSPACE.fullmatch(folder.name)] if users.is_dir() else []
+    if storage_kind() == 'postgres':
+        # Row-level security hides other workspaces, so the member folders name them.
+        return members or [root]
+    return [folder for folder in [root, *members] if (folder / 'agent-builder.sqlite').exists()] or [root]
 
 
 def pending_ids(db):

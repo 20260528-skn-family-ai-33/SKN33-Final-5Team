@@ -107,6 +107,19 @@ jobs:
     needs: resolve-image
     if: needs.resolve-image.outputs.cached == 'false'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_PASSWORD: a4b-test
+          POSTGRES_DB: a4b_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d a4b_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -133,6 +146,15 @@ jobs:
         if: needs.resolve-image.outputs.target != 'frontend'
       - run: npm test
         if: needs.resolve-image.outputs.target != 'frontend'
+      - name: Test business-data storage on PostgreSQL
+        if: needs.resolve-image.outputs.target != 'frontend'
+        env:
+          A4B_TEST_DATABASE_URL: postgresql://postgres:a4b-test@127.0.0.1:55432/a4b_test
+        run: |
+          # A manually selected branch may not have the PostgreSQL store yet.
+          if [[ ! -f Backend/tests/infrastructure/test_storage_backends.py ]]; then exit 0; fi
+          (cd Backend && .venv-agent/bin/python -m pytest tests/infrastructure/test_storage_backends.py -q)
+          node --import tsx --test Backend/api/tests/storage-config.test.ts
       - name: Check and test frontend
         if: needs.resolve-image.outputs.target == 'frontend'
         run: |

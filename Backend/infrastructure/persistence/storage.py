@@ -31,7 +31,12 @@ class Storage:
         self.dialect=self.db.dialect
         try:
             self.ensure_schema(SCHEMA)
-            for tool in TOOLS:self.db.execute('INSERT INTO registered_tools({wsc}id,version,module_path,schema_json) VALUES({wsv}?,?,?,?) ON CONFLICT({wsc}id,version) DO UPDATE SET module_path=excluded.module_path,schema_json=excluded.schema_json',(tool['id'],tool['version'],tool['module_path'],json.dumps(tool,ensure_ascii=False)))
+            # A worker starts for every call (heartbeats too), so write only what actually changed.
+            saved={(row[0],row[1]):(row[2],row[3]) for row in self.db.execute('SELECT id,version,module_path,schema_json FROM registered_tools WHERE {ws}').fetchall()}
+            for tool in TOOLS:
+                schema=json.dumps(tool,ensure_ascii=False)
+                if saved.get((tool['id'],tool['version']))!=(tool['module_path'],schema):
+                    self.db.execute('INSERT INTO registered_tools({wsc}id,version,module_path,schema_json) VALUES({wsv}?,?,?,?) ON CONFLICT({wsc}id,version) DO UPDATE SET module_path=excluded.module_path,schema_json=excluded.schema_json',(tool['id'],tool['version'],tool['module_path'],schema))
             self.db.commit()
         except Exception:
             self.db.close()

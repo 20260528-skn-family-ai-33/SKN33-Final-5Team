@@ -146,12 +146,15 @@ jobs:
         if: needs.resolve-image.outputs.target != 'frontend'
       - run: npm test
         if: needs.resolve-image.outputs.target != 'frontend'
-      - name: Test receipt clarification
+      - name: Test receipt workflows and saved run results
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
         working-directory: Backend
         run: |
           tests=(tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py)
-          if [[ -f tests/workflow_engine/test_receipt_fields.py ]]; then tests+=(tests/workflow_engine/test_receipt_fields.py); fi
+          for suite in test_receipt_fields test_manual_run_inputs test_run_answer; do
+            path="tests/workflow_engine/${suite}.py"
+            if [[ -f "$path" ]]; then tests+=("$path"); fi
+          done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"
       - name: Test document parser routing and OCR coverage
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/documents/analysis/test_pipeline.py') != ''

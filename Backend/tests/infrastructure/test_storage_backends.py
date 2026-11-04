@@ -66,6 +66,14 @@ def test_member_design_checkpoints_and_failed_run_retry_in_existing_tables(postg
             store.add_asset({'id':asset_id,'name':'receipt.pdf','kind':'document','format':'pdf','hash':'a'*64,
                              'size_bytes':10,'original_path':'builder-originals/'+('a'*64)+'.pdf','created_at':now()},[])
             assert admin.execute('SELECT size_bytes FROM a4b.document_versions WHERE document_id=%s',(asset_id,)).fetchone()==(10,)
+            from service.handlers import uploads
+            deletion = SimpleNamespace(storage=store, data={'id': asset_id})
+            cleanup = uploads.prepare_delete(deletion)
+            assert cleanup['original'] == 'builder-originals/' + 'a' * 64 + '.pdf'
+            assert admin.execute('SELECT archived_at IS NOT NULL FROM a4b.documents WHERE id=%s AND created_by=%s',
+                                 (asset_id, member)).fetchone() == (True,)
+            assert uploads.prepare_delete(deletion) == cleanup
+            uploads.finish_delete(deletion)
             run={'id':uid(),'agent_id':sid,'agent_version':1,'request':'test','created_at':now(),'steps':[],
                  'config_snapshot':{'workflow':{'nodes':[{'id':'parse'}]}}}
             lifecycle = RunLifecycle(store)
@@ -149,6 +157,81 @@ def test_dialect_follows_setting(backend, tmp_path):
         assert store.dialect == backend
     finally:
         store.close()
+
+
+def test_upload_ownership_survives_failed_cleanup_and_retry(backend, tmp_path):
+    from service.dispatch import handle
+
+    alice, bob = workspace(tmp_path), workspace(tmp_path)
+    asset_id, other_id = uid(), uid()
+    # Identical legacy keys in different member folders still belong to different users.
+    original = 'builder-originals/' + 'a' * 64 + '.csv'
+    for folder, id, name in [(alice, asset_id, 'alice.csv'), (bob, other_id, 'bob.csv')]:
+        store = Storage(folder)
+        try:
+            store.add_asset({'id': id, 'name': name, 'original_path': original}, [])
+        finally:
+            store.close()
+
+    def call(folder, action, **data):
+        return handle({'directory': str(folder), 'action': action, **data})
+
+    assert [a['id'] for a in call(alice, 'assets')['assets']] == [asset_id]
+    assert [a['id'] for a in call(bob, 'assets')['assets']] == [other_id]
+    with pytest.raises(ValueError, match='찾을 수 없습니다'):
+        call(bob, 'asset_preview', id=asset_id)
+    assert call(bob, 'prepare_asset_delete', id=asset_id) == {}
+    assert call(alice, 'asset', id=asset_id)['asset']['name'] == 'alice.csv'
+
+    cleanup = call(alice, 'prepare_asset_delete', id=asset_id)
+    assert cleanup['original'] == original
+    # Failed S3 cleanup leaves the marker committed. A new worker must resume that exact cleanup.
+    call(bob, 'finish_asset_delete', id=asset_id)
+    [pending] = call(alice, 'assets')['assets']
+    assert pending['id'] == asset_id and pending['pending_delete']
+    assert call(alice, 'prepare_asset_delete', id=asset_id) == cleanup
+    call(alice, 'finish_asset_delete', id=asset_id)
+    assert call(alice, 'assets')['assets'] == []
+    assert call(alice, 'prepare_asset_delete', id=asset_id) == {}
+    assert call(bob, 'asset', id=other_id)['asset']['name'] == 'bob.csv'
+
+
+def test_reuse_and_named_upload_usages(backend, tmp_path):
+    from service.dispatch import handle
+
+    alice, bob = workspace(tmp_path), workspace(tmp_path)
+    store, asset, workflow_id = seed(alice)
+    try:
+        workflow_name = store.agent(workflow_id)['config']['name']
+        store.save_test({'id': uid(), 'agent_id': workflow_id, 'file_ids': [asset['id']]})
+    finally:
+        store.close()
+
+    def call(folder, action, **fields):
+        return handle({'action': action, 'directory': str(folder), **fields})
+
+    for member in (alice, bob):
+        session = call(member, 'new_session', model='test', credential_id=uid())
+        attachment = dict(id=session['id'], revision=0, asset_id=asset['id'])
+        if member == bob:
+            assert call(bob, 'assets')['assets'] == []
+            with pytest.raises(ValueError, match='찾을 수 없습니다'):
+                call(bob, 'attach_asset', **attachment)
+            continue
+        linked = call(alice, 'attach_asset', **attachment)
+        assert linked['file_ids'] == [asset['id']] and linked['resources'][0]['id'] == asset['id']
+        with pytest.raises(ValueError, match='대화가 변경'):
+            call(alice, 'attach_asset', **attachment)
+        with pytest.raises(ValueError, match='이미'):
+            call(alice, 'attach_asset', **{**attachment, 'revision': linked['revision']})
+        draft_id = session['id']
+
+    [row] = call(alice, 'assets')['assets']
+    assert {(u['kind'], u['name']) for u in row['usages'] if u['kind'] != 'draft'} == {
+        ('workflow', workflow_name), ('schedule', workflow_name), ('run', workflow_name)}
+    assert [u['id'] for u in row['usages'] if u['kind'] == 'draft'] == [draft_id]
+    with pytest.raises(ValueError, match=workflow_name):
+        call(alice, 'prepare_asset_delete', id=asset['id'])
 
 
 def test_session_revision_is_an_optimistic_lock(backend, tmp_path):

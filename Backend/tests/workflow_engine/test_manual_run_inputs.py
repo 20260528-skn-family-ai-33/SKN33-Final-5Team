@@ -21,6 +21,38 @@ def test_saved_legacy_table_plan_advertises_its_required_table(tmp_path):
         store.close()
 
 
+def test_deletion_cannot_leave_a_dangling_legacy_run_file(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from infrastructure.persistence.ids import uid
+    from infrastructure.persistence.storage import Storage
+    from service.handlers import uploads
+    from tests.design.test_builder import draft, initial
+    from workflow_engine.legacy_runtime import test_agent
+
+    store = Storage(tmp_path)
+    deleting = Storage(tmp_path)
+    try:
+        agent_id = store.save_agent({**initial(), 'draft': draft(), 'confirmed': True})
+        upload = store.add_asset({'id':uid(), 'name':'new.csv', 'format':'csv', 'kind':'table',
+                                  'columns':['id']}, [{'id':1}])
+        read = store.asset
+        def delete_after_read(identifier):
+            parsed = read(identifier)
+            delete = SimpleNamespace(storage=deleting, data={'id':identifier})
+            uploads.prepare_delete(delete)
+            uploads.finish_delete(delete)
+            return parsed
+        monkeypatch.setattr(store, 'asset', delete_after_read)
+        monkeypatch.setattr('workflow_engine.legacy_runtime.create_chat_model',
+                            lambda **_: pytest.fail('A deleted input must be rejected before model execution'))
+        with pytest.raises(ValueError, match='자료가 삭제'):
+            test_agent(store, agent_id, '', '', file_ids=[upload['id']])
+        assert store.tests(agent_id) == []
+    finally:
+        deleting.close()
+        store.close()
+
+
 def test_missing_document_and_wrong_replacement_are_rejected_before_execution(tmp_path):
     workflow = {'entry': 'read', 'nodes': [node('read', 'read_document')], 'edges': []}
     store, identifier, _ = saved(tmp_path, workflow)

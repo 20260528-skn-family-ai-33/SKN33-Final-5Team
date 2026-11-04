@@ -81,6 +81,10 @@ class BusinessRecords:
                 """, (asset['id'], bucket, f"app/v1/users/{self.member}/{asset['original_path']}", asset['hash'],
                       mimetypes.guess_type(asset['name'])[0] or 'application/octet-stream', asset['size_bytes']))
 
+    def archive_document(self, id):
+        self.connection.execute('UPDATE a4b.documents SET archived_at=now() WHERE id=%s AND created_by=%s',
+                                (id, self.member))
+
     def save_run(self, run):
         # A failed domain run is immutable. A retry starts a distinct physical
         # run and retains the original builder id for tracking across attempts.

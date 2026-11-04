@@ -109,6 +109,42 @@ def test_an_existing_receipt_goes_directly_to_fields(studio):
     only_question(act('message', content=REQUEST), 'receipt.fields')
 
 
+def test_library_receipt_follows_the_same_question_and_deletes_from_both_drafts(studio, tmp_path):
+    act, _ = studio
+    first = act('upload', asset=RECEIPT, rows=[])
+    asset_id = first['file_ids'][0]
+    def call(action, **fields):
+        return handle({'action': action, 'directory': str(tmp_path), **fields}, conversation=lambda _: {})
+    second = call('new_session', model='test', credential_id=uid())
+    waiting = call('message', id=second['id'], revision=0, content=REQUEST)
+    only_question(waiting, 'receipt.attachment')
+    reused = call('attach_asset', id=second['id'], revision=waiting['revision'], asset_id=asset_id)
+    only_question(reused, 'receipt.fields')
+    [asset] = call('assets')['assets']
+    assert {u['id'] for u in asset['usages']} == {first['id'], second['id']}
+    call('prepare_asset_delete', id=asset_id)
+    with pytest.raises(ValueError, match='삭제 중'):
+        call('attach_asset', id=first['id'], revision=first['revision'] + 1, asset_id=asset_id)
+    call('finish_asset_delete', id=asset_id)
+    for session in (first, second):
+        assert call('session', id=session['id'])['resources'] == []
+
+
+def test_deleted_receipt_is_detached_when_reopening_and_can_be_replaced(studio, tmp_path):
+    act, _ = studio
+    act('message', content=REQUEST)
+    session = act('upload', asset=RECEIPT, rows=[])
+    removed = session['resources'][0]['id']
+    for action in ('prepare_asset_delete', 'finish_asset_delete'):
+        handle({'action': action, 'id': removed, 'directory': str(tmp_path)})
+    reopened = act('session')
+    assert reopened['resources'] == [] and reopened['pending_questions'] == []
+    assert reopened['draft'] is None and reopened['revision'] == session['revision'] + 1
+    replaced = act('upload', asset={**RECEIPT, 'name': '새 영수증.png'}, rows=[])
+    only_question(replaced, 'receipt.fields')
+    assert [r['name'] for r in replaced['resources']] == ['새 영수증.png']
+
+
 def test_already_named_fields_are_passed_to_planning_with_attached_receipt(studio):
     act, planner_inputs = studio
     act('upload', asset=RECEIPT, rows=[])

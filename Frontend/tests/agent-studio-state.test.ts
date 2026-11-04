@@ -21,7 +21,7 @@ function harness(search='',stored:Record<string,string>={}){
  for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
  Object.defineProperty(c,'canStartRun',{get:()=>!!c.testText.trim()||!!c.selected?.config?.schedule});
  c.request=(path:string,body:any)=>{requests.push({path,body});return load(path,body);};createContext(c);
- runInContext(compile(['applyRunInputs','clearRunInputs','remember','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','upload','uploadRun','uploadSource','selectRun'].map(handler).join('\n')),c);
+ runInContext(compile(['applyRunInputs','clearRunInputs','remember','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun'].map(handler).join('\n')),c);
  return {c,storage,requests,load:(f:typeof load)=>{load=f;},mount:()=>runInContext(compile(restoreText),c),stop:()=>cleanup?.()};
 }
 test('explicit service overrides old conversation; persist selection only after successful load',async()=>{
@@ -111,7 +111,7 @@ for(const action of ['save','runTest','resumeRun','uploadRun'])test(`double ${ac
  const first=h.c[action]({name:'data.csv',size:5});await h.c[action]({name:'data.csv',size:5});assert.equal(h.requests.length,1);
  pending.resolve(action==='save'?{id:'draft',status:'saved',saved_agent_id:'A'}:action==='uploadRun'?{asset:{id:'file'}}:{id:'run'});await first;
 });
-for(const action of ['upload','uploadRun','uploadSource'])test(`${action} rejects oversized files before reading or sending`,async()=>{
+for(const action of ['attachResource','uploadRun','uploadSource'])test(`${action} rejects oversized files before reading or sending`,async()=>{
  const h=harness();h.c.selected={id:'A'};let reads=0;h.c.asBase64=async()=>{reads++;return '';};await h.c[action]({size:8*1024*1024+1});assert.equal(reads,0);assert.equal(h.requests.length,0);assert.match(h.c.error,/8MB/);
 });
 test('obsolete openAgent error cannot replace current view error',async()=>{

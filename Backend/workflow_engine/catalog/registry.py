@@ -46,7 +46,7 @@ PORTS = {
  'date_transform':({'text':'text'}, {'text':'text'}),
  'text_statistics':({'text':'text'}, {'records':'records'}),
  'finish':({'text':'text','artifact':'artifact'}, {'text':'text','artifact':'artifact'}),
- 'read_table':({'file_id':'file'}, {'table':'table'}),
+ 'read_table':({}, {'table':'table'}),
  'filter_sort':({'table':'table'}, {'table':'table'}),
  'write_result':({'table':'table'}, {'artifact':'artifact'}),
  'read_document':({}, {'documents':'documents'}),
@@ -54,7 +54,7 @@ PORTS = {
  'extract_information':({'documents':'documents'}, {'records':'records'}),
  'reply_review':({'documents':'documents','text':'text','table':'table'}, {'reviews':'reviews'}),
  'compose_answer':({'reviews':'reviews','documents':'documents','answer':'text'}, {'text':'text'}),
- 'export_result':({'records':'records','text':'text','documents':'documents','answer':'text'}, {'artifact':'artifact'}),
+ 'export_result':({'records':'records','text':'text','answer':'text'}, {'artifact':'artifact'}),
  'condition':({'table':'table','reviews':'reviews','records':'records','text':'text','answer':'text','documents':'documents'}, {'table':'table','reviews':'reviews','records':'records','text':'text','answer':'text','documents':'documents','decision':'boolean'}),
  'ask_user':({'records':'records','text':'text','documents':'documents'}, {'records':'records','text':'text','documents':'documents','answer':'text'}),
 }

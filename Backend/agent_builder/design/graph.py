@@ -49,7 +49,7 @@ def _timed_node(name, fn):
         return {**result, 'trace': trace}
     return run
 
-def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None):
+def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None,requirement_transport=None,requirement_mode=None):
     connection=checkpoint_connection(storage)
     saver=sqlite_checkpointer(connection)
     graph=StateGraph(BuilderState)
@@ -70,6 +70,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_node('await_capability',await_capability_node)
     graph.add_node('generation_gate',generation_gate)
     graph.add_node('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode)))
+    from agent_builder.design.requirement_ledger import make_requirement_check
+    graph.add_node('requirements',_timed_node('requirements',make_requirement_check(model,requirement_transport,requirement_mode,api_key=api_key)))
     planner=conversation or make_conversation(api_key,model)
     def guarded_plan(state):
         # A restored checkpoint can resume directly at this node, bypassing edges.
@@ -111,7 +113,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_conditional_edges('capability_check',lambda s:s['capability_route'],{'conditions':'condition_check','supervisor':'supervisor','stop':END,'await_capability':'await_capability'})
     graph.add_edge('await_capability','attachment_gate')
     graph.add_conditional_edges('generation_gate',lambda s:s['capability_generation_route'],{'generate':'conversation','recheck':'capability_check'})
-    graph.add_conditional_edges('condition_check',lambda s:s['condition_route'],{'conversation':'generation_gate','template_plan':'template_plan','supervisor':'supervisor','stop':END})
+    graph.add_conditional_edges('condition_check',lambda s:s['condition_route'],{'conversation':'requirements','template_plan':'requirements','supervisor':'supervisor','stop':END})
+    graph.add_conditional_edges('requirements',lambda s:s['requirement_route'],{'plan':'generation_gate','template':'template_plan','stop':END})
     graph.add_conditional_edges('template_plan',lambda s:s['condition_route'],{'audit':'condition_audit','stop':END})
     graph.add_edge('conversation','condition_audit');graph.add_edge('condition_audit','validate');graph.add_edge('validate','verification');graph.add_edge('verification','supervisor')
     graph.add_conditional_edges('supervisor',lambda s:s['route'],{'unsupported':'tool_gap','invalid':END,'repair':'generation_gate','await_input':'await_input','await_approval':'await_approval','save':'save'})

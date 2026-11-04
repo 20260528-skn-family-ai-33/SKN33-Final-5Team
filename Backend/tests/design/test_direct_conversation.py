@@ -173,7 +173,10 @@ def test_v2_decision_first_schema_keeps_public_contract(monkeypatch):
     assert context['source_quote_catalog']==[{'source_id':'user','quote':original['messages'][0]['content']}]
     from workflow_engine.catalog.registry import TOOLS
     assert {t['id'] for t in context['supported_tools']}=={t['id'] for t in TOOLS}
-    assert all({'id','name','description'} <= set(t) <= {'id','name','description','input_ports','output_ports','operation_contracts'} for t in context['supported_tools'])
+    assert all({'id','name','description'} <= set(t) <= {'id','name','description','input_ports','output_ports','operation_contracts','native_contract'} for t in context['supported_tools'])
+    read = next(t for t in context['supported_tools'] if t['id']=='read_table')
+    assert read['native_contract']['operation'] is None
+    assert read['native_contract']['output_ports'] == {'table':'table'}
     join=next(t for t in context['supported_tools'] if t['id']=='join_tables')
     assert any(c['id']=='join' and set(c['input_ports'])>={'left','right'} for c in join['operation_contracts'])
     assert validate_node({**original,**result})['status']=='ready'

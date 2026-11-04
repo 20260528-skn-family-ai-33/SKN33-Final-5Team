@@ -5,6 +5,12 @@ from workflow_engine.library.reusable_workflows import REVIEW_EXPORT_ERROR
 REVIEW_PORTS=('reviews','_reviews','_review_updates')
 
 
+def validate_export_inputs(inputs):
+    if ('records' in inputs and 'text' in inputs or
+            'records' not in inputs and 'text' in inputs and 'answer' in inputs):
+        raise ValueError('저장할 본문 입력이 여러 개입니다. 결과별로 export_result 노드를 나누세요. records와 answer는 추출 결과와 사용자 확인 답변으로 함께 저장할 수 있습니다.')
+
+
 def safe_cell(value):
     # Neutralize spreadsheet formulas on export; the record values stay original.
     if isinstance(value,(dict,list)):value=json.dumps(value,ensure_ascii=False)
@@ -35,6 +41,7 @@ def text_artifact(text,format):
 
 def execute(node,state,storage,config,llm):
     tool=node["tool"];settings=node["settings"];inputs={b["input"]:state["outputs"][b["node_id"]][b["output"]] for b in node["bindings"]}
+    validate_export_inputs(inputs)
     # Review candidates are unapproved; even a reused workflow that hides them in metadata must not export them.
     if any(state['outputs'][b['node_id']].get(port) for b in node['bindings'] for port in REVIEW_PORTS):
         raise ValueError(REVIEW_EXPORT_ERROR)

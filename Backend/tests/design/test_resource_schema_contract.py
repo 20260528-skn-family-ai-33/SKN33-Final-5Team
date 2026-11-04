@@ -46,6 +46,30 @@ def test_read_nodes_reject_wrong_resource_kind_and_unknown_file():
     document=node('read','read_document',file_ids=['unknown'])
     assert any('파일 ID' in x for x in workflow_errors({'entry':'read','nodes':[document],'edges':[]},['read_document'],resources))
 
+
+def test_native_operation_requires_explicit_contract_inspection(monkeypatch):
+    from workflow_engine.catalog.canonical import operation_variants as original
+    offered = []
+    def tracked(*args, **kwargs):
+        offered.append(set(args[2]) if len(args)>2 and args[2] is not None else None)
+        return original(*args, **kwargs)
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    monkeypatch.setattr('workflow_engine.catalog.canonical.operation_variants', tracked)
+    def factory(**kwargs):
+        class Agent:
+            def invoke(self, payload, config):
+                assert 'read_table' not in offered[0]
+                tools = {t.name:t for t in kwargs['tools']}
+                details = tools['inspect_tool'].invoke({'tool_id':'read_table'})
+                assert details['operation_contracts']
+                assert 'read_table' in offered[-1]
+                return {'structured_response':draft(questions=['실행할 업무를 알려주세요'])}
+        return Agent()
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', factory)
+    s = state([{'role':'user','content':'자료를 읽어줘'}])
+    s['resources'] = [{'id':'table-a','kind':'table','name':'a.csv','columns':['cost'],'profile':{}}]
+    make_conversation(None,'test',model_factory=lambda:object())(s)
+
 def test_invalid_edge_rejected_then_correct_edge_accepted():
     resources=[{'id':'table-a','kind':'table','columns':[]}]
     read=node('read','read_table',file_ids=['table-a'])

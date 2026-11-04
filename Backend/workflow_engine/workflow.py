@@ -58,6 +58,11 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
     # This compiler executes one active path, not parallel fan-out/join.
     for n in nodes:
         id=n['id'];tool=n['tool'];bindings=n['bindings'];settings=n['settings'];ins,outs=node_ports(n)
+        from workflow_engine.catalog.settings import validate_execution_settings
+        try:validate_execution_settings(n,operation=uses_operation(n))
+        except ValueError as error:
+            issues.append(id+': '+str(error))
+            continue
         if tool not in tool_ids:issues.append('노드의 도구가 연결 도구 목록에 없습니다: '+id)
         own_plan=settings.get('execution_plan')
         if tool!='filter_sort' and own_plan and (own_plan.get('filters') or own_plan.get('sort') or own_plan.get('duplicate_field')
@@ -71,6 +76,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
             if sorted(e['branch'] for e in outgoing[id])!=['no','yes']:issues.append('조건 노드는 yes/no 경로가 각각 하나 필요합니다: '+id)
             if not settings['condition_operator']:issues.append('분기 조건이 필요합니다: '+id)
         elif len(outgoing[id])>1 or any(e['branch']!='next' for e in outgoing[id]):issues.append('일반 노드는 다음 경로 하나만 연결할 수 있습니다: '+id)
+        if tool=='finish' and outgoing[id]:issues.append('종료 노드 뒤에는 작업을 연결할 수 없습니다: '+id)
         if len({b['input'] for b in bindings})!=len(bindings):issues.append('입력이 중복 연결되었습니다: '+id)
         for b in bindings:
             source=by.get(b['node_id'])
@@ -122,9 +128,14 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
             if reserved_field_issue(settings['fields']):issues.append(reserved_field_issue(settings['fields'])+': '+id)
         if tool=='ask_user' and not settings['question']:issues.append('확인 질문이 필요합니다: '+id)
         if tool=='export_result':
+            from workflow_engine.executors.output.export_result import validate_export_inputs
+            try:validate_export_inputs(supplied)
+            except ValueError as error:issues.append(id+': '+str(error))
             if not supplied.intersection({'records','text','answer'}):issues.append('저장할 records/text/answer 결과 입력이 필요합니다: '+id)
             if 'records' in supplied and settings['format'] not in ['csv','json']:issues.append('표 결과는 CSV/JSON을 선택하세요: '+id)
             if 'records' not in supplied and supplied.intersection({'text','answer'}) and settings['format'] not in ['markdown','json']:issues.append('텍스트 결과는 Markdown 또는 JSON을 선택하세요: '+id)
+        if tool=='write_result' and (settings.get('format') or (default_plan or {}).get('output_format')) not in (None,'csv','json'):
+            issues.append('표 결과는 CSV/JSON을 선택하세요: '+id)
         if tool in ['read_document','read_table']:
             lookup={r['id']:r for r in [*resources,*runtime_resources]}
             if any(f not in lookup for f in settings['file_ids']):issues.append('연결되지 않은 파일 ID가 있습니다: '+id+'. file_ids에는 노드 ID가 아닌 이번 대화에 연결된 자료의 실제 ID만 사용하세요.')

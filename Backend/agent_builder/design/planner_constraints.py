@@ -1,6 +1,7 @@
 """Generation-only native IDs/typed ports. Never rewrite a returned workflow."""
 from copy import deepcopy
 from workflow_engine.catalog.registry import PORTS, node_ports
+from agent_builder.design.native_settings import NATIVE_SETTINGS, decoded_resource_tools
 
 REQUIRED_INPUTS = {'filter_sort':{'table'}, 'write_result':{'table'}, 'aggregate_table':{'table'},
     'review_summary':{'reviews'}, 'search_document':{'documents'}, 'extract_information':{'documents'},
@@ -12,6 +13,33 @@ NODE_ID_PATTERN = '^[a-zA-Z][a-zA-Z0-9_-]{0,39}$'
 # keeps it last). A scoped grammar never offers their outputs as upstream inputs.
 # Register any new terminal tool here; producers are otherwise derived from PORTS.
 TERMINAL_TOOLS = ('finish',)
+
+
+def typed_filter_conditions(schema):
+    """Constrain constant-vs-column comparison without choosing user conditions."""
+    variants = []
+    base = schema['$defs']['FilterCondition']
+    for kind, label in [('number','number'), ('string','text'), ('boolean','boolean')]:
+        condition = deepcopy(base)
+        props = condition['properties']
+        props['value'] = {'type':kind}
+        props['value_type'] = {'type':'string', 'enum':[label]}
+        props['compare_field'] = {'type':'null'}
+        props['operator']['enum'] = (['eq','ne'] if kind=='boolean' else
+            ['eq','ne','lt','lte','gt','gte','contains'] if kind=='string' else ['eq','ne','lt','lte','gt','gte'])
+        variants.append(condition)
+    columns = deepcopy(base)
+    columns['properties']['value'] = {'type':'null'}
+    columns['properties']['compare_field'] = {'type':'string','minLength':1}
+    columns['properties']['operator']['enum'] = ['eq','ne','lt','lte','gt','gte','contains']
+    variants.append(columns)
+    unary = deepcopy(base)
+    unary['properties']['value'] = {'type':'null'}
+    unary['properties']['compare_field'] = {'type':'null'}
+    unary['properties']['operator']['enum'] = ['is_empty','not_empty']
+    variants.append(unary)
+    schema['$defs']['TypedFilterCondition'] = {'anyOf':variants}
+    schema['$defs']['ExecutionPlan']['properties']['filters']['items'] = {'$ref':'#/$defs/TypedFilterCondition'}
 
 
 def ready_table_slots(ledger):
@@ -79,6 +107,13 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
         if tool not in NATIVE_IDS:continue
         if allowed_tools is not None and tool not in allowed_tools:continue
         node=deepcopy(base);props=node['properties'];props['tool']={'type':'string','enum':[tool]}
+        # Native and operation executors have different settings and ports.
+        # An operation must use its own variant, never a native node's grammar.
+        settings = deepcopy(defs['NodeSettings'])
+        keys = (*NATIVE_SETTINGS[tool], 'node_ref')
+        settings['properties'] = {key: settings['properties'][key] for key in keys}
+        settings['required'] = list(keys)
+        props['settings'] = settings
         binding_variants=[]
         for port,kind in inputs.items():
             outputs=sorted(output_types.get(kind,set()))
@@ -102,7 +137,8 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
         key='NativeNode_'+tool;defs[key]=node;variants.append({'$ref':'#/$defs/'+key})
     if allowed_tools is None:
         from workflow_engine.catalog.canonical import operation_variants
-        for variant in operation_variants(base,defs['Binding']):
+        operations = set(PORTS) - decoded_resource_tools(resources)
+        for variant in operation_variants(base,defs['Binding'],operations):
             variant['properties']['id']={'type':'string','pattern':NODE_ID_PATTERN}
             variants.append(variant)
     defs['WorkflowNode']={'anyOf':variants}
@@ -152,6 +188,8 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
                 result['properties'][key]['maxItems']=0
             result['properties']['workflow']={'$ref':'#/$defs/WorkflowDefinition'}
             result['required']=list(dict.fromkeys([*result.get('required',[]),'workflow']))
+    if allowed_tools is None and slots is None:
+        typed_filter_conditions(result)
     return result
 
 

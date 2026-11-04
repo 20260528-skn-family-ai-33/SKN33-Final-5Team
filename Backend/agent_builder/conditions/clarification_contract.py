@@ -154,7 +154,11 @@ class ClarificationInput(BoundaryModel):
 
 
 def tool_catalog():
-    return [deepcopy({key:t[key] for key in ('id','version','description','input_ports','output_ports')}) for t in TOOLS]
+    from agent_builder.design.native_settings import NATIVE_SETTINGS
+    return [deepcopy({**{key:t[key] for key in ('id','version','description','input_ports','output_ports')},
+                      'native_settings':list(NATIVE_SETTINGS.get(t['id'],())),
+                      'operation_contract_fingerprint':hashlib.sha256(json.dumps(t.get('operation_contracts',[]),
+                          ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()}) for t in TOOLS]
 
 
 def catalog_fingerprint():

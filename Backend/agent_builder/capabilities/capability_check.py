@@ -20,11 +20,19 @@ _TASK_WORDS=re.compile(r'줘|주세요|해\s*줄|만들|정리|저장|보내|발
                        r'바꿔|변경|추가|대신|말고|필터|선별|제외|포함|파일|표|csv|json|엑셀|xlsx|예약|매일|매주',re.I)
 
 
+_WITHDRAWAL=re.compile(r'필요\s*없|빼|말고|없이|안\s*해|하지\s*마|하지\s*말|제외')
+
+
 def _short_reply(state):
     """A brief reply that names no new work: no digits, no request verb, at most 12 characters."""
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user:return False
     text=re.sub(r'[\s.!?~]+','',user[-1])
+    if _WITHDRAWAL.search(text):
+        return False  # "슬랙은 필요 없어" removes the refused action; it must be judged again (PR #28 review)
+    refused=[w for a in ((state.get('capability_assessment') or {}).get('missing_actions') or []) for w in re.findall(r'[가-힣A-Za-z]{2,}',a)]
+    if any(w in text for w in refused if w not in ('외부','기능','전송','발송')):
+        return False  # the reply talks about the refused action itself
     return 0<len(text)<=12 and not re.search(r'\d',text) and not _TASK_WORDS.search(text)
 
 

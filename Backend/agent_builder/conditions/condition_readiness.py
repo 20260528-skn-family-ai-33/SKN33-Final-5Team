@@ -512,7 +512,8 @@ def explicit_policies(state, catalog):
                 per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
-        for key, value, span in schedule_literals(text):
+        in_schedule = 'schedule.frequency' in result or 'schedule' in (state.get('condition_ledger') or {}).get('operations', [])
+        for key, value, span in schedule_literals(text, follow_up=in_schedule):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
             if not refs: continue
             conflict = value == 'conflict'
@@ -575,6 +576,12 @@ _RANGE_EXCLUSION = re.compile(r'빼|제외|말고|지우|지워|삭제|버리|�
 
 
 _MONTHLY_SCHEDULE = re.compile(r'매월|매달|매년|월간\s*(?:예약|실행|반복)|cron|크론', re.I)
+_MONTHLY_NEGATED = re.compile(r'\s*(?:은|는|이|가|도)?\s*(?:필요\s*없|말고|빼고|빼|하지\s*마|하지\s*말|안\s*해|아니)')
+
+
+def monthly_requested(text):
+    """A monthly/yearly recurrence the user asks for; "매월은 필요 없어", "매달 말고" do not count (PR #28 review)."""
+    return any(not _MONTHLY_NEGATED.match(text[m.end():m.end() + 10]) for m in _MONTHLY_SCHEDULE.finditer(text))
 _DAILY = re.compile(r'매일|날마다|하루\s*한\s*번|daily', re.I)
 _WEEKLY = re.compile(r'매주|주마다|[월화수목금토일]요일\s*마다|매\s*[월화수목금토일]요일|weekly', re.I)
 _SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
@@ -587,14 +594,14 @@ def last_user_request(state):
     return next((m['content'] for m in reversed(state.get('messages', [])) if m.get('role') == 'user'), '')
 
 
-def schedule_literals(text):
+def schedule_literals(text, follow_up=False):
     """Code-read daily/weekly schedule values with the span that proves each one.
 
     Only written values are returned: "오전 8시" is 8, "오후 6시" is 18, but a bare "8시" could be
     08:00 or 20:00 and is left for a question. Two different values for one key are a conflict.
     A monthly/yearly recurrence yields nothing here; validate_conditions records it as unsupported.
     """
-    if _MONTHLY_SCHEDULE.search(text):
+    if monthly_requested(text):
         return []
     found = {}
     def add(key, value, span):
@@ -606,9 +613,10 @@ def schedule_literals(text):
         for m in pattern.finditer(text):
             if not _SCHEDULE_NEGATED.match(text[m.end():m.end() + 8]):
                 add('schedule.frequency', value, m.group(0))
-    if 'schedule.frequency' not in found:
+    if 'schedule.frequency' not in found and not follow_up:
         return []
-    if found['schedule.frequency'][0] == 'weekly':
+    # "오후 6시로 바꿔줘" after "매일 오전 9시" changes only the time (PR #28 review P1).
+    if found.get('schedule.frequency', ('weekly',))[0] == 'weekly':
         for m in re.finditer(r'([월화수목금토일])요일', text):
             add('schedule.weekday', _WEEKDAY_NAMES.index(m.group(1)), m.group(0))
     for m in _TIME.finditer(text):
@@ -620,6 +628,9 @@ def schedule_literals(text):
         elif period in ('오전', '아침', '새벽') and hour == 12:
             hour = 0
         elif not period and 1 <= hour <= 12:
+            if follow_up and 'schedule.frequency' not in found:
+                # "6시로 바꿔줘" changes the time but not to a known value; never keep the old one silently.
+                found['schedule.hour'] = ('conflict', m.group(0))
             continue  # 08:00 or 20:00 is the user's decision
         add('schedule.hour', hour, m.group(0))
         add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
@@ -650,7 +661,7 @@ def _grounded_enum(key, value, quote):
     if key == 'schedule.frequency':
         # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
         # match; a monthly/yearly one never grounds daily or weekly.
-        if _MONTHLY_SCHEDULE.search(quote):
+        if monthly_requested(quote):
             return False
         return bool((_DAILY if value == 'daily' else _WEEKLY).search(quote))
     if key == 'filter.operator':
@@ -757,6 +768,13 @@ def validate_conditions(raw, state, catalog):
         if key not in slots:
             slots[key] = deepcopy(old)
     literals = explicit_policies(state,catalog)
+    def _turn(item):
+        return max((e.get('turn', -1) for e in item.get('evidence', [])), default=-1)
+    for key, item in list(literals.items()):
+        # A schedule value the user corrected in a later turn (grounded by that turn) is the current one.
+        if key.startswith('schedule.') and slots.get(key, {}).get('status') == 'specified' and _turn(slots[key]) > _turn(item):
+            invalid.append(f'{key}: 이후 차례의 수정값을 우선')
+            literals.pop(key)
     for key, item in literals.items():
         if key not in slots or slots[key]['status']!=item['status'] or slots[key]['value']!=item['value']:
             invalid.append(f'{key}: 사용자의 명시적 정책 구절로 보존·대조')
@@ -791,7 +809,7 @@ def validate_conditions(raw, state, catalog):
     # written is asked. A monthly/yearly recurrence is a known unsupported schedule.
     if 'schedule.frequency' in literals and 'schedule' not in operations:
         operations.append('schedule')
-    if _MONTHLY_SCHEDULE.search(last_user_request(state)) and '월간 예약' not in proposal['unsupported_actions']:
+    if monthly_requested(last_user_request(state)) and '월간 예약' not in proposal['unsupported_actions']:
         proposal['unsupported_actions'].append('월간 예약')
     if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
         # Do not lose a requested filter simply because the model labelled the

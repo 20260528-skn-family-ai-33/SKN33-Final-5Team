@@ -17,7 +17,7 @@ from urllib.parse import urlsplit, parse_qsl
 
 SCHEMA='a4b_builder'
 # Latest infrastructure/db/migrations version the code needs. Raise with each new migration.
-REQUIRED_SCHEMA_VERSION=2
+REQUIRED_SCHEMA_VERSION=3
 LOOPBACK={'localhost','127.0.0.1','::1'}
 WORKSPACE=re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',re.I)
 _WRITE=re.compile(r'\s*(INSERT|UPDATE|DELETE)\b',re.I)

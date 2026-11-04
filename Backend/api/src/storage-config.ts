@@ -1,4 +1,7 @@
 import pg from 'pg';
+import {readFile,stat} from 'node:fs/promises';
+import {join} from 'node:path';
+import {baseDataDirectory} from './paths';
 import {isLoopback,checkDatabaseUrl,checkDatabaseServerName} from './auth-config';
 import {postgresTls} from './auth-users';
 
@@ -50,13 +53,13 @@ export function builderDatabase(config:Extract<StorageConfig,{kind:'postgres'}>)
 export async function closeBuilderDatabase(){const current=pool;pool=undefined;await current?.end();}
 
 // Must match REQUIRED_SCHEMA_VERSION in Backend/infrastructure/persistence/db.py.
-export const REQUIRED_SCHEMA_VERSION=2;
+export const REQUIRED_SCHEMA_VERSION=3;
 /**
  * Connects as the app account before the server takes traffic: the schema must be migrated,
  * the account must not bypass row-level security, and it must be able to use the tables.
  * Without this an unreachable or unmigrated RDS would pass the health check.
  */
-export async function checkBuilderDatabase(config:StorageConfig,database:pg.Pool|undefined=config.kind==='postgres'?builderDatabase(config):undefined){
+export async function checkBuilderDatabase(config:StorageConfig,database:pg.Pool|undefined=config.kind==='postgres'?builderDatabase(config):undefined,directory=baseDataDirectory(),sqliteStoppedAt?:string){
  if(config.kind!=='postgres'||!database)return;
  let row:any;
  try{
@@ -68,7 +71,26 @@ export async function checkBuilderDatabase(config:StorageConfig,database:pg.Pool
  if(!row||row.bypass)throw new Error('업무 데이터 DB 계정이 행 수준 보안을 우회할 수 있습니다. superuser나 BYPASSRLS가 아닌 앱 전용 계정으로 접속하세요.');
  const version=row.migrated&&row.usage?Number((await database.query('SELECT max(version) AS v FROM a4b_builder.schema_migrations')).rows[0]?.v):NaN;
  if(!(version>=REQUIRED_SCHEMA_VERSION))throw new Error(`업무 데이터 DB 스키마가 최신이 아니거나 권한이 없습니다(필요 ${REQUIRED_SCHEMA_VERSION}). scripts/deploy/apply-builder-migrations.py와 a4b_app 권한을 확인하세요.`);
- const {rows:[access]}=await database.query(`SELECT bool_and(has_table_privilege(current_user,'a4b_builder.'||t,'SELECT,INSERT,UPDATE,DELETE')) AS ok
-  FROM unnest(ARRAY['builder_sessions','agent_tests','builder_schedule_jobs','agent_checkpoints','checkpoints','checkpoint_writes']) t`);
- if(!access?.ok)throw new Error('업무 데이터 DB 계정에 a4b_builder 표 읽기·쓰기 권한이 없습니다. a4b_app 역할을 부여하세요.');
+ const {rows:[access]}=await database.query(`SELECT bool_and(coalesce(c.relrowsecurity AND c.relforcerowsecurity
+    AND has_table_privilege(current_user,c.oid,p.privilege), false)) AS ok
+  FROM unnest(ARRAY['registered_tools','builder_sessions','builder_assets','agent_versions','agent_tests',
+    'builder_run_leases','builder_data_sources','builder_schedules','builder_schedule_jobs','reply_review_decisions',
+    'document_reviews','document_review_events','builder_tool_gap_jobs','reusable_nodes','builder_verifications',
+    'preprocessing_batches','preprocessing_examples','agent_checkpoints','checkpoints','checkpoint_blobs','checkpoint_writes']) t(name)
+  CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) p(privilege)
+  LEFT JOIN pg_class c ON c.oid=to_regclass('a4b_builder.'||t.name)`);
+ if(!access?.ok)throw new Error('업무 데이터 표의 행 수준 보안과 앱 계정의 SELECT·INSERT·UPDATE·DELETE 권한을 확인하세요.');
+ const receiptPath=join(directory,'.a4b-sqlite-import');
+ const receipt=(await readFile(receiptPath,'utf8').catch((error:NodeJS.ErrnoException)=>{
+  if(error.code==='ENOENT')return '';
+  throw error;
+ })).trim();
+ const valid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(receipt);
+ if(!valid||!(await database.query('SELECT 1 FROM a4b_builder.sqlite_imports WHERE id=$1',[receipt])).rowCount)
+  throw new Error('이 데이터 볼륨과 DB의 SQLite 이전 완료 기록이 없습니다. scripts/deploy/migrate-sqlite-to-postgres.py를 실행하세요.');
+ if(sqliteStoppedAt!==undefined){
+  const stopped=Date.parse(sqliteStoppedAt);
+  if(!Number.isFinite(stopped)||(await stat(receiptPath)).mtimeMs<=stopped)
+   throw new Error('기존 SQLite 컨테이너를 마지막으로 정지한 후에 생성한 이전 기록이 필요합니다.');
+ }
 }

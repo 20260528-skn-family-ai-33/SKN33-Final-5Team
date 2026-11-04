@@ -13,7 +13,20 @@
 
 **연결 수.** Python 작업은 요청마다 새 프로세스로 뜨기 때문에, 연결 수는 풀 크기가 아니라 프로세스 수로 정해집니다. 서버 한 대의 최대 연결 수는 `(A4B_WORKER_MAX_CONCURRENCY + A4B_WORKER_CONTROL_CONCURRENCY) × 2 + Node 풀 8`입니다(회원 저장소 5 + 어시스턴트 체크포인트 3). 기본값으로는 40입니다. 서버가 여러 대면 모든 서버의 합이 RDS `max_connections`에서 관리용 여유분을 뺀 값보다 작아야 합니다.
 
-**작업 공간 격리.** PostgreSQL에서는 모든 표가 `a4b_builder` 스키마에 있고 `workspace_id` 열을 가집니다. 값은 SQLite 폴더 이름(`data/users/<회원ID>`)이고, 로그인을 끈 로컬 실행에서는 `local`입니다. 기본 키·고유 키·외래 키·인덱스는 모두 `workspace_id`로 시작합니다. 앱의 모든 SQL이 `workspace_id`로 거르고, `FORCE ROW LEVEL SECURITY` 정책이 연결의 `a4b.workspace_id`와 다른 행은 읽기·쓰기 모두 막습니다. 그래서 앱 계정은 superuser나 `BYPASSRLS`가 아니어야 하고, 그런 계정이면 작업이 시작되지 않습니다. 같은 작업 공간의 쓰기는 SQLite `BEGIN IMMEDIATE`처럼 작업 공간 단위 advisory lock으로 순서를 맞춥니다. 그래서 revision 낙관적 잠금과 예약 작업 lease가 SQLite와 같게 동작합니다.
+**작업 공간 격리.** `a4b_builder`의 회원별 업무·체크포인트 표에는 `workspace_id`가 있습니다. 값은 `data/users/<회원ID>`의 회원 ID이고, 로그인을 끈 로컬 실행에서는 `local`입니다. 행 수준 보안 정책은 현재 연결의 작업 공간에 속하는 행만 읽고 쓰도록 제한합니다. 앱 계정은 superuser나 `BYPASSRLS` 권한으로 접속할 수 없습니다. 스키마 버전과 볼륨 이전 완료 기록은 DB 단위로 관리합니다.
+
+## RDS에 기록되는 데이터
+
+| 업무 | 저장 위치와 내용 |
+| --- | --- |
+| 로그인 | 기존 `a4b.users`에 Cognito 제공자·사용자 식별자, 이메일, 이름을 등록하거나 갱신합니다. 회원 ID, 역할, 활성 상태도 여기서 읽습니다. |
+| 설계와 자료 | `builder_sessions`에 대화 상태와 수정 버전, `builder_assets`에 파일 정보·추출한 내용·표 행, `agent_versions`에 저장한 에이전트 설정을 보관합니다. |
+| 실행과 예약 | `agent_tests`에 실행 상태·출력, `builder_run_leases`에 실행 소유권·만료 시각, `builder_data_sources`, `builder_schedules`, `builder_schedule_jobs`에 자료 연결·예약·처리 상태를 기록합니다. |
+| 검토와 도구 | 문서 검토와 수정 이력, 응대 승인·거절, 지연 검증 입력·결과, 도구 목록, 재사용 노드, 도구 제작 요청, 전처리 배치·예시를 보관합니다. |
+| 대화·실행 재개 | Python은 `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`에, Node 어시스턴트는 `agent_checkpoints`에 중단 지점과 재개할 상태를 저장합니다. |
+| 운영 기록 | `schema_migrations`와 `checkpoint_migrations`에는 적용 버전이, `sqlite_imports`에는 이전 식별자·작업 공간 수·완료 시간이 남습니다. |
+
+별도 표시가 없는 표는 `a4b_builder` 스키마에 있습니다. 업로드 원본과 결과 파일의 바이트는 기존 파일 저장 경로(설정에 따라 S3 또는 데이터 볼륨)를 사용합니다. 추출된 표 행과 본문, 실행 결과 JSON은 RDS에도 들어갈 수 있습니다. 일반 Node 워크플로와 암호화된 연결 계정은 계속 볼륨의 `easyflow.sqlite`에 저장합니다.
 
 ## 스키마 적용
 
@@ -26,27 +39,27 @@ docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /a
 docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/apply-builder-migrations.py
 ```
 
-`002`는 LangGraph `PostgresSaver.setup()`으로 체크포인트 표를 만든 뒤 작업 공간 열과 보안 정책을 더합니다. 이미 적용한 버전은 건너뛰므로 다시 실행해도 안전합니다.
+`002`는 LangGraph 체크포인트 표에 작업 공간 열과 보안 정책을 더하고, `003`은 볼륨 이전 완료 기록을 저장할 표를 만듭니다. 이미 적용한 버전은 건너뜁니다.
 
 ## 기존 SQLite 자료 옮기기
 
-[scripts/deploy/migrate-sqlite-to-postgres.py](../scripts/deploy/migrate-sqlite-to-postgres.py)는 일회용 이전 스크립트입니다. `data/users/*/`의 `agent-builder.sqlite`(업무 표·Python 체크포인트)와 `agent-checkpoints.sqlite`(Node 체크포인트)를 폴더 이름을 `workspace_id`로 넣어 복사합니다. 이미 있는 행은 건너뛰므로 두 번 실행해도 중복되지 않습니다. 부모가 없는 옛 행(예: 실행 기록이 지워진 검토 결정)은 건너뛰고 건수를 보여줍니다. SQLite 파일은 바꾸지 않습니다.
+[scripts/deploy/migrate-sqlite-to-postgres.py](../scripts/deploy/migrate-sqlite-to-postgres.py)는 `data/users/*/`의 `agent-builder.sqlite`(업무 표·Python 체크포인트)와 `agent-checkpoints.sqlite`(Node 체크포인트)를 회원 ID별로 복사합니다. 대상에 같은 키의 업무 행이나 Node 체크포인트가 있으면 원본과 내용이 같을 때만 건너뜁니다. 다르면 이전을 중단합니다. 부모가 사라진 과거 검토 결정 등의 행은 dry-run에 제외 건수가 표시됩니다. 원본 SQLite 파일은 읽기 전용으로 엽니다.
 
-1. 앱을 멈추고 `a4b-data` 볼륨을 백업합니다.
+1. SQLite에 쓰는 앱과 워커를 정지하고 실제 데이터 볼륨과 대상 DB를 백업합니다. EC2 자동 배포를 사용하면 [EC2 전환 절차](a4b-automatic-deployment.md#업무-데이터-저장소-전환)를 따릅니다.
 2. `--dry-run`으로 작업 공간·표별 건수를 확인합니다. dry-run은 PostgreSQL에 접속하지 않습니다.
-3. 위의 스키마 적용을 마친 뒤 실제로 복사합니다. 앱 계정(`A4B_DATABASE_URL`)으로 접속하고, 작업 공간마다 한 트랜잭션으로 넣습니다.
+3. 스키마를 적용한 뒤 앱 계정(`A4B_DATABASE_URL`)으로 실제 복사를 실행합니다. 업무 행과 Node 체크포인트는 작업 공간별로, Python 체크포인트와 보류 쓰기는 체크포인트별로 커밋합니다. 실패 시 원본을 정지한 채 같은 명령을 다시 실행합니다.
 4. `A4B_STORAGE=postgres`를 적용하고 로그인해서 자료를 확인합니다.
    - `docker compose --env-file .env.aws`로 운영하면 `.env.aws`에 넣고 다시 시작합니다.
-   - GitHub Actions EC2 자동 배포(`scripts/deploy/deploy-a4b-ec2.sh`)는 실행 중인 컨테이너의 환경을 복사합니다. 그래서 EC2의 `/var/lib/a4b-deploy/env-overrides`(root 소유, 권한 600, 한 줄에 `KEY=VALUE`)에 `A4B_STORAGE=postgres`를 넣은 뒤 배포를 실행합니다.
+   - EC2 자동 배포는 정지한 기존 컨테이너의 환경과 마운트를 인계받습니다. `/var/lib/a4b-deploy/env-overrides`(root 소유, 권한 600)에 `A4B_STORAGE=postgres`를 추가하고 배포합니다.
 
-자동 배포는 기존 컨테이너를 멈추기 전에 새 이미지로 `--preflight`를 실행합니다. `A4B_STORAGE`가 없거나, 스키마·데이터 이전 전이거나, RDS에 접속할 수 없으면 배포를 멈추고 기존 컨테이너를 그대로 둡니다. 따라서 이 변경을 병합한 뒤 첫 배포 전에 위 1~4단계를 마쳐야 합니다.
+모든 복사가 끝나면 스크립트가 대상 DB의 `sqlite_imports`에 기록을 커밋한 뒤 같은 식별자를 원본 볼륨의 `.a4b-sqlite-import`에 게시합니다. 서버 기동과 `--preflight`에서 둘의 일치를 확인합니다. dry-run, 부분 실패, 다른 볼륨이나 DB로는 이 검사를 통과할 수 없습니다. 백업·복원 시 완료 파일도 포함하세요.
 
 ```bash
 docker compose --env-file .env.aws run --rm app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/migrate-sqlite-to-postgres.py --dry-run
 docker compose --env-file .env.aws run --rm app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/migrate-sqlite-to-postgres.py
 ```
 
-로그인을 끈 루트 폴더(`local` 작업 공간)도 옮기려면 `--include-local`을 붙입니다. 로그인한 운영 서버는 `local` 작업 공간을 쓰지 않습니다.
+루트에 기존 SQLite 업무 DB가 있으면 dry-run과 실제 이전 모두에 `--include-local`을 붙여 `local` 작업 공간까지 옮깁니다. 회원 ID를 알 수 없는 폴더에 업무 DB가 있으면 이전을 중단합니다. 신규 설치에서 dry-run으로 실제 마운트와 빈 원본을 확인한 경우에만 실제 이전에 `--confirm-empty`를 붙입니다. 원본 DB 파일이 하나라도 있으면 이 옵션은 거부됩니다.
 
 ## PostgreSQL 저장소 테스트
 

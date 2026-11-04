@@ -6,7 +6,8 @@ const port=Number(process.env.PORT||3010),host=process.env.HOST||'127.0.0.1';
 // Refuse to start with a misconfigured or unreachable business-data store before serving anyone.
 // `--preflight` runs only these checks; the EC2 deploy runs it in the new image before cutover.
 const storage=storageConfig();
-await checkBuilderDatabase(storage);
+const stoppedAt=process.argv.find(arg=>arg.startsWith('--sqlite-stopped-at='))?.slice('--sqlite-stopped-at='.length);
+await checkBuilderDatabase(storage,undefined,undefined,stoppedAt);
 if(process.argv.includes('--preflight')){
  authConfig();await closeBuilderDatabase();console.log(`A4B preflight: storage=${storage.kind} ok`);process.exit(0);
 }

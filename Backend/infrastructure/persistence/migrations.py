@@ -5,7 +5,8 @@ from infrastructure.persistence.db import REQUIRED_SCHEMA_VERSION, SCHEMA
 # The repository root in development; /app in the Docker image (see Dockerfile).
 DIRECTORY=Path(__file__).resolve().parents[3]/'infrastructure'/'db'/'migrations'
 # version, file, step that must run first (LangGraph creates its own checkpoint tables).
-MIGRATIONS=[(1,'001_builder_storage.sql',None),(2,'002_langgraph_checkpoints.sql','langgraph_setup')]
+MIGRATIONS=[(1,'001_builder_storage.sql',None),(2,'002_langgraph_checkpoints.sql','langgraph_setup'),
+            (3,'003_sqlite_imports.sql',None)]
 assert MIGRATIONS[-1][0]==REQUIRED_SCHEMA_VERSION
 
 

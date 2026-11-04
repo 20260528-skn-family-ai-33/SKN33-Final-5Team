@@ -2,8 +2,8 @@
 
 Walks <data>/users/<member ID>/ and copies each folder's agent-builder.sqlite (business
 tables and Python LangGraph checkpoints) and agent-checkpoints.sqlite (Node assistant
-checkpoints) with the folder name as workspace_id. Rows that already exist are skipped,
-so running it twice inserts nothing new. Stop the app first so no worker is writing.
+checkpoints) with the folder name as workspace_id. An existing business row or Node
+checkpoint must match its source. Stop the app first so no worker is writing.
 
   Backend/.venv-agent/bin/python scripts/deploy/migrate-sqlite-to-postgres.py --dry-run
   Backend/.venv-agent/bin/python scripts/deploy/migrate-sqlite-to-postgres.py
@@ -19,12 +19,13 @@ import os
 import re
 import sqlite3
 import sys
+import uuid
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'Backend'))
-WORKSPACE = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+WORKSPACE = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.I)
 
 # Parents before children (foreign keys). Columns are the SQLite columns, minus rowid.
 TABLES = {
@@ -68,16 +69,26 @@ def load_env():
 
 
 def workspaces(data_dir, include_local=False):
+    def has_database(folder):
+        return any((folder / name).is_file() for name in ('agent-builder.sqlite', 'agent-checkpoints.sqlite'))
+
+    data_dir = Path(data_dir)
+    if not data_dir.is_dir():
+        raise ValueError(f'데이터 볼륨을 찾을 수 없습니다: {data_dir}')
     found = []
-    users = Path(data_dir) / 'users'
+    users = data_dir / 'users'
     if users.is_dir():
         for folder in sorted(users.iterdir()):
-            if folder.is_dir() and WORKSPACE.fullmatch(folder.name):
-                found.append((folder.name, folder))
-            elif folder.is_dir():
-                print(f'건너뜀: 회원 ID 형식이 아닌 폴더 {folder.name}', file=sys.stderr)
-    if include_local:
-        found.append(('local', Path(data_dir)))
+            if folder.is_dir() and has_database(folder):
+                if not WORKSPACE.fullmatch(folder.name):
+                    raise ValueError(f'업무 DB가 있는 폴더의 회원 ID를 확인하세요: {folder.name}')
+                found.append((folder.name.lower(), folder))
+    if has_database(data_dir):
+        if not include_local:
+            raise ValueError('루트 작업 공간의 SQLite 자료도 이전하려면 --include-local을 지정하세요.')
+        found.append(('local', data_dir))
+    if len({workspace for workspace, _ in found}) != len(found):
+        raise ValueError('같은 회원 ID를 가리키는 SQLite 폴더가 여러 개입니다.')
     return found
 
 
@@ -144,6 +155,26 @@ def survey(folder):
     return counts, orphans
 
 
+def copy_rows(target, workspace, table, columns, rows):
+    fields = ['workspace_id', *columns]
+    sql = (f'INSERT INTO a4b_builder.{table}({",".join(fields)}) '
+           f'VALUES({",".join(["%s"] * len(fields))}) ON CONFLICT DO NOTHING')
+    # PostgreSQL json preserves the original text but has no equality operator.
+    comparisons = [field + ('::text' if field.endswith('json') else '') for field in fields]
+    inserted = 0
+    for row in rows:
+        values = (workspace, *row)
+        if target.execute(sql, values).rowcount:
+            inserted += 1
+            continue
+        conditions = [f'{field} IS NULL' if value is None else f'{field}=%s' for field, value in zip(comparisons, values)]
+        existing = target.execute(f'SELECT 1 FROM a4b_builder.{table} WHERE ' + ' AND '.join(conditions),
+                                  [value for value in values if value is not None]).fetchone()
+        if not existing:
+            raise ValueError(f'기존 PostgreSQL 행이 SQLite 원본과 다릅니다: {workspace}/{table}')
+    return inserted
+
+
 def copy_workspace(conninfo, workspace, folder):
     """Copies one workspace in one transaction (plus idempotent checkpoint writes). Returns inserted counts."""
     import psycopg
@@ -158,16 +189,11 @@ def copy_workspace(conninfo, workspace, folder):
                 try:
                     for table, columns in TABLES.items():
                         rows, _ = source_rows(source, table)
-                        sql = (f'INSERT INTO a4b_builder.{table}(workspace_id,{",".join(columns)}) '
-                               f'VALUES(%s{",%s" * len(columns)}) ON CONFLICT DO NOTHING')
-                        for row in rows:
-                            inserted[table] += target.execute(sql, (workspace, *row)).rowcount
+                        inserted[table] = copy_rows(target, workspace, table, columns, rows)
                 finally:
                     source.close()
-            for thread_id, payload in node_checkpoints(folder / 'agent-checkpoints.sqlite'):
-                inserted['agent_checkpoints (Node)'] += target.execute(
-                    'INSERT INTO a4b_builder.agent_checkpoints(workspace_id,thread_id,payload) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING',
-                    (workspace, thread_id, bytes(payload))).rowcount
+            inserted['agent_checkpoints (Node)'] = copy_rows(target, workspace, 'agent_checkpoints', ['thread_id', 'payload'],
+                                                             node_checkpoints(folder / 'agent-checkpoints.sqlite'))
     if business.exists():
         inserted['checkpoints (Python LangGraph)'] = copy_python_checkpoints(conninfo, workspace, business)
     return dict(inserted)
@@ -205,20 +231,43 @@ def copy_python_checkpoints(conninfo, workspace, business):
         return count
 
 
+def import_volume(conninfo, data_dir, include_local=False, confirm_empty=False):
+    import psycopg
+    receipt = data_dir / '.a4b-sqlite-import'
+    receipt.unlink(missing_ok=True)
+    receipt_id = str(uuid.uuid4())
+    temporary = receipt.with_suffix('.' + receipt_id + '.tmp')
+    try:
+        # mtime is the start of the source scan, on the same host clock as Docker's FinishedAt.
+        temporary.write_text(receipt_id + '\n', encoding='ascii')
+        found = workspaces(data_dir, include_local)
+        if not found and not confirm_empty:
+            raise ValueError('이전할 SQLite DB가 없습니다. 빈 볼륨이 맞으면 --confirm-empty를 지정하세요.')
+        if found and confirm_empty:
+            raise ValueError('SQLite 자료가 있어 --confirm-empty를 사용할 수 없습니다.')
+        for workspace, folder in found:
+            print(json.dumps({'workspace_id': workspace, 'inserted': copy_workspace(conninfo, workspace, folder)}, ensure_ascii=False))
+        with psycopg.connect(conninfo) as connection:
+            connection.execute('INSERT INTO a4b_builder.sqlite_imports(id,workspace_count) VALUES(%s,%s)', (receipt_id, len(found)))
+        # Publish only after every workspace and the database receipt are committed.
+        temporary.replace(receipt)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Copy SQLite workspaces into PostgreSQL (a4b_builder).')
     parser.add_argument('--data-dir', default=None, help='EASYFLOW_DATA_DIR (default: env or ./data)')
     parser.add_argument('--dry-run', action='store_true', help='print SQLite row counts only; no PostgreSQL connection')
     parser.add_argument('--include-local', action='store_true', help="also copy the root folder (login-free 'local' workspace)")
+    parser.add_argument('--confirm-empty', action='store_true', help='initialize this mounted volume only if it contains no legacy databases')
     args = parser.parse_args()
     load_env()
     data_dir = Path(args.data_dir or os.environ.get('EASYFLOW_DATA_DIR') or ROOT / 'data')
     if not data_dir.is_absolute():
         data_dir = ROOT / data_dir
-    found = workspaces(data_dir, args.include_local)
-    if not found:
-        sys.exit(f'옮길 작업 공간이 없습니다: {data_dir}')
     if args.dry_run:
+        found = workspaces(data_dir, args.include_local)
         totals = defaultdict(int)
         for workspace, folder in found:
             counts, orphans = survey(folder)
@@ -232,8 +281,7 @@ def main():
     params = postgres_conninfo()
     params.pop('options', None)  # The SQL below names the a4b_builder schema; PostgresSaver gets it via search_path.
     conninfo = make_conninfo(**{**params, 'application_name': 'a4b-builder-sqlite-import', 'options': '-c search_path=a4b_builder'})
-    for workspace, folder in found:
-        print(json.dumps({'workspace_id': workspace, 'inserted': copy_workspace(conninfo, workspace, folder)}, ensure_ascii=False))
+    import_volume(conninfo, data_dir, args.include_local, args.confirm_empty)
 
 
 if __name__ == '__main__':

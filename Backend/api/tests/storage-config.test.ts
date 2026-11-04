@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import {storageConfig,workerLimits,checkBuilderDatabase} from '../src/storage-config';
+import {storageConfig,workerLimits,checkBuilderDatabase,REQUIRED_SCHEMA_VERSION} from '../src/storage-config';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {API_ROOT} from '../src/paths';
 import {WorkerSlots,WorkerBusyError,createWorkerLanes} from '../src/worker-slots';
@@ -110,18 +114,37 @@ test('preflight exits non-zero before serving when the DB is unreachable',()=>{
   env:{...process.env,A4B_STORAGE:'sqlite',EASYFLOW_PUBLIC_URL:'https://service.example.com',A4B_AUTH_MODE:'off'}});
  assert.notEqual(sqlite.status,0);assert.match(sqlite.stderr,/로컬 개발에서만/);
 });
-test('startup accepts only a migrated schema and an account bound by row-level security',{skip:!testUrl&&'A4B_TEST_DATABASE_URL이 없으면 건너뜁니다.'},async()=>{
+test('startup requires table privileges, RLS, the current schema and a receipt for this volume and DB',{skip:!testUrl&&'A4B_TEST_DATABASE_URL이 없으면 건너뜁니다.'},async()=>{
  const config={kind:'postgres' as const,databaseUrl:testUrl!};
  const admin=new pg.Pool({connectionString:testUrl,max:1});
  const url=new URL(testUrl!);url.username='a4b_test_app';url.password='a4b-test-app';
  const app=new pg.Pool({connectionString:url.toString(),max:1});
+ const directory=await mkdtemp(join(tmpdir(),'a4b-cutover-'));
+ const receipt=randomUUID();
+ const check=(stoppedAt?:string)=>checkBuilderDatabase(config,app,directory,stoppedAt);
  try{
   await assert.rejects(checkBuilderDatabase(config,admin),/행 수준 보안을 우회/);
-  await checkBuilderDatabase(config,app);
-  // Pretend migration 002 was never applied.
-  const {rows:[latest]}=await admin.query('DELETE FROM a4b_builder.schema_migrations WHERE version=2 RETURNING version,name,applied_at');
-  try{await assert.rejects(checkBuilderDatabase(config,app),/스키마가 최신이 아니거나/);}
+  await assert.rejects(check(),/이전 완료 기록/);
+  await writeFile(join(directory,'.a4b-sqlite-import'),receipt);
+  await assert.rejects(check(),/이전 완료 기록/);
+  await admin.query('INSERT INTO a4b_builder.sqlite_imports(id,workspace_count) VALUES($1,0)',[receipt]);
+  await check();
+  await check('2020-01-01T00:00:00Z');
+  await assert.rejects(check(new Date(Date.now()+60000).toISOString()),/마지막으로 정지/);
+  for(const privilege of ['SELECT','INSERT','UPDATE','DELETE']){
+   await admin.query(`REVOKE ${privilege} ON a4b_builder.builder_assets FROM a4b_app`);
+   try{await assert.rejects(check(),/SELECT·INSERT·UPDATE·DELETE/);}
+   finally{await admin.query(`GRANT ${privilege} ON a4b_builder.builder_assets TO a4b_app`);}
+  }
+  await admin.query('ALTER TABLE a4b_builder.checkpoint_blobs DISABLE ROW LEVEL SECURITY');
+  try{await assert.rejects(check(),/행 수준 보안/);}
+  finally{await admin.query('ALTER TABLE a4b_builder.checkpoint_blobs ENABLE ROW LEVEL SECURITY');}
+  const {rows:[latest]}=await admin.query('DELETE FROM a4b_builder.schema_migrations WHERE version=$1 RETURNING version,name,applied_at',[REQUIRED_SCHEMA_VERSION]);
+  try{await assert.rejects(check(),/스키마가 최신이 아니거나/);}
   finally{await admin.query('INSERT INTO a4b_builder.schema_migrations(version,name,applied_at) VALUES($1,$2,$3)',[latest.version,latest.name,latest.applied_at]);}
-  await checkBuilderDatabase(config,app);
- }finally{await admin.end();await app.end();}
+  await check();
+ }finally{
+  await admin.query('DELETE FROM a4b_builder.sqlite_imports WHERE id=$1',[receipt]);
+  await admin.end();await app.end();await rm(directory,{recursive:true,force:true});
+ }
 });

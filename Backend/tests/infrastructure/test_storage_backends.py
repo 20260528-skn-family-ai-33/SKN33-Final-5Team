@@ -7,6 +7,8 @@ a4b_builder schema there, then connects as a non-superuser app role so row-level
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -353,6 +355,12 @@ def load_migrator():
     return module
 
 
+@pytest.mark.skipif(sys.platform != 'linux', reason='The EC2 release script runs on Linux.')
+def test_ec2_storage_cutover_and_rollback(tmp_path):
+    subprocess.run(['bash', Path(__file__).with_name('ec2_storage_cutover.sh'),
+                    ROOT / 'scripts/deploy/deploy-a4b-ec2.sh', tmp_path], check=True)
+
+
 def sqlite_workspace_with_data(tmp_path, monkeypatch):
     monkeypatch.delenv('A4B_STORAGE', raising=False)
     folder = workspace(tmp_path / 'data')
@@ -387,6 +395,31 @@ def test_migration_dry_run_counts_sqlite_rows_without_a_database(tmp_path, monke
     assert counts['checkpoints (Python LangGraph)'] == 0 and counts['agent_checkpoints (Node)'] == 0
 
 
+@pytest.mark.skipif(not TEST_URL, reason='Disposable PostgreSQL required')
+def test_cutover_rejects_omitted_databases_and_requires_explicit_empty_volume(tmp_path, postgres_app_conninfo):
+    import psycopg
+    migrator = load_migrator()
+    receipt = tmp_path / '.a4b-sqlite-import'
+    with pytest.raises(ValueError, match='confirm-empty'):
+        migrator.import_volume(postgres_app_conninfo, tmp_path)
+    assert not receipt.exists()
+    migrator.import_volume(postgres_app_conninfo, tmp_path, confirm_empty=True)
+    with psycopg.connect(postgres_app_conninfo) as target:
+        assert target.execute('SELECT workspace_count FROM sqlite_imports WHERE id=%s', (receipt.read_text().strip(),)).fetchone() == (0,)
+    (tmp_path / 'agent-checkpoints.sqlite').touch()
+    with pytest.raises(ValueError, match='include-local'):
+        migrator.import_volume(postgres_app_conninfo, tmp_path, confirm_empty=True)
+    assert not receipt.exists()
+    with pytest.raises(ValueError, match='confirm-empty'):
+        migrator.import_volume(postgres_app_conninfo, tmp_path, include_local=True, confirm_empty=True)
+    invalid = tmp_path / 'users' / 'unknown-member'
+    invalid.mkdir(parents=True)
+    (invalid / 'agent-builder.sqlite').touch()
+    with pytest.raises(ValueError, match='회원 ID'):
+        migrator.import_volume(postgres_app_conninfo, tmp_path, include_local=True)
+    assert not receipt.exists()
+
+
 @pytest.mark.skipif(not TEST_URL, reason='A4B_TEST_DATABASE_URL이 없으면 이전 스크립트 실DB 검증을 건너뜁니다.')
 def test_migration_copies_workspaces_once(tmp_path, monkeypatch, postgres_app_conninfo):
     folder, asset, agent_id, session = sqlite_workspace_with_data(tmp_path, monkeypatch)
@@ -414,6 +447,23 @@ def test_migration_copies_workspaces_once(tmp_path, monkeypatch, postgres_app_co
         store.close()
         database.close_pools()
         database.use_conninfo(None)
+
+
+@pytest.mark.skipif(not TEST_URL, reason='Disposable PostgreSQL required')
+def test_cutover_receipt_is_withheld_if_duplicate_rows_have_different_contents(tmp_path, monkeypatch, postgres_app_conninfo):
+    import psycopg
+    folder, _, _, session = sqlite_workspace_with_data(tmp_path, monkeypatch)
+    volume = tmp_path / 'data'
+    migrator = load_migrator()
+    migrator.import_volume(postgres_app_conninfo, volume)
+    receipt = volume / '.a4b-sqlite-import'
+    assert receipt.is_file()
+    with psycopg.connect(postgres_app_conninfo) as target:
+        target.execute("SELECT set_config('a4b.workspace_id',%s,true)", (folder.name,))
+        target.execute('UPDATE builder_sessions SET revision=revision+1 WHERE id=%s', (session['id'],))
+    with pytest.raises(ValueError, match='builder_sessions'):
+        migrator.import_volume(postgres_app_conninfo, volume)
+    assert not receipt.exists()
 
 
 def test_nul_in_stored_json_does_not_break_status_queries(backend, tmp_path):
@@ -542,11 +592,15 @@ def test_interrupted_checkpoint_copy_is_completed_by_a_rerun(tmp_path, monkeypat
             raise psycopg.OperationalError('connection lost during copy')
         return original(self, config, writes, task_id, *args, **kwargs)
     monkeypatch.setattr(PostgresSaver, 'put_writes', lost_connection)
+    volume = tmp_path / 'data'
+    receipt = volume / '.a4b-sqlite-import'
     with pytest.raises(psycopg.OperationalError):
-        migrator.copy_workspace(postgres_app_conninfo, folder.name, folder)
+        migrator.import_volume(postgres_app_conninfo, volume)
+    assert not receipt.exists()
     monkeypatch.setattr(PostgresSaver, 'put_writes', original)
-    migrator.copy_workspace(postgres_app_conninfo, folder.name, folder)
+    migrator.import_volume(postgres_app_conninfo, volume)
     with psycopg.connect(postgres_app_conninfo, autocommit=True) as target:
+        assert target.execute('SELECT workspace_count FROM sqlite_imports WHERE id=%s', (receipt.read_text().strip(),)).fetchone() == (1,)
         target.execute("SELECT set_config('a4b.workspace_id',%s,false)", (folder.name,))
         copied = target.execute("SELECT count(*) FROM checkpoint_writes WHERE thread_id='shared-thread' AND channel='__interrupt__'").fetchone()[0]
     assert copied == sum(1 for _, channel, _ in source if channel == '__interrupt__')

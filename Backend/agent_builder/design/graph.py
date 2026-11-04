@@ -70,10 +70,14 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
             return {'status':'needs_clarification','issues':[],'semantic_issues':[],'pending_questions':[],
                     'condition_enforced':False,'attachment_route':'ask',**quick}
         if any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
+            from agent_builder.design.receipt_workbook import receipt_workbook
+            workbook=receipt_workbook(state)
+            if workbook:
+                return {**workbook, 'attachment_route':'validate'}
             return {'pending_questions':[],'attachment_route':'continue'}
         return {'attachment_route':'continue'}
     graph.add_node('attachment_gate',attachment_gate)
-    graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'capability_check'})
+    graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'capability_check','validate':'validate'})
     graph.add_node('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode)))
     graph.add_node('await_capability',await_capability_node)
     graph.add_node('generation_gate',generation_gate)

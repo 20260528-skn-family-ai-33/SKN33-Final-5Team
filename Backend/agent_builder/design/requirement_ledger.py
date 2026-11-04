@@ -59,6 +59,9 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
+        if spec['kind']=='extract_fields' and (len(set(spec['fields']))!=len(spec['fields']) or
+                any(not field.strip() or field not in task['quote'] for field in spec['fields'])):
+            raise ValueError('추출할 항목을 사용자 원문에서 확인할 수 없습니다.')
         if spec['kind']=='compute':
             from workflow_engine.table_formula import formula_columns
             formula_columns(spec['formula'])

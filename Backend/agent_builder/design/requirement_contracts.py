@@ -14,6 +14,11 @@ class Read(Strict):
     file_ids: list[str] = Field(max_length=10)
 
 
+class ExtractFields(Strict):
+    kind: Literal['extract_fields']
+    fields: list[str] = Field(min_length=1, max_length=40)
+
+
 class Compute(Strict):
     kind: Literal['compute']
     formula: str = Field(min_length=1, max_length=500)
@@ -66,7 +71,7 @@ class Other(Strict):
     action: str = Field(min_length=1, max_length=300)
 
 
-Spec = Annotated[Read | Compute | Filter | Sort | Aggregate | Join | Export | Policy | Other,
+Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | Policy | Other,
                  Field(discriminator='kind')]
 
 

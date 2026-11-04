@@ -31,7 +31,7 @@ class ExecutionPlan(BaseModel):
     missing_policy: Literal['ask','exclude','keep','error']
     duplicate_policy: Literal['ask','keep','first','last','error']
     duplicate_field: str | None
-    output_format: Literal['csv','json']
+    output_format: Literal['csv','json','xlsx']
 
 class Binding(BaseModel):
     model_config = ConfigDict(extra='forbid')

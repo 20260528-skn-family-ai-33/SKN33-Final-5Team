@@ -46,6 +46,11 @@ def new_session(c):
     return c.storage.new_session(data['model'],data['credential_id'],data.get('agent_id'),data.get('node_refs'))
 
 
+def _install_receipt_question(graph, config, prompt, resources):
+    graph.update_state(config, {**prompt, 'resources':resources, 'attachment_route':'ask'}, as_node='attachment_gate')
+    graph.invoke(None, config)
+
+
 def session_action(c):
     storage=c.storage;data=c.data;action=c.action;api_key=c.api_key;conversation=c.conversation;connection=None
     try:
@@ -91,8 +96,7 @@ def session_action(c):
             resources=[storage.asset(id) for id in s['file_ids']]
             s=storage.update_session(s,data['revision'],prompt)
             if prompt:
-                graph.update_state(config,{**prompt,'resources':resources,'attachment_route':'ask'},as_node='attachment_gate')
-                graph.invoke(None,config)  # install the new field question's interrupt without a model call
+                _install_receipt_question(graph,config,prompt,resources)
             elif state:
                 graph.update_state(config,{'resources':resources,'status':'needs_clarification','issues':['자료 연결이 변경됐습니다. 업무 설명을 보내 새 자료와 설정을 확인하세요.']})
             return public_state(storage,s,graph)
@@ -110,6 +114,16 @@ def session_action(c):
             content=data['content'].strip()
             if not content or len(content)>4000:raise ValueError('업무 설명은 1~4,000자로 입력하세요.')
             if state.get('status')=='saved':raise ValueError('저장한 설정을 바꾸려면 설정 수정 대화를 시작하세요.')
+            # Older uploads could leave await_input scheduled but not yet interrupted.
+            # Install the projected control before deciding how to resume the graph.
+            legacy = legacy_receipt_intake(state) if data.get('question_id') else None
+            if legacy and data['question_id'] == legacy['pending_questions'][0]['id']:
+                _install_receipt_question(graph,config,legacy,state.get('resources',[]))
+                before=graph.get_state(config)
+                state=before.values
+                has_interrupt=any(task.interrupts for task in before.tasks)
+            elif legacy and not any(q['id']==data['question_id'] for q in state.get('pending_questions',[])):
+                raise ValueError('현재 대화의 확인 질문에 답변해주세요.')
             if has_interrupt:
                 if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:
                     raise ValueError('현재 대화의 확인 질문에 답변해주세요.')

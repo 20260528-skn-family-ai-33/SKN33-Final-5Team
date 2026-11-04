@@ -43,6 +43,7 @@ def execute(node,state,storage,config,llm):
     tool=node["tool"];settings=node["settings"];inputs={b["input"]:state["outputs"][b["node_id"]][b["output"]] for b in node["bindings"]}
     docs = inputs['documents']
     records = []
+    table_rows = []
     if sum((len(d['text']) for d in docs)) > 45000:
         raise ValueError('추출 범위가 큽니다. 문서를 줄이거나 검색 노드를 먼저 연결하세요.')
     rows_mode = settings.get('extraction_mode') == 'rows'
@@ -82,8 +83,14 @@ def execute(node,state,storage,config,llm):
             continue
         response = llm.with_structured_output(Facts, method='json_schema', strict=True).invoke([{'role': 'system', 'content': FIELDS_PROMPT + (settings['instructions'] or '')}, payload])
         facts = response.model_dump()['facts']
+        field_row = {}
         for field in settings['fields']:
             matches = [f for f in facts if f['field'] == field]
             value, proof = checked(matches[0] if len(matches) == 1 else None, lookup)
             records.append({'file_name': parts[0]['file_name'], 'field': field, 'value': value, 'status': 'verified' if proof else 'not_found_or_unverified', 'evidence': proof})
+            field_row[field] = value
+        if settings.get('extraction_mode') == 'fields':
+            table_rows.append(field_row)
+    if settings.get('extraction_mode') == 'fields':
+        return {'records': records, 'table': {'columns': list(settings['fields']), 'rows': table_rows}}
     return {'records': records}

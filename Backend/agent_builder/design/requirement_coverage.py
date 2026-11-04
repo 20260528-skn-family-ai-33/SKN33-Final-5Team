@@ -49,6 +49,9 @@ def _matches(spec,node,draft,sources):
     args=_arguments(node);kind=spec['kind']
     if kind=='read':
         return tool in ('read_table','read_document') and set(spec['file_ids'])<=sources(node['id'])
+    if kind=='extract_fields':
+        return (tool=='extract_information' and not operation and settings.get('extraction_mode')=='fields'
+                and settings.get('fields')==spec['fields'])
     if kind=='compute':
         if tool!='calculate_columns':return False
         if operation in ('compute','calculate_records'):

@@ -118,6 +118,6 @@ def session_action(c):
         after=graph.get_state(config).values
         if after.get('saved_agent_id'):
             s['agent_id']=after['saved_agent_id'];s['base_version']=storage.agent(s['agent_id'])['version']
-        s=storage.update_session(s,data['revision']);return public_state(storage,s,graph)
+        s=storage.update_session(s,data['revision'],after);return public_state(storage,s,graph)
     finally:
         if connection:connection.close()

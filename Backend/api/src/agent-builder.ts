@@ -115,7 +115,7 @@ export async function parseBuilderAsset(input:any){
  if(columns.length>200||columns.some(k=>!k.trim()||k.length>120||['__proto__','prototype','constructor'].includes(k)))throw new Error('열 이름 또는 열 수를 확인하세요. 최대 200개 열을 지원합니다.');
  if(rows.some(r=>Object.values(r).some(v=>v!==null&&!['string','number','boolean'].includes(typeof v))))throw new Error('표의 셀은 문자열·숫자·논리값·빈 값만 지원합니다.');
  const profile=Object.fromEntries(columns.map(k=>{const values=rows.map(r=>r[k]);const filled=values.filter(v=>v!==null&&v!==undefined&&v!=='');return [k,{types:[...new Set(filled.map(v=>typeof v))],missing:values.length-filled.length,duplicateValues:filled.length-new Set(filled.map(v=>JSON.stringify(v))).size,numericStrings:filled.filter(v=>typeof v==='string'&&v.trim()!==''&&Number.isFinite(Number(v))).length}];}));
- return {asset:{name:input.fileName,kind,format,hash:createHash('sha256').update(bytes).digest('hex'),row_count:rows.length,columns,profile,preview:rows.slice(0,3),text,pages,
+ return {asset:{name:input.fileName,kind,format,size_bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex'),row_count:rows.length,columns,profile,preview:rows.slice(0,3),text,pages,
   capabilities:[kind,...(kind==='table'&&routed?.text.trim()?['document']:[])],...documentMeta},rows};
 }
 export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void):Promise<boolean>{

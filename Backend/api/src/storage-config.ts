@@ -9,6 +9,8 @@ import {postgresTls} from './auth-users';
 export type StorageConfig={kind:'sqlite'}|{kind:'postgres';databaseUrl:string;databaseCaFile?:string;databaseServerName?:string};
 export function storageConfig(env:NodeJS.ProcessEnv=process.env):StorageConfig {
  const kind=env.A4B_STORAGE||'sqlite';
+ if(env.A4B_BUSINESS_RECORDS && (env.A4B_BUSINESS_RECORDS!=='a4b' || kind!=='postgres' || env.A4B_AUTH_MODE!=='cognito' || (env.A4B_AUTH_USER_STORE||'postgres')!=='postgres'))
+  throw new Error('기존 a4b 업무 표에 기록하려면 PostgreSQL 저장소와 Cognito 회원 DB가 필요합니다.');
  if(kind!=='sqlite'&&kind!=='postgres')throw new Error('A4B_STORAGE는 sqlite 또는 postgres로 설정하세요.');
  if(kind==='sqlite'){
   // Same rule as the SQLite member store: a public server keeps its data in RDS.
@@ -80,6 +82,16 @@ export async function checkBuilderDatabase(config:StorageConfig,database:pg.Pool
   CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) p(privilege)
   LEFT JOIN pg_class c ON c.oid=to_regclass('a4b_builder.'||t.name)`);
  if(!access?.ok)throw new Error('업무 데이터 표의 행 수준 보안과 앱 계정의 SELECT·INSERT·UPDATE·DELETE 권한을 확인하세요.');
+ if(process.env.A4B_BUSINESS_RECORDS==='a4b'){
+  const {rows:[domain]}=await database.query(`SELECT bool_and(coalesce(has_table_privilege(current_user,
+    to_regclass('a4b.'||t),p),false)) AS ok FROM (VALUES
+    ('workflows','UPDATE'),('design_sessions','UPDATE'),('workflow_runs','UPDATE'),
+    ('workflows','INSERT'),('design_sessions','INSERT'),('workflow_versions','INSERT'),
+    ('workflow_runs','INSERT'),('node_runs','INSERT'),('outputs','INSERT'),
+    ('documents','INSERT'),('document_versions','INSERT')) AS required(t,p)`);
+  if(!domain?.ok || !(await database.query("SELECT 1 FROM a4b.document_types WHERE code='other' AND is_active")).rowCount)
+   throw new Error('기존 a4b 업무 표 권한과 활성 문서 종류 other를 확인하세요.');
+ }
  const receiptPath=join(directory,'.a4b-sqlite-import');
  const receipt=(await readFile(receiptPath,'utf8').catch((error:NodeJS.ErrnoException)=>{
   if(error.code==='ENOENT')return '';

@@ -26,6 +26,7 @@ docker() {
                 *) return 91 ;;
             esac ;;
         image|stop|ps) return 0 ;;
+        volume) echo "$mock_old_id" ;;
         run) [[ "$failure" != preflight ]] ;;
         create) echo "$mock_new_id" ;;
         start) [[ "$failure" != start || "$2" != "$mock_new_id" ]] ;;
@@ -47,7 +48,7 @@ check() {
     echo /a4b-jhd-aws >"$fixture"/oldname
     : >"$fixture"/calls
     rc=0
-    bash "$fixture/deploy.sh" "$image" "$public_url" production >"$fixture"/result 2>&1 || rc=$?
+    bash "$fixture/deploy.sh" "$image" "$public_url" production "${7:-}" >"$fixture"/result 2>&1 || rc=$?
     if [[ "$5" == ok ]]; then [[ $rc == 0 ]] || { cat "$fixture"/result; return 1; }
     else [[ $rc != 0 ]] || return 1; fi
     cat "$fixture"/calls > "$fixture/$6"
@@ -60,6 +61,10 @@ grep -q -- '--sqlite-stopped-at=2026-' "$fixture"/offline-cutover
 grep -q -- "^start $mock_new_id" "$fixture"/offline-cutover
 absent -q -- "^stop $mock_old_id" "$fixture"/offline-cutover
 check exited sqlite preflight postgres blocked bad-receipt
+check exited sqlite none postgres ok fresh-cutover a4b-fresh-test
+grep -q '^run .*--volume a4b-fresh-test:/app/data .*--sqlite-stopped-at=' "$fixture"/fresh-cutover
+grep -q '^create .*--volume a4b-fresh-test:/app/data ' "$fixture"/fresh-cutover
+absent -E '^(run |create ).*actual-data:/app/data' "$fixture"/fresh-cutover
 absent -E '^(create |stop |start |rename )' "$fixture"/bad-receipt
 check exited sqlite health postgres blocked failed-cutover
 absent -q -- "^start $mock_old_id" "$fixture"/failed-cutover

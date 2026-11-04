@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16.4-alpine
+        image: pgvector/pgvector:0.8.2-pg16
         env:
           POSTGRES_PASSWORD: a4b-test
           POSTGRES_DB: a4b_test
@@ -153,6 +153,13 @@ jobs:
         run: |
           # A manually selected branch may not have the PostgreSQL store yet.
           if [[ ! -f Backend/tests/infrastructure/test_storage_backends.py ]]; then exit 0; fi
+          if [[ -f Backend/infrastructure/persistence/business_records.py ]]; then
+            db_container=${{ job.services.postgres.id }}
+            for schema_file in infrastructure/db/prerequisites.sql infrastructure/db/schema.sql; do
+              docker exec -i "$db_container" psql -Xq -v ON_ERROR_STOP=1 -U postgres -d a4b_test < "$schema_file"
+            done
+            export A4B_TEST_BUSINESS_SCHEMA=1
+          fi
           (cd Backend && .venv-agent/bin/python -m pytest tests/infrastructure/test_storage_backends.py -q)
           node --import tsx --test Backend/api/tests/storage-config.test.ts
       - name: Check and test frontend

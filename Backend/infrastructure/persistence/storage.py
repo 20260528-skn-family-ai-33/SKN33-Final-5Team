@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from infrastructure.persistence.ids import uid, now
 from infrastructure.persistence.db import enable_wal, open_database, workspace_id
@@ -29,6 +30,10 @@ class Storage:
         self.workspace_id=workspace_id(directory)
         self.db=open_database(self.path,self.workspace_id)
         self.dialect=self.db.dialect
+        self.business=None
+        if self.dialect=='postgres' and os.environ.get('A4B_BUSINESS_RECORDS')=='a4b' and self.workspace_id!='local':
+            from infrastructure.persistence.business_records import BusinessRecords
+            self.business=BusinessRecords(self.db.connection,self.workspace_id)
         try:
             self.ensure_schema(SCHEMA)
             # A worker starts for every call (heartbeats too), so write only what actually changed.
@@ -73,14 +78,19 @@ class Storage:
         if base:
             refs={n['ref'] for n in s['node_library']}
             s['node_library'] += [n for n in base['config'].get('node_snapshots',[]) if n['ref'] not in refs]
-        self.db.execute('INSERT INTO builder_sessions({wsc}id,json) VALUES({wsv}?,?)',(s['id'],json.dumps(s,ensure_ascii=False)));self.db.commit()
+        self.db.execute('INSERT INTO builder_sessions({wsc}id,json) VALUES({wsv}?,?)',(s['id'],json.dumps(s,ensure_ascii=False)))
+        if self.business:self.business.open_session(s)
+        self.db.commit()
         return self.session(s['id'])
-    def update_session(self,s,expected):
+    def update_session(self,s,expected,design_state=None):
         result=self.db.execute('UPDATE builder_sessions SET json=?,revision=revision+1 WHERE {ws} AND id=? AND revision=?',(json.dumps({k:v for k,v in s.items() if k!='revision'},ensure_ascii=False),s['id'],expected))
         if not result.rowcount: raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
+        if self.business and design_state is not None:self.business.update_design(s['id'],design_state)
         self.db.commit(); return self.session(s['id'])
     def add_asset(self,asset,rows):
-        self.db.execute('INSERT INTO builder_assets({wsc}id,json,rows_json) VALUES({wsv}?,?,?)',(asset['id'],json.dumps(asset,ensure_ascii=False),json.dumps(rows,ensure_ascii=False)));self.db.commit();return asset
+        self.db.execute('INSERT INTO builder_assets({wsc}id,json,rows_json) VALUES({wsv}?,?,?)',(asset['id'],json.dumps(asset,ensure_ascii=False),json.dumps(rows,ensure_ascii=False)))
+        if self.business and asset.get('original_path'):self.business.save_document(asset)
+        self.db.commit();return asset
     def asset(self,id):
         from documents.review.document_review import effective_asset
         return effective_asset(self.raw_asset(id),self.document_review(id))
@@ -128,7 +138,7 @@ class Storage:
                     if draft.get('schedule') and (not schedules.get(old['id']) or not schedules.source(old['id'])):
                         schedules.configure(old['id'],commit=False)
                     self.db.commit();return old['id']
-            id=state.get('base_agent_id') or uid()
+            id=state.get('base_agent_id') or (session_id if self.business else uid())
             row=self.db.execute('SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=?',(id,)).fetchone()
             version=row[0] or 0
             if version!=state.get('base_version',0):raise ValueError('저장된 에이전트가 다른 대화에서 수정됐습니다. 최신 설정을 다시 열어주세요.')
@@ -140,12 +150,16 @@ class Storage:
             from workflow_engine.library.reusable_workflows import pin_dependencies
             a['workflow_dependencies']=pin_dependencies(self,draft,state['model'],state['credential_id'],id)
             self.db.execute('INSERT INTO agent_versions({wsc}agent_id,version,json) VALUES({wsv}?,?,?)',(id,a['version'],json.dumps(a,ensure_ascii=False)))
+            if self.business:self.business.save_version(a)
             if draft.get('schedule'):schedules.configure(id,commit=False)
             else:self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(id,))
             self.db.commit();return id
         except Exception:self.db.rollback();raise
+    def write_test(self,run):
+        self.db.execute('INSERT INTO agent_tests({wsc}id,agent_id,json) VALUES({wsv}?,?,?) ON CONFLICT({wsc}id) DO UPDATE SET json=excluded.json',(run['id'],run['agent_id'],json.dumps(run,ensure_ascii=False)))
+        if self.business:self.business.save_run(run)
     def save_test(self,run):
-        self.db.execute('INSERT INTO agent_tests({wsc}id,agent_id,json) VALUES({wsv}?,?,?) ON CONFLICT({wsc}id) DO UPDATE SET json=excluded.json',(run['id'],run['agent_id'],json.dumps(run,ensure_ascii=False)));self.db.commit()
+        self.write_test(run);self.db.commit()
     def tests(self,agent_id):
         from verification.reply_review.decisions import decorate_run
         return [decorate_run(self,json.loads(r[0])) for r in self.db.execute('SELECT json FROM agent_tests WHERE {ws} AND agent_id=? ORDER BY {seq} DESC LIMIT 20',(agent_id,))]

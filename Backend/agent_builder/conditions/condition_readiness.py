@@ -574,13 +574,14 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                     'evidence': [refs[0]], 'extraction': 'literal_column_rule',
                 }
         for key, pattern, mapping in patterns:
-            for match in re.finditer(pattern, message['content'], re.IGNORECASE):
-                if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
+            policy_text = _unquoted_comparison_text(text) if key == 'filter.operator' else text
+            for match in re.finditer(pattern, policy_text, re.IGNORECASE):
+                if key == 'filter.operator' and _excludes_named_range(policy_text, match.end()):
                     continue  # the named range is dropped; leave the operator to a question
-                tail = message['content'][match.end():match.end() + 16]
+                tail = policy_text[match.end():match.end() + 16]
                 negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
                 if key == 'filter.operator':
-                    negated = _negates_named_comparison(message['content'], match.end())
+                    negated = _negates_named_comparison(policy_text, match.end())
                 token = re.sub(r'\s+', ' ', match.group(1))
                 value = None if negated else mapping.get(token, mapping.get(token.upper()))
                 refs = [e for e in catalog if e.get('turn') == turn and match.group(0) in e['quote']]
@@ -590,17 +591,6 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                 per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
-        # A later explicit answer resolves a negated comparison even after the
-        # pending question is cleared. Replaying the original conflict must not
-        # invalidate the user's confirmed operator during audit or the next turn.
-        answer = text.strip().rstrip('.!?。')
-        if result.get('filter.operator', {}).get('status') == 'conflict' and answer in CHOICES['filter.operator']:
-            refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user']
-            if refs:
-                per_turn['filter.operator'] = {
-                    'key': 'filter.operator', 'status': 'specified', 'value': CHOICES['filter.operator'][answer],
-                    'evidence_ids': [refs[0]['id']], 'evidence': [refs[0]], 'extraction': 'literal_policy_rule',
-                }
         in_schedule = 'schedule.frequency' in result or 'schedule' in (state.get('condition_ledger') or {}).get('operations', [])
         for key, value, span in schedule_literals(text, follow_up=in_schedule):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
@@ -664,6 +654,8 @@ def literal_condition_issues(state):
     issues=[issue] if issue else []
     for key,item in literals.items():
         stored=(ledger.get('slots') or {}).get(key)
+        if key == 'filter.operator' and _newer_operator_evidence(stored, item, state):
+            continue
         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
             issues.append(f'{key}: 저장된 조건이 사용자 원문과 달라 재판정이 필요합니다.')
     return issues
@@ -750,7 +742,7 @@ def _excludes_named_range(text, end):
 
 
 _COMPARISON_NEGATION = re.compile(
-    r'^\s*(?:이|가|은|는)?\s*(?:아니|아닌|아닐|아님|아닙|않|(?:하)?지\s*(?:않|마|말))')
+    r'^\s*(?:이|가|은|는|도|만)?\s*(?:아니|아닌|아닐|아님|아닙|않|(?:하)?(?:지(?:는|도)?|진)\s*(?:않|마|말))')
 
 
 def _negates_named_comparison(text, end):
@@ -776,6 +768,11 @@ _ACTION_CONNECTIVE = re.compile(r'^(?:하고|해서|하여|한\s+(?:뒤|후)|고
 _NEXT_OPERATION = re.compile(r'(?:(?:CSV|JSON|엑셀|파일|표)(?:으로|로)\s*)?(?:저장|출력|정렬|집계)'
                              r'|[^\s.,]+\s+(?:큰|작은|높은|낮은)\s*순(?:서)?로\s*정렬', re.I)
 _QUOTED_TEXT = re.compile(r'''“[^”]*”|‘[^’]*’|「[^」]*」|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`''')
+
+
+def _unquoted_comparison_text(text):
+    # Keep offsets stable for evidence lookup; quoted examples are not criteria.
+    return _QUOTED_TEXT.sub(lambda match: ' ' * len(match.group()), text)
 
 
 def _range_action(suffix, subjects):
@@ -942,14 +939,59 @@ def _grounded_enum(key, value, quote):
         aliases = {'gt': r'초과|보다\s*큰', 'gte': r'이상', 'lt': r'미만|보다\s*작은',
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
+        if value in ('gt', 'gte', 'lt', 'lte'):
+            quote = _unquoted_comparison_text(quote)
+            # A rejected occurrence does not cancel a separate positive rule in
+            # a document ("30 이상 ... 30 이상이 아닌 값은 대상이 아니다").
+            return any(not _excludes_named_range(quote, match.end()) and
+                       not _negates_named_comparison(quote, match.end())
+                       for match in re.finditer(aliases[value], quote))
         matches = list(re.finditer(aliases[value], quote))
-        if value in ('gt', 'gte', 'lt', 'lte') and any(
-            _excludes_named_range(quote, m.end()) or _negates_named_comparison(quote, m.end())
-            for m in matches
-        ):
-            return False
         return bool(matches)
     return True
+
+
+def _grounded_condition(key, value, evidence, state, previous=None):
+    if key != 'filter.operator':
+        return _grounded_enum(key, value, '\n'.join(e['quote'] for e in evidence))
+    choice = option_answer(state)
+    for source in evidence:
+        quote = source['quote']
+        # Match option_answer's whole-answer normalization before deciding
+        # whether a short label belongs to this question or to a column choice.
+        label = re.sub(r'[\s.!?。]+', '', quote).lower()
+        if source.get('source_id') != 'user' or label not in CHOICES[key]:
+            if _grounded_enum(key, value, quote):
+                return True
+            continue
+        if CHOICES[key][label] != value:
+            continue
+        turn = source.get('turn')
+        if choice and choice['turn'] == turn and choice['key'] == key and choice['label'] == label:
+            return True
+        event = next((e for e in reversed(state.get('condition_answers', [])) if e.get('turn') == turn), None)
+        if event and event.get('question_ids') and set(event.get('candidate_keys', [])) == {key}:
+            return True
+        # Persist the accepted question identity so clearing pending_questions
+        # cannot turn a field choice into an operator choice on later turns.
+        if (previous and previous.get('value') == value and previous.get('extraction') == 'choice_answer_rule'
+                and previous.get('question_id') and source in previous.get('evidence', [])
+                and (not event or previous['question_id'] in event.get('question_ids', [])
+                     and (not event.get('candidate_keys') or key in event['candidate_keys']))):
+            return True
+    return False
+
+
+def _newer_operator_evidence(candidate, literal, state):
+    if not candidate or candidate.get('status') != 'specified':
+        return False
+    literal_turn = max((e.get('turn', -1) for e in literal.get('evidence', [])
+                        if e.get('source_id') == 'user'), default=-1)
+    # The later source must itself support the operator. An unrelated new
+    # output request cannot make an older answer supersede a correction.
+    return any(e.get('source_id') == 'user' and e.get('turn', -1) > literal_turn and
+               _grounded_condition('filter.operator', candidate['value'], [e], state, candidate)
+               for e in candidate.get('evidence', []))
 
 
 def validate_conditions(raw, state, catalog):
@@ -984,7 +1026,7 @@ def validate_conditions(raw, state, catalog):
     by_id = {e['id']: e for e in catalog}
     previous = deepcopy(state.get('condition_ledger') or {})
     for key, old in previous.get('slots', {}).items():
-        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
+        if old.get('status') == 'specified' and not _grounded_condition(key, old['value'], old.get('evidence', []), state, old):
             old.update(status='missing', value=None, evidence_ids=[], evidence=[])
             invalid.append(f'{key}: 이전 확정 값의 원문 근거를 재검증')
     latest = max((i for i, m in enumerate(state.get('messages', [])) if m['role'] == 'user'), default=-1)
@@ -1003,7 +1045,7 @@ def validate_conditions(raw, state, catalog):
             try:
                 value = _value(key, condition['value'])
                 quote = '\n'.join(e['quote'] for e in evidence)
-                if not _grounded_enum(key, value, quote):
+                if not _grounded_condition(key, value, evidence, state, previous.get('slots', {}).get(key)):
                     raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
                 if key.endswith('.field') and value not in quote:
                     raise ValueError('원문에 없는 열 이름입니다.')
@@ -1031,6 +1073,9 @@ def validate_conditions(raw, state, catalog):
             raise ValueError('미정·충돌 조건을 임의 값으로 확정할 수 없습니다.')
         old = previous.get('slots', {}).get(key)
         if old and old['status'] == 'specified':
+            if (key == 'filter.operator' and item['status'] == 'specified' and item['value'] == old['value']
+                    and evidence == old.get('evidence')):
+                item = deepcopy(old)  # retain the accepted choice's question identity
             latest_text=state.get('messages',[])[latest]['content'] if latest>=0 else ''
             unrelated_value_correction=(key=='filter.value' and item['status']=='conflict'
                 and not re.search(r'\d|금액|비용|매출|가격|기준|선별|조건|초과|이상|미만|이하',latest_text))
@@ -1046,6 +1091,10 @@ def validate_conditions(raw, state, catalog):
     def _turn(item):
         return max((e.get('turn', -1) for e in item.get('evidence', [])), default=-1)
     for key, item in list(literals.items()):
+        if key == 'filter.operator' and _newer_operator_evidence(slots.get(key), item, state):
+            invalid.append(f'{key}: 이후 차례의 확인 답변·수정값을 우선')
+            literals.pop(key)
+            continue
         # A schedule value the user corrected in a later turn (grounded by that turn) is the current one.
         if key.startswith('schedule.') and slots.get(key, {}).get('status') == 'specified' and _turn(slots[key]) > _turn(item):
             invalid.append(f'{key}: 이후 차례의 수정값을 우선')
@@ -1060,7 +1109,8 @@ def validate_conditions(raw, state, catalog):
         if evidence and choice['label'] in choice_options(choice['key'], state):
             value = CHOICES[choice['key']][choice['label']] if choice['key'] in CHOICES else choice['label']
             slots[choice['key']] = {'key': choice['key'], 'status': 'specified', 'value': value,
-                                    'evidence_ids': [evidence[0]['id']], 'evidence': evidence}
+                                    'evidence_ids': [evidence[0]['id']], 'evidence': evidence,
+                                    'extraction': 'choice_answer_rule', 'question_id': choice['question_id']}
     amount = numeric_answer(state)
     if amount:
         evidence = [e for e in catalog if e['source_id'] == 'user' and e.get('turn') == amount['turn']][:1]

@@ -48,7 +48,8 @@ def test_a_short_answer_to_a_clarify_question_is_judged_again():
 @pytest.mark.parametrize('reply', ['CSV로 저장해줘', '100만원', '대신 지역별 합계로 바꿔줘', '매주 월요일로 예약해', '지난달 실적과 비교하는 표를 원해'])
 def test_a_reply_with_new_work_is_judged_again(reply):
     s = after('missing_capability', reply)
-    transport = Fake([packet(s, 'existing_tools', tools=['read_table'])])
+    # Quote the reply: a reply judged as a new task may only quote itself (PR #39 review 3).
+    transport = Fake([{**packet(s, 'existing_tools', tools=['read_table']), 'user_quotes': [reply]}])
     update = make_capability_check('fixture', transport, mode='enforce')(s)
     assert transport.calls == 1 and update['capability_assessment']['decision'] == 'existing_tools'
 

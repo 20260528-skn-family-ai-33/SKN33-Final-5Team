@@ -176,6 +176,9 @@ DEMOS=[
 ]
 
 _NEW_TASK_WORDS=re.compile(r'줘|주세요|만들|정리|저장|보내|골라|남겨|뽑|계산|비교|합계|집계|요약|예약|매일|매주|변환|추출',re.I)
+# A turn that points back at the earlier request is a follow-up, not a new task
+# ("원래 조건으로 다시 확인해줘", "위 조건 그대로 저장해줘", "아까 그 표를 CSV로").
+_REFERS_BACK=re.compile(r'원래|기존|다시|그대로|아까|방금|앞(?:서|에서|의|에)|위(?:의|에서|에|\s*조건|\s*내용)|이전|같은\s*조건|그\s*(?:조건|표|파일|요청|작업|기준)|대신|말고|바꿔|수정',re.I)
 
 def _task_window(state):
     """Messages the capability judgment sees: the whole conversation, or only a new task request.
@@ -184,14 +187,17 @@ def _task_window(state):
     "영수증 OCR 부족" on every turn because the whole conversation was judged as one request.
     A latest user message that names work (a task word, longer than a short reply) and does not
     answer a pending question starts a new task, so only it is judged. Answers to pending
-    questions keep the whole conversation, which they need ("100만원 초과로 해줘", "상품명, 수량").
+    questions keep the whole conversation, which they need ("100만원 초과로 해줘", "상품명, 수량"),
+    and so does a turn that points back at the earlier request ("원래 조건으로 다시 확인해줘",
+    "아니, 30 초과로 바꿔줘"): judged alone it has no task (PR #39 review 3 made this visible).
     """
     if os.getenv('A4B_CAPABILITY_CONTEXT','window')=='full':return state['messages']
     messages=state.get('messages',[])
     if not messages or messages[-1].get('role')!='user' or state.get('pending_questions') or state.get('capability_questions'):
         return messages
     text=re.sub(r'\s+','',messages[-1]['content'])
-    if len(text)<=12 or not _NEW_TASK_WORDS.search(text) or len([m for m in messages if m.get('role')=='user'])<2:
+    if (len(text)<=12 or not _NEW_TASK_WORDS.search(text) or _REFERS_BACK.search(messages[-1]['content'])
+            or len([m for m in messages if m.get('role')=='user'])<2):
         return messages
     return [messages[-1]]
 
@@ -202,7 +208,12 @@ def assess_capability(state,transport):
     if not user:raise ValueError('사용자 요청이 필요합니다.')
     schema=Assessment.model_json_schema()
     schema['properties']['tool_ids']['items']['enum']=[t['id'] for t in TOOLS]
-    schema['properties']['user_quotes']['items']['enum']=user
+    # The task window decides which user turns are evidence: the payload, the quote list the
+    # schema allows and the quote check all use it (PR #39 review 3).
+    window=_task_window(state)
+    scoped={**state,'messages':window}
+    quotes=[m['content'] for m in window if m.get('role')=='user']
+    schema['properties']['user_quotes']['items']['enum']=quotes
     variants=[]
     from copy import deepcopy
     for decision in ['existing_tools','clarify','missing_capability','manual_review']:
@@ -215,16 +226,15 @@ def assess_capability(state,transport):
             props['missing_actions']['minItems']=1;props['missing_conditions']['maxItems']=0
         variants.append(branch)
     transport.schema={'anyOf':variants}
-    window=_task_window(state)
     messages=[{'role':'system','content':SYSTEM}, {'role':'user','content':json.dumps({
         'messages':window,'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,
         'app_capabilities':APP_CAPABILITIES,
         'tools':planner_catalog(TOOLS),
-        'authoritative_request':user[-1],'user_quote_catalog':[m['content'] for m in window if m.get('role')=='user']},ensure_ascii=False)}]
+        'authoritative_request':user[-1],'user_quote_catalog':quotes},ensure_ascii=False)}]
     reply=transport.invoke(messages)
     content=reply.get('content') if isinstance(reply,dict) else reply.content
-    result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=1)
+    result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),scoped,model_calls=1)
     calls=1
     if result['decision']=='missing_capability':
         review_prompt='''이전 지원 판단은 미검증 후보입니다. 요청과 실제 tools 및 app_capabilities를 모두 다시 대조하여 최종 Assessment JSON 하나를 반환합니다.
@@ -241,5 +251,5 @@ user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 �
             messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'task':'실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1
-        result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
-    return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}
+        result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),scoped,model_calls=calls)
+    return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state),state),scoped,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

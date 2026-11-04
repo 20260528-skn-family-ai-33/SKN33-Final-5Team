@@ -33,3 +33,13 @@ def test_first_request_and_full_mode_are_unchanged(monkeypatch):
     s = conv(RECEIPT, '분석할 파일을 먼저 올려 주세요.', SALES)
     monkeypatch.setenv('A4B_CAPABILITY_CONTEXT', 'full')
     assert _task_window(s) == s['messages']
+
+
+def test_turns_that_point_back_keep_the_conversation():
+    """Judged alone, "다시 확인해줘" has no task; its quotes must come from the earlier request (PR #39 review 3)."""
+    for reply in ['운영팀 검토를 마쳤습니다. 원래 조건으로 다시 확인해줘.', '위 조건 그대로 CSV로 저장해줘.',
+                  '아니, amount가 30 초과로 바꿔줘.', '아까 그 표를 JSON 말고 CSV로 저장해줘.']:
+        s = conv(RECEIPT, '어떤 항목을 한 줄씩 뽑을까요?', reply)
+        assert _task_window(s) == s['messages'], reply
+    s = conv(RECEIPT, '분석할 파일을 먼저 올려 주세요.', SALES)
+    assert _task_window(s) == [s['messages'][-1]]

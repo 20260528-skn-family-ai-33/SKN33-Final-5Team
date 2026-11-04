@@ -4,11 +4,18 @@ import re
 from contracts.models import AgentDraft, ExecutionPlan, NodeSettings, ScheduleSpec
 
 
+TEMPLATE_OPERATIONS={'filter','deduplicate','schedule'}
+
+
 def compile_conditions(state):
+    # One filter_sort node already carries the filter, missing/duplicate policies and output format,
+    # so a confirmed combination of them is one node, not separate tasks. Live 2026-11-04 (RunPod):
+    # the planner duplicated or extended this node on fully confirmed requests (B-4 5/82 failures),
+    # and the one-operation template refused 29/50 B-2 requests that combine filter and dedup.
     ledger=state.get('condition_ledger') or {}
-    if ledger.get('decision')!='ready' or len(ledger.get('operations',[]))!=1:
-        raise ValueError('단일 대표 업무의 확정 조건이 필요합니다.')
-    operation=ledger['operations'][0]
+    operations=list(dict.fromkeys(ledger.get('operations',[])))
+    if ledger.get('decision')!='ready' or not operations or not set(operations)<=TEMPLATE_OPERATIONS:
+        raise ValueError('대표 템플릿이 처리하는 확정 조건(선별·중복·예약)이 아닙니다.')
     slots={key:item['value'] for key,item in ledger['slots'].items() if item['status']=='specified'}
     text='\n'.join(m['content'] for m in state.get('messages',[]) if m['role']=='user')
     if re.search(r'오름차순|내림차순',text):
@@ -16,7 +23,7 @@ def compile_conditions(state):
     plan=ExecutionPlan(filters=[],sort=[],match='all',missing_policy=slots.get('missing.policy','ask'),
         duplicate_policy=slots.get('duplicate.policy','keep'),duplicate_field=slots.get('duplicate.field'),
         output_format=slots.get('output.format','json')).model_dump()
-    if operation=='filter':
+    if 'filter' in operations:
         value=slots['filter.value']
         plan['filters']=[{'field':slots['filter.field'],'operator':slots['filter.operator'],'value':value,
             'compare_field':None,'value_type':'number' if isinstance(value,(int,float)) else 'text'}]
@@ -26,7 +33,7 @@ def compile_conditions(state):
     if tables and len(candidates)!=1:
         raise ValueError('대표 템플릿에 사용할 표 자료를 하나로 식별할 수 없습니다.')
     selected=[candidates[0]['id']] if candidates else []
-    if operation=='schedule' and not selected:
+    if 'schedule' in operations and not selected:
         raise ValueError('예약할 관리 표 자료가 필요합니다.')
     nodes=[];edges=[]
     def add(identifier,tool,bindings=None,**settings):
@@ -36,10 +43,10 @@ def compile_conditions(state):
         if len(nodes)>1:edges.append({'source':nodes[-2]['id'],'target':identifier,'branch':'next'})
     add('read','read_table',file_ids=selected)
     last='read'
-    if operation in ('filter','deduplicate'):
+    if 'filter' in operations or 'deduplicate' in operations:
         add('apply','filter_sort',[{'input':'table','node_id':last,'output':'table'}],execution_plan=plan)
         last='apply'
-    if 'output.format' in slots or operation=='schedule':
+    if 'output.format' in slots or 'schedule' in operations:
         add('output','write_result',[{'input':'table','node_id':last,'output':'table'}],format=plan['output_format'])
     requirements=[]
     for item in ledger['slots'].values():
@@ -47,7 +54,7 @@ def compile_conditions(state):
             source={'description':item['key'],'source_id':evidence['source_id'],'quote':evidence['quote']}
             if not any(r['source_id']==source['source_id'] and r['quote']==source['quote'] for r in requirements):requirements.append(source)
     schedule=None
-    if operation=='schedule':
+    if 'schedule' in operations:
         schedule=ScheduleSpec(**{key:slots.get('schedule.'+key) for key in ['frequency','timezone','hour','minute','weekday']}).model_dump()
     draft=AgentDraft(name='확정 조건의 표 업무',purpose='검증한 조건을 등록 도구에 적용',
         instructions='확정된 조건과 정책을 적용합니다. '+str(slots),tool_ids=[n['tool'] for n in nodes],
@@ -61,9 +68,15 @@ def compile_conditions(state):
 
 
 def template_node(state):
+    import os
     try:
         return {**compile_conditions(state),'condition_route':'audit'}
     except ValueError as error:
+        if os.getenv('A4B_CONDITION_PLAN_MODE','auto')=='auto':
+            # Outside the template (e.g. a sort request): keep the previous planner path, never worse than llm mode.
+            return {'condition_route':'conversation','condition_template':False,
+                    'trace':state.get('trace',[])+[{'node':'condition_template','label':'대표 표 업무 구성','status':'completed',
+                        'detail':'템플릿 범위 밖이라 모델 설계로 진행: '+str(error),'model_calls':0}]}
         return {'condition_route':'stop','status':'validation_failed','confirmed':False,'saved_agent_id':None,
                 'issues':[str(error)],'messages':state.get('messages',[])+[{'role':'assistant','content':str(error)}],
                 'trace':state.get('trace',[])+[{'node':'condition_template','label':'대표 표 업무 구성','status':'needs_input','detail':str(error),'model_calls':0}]}

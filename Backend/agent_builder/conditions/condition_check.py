@@ -126,9 +126,11 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         if setting == 'shadow' or ledger['decision'] == 'ready':
             if setting == 'enforce':
                 update['pending_questions'] = []
-                plan_mode=os.getenv('A4B_CONDITION_PLAN_MODE','llm')
-                if plan_mode not in ('llm','template'):raise ValueError('A4B_CONDITION_PLAN_MODE는 llm/template이어야 합니다.')
-                update['condition_template']=plan_mode=='template' and bool(ledger.get('operations'))
+                # auto: confirmed filter/dedup/schedule conditions become the draft in code; anything the
+                # template cannot express falls back to the planner. llm restores planner-only generation.
+                plan_mode=os.getenv('A4B_CONDITION_PLAN_MODE','auto')
+                if plan_mode not in ('llm','template','auto'):raise ValueError('A4B_CONDITION_PLAN_MODE는 llm/template/auto이어야 합니다.')
+                update['condition_template']=plan_mode in ('template','auto') and bool(ledger.get('operations'))
                 if update['condition_template']:update['condition_route']='template_plan'
             return update
         update.update(condition_route='supervisor', confirmed=False, saved_agent_id=None,

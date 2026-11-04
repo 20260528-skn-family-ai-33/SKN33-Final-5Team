@@ -120,7 +120,7 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_edge('await_capability','attachment_gate')
     graph.add_conditional_edges('generation_gate',lambda s:s['capability_generation_route'],{'generate':'conversation','recheck':'capability_check'})
     graph.add_conditional_edges('condition_check',lambda s:s['condition_route'],{'conversation':'generation_gate','template_plan':'template_plan','supervisor':'supervisor','stop':END})
-    graph.add_conditional_edges('template_plan',lambda s:s['condition_route'],{'audit':'condition_audit','stop':END})
+    graph.add_conditional_edges('template_plan',lambda s:s['condition_route'],{'audit':'condition_audit','conversation':'generation_gate','stop':END})
     graph.add_edge('conversation','condition_audit');graph.add_edge('condition_audit','validate');graph.add_edge('validate','verification');graph.add_edge('verification','supervisor')
     graph.add_conditional_edges('supervisor',lambda s:s['route'],{'unsupported':'tool_gap','invalid':END,'repair':'generation_gate','await_input':'await_input','await_approval':'await_approval','save':'save'})
     graph.add_edge('tool_gap',END)

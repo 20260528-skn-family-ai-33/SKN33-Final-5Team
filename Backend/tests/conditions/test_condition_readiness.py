@@ -303,7 +303,9 @@ def test_template_deduplication_retention_policy(tmp_path,policy,expected):
     store.close()
 
 
-def test_template_ambiguous_table_or_sort_is_held_without_llm():
+def test_template_ambiguous_table_or_sort_is_held_without_llm(monkeypatch):
+    # Strict template mode stops outside its scope; auto mode falls back to the planner instead.
+    monkeypatch.setenv('A4B_CONDITION_PLAN_MODE', 'template')
     from agent_builder.design.condition_templates import template_node
     s=state();s['condition_ledger']=checked(s,proposal(s))
     s['resources']=[{'id':i,'kind':'table','columns':['비용']} for i in ['a','b']]
@@ -385,7 +387,9 @@ def test_save_rechecks_conditions_even_after_confirmation(tmp_path):
     finally: store.close()
 
 
-def test_checkpoint_answer_restart_approval_and_real_table_execution(tmp_path):
+def test_checkpoint_answer_restart_approval_and_real_table_execution(tmp_path,monkeypatch):
+    # Counts planner calls on a confirmed request; pinned to planner-only generation (A4 default is auto).
+    monkeypatch.setenv('A4B_CONDITION_PLAN_MODE', 'llm')
     s = state('비용이 큰 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
     first_raw = proposal(s, {'filter.field': '비용', 'filter.operator': 'gt', 'filter.value': None, 'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'})
     after = {**s, 'messages': s['messages'] + [{'role': 'assistant', 'content': '선별할 기준 값은 얼마인가요?'}, {'role': 'user', 'content': '100만원 초과로 해줘.'}]}

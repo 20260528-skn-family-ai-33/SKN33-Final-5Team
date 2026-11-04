@@ -78,7 +78,9 @@ def test_blocking_decisions_never_generate_or_save_even_after_restart(tmp_path,d
 
 
 @pytest.mark.parametrize('condition_mode',['off','enforce'])
-def test_answer_rechecks_then_allows_generation_and_save(tmp_path,condition_mode):
+def test_answer_rechecks_then_allows_generation_and_save(tmp_path,condition_mode,monkeypatch):
+    # Counts planner calls on a confirmed request; pinned to planner-only generation (A4 default is auto).
+    monkeypatch.setenv('A4B_CONDITION_PLAN_MODE', 'llm')
     store=Storage(tmp_path);s=state();cfg={'configurable':{'thread_id':s['session_id']}};calls=[]
     cap=Fake([assessment(s,'clarify'),assessment(s)])
     graph,conn=setup(store,s,calls,cap,condition_mode)
@@ -298,7 +300,9 @@ def test_existing_tools_without_fingerprint_and_contradictory_payload_cannot_sav
 
 
 @pytest.mark.parametrize('reply',['모르겠어','나중에 결정','네','네.'])
-def test_condition_nonanswer_survives_capability_recheck_and_restart(tmp_path,reply):
+def test_condition_nonanswer_survives_capability_recheck_and_restart(tmp_path,reply,monkeypatch):
+    # Counts planner calls on a confirmed request; pinned to planner-only generation (A4 default is auto).
+    monkeypatch.setenv('A4B_CONDITION_PLAN_MODE', 'llm')
     store=Storage(tmp_path);s=state();cfg={'configurable':{'thread_id':s['session_id']}};calls=[]
     raw=proposal(s,{'filter.field':'비용','filter.operator':'gt','filter.value':None,
                     'missing.policy':'error','duplicate.policy':'keep','output.format':'json'})

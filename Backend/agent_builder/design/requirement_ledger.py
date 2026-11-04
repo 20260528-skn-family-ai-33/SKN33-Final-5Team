@@ -4,8 +4,9 @@ import json
 import os
 import ast
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from copy import deepcopy
+from contracts.numeric_criteria import number_value
 
 from .requirement_contracts import RequirementPlan
 
@@ -33,19 +34,6 @@ def ledger_fingerprint(state):
 
 def plan_digest(plan):
     return hashlib.sha256(json.dumps(plan,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
-
-
-def number_value(value):
-    """Normalize supported decimal notation; never turn malformed 1,2 into 12."""
-    text=str(value).strip()
-    if not re.fullmatch(r'[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?',text):
-        raise ValueError('숫자 표기를 확인하세요: '+text[:80])
-    try:
-        result=Decimal(text.replace(',',''))
-        if not result.is_finite():raise ValueError('유한한 숫자가 필요합니다.')
-        return result
-    except InvalidOperation as error:
-        raise ValueError('숫자 표기를 확인하세요: '+text[:80]) from error
 
 
 def validate_plan(raw, state):

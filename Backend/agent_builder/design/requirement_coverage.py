@@ -8,7 +8,8 @@ import json
 import os
 from decimal import Decimal
 
-from .requirement_ledger import ledger_fingerprint, plan_digest, validate_plan, number_value
+from contracts.numeric_criteria import number_value
+from .requirement_ledger import ledger_fingerprint, plan_digest, validate_plan
 
 
 def _formula(value):
@@ -79,7 +80,10 @@ def _matches(spec,node,draft,sources):
         if tool!='join_tables' or operation!='join':return False
         if any(args.get(k)!=spec[k] for k in ('keys','how','cardinality','null_keys','max_rows')):return False
         for side in ('left','right'):
-            binding=next((b for b in node['bindings'] if b['input']==side),None)
+            # Operation arguments may explicitly reference a differently named binding.
+            table = args.get(side, {'$binding': side})
+            port = table.get('$binding') if isinstance(table, dict) and len(table) == 1 else None
+            binding=next((b for b in node['bindings'] if b['input']==port),None)
             if spec[side+'_sources'] and (not binding or set(spec[side+'_sources'])!=sources(binding['node_id'])):return False
         return True
     if kind=='export':
@@ -88,9 +92,17 @@ def _matches(spec,node,draft,sources):
             return settings.get('format')==('markdown' if fmt=='md' else fmt)
         if tool=='export_result' and operation in ('serialize','write_json','write_csv'):
             return args.get('format',operation.removeprefix('write_'))==fmt
-        if tool=='create_spreadsheet' and operation=='create' and fmt=='xlsx':
-            sheets=args.get('sheets')
-            # Prove the actual sheet data binding, not an unrelated attached table.
+        if tool=='create_spreadsheet' and fmt=='xlsx':
+            from workflow_engine.executors.canonical_operation import validate_settings
+            op, workbook_args = validate_settings(node)
+            if op['id'] != 'create':
+                return False
+            sheets = workbook_args.get('sheets')
+            # Literal workbooks are valid exports. With no bindings they cannot
+            # satisfy the separate dependency check for a requested processing step.
+            if not node['bindings']:
+                return True
+            # For a processed workbook, verify the actual sheet table binding.
             if not isinstance(sheets,list) or len(sheets)!=1:return False
             table=sheets[0].get('table')
             return (isinstance(table,dict) and set(table)=={'$binding'} and
@@ -119,47 +131,16 @@ def coverage_report(state,draft):
     except (ValueError,TypeError,KeyError) as error:
         return dict(enabled=True,tasks=[],issues=['요구사항 검증: 원문·자료에 맞는 업무 목록을 다시 확인해야 합니다. '+str(error)])
     workflow=draft.get('workflow') or {};nodes={n['id']:n for n in workflow.get('nodes',[])}
-    parents={id:{b['node_id'] for b in n.get('bindings',[])} for id,n in nodes.items()}
-    def ancestors(id):
-        seen=set();todo=list(parents.get(id,[]))
-        while todo:
-            item=todo.pop()
-            if item in seen:continue
-            seen.add(item);todo.extend(parents.get(item,[]))
-        return seen
-    upstream={id:ancestors(id) for id in nodes}
-    source_cache={};resolving=set()
+    from .content_lineage import content_ancestors
+    from .reader_sources import reader_sources
+    upstream={id:content_ancestors(nodes,id) for id in nodes}
     def sources(id):
-        if id in source_cache:return source_cache[id]
-        if id in resolving or id not in nodes:return set()
-        resolving.add(id);n=nodes[id];found=set()
-        if n['tool'] in ('read_table','read_document'):
-            operation=n['settings'].get('operation')
-            if operation:
-                key={'read_csv':'path','read_text':'path','parse':'source','extract_content':'asset'}.get(operation)
-                args=_arguments(n)
-                def references(value):
-                    if isinstance(value,dict):
-                        if 'asset_id' in value:return {value['asset_id']}
-                        if set(value)=={'$binding'}:
-                            binding=next((b for b in n['bindings'] if b['input']==value['$binding']),None)
-                            return sources(binding['node_id']) if binding else set()
-                        return set().union(*(references(v) for v in value.values())) if value else set()
-                    if isinstance(value,list):return set().union(*(references(v) for v in value)) if value else set()
-                    return set()
-                if key in args:found=references(args[key])
-                elif key:
-                    binding=next((b for b in n['bindings'] if b['input']==key),None)
-                    if binding:found=sources(binding['node_id'])
-            else:
-                from documents.resources.document_resources import supports
-                kind='table' if n['tool']=='read_table' else 'document'
-                compatible={r['id'] for r in state.get('resources',[]) if supports(r,kind)}
-                found=set(n['settings'].get('file_ids') or [i for i in draft.get('document_ids',[]) if i in compatible])
-        else:
-            for parent in parents.get(id,[]):found.update(sources(parent))
-        resolving.remove(id);source_cache[id]=found
-        return found
+        result=set()
+        for parent in upstream.get(id,set()) | {id}:
+            n=nodes.get(parent)
+            if n and n['tool'] in ('read_table','read_document'):
+                result.update(reader_sources(n,state.get('resources',[]),draft.get('document_ids',[])))
+        return result
     if any(e.get('branch') in ('yes','no') for e in workflow.get('edges',[])):
         problems.append('요구사항 검증: 분기별 업무 포함 여부는 추가 검토가 필요합니다. 공통 경로의 포함만으로 승인하지 않습니다.')
     results=[];candidates={}

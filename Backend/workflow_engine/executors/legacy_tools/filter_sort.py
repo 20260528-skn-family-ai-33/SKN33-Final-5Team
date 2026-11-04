@@ -1,5 +1,6 @@
 from functools import cmp_to_key
 import math
+from contracts.numeric_criteria import number_value
 
 def empty(v):return v is None or isinstance(v,str) and not v.strip()
 def numeric(v):
@@ -14,10 +15,19 @@ def filter_sort_node(context,filters,sort,match='all',missing_policy='ask',dupli
     if match not in ['all','any'] or missing_policy not in ['ask','exclude','keep','error'] or duplicate_policy not in ['ask','keep','first','last','error']:raise ValueError('처리 정책을 확인하세요.')
     if not isinstance(filters,list) or len(filters)>20 or not isinstance(sort,list) or len(sort)>5:raise ValueError('조건 또는 정렬 항목 수가 잘못됐습니다.')
     columns=context['columns'];fields=[]
+    comparisons = []
     for f in filters:
         if not isinstance(f,dict) or f.get('operator') not in ['eq','ne','lt','lte','gt','gte','contains','is_empty','not_empty'] or f.get('value_type','text') not in ['number','text','boolean']:raise ValueError('조건의 연산자와 자료형을 확인하세요.')
         fields.append(f.get('field'))
         if f.get('compare_field'):fields.append(f['compare_field'])
+        if f.get('value_type') == 'number' and not f.get('compare_field') and f['operator'] not in ('is_empty', 'not_empty'):
+            # Old saved plans can still contain a grouped literal. Parse it once,
+            # even on an empty table, without changing the stored plan or audit log.
+            threshold = f.get('value')
+            if isinstance(threshold, str) and ',' in threshold:
+                threshold = number_value(threshold)
+            f = {**f, 'value': numeric(threshold)}
+        comparisons.append(f)
     for s in sort:
         if not isinstance(s,dict) or s.get('direction') not in ['ascending','descending'] or s.get('value_type') not in ['number','text']:raise ValueError('정렬의 방향과 자료형을 확인하세요.')
         fields.append(s.get('field'))
@@ -56,7 +66,7 @@ def filter_sort_node(context,filters,sort,match='all',missing_policy='ask',dupli
         return {'eq':lambda:left==right,'ne':lambda:left!=right,'lt':lambda:left<right,'lte':lambda:left<=right,'gt':lambda:left>right,'gte':lambda:left>=right,'contains':lambda:str(right) in str(left)}[op]()
     def keep(row):
         values=[]
-        for f in filters:
+        for f in comparisons:
             unknown=f['operator'] not in ['is_empty','not_empty'] and (empty(row.get(f['field'])) or (f.get('compare_field') and empty(row.get(f['compare_field']))))
             if missing_policy=='keep' and unknown:continue
             values.append(test(row,f))

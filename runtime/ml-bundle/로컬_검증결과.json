@@ -1,0 +1,36 @@
+{
+  "scope": "local CLI wiring and one existing model probe; no Qwen or deployed-server check",
+  "cases": [
+    {
+      "name": "explicit_off",
+      "exit_code": 1,
+      "status": "disabled",
+      "passed": true
+    },
+    {
+      "name": "missing_override",
+      "exit_code": 1,
+      "status": "missing_files",
+      "passed": true
+    },
+    {
+      "name": "actual_probe",
+      "exit_code": 0,
+      "status": "svm_candidates_verified",
+      "passed": true
+    },
+    {
+      "name": "reinstall",
+      "exit_code": 0,
+      "status": "already_installed",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "python_tests": {
+    "passed": 119,
+    "failed": 0
+  },
+  "code_commit": "7846da939e2993e562147492849d99fb89551b99",
+  "production_ec2_verified": false
+}

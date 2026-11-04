@@ -25,7 +25,10 @@ def run_pending(directory, verifier=None, limit=None):
         for id in pending_ids(db)[:limit]:
             raw = db.execute('SELECT input_json FROM builder_verifications WHERE id=?', (id,)).fetchone()[0]
             try:
-                result = (verifier or verify)(VerificationInput.model_validate_json(raw)).model_dump(mode='json')
+                payload=VerificationInput.model_validate_json(raw)
+                result = (verifier or verify)(payload).model_dump(mode='json')
+                from agent_builder.design.verifier_columns import reconcile_stored_column_findings
+                result=reconcile_stored_column_findings(payload,result)
             except (ValueError, TypeError, KeyError) as error:
                 result = dict(request_id=id, route='manual_review', execution_allowed=False, model_output=None,
                               findings=[dict(code='integration_contract_error', severity='review',

@@ -78,6 +78,20 @@ def validate_node(state):
     delivery_issue = None if draft['questions'] or draft['unsupported'] else draft_delivery_issue(state, draft)
     if delivery_issue:
         issues.append(delivery_issue)
+    from agent_builder.design.processing_guard import processing_issues
+    issues.extend(processing_issues(state, draft))
+    from agent_builder.design.requirement_coverage import coverage_report
+    coverage=(coverage_report(state,draft) if not draft['questions'] and not draft['unsupported']
+              else dict(enabled=state.get('requirement_required',False),tasks=[],issues=[]))
+    issues.extend(coverage['issues'])
     status=('validation_failed' if support_conflict or delivery_issue else 'unsupported' if draft['unsupported'] else
             'needs_clarification' if draft['questions'] or issues else 'ready')
-    return {'draft':draft,'issues':list(dict.fromkeys(issues)),'status':status,'trace':state.get('trace',[])+[{'node':'validate','label':'설정·근거 검증','status':'completed' if not issues else 'needs_input','detail':'필수 설정·등록 도구·자료 범위·인용 원문을 검사했습니다.' if not issues else ' / '.join(issues)}]}
+    trace=state.get('trace',[])+[{'node':'validate','label':'설정·근거 검증',
+        'status':'completed' if not issues else 'needs_input',
+        'detail':'필수 설정·등록 도구·자료 범위·인용 원문을 검사했습니다.' if not issues else ' / '.join(issues)}]
+    if coverage['enabled']:
+        trace.append({'node':'requirement_coverage','label':'요청 업무 반영 검사',
+            'status':'completed' if not coverage['issues'] else 'needs_input',
+            'detail':f"{len(coverage['tasks'])}개 요구사항의 실행 설정·데이터 연결을 대조했습니다.",
+            'tasks':coverage['tasks']})
+    return {'draft':draft,'requirement_coverage':coverage,'issues':list(dict.fromkeys(issues)),'status':status,'trace':trace}

@@ -7,6 +7,8 @@
   },
   "scripts": {
     "setup": "node Backend/api/scripts/setup-python.mjs",
+    "ml:install": "node --env-file-if-exists=.env scripts/svm-bundle.mjs install",
+    "ml:check": "node --env-file-if-exists=.env scripts/svm-bundle.mjs check",
     "setup:docling": "node Backend/api/scripts/setup-python.mjs --docling",
     "demo": "node scripts/launch-demo.mjs",
     "dev": "npm run build && node --env-file-if-exists=.env --import tsx Backend/api/src/launch.ts",

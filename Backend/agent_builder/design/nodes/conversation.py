@@ -151,6 +151,10 @@ def make_conversation(api_key,model,model_factory=None):
         # Ollama may ignore forced tool_choice. Supply authoritative read-only
         # contracts directly instead of losing the final JSON decoding stage.
         selected_contract_ids |= {n['tool'] for n in ((state.get('draft') or {}).get('workflow') or {}).get('nodes',[]) if n['tool'] in {t['id'] for t in catalog}}
+        if state.get('capability_assessment') and 'email.send' in selected_contract_ids:
+            from agent_builder.capabilities.capability_judgement import delivery_directives
+            if delivery_directives(state).get('email', {}).get('intent') == 'cancel_delivery':
+                selected_contract_ids.discard('email.send')
         if selected_contract_ids:
             if any(r.get('kind')=='table' for r in resources.values()):selected_contract_ids.add('read_table')
             if any(r.get('kind')=='document' for r in resources.values()):selected_contract_ids.add('read_document')

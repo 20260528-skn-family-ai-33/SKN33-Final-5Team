@@ -8,14 +8,17 @@ import hashlib
 import json
 import re
 from copy import deepcopy
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from workflow_engine.catalog.registry import TOOLS
-from agent_builder.conditions.input_resolution import latest_resolution, option_answer, numeric_answer, resolution_question, resolution_options, pending_nonanswer
+from agent_builder.conditions.input_resolution import (
+    column_amount, column_unit, executable_number, latest_resolution, numeric_answer,
+    numeric_column, option_answer, pending_nonanswer, resolution_question, resolution_options,
+)
 
 
 class ConditionContractError(ValueError):
@@ -294,7 +297,7 @@ _KO_DIGIT = {'일': 1, '이': 2, '삼': 3, '사': 4, '오': 5, '육': 6, '칠': 
 _KO_SMALL = {'십': 10, '백': 100, '천': 1000}
 _KO_BIG = {'만': 10000, '억': 100000000}
 _KO_RUN = re.compile(r'(?<![가-힣A-Za-z0-9_.])[\d.,일이삼사오육칠팔구십백천만억]+(?:\s(?<=[만억]\s)[\d.,일이삼사오육칠팔구십백천만억]+)*')
-_AMOUNT_UNIT = re.compile(r'\s*(?:원|개|점|명|건|kg|킬로)')
+_AMOUNT_UNIT = re.compile(r'\s*(?:원|개|점|명|건|(?i:kg|USD|KRW)|킬로|%|달러|유로|엔|[A-Z]{3}(?![A-Za-z]))')
 
 
 def _approximate_amount(text, start, end):
@@ -321,7 +324,7 @@ def _korean_amount(run):
     return total + section + (current or 0)
 
 
-def _korean_amounts(text):
+def _korean_amounts(text, field):
     """Amounts written with Korean numerals. A run counts only when a unit (원·개·점·명·건·kg) follows
     or it ends in 만/억 with no Hangul right after, so 백업·천천히·만약·비용이 are not numbers."""
     found = set()
@@ -340,22 +343,55 @@ def _korean_amounts(text):
             if not (_AMOUNT_UNIT.match(rest) or (run[-1] in _KO_BIG and not re.match(r'[가-힣]', rest))): continue
             value = _korean_amount(run)
             if value:
-                found.add(value)
+                counter = _AMOUNT_UNIT.match(rest)
+                found.add(column_amount(value, field, counter.group().strip() if counter else None))
                 break
     return found
 
 
-def _amounts(text):
-    result = set(_korean_amounts(text))
+def _amounts(text, field=None):
+    # A header such as 매출(백만원) names the unit, not a threshold of one.
+    if column_unit(field):
+        text = text.replace(field, ' ')
+    with localcontext() as context:
+        context.prec = max(context.prec, len(text) + 10)
+        return _extract_amounts(text, field)
+
+
+def _extract_amounts(text, field):
+    result = _korean_amounts(text, field)
     approximate_runs=[(m.start(),m.end()) for m in _KO_RUN.finditer(text)
                       if _approximate_amount(text,m.start(),m.end())]
     for match in re.finditer(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(천만|백만|십만|만|천|백)?', text):
+        # The Korean parser owns a larger compound such as "100억 원".
+        # Its digit prefix alone cannot ground a second threshold of 100.
+        if text[match.end():].startswith(('억', '조')):
+            continue
         if _approximate_amount(text, match.start(), match.end()): continue
         if any(start<=match.start()<end for start,end in approximate_runs): continue
         number, unit = match.groups()
-        result.add(Decimal(number.replace(',', '')) * {'천만': 10000000, '백만': 1000000,
-                   '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}[unit or ''])
-    return result
+        value = Decimal(number.replace(',', '')) * {'천만': 10000000, '백만': 1000000,
+                   '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}[unit or '']
+        counter = _AMOUNT_UNIT.match(text, match.end())
+        result.add(column_amount(value, field, counter.group().strip() if counter else None))
+    return result - {None}
+
+
+def _threshold_evidence_issue(slots, state):
+    threshold = slots.get('filter.value', {})
+    if threshold.get('status') != 'specified':
+        return None
+    field = slots.get('filter.field', {}).get('value')
+    stored = threshold.get('value')
+    if type(stored) not in (int, float):
+        operator = slots.get('filter.operator', {}).get('value')
+        if isinstance(stored, str) and operator in ('gt', 'gte', 'lt', 'lte') and (column_unit(field) or numeric_column(state, field)):
+            return 'filter.value: 숫자 열의 비교 기준을 실행 가능한 숫자로 확인해야 합니다.'
+        return None
+    value = Decimal(str(stored))
+    quote = '\n'.join(e['quote'] for e in threshold.get('evidence', []))
+    if not executable_number(value) or value not in _amounts(quote, field):
+        return 'filter.value: 열 단위의 기준 값에 대응하는 원문 수치를 확인하지 못했습니다.'
 
 
 def _value(key, value):
@@ -368,8 +404,8 @@ def _value(key, value):
     if key == 'filter.value':
         try:
             number = Decimal(value.replace(',', ''))
-            if not number.is_finite():
-                raise ValueError('유한한 기준 값이 필요합니다.')
+            if not executable_number(number):
+                raise ValueError('실행 시 정확히 표현할 수 있는 기준 값이 필요합니다.')
             return float(number)
         except InvalidOperation:
             return value
@@ -398,6 +434,10 @@ _DUP_OTHER = {'error': r'오류|에러|중단|멈춰|멈추|실패',
               'keep': r'유지|그대로|지우지\s*(?:마|말)|삭제하지\s*(?:마|말)|(?:다|모두|전부)\s*남'}
 _DUP_VAGUE = r'알아서|나중에\s*정|상관\s*없|확인만|합쳐|합치|최신|최근|큰\s*행|작은\s*행|높은|낮은'
 _KEEP_AS_IS = r'지우지\s*(?:마|말)|삭제하지\s*(?:마|말)'
+_CANCEL_DEDUP = re.compile(
+    r'중복\s*(?:제거|처리)?(?:\s*(?:과|와|이랑|랑|및|·)\s*(?:슬랙|이메일|메일)(?:\s*전송)?)?'
+    r'\s*(?:은|는|을|를|도)?\s*취소'
+    r'(?:(?:\s*해(?:\s*줘|\s*주세요|요)?|할게(?:요)?)?\s*(?=$|[,;])|하고(?!\s*싶)(?=\s|$))')
 
 
 def _acts(segment, table):
@@ -440,6 +480,12 @@ def policy_clauses(text, columns):
             action_segment = re.split(r'나머지|그\s*외', segment, maxsplit=1)[0]
             found, negated = _acts(action_segment, _MISSING_ACTS)
         else:
+            cancelled = _CANCEL_DEDUP.match(segment)
+            if cancelled:
+                # Keep rows explicitly so a checkpoint or later model proposal
+                # cannot reapply a previously requested first/last policy.
+                out.append((key, 'keep', cancelled.group().strip()))
+                continue
             if re.search(_DUP_VAGUE, segment):
                 out.append((key, 'conflict', segment.strip())); continue
             found, negated = _acts(segment, _DUP_ORDER)
@@ -462,13 +508,15 @@ def policy_clauses(text, columns):
     return out
 
 
-def explicit_policies(state, catalog):
+def explicit_policies(state, catalog, *, duplicate_candidate=None):
     """Only literal, narrow policy phrases; ambiguity stays unresolved.
 
     This is not a general Korean semantic parser. Later user turns override
     earlier explicit policies. Conflicting policies in one turn are not guessed.
     """
     result = {}
+    duplicate_candidate = duplicate_candidate or {}
+    candidate_turn = max((e.get('turn', -1) for e in duplicate_candidate.get('evidence', [])), default=-1)
     patterns = [
         ('output.format', r'(CSV|JSON)\s*(?:파일|산출물)?\s*(?:으로|로|저장|생성|만들)',
          {'CSV': 'csv', 'JSON': 'json'}),
@@ -491,21 +539,40 @@ def explicit_policies(state, catalog):
                     r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|[\s,.:]|$)|'
                     r'같은\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|[\s,.:]|$)|'
                     r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) + r'\s*(?:이|가)?\s*(?:같(?!거나)|겹치))')
-        matches = [col for col in columns if re.search(column_pattern(col), text, re.IGNORECASE)]
-        refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
-                and any(re.search(column_pattern(col), e['quote'], re.IGNORECASE) for col in matches)]
-        # A negation must modify the named duplicate key itself, not a later
-        # independent instruction such as '정렬하지 말고' or '빈 비용은 제외'.
-        def duplicate_tail(match):
-            # Keep conservative handling of negated dedup policies, but stop at
-            # sentence boundaries or the next independently named policy.
-            return re.split(r'[.!?\n,;]|정렬|빈\s*|결측|누락|CSV|JSON',
-                            text[match.end():match.end()+30],maxsplit=1,flags=re.IGNORECASE)[0]
-        key_negated=any(re.search(r'말고|아니|않|제외',duplicate_tail(m))
-                        for col in matches for m in re.finditer(column_pattern(col),text,re.IGNORECASE))
-        if len(matches) == 1 and refs and not key_negated:
-            per_turn['duplicate.field'] = {'key':'duplicate.field','status':'specified','value':matches[0],
-                'evidence_ids':[refs[0]['id']],'evidence':[refs[0]],'extraction':'literal_column_rule'}
+        matches = {col: list(re.finditer(column_pattern(col), text, re.IGNORECASE)) for col in columns}
+        matches = {col: spans for col, spans in matches.items() if spans}
+        # Ignore only negatives attached to another policy. Keep corrections after
+        # commas and reasons like "누락이 많아서 제외" in the duplicate key's clause.
+        def negates_duplicate_key(field, match):
+            clause = re.split(r'[.!?\n;]', text[match.end():], maxsplit=1)[0]
+            others = '|'.join(re.escape(col) for col in columns if col != field)
+            if others:
+                other_field = r'(?<![\w])(?:' + others + r')(?=은|는|을|를|이|가|도|으로|로|[\s,.:]|$)'
+                clause = re.split(other_field, clause, maxsplit=1, flags=re.IGNORECASE)[0]
+            independent = (r'정렬\s*(?:은|을)?\s*하지\s*(?:말고|않)|'
+                           r'(?:빈\s*\w+|결측(?:치|값)?|누락(?:값|행)?)\s*(?:은|는|을|를|도)?\s*'
+                           r'(?:(?:유지|포함|제외|삭제)하지\s*(?:말고|않)|제외)|'
+                           r'(?:CSV|JSON)(?:으로|로|은|는)?\s*(?:저장하지\s*(?:말고|않)|말고|제외)')
+            return re.search(r'말고|아니|아닌|않|제외', re.sub(independent, '', clause, flags=re.IGNORECASE))
+
+        negated = {col for col, spans in matches.items() if any(negates_duplicate_key(col, m) for m in spans)}
+        if result.get('duplicate.field', {}).get('value') in negated:
+            del result['duplicate.field']
+        remaining = matches.keys() - negated
+        field = next(iter(remaining)) if len(remaining) == 1 else None
+        # A rejected value may also come from the model or a checkpoint. Ask
+        # again unless the candidate is supported by a later user answer.
+        if field is None and duplicate_candidate.get('value') in negated and candidate_turn <= turn:
+            field = duplicate_candidate['value']
+        if field is not None:
+            refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
+                    and re.search(column_pattern(field), e['quote'], re.IGNORECASE)]
+            if refs:
+                per_turn['duplicate.field'] = {
+                    'key': 'duplicate.field', 'status': 'missing' if field in negated else 'specified',
+                    'value': None if field in negated else field, 'evidence_ids': [refs[0]['id']],
+                    'evidence': [refs[0]], 'extraction': 'literal_column_rule',
+                }
         for key, pattern, mapping in patterns:
             for match in re.finditer(pattern, message['content'], re.IGNORECASE):
                 if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
@@ -528,6 +595,7 @@ def explicit_policies(state, catalog):
             per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                              'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                              'evidence': [refs[0]], 'extraction': 'literal_schedule_rule'}
+        cancelled_dedup = False
         for key, value, span in policy_clauses(text, columns):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
             if not refs: continue
@@ -536,6 +604,17 @@ def explicit_policies(state, catalog):
             per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                              'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                              'evidence': [refs[0]], 'extraction': 'literal_policy_clause'}
+            if key == 'duplicate.policy' and value == 'keep' and _CANCEL_DEDUP.fullmatch(span):
+                cancelled_dedup = True
+        duplicate_policy = per_turn.get('duplicate.policy', {})
+        if cancelled_dedup and duplicate_policy.get('value') == 'keep':
+            # Ending deduplication also releases its key. A later request may
+            # name a different key without using one of the literal patterns.
+            result.pop('duplicate.field', None)
+            per_turn.pop('duplicate.field', None)
+            if duplicate_candidate.get('status') == 'specified' and candidate_turn <= turn:
+                per_turn['duplicate.field'] = {**duplicate_policy, 'key': 'duplicate.field',
+                                               'status': 'missing', 'value': None}
         result.update(per_turn)
     # An explicit correction to the one recorded conflicting duplicate policy
     # can be short ("마지막 행으로 해줘"). Do not interpret unrelated replies or
@@ -566,8 +645,9 @@ def literal_condition_issues(state):
     if not (state.get('condition_required') or state.get('condition_enforced')) or ledger.get('decision')!='ready':
         return []
     catalog,_=source_catalog(state)
-    literals=explicit_policies(state,catalog)
-    issues=[]
+    literals=explicit_policies(state,catalog,duplicate_candidate=ledger.get('slots', {}).get('duplicate.field'))
+    issue = _threshold_evidence_issue(ledger.get('slots') or {}, state)
+    issues=[issue] if issue else []
     for key,item in literals.items():
         stored=(ledger.get('slots') or {}).get(key)
         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
@@ -728,8 +808,6 @@ def validate_conditions(raw, state, catalog):
                     raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
                 if key.endswith('.field') and value not in quote:
                     raise ValueError('원문에 없는 열 이름입니다.')
-                if key == 'filter.value' and isinstance(value, float) and Decimal(str(value)) not in _amounts(quote):
-                    raise ValueError('기준 값에 대응하는 원문 수치를 확인하지 못했습니다.')
                 # A text threshold (상태 '완료') must be written in the request too; live runs returned
                 # '}', '{200 만원}', 'kgs' as filter.value and they were confirmed unchecked.
                 if key == 'filter.value' and isinstance(value, str) and value not in quote:
@@ -765,7 +843,7 @@ def validate_conditions(raw, state, catalog):
     for key, old in previous.get('slots', {}).items():
         if key not in slots:
             slots[key] = deepcopy(old)
-    literals = explicit_policies(state,catalog)
+    literals = explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'))
     for key, item in literals.items():
         if key not in slots or slots[key]['status']!=item['status'] or slots[key]['value']!=item['value']:
             invalid.append(f'{key}: 사용자의 명시적 정책 구절로 보존·대조')
@@ -780,9 +858,18 @@ def validate_conditions(raw, state, catalog):
     amount = numeric_answer(state)
     if amount:
         evidence = [e for e in catalog if e['source_id'] == 'user' and e.get('turn') == amount['turn']][:1]
-        if evidence and amount['value'] in _amounts(evidence[0]['quote']):
+        if evidence and amount['value'] is not None:
             slots['filter.value'] = {'key': 'filter.value', 'status': 'specified', 'value': float(amount['value']),
                                      'evidence_ids': [evidence[0]['id']], 'evidence': evidence}
+        else:
+            slots['filter.value'] = {'key': 'filter.value', 'status': 'missing', 'value': None,
+                                     'evidence_ids': [], 'evidence': []}
+    # The model may return filter.value before filter.field. Validate after
+    # both slots are known so its proposal uses the executor's column unit.
+    issue = _threshold_evidence_issue(slots, state)
+    if issue:
+        slots['filter.value'].update(status='missing', value=None)
+        invalid.append(issue)
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
     # A follow-up may focus on deduplication and omit the earlier filter from
     # the model's single-operation label. Preserve it whenever its three
@@ -852,6 +939,8 @@ def validate_conditions(raw, state, catalog):
         for key in unresolved[:3]:
             text = ('예약에는 지금 관리 표 파일이 필요합니다. 자료 연결로 업로드해주세요.' if key == 'input.table' else
                     ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') + QUESTIONS[key])
+            if key == 'filter.value' and amount and amount.get('issue'):
+                text = amount['issue']
             is_resolution = resolution and key in resolution['keys']
             questions.append({'id': hashlib.sha256((identity + key).encode()).hexdigest()[:24], 'key': key,
                               'text': resolution_question(key, resolution, text) if is_resolution else text,

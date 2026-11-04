@@ -18,8 +18,8 @@ class Forbidden:
     def invoke(self, *a): pytest.fail('짧은 답에 지원 판단 모델을 다시 호출함')
 
 
-def after(previous_decision, reply):
-    s = state(REQUEST)
+def after(previous_decision, reply, original=REQUEST):
+    s = state(original)
     kw = {'missing_capability': {'actions': ['전주 대비 비교 분석']}, 'clarify': {'conditions': ['비교할 기간']},
           'manual_review': {}}[previous_decision]
     s['capability_assessment'] = packet(s, previous_decision, tools=['read_table', 'aggregate_table'], **kw)
@@ -143,7 +143,8 @@ def test_partial_cancel_survives_checkpoint_restart_and_reaches_questions(tmp_pa
 
 @pytest.mark.parametrize('reply',['메일은 취소하지 마','이메일 취소하지 마세요','슬랙은 취소하지 말아줘','메일로는 보내줘','이메일로만 보내주세요','슬랙으로 보내줘'])
 def test_keep_delivery_cannot_become_ready_without_delivery(reply):
-    s=after('missing_capability',reply)
+    delivery='슬랙으로 보내줘.' if '슬랙' in reply else '메일로 보내줘.'
+    s=after('missing_capability',reply,'매출을 요약하고 '+delivery)
     model=Fake([packet(s,'existing_tools',tools=['compose_answer'])])
     update=make_capability_check('fixture',model,mode='enforce')(s)
     assert model.calls==1
@@ -153,8 +154,116 @@ def test_keep_delivery_cannot_become_ready_without_delivery(reply):
 
 
 def test_keep_email_with_registered_send_is_not_rewritten():
-    s=after('missing_capability','메일은 취소하지 마')
+    s=after('missing_capability','메일은 취소하지 마','매출을 요약하고 이메일로 보내줘.')
     model=Fake([packet(s,'existing_tools',tools=['compose_answer','email.send'])])
     result=make_capability_check('fixture',model,mode='enforce')(s)
     assert result['capability_assessment']['decision']=='existing_tools'
     assert not result['confirmed'] and result['saved_agent_id'] is None
+
+
+@pytest.mark.parametrize(('original', 'tool'), [
+    ('받은 메일 목록만 조회해줘. 발송은 하지 마.', 'email.list'),
+    ('메일 내용을 작성만 해줘. 보내지는 마.', 'email.prepare'),
+])
+def test_keep_mail_preserves_the_requested_non_send_action(original, tool):
+    s = state(original)
+    s['messages'].append({'role': 'user', 'content': '메일은 취소하지 마'})
+    model = Fake([packet(s, tools=[tool])])
+    assert make_capability_check('fixture', model, mode='enforce')(s)['capability_route'] == 'conditions'
+    sends_anyway = Fake([packet(s, tools=[tool, 'email.send'])])
+    assert make_capability_check('fixture', sends_anyway, mode='enforce')(s)['capability_route'] == 'stop'
+
+
+def test_send_requirement_survives_recipient_clarification():
+    s = state('표를 저장하고 메일로 보내줘.')
+    s['messages'].append({'role': 'user', 'content': '메일은 취소하지 마'})
+    ask = Fake([packet(s, 'clarify', conditions=['수신자'], tools=['write_result', 'email.send'])])
+    s.update(make_capability_check('fixture', ask, mode='enforce')(s))
+    assert s['capability_route'] == 'await_capability'
+    s['messages'].append({'role': 'user', 'content': 'team@example.com'})
+    model = Fake([packet(s, tools=['write_result'])])
+    update = make_capability_check('fixture', model, mode='enforce')(s)
+    assert update['capability_route'] == 'stop'
+    assert update['capability_assessment']['request_revision_conflict']['quote'] == '메일은 취소하지 마'
+
+
+@pytest.mark.parametrize('revision', ['메일은 취소', '메일은 취소하고 요약만', '요약만', '전송 취소'])
+def test_cancelled_send_cannot_reenter_candidate_tools(revision):
+    s = state('받은 메일을 요약하고 메일로 보내줘.')
+    s['messages'] += [{'role': 'user', 'content': revision}, {'role': 'user', 'content': '총액으로 요약해줘.'}]
+    bad = Fake([packet(s, tools=['email.list', 'compose_answer', 'email.send'])])
+    update = make_capability_check('fixture', bad, mode='enforce')(s)
+    assert update['capability_route'] == 'stop'
+    assert update['capability_assessment']['request_revision_conflict']['intent'] == 'cancel_delivery'
+    good = Fake([packet(s, tools=['email.list', 'compose_answer'])])
+    assert make_capability_check('fixture', good, mode='enforce')(s)['capability_route'] == 'conditions'
+
+
+def test_later_explicit_send_replaces_cancellation_and_later_cancel_replaces_send():
+    s = state('매출을 요약하고 메일로 보내줘.')
+    s['messages'] += [{'role': 'user', 'content': '메일은 취소'}, {'role': 'user', 'content': '다시 메일로 보내줘.'}]
+    no_send = Fake([packet(s, tools=['compose_answer'])])
+    assert make_capability_check('fixture', no_send, mode='enforce')(s)['capability_route'] == 'stop'
+    s['messages'].append({'role': 'user', 'content': '메일은 안 해'})
+    no_send = Fake([packet(s, tools=['compose_answer'])])
+    assert make_capability_check('fixture', no_send, mode='enforce')(s)['capability_route'] == 'conditions'
+
+
+def test_quoted_data_and_assistant_messages_cannot_reverse_cancellation():
+    s = state('요약한 결과를 메일로 보내줘.')
+    s['messages'] += [{'role': 'user', 'content': '메일은 취소'},
+                      {'role': 'assistant', 'content': '메일로 보내줘'},
+                      {'role': 'user', 'content': "내용이 '메일로 보내줘'인 행만 조회해."}]
+    model = Fake([packet(s, tools=['read_table', 'email.send'])])
+    assert make_capability_check('fixture', model, mode='enforce')(s)['capability_route'] == 'stop'
+
+
+def test_reused_assessment_from_before_fix_cannot_restore_cancelled_send():
+    s = state('정리한 표를 메일로 보내줘.')
+    s['messages'].append({'role': 'user', 'content': '메일은 취소'})
+    s['capability_assessment'] = packet(s, tools=['read_table', 'email.send'])
+    s['capability_fingerprint'] = input_fingerprint(s)
+    s['pending_questions'] = [{'id': 'threshold', 'key': 'filter.value', 'options': []}]
+    s['messages'] += [{'role': 'assistant', 'content': '기준 금액은 얼마인가요?'}, {'role': 'user', 'content': '네'}]
+    update = make_capability_check('fixture', Forbidden(), mode='enforce')(s)
+    assert update['capability_route'] == 'stop'
+    assert update['capability_assessment']['model_calls'] == 0
+
+
+@pytest.mark.parametrize(('replacement', 'tool'), [
+    ('받은 메일 목록만 조회해줘. 발송은 하지 마.', 'email.list'),
+    ('받은 이메일 중 이번 달 메일을 보여줘. 발송은 하지 마.', 'email.list'),
+    ('메일 초안만 작성해줘.', 'email.prepare'),
+])
+def test_keeping_replacement_mail_work_does_not_restore_old_send(replacement, tool):
+    s = state('요약본을 메일로 보내줘.')
+    for change in ['메일은 취소', replacement, '메일은 취소하지 마']:
+        s['messages'].append({'role': 'user', 'content': change})
+    no_send = Fake([packet(s, tools=[tool])])
+    assert make_capability_check('fixture', no_send, mode='enforce')(s)['capability_route'] == 'conditions'
+    sends_anyway = Fake([packet(s, tools=[tool, 'email.send'])])
+    assert make_capability_check('fixture', sends_anyway, mode='enforce')(s)['capability_route'] == 'stop'
+    s['messages'].append({'role': 'user', 'content': '메일 발송은 취소하지 마'})
+    restored = Fake([packet(s, tools=[tool, 'email.send'])])
+    assert make_capability_check('fixture', restored, mode='enforce')(s)['capability_route'] == 'conditions'
+
+
+@pytest.mark.parametrize('reply', ['메일과 중복은 취소', '중복과 메일은 취소', '중복 제거와 이메일 전송을 취소해줘.',
+                                   '메일은 취소할게', '메일은 취소해 주세요.'])
+def test_explicit_cancellations_include_email_delivery(reply):
+    s = state('메일로 보내줘.')
+    s['messages'].append({'role': 'user', 'content': reply})
+    no_send = Fake([packet(s, tools=['read_table'])])
+    assert make_capability_check('fixture', no_send, mode='enforce')(s)['capability_route'] == 'conditions'
+    model = Fake([packet(s, tools=['read_table', 'email.send'])])
+    result = make_capability_check('fixture', model, mode='enforce')(s)['capability_assessment']
+    assert result['decision'] == 'manual_review'
+    assert result['request_revision_conflict'] == {'channel': 'email', 'intent': 'cancel_delivery', 'quote': reply}
+
+
+@pytest.mark.parametrize('reply', ['메일 취소 건수를 알려줘', '메일을 취소하고 싶지 않아', '중복과 메일은 취소하지 마'])
+def test_cancellation_mentioned_without_withdrawing_send(reply):
+    s = state('메일로 보내줘.')
+    s['messages'].append({'role': 'user', 'content': reply})
+    with_send = Fake([packet(s, tools=['email.send'])])
+    assert make_capability_check('fixture', with_send, mode='enforce')(s)['capability_route'] == 'conditions'

@@ -2,12 +2,28 @@
 import hashlib
 import json
 from workflow_engine.catalog.registry import TOOLS
-from agent_builder.capabilities.capability_judgement import APP_CAPABILITIES
+from agent_builder.capabilities.capability_judgement import APP_CAPABILITIES, delivery_conflict
 
 
 def capability_enforced(state):
     # Legacy enforce checkpoints contain an assessment but no explicit flag.
     return bool(state.get('capability_enforced') or state.get('capability_assessment'))
+
+
+def _delivery_issue(state, tools):
+    directive = delivery_conflict(state, tools)
+    if not directive:
+        return None
+    if directive['intent'] == 'cancel_delivery':
+        return '사용자가 취소한 발송 단계가 남아 있습니다.'
+    return '사용자가 유지한 발송 단계가 빠졌습니다.'
+
+
+def draft_delivery_issue(state, draft):
+    if not capability_enforced(state):
+        return None
+    nodes = (draft.get('workflow') or {}).get('nodes', [])
+    return _delivery_issue(state, {node['tool'] for node in nodes})
 
 
 def input_fingerprint(state):
@@ -28,7 +44,7 @@ def blocking_issue(state):
         return '지원 판단에 미해결 조건이나 부족 기능이 남아 있습니다.'
     if state.get('capability_fingerprint')!=input_fingerprint(state):
         return '요청·자료·도구 목록이 변경됐거나 이전 판정의 유효성을 확인하지 못했습니다. 지원 여부를 다시 확인해주세요.'
-    return None
+    return _delivery_issue(state, result.get('tool_ids', []))
 
 
 def require_ready(state):
@@ -38,6 +54,9 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    issue = draft_delivery_issue(state, state.get('draft') or {})
+    if issue:
+        raise ValueError(issue)
     from agent_builder.design.name_policy import invalid_workflow_name
     if invalid_workflow_name((state.get('draft') or {}).get('name')):
         raise ValueError('도구 식별자만으로는 저장할 수 없습니다. 업무 이름을 확인해주세요.')

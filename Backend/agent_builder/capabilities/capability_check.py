@@ -2,7 +2,7 @@
 import hashlib
 import os
 import re
-from agent_builder.capabilities.capability_judgement import assess_capability, validate_assessment_result, AssessmentConflictError
+from agent_builder.capabilities.capability_judgement import assess_capability, guard_delivery_revision, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
 from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, numeric_answer, pending_nonanswer
 from agent_builder.conditions.condition_check import _pending_draft
@@ -56,7 +56,8 @@ def make_capability_check(model,transport=None,mode=None):
                 # changes no supported-action facts. Reuse only with the original
                 # request/resources/catalog intact; condition_check still validates the slots.
                 validate_assessment_result(previous,state)
-                result={**previous,'model_calls':0,'answer_resolution':'condition_choice' if option_answer(state) or numeric_answer(state) else 'condition_nonanswer'}
+                resolution = 'condition_choice' if option_answer(state) or numeric_answer(state) else 'condition_nonanswer'
+                result = guard_delivery_revision({**previous, 'model_calls': 0, 'answer_resolution': resolution}, state)
             elif event and previous.get('decision')=='clarify' and event['kind'] in ('unknown','defer','guidance'):
                 validate_assessment_result(previous,state)
                 ids=set(event['question_ids'])

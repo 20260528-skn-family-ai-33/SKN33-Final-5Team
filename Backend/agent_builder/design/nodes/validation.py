@@ -71,10 +71,13 @@ def validate_node(state):
         if draft.get('workflow') and any(n['tool']=='ask_user' for n in draft['workflow']['nodes']):issues.append('예약 실행에는 사용자 응답 대기 노드를 연결할 수 없습니다.')
         if not set(draft['tool_ids']) & {'write_result','export_result','reply_review'}:issues.append('예약 보고서를 저장할 출력 도구가 필요합니다.')
     draft['questions']=list(dict.fromkeys(questions))[:3]
-    from agent_builder.capabilities.capability_gate import capability_enforced, blocking_issue
+    from agent_builder.capabilities.capability_gate import capability_enforced, blocking_issue, draft_delivery_issue
     support_conflict=bool(draft['unsupported'] and capability_enforced(state) and blocking_issue(state) is None)
     if support_conflict:
         issues.append('생성기의 미지원 판정이 현재 요청의 도구 지원 판단과 충돌합니다. 초안을 다시 생성하거나 검토해야 합니다.')
-    status=('validation_failed' if support_conflict else 'unsupported' if draft['unsupported'] else
+    delivery_issue = None if draft['questions'] or draft['unsupported'] else draft_delivery_issue(state, draft)
+    if delivery_issue:
+        issues.append(delivery_issue)
+    status=('validation_failed' if support_conflict or delivery_issue else 'unsupported' if draft['unsupported'] else
             'needs_clarification' if draft['questions'] or issues else 'ready')
     return {'draft':draft,'issues':list(dict.fromkeys(issues)),'status':status,'trace':state.get('trace',[])+[{'node':'validate','label':'설정·근거 검증','status':'completed' if not issues else 'needs_input','detail':'필수 설정·등록 도구·자료 범위·인용 원문을 검사했습니다.' if not issues else ' / '.join(issues)}]}

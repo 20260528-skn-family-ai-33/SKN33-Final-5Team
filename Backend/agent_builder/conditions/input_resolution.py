@@ -4,7 +4,7 @@ Only entire answers match. A request filtering the literal text '모르겠어' i
 ordinary data, not a refusal. Values remain missing until real evidence arrives.
 """
 import re
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 
 def _compact(content):
@@ -84,7 +84,56 @@ def option_answer(state):
 
 _UNITS = {'천만': 10000000, '백만': 1000000, '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}
 _PLAIN_AMOUNT = re.compile(r'(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(천만|백만|십만|만|천|백)?'
-                           r'\s*(?:원|점|개|건|명)?\s*(?:으로|로|요|이요)?')
+                           r'\s*(원|점|개|건|명)?\s*(?:으로|로|요|이요)?')
+_COLUMN_ANNOTATION = re.compile(r'[\[(]([^\])]+)[\])]$')
+_SCALED_UNIT = re.compile(r'(억|천만|백만|십만|만|천|백)?(원|점|개|건|명|kg|%|USD|KRW|달러|유로|엔|킬로)', re.I)
+_UNIT_ALIASES = {'KRW': '원', 'USD': '달러', '킬로': 'kg'}
+
+
+def column_unit(field):
+    annotation = _COLUMN_ANNOTATION.search(re.sub(r'\s+', '', field or ''))
+    if not annotation:
+        return None
+    label = annotation[1]
+    name = re.sub(r'^단위[:：]?', '', label)
+    unit = _SCALED_UNIT.fullmatch(name)
+    if unit:
+        scale, counter = unit.groups()
+        divisor = 100000000 if scale == '억' else _UNITS[scale or '']
+        return _UNIT_ALIASES.get(counter.upper(), counter.lower()), divisor
+    # An explicit declaration or a code such as EUR identifies a unit even
+    # if we cannot convert it. Other labels such as (세전) describe the field.
+    if name != label or re.fullmatch(r'[A-Z]{2,4}', name):
+        return name.casefold(), 1
+    return None
+
+
+def column_amount(number, field, unit):
+    """Explicitly unit-bearing thresholds use the scale printed in the header.
+
+    Bare numbers already refer to the values as stored in that column.
+    """
+    header = column_unit(field)
+    if not header or not unit:
+        return number
+    counter, divisor = header
+    if counter != _UNIT_ALIASES.get(unit.upper(), unit.lower()):
+        return None
+    return number / divisor
+
+
+def executable_number(number):
+    """The executor compares floats, so the persisted decimal must round-trip."""
+    return number.is_finite() and Decimal(str(float(number))) == number
+
+
+def numeric_column(state, field):
+    profiles = ((r.get('profile', {}).get(field) or {}) for r in state.get('resources', [])
+                if r.get('kind') == 'table')
+    return any(
+        profile.get('numericStrings', 0) > 0 or 'number' in profile.get('types', [])
+        for profile in profiles
+    )
 
 
 def value_answer(state, *, _allow_comparison=False):
@@ -110,14 +159,20 @@ def value_answer(state, *, _allow_comparison=False):
     pending = [q for q in state.get('pending_questions', []) if q['key'] == 'filter.value'
                and (not event or q['id'] in event.get('question_ids', []))]
     field = (state.get('condition_ledger') or {}).get('slots', {}).get('filter.field', {})
-    profile = lambda r: (r.get('profile', {}).get(field.get('value')) or {})
-    numeric = field.get('status') == 'specified' and any(
-        r.get('kind') == 'table' and (profile(r).get('numericStrings', 0) > 0 or 'number' in profile(r).get('types', []))
-        for r in state.get('resources', []))
-    if len(pending) != 1 or not numeric:
+    if len(pending) != 1 or field.get('status') != 'specified' or not numeric_column(state, field.get('value')):
         return None
-    number = Decimal(match.group(1).replace(',', '') + (match.group(2) or '')) * _UNITS[match.group(3) or '']
-    return {'key': 'filter.value', 'value': number, 'question_id': pending[0]['id'], 'turn': latest}
+    with localcontext() as context:
+        context.prec = max(context.prec, len(text) + 10)
+        number = Decimal(match.group(1).replace(',', '') + (match.group(2) or '')) * _UNITS[match.group(3) or '']
+        number = column_amount(number, field['value'], match.group(4))
+    # This is an answer to the pending question even when it cannot safely
+    # be executed. Keep that slot missing instead of letting a model guess.
+    answer = {'key': 'filter.value', 'value': number, 'question_id': pending[0]['id'], 'turn': latest}
+    if number is None:
+        answer['issue'] = f"{field['value']} 열에 표시된 단위로 기준 값을 입력해주세요."
+    elif not executable_number(number):
+        answer.update(value=None, issue='이 기준 값은 실행 시 정확히 표현할 수 없습니다. 사용할 다른 기준 값이 있나요?')
+    return answer
 
 
 def resolution_question(key, resolution, base):

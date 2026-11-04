@@ -29,6 +29,7 @@ class RunLifecycle:
         stamp=datetime.now(timezone.utc)
         self.storage.begin_write()
         try:
+            self.storage.require_assets(run.get('file_ids',[]))
             old=self.db.execute('SELECT token,expires_at,pid,active FROM builder_run_leases WHERE {ws} AND run_id=?',(run['id'],)).fetchone()
             if old and old[3] and old[0]!=token and old[1]>stamp.isoformat() and alive(old[2]):raise ValueError('이 실행을 다른 작업자가 처리 중입니다.')
             if self.db.execute("SELECT 1 FROM builder_schedule_jobs WHERE {ws} AND id=? AND state='running'",(run['id'],)).fetchone() and run.get('_retry'):

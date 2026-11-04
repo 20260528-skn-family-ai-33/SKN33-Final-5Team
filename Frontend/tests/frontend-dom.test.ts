@@ -57,6 +57,62 @@ async function submit(form:HTMLFormElement){await act(async()=>{form.dispatchEve
 test('DOM: service link overrides old session and renders the requested execution screen',async()=>{
  const h=await setup('?service=A',{'a4b-builder-session':'old'});try{assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.ok(document.querySelector('.screen-run'));assert.equal(localStorage.getItem('a4b-builder-session'),null);assert.equal(h.calls.some(c=>c.path.includes('/session?')),false);}finally{await h.close();}
 });
+test('DOM: design attachment offers a new upload or an existing file by id',async()=>{
+ const asset={id:'mine',name:'기준표.csv',kind:'table',format:'csv',row_count:1,columns:['가격'],profile:{},preview:[]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return readySession();
+  if(path.endsWith('/assets'))return {assets:[],next:'12'};
+  if(path.endsWith('/assets?before=12'))return {assets:[asset],next:null};
+  if(path.endsWith('/attach_asset'))return {...readySession(),revision:2,resources:[asset]};
+ });
+ try{
+  await click(button('자료 연결'));
+  assert.ok(button('새 파일 올리기'));
+  await click(button('내 자료에서 선택'));
+  await click(button('자료 더 보기'));
+  await click(document.querySelector('[role=dialog] .as-resource')!);
+  assert.deepEqual(h.calls.find(c=>c.path.endsWith('/attach_asset'))?.body,{id:'ready',revision:1,assetId:'mine'});
+  assert.equal(h.calls.some(c=>c.path.endsWith('/upload')),false);
+  assert.equal(document.querySelector('[role=dialog]'),null);
+  assert.match(document.querySelector('.as-config')?.textContent||'',/기준표.csv/);
+ }finally{await h.close();}
+});
+
+test('DOM: named workflows protect used uploads and failed cleanup offers an immediate retry',async()=>{
+ const free={id:'free',name:'사본.jpg',format:'jpg',has_original:true};
+ let tries=0;
+ const h=await setup('?screen=assets',{},path=>{
+  if(path.endsWith('/assets'))return {assets:[{...free,id:'used',name:'기준표.csv',
+   usages:[{kind:'workflow',id:'wf',name:'월말 정산'}]},free],next:null};
+  if(path.endsWith('/assets?id=free') && ++tries===1)
+   return new Response(JSON.stringify({error:'삭제를 다시 시도하세요.',pending_delete:true}),{status:503});
+  if(path.endsWith('/assets?id=free'))return {deleted:true};
+ },createElement(EntryApp));
+ try{
+  assert.match(document.querySelector('[aria-label="자료 사용처"]')?.textContent||'',/월말 정산.*저장된 워크플로우/);
+  assert.ok(button('사용 중 · 삭제 불가').disabled);
+  window.confirm=()=>true;await click(button('삭제'));assert.ok(button('삭제 재시도'));
+  await click(button('삭제 재시도'));assert.equal(document.querySelectorAll('article').length,1);
+ }finally{await h.close();}
+});
+
+test('DOM: open my uploads from the designer, preview and confirm deletion',async()=>{
+ const asset={id:'first',name:'영수증.jpg',format:'jpg',size_bytes:2048,has_original:true};
+ const h=await setup('?screen=workflow',{},path=>{
+  if(path.endsWith('/assets'))return {assets:[asset],next:null};
+  if(path.includes('/asset_preview?'))return {text:'영수증 내용',columns:[],rows:[]};
+  if(path.endsWith('/assets?id=first'))return {deleted:true};
+ },createElement(EntryApp));
+ try{
+  await click(button('내 자료'));assert.equal(document.querySelector('h1')?.textContent,'내 자료');
+  await click(button('내용 보기'));assert.match(document.querySelector('[role=dialog]')?.textContent||'',/영수증 내용/);
+  assert.equal(document.querySelector('[role=dialog] a')?.getAttribute('href'),'/api/agent-builder/original?id=first');
+  await click(document.querySelector('[role=dialog] [data-slot=dialog-close]')!);
+  window.confirm=()=>false;await click(button('삭제'));assert.ok(document.querySelector('article'));
+  window.confirm=()=>true;await click(button('삭제'));assert.equal(document.querySelector('article'),null);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/assets?id=first')).length,1);
+ }finally{await h.close();}
+});
 test('DOM: choosing B while initial A loads cannot be undone by late A response',async()=>{
  const pending=deferred();const h=await setup('?service=A',{},path=>path.endsWith('/agent?id=A')?pending.promise:undefined);
  try{const b=buttons().find(b=>b.textContent?.includes('서비스 B'));assert.ok(b);await click(b);assert.equal(document.querySelector('h1')?.textContent,'서비스 B');await act(async()=>{pending.resolve(snapshot(A));await tick();});assert.equal(document.querySelector('h1')?.textContent,'서비스 B');}finally{await h.close();}
@@ -383,7 +439,7 @@ test('navigation: cancelling browser back from a dirty editor restores the URL a
 test('redesign: infrastructure controls and model fields are absent from all product menus',async()=>{
  for(const screen of ['workflows','workflow','nodes','history']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['워크플로우','실행 기록','작업 라이브러리']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
+  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['워크플로우','실행 기록','작업 라이브러리','내 자료']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
  }
 });
 test('redesign: changing a saved workflow can be cancelled without losing an unsent request',async()=>{

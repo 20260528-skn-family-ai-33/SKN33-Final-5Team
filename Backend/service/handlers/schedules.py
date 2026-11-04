@@ -27,4 +27,7 @@ def source_upload(c):
     data=c.data;storage=c.storage
     storage.agent(data['id']);a={**data['asset'],'id':uid(),'created_at':now()}
     if a['kind']!='table':raise ValueError('관리 데이터 소스는 표 파일을 연결하세요.')
-    storage.add_asset(a,data['rows']);return {'source':Schedules(storage).replace_source(data['id'],a['id'])}
+    schedules=Schedules(storage)
+    storage.begin_write()
+    storage.add_asset(a,data['rows'],commit=False)
+    return {'source':schedules.replace_source(data['id'],a['id'])}

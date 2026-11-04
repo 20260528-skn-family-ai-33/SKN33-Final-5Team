@@ -8,12 +8,12 @@ import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {convertBuilderPdf} from './builder-documents';
 import {analyzeBuilderDocument,analysisSupportsFormat,routingEnabled} from './document-analysis';
 import {parseDocumentReviewCommand,documentPreview,originalMime} from './document-review';
-import {createHash,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {localModelConnection,localModelHealth,LOCAL_MODEL_ID} from './builder-local-model';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {Store} from './store';
 import {parseCsv} from './binary';
-import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
+import {binaryObjectPath,deleteUploadFiles,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {readXlsx,extractPdfText} from './document-files';
 import {storageConfig,workerLimits} from './storage-config';
 import {createWorkerLanes} from './worker-slots';
@@ -121,6 +121,27 @@ export async function parseBuilderAsset(input:any){
 export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void):Promise<boolean>{
  if(!url.pathname.startsWith('/api/agent-builder/'))return false;
  const action=url.pathname.slice('/api/agent-builder/'.length),method=req.method||'GET';
+ if(action==='assets'&&method==='GET'){
+  const before=url.searchParams.get('before');
+  if(before!==null&&(!/^[1-9]\d*$/.test(before)||!Number.isSafeInteger(Number(before))))throw new Error('자료 목록 위치를 확인하세요.');
+  res.setHeader('Cache-Control','no-store');
+  json(res,200,await builderWorker({action,before:before===null?null:Number(before)}));return true;
+ }
+ if(action==='assets'&&method==='DELETE'||action==='asset_preview'&&method==='GET'){
+  const id=url.searchParams.get('id');
+  if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');
+  res.setHeader('Cache-Control','no-store');
+  if(method==='DELETE'){
+   const cleanup=await builderWorker({action:'prepare_asset_delete',id});
+   try{
+    await deleteUploadFiles(cleanup);
+    json(res,200,await builderWorker({action:'finish_asset_delete',id}));
+   }catch{
+    json(res,503,{error:'자료 삭제를 마치지 못했습니다. 삭제 재시도를 눌러주세요.',pending_delete:true});
+   }
+  }else json(res,200,await builderWorker({action,id}));
+  return true;
+ }
  if(action==='document_review'&&['GET','POST'].includes(method)){
   const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,12000);
   if(!idPattern.test(data?.id||''))throw new Error('자료 ID를 확인하세요.');
@@ -190,11 +211,12 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,['upload','run_upload','source_upload'].includes(action)?12*1024*1024:100000);
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('요청 형식을 확인하세요.');
  const workerAction=action==='sessions'&&method==='POST'?'new_session':action;
- if(!['new_session','session','agent','upload','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+ if(!['new_session','session','agent','upload','attach_asset','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
  if(workerAction!=='new_session'&&!idPattern.test(data.id||''))throw new Error('항목 ID를 확인하세요.');
  const lockKey=['session','agent','run'].includes(workerAction)?undefined:builderLockKey(data.id,workerAction==='test');
  if(lockKey&&locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
  if(lockKey)locks.add(lockKey);
+ let stagedUpload:{original:string;directory?:string}|undefined;
  try{
   let payload:any={action:workerAction,id:data.id};
   if(workerAction==='new_session'){
@@ -205,7 +227,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    if(data.nodeRefs!==undefined&&(!Array.isArray(data.nodeRefs)||data.nodeRefs.length>10||new Set(data.nodeRefs).size!==data.nodeRefs.length||data.nodeRefs.some((r:unknown)=>typeof r!=='string'||!/^[a-f0-9-]{36}:[1-9][0-9]{0,5}$/.test(r))))throw new Error('선택한 노드 버전을 확인하세요.');
    payload={action:workerAction,model:credential.id===LOCAL_MODEL_ID?local!.model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs};
   }
-  if(['upload','message','confirm'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
+  if(['upload','attach_asset','message','confirm'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
+  if(workerAction==='attach_asset'){
+   if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
+   payload.asset_id=data.assetId;
+  }
   if(['message','test','resume_run'].includes(workerAction)){
    if(typeof data.content!=='string'||!data.content.trim()||data.content.length>4000)throw new Error('설명은 1~4,000자로 입력하세요.');payload.content=data.content;
   }
@@ -225,7 +251,17 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     payload.api_key=credential.data.apiKey||credential.data.token;
    }
   }
-  if(['upload','run_upload','source_upload'].includes(workerAction)){Object.assign(payload,await parseBuilderAsset(data));const relative='builder-originals/'+payload.asset.hash+'.'+payload.asset.format;const bytes=Buffer.from(data.data,'base64');await saveWorkspaceFile(relative,bytes);await mkdir(dataDirectory('builder-originals'),{recursive:true});await writeFile(dataDirectory(relative),bytes);payload.asset.original_path=relative;payload.asset.version=1;payload.asset.processing_status=payload.asset.parser_status==='partial'?'partial':'ready';}
+  if(['upload','run_upload','source_upload'].includes(workerAction)){
+   Object.assign(payload,await parseBuilderAsset(data));
+   // Independent keys let a new copy be uploaded while an older copy is being deleted.
+   const relative='builder-originals/'+randomBytes(32).toString('hex')+'.'+payload.asset.format;
+   const bytes=Buffer.from(data.data,'base64');
+   stagedUpload={original:relative,directory:payload.asset.parser_metadata?.analysis_artifact_directory};
+   payload.asset.original_bucket=await saveWorkspaceFile(relative,bytes);
+   await mkdir(dataDirectory('builder-originals'),{recursive:true});await writeFile(dataDirectory(relative),bytes);
+   payload.asset.original_path=relative;payload.asset.version=1;
+   payload.asset.processing_status=payload.asset.parser_status==='partial'?'partial':'ready';
+  }
   if(workerAction==='test'&&data.replyDraft!==undefined){if(typeof data.replyDraft!=='string'||data.replyDraft.length>12000)throw new Error('검수 초안은 12,000자 이하로 입력하세요.');payload.reply_draft=data.replyDraft;}
   if(workerAction==='review_decision'){
    if(typeof data.reviewId!=='string'||!/^[-\w]+:\d+$/.test(data.reviewId)||data.reviewId.length>60)throw new Error('검수 항목 ID를 확인하세요.');
@@ -236,5 +272,14 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(workerAction==='schedule'){if(typeof data.active!=='boolean')throw new Error('예약 활성 상태를 확인하세요.');payload.active=data.active;}
   if(workerAction==='test'&&data.fileIds!==undefined){if(!Array.isArray(data.fileIds)||data.fileIds.length>10||data.fileIds.some((id:unknown)=>typeof id!=='string'||!idPattern.test(id)))throw new Error('실행 자료 ID를 확인하세요.');payload.file_ids=data.fileIds;}
   json(res,200,await builderWorker(payload));return true;
+ }catch(error){
+  if(stagedUpload){
+   // A worker may report an error after committing the attachment. Check before removing its files.
+   try{
+    const {registered}=await builderWorker({action:'original_registered',original:stagedUpload.original});
+    if(!registered)await deleteUploadFiles(stagedUpload);
+   }catch{console.warn('Failed to reconcile staged upload',stagedUpload.original);}
+  }
+  throw error;
  }finally{if(lockKey)locks.delete(lockKey);}
 }

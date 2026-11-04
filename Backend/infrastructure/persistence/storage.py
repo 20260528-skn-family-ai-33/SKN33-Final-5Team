@@ -83,21 +83,32 @@ class Storage:
         self.db.commit()
         return self.session(s['id'])
     def update_session(self,s,expected,design_state=None):
+        if design_state and design_state.get('draft'):
+            s={**s,'draft_name':design_state['draft'].get('name')}
         result=self.db.execute('UPDATE builder_sessions SET json=?,revision=revision+1 WHERE {ws} AND id=? AND revision=?',(json.dumps({k:v for k,v in s.items() if k!='revision'},ensure_ascii=False),s['id'],expected))
         if not result.rowcount: raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
         if self.business and design_state is not None:self.business.update_design(s['id'],design_state)
         self.db.commit(); return self.session(s['id'])
-    def add_asset(self,asset,rows):
+    def add_asset(self,asset,rows,commit=True):
         self.db.execute('INSERT INTO builder_assets({wsc}id,json,rows_json) VALUES({wsv}?,?,?)',(asset['id'],json.dumps(asset,ensure_ascii=False),json.dumps(rows,ensure_ascii=False)))
         if self.business and asset.get('original_path'):self.business.save_document(asset)
-        self.db.commit();return asset
+        if commit:self.db.commit()
+        return asset
     def asset(self,id):
         from documents.review.document_review import effective_asset
         return effective_asset(self.raw_asset(id),self.document_review(id))
     def raw_asset(self,id):
         row=self.db.execute('SELECT json FROM builder_assets WHERE {ws} AND id=?',(id,)).fetchone()
         if not row: raise ValueError('연결한 자료를 찾을 수 없습니다.')
-        return json.loads(row[0])
+        asset=json.loads(row[0])
+        if 'pending_delete' in asset:raise ValueError('삭제 중인 자료입니다.')
+        return asset
+    def require_assets(self,ids):
+        if ids:
+            params=','.join('?' for _ in ids)
+            count=self.db.execute('SELECT count(*) FROM builder_assets WHERE {ws} AND id IN ('+params+') AND '+
+                                  self.json_text('json','pending_delete')+' IS NULL',tuple(ids)).fetchone()[0]
+            if count!=len(set(ids)):raise ValueError('자료가 삭제됐습니다. 연결 자료를 다시 확인하세요.')
     def document_review(self,id):
         row=self.db.execute('SELECT json FROM document_reviews WHERE {ws} AND asset_id=?',(id,)).fetchone()
         return json.loads(row[0]) if row else None
@@ -132,6 +143,7 @@ class Storage:
         self.begin_write()
         try:
             session_id=state['session_id']
+            self.require_assets(draft.get('document_ids',[]))
             for old in self.agents():
                 if old['session_id']==session_id and {k:v for k,v in old['config'].items() if k!='node_snapshots'}==draft:
                     # Repair old partial saves on idempotent replays without pausing a healthy schedule.

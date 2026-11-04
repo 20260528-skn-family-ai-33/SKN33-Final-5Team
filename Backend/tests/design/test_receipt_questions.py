@@ -8,6 +8,9 @@ from tests.design.test_builder import draft
 
 REQUEST = '영수증 파일 올려주면 내용 추출해줄래?'
 EXCEL_REQUEST = '영수증 올려주면 내용 추출해서 엑셀에 정리해줄 수 있어?'
+SCREENSHOT_REQUEST = '영수증 올려주면 항목 추출해서 엑셀로 뽑아줄 수 있어?'
+SCREENSHOT_QUESTIONS = ['영수증 파일을 업로드해 주시겠습니까?',
+                        '데이터를 엑셀 파일로 저장할지, 아니면 텍스트로 출력할지 선택해 주세요.']
 OLD_BUTTON_REPLIES = ['자료 연결 후 기준 입력', '자료 연결 후 기준 입력', '연결 자료에서 기준 확인 후 입력']
 RECEIPT = {'name': 'receipt.png', 'kind': 'document', 'format': 'png',
            'text': '상호명: A4B 상점\n결제 금액: 12,000원', 'columns': []}
@@ -35,10 +38,10 @@ def studio(tmp_path, monkeypatch):
     session = handle({'action': 'new_session', 'directory': str(tmp_path),
                       'model': 'test', 'credential_id': uid()})
 
-    def act(action, **fields):
+    def act(action, conversation=planner, **fields):
         nonlocal session
         session = handle({'action': action, 'directory': str(tmp_path), 'id': session['id'],
-                          'revision': session['revision'], **fields}, conversation=planner)
+                          'revision': session['revision'], **fields}, conversation=conversation)
         return session
 
     return act, planner_inputs
@@ -52,7 +55,16 @@ def only_question(session, key):
     return question
 
 
-@pytest.mark.parametrize('prompt', [REQUEST, EXCEL_REQUEST])
+def assert_workbook_draft(session, fields, asset):
+    assert session['status'] == 'ready', session['issues']
+    assert not session['draft']['questions'] and not session['pending_questions']
+    nodes = session['draft']['workflow']['nodes']
+    assert any(n['tool'] == 'read_document' and asset['id'] in n['settings']['file_ids'] for n in nodes)
+    assert any(n['tool'] == 'extract_information' and n['settings']['fields'] == fields for n in nodes)
+    assert any(n['tool'] == 'create_spreadsheet' for n in nodes)
+
+
+@pytest.mark.parametrize('prompt', [REQUEST, EXCEL_REQUEST, SCREENSHOT_REQUEST])
 def test_upload_advances_to_fields_and_selection_survives_worker_restart(studio, prompt):
     act, planner_inputs = studio
     upload = only_question(act('message', content=prompt), 'receipt.attachment')
@@ -69,9 +81,12 @@ def test_upload_advances_to_fields_and_selection_survives_worker_restart(studio,
         act('message', question_id=upload['id'], content='날짜')
     answer = '영수증에서 추출할 항목: 날짜, 상호명, 승인번호'
     result = act('message', question_id=fields['id'], content=answer)
-    for messages in (result['messages'], planner_inputs[-1]['messages']):
-        assert [m['content'] for m in messages if m['role'] == 'user'] == [prompt, answer]
-    assert planner_inputs[-1]['resources'][0]['id'] == attached['resources'][0]['id']
+    assert [m['content'] for m in result['messages'] if m['role'] == 'user'] == [prompt, answer]
+    if prompt != REQUEST:
+        assert_workbook_draft(result, ['날짜', '상호명', '승인번호'], attached['resources'][0])
+        assert not planner_inputs
+    else:
+        assert planner_inputs[-1]['resources'][0]['id'] == attached['resources'][0]['id']
     assert not any(q['key'].startswith('receipt.') for q in result['pending_questions'])
 
 
@@ -169,8 +184,106 @@ def test_reopened_capability_questions_resume_with_selected_fields(tmp_path, mon
     resumed = handle({**request, 'action': 'message', 'revision': attached['revision'],
                       'question_id': fields['id'], 'content': answer}, conversation=planner)
     assert resumed['capability_assessment']['decision'] == 'existing_tools'
-    assert capability.calls == 1
-    assert [m['content'] for m in planner_inputs[0]['messages'] if m['role'] == 'user'] == [*user_turns, answer]
+    assert [m['content'] for m in resumed['messages'] if m['role'] == 'user'] == [*user_turns, answer]
+    if prompt == EXCEL_REQUEST:
+        assert_workbook_draft(resumed, ['상호명', '승인번호'], attached['resources'][0])
+        assert not planner_inputs
+    else:
+        assert planner_inputs and capability.calls == 1
+
+
+@pytest.mark.parametrize('already_uploaded', [False, True])
+def test_plain_planner_interrupt_reopens_with_receipt_controls(studio, monkeypatch, already_uploaded):
+    from service.handlers import design
+    act, planner_inputs = studio
+
+    def old_planner(state):
+        planned = draft(SCREENSHOT_QUESTIONS)
+        planned.update(name='영수증 엑셀 정리', purpose=SCREENSHOT_REQUEST, instructions=SCREENSHOT_REQUEST)
+        planned['requirements'] = [{'source_id': 'user', 'description': '요청', 'quote': SCREENSHOT_REQUEST}]
+        reply = '아래 항목을 확인해 주세요.\n' + '\n'.join('• ' + q for q in SCREENSHOT_QUESTIONS)
+        return {'draft': planned, 'messages': [*state['messages'],
+                {'role': 'assistant', 'content': reply}]}
+
+    # Persist the old planner's plain draft, including its await_input interrupt and
+    # the possible subsequent upload. These sessions had no structured question IDs.
+    with monkeypatch.context() as old:
+        old.setenv('A4B_ATTACHMENT_PRECHECK', 'off')
+        old.setattr(design, 'receipt_upload_prompt', lambda *_: None)
+        act('message', content=SCREENSHOT_REQUEST, conversation=old_planner)
+        if already_uploaded:
+            act('upload', asset={**RECEIPT, 'name': 'receipt.jpg', 'format': 'jpg'}, rows=[])
+
+    reopened = act('session')
+    assert SCREENSHOT_QUESTIONS[0] in reopened['messages'][-1]['content']
+    if not already_uploaded:
+        only_question(reopened, 'receipt.attachment')
+        reopened = act('upload', asset=RECEIPT, rows=[])
+    fields = only_question(reopened, 'receipt.fields')
+    assert '엑셀' in fields['text']
+    answer = '영수증에서 추출할 항목: 날짜, 상호명, 결제 금액'
+    with pytest.raises(ValueError):
+        act('message', content=answer, question_id='outdated-field-question')
+    unchanged = act('session')
+    assert unchanged['revision'] == reopened['revision']
+    assert unchanged['messages'] == reopened['messages']
+    assert unchanged['pending_questions'] == [fields]
+    advanced = act('message', content=answer, question_id=fields['id'])
+    assert_workbook_draft(advanced, ['날짜', '상호명', '결제 금액'], reopened['resources'][0])
+    assert not planner_inputs
+
+
+def test_legacy_planner_migration_keeps_an_independent_question():
+    from agent_builder.design.receipt_intake import legacy_receipt_intake
+
+    session = {'status': 'needs_clarification', 'pending_questions': [],
+               'messages': [{'role': 'user', 'content': SCREENSHOT_REQUEST}],
+               'draft': {'questions': [*SCREENSHOT_QUESTIONS, '취소한 거래도 포함할까요?']}}
+    assert legacy_receipt_intake(session) is None
+
+
+def test_selected_receipt_fields_produce_a_real_workbook(studio, tmp_path):
+    import base64
+    import io
+    import json
+    from openpyxl import load_workbook
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.executors.schemas import Facts
+    from workflow_engine.runner import run_workflow
+
+    class ReceiptFacts:
+        def with_structured_output(self, schema, **kwargs):
+            assert schema is Facts
+            return self
+
+        def invoke(self, messages):
+            source = json.loads(messages[-1]['content'])['documents'][0]['source_id']
+            return Facts.model_validate({'facts': [
+                {'field': field, 'value': value, 'source_id': source, 'quote': field + ': ' + value}
+                for field, value in [('날짜', '2026-11-05'), ('상호명', 'A4B 상점'),
+                                     ('결제 금액', '12,000원'), ('승인번호', '없는번호')]
+            ]})
+
+    act, _ = studio
+    act('message', content=SCREENSHOT_REQUEST)
+    asset = {**RECEIPT, 'text': '날짜: 2026-11-05\n' + RECEIPT['text']}
+    attached = act('upload', asset=asset, rows=[])
+    question = only_question(attached, 'receipt.fields')
+    fields = ['날짜', '상호명', '결제 금액', '승인번호']
+    ready = act('message', content='영수증에서 추출할 항목: ' + ', '.join(fields), question_id=question['id'])
+    assert_workbook_draft(ready, fields, attached['resources'][0])
+    saved = act('confirm')
+    store = Storage(tmp_path)
+    try:
+        run = run_workflow(store, saved['saved_agent_id'], '영수증을 엑셀로 정리해줘', 'unused', llm=ReceiptFacts())
+    finally:
+        store.close()
+    assert run['status'] == 'succeeded', run.get('error')
+    workbook = load_workbook(io.BytesIO(base64.b64decode(run['artifact']['content'])))
+    try:
+        assert list(workbook.active.values) == [tuple(fields), ('2026-11-05', 'A4B 상점', '12,000원', None)]
+    finally:
+        workbook.close()
 
 
 @pytest.mark.parametrize('prompt', [

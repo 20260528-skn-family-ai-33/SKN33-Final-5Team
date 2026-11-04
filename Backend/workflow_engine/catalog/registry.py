@@ -93,6 +93,8 @@ for id,name,description in [
 # Ports can vary by instance, but never by the identity of a predecessor/successor.
 def node_ports(node):
     inputs,outputs=PORTS[node['tool']]
+    if node['tool']=='extract_information' and node['settings'].get('extraction_mode')=='fields':
+        return inputs, {**outputs, 'table':'table'}
     if node['tool']=='saved_workflow':
         port=node['settings'].get('output_port');return inputs,{port:outputs[port]} if port in outputs else {}
     return inputs,outputs

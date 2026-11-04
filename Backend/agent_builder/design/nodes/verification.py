@@ -36,6 +36,9 @@ def current_tools():
         item = reference[tool['id']]
         item.update(description=tool['description'], input_ports=tool['input_ports'],
                     output_ports=tool['output_ports'], enabled=True)
+        if tool['id'] == 'extract_information':
+            # The native validator checks the concrete extraction mode for this optional output.
+            item['output_ports'] = {**item['output_ports'], 'table': 'table'}
         if tool['id'] == 'compose_answer':
             item['required_input_ports'] = ['documents']
         result.append(item)

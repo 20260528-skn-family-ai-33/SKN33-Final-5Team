@@ -93,8 +93,8 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         try:
             # Build a transport lazily: a failed input never calls the model.
             from agent_builder.conditions.condition_readiness import input_issues
-            from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, pending_nonanswer
-            if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state) or pending_nonanswer(state):
+            from agent_builder.conditions.input_resolution import latest_resolution, option_answer, numeric_answer, pending_nonanswer
+            if input_issues(state) or latest_resolution(state) or option_answer(state) or numeric_answer(state) or pending_nonanswer(state):
                 result = judge_conditions(state, None)
             else:
                 result = judge_conditions(state, transport or _transport(api_key, model), max_contract_repairs=1)

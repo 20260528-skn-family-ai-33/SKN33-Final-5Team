@@ -5,6 +5,7 @@ Each rule is also tried on the five axes the earlier measurement sets never cove
 for another column, negation/exclusion, a later correction, several conditions, a different turn.
 """
 import json
+from decimal import Decimal
 import pytest
 from agent_builder.capabilities.capability_judgement import assess_capability
 from agent_builder.conditions.condition_readiness import canonical_written_operators, written_comparison_issues
@@ -192,3 +193,17 @@ def test_changing_the_lower_bound_keeps_the_upper_bound():
     s = talk('amount가 30 이상이고 amount가 100 이하인 행만.', '저장할까요?', 'amount가 50 이상으로 바꿔줘.')
     assert not blocked(s, flt('gte', 50.0), flt('lte', 100.0))
     assert blocked(s, flt('gte', 30.0), flt('lte', 100.0))
+
+
+def test_amount_with_eok_unit_is_read_as_one_number():
+    from agent_builder.conditions.condition_readiness import written_comparisons
+    assert written_comparisons('비용이 3억원 이상인 행만') == [(Decimal(300000000), 'gte')]
+    s = talk('비용이 3억원 이상인 행만 저장해줘.')
+    assert corrected(s, flt('gt', 300000000.0, field='비용'))[0] == ['gte']
+
+
+def test_header_unit_is_applied_like_the_ledger():
+    field = '매출(백만원)'
+    s = talk(f'{field}이 3억원 이상인 행만 저장해줘.')
+    assert corrected(s, flt('gt', 300.0, field=field))[0] == ['gte']
+    assert not blocked(s, flt('gte', 300.0, field=field))

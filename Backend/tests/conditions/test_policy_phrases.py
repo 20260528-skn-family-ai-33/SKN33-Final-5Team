@@ -82,6 +82,37 @@ def test_no_sort_wording(phrase):
     assert literal(f'비용이 100만원 초과인 행만 남겨줘. {phrase}. JSON으로 저장해.')['sort.policy']['value'] == 'none'
 
 
+@pytest.mark.parametrize('reply', ['슬랙과 중복은 취소', '중복 제거와 슬랙 전송을 취소해줘.'])
+def test_withdrawn_dedup_is_not_reapplied_from_history_or_checkpoint(reply):
+    from agent_builder.design.condition_templates import compile_conditions
+
+    s = {**state('비용 100만원 초과인 행만 JSON으로 저장해. 중복 거래ID는 마지막 행만 남겨. 슬랙으로 보내줘.'),
+         'resources': [TABLE]}
+    raw = proposal(s, {'filter.field': '비용', 'filter.operator': 'gt', 'filter.value': '1000000'})
+    s['condition_ledger'] = checked(s, raw)
+    assert 'deduplicate' in s['condition_ledger']['operations']
+    s['messages'].append({'role': 'user', 'content': reply})
+    for followup in (None, '네'):
+        if followup:
+            s['messages'].append({'role': 'user', 'content': followup})
+        ledger = checked(s, raw)
+        assert ledger['decision'] == 'ready' and ledger['operations'] == ['filter']
+        assert 'duplicate.field' not in ledger['slots']
+        s['condition_ledger'] = ledger
+        plan = compile_conditions(s)['draft']['execution_plan']
+        assert plan['duplicate_policy'] == 'keep' and plan['filters'][0]['field'] == '비용'
+
+    s['messages'].append({'role': 'user', 'content': '중복 거래ID는 다시 첫 행만 남겨.'})
+    assert checked(s, raw)['slots']['duplicate.policy']['value'] == 'first'
+
+
+@pytest.mark.parametrize('reply', ['중복 제거는 취소하지 마', '중복 취소 건수를 알려줘'])
+def test_cancel_word_alone_does_not_change_dedup_policy(reply):
+    s = state('중복 거래ID는 마지막 행만 남겨.')
+    s['messages'].append({'role': 'user', 'content': reply})
+    assert explicit_policies(s, source_catalog(s)[0])['duplicate.policy']['value'] == 'last'
+
+
 def test_order_or_error_duplicate_policy_without_a_column_asks_for_the_column():
     s = state('비용이 100만원 초과인 행만 남겨줘. 빈 값은 제외해. 중복은 오류로 처리해. JSON으로 저장해.')
     ledger = checked(s, proposal(s, {'filter.field': '비용', 'filter.operator': 'gt', 'filter.value': '1000000',

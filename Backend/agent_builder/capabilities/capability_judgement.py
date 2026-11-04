@@ -177,8 +177,11 @@ DEMOS=[
 
 _NEW_TASK_WORDS=re.compile(r'줘|주세요|만들|정리|저장|보내|골라|남겨|뽑|계산|비교|합계|집계|요약|예약|매일|매주|변환|추출',re.I)
 # A turn that points back at the earlier request is a follow-up, not a new task
-# ("원래 조건으로 다시 확인해줘", "위 조건 그대로 저장해줘", "아까 그 표를 CSV로").
-_REFERS_BACK=re.compile(r'원래|기존|다시|그대로|아까|방금|앞(?:서|에서|의|에)|위(?:의|에서|에|\s*조건|\s*내용)|이전|같은\s*조건|그\s*(?:조건|표|파일|요청|작업|기준)|대신|말고|바꿔|수정',re.I)
+# ("원래 조건으로 다시 확인해줘", "위 조건 그대로 저장해줘", "아까 그 표를 CSV로"), and so is one that
+# cancels part of it ("중복 제거와 이메일 전송을 취소해줘", "발송은 하지 마"): main's request-update
+# rule replays those changes over the earlier request, so it must stay in the window.
+_REFERS_BACK=re.compile(r'원래|기존|다시|그대로|아까|방금|앞(?:서|에서|의|에)|위(?:의|에서|에|\s*조건|\s*내용)|이전|같은\s*조건|그\s*(?:조건|표|파일|요청|작업|기준)|대신|말고|바꿔|수정'
+                      r'|취소|철회|빼(?:고|줘|주세요)|하지\s*(?:마|말|않)|안\s*해|그만|만\s*(?:해|남겨|하고)',re.I)
 
 def _task_window(state):
     """Messages the capability judgment sees: the whole conversation, or only a new task request.
@@ -200,6 +203,104 @@ def _task_window(state):
             or len([m for m in messages if m.get('role')=='user'])<2):
         return messages
     return [messages[-1]]
+
+REQUEST_UPDATE_RULE = """대화는 순서대로 적용합니다. authoritative_request는 가장 최근 사용자 발언입니다.
+최신 발언이 작업 일부를 취소하거나 범위를 좁히면 이전 요청의 해당 부분을 철회한 것으로 판단합니다.
+예: '매출을 요약하고 이메일로 보내줘' 뒤 '메일은 취소', '이메일은 안 해', '요약만'이면 매출 요약만 남습니다.
+취소된 이메일 발송이나 그 계정 연결을 missing_actions/missing_conditions에 남기지 않습니다.
+반대로 '메일은 취소하지 마'는 기존 메일 작업을 유지합니다. 조회나 초안 작성만 요청한 경우 발송을 추가하지 않습니다.
+'메일로는 보내줘'는 발송 요청입니다. 수신자 등 확인 질문에 답해도 철회되지 않은 요구와 조건은 유지합니다.
+이전 assistant의 지원 불가 답변과 unverified_assessment는 판정 근거가 아닌 검토 대상입니다.
+user_quotes에는 최신 변경 발언도 정확히 포함해 변경을 반영했다는 근거를 남깁니다.
+남은 요청을 실제 카탈로그로 판단하며, 요청 축소만으로 지원 확정·실행·저장 허가를 부여하지 않습니다."""
+
+
+_CHANNEL = r'(이메일|메일|e-?mail|슬랙|slack)'
+_KEEP = re.compile(_CHANNEL + r'(발송|전송)?(?:은|는)?취소하지(?:마|마요|마세요|말아|말아줘)')
+_SEND = re.compile(r'(?:다시)?' + _CHANNEL + r'(?:으?로(?:는|만)?)?(?:보내줘|보내주세요|발송해줘|전송해줘)')
+_DEDUP = r'중복(?:제거|처리)?'
+_JOIN = r'(?:과|와|이랑|랑|및|·)'
+_CANCEL = re.compile(r'(?:' + _DEDUP + _JOIN + r')?' + _CHANNEL + r'(?:발송|전송)?(?:' + _JOIN + _DEDUP + r')?'
+                     r'(?:은|는|을|를|도|으?로(?:는)?)?(?:취소(?:해(?:줘|주세요|요)?|할게(?:요)?|하고)?'
+                     r'|안해|안함|빼(?:줘)?|보내지(?:는|도)?(?:마|말아줘|말고))')
+_NO_SEND = re.compile(r'(?:(?:메일|이메일)?(?:발송|전송)(?:은|는)?하지|보내지)(?:는|도)?(?:마|말아줘|말고)')
+_MAIL_WORK = re.compile(r'(?:이메일|메일|e-?mail)(?:은|는|을|를)?(?:목록|내용|본문|제목|초안)?(?:은|는|을|를)?'
+                        r'(만)?(?:조회|검색|읽기|작성|준비)(만)?(?:해줘|해주세요|해)?$')
+
+
+def _channel(name):
+    return 'slack' if name.casefold() in ('슬랙', 'slack') else 'email'
+
+
+def delivery_directives(state):
+    """Replay explicit changes per channel. Other turns, including answers, leave them in force.
+
+    Only turns of the current task count: after "메일로 보내줘" an unrelated new request is judged
+    alone (A2), so its draft must not be stopped for missing the earlier request's send step.
+    """
+    asked_to_send = set()
+    directives = {}
+    for message in _task_window(state):
+        if message['role'] != 'user':
+            continue
+        quote = message['content']
+        # Column values inside quotation marks are data; punctuation there cannot start a directive.
+        unquoted = re.sub(r"""(["']).*?\1""", lambda m: ' ' * len(m[0]), quote)
+        named_channels = {_channel(name) for name in re.findall(_CHANNEL, unquoted, re.I)}
+        for clause in re.split(r'[.!?~;,\n]+|(?<=취소하고)(?!\s*싶)\s*|(?<=말고)\s+', unquoted):
+            text = ''.join(clause.casefold().split())
+            keep, send, cancel = _KEEP.fullmatch(text), _SEND.fullmatch(text), _CANCEL.fullmatch(text)
+            if keep:
+                channel = _channel(keep[1])
+                if not keep[2] and channel not in asked_to_send:
+                    continue  # Keeping mail lookup or preparation does not request sending.
+                asked_to_send.add(channel)
+                channels, intent = [channel], 'retain_delivery'
+            elif cancel:
+                channels, intent = [_channel(cancel[1])], 'cancel_delivery'
+            elif _NO_SEND.fullmatch(text) and len(named_channels or asked_to_send) == 1:
+                channels, intent = named_channels or asked_to_send, 'cancel_delivery'
+                # An explicitly non-sending mail task replaces the old referent of "메일은 취소하지 마".
+                asked_to_send.difference_update(named_channels)
+            elif text in {'요약만', '요약만해줘', '전송취소', '발송취소'}:
+                channels, intent = asked_to_send, 'cancel_delivery'
+            elif (mail_work := _MAIL_WORK.search(text)) and (
+                    any(mail_work.groups()) or directives.get('email', {}).get('intent') == 'cancel_delivery'):
+                # "Keep mail" now refers to lookup/preparation, even if an older turn once requested a send.
+                asked_to_send.discard('email')
+                channels, intent = ['email'], 'cancel_delivery'
+            else:
+                channels = {_channel(m[1]) for m in _external_delivery(clause)
+                            if re.fullmatch(_CHANNEL, m[1], re.I)}
+                if send:
+                    channels.add(_channel(send[1]))
+                asked_to_send.update(channels)
+                # An initial compound request supplies context. A later explicit send
+                # replaces a previous cancellation for that channel.
+                if not send:
+                    channels = channels.intersection(directives)
+                intent = 'retain_delivery'
+            for channel in channels:
+                directives[channel] = {'channel': channel, 'intent': intent, 'quote': quote}
+    return directives
+
+
+def delivery_conflict(state, tool_ids):
+    for channel, directive in delivery_directives(state).items():
+        includes_send = channel == 'email' and 'email.send' in tool_ids
+        if includes_send != (directive['intent'] == 'retain_delivery'):
+            return directive
+    return None
+
+
+def guard_delivery_revision(result,state):
+    if result['decision'] != 'existing_tools':return result
+    directive = delivery_conflict(state, result['tool_ids'])
+    if not directive:return result
+    return {**result,'decision':'manual_review','model_decision':result['decision'],
+            'request_revision_conflict':directive,
+            'reason':'사용자의 발송 변경 요청과 선택한 도구가 일치하지 않아 재검토가 필요합니다.'}
+
 
 def assess_capability(state,transport):
     faults=input_issues(state)
@@ -226,12 +327,13 @@ def assess_capability(state,transport):
             props['missing_actions']['minItems']=1;props['missing_conditions']['maxItems']=0
         variants.append(branch)
     transport.schema={'anyOf':variants}
-    messages=[{'role':'system','content':SYSTEM}, {'role':'user','content':json.dumps({
+    directives = delivery_directives(scoped)
+    messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE}, {'role':'user','content':json.dumps({
         'messages':window,'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,
         'app_capabilities':APP_CAPABILITIES,
         'tools':planner_catalog(TOOLS),
-        'authoritative_request':user[-1],'user_quote_catalog':quotes},ensure_ascii=False)}]
+        'authoritative_request':user[-1],'active_delivery_directives':directives,'user_quote_catalog':quotes},ensure_ascii=False)}]
     reply=transport.invoke(messages)
     content=reply.get('content') if isinstance(reply,dict) else reply.content
     result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),scoped,model_calls=1)
@@ -247,9 +349,11 @@ def assess_capability(state,transport):
 등록 도구로 요청의 모든 기능이 가능하면 existing_tools와 실제 tool_ids를 반환합니다. 필수 정책이 미정이면 clarify입니다.
 표 join은 join_tables의 실제 등록 operation·입출력·정책과 대조합니다. 이메일·캘린더처럼 등록된 외부 동작은 기능 지원과 계정 연결 전제를 구분하고, Slack처럼 등록되지 않은 전송은 미지원으로 유지합니다. calculate_columns의 명시적 사칙연산·열 이름 변경과 text_transform의 문자열 바꾸기는 등록된 지원 기능입니다. 그 밖의 임의 셀 변환은 지원한다고 가정하지 마세요. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
 user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 실행/제작 허가가 아닙니다.'''
-        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+review_prompt},
-            messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'task':'실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
+        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+review_prompt},
+            messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'authoritative_request':user[-1],'request_update_rule':REQUEST_UPDATE_RULE,'active_delivery_directives':directives,'task':'최신 사용자 변경을 먼저 적용한 뒤 남은 요청을 실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1
         result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),scoped,model_calls=calls)
-    return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state),state),scoped,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}
+    result=registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state)
+    result=external_delivery_claims(guard_delivery_revision(result,scoped),state)
+    return {**validate_assessment_result(result,scoped,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

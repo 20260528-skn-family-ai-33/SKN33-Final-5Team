@@ -72,8 +72,6 @@ coverage/
 htmlcov/
 .coverage*
 
-# Rebuilt layout: execution data, models, results and logs stay out of Git
-/runtime/
 # Source material handed over next to this project (ML work archive, DB reference); not project files
 /ml/
 /참고/

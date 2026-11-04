@@ -28,6 +28,7 @@ DOCKER_CONFIG=$(mktemp -d /run/a4b-deploy-docker.XXXXXX)
 old_id=
 new_id=
 cutover=0
+old_status=
 restore_name=
 frontend_pending=
 
@@ -52,10 +53,8 @@ cleanup() {
             if [[ $(docker inspect -f '{{.Name}}' "$old_id") != "/$app" ]]; then
                 docker rename "$old_id" "$app" || result=1
             fi
-            if docker start "$old_id" >/dev/null; then
-                echo 'Previous A4B container restarted.' >&2
-            else
-                echo 'Could not restart the previous A4B container.' >&2
+            if [[ "$old_status" == running ]]; then
+                docker start "$old_id" >/dev/null || result=1
             fi
         fi
     fi
@@ -94,7 +93,12 @@ verify_health() {
 }
 
 old_id=$(docker inspect -f '{{.Id}}' "$app")
-[[ $(docker inspect -f '{{.State.Running}} {{.HostConfig.NetworkMode}} {{.HostConfig.RestartPolicy.Name}}' "$old_id") == 'true host unless-stopped' ]]
+[[ $(docker inspect -f '{{.HostConfig.NetworkMode}} {{.HostConfig.RestartPolicy.Name}}' "$old_id") == 'host unless-stopped' ]]
+old_status=$(docker inspect -f '{{.State.Status}}' "$old_id")
+if [[ "$old_status" != running ]]; then
+    [[ "$old_status" == exited && "$mode" == production && "$image" != restore && "$image" != *:frontend-* ]] ||
+        { echo 'Only a stopped production backend can enter storage cutover.' >&2; exit 1; }
+fi
 if [[ "$image" == *:frontend-* ]]; then
     deploy_frontend
     exit 0
@@ -132,17 +136,50 @@ else
 
     # Docker's env-file format is one assignment per line. Abort before cutover if
     # the running container's configuration cannot be represented without changes.
+    # $state/env-overrides (root-only, KEY=VALUE per line) adds or replaces settings, e.g.
+    # A4B_STORAGE=postgres after the business-data migration (docs/business-data-storage.md).
+    overrides="$state/env-overrides"
+    if [[ -e "$overrides" && $(stat -c '%u %a' "$overrides") != '0 600' ]]; then
+        echo "$overrides must be owned by root with mode 600." >&2
+        exit 1
+    fi
     docker inspect -f '{{json .Config.Env}}' "$old_id" | python3 -c '
-import json, sys
+import json, os, re, sys
 values = json.load(sys.stdin)
 if not all("=" in value and "\n" not in value and "\r" not in value for value in values):
     raise SystemExit("Unsupported container environment format")
 if "EASYFLOW_PUBLIC_URL=" + sys.argv[1] not in values or "PORT=3041" not in values:
     raise SystemExit("Running container does not match the expected A4B deployment")
-print("\n".join(values))
-' "$public_url" > "$env_file"
+settings = dict(value.split("=", 1) for value in values)
+previous_store = settings.get("A4B_STORAGE") or "sqlite"
+if os.path.exists(sys.argv[2]):
+    for line in open(sys.argv[2], encoding="utf-8").read().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or key in ("EASYFLOW_PUBLIC_URL", "PORT"):
+            raise SystemExit("Unsupported line in env-overrides: " + key)
+        settings[key] = value
+switching = previous_store == "sqlite" and settings.get("A4B_STORAGE") == "postgres"
+if switching and sys.argv[3] != "exited":
+    raise SystemExit("Stop the SQLite container, back up its volume and complete the import before cutover.")
+if not switching and sys.argv[3] == "exited":
+    raise SystemExit("A stopped container can only be replaced during SQLite to PostgreSQL cutover.")
+print("\n".join(key + "=" + value for key, value in settings.items()))
+' "$public_url" "$overrides" "$old_status" > "$env_file"
 
     pull_image "$image"
+    # During the first cutover the source stays offline. Reject an import that
+    # started before the last SQLite writer stopped, including after a rollback.
+    preflight=(--preflight)
+    if [[ "$old_status" == exited ]]; then
+        stopped_at=$(docker inspect -f '{{.State.FinishedAt}}' "$old_id")
+        preflight+=("--sqlite-stopped-at=$stopped_at")
+    fi
+    if ! docker run --rm --network host --env-file "$env_file" "${mount_args[@]}" "$image" node Backend/api/build-server/index.mjs "${preflight[@]}"; then
+        echo 'Preflight failed before container replacement.' >&2
+        exit 1
+    fi
     new_id=$(docker create --network host --restart unless-stopped --env-file "$env_file" "${mount_args[@]}" "$image")
     if [[ "$image" == *:backend-* ]]; then
         docker cp -L "$old_id:/app/Frontend/dist-app/." - | docker cp - "$new_id:/app/Frontend/dist-app/"
@@ -154,7 +191,7 @@ print("\n".join(values))
     fi
 fi
 cutover=1
-docker stop "$old_id" >/dev/null
+if [[ "$old_status" == running ]]; then docker stop "$old_id" >/dev/null; fi
 docker rename "$old_id" "$app-previous-${old_id:0:12}"
 docker rename "$new_id" "$app"
 docker start "$new_id" >/dev/null

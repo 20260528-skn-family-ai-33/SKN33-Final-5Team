@@ -1,0 +1,81 @@
+# 업무 데이터 저장소 — SQLite · PostgreSQL
+
+에이전트 빌더의 업무 데이터(설계 대화·자료·저장한 에이전트 버전·실행 기록·lease·예약 작업·검토 결정·Python LangGraph 체크포인트)와 Node 어시스턴트 체크포인트는 `A4B_STORAGE`로 저장소를 고릅니다. 로그인 회원 저장소(`A4B_AUTH_USER_STORE`)와 같은 방식입니다.
+
+| 설정 | 기본값·용도 |
+| --- | --- |
+| `A4B_STORAGE` | `sqlite`(기본). 작업 공간 폴더마다 `agent-builder.sqlite`를 씁니다. `EASYFLOW_PUBLIC_URL`이 localhost가 아니면 시작을 거부합니다. 운영은 `postgres`입니다. |
+| `A4B_DATABASE_URL`·`A4B_DATABASE_CA_FILE`·`A4B_DATABASE_TLS_SERVER_NAME` | `postgres`일 때 회원 저장소와 같은 값을 씁니다. TLS 규칙도 같아서 항상 인증서와 호스트 이름을 검증하고(`sslmode=verify-full`), 주소에 SSL 옵션을 넣으면 거부합니다. |
+| `A4B_WORKER_MAX_CONCURRENCY` | `postgres`일 때 서버 한 대에서 동시에 띄우는 Python 작업 수입니다. 기본 12이고, 넘치면 대기열에서 기다립니다. 모델 호출과 실행처럼 오래 걸리는 작업은 이 중 약 3분의 2(기본 8)까지만 쓰므로, 예약 확인과 화면 요청이 막히지 않습니다. |
+| `A4B_WORKER_CONTROL_CONCURRENCY` | 실행 소유권 갱신·중단(heartbeat·interrupt) 전용 상한입니다. 기본 4이고, 일반 작업 대기열에 막히지 않습니다. |
+| `A4B_WORKER_QUEUE_TIMEOUT_MS` | 빈 자리를 기다리는 최대 시간입니다. 기본 60000ms이고, 넘기면 "처리 중인 작업이 많습니다" 오류를 냅니다. 예약 실행은 실패로 기록하지 않고, lease가 끝난 뒤(최대 5분) 다시 시도합니다. |
+| `A4B_DATABASE_POOL_MAX` | Python 작업 하나가 역할(업무 데이터·체크포인트)마다 여는 연결 수입니다. 기본 1이라 작업 하나가 연결을 최대 2개 씁니다. |
+
+**연결 수.** Python 작업은 요청마다 새 프로세스로 뜨기 때문에, 연결 수는 풀 크기가 아니라 프로세스 수로 정해집니다. 서버 한 대의 최대 연결 수는 `(A4B_WORKER_MAX_CONCURRENCY + A4B_WORKER_CONTROL_CONCURRENCY) × 2 + Node 풀 8`입니다(회원 저장소 5 + 어시스턴트 체크포인트 3). 기본값으로는 40입니다. 서버가 여러 대면 모든 서버의 합이 RDS `max_connections`에서 관리용 여유분을 뺀 값보다 작아야 합니다.
+
+**작업 공간 격리.** `a4b_builder`의 회원별 업무·체크포인트 표에는 `workspace_id`가 있습니다. 값은 `data/users/<회원ID>`의 회원 ID이고, 로그인을 끈 로컬 실행에서는 `local`입니다. 행 수준 보안 정책은 현재 연결의 작업 공간에 속하는 행만 읽고 쓰도록 제한합니다. 앱 계정은 superuser나 `BYPASSRLS` 권한으로 접속할 수 없습니다. 스키마 버전과 볼륨 이전 완료 기록은 DB 단위로 관리합니다.
+
+## RDS에 기록되는 데이터
+
+| 업무 | 저장 위치와 내용 |
+| --- | --- |
+| 로그인 | 기존 `a4b.users`에 Cognito 제공자·사용자 식별자, 이메일, 이름을 등록하거나 갱신합니다. 회원 ID, 역할, 활성 상태도 여기서 읽습니다. |
+| 설계와 자료 | `builder_sessions`에 대화 상태와 수정 버전, `builder_assets`에 파일 정보·추출한 내용·표 행, `agent_versions`에 저장한 에이전트 설정을 보관합니다. |
+| 실행과 예약 | `agent_tests`에 실행 상태·출력, `builder_run_leases`에 실행 소유권·만료 시각, `builder_data_sources`, `builder_schedules`, `builder_schedule_jobs`에 자료 연결·예약·처리 상태를 기록합니다. |
+| 검토와 도구 | 문서 검토와 수정 이력, 응대 승인·거절, 지연 검증 입력·결과, 도구 목록, 재사용 노드, 도구 제작 요청, 전처리 배치·예시를 보관합니다. |
+| 대화·실행 재개 | Python은 `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`에, Node 어시스턴트는 `agent_checkpoints`에 중단 지점과 재개할 상태를 저장합니다. |
+| 운영 기록 | `schema_migrations`와 `checkpoint_migrations`에는 적용 버전이, `sqlite_imports`에는 이전 식별자·작업 공간 수·완료 시간이 남습니다. |
+
+별도 표시가 없는 표는 `a4b_builder` 스키마에 있습니다. 업로드 원본과 결과 파일의 바이트는 기존 파일 저장 경로(설정에 따라 S3 또는 데이터 볼륨)를 사용합니다. 추출된 표 행과 본문, 실행 결과 JSON은 RDS에도 들어갈 수 있습니다. 일반 Node 워크플로와 암호화된 연결 계정은 계속 볼륨의 `easyflow.sqlite`에 저장합니다.
+
+## 스키마 적용
+
+앱은 PostgreSQL 표를 직접 만들지 않습니다. 스키마는 [infrastructure/db/migrations](../infrastructure/db/migrations)의 SQL 파일로 관리하고, 새 마이그레이션이 생길 때마다 관리자 계정으로 한 번 적용합니다. 앱은 트래픽을 받기 전에 앱 계정으로 접속해 스키마 버전, 행 수준 보안 우회 여부, 표 권한을 확인하고, 하나라도 맞지 않으면 시작하지 않습니다. 그래서 RDS에 접속할 수 없을 때 `/api/health`가 통과하는 일이 없습니다. `node Backend/api/build-server/index.mjs --preflight`는 이 확인만 하고 끝납니다. 앱 접속 계정은 [prerequisites.sql](../infrastructure/db/prerequisites.sql)의 `a4b_app` 역할 멤버여야 합니다.
+
+```bash
+# EC2: 스키마를 만들 수 있는 관리자 주소. 앱의 A4B_DATABASE_URL과 다른 계정이어야 합니다.
+export A4B_MIGRATION_DATABASE_URL='postgresql://ADMIN:URL_ENCODED_PASSWORD@RDS_HOST:5432/a4b_db'
+docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/apply-builder-migrations.py --dry-run
+docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/apply-builder-migrations.py
+```
+
+`002`는 LangGraph 체크포인트 표에 작업 공간 열과 보안 정책을 더하고, `003`은 볼륨 이전 완료 기록을 저장할 표를 만듭니다. 이미 적용한 버전은 건너뜁니다.
+
+## 기존 SQLite 자료 옮기기
+
+[scripts/deploy/migrate-sqlite-to-postgres.py](../scripts/deploy/migrate-sqlite-to-postgres.py)는 `data/users/*/`의 `agent-builder.sqlite`(업무 표·Python 체크포인트)와 `agent-checkpoints.sqlite`(Node 체크포인트)를 회원 ID별로 복사합니다. 대상에 같은 키의 업무 행이나 Node 체크포인트가 있으면 원본과 내용이 같을 때만 건너뜁니다. 다르면 이전을 중단합니다. 부모가 사라진 과거 검토 결정 등의 행은 dry-run에 제외 건수가 표시됩니다. 원본 SQLite 파일은 읽기 전용으로 엽니다.
+
+1. SQLite에 쓰는 앱과 워커를 정지하고 실제 데이터 볼륨과 대상 DB를 백업합니다. EC2 자동 배포를 사용하면 [EC2 전환 절차](a4b-automatic-deployment.md#업무-데이터-저장소-전환)를 따릅니다.
+2. `--dry-run`으로 작업 공간·표별 건수를 확인합니다. dry-run은 PostgreSQL에 접속하지 않습니다.
+3. 스키마를 적용한 뒤 앱 계정(`A4B_DATABASE_URL`)으로 실제 복사를 실행합니다. 업무 행과 Node 체크포인트는 작업 공간별로, Python 체크포인트와 보류 쓰기는 체크포인트별로 커밋합니다. 실패 시 원본을 정지한 채 같은 명령을 다시 실행합니다.
+4. `A4B_STORAGE=postgres`를 적용하고 로그인해서 자료를 확인합니다.
+   - `docker compose --env-file .env.aws`로 운영하면 `.env.aws`에 넣고 다시 시작합니다.
+   - EC2 자동 배포는 정지한 기존 컨테이너의 환경과 마운트를 인계받습니다. `/var/lib/a4b-deploy/env-overrides`(root 소유, 권한 600)에 `A4B_STORAGE=postgres`를 추가하고 배포합니다.
+
+모든 복사가 끝나면 스크립트가 대상 DB의 `sqlite_imports`에 기록을 커밋한 뒤 같은 식별자를 원본 볼륨의 `.a4b-sqlite-import`에 게시합니다. 서버 기동과 `--preflight`에서 둘의 일치를 확인합니다. dry-run, 부분 실패, 다른 볼륨이나 DB로는 이 검사를 통과할 수 없습니다. 백업·복원 시 완료 파일도 포함하세요.
+
+```bash
+docker compose --env-file .env.aws run --rm app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/migrate-sqlite-to-postgres.py --dry-run
+docker compose --env-file .env.aws run --rm app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/migrate-sqlite-to-postgres.py
+```
+
+루트에 기존 SQLite 업무 DB가 있으면 dry-run과 실제 이전 모두에 `--include-local`을 붙여 `local` 작업 공간까지 옮깁니다. 회원 ID를 알 수 없는 폴더에 업무 DB가 있으면 이전을 중단합니다. 신규 설치에서 dry-run으로 실제 마운트와 빈 원본을 확인한 경우에만 실제 이전에 `--confirm-empty`를 붙입니다. 원본 DB 파일이 하나라도 있으면 이 옵션은 거부됩니다.
+
+## PostgreSQL 저장소 테스트
+
+기본 테스트는 SQLite로 돕니다. `A4B_TEST_DATABASE_URL`이 있으면 [test_storage_backends.py](../Backend/tests/infrastructure/test_storage_backends.py)의 같은 저장소 테스트를 PostgreSQL로도 돌립니다. 이 테스트는 두 작업 공간 사이의 조회·수정·예약 claim·체크포인트 격리와 보안 정책을 확인합니다. 지정한 DB의 `a4b_builder` 스키마를 지우고 다시 만들기 때문에, 이름에 `test`가 들어간 일회용 DB만 받습니다.
+
+```bash
+docker compose --profile test-db up -d --wait postgres-test
+cd Backend && A4B_TEST_DATABASE_URL=postgresql://postgres:a4b-test@127.0.0.1:55432/a4b_test .venv-agent/bin/python -m pytest tests/infrastructure/test_storage_backends.py -q && cd ..
+A4B_TEST_DATABASE_URL=postgresql://postgres:a4b-test@127.0.0.1:55432/a4b_test node --import tsx --test Backend/api/tests/storage-config.test.ts
+docker compose --profile test-db down
+```
+
+## 알아둘 점
+
+- JSON 원문 열은 `jsonb`가 아니라 `json` 타입입니다. `jsonb`는 객체 키 순서를 바꾸는데, 표의 열 순서(`export_result`)와 검증 지문이 저장된 키 순서에 의존하기 때문입니다. `->>` 조회는 `json`에서도 됩니다.
+- 실행 lease의 프로세스 생존 확인(`pid`)은 같은 서버를 기준으로 합니다. 서버 여러 대가 같은 작업 공간을 실행하려면 이 부분을 먼저 보완해야 합니다.
+- Node 워크플로 엔진의 `easyflow.sqlite`(워크플로·연결 계정)와 S3 파일 저장 방식은 바뀌지 않았습니다.
+- `scripts/run/run-deferred-verifications.py`는 `data/users/*/` 회원 작업 공간을 모두 처리합니다. PostgreSQL에서는 행 수준 보안 때문에 다른 작업 공간을 조회할 수 없어 회원 폴더 이름으로 대상을 정하므로, 회원 폴더가 있으면 `local` 작업 공간은 처리하지 않습니다.
+- `postgres`에서 `data/users/` 아래 폴더 이름이 회원 ID(UUID) 형식이 아니면 `local` 작업 공간에 합치지 않고 오류를 냅니다.

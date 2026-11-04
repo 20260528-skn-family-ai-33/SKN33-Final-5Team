@@ -16,11 +16,13 @@ BACKEND_SCRIPTS = {
     b'scripts/verify/verify_document_runtime.py',
     b'scripts/run/run-deferred-verifications.py',
     b'scripts/run-deferred-verifications.py',
+    b'scripts/deploy/apply-builder-migrations.py',
+    b'scripts/deploy/migrate-sqlite-to-postgres.py',
 }
 
 
 def areas(path):
-    if path.startswith((b'Backend/', b'scripts/verify/api/', b'scripts/setup/ollama/')) or path in BACKEND_SCRIPTS:
+    if path.startswith((b'Backend/', b'scripts/verify/api/', b'scripts/setup/ollama/', b'infrastructure/db/')) or path in BACKEND_SCRIPTS:
         return {'backend'}
     if path.startswith((b'Frontend/', b'scripts/verify/frontend/')):
         return {'frontend'}

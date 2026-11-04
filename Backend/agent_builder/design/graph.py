@@ -2,7 +2,7 @@ import time
 import json
 import os
 from langgraph.graph import StateGraph, START, END
-from infrastructure.persistence.checkpoints import checkpoint_connection, sqlite_checkpointer
+from infrastructure.persistence.checkpoints import checkpoint_connection, checkpointer
 from contracts.models import BuilderState
 from agent_builder.design.nodes.resources import resources_node
 from agent_builder.design.nodes.conversation import make_conversation
@@ -51,7 +51,7 @@ def _timed_node(name, fn):
 
 def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None,requirement_transport=None,requirement_mode=None):
     connection=checkpoint_connection(storage)
-    saver=sqlite_checkpointer(connection)
+    saver=checkpointer(connection)
     graph=StateGraph(BuilderState)
     def available_resources(state):
         from workflow_engine.library.reusable_workflows import catalog

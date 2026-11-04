@@ -31,9 +31,13 @@ def main():
     parser.add_argument('--limit', type=int, default=None, help='verify at most N pending records')
     args = parser.parse_args()
     load_env()
-    from verification.deferred import run_pending
+    from verification.deferred import run_pending, workspace_directories
     directory = ROOT / os.environ.get('EASYFLOW_DATA_DIR', 'data')
-    done = run_pending(directory, limit=args.limit)
+    done = []
+    for folder in workspace_directories(directory):
+        if args.limit is not None and len(done) >= args.limit:
+            break
+        done += run_pending(folder, limit=None if args.limit is None else args.limit - len(done))
     routes = {}
     for item in done:
         routes[item['route']] = routes.get(item['route'], 0) + 1

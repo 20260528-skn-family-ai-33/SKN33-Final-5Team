@@ -1,7 +1,7 @@
 import {parseToolGapChoiceRequest,parseRedesignDecisionRequest} from './tool-gap-contract';
 import {agentPython,backendPath,dataDirectory} from './paths';
 import {builderNeedsModel} from './builder-model-requirements';
-import {spawn} from 'node:child_process';
+import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {extname} from 'node:path';
 import {existsSync,mkdirSync,appendFileSync} from 'node:fs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
@@ -15,6 +15,8 @@ import type {Store} from './store';
 import {parseCsv} from './binary';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {readXlsx,extractPdfText} from './document-files';
+import {storageConfig,workerLimits} from './storage-config';
+import {createWorkerLanes} from './worker-slots';
 
 export function builderReportBytes(artifact:{content:string;encoding?:string}):Buffer {
  return Buffer.from(artifact.content,artifact.encoding==='base64'?'base64':'utf8');
@@ -30,9 +32,17 @@ export function builderWorkerTimeout(action:string,env:NodeJS.ProcessEnv=process
  const configured=Number(execution?env.A4B_WORKER_TIMEOUT_MS:localDesign?env.A4B_DESIGN_TIMEOUT_MS:undefined);
  return Number.isFinite(configured)&&configured>0&&configured<=1800000?configured:fallback;
 }
+let workerLanes:ReturnType<typeof createWorkerLanes>|null|undefined;
+/** With RDS each worker process holds connections, so processes are capped (SQLite: unlimited, as before). */
+function acquireWorkerSlot(action:string):Promise<()=>void>{
+ if(workerLanes===undefined)workerLanes=storageConfig().kind==='postgres'?createWorkerLanes(workerLimits()):null;
+ return workerLanes?workerLanes.acquire(action):Promise.resolve(()=>{});
+}
+export function resetWorkerSlots(){workerLanes=undefined;}
 export async function builderWorker(payload:Record<string,unknown>):Promise<any>{
  const python=agentPython();
  if(!existsSync(python))throw new Error('Deep Agents 실행 환경이 없습니다. scripts/setup/setup-agent-demo.sh를 먼저 실행하세요.');
+ const release=await acquireWorkerSlot(String(payload.action));
  const execution=['test','scheduled_run','retry_run','resume_run'].includes(String(payload.action));
  const runId=payload.action==='test'?randomUUID():String(payload.id||'');
  const executionToken=execution?randomUUID():undefined;
@@ -43,7 +53,9 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
    try{const dir=dataDirectory('builder-timing');mkdirSync(dir,{recursive:true,mode:0o700});timingPath=dataDirectory('builder-timing',randomUUID()+'.jsonl');}catch{}
   const timing=(event:string)=>{if(timingPath)try{appendFileSync(timingPath,JSON.stringify({event,at:Date.now()/1000})+'\n',{mode:0o600});}catch{}};
   timing('worker_start');
-  const child=spawn(python,[backendPath('service/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,EASYFLOW_DATA_DIR:dataDirectory(),A4B_TIMING_LOG:timingPath,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});
+  let child:ChildProcessWithoutNullStreams;
+  try{child=spawn(python,[backendPath('service/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,EASYFLOW_DATA_DIR:dataDirectory(),A4B_TIMING_LOG:timingPath,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});}
+  catch(error){release();throw error;}
   let stdout='',settled=false,heartbeatBusy=false;
   let heartbeat:ReturnType<typeof setInterval>|undefined;
   const clear=()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat);};
@@ -62,10 +74,12 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
      .catch(()=>void fail('실행 소유권을 갱신하지 못했습니다. 실행 기록에서 재시도하세요.')).finally(()=>{heartbeatBusy=false;});
    },20000);heartbeat.unref();
   }
-  child.on('error',()=>void fail('Python 실행 환경을 시작하지 못했습니다.'));
+  // The slot is freed only when the process is gone, not when the request settles.
+  child.on('error',()=>{release();void fail('Python 실행 환경을 시작하지 못했습니다.');});
   child.stdout.on('data',chunk=>{stdout+=String(chunk);if(Buffer.byteLength(stdout)>12*1024*1024)void fail('에이전트 결과 크기 제한을 넘었습니다.');});
   child.stderr.resume();child.stdin.on('error',()=>{});
   child.on('close',()=>{
+   release();
    if(settled)return;
    timing('worker_exit');
    try{const data=JSON.parse(stdout.trim());if(!data.ok){void fail(data.error||'에이전트 실행에 실패했습니다.');return;}settled=true;clear();

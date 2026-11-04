@@ -12,7 +12,8 @@ import {authenticateWebhook,encodedWebhookPath,validateWebhookConfiguration,webh
 import type {WebhookResponse} from './contracts';
 import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
-import {SqliteCheckpointSaver} from './graph-checkpointer';
+import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointer';
+import {storageConfig,builderDatabase} from './storage-config';
 import {OAuthManager,createCredentialRefresher} from './oauth';
 import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems,splitBinaryItem} from './binary';
 import {runCode} from './sandbox';
@@ -32,7 +33,8 @@ export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?
 const store=new Store(dataDirectory());
 const scheduleState=createBuilderScheduleState();
 const stopScheduler=startBuilderScheduler(store,scheduleState);
-const agentCheckpointer=new SqliteCheckpointSaver(dataDirectory('agent-checkpoints.sqlite'));
+const storage=storageConfig();
+const agentCheckpointer=storage.kind==='postgres'?new PostgresCheckpointSaver(builderDatabase(storage),ownerId||'local'):new SqliteCheckpointSaver(dataDirectory('agent-checkpoints.sqlite'));
 const chatInFlight=new Set<string>();
 const oauth=new OAuthManager({port,publicOrigin});
 const getUsableCredential=createCredentialRefresher();
@@ -255,6 +257,6 @@ return {handle,async close(){
  for(const id of pendingWebhooks.keys())completeWebhook(id,{statusCode:503,headers:{},body:{error:'프로그램이 종료되어 응답을 마치지 못했어요. 실행 기록에서 결과를 확인해주세요.'}});
  for(const c of controllers.values())c.abort();
  while(inFlight.size)await new Promise(resolve=>setTimeout(resolve,20));
- agentCheckpointer.close();store.close();
+ await agentCheckpointer.close();store.close();
 }};
 }

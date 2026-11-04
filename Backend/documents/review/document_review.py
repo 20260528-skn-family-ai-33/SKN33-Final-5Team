@@ -127,11 +127,11 @@ def view(storage,asset_id):
 
 
 def save(storage,asset_id,command):
-    storage.db.execute('BEGIN IMMEDIATE')
+    storage.begin_write()
     try:
         original=storage.raw_asset(asset_id);current=storage.document_review(asset_id) or initial_review(original)
         request_id=command.get('request_id','')
-        prior=storage.db.execute('SELECT json FROM document_review_events WHERE asset_id=? AND request_id=?',(asset_id,request_id)).fetchone()
+        prior=storage.db.execute('SELECT json FROM document_review_events WHERE {ws} AND asset_id=? AND request_id=?',(asset_id,request_id)).fetchone()
         if prior:
             if json.loads(prior[0])['command_sha256']!=digest(command):raise ValueError('같은 요청 ID로 다른 검토 내용을 저장할 수 없습니다.')
             storage.db.commit();return {**view(storage,asset_id),'replayed':True}
@@ -140,9 +140,9 @@ def save(storage,asset_id,command):
         event=dict(revision=updated['revision'],request_id=request_id,action=command['action'],
                    group_id=command.get('group_id'),decision=command.get('decision'),note=command.get('note',''),
                    at=updated['updated_at'],command_sha256=digest(command),acknowledge=command.get('acknowledge') is True)
-        storage.db.execute('INSERT INTO document_reviews VALUES(?,?,?) ON CONFLICT(asset_id) DO UPDATE SET revision=excluded.revision,json=excluded.json',
+        storage.db.execute('INSERT INTO document_reviews({wsc}asset_id,revision,json) VALUES({wsv}?,?,?) ON CONFLICT({wsc}asset_id) DO UPDATE SET revision=excluded.revision,json=excluded.json',
                            (asset_id,updated['revision'],json.dumps(updated,ensure_ascii=False)))
-        storage.db.execute('INSERT INTO document_review_events VALUES(?,?,?,?)',(asset_id,updated['revision'],request_id,json.dumps(event,ensure_ascii=False)))
+        storage.db.execute('INSERT INTO document_review_events({wsc}asset_id,revision,request_id,json) VALUES({wsv}?,?,?,?)',(asset_id,updated['revision'],request_id,json.dumps(event,ensure_ascii=False)))
         storage.db.commit()
     except Exception:
         storage.db.rollback();raise

@@ -1,29 +1,42 @@
 """Fill in verdicts recorded by A4B_VERIFIER_MODE=defer. Run when no design work is active."""
 import json
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from infrastructure.persistence.db import WORKSPACE, storage_kind
 from verification.workflow import VerificationInput, verify
 
 
+def workspace_directories(data_dir):
+    """Folders to verify: every member workspace plus the login-free root when it has data."""
+    root = Path(data_dir)
+    users = root / 'users'
+    members = [folder for folder in sorted(users.iterdir()) if folder.is_dir() and WORKSPACE.fullmatch(folder.name)] if users.is_dir() else []
+    if storage_kind() == 'postgres':
+        # Row-level security hides other workspaces, so the member folders name them.
+        return members or [root]
+    return [folder for folder in [root, *members] if (folder / 'agent-builder.sqlite').exists()] or [root]
+
+
 def pending_ids(db):
-    rows = db.execute("SELECT id, result_json FROM builder_verifications WHERE input_json IS NOT NULL").fetchall()
+    rows = db.execute("SELECT id, result_json FROM builder_verifications WHERE {ws} AND input_json IS NOT NULL").fetchall()
     return [id for id, result in rows if json.loads(result).get('route') == 'pending']
 
 
 def run_pending(directory, verifier=None, limit=None):
     """Verify stored inputs in place. Returns per-record routes; never touches session state."""
     path = Path(directory) / 'agent-builder.sqlite'
-    if not path.exists():
+    if storage_kind() == 'sqlite' and not path.exists():
         raise FileNotFoundError('설계 DB를 찾지 못했습니다: ' + str(path))
-    db = sqlite3.connect(str(path), timeout=30)
+    from infrastructure.persistence.storage import Storage
+    storage = Storage(directory)
+    db = storage.db
     try:
-        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='builder_verifications'").fetchone():
+        if not db.table_exists('builder_verifications'):
             return []
         done = []
         for id in pending_ids(db)[:limit]:
-            raw = db.execute('SELECT input_json FROM builder_verifications WHERE id=?', (id,)).fetchone()[0]
+            raw = db.execute('SELECT input_json FROM builder_verifications WHERE {ws} AND id=?', (id,)).fetchone()[0]
             try:
                 payload=VerificationInput.model_validate_json(raw)
                 result = (verifier or verify)(payload).model_dump(mode='json')
@@ -34,9 +47,9 @@ def run_pending(directory, verifier=None, limit=None):
                               findings=[dict(code='integration_contract_error', severity='review',
                               detail='검증 입력 계약을 확인하세요: ' + str(error)[:400])], error_code='integration_contract_error')
             result.update(deferred=True, verified_at=datetime.now(timezone.utc).isoformat(timespec='seconds'))
-            db.execute('UPDATE builder_verifications SET result_json=? WHERE id=?', (json.dumps(result, ensure_ascii=False), id))
+            db.execute('UPDATE builder_verifications SET result_json=? WHERE {ws} AND id=?', (json.dumps(result, ensure_ascii=False), id))
             db.commit()
             done.append({'id': id, 'route': result['route']})
         return done
     finally:
-        db.close()
+        storage.close()

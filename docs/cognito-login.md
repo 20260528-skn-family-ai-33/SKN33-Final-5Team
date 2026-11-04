@@ -79,7 +79,7 @@ PGSERVICE=a4b_readonly pg_dump --schema-only --schema=a4b --no-password \
 
 ## 4. 사용자별 자료 분리 범위
 
-회원 정보는 RDS에 저장한다. **문서·워크플로우 등 업무 데이터의 전체 PostgreSQL 이관은 이 변경에 포함되지 않는다.** 현재 Node/Python 업무 저장소를 `EASYFLOW_DATA_DIR/users/RDS_MEMBER_UUID/` 아래에 격리한다.
+회원 정보는 RDS에 저장한다. 작업 공간은 `EASYFLOW_DATA_DIR/users/RDS_MEMBER_UUID/` 폴더로 정한다. 에이전트 빌더 업무 데이터는 `A4B_STORAGE=postgres`일 때 같은 RDS의 `a4b_builder` 스키마에 그 회원 ID를 `workspace_id`로 넣어 저장하고, 행 수준 보안으로 다시 막는다([업무 데이터 저장소](business-data-storage.md)). 나머지 Node 업무 저장소는 계속 이 폴더에 격리한다.
 
 - Node 워크플로우·실행 이력·암호화된 연결 계정 및 보호 키
 - Python 에이전트·대화·업로드 문서·문서 검토·실행 보고서

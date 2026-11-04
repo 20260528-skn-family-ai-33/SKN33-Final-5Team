@@ -31,3 +31,26 @@ GitHub에 `production` 환경을 만들고 워크플로우 실행 브랜치를 `
 - `all`은 기존 단일 이미지로 프론트와 백엔드를 함께 배포합니다.
 
 `operation=restore`는 테스트 직전의 프론트와 백엔드 조합을 복원합니다. 프론트만 테스트했으면 컨테이너 재시작 없이 파일을 복원합니다.
+
+### 업무 데이터 저장소 전환
+
+공개 주소의 첫 SQLite → PostgreSQL 전환은 점검 시간에 진행합니다. 이후 PostgreSQL → PostgreSQL 배포는 기존처럼 실행 중인 컨테이너를 대상으로 합니다.
+
+1. 수정된 배포 스크립트가 `main`에 있는지 확인합니다. 전환할 SHA의 백엔드 또는 전체 이미지를 준비하고, EC2에서 그 이미지 참조를 `CUTOVER_IMAGE`로 설정합니다. root 전용 `CUTOVER_ENV` 파일에 앱 DB 주소·CA 등 접속 설정과 **기존 컨테이너와 같은** `EASYFLOW_DATA_DIR`를 넣습니다. 관리자 접속 주소는 스키마를 적용하는 명령에만 환경 변수로 전달합니다.
+2. 앱과 같은 볼륨에 쓰는 워커를 모두 정지합니다. `docker stop a4b-jhd-aws` 뒤 컨테이너는 보존합니다. `docker inspect a4b-jhd-aws --format '{{json .Mounts}}'`로 실제 마운트를 확인하고 볼륨과 대상 DB를 백업합니다.
+3. 아래 명령을 EC2의 Bash에서 실행합니다. `--volumes-from`으로 정지한 앱의 볼륨을 그대로 사용합니다. dry-run에 나온 회원·표 건수와 고아 행을 백업과 대조한 뒤 실제로 복사합니다.
+
+   ```bash
+   : "${CUTOVER_IMAGE:?검증된 이미지 필요}" "${CUTOVER_ENV:?root 전용 Docker env 파일 필요}"
+   run=(docker run --rm --network host --volumes-from a4b-jhd-aws --env-file "$CUTOVER_ENV")
+   python=/app/Backend/.venv-agent/bin/python
+   "${run[@]}" -e A4B_MIGRATION_DATABASE_URL "$CUTOVER_IMAGE" "$python" /app/scripts/deploy/apply-builder-migrations.py
+   "${run[@]}" "$CUTOVER_IMAGE" "$python" /app/scripts/deploy/migrate-sqlite-to-postgres.py --dry-run
+   "${run[@]}" "$CUTOVER_IMAGE" "$python" /app/scripts/deploy/migrate-sqlite-to-postgres.py
+   ```
+
+   루트 작업 공간에도 업무 DB가 있으면 두 이전 명령에 `--include-local`을 붙입니다. 확인한 볼륨에 기존 업무 DB가 하나도 없는 신규 설치는 마지막 명령에 `--confirm-empty`를 붙입니다.
+4. 기존 앱을 정지한 채 EC2의 `/var/lib/a4b-deploy/env-overrides`(root 소유, 권한 600)에 `A4B_STORAGE=postgres`와 필요한 DB 설정을 반영합니다. Actions에서 `operation=deploy`, `branch=main`, `target=all`로 같은 SHA를 배포합니다. 프런트 단독 배포와 테스트 브랜치 배포는 이 정지 상태에서 진행할 수 없습니다.
+5. 새 이미지가 스키마·권한, 볼륨과 RDS의 이전 식별자, 이전 시작 시각이 마지막 SQLite 정지 후인지 검사합니다. 사전 검사나 교체 후 헬스 체크가 실패하면 기존 SQLite 컨테이너는 정지 상태를 유지합니다. 문제를 해결하고 같은 백업 기준으로 재시도합니다. 성공 후 로그인해 기존 자료와 예약을 확인하고 점검을 종료합니다.
+
+중간에 기존 SQLite 서비스를 다시 열어 쓰기가 발생했다면 새 점검 시간을 잡고 대상 DB를 이전 전 백업으로 되돌린 뒤 다시 이전합니다. PostgreSQL 전환 후 새 데이터가 생긴 경우 SQLite로 복귀하기 전에 해당 쓰기를 별도로 보존해야 합니다. [업무 데이터 저장소](business-data-storage.md)

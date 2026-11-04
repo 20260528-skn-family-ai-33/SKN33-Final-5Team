@@ -75,6 +75,28 @@ def choice_options(key, state):
     return []
 
 
+def _non_operator_choice_turn(state, turn):
+    """A whole button answer keeps its question identity when replaying history."""
+    messages = state.get('messages', [])
+    if turn is None or not 0 <= turn < len(messages) or messages[turn].get('role') != 'user':
+        return False
+    latest = max((i for i, m in enumerate(messages) if m.get('role') == 'user'), default=-1)
+    # Current choices must never reinterpret earlier requests as button answers.
+    choice = option_answer(state) if turn == latest else None
+    if choice:
+        return choice['key'] != 'filter.operator'
+    compact = lambda text: re.sub(r'[\s.!?。]+', '', text).lower()
+    label = compact(messages[turn]['content'])
+    event = next((e for e in reversed(state.get('condition_answers', [])) if e.get('turn') == turn), None)
+    if event and any(key != 'filter.operator' and label in {compact(o) for o in choice_options(key, state)}
+                     for key in event.get('candidate_keys', [])):
+        return True
+    return any(key != 'filter.operator' and slot.get('extraction') == 'choice_answer_rule'
+               and slot.get('question_id') and label == compact(str(slot.get('value', '')))
+               and any(e.get('source_id') == 'user' and e.get('turn') == turn for e in slot.get('evidence', []))
+               for key, slot in (state.get('condition_ledger') or {}).get('slots', {}).items())
+
+
 _INVENTED_ACTION = re.compile(r'[A-Za-z][A-Za-z0-9]*(?:[_.][A-Za-z0-9]+)+')
 
 SUPPORTED_OPERATION_NAMES ={'filter', 'deduplicate', 'schedule', 'output', 'sort'} | {tool['id'] for tool in TOOLS}
@@ -574,6 +596,8 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                     'evidence': [refs[0]], 'extraction': 'literal_column_rule',
                 }
         for key, pattern, mapping in patterns:
+            if key == 'filter.operator' and _non_operator_choice_turn(state, turn):
+                continue
             policy_text = _unquoted_comparison_text(text) if key == 'filter.operator' else text
             for match in re.finditer(pattern, policy_text, re.IGNORECASE):
                 if key == 'filter.operator' and _excludes_named_range(policy_text, match.end()):
@@ -652,6 +676,9 @@ def literal_condition_issues(state):
     literals=explicit_policies(state,catalog,duplicate_candidate=ledger.get('slots', {}).get('duplicate.field'))
     issue = _threshold_evidence_issue(ledger.get('slots') or {}, state)
     issues=[issue] if issue else []
+    comparison_issue = _comparison_evidence_issue(ledger.get('slots') or {}, state)
+    if comparison_issue:
+        issues.append(comparison_issue)
     for key,item in literals.items():
         stored=(ledger.get('slots') or {}).get(key)
         if key == 'filter.operator' and _newer_operator_evidence(stored, item, state):
@@ -743,6 +770,9 @@ def _excludes_named_range(text, end):
 
 _COMPARISON_NEGATION = re.compile(
     r'^\s*(?:이|가|은|는|도|만)?\s*(?:아니|아닌|아닐|아님|아닙|않|(?:하)?(?:지(?:는|도)?|진)\s*(?:않|마|말))')
+_COMPARISON_PROHIBITION = re.compile(
+    r'^\s*(?:이면|(?:인\s*)?(?:행|항목|값|것)(?:들)?\s*(?:은|는|이|가|도)?)\s*'
+    r'안\s*(?:돼요?|됩니다|된다|됨|되어요|되요)(?=\s*(?:[.!?,;\n]|$))')
 
 
 def _negates_named_comparison(text, end):
@@ -751,7 +781,7 @@ def _negates_named_comparison(text, end):
     Do not infer a complement: the condition checker must ask, while the audit
     can preserve a draft whose comparison was already interpreted by the planner.
     """
-    return bool(_COMPARISON_NEGATION.match(text[end:]))
+    return bool(_COMPARISON_NEGATION.match(text[end:]) or _COMPARISON_PROHIBITION.match(text[end:]))
 
 
 _WRITTEN_OPERATOR = {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}
@@ -760,6 +790,8 @@ _OPPOSITE_BOUND = {'gte': 'lt', 'gt': 'lte', 'lte': 'gt', 'lt': 'gte'}
 _WRITTEN_BOUND = re.compile(
     r'(?<![\d.+-])(?P<amount>\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백|억)?\s*(?:원|개|점|명|건|kg|%)?)'
     r'\s*(?P<operator>초과|이상|미만|이하)')
+_EVIDENCE_BOUND = re.compile(
+    r'(?P<amount>' + _KO_RUN.pattern + r'(?:' + _AMOUNT_UNIT.pattern + r')?)\s*(?P<operator>초과|이상|미만|이하)')
 _BOUND_JOIN = re.compile(r'\s*(?:이고|이며|이거나|또는|혹은|및|,)\s*')
 _BOUND_SUBJECT_END = r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:값\s*)?(?:이|가|은|는)?\s*(?:기준으로|기준)?\s*$'
 _RANGE_PROHIBITION = re.compile(r'^\s*(?:두|놓)?(?:하|으)?면\s*안\s*(?:돼요?|됩니다|된다|됨)(?=\s*(?:[.!?,;\n]|$))')
@@ -771,12 +803,25 @@ _QUOTED_TEXT = re.compile(r'''“[^”]*”|‘[^’]*’|「[^」]*」|"(?:\\.|
 
 
 def _unquoted_comparison_text(text):
-    # Keep offsets stable for evidence lookup; quoted examples are not criteria.
-    return _QUOTED_TEXT.sub(lambda match: ' ' * len(match.group()), text)
+    # Keep offsets stable. A quoted boundary directly between a column subject
+    # and a row-selection instruction is emphasis, while quoted examples are not criteria.
+    def replace(match):
+        inner = match.group()[1:-1]
+        subject = re.search(r'(?P<name>[\w)\]]+?)(?:\s*열(?:의\s*값)?)?\s*(?:이|가|은|는)\s*$', text[:match.start()])
+        selection = re.match(r'\s*인\s*(?:행|항목|값|것)(?:들)?\s*(?:만|을|를|은|는|이|가)?\s*'
+                             r'(?:남기|남겨|남긴|골라|고르|뽑|추려|포함|제외|삭제|빼|안\s*(?:돼|되))',
+                             text[match.end():])
+        if (subject and not re.search(r'예시|예제|예문|문구', subject['name'])
+                and selection and _EVIDENCE_BOUND.fullmatch(inner.strip())):
+            return ' ' + inner + ' '
+        return ' ' * len(match.group())
+    return _QUOTED_TEXT.sub(replace, text)
 
 
 def _range_action(suffix, subjects):
     """Classify only the action on these rows, stopping before the next operation or condition."""
+    if _COMPARISON_PROHIBITION.match(suffix):
+        return 'exclude'
     tail = re.sub(r'^\s*(?:인\s*)?(?:(?:행|항목|값|것)(?:들)?\s*)?(?:까지|부터|만|을|를|은|는)?\s*(?:으로|로)?\s*', '', suffix)
     action = re.match(r'(제외|빼|삭제|지우|지워|버리|버려|없애|남기|남겨|포함|골라|고르|저장|바꾸|바꿔|변경)', tail)
     if action:
@@ -814,8 +859,7 @@ def _comparison_turns(messages, subjects):
     for message in messages:
         if message.get('role') != 'user':
             continue
-        # Quoted examples and literal cell text are not instructions for the filter.
-        text = _QUOTED_TEXT.sub(' ', message['content'])
+        text = _unquoted_comparison_text(message['content'])
         turn = {}
         previous_end, previous_field = None, None
         unbound = False
@@ -875,7 +919,8 @@ def _draft_comparison_mismatches(state, draft):
         return
     subjects = [(field, re.compile(r'(?<![\w])' + re.escape(field) + _BOUND_SUBJECT_END))
                 for field in sorted(fields, key=len, reverse=True)]
-    turns = list(_comparison_turns(state.get('messages', []), subjects))
+    messages = [m for i, m in enumerate(state.get('messages', [])) if not _non_operator_choice_turn(state, i)]
+    turns = list(_comparison_turns(messages, subjects))
     by_field = {}
     for plan in plans:
         for rule in (plan or {}).get('filters', []):
@@ -956,6 +1001,8 @@ def _grounded_condition(key, value, evidence, state, previous=None):
         return _grounded_enum(key, value, '\n'.join(e['quote'] for e in evidence))
     choice = option_answer(state)
     for source in evidence:
+        if source.get('source_id') == 'user' and _non_operator_choice_turn(state, source.get('turn')):
+            continue
         quote = source['quote']
         # Match option_answer's whole-answer normalization before deciding
         # whether a short label belongs to this question or to a column choice.
@@ -980,6 +1027,36 @@ def _grounded_condition(key, value, evidence, state, previous=None):
                      and (not event.get('candidate_keys') or key in event['candidate_keys']))):
             return True
     return False
+
+
+def _comparison_evidence_issue(slots, state):
+    """Document operators must belong to this exact field and numeric threshold.
+
+    User confirmation answers are checked against their question separately.
+    A positive comparison for another column/value is not supporting evidence.
+    """
+    operator = slots.get('filter.operator', {})
+    if operator.get('status') != 'specified' or operator.get('value') not in _OPERATOR_WORD:
+        return None
+    field = slots.get('filter.field', {}).get('value')
+    threshold = slots.get('filter.value', {}).get('value')
+    subject = re.compile(r'(?<![\w])' + re.escape(field) + _BOUND_SUBJECT_END) if field else None
+    for source in operator.get('evidence', []):
+        if source.get('source_id') == 'user':
+            if _grounded_condition('filter.operator', operator['value'], [source], state, operator):
+                return None
+            continue
+        text = _unquoted_comparison_text(source['quote'])
+        for match in _EVIDENCE_BOUND.finditer(text):
+            if not subject or not subject.search(text[:match.start()]):
+                continue
+            if _WRITTEN_OPERATOR[match['operator']] != operator['value']:
+                continue
+            if type(threshold) not in (int, float) or Decimal(str(threshold)) not in _amounts(match['amount'], field):
+                continue
+            if not _excludes_named_range(text, match.end()) and not _negates_named_comparison(text, match.end()):
+                return None
+    return 'filter.operator: 선택한 열·기준값에 해당하는 비교 근거를 확인해야 합니다.'
 
 
 def _newer_operator_evidence(candidate, literal, state):
@@ -1125,6 +1202,10 @@ def validate_conditions(raw, state, catalog):
     issue = _threshold_evidence_issue(slots, state)
     if issue:
         slots['filter.value'].update(status='missing', value=None)
+        invalid.append(issue)
+    issue = _comparison_evidence_issue(slots, state)
+    if issue:
+        slots['filter.operator'].update(status='missing', value=None)
         invalid.append(issue)
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
     # A follow-up may focus on deduplication and omit the earlier filter from

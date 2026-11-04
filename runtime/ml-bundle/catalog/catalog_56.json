@@ -1,0 +1,988 @@
+[
+  {
+    "id": "read_document",
+    "name": "문서 내용 읽기",
+    "function": "실제 본문·페이지·표 위치를 읽음. 스캔 여부는 옵션/프로필이며 별도 업무 Tool이 아님",
+    "operations": [
+      {
+        "id": "extract_content",
+        "inputs": "asset:Asset format:DocumentFormat profile_id?:str page_numbers?:PageNumbers",
+        "outputs": "document:Document",
+        "scope": "UTF-8 TXT/MD/HTML, DOCX, text-layer PDF only; no HWP, legacy DOC or OCR"
+      },
+      {
+        "id": "native_read_document",
+        "inputs": "{} + settings/state/storage",
+        "outputs": "{\"documents\": \"documents\"}",
+        "scope": ""
+      },
+      {
+        "id": "read_text",
+        "inputs": "path (필수)",
+        "outputs": "UTF-8 text",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "read_table",
+    "name": "표 데이터 읽기",
+    "function": "계산에 쓸 행·열 추출. CSV나 PDF라는 확장자 자체로 다른 Tool을 만들지 않음",
+    "operations": [
+      {
+        "id": "parse",
+        "inputs": "source:TableSource format:TableFormat profile_id?:str sheet_names?:str[] header_row?:Positive table_ids?:str[]",
+        "outputs": "tables:Table[]",
+        "scope": "CSV/TSV, JSON records, XLSX; unique text headers; XLSX formulas preserved as text"
+      },
+      {
+        "id": "native_read_table",
+        "inputs": "{\"file_id\": \"file\"} + settings/state/storage",
+        "outputs": "{\"table\": \"table\"}",
+        "scope": ""
+      },
+      {
+        "id": "read_csv",
+        "inputs": "path (필수)",
+        "outputs": "rows:object[] (기본 값은 문자열)",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "read_web",
+    "name": "HTML 본문·표 읽기",
+    "function": "확보된 HTML에서 본문·표 추출. URL 다운로드는 download_remote_file",
+    "operations": [
+      {
+        "id": "extract_html",
+        "inputs": "asset:Asset selector?:str extract:HtmlExtract",
+        "outputs": "document:Document tables:Table[]",
+        "scope": "Local HTML file; text/tables/both; no implicit network or CSS selectors"
+      }
+    ]
+  },
+  {
+    "id": "search_document",
+    "name": "문서 안의 내용 검색",
+    "function": "문서 내부 관련 근거 구간 검색. 파일명 검색/공개 문서 검색과 다름",
+    "operations": [
+      {
+        "id": "retrieve_passages",
+        "inputs": "documents:Document[] query:str top_k:Positive",
+        "outputs": "passages:Evidence[]",
+        "scope": "Lexical token-overlap retrieval only; no semantic embeddings"
+      },
+      {
+        "id": "native_search_document",
+        "inputs": "{\"documents\": \"documents\"} + settings/state/storage",
+        "outputs": "{\"documents\": \"documents\"}",
+        "scope": ""
+      },
+      {
+        "id": "keyword_search",
+        "inputs": "documents:[{text,source_id?,page?}], keywords:string[], top_k:int=3",
+        "outputs": "원문·출처와 score가 있는 문서 목록",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "extract_information",
+    "name": "문서의 항목 추출",
+    "function": "필드별 값·자료형·출처 추출. 자유 요약과 구분",
+    "operations": [
+      {
+        "id": "extract_fields",
+        "inputs": "documents:Document[] fields:FieldSpec[] missing_policy:MissingPolicy",
+        "outputs": "values:ExtractedValue[]",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      },
+      {
+        "id": "native_extract_information",
+        "inputs": "{\"documents\": \"documents\"} + settings/state/storage",
+        "outputs": "{\"records\": \"records\"}",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "compose_answer",
+    "name": "근거 기반 답변·요약",
+    "function": "특정 질문에 근거로 답변. 요약은 같은 Tool의 summarize 동작 / 문서 전체/일부 요약. summarize_document는 이 동작의 별칭",
+    "operations": [
+      {
+        "id": "answer",
+        "inputs": "question:str evidence:Evidence[]",
+        "outputs": "answer:Answer",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      },
+      {
+        "id": "summarize",
+        "inputs": "documents:Document[] scope:str max_characters:Positive",
+        "outputs": "answer:Answer",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      },
+      {
+        "id": "native_compose_answer",
+        "inputs": "{\"reviews\": \"reviews\", \"documents\": \"documents\", \"answer\": \"text\"} + settings/state/storage",
+        "outputs": "{\"text\": \"text\"}",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "filter_sort",
+    "name": "표 조건 정리",
+    "function": "행 조건 선택. 그룹별 합계/열 삭제/그래프 분기와 구분 / 행 순서 변경. '~별로'만으로 집계라고 판단하지 않음 / 지정 열 기준 중복 제거 / 결측 행 제거 또는 지정값 채우기",
+    "operations": [
+      {
+        "id": "deduplicate",
+        "inputs": "table:Table columns:str[] keep:KeepPolicy",
+        "outputs": "table:Table",
+        "scope": "Exact equality on explicit columns; keep=first/last/none"
+      },
+      {
+        "id": "handle_missing",
+        "inputs": "table:Table columns:str[] action:MissingAction fill_value?:Scalar",
+        "outputs": "table:Table",
+        "scope": "Missing=null/absent key; action=drop_rows/fill/error/keep"
+      },
+      {
+        "id": "native_filter_sort",
+        "inputs": "{\"table\": \"table\"} + settings/state/storage",
+        "outputs": "{\"table\": \"table\"}",
+        "scope": ""
+      },
+      {
+        "id": "filter",
+        "inputs": "Exactly one of rows:record[] or table:Table; [{'name': 'predicates', 'required': True}, {'name': 'rows', 'required': False}, {'name': 'table', 'required': False}, {'name': 'combine', 'required': False}]",
+        "outputs": "rows mode: record[]; table mode: {table:{columns:string[],rows:record[]}}",
+        "scope": "rows->records compatibility; table->Table with unchanged schema"
+      },
+      {
+        "id": "sort",
+        "inputs": "Exactly one of rows:record[] or table:Table; [{'name': 'keys', 'required': True}, {'name': 'rows', 'required': False}, {'name': 'table', 'required': False}]",
+        "outputs": "rows mode: record[]; table mode: {table:{columns:string[],rows:record[]}}",
+        "scope": "rows->records compatibility; table->Table with unchanged schema"
+      },
+      {
+        "id": "select_columns",
+        "inputs": "Exactly one of rows:record[] or table:Table; [{'name': 'columns', 'required': True}, {'name': 'rows', 'required': False}, {'name': 'table', 'required': False}]",
+        "outputs": "rows mode: record[]; table mode: {table:{columns:string[],rows:record[]}}",
+        "scope": "Projection: output columns equal selected columns, including zero rows"
+      }
+    ]
+  },
+  {
+    "id": "aggregate_table",
+    "name": "표 집계",
+    "function": "그룹별/전체 합계. 행별 수식은 calculate_columns / 행 수/비결측 값 수/고유값 수 집계",
+    "operations": [
+      {
+        "id": "sum",
+        "inputs": "table:Table group_by:str[] value_column:str null_policy:NullPolicy",
+        "outputs": "table:Table",
+        "scope": "Grouped finite numeric sum; null_policy=error/exclude"
+      },
+      {
+        "id": "count",
+        "inputs": "table:Table group_by:str[] mode:CountMode column?:str",
+        "outputs": "table:Table",
+        "scope": "Grouped rows/non_null/distinct counting"
+      },
+      {
+        "id": "native_aggregate_table",
+        "inputs": "{\"table\": \"table\"} + settings/state/storage",
+        "outputs": "{\"table\": \"table\"}",
+        "scope": ""
+      },
+      {
+        "id": "group_aggregate",
+        "inputs": "rows (필수), group_by (필수), operation (필수), column=None, null_policy='error'",
+        "outputs": "집계 rows:object[]",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "calculate_columns",
+    "name": "열 계산·변환",
+    "function": "행별 사칙연산으로 새 열/기존 열 계산 / 열 이름 변경 / 날짜 문자열을 명시 형식으로 정규화",
+    "operations": [
+      {
+        "id": "compute",
+        "inputs": "table:Table output_column:str formula:Formula",
+        "outputs": "table:Table",
+        "scope": "Restricted numeric arithmetic formula; no arbitrary eval"
+      },
+      {
+        "id": "rename_columns",
+        "inputs": "table:Table mapping:StringMap",
+        "outputs": "table:Table",
+        "scope": "Simultaneous rename with unknown-key/collision checks"
+      },
+      {
+        "id": "parse_dates",
+        "inputs": "table:Table columns:str[] input_format:str timezone:str",
+        "outputs": "table:Table",
+        "scope": "Explicit strptime + IANA timezone; ambiguous/nonexistent local times rejected"
+      },
+      {
+        "id": "calculate_records",
+        "inputs": "rows (필수), output_column (필수), formula (필수), overwrite=False",
+        "outputs": "계산 열을 포함한 rows:object[]",
+        "scope": ""
+      },
+      {
+        "id": "cast_numbers",
+        "inputs": "Exactly one of rows:record[] or table:Table; [{'name': 'columns', 'required': True}, {'name': 'rows', 'required': False}, {'name': 'table', 'required': False}]",
+        "outputs": "rows mode: record[]; table mode: {table:{columns:string[],rows:record[]}}",
+        "scope": "rows->records compatibility; table->Table with unchanged schema"
+      }
+    ]
+  },
+  {
+    "id": "join_tables",
+    "name": "두 표 연결",
+    "function": "키로 두 표 연결. 차이 보고/단순 스트림 합치기와 구분",
+    "operations": [
+      {
+        "id": "join",
+        "inputs": "left:Table right:Table keys:JoinKey[] how:JoinHow cardinality:Cardinality null_keys:NullKeyPolicy max_rows:Positive",
+        "outputs": "table:Table",
+        "scope": "inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap"
+      },
+      {
+        "id": "join_records",
+        "inputs": "left (필수), right (필수), keys (필수), how='inner', cardinality='many_to_one'",
+        "outputs": "결합 rows:object[]",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "compare_tables",
+    "name": "두 표 비교",
+    "function": "두 표의 추가·삭제·변경 보고",
+    "operations": [
+      {
+        "id": "diff",
+        "inputs": "baseline:Table candidate:Table keys:str[] compare_columns:str[] absolute_tolerance:NonNegative",
+        "outputs": "differences:TableDiff",
+        "scope": "Unique non-null keys; added/deleted/changed cells; absolute numeric tolerance"
+      }
+    ]
+  },
+  {
+    "id": "create_spreadsheet",
+    "name": "새 엑셀·표 파일 만들기",
+    "function": "Table로 XLSX 통합문서 생성. 단순 CSV 직렬화와 구분",
+    "operations": [
+      {
+        "id": "create",
+        "inputs": "sheets:SheetSpec[]",
+        "outputs": "artifact:Artifact",
+        "scope": "XLSX named sheets of literal scalar cells; formulas not evaluated"
+      }
+    ]
+  },
+  {
+    "id": "edit_spreadsheet",
+    "name": "기존 스프레드시트 수정",
+    "function": "기존 XLSX에 새 시트 추가 / 기존 XLSX 시트에 행 추가 / 지정 셀 값/수식 수정 / 지정 범위 숫자 수열 채움",
+    "operations": [
+      {
+        "id": "add_sheet",
+        "inputs": "workbook:Asset expected_version:str sheet:SheetSpec",
+        "outputs": "artifact:Artifact changes:Change[]",
+        "scope": "Copy-on-write XLSX with SHA-256 version check"
+      },
+      {
+        "id": "append_rows",
+        "inputs": "workbook:Asset expected_version:str sheet_name:str table:Table",
+        "outputs": "artifact:Artifact changes:Change[]",
+        "scope": "Append to existing XLSX headers; rejects unknown columns"
+      },
+      {
+        "id": "set_cells",
+        "inputs": "workbook:Asset expected_version:str cells:CellEdit[]",
+        "outputs": "artifact:Artifact changes:Change[]",
+        "scope": "CellEdit={sheet_name,cell,value}; literal scalars"
+      },
+      {
+        "id": "fill_sequence",
+        "inputs": "workbook:Asset expected_version:str sheet_name:str cell_range:str start:number step:number",
+        "outputs": "artifact:Artifact changes:Change[]",
+        "scope": "Row-major numeric sequence; at most 100000 cells"
+      }
+    ]
+  },
+  {
+    "id": "create_document",
+    "name": "새 문서·보고서 만들기",
+    "function": "새 내용을 DOCX/PDF/Markdown 문서로 구성. 기존 파일 변환과 다름",
+    "operations": [
+      {
+        "id": "compose",
+        "inputs": "sections:Section[] format:OutputDocumentFormat",
+        "outputs": "artifact:Artifact",
+        "scope": "TXT/MD/DOCX heading+text sections; no content generation"
+      }
+    ]
+  },
+  {
+    "id": "edit_document",
+    "name": "기존 문서 내용 수정",
+    "function": "기존 본문의 지정 문자열 치환 / 지정 앵커 앞/뒤 본문 삽입 / 지정 구간 삭제",
+    "operations": [
+      {
+        "id": "replace_text",
+        "inputs": "document:Document expected_version:str find:str replacement:str occurrence:Occurrence",
+        "outputs": "document:Document changes:Change[]",
+        "scope": "Versioned logical text; literal first/all replacement"
+      },
+      {
+        "id": "insert_text",
+        "inputs": "document:Document expected_version:str anchor:str position:InsertPosition text:str",
+        "outputs": "document:Document changes:Change[]",
+        "scope": "Versioned logical text; unique literal anchor; before/after"
+      },
+      {
+        "id": "delete_text",
+        "inputs": "document:Document expected_version:str target:str occurrence:Occurrence",
+        "outputs": "document:Document changes:Change[]",
+        "scope": "Versioned logical text; first/all literal deletion"
+      }
+    ]
+  },
+  {
+    "id": "format_document",
+    "name": "문서 서식 적용",
+    "function": "글꼴·단락·정렬·여백 변경. 내용 교정과 구분",
+    "operations": [
+      {
+        "id": "apply_formatting",
+        "inputs": "document:Asset expected_version:str rules:FormatRule[]",
+        "outputs": "artifact:Artifact changes:Change[]",
+        "scope": "DOCX paragraph font/style/alignment; no table/header or page-layout formatting"
+      }
+    ]
+  },
+  {
+    "id": "fill_template",
+    "name": "양식에 값 채우기",
+    "function": "식별 가능한 양식 빈칸에 값 채우기",
+    "operations": [
+      {
+        "id": "fill_fields",
+        "inputs": "template:Asset field_values:ValueMap missing_policy:MissingPolicy",
+        "outputs": "artifact:Artifact missing_fields:str[]",
+        "scope": "TXT/MD {{identifier}} templates; missing_policy=error/keep/empty"
+      }
+    ]
+  },
+  {
+    "id": "convert_format",
+    "name": "내용을 보존하는 형식 변환",
+    "function": "같은 내용을 다른 파일 형식으로 변환. 전체 형식 간 무손실 보장은 하지 않음",
+    "operations": [
+      {
+        "id": "convert",
+        "inputs": "asset:Asset source_format:FileFormat target_format:FileFormat loss_policy:LossPolicy",
+        "outputs": "artifact:Artifact loss_report:Review",
+        "scope": "TXT/MD/DOCX/PDF->text; TXT/MD->DOCX; CSV<->JSON; lossy conversion requires allow"
+      }
+    ]
+  },
+  {
+    "id": "export_result",
+    "name": "처리 결과 파일로 내보내기",
+    "function": "CSV/JSON/Markdown/TXT/HTML 바이트 생성. 경로 저장은 write_file",
+    "operations": [
+      {
+        "id": "native_write_result",
+        "inputs": "{\"table\": \"table\"} + settings/state/storage",
+        "outputs": "{\"artifact\": \"artifact\"}",
+        "scope": ""
+      },
+      {
+        "id": "native_export_result",
+        "inputs": "{\"records\": \"records\", \"text\": \"text\", \"documents\": \"documents\", \"answer\": \"text\"} + settings/state/storage",
+        "outputs": "{\"artifact\": \"artifact\"}",
+        "scope": ""
+      },
+      {
+        "id": "write_json",
+        "inputs": "path (필수), value (필수), overwrite=False",
+        "outputs": "relative path object",
+        "scope": ""
+      },
+      {
+        "id": "write_csv",
+        "inputs": "path (필수), rows (필수), columns (필수), overwrite=False",
+        "outputs": "relative path object",
+        "scope": ""
+      },
+      {
+        "id": "serialize",
+        "inputs": "value:JSON, format:csv|json, filename:string",
+        "outputs": "상대 파일 경로 object",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "proofread_document",
+    "name": "맞춤법·문법 점검",
+    "function": "맞춤법·문법 문제와 제안만 보고",
+    "operations": [
+      {
+        "id": "report_only",
+        "inputs": "document:Document language:str checks:str[]",
+        "outputs": "review:Review",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      }
+    ]
+  },
+  {
+    "id": "translate_document",
+    "name": "문서 번역",
+    "function": "본문 언어 변경. 파일 형식 변환과 다름",
+    "operations": [
+      {
+        "id": "translate",
+        "inputs": "document:Document source_language:str target_language:str glossary?:StringMap",
+        "outputs": "document:Document alignments:Alignment[]",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      }
+    ]
+  },
+  {
+    "id": "compare_documents",
+    "name": "문서·파일 내용 대조",
+    "function": "본문의 문자/의미 차이 보고",
+    "operations": [
+      {
+        "id": "diff",
+        "inputs": "baseline:Document candidate:Document mode:DocumentDiffMode",
+        "outputs": "review:Review",
+        "scope": "Logical text/line diff; no layout/semantic judgment"
+      }
+    ]
+  },
+  {
+    "id": "verify_content_requirements",
+    "name": "필수·기대 내용 확인",
+    "function": "명시 필수 문자열/정규식 포함 여부 / 추출값과 명시 기대값 비교",
+    "operations": [
+      {
+        "id": "check_required",
+        "inputs": "document:Document requirements:ContentRequirement[]",
+        "outputs": "review:Review",
+        "scope": "Literal contains/not_contains conditions; semantic conditions rejected"
+      },
+      {
+        "id": "check_expected",
+        "inputs": "extracted:ExtractedValue[] expected:ExpectedValue[]",
+        "outputs": "review:Review",
+        "scope": "Exact unique extracted field/value comparisons; no coercion"
+      }
+    ]
+  },
+  {
+    "id": "review_document",
+    "name": "문서 내용 검토",
+    "function": "정확성·완결성 등 기준에 따른 내용 검토",
+    "operations": [
+      {
+        "id": "review",
+        "inputs": "document:Document rubric:RubricCriterion[] evidence:Evidence[]",
+        "outputs": "review:Review",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      }
+    ]
+  },
+  {
+    "id": "reply_review",
+    "name": "고객 응대 초안 검수",
+    "function": "문의·정책·답변 초안의 대응 검수",
+    "operations": [
+      {
+        "id": "review_reply",
+        "inputs": "customer_request:str policy:Evidence[] draft:Answer rubric:RubricCriterion[]",
+        "outputs": "review:Review",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      },
+      {
+        "id": "native_reply_review",
+        "inputs": "{\"documents\": \"documents\", \"text\": \"text\", \"table\": \"table\"} + settings/state/storage",
+        "outputs": "{\"reviews\": \"reviews\"}",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "review_summary",
+    "name": "검수 보고서 표 정리",
+    "function": "기존 검수 결과를 표로 정리",
+    "operations": [
+      {
+        "id": "tabulate_reviews",
+        "inputs": "reviews:Review[] columns:str[] dedup_key:str",
+        "outputs": "table:Table",
+        "scope": "Flatten explicit review issues and deduplicate non-null keys"
+      },
+      {
+        "id": "native_review_summary",
+        "inputs": "{\"reviews\": \"reviews\"} + settings/state/storage",
+        "outputs": "{\"table\": \"table\"}",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "validate_document_format",
+    "name": "양식·서식 기준 검증",
+    "function": "지정 양식의 서식 준수 여부만 검사",
+    "operations": [
+      {
+        "id": "report_only",
+        "inputs": "asset:Asset reference:Asset checks:FormatCheck[]",
+        "outputs": "review:Review",
+        "scope": "Compare DOCX paragraph font/name/bold/italic/style/alignment; no pixel judgment"
+      }
+    ]
+  },
+  {
+    "id": "check_document_links",
+    "name": "문서 하이퍼링크 검사",
+    "function": "내부 앵커/제공 자산 링크 유효성 검사 / 문서의 원격 링크 접근 상태 검사",
+    "operations": [
+      {
+        "id": "check_local_targets",
+        "inputs": "document:Document local_assets:Asset[]",
+        "outputs": "review:Review",
+        "scope": "Explicit/Markdown links against local assets; URL fragments not checked"
+      },
+      {
+        "id": "check_remote_targets",
+        "inputs": "document:Document timeout_seconds:Positive credential_ref?:str",
+        "outputs": "review:Review",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "text_statistics",
+    "name": "문자·단어 수 계산",
+    "function": "Unicode 문자/공백 단위 단어 수",
+    "operations": [
+      {
+        "id": "measure",
+        "inputs": "document:Document units:TextUnit[] whitespace:WhitespacePolicy word_policy:WordPolicy",
+        "outputs": "counts:Counts",
+        "scope": "Unicode code points, whitespace words, splitlines; explicit whitespace policy"
+      },
+      {
+        "id": "measure_text",
+        "inputs": "text (필수), unit (필수), include_whitespace=True",
+        "outputs": "integer",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "detect_language",
+    "name": "문서 언어 판별",
+    "function": "본문 언어 후보 판별",
+    "operations": [
+      {
+        "id": "detect",
+        "inputs": "document:Document allowed_languages:str[]",
+        "outputs": "result:LanguageResult",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      }
+    ]
+  },
+  {
+    "id": "document_visual_qa",
+    "name": "문서 이미지 기반 질문 답변",
+    "function": "배치·도형 등 페이지 시각 정보 기반 답변",
+    "operations": [
+      {
+        "id": "answer_visual",
+        "inputs": "pages:PageImage[] question:str",
+        "outputs": "answer:Answer",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      }
+    ]
+  },
+  {
+    "id": "classify_document",
+    "name": "문서·본문 분류",
+    "function": "문서 자체의 업무 범주 분류. 도구 추천기와 다른 과제",
+    "operations": [
+      {
+        "id": "classify",
+        "inputs": "document:Document classes:ClassSpec[] mode:ClassificationMode",
+        "outputs": "result:Classification",
+        "scope": "JSON model output is validated; semantic quality requires a real model evaluation."
+      }
+    ]
+  },
+  {
+    "id": "verify_table_calculations",
+    "name": "표 계산값 검증",
+    "function": "기존 합계·수식을 독립 규칙으로 재검산",
+    "operations": [
+      {
+        "id": "check_totals",
+        "inputs": "table:Table checks:CalculationCheck[] absolute_tolerance:NonNegative",
+        "outputs": "review:Review",
+        "scope": "Explicit sum/count/mean/min/max versus expected; finite absolute tolerance"
+      }
+    ]
+  },
+  {
+    "id": "split_pdf",
+    "name": "PDF 페이지 분리·추출",
+    "function": "PDF에서 지정 페이지를 한 PDF로 추출 / PDF를 지정 페이지 묶음별 여러 파일로 분할",
+    "operations": [
+      {
+        "id": "extract_pages",
+        "inputs": "asset:Asset page_numbers:PageNumbers",
+        "outputs": "artifact:Artifact",
+        "scope": "One-based PDF extraction, preserves specified order"
+      },
+      {
+        "id": "split",
+        "inputs": "asset:Asset groups:PageGroup[]",
+        "outputs": "artifacts:Artifact[]",
+        "scope": "PageGroup={page_numbers:[one-based integers]}; new files"
+      }
+    ]
+  },
+  {
+    "id": "merge_documents",
+    "name": "문서·PDF 합치기",
+    "function": "순서대로 PDF 또는 DOCX 파일 병합",
+    "operations": [
+      {
+        "id": "merge",
+        "inputs": "assets:Asset[] format:MergeFormat",
+        "outputs": "artifact:Artifact",
+        "scope": "PDF concatenation, UTF-8 TXT/MD concatenation; no mixed formats"
+      }
+    ]
+  },
+  {
+    "id": "compress_pdf",
+    "name": "PDF 용량 최적화",
+    "function": "PDF 자체 용량 최적화. ZIP 압축과 구분",
+    "operations": [
+      {
+        "id": "optimize",
+        "inputs": "asset:Asset target_bytes:Positive quality_policy:PdfQualityPolicy",
+        "outputs": "artifact:Artifact target_met:bool loss_report:Review",
+        "scope": "Lossless PDF stream compression; target size measured, not guaranteed"
+      }
+    ]
+  },
+  {
+    "id": "render_document_pages",
+    "name": "문서 페이지를 이미지로 만들기",
+    "function": "문서 페이지를 PNG 이미지로 렌더",
+    "operations": [
+      {
+        "id": "render",
+        "inputs": "asset:Asset page_numbers:PageNumbers dpi:Positive",
+        "outputs": "pages:PageImage[]",
+        "scope": "PDF->PNG via A4B_PDFTOPPM/PATH; pages one-based, dpi 36..300, max dimension 6000"
+      }
+    ]
+  },
+  {
+    "id": "annotate_document",
+    "name": "PDF·이미지에 주석 달기",
+    "function": "PDF/PNG/JPEG에 주석·하이라이트 추가",
+    "operations": [
+      {
+        "id": "add_annotations",
+        "inputs": "asset:Asset annotations:Annotation[] flatten:bool",
+        "outputs": "artifact:Artifact changes:Change[]",
+        "scope": "PDF text notes/highlights with point rectangles; flatten=False only"
+      }
+    ]
+  },
+  {
+    "id": "scalar_calculate",
+    "name": "단일 수식 계산",
+    "function": "숫자 변수로 제한된 산술식을 계산합니다.",
+    "operations": [
+      {
+        "id": "evaluate",
+        "inputs": "formula (필수), variables (필수)",
+        "outputs": "number",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "text_transform",
+    "name": "문자열 변환",
+    "function": "문자열을 그대로 치환·분리·결합합니다. Word/PDF 파일 편집과 구분합니다.",
+    "operations": [
+      {
+        "id": "replace",
+        "inputs": "text (필수), find (필수), replacement (필수), count=-1",
+        "outputs": "string",
+        "scope": ""
+      },
+      {
+        "id": "split",
+        "inputs": "text (필수), separator (필수)",
+        "outputs": "string[]",
+        "scope": ""
+      },
+      {
+        "id": "combine",
+        "inputs": "items (필수), separator (필수)",
+        "outputs": "string",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "json_transform",
+    "name": "JSON 해석·값 조회",
+    "function": "JSON을 파싱하거나 지정한 키/인덱스 경로를 조회합니다.",
+    "operations": [
+      {
+        "id": "parse",
+        "inputs": "text (필수)",
+        "outputs": "JSON value",
+        "scope": ""
+      },
+      {
+        "id": "lookup",
+        "inputs": "value (필수), path (필수)",
+        "outputs": "JSON value",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "list_transform",
+    "name": "목록 선택·개수",
+    "function": "목록의 0 기반 인덱스 선택과 항목 개수를 처리합니다.",
+    "operations": [
+      {
+        "id": "select",
+        "inputs": "items (필수), index (필수)",
+        "outputs": "선택 항목",
+        "scope": ""
+      },
+      {
+        "id": "count",
+        "inputs": "items (필수)",
+        "outputs": "integer",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "date_transform",
+    "name": "날짜·시간 변환",
+    "function": "ISO 시간에 초를 더하거나 지정한 형식으로 표시합니다.",
+    "operations": [
+      {
+        "id": "adjust",
+        "inputs": "timestamp (필수), seconds (필수)",
+        "outputs": "offset이 있는 ISO timestamp",
+        "scope": ""
+      },
+      {
+        "id": "format",
+        "inputs": "timestamp (필수), format (필수)",
+        "outputs": "string",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "url_transform",
+    "name": "URL 분석·구성",
+    "function": "URL 구성요소를 분석하거나 query를 포함한 주소를 만듭니다. 웹 접속은 하지 않습니다.",
+    "operations": [
+      {
+        "id": "parse",
+        "inputs": "url (필수)",
+        "outputs": "scheme/host/path/query/fragment object",
+        "scope": ""
+      },
+      {
+        "id": "build",
+        "inputs": "scheme (필수), host (필수), path (필수), query=None",
+        "outputs": "URL string",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "base64_codec",
+    "name": "Base64 변환",
+    "function": "UTF-8 문자열을 Base64로 인코딩·디코딩합니다.",
+    "operations": [
+      {
+        "id": "convert",
+        "inputs": "text (필수), mode (필수)",
+        "outputs": "string",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "text_hash",
+    "name": "텍스트 SHA-256",
+    "function": "UTF-8 텍스트의 SHA-256을 계산합니다.",
+    "operations": [
+      {
+        "id": "sha256",
+        "inputs": "text (필수)",
+        "outputs": "SHA-256 hex string",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "email.prepare",
+    "name": "메일 구성",
+    "function": "Build UTF-8 MIME and Base64URL message without sending it.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "sender (필수), to (필수), subject (필수), body (필수), cc=None, bcc=None, attachments=None",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "email.send",
+    "name": "메일 발송",
+    "function": "Send a Gmail message using a configured Google account.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "to (필수), subject (필수), body (필수), cc=None, bcc=None, attachments=None",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "email.list",
+    "name": "메일 목록 검색",
+    "function": "List Gmail message IDs, search query and pagination token.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "query=None, max_results=20, page_token=None",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "email.get",
+    "name": "메일 상세 읽기",
+    "function": "Read a specified Gmail message.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "message_id (필수), format='full'",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "email.attachment.get",
+    "name": "메일 첨부파일 조회",
+    "function": "Retrieve a specified Gmail attachment as provider Base64URL data.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "message_id (필수), attachment_id (필수)",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "calendar.create_event",
+    "name": "일정 생성",
+    "function": "Create a Google Calendar event with explicit start/end and timezone offsets.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "summary (필수), start (필수), end (필수), calendar_id='primary', all_day=False, time_zone=None, description=None, location=None, attendees=None, notify_attendees=False, event_id=None",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "calendar.list_events",
+    "name": "일정 목록 검색",
+    "function": "List calendar events with time bounds and pagination.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "calendar_id='primary', time_min=None, time_max=None, max_results=100, page_token=None, query=None",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "calendar.get_event",
+    "name": "일정 상세 조회",
+    "function": "Read a Google Calendar event by ID.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "event_id (필수), calendar_id='primary'",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "calendar.update_event",
+    "name": "일정 변경",
+    "function": "Patch supported event fields; optional ETag concurrency control.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "event_id (필수), changes (필수), calendar_id='primary', notify_attendees=False, etag=None",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  },
+  {
+    "id": "calendar.delete_event",
+    "name": "일정 삭제",
+    "function": "Delete a specified Google Calendar event; optional ETag.",
+    "operations": [
+      {
+        "id": "execute",
+        "inputs": "event_id (필수), calendar_id='primary', notify_attendees=False, etag=None",
+        "outputs": "Gmail/Calendar API JSON 응답",
+        "scope": ""
+      }
+    ]
+  }
+]

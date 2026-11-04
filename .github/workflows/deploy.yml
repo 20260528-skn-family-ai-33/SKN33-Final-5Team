@@ -146,6 +146,10 @@ jobs:
         if: needs.resolve-image.outputs.target != 'frontend'
       - run: npm test
         if: needs.resolve-image.outputs.target != 'frontend'
+      - name: Test receipt clarification
+        if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
+        working-directory: Backend
+        run: .venv-agent/bin/python -m pytest -q tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py
       - name: Test business-data storage on PostgreSQL
         if: needs.resolve-image.outputs.target != 'frontend'
         env:

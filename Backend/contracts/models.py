@@ -140,6 +140,7 @@ class BuilderState(TypedDict, total=False):
     draft: dict | None
     status: str
     route: str
+    attachment_route: str
     issues: list[str]
     semantic_issues: list[str]
     trace: list[dict]

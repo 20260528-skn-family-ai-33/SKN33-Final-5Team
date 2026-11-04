@@ -736,6 +736,165 @@ def _excludes_named_range(text, end):
     return bool(_RANGE_EXCLUSION.search(clause))
 
 
+_WRITTEN_OPERATOR = {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}
+_OPERATOR_WORD = {value: word for word, value in _WRITTEN_OPERATOR.items()}
+_OPPOSITE_BOUND = {'gte': 'lt', 'gt': 'lte', 'lte': 'gt', 'lt': 'gte'}
+_WRITTEN_BOUND = re.compile(
+    r'(?<![\d.+-])(?P<amount>\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백|억)?\s*(?:원|개|점|명|건|kg|%)?)'
+    r'\s*(?P<operator>초과|이상|미만|이하)')
+_BOUND_JOIN = re.compile(r'\s*(?:이고|이며|이거나|또는|혹은|및|,)\s*')
+_BOUND_SUBJECT_END = r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:값\s*)?(?:이|가|은|는)?\s*(?:기준으로|기준)?\s*$'
+_RANGE_PROHIBITION = re.compile(r'^\s*(?:두|놓)?(?:하|으)?면\s*안\s*(?:돼요?|됩니다|된다|됨)(?=\s*(?:[.!?,;\n]|$))')
+_AFFIRMATIVE_END = re.compile(r'^(?:(?:해)?\s*(?:줘요?|주세요|주십시오)|해)?\s*(?=$|[.,;!?~])')
+_ACTION_CONNECTIVE = re.compile(r'^(?:하고|해서|하여|한\s+(?:뒤|후)|고|서)?\s+')
+_NEXT_OPERATION = re.compile(r'(?:(?:CSV|JSON|엑셀|파일|표)(?:으로|로)\s*)?(?:저장|출력|정렬|집계)'
+                             r'|[^\s.,]+\s+(?:큰|작은|높은|낮은)\s*순(?:서)?로\s*정렬', re.I)
+_QUOTED_TEXT = re.compile(r'''“[^”]*”|‘[^’]*’|「[^」]*」|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`''')
+
+
+def _range_action(suffix, subjects):
+    """Classify only the action on these rows, stopping before the next operation or condition."""
+    tail = re.sub(r'^\s*(?:인\s*)?(?:(?:행|항목|값|것)(?:들)?\s*)?(?:까지|부터|만|을|를|은|는)?\s*(?:으로|로)?\s*', '', suffix)
+    action = re.match(r'(제외|빼|삭제|지우|지워|버리|버려|없애|남기|남겨|포함|골라|고르|저장|바꾸|바꿔|변경)', tail)
+    if action:
+        rest = tail[action.end():]
+        if _RANGE_PROHIBITION.match(rest):
+            # Prohibiting these rows rules them out. Prohibiting *only* these rows is ambiguous.
+            qualifier = suffix[:len(suffix) - len(tail)]
+            if '만' not in qualifier and action.group() in ('남기', '남겨', '포함', '골라', '고르'):
+                return 'exclude'
+            return None
+        if re.match(_NEG, rest) or re.match(r'\s*(?:금지|하면\s*안|해서는?\s*안|할\s*필요[가는]?\s*없)', rest):
+            return None
+        # A connective is affirmative only when it actually introduces the next operation
+        # or named comparison. In "남기고 싶지 않아" it still belongs to the negated verb.
+        if not _AFFIRMATIVE_END.match(rest):
+            connective = _ACTION_CONNECTIVE.match(rest)
+            if not connective:
+                return None
+            following = rest[connective.end():]
+            if not _NEXT_OPERATION.match(following):
+                bound = _WRITTEN_BOUND.search(following)
+                if not bound or not any(pattern.fullmatch(following[:bound.start()]) for _, pattern in subjects):
+                    return None
+        return 'exclude' if _RANGE_EXCLUSION.fullmatch(action.group()) else 'include'
+    if re.match(r'말고', tail):
+        return 'exclude'
+    # Do not infer a predicate for unrecognized or negated phrasing.
+    if not tail or re.match(r'[,.;!?\n]|이고|이며|이거나|또는|혹은|및', tail):
+        return 'include'
+    return None
+
+
+def _comparison_turns(messages, subjects):
+    fields = {name for name, _ in subjects}
+    for message in messages:
+        if message.get('role') != 'user':
+            continue
+        # Quoted examples and literal cell text are not instructions for the filter.
+        text = _QUOTED_TEXT.sub(' ', message['content'])
+        turn = {}
+        previous_end, previous_field = None, None
+        unbound = False
+        for match in _WRITTEN_BOUND.finditer(text):
+            prefix = text[:match.start()]
+            owner = next((name for name, pattern in subjects if pattern.search(prefix)), None)
+            if owner is None and previous_end is not None and _BOUND_JOIN.fullmatch(text[previous_end:match.start()]):
+                owner = previous_field
+            previous_end, previous_field = match.end(), owner
+            if owner is None:
+                unbound = True
+                turn.clear()
+                continue
+            operator = _WRITTEN_OPERATOR[match['operator']]
+            side = 'lower' if operator in ('gt', 'gte') else 'upper'
+            action = _range_action(text[match.end():], subjects)
+            for amount in _amounts(match['amount'], owner):
+                turn.setdefault(owner, {}).setdefault(side, set()).add((amount, operator, action))
+        reverse = previous_end is None and re.search(r'반대로|(?:그|이전|기존)\s*(?:선별|필터|비교)?\s*조건.{0,8}(?:취소|삭제|없애|빼|바꿔)', text)
+        ambiguous_fields = fields if unbound else set()
+        if previous_end is None and (reverse or (re.search(r'\d', text) and re.search(r'[<>]|보다|넘|밑돌|초과|이상|미만|이하|임계값|기준값', text))):
+            # Other ways of writing a comparison ("amount > 30", "30을 넘는 행") invalidate
+            # stale evidence without guessing the new predicate or erasing another named field.
+            named = {name for name in fields if re.search(r'(?<![\w])' + re.escape(name) + r'(?![A-Za-z0-9_])', text)}
+            ambiguous_fields = named or fields
+        yield turn, ambiguous_fields
+
+
+def _field_bounds(turns, field):
+    """Track the last explicit lower and upper bounds independently for one exact column name."""
+    current, retired = {}, set()
+    for turn, ambiguous_fields in turns:
+        # An unnamed follow-up may replace this field's comparison. Leave the new draft alone
+        # instead of forcing it back to the old turn. A change naming another column is independent.
+        if field in ambiguous_fields:
+            current.clear()
+            retired.clear()
+        for side, entries in turn.get(field, {}).items():
+            if all(action is not None for _, _, action in entries):
+                retired.update((v, op) for v, op, action in current.get(side, ()) if action == 'include')
+            current[side] = entries
+    active = {}
+    for entries in current.values():
+        for value, operator, action in entries:
+            active.setdefault(value, set()).add((operator, action))
+    return active, retired
+
+
+def _draft_comparison_mismatches(state, draft):
+    plans = [draft.get('execution_plan')]
+    for node in (draft.get('workflow') or {}).get('nodes', []):
+        settings = node.get('settings') or {}
+        if node.get('tool') == 'filter_sort' and not settings.get('operation'):
+            plans.append(settings.get('execution_plan'))
+    fields = {rule['field'] for plan in plans for rule in (plan or {}).get('filters', []) if rule.get('field')}
+    if not fields:
+        return
+    subjects = [(field, re.compile(r'(?<![\w])' + re.escape(field) + _BOUND_SUBJECT_END))
+                for field in sorted(fields, key=len, reverse=True)]
+    turns = list(_comparison_turns(state.get('messages', []), subjects))
+    by_field = {}
+    for plan in plans:
+        for rule in (plan or {}).get('filters', []):
+            field, operator = rule.get('field'), rule.get('operator')
+            if not field or rule.get('value_type') != 'number' or rule.get('compare_field') or operator not in _OPERATOR_WORD:
+                continue
+            try:
+                value = Decimal(str(rule.get('value')))
+            except InvalidOperation:
+                continue
+            if not value.is_finite():
+                continue
+            if field not in by_field:
+                by_field[field] = _field_bounds(turns, field)
+            active, retired = by_field[field]
+            bounds = active.get(value, set())
+            allowed = {op for op, action in bounds if action == 'include'}
+            complements = {_OPPOSITE_BOUND[op] for op, action in bounds if action == 'exclude'}
+            if any(action is None for _, action in bounds) or operator in allowed or operator in complements:
+                continue
+            if allowed and all(action == 'include' for _, action in bounds):
+                replacement = next(iter(allowed)) if len(allowed) == 1 else None
+                expected = '·'.join(_OPERATOR_WORD[op] for op in sorted(allowed))
+                yield rule, replacement, f"{field} {rule['value']}의 비교 방식은 '{expected}'인데 초안은 '{_OPERATOR_WORD[operator]}'입니다."
+            elif complements or (value, operator) in retired:
+                yield rule, None, f"{field} {rule['value']}: 제외했거나 바뀐 이전 조건이 초안에 남아 있습니다."
+
+
+def canonical_written_operators(state, draft):
+    """Correct an operator only for a single, explicit inclusive/exclusive boundary on the same field and value."""
+    corrected, changes = deepcopy(draft or {}), []
+    for rule, operator, _ in _draft_comparison_mismatches(state, corrected):
+        if operator is not None:
+            changes.append(f"{rule['field']} {rule['value']}: {_OPERATOR_WORD[rule['operator']]}→{_OPERATOR_WORD[operator]}")
+            rule['operator'] = operator
+    return (corrected if changes else None), list(dict.fromkeys(changes))
+
+
+def written_comparison_issues(state, draft):
+    return list(dict.fromkeys(issue for _, _, issue in _draft_comparison_mismatches(state, draft)))
+
+
 def _grounded_enum(key, value, quote):
     """Check narrow literal meanings, not just the existence of an evidence ID.
 

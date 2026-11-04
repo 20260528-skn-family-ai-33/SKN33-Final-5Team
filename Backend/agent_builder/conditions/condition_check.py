@@ -178,18 +178,27 @@ def _confirmed_schedule(state, ledger):
 
 
 def audit_conditions(state):
+    from agent_builder.conditions.condition_readiness import canonical_written_operators, literal_condition_issues
+    corrected, changes = canonical_written_operators(state, state.get('draft') or {})
+    update = {}
+    trace = list(state.get('trace', []))
+    if corrected is not None:
+        state = {**state, 'draft': corrected}
+        update['draft'] = corrected
+        trace.append({'node': 'condition_audit', 'label': '원문 비교 방식 반영', 'status': 'completed',
+                      'detail': ', '.join(changes), 'model_calls': 0})
+        update['trace'] = trace
     ledger = state.get('condition_ledger')
     if not ledger or ledger.get('decision') != 'ready':
-        return {}
+        return update
     filled = _confirmed_schedule(state, ledger)
     if filled is not None:
         state = {**state, 'draft': filled}
-    from agent_builder.conditions.condition_readiness import literal_condition_issues
     from agent_builder.design.planner_constraints import table_tool_issues
     issues = literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
-    update = {'trace': state.get('trace', []) + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
+    update['trace'] = trace + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
-               'issues': issues, 'enforced': state.get('condition_enforced', False)}]}
+               'issues': issues, 'enforced': state.get('condition_enforced', False)}]
     if filled is not None:
         update['draft'] = filled
         update['trace'][-1]['schedule_filled'] = filled['schedule']

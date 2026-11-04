@@ -293,6 +293,9 @@ def test_file_only_run_exports_selected_fields_of_the_requested_receipts(studio,
     content = {} if run_uploads else {'content': '  \n'}
     run = handle({**job, 'action': 'test', 'file_ids': file_ids, **content})
     assert run['status'] == 'succeeded', run.get('error')
+    assert run['answer'] == ''
+    # A workflow may still bind this raw text port, while people get a download.
+    assert json.loads(run['outputs']['excel']['text'])['artifact'] == run['outputs']['excel']['asset']
     assert run['file_ids'] == file_ids
     persisted = handle({**job, 'action': 'run', 'id': run['id']})['run']
     assert persisted['request'] == ''

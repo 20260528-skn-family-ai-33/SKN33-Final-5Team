@@ -14,6 +14,7 @@ from workflow_engine.workflow import workflow_errors
 from verification.reply_review.state import collect_reviews, is_review_report_artifact
 from workflow_engine.executors.dispatch import execute_node
 from workflow_engine.catalog.registry import uses_operation
+from workflow_engine.run_answer import public_run_answer
 
 
 class RunState(TypedDict,total=False):
@@ -165,6 +166,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         result_rows=next((v['records'] if 'records' in v else v['table']['rows'] for v in reversed(list(outputs.values())) if 'records' in v or 'table' in v),[])
         evidence=[e for v in outputs.values() for e in v.get('evidence',[])]+[r['evidence'] for r in (records[-1] if records else []) if r.get('evidence')]
         run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=artifacts[-1] if artifacts else None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
+        run['answer'] = public_run_answer(run['answer'], outputs)
     except Exception as error:
         from infrastructure.llm.errors import public_error
         state=(graph.get_state(cfg).values or {}) if graph else {}

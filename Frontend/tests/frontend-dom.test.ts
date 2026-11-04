@@ -89,6 +89,33 @@ test('DOM: historical XLSX chooses its destination before fetching the authentic
   assert.equal(document.querySelector('[role=alert]'),null);
  }finally{await h.close();}
 });
+test('DOM: run history draws the saved version and design opens at reading size in either direction',async()=>{
+ const flow=(label:string)=>({entry:'read',nodes:[
+  {id:'read',tool:'read_document',label,settings:{},bindings:[]},
+  {id:'out',tool:'create_spreadsheet',label:'엑셀 만들기',settings:{},bindings:[]}
+ ],edges:[{source:'read',target:'out',branch:'next'}]});
+ const current={...A,version:2,config:{...A.config,workflow:flow('새 자료 읽기')}};
+ const previous={id:'previous',status:'succeeded',agent_version:1,answer:'확인할 항목이 하나 있어요.',rows:[],
+  config_snapshot:{workflow:flow('이전 영수증 읽기')},steps:[{node:'read',status:'completed',label:'읽기'}]};
+ const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(current,[previous]):undefined);
+ try{
+  const diagram=document.querySelector('.as-test-result [aria-label="워크플로우 흐름"]');
+  assert.ok(diagram);
+  assert.ok(diagram.textContent.includes('이전 영수증 읽기'));
+  assert.ok(!diagram.textContent.includes('새 자료 읽기'));
+  assert.ok(document.querySelector('.as-test-result')?.textContent?.includes(previous.answer));
+  await click(button('설계'));
+  const cards=()=>Array.from(document.querySelectorAll<HTMLElement>('.as-flow-canvas .as-flow-node'));
+  assert.equal(cards()[0].style.left,cards()[1].style.left);
+  assert.notEqual(cards()[0].style.top,cards()[1].style.top);
+  assert.equal(document.querySelector('.as-zoom span')?.textContent,'100%');
+  await click(button('가로로 보기'));
+  assert.equal(cards()[0].style.top,cards()[1].style.top);
+  assert.notEqual(cards()[0].style.left,cards()[1].style.left);
+  await click(cards()[1]);
+  assert.ok(document.querySelector('.as-node-inspector')?.textContent?.includes('엑셀 만들기'));
+ }finally{await h.close();}
+});
 test('DOM: fallback save lets users rename an inline CSV and downloads identical bytes without leaving the page',async()=>{
  const csv='\ufeff이름,값\r\n가,1';
  const run={id:'csv',status:'succeeded',answer:'완료',steps:[],rows:[],

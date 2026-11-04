@@ -22,9 +22,9 @@ python3 Backend/integrations/workflow_preprocessing/build_dataset.py --output /t
 합성 예제를 별도 SQLite 테이블에 가져오려면 Python 에이전트 환경 설치 후 실행합니다.
 
 ```bash
-Backend/.venv-agent/bin/python Backend/scripts/import-preprocessing.py
+Backend/.venv-agent/bin/python scripts/dev/import-preprocessing.py
 # 별도 결과 또는 데이터 저장 폴더를 지정하려면:
-Backend/.venv-agent/bin/python Backend/scripts/import-preprocessing.py --source /tmp/a4b-preprocessing --directory /tmp/a4b-import
+Backend/.venv-agent/bin/python scripts/dev/import-preprocessing.py --source /tmp/a4b-preprocessing --directory /tmp/a4b-import
 ```
 
 기본 저장 폴더는 `EASYFLOW_DATA_DIR` 또는 프로젝트 루트의 `data/`입니다. 환경변수, `--directory`, `--source`의 상대 경로는 프로젝트 루트에서 해석하므로 다른 폴더에서 실행해도 같은 위치를 사용합니다. 예제를 가져와도 사용자의 실행 워크플로우가 자동 생성되지 않습니다. 30개 합성 사례는 사람 검수와 백엔드 명세 대조가 미완료이며 모델 학습·실제 외부 연동 성능을 보여주는 자료가 아닙니다.

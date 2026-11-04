@@ -189,7 +189,7 @@ def decoder_schema(version=None):
 
 class OllamaPlanner:
     """Native local transport sets context explicitly, without changing weights."""
-    def __init__(self, model, thinking=False):
+    def __init__(self, model, thinking=False, *, temperature=0.7):
         if os.getenv('A4B_MAIN_PROVIDER', 'openai') != 'ollama':
             raise ValueError('direct 경로는 현재 Ollama에서만 지원합니다. A4B_MAIN_PROVIDER=ollama로 설정하세요.')
         base = os.getenv('A4B_MAIN_BASE_URL', '')
@@ -202,6 +202,9 @@ class OllamaPlanner:
         self.model = model
         if not isinstance(thinking,bool):raise ValueError('thinking은 bool이어야 합니다.')
         self.thinking = thinking
+        if isinstance(temperature,bool) or not isinstance(temperature,(int,float)) or not 0<=temperature<=2:
+            raise ValueError('temperature는 0~2여야 합니다.')
+        self.temperature=temperature
         self.timeout = float(os.getenv('A4B_MAIN_TIMEOUT_S', '180'))
         if not 1 <= self.timeout <= 600:raise ValueError('A4B_MAIN_TIMEOUT_S는 1~600초로 설정하세요.')
         self.schema = decoder_schema()
@@ -210,7 +213,7 @@ class OllamaPlanner:
         payload = {'model': self.model, 'messages': messages, 'stream': False,
                    'think': self.thinking, 'format': self.schema,
                    'options': {'num_ctx': 16384, 'num_predict': 4096,
-                               'temperature': 0.7, 'top_p': 0.8, 'seed': 42}}
+                               'temperature': self.temperature, 'top_p': 0.8, 'seed': 42}}
         # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent; same header as the verifier client.
         headers = {'Content-Type': 'application/json', 'User-Agent': 'A4B/0.1'}
         api_key = os.getenv('A4B_MAIN_API_KEY')
@@ -230,7 +233,8 @@ class OllamaPlanner:
 
 
 def _normalize(raw, state):
-    draft = AgentDraft.model_validate(raw).model_dump()
+    from agent_builder.design.native_settings import expand_node_settings
+    draft = AgentDraft.model_validate(expand_node_settings(raw)).model_dump()
     if draft['unsupported']:
         draft['questions'] = [];draft['question_options'] = []
     if draft['questions'] or draft['unsupported']:

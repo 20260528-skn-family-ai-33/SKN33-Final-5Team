@@ -66,6 +66,42 @@ def is_request_change(text):
     return len(parts) == 1 and bool(_CHANGE.search(parts[0]))
 
 
+# A bare cancellation of the field question ends the fixed flow without any model.
+# Live 2026-11-03 (RunPod, B-8): "그만할래" was sent to the capability model and the planner,
+# which produced a 15-node extraction draft once and a "missing capability" verdict another time.
+# A changed request ("대신 금액만 뽑아줘", "처음부터 다시") still goes to the normal path.
+_CANCEL_ONLY = re.compile(r'^(?:아니(?:요)?)?(?:그만(?:할래|할게|해|둘래|두자|하자)?|취소(?:할래|할게|해|하자)?|중단(?:할래|해)?|'
+                          r'됐어(?:요)?|됐습니다|필요\s*없(?:어|어요|습니다)?|안\s*할래(?:요)?|안\s*해(?:도\s*돼)?|하지\s*마)'
+                          r'(?:요|줘|주세요)?$')
+CANCELLED = '문서 표 정리를 취소했습니다. 다른 작업이 필요하면 알려 주세요.'
+
+
+def document_rows_cancel_reply(state):
+    """The user cancelled the fixed flow's field question; reply in code, before any model call."""
+    if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
+        return None
+    messages = state.get('messages', [])
+    if len(messages) < 2 or messages[-1]['role'] != 'user' or messages[-2]['role'] != 'assistant' \
+            or not messages[-2]['content'].endswith(QUESTION):
+        return None
+    if not any(r.get('kind') == 'document' for r in state.get('resources') or []):
+        return None
+    answer = re.sub(r'[\s.,!~]+', '', messages[-1]['content'])
+    if not _CANCEL_ONLY.match(answer):
+        return None
+    request = next((m['content'] for m in messages[:-1][::-1] if m['role'] == 'user'), messages[-1]['content'])
+    draft = AgentDraft(
+        name='문서 항목을 표로 정리', purpose=request[:2000], instructions=request[:12000], tool_ids=[], document_ids=[],
+        requirements=[{'description': '사용자 요청', 'source_id': 'user', 'quote': request[:2000]}],
+        questions=[], question_options=[], unsupported=[], explanation=CANCELLED,
+        execution_plan={'filters': [], 'sort': [], 'match': 'all', 'missing_policy': 'ask',
+                        'duplicate_policy': 'keep', 'duplicate_field': None, 'output_format': 'csv'}).model_dump()
+    return {'messages': messages + [{'role': 'assistant', 'content': CANCELLED}], 'draft': draft,
+            'confirmed': False, 'saved_agent_id': None,
+            'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 취소', 'status': 'completed',
+                                                'detail': '항목 질문에 대한 취소 답변을 모델 호출 없이 처리했습니다.', 'model_calls': 0}]}
+
+
 def _settings(**values):
     base = NodeSettings(file_ids=[], query=None, fields=[], instructions=None, format=None, question=None,
                         condition_field=None, condition_operator=None).model_dump()

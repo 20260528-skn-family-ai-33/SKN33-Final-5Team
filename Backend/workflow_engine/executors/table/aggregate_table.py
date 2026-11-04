@@ -53,7 +53,9 @@ def execute(node,state,storage,config,llm):
             import math
             if not math.isfinite(row[column]):
                 raise ValueError('합계 결과가 숫자 범위를 초과했습니다.')
-    result = {'rows': rows, 'columns': fields + [column], 'file_id': table['file_id']}
+    result = {'rows': rows, 'columns': fields + [column]}
+    if 'file_id' in table:
+        result['file_id'] = table['file_id']
     if table.get('review_report') is True:
         result['review_report'] = True
     return {'table': result}

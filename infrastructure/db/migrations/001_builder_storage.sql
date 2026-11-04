@@ -1,5 +1,5 @@
 -- 001: 에이전트 빌더 업무 데이터 (A4B_STORAGE=postgres)
--- 앱 시작 시 자동 실행하지 않는다. Backend/scripts/apply-builder-migrations.py로 명시적으로 적용한다.
+-- 앱 시작 시 자동 실행하지 않는다. scripts/deploy/apply-builder-migrations.py로 명시적으로 적용한다.
 -- 적용 계정: 스키마 생성 권한이 있는 관리자. 앱은 a4b_app 역할의 멤버인 일반 계정으로 접속한다.
 --
 -- SQLite의 작업 공간 폴더(data/users/<회원ID>/agent-builder.sqlite) 하나가 workspace_id 하나다.

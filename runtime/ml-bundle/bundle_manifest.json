@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "bundle_id": "svm56-baseline-20261031-df14a313",
+  "files": {
+    "model/recommender_char_svm_5431.joblib": "df14a313659394fcc9b9efda431da7643e692ad4b33ee923f02edc97cc1dbbea",
+    "catalog/catalog_56.json": "cd956b51658051ecd95c642b5738238b3ae7f819c89799668280ba6d96f5dd2a"
+  },
+  "label_columns": 56,
+  "trained_heads": 52,
+  "untrained_tool_ids": [
+    "reply_review",
+    "review_summary",
+    "validate_document_format",
+    "email.attachment.get"
+  ],
+  "score_type": "uncalibrated SVM margin, not probability",
+  "label_grade": "AI-assisted development labels; not human gold"
+}

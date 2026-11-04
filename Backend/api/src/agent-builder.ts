@@ -41,7 +41,7 @@ function acquireWorkerSlot(action:string):Promise<()=>void>{
 export function resetWorkerSlots(){workerLanes=undefined;}
 export async function builderWorker(payload:Record<string,unknown>):Promise<any>{
  const python=agentPython();
- if(!existsSync(python))throw new Error('Deep Agents 실행 환경이 없습니다. Backend/scripts/setup-agent-demo.sh를 먼저 실행하세요.');
+ if(!existsSync(python))throw new Error('Deep Agents 실행 환경이 없습니다. scripts/setup/setup-agent-demo.sh를 먼저 실행하세요.');
  const release=await acquireWorkerSlot(String(payload.action));
  const execution=['test','scheduled_run','retry_run','resume_run'].includes(String(payload.action));
  const runId=payload.action==='test'?randomUUID():String(payload.id||'');

@@ -30,6 +30,8 @@ def substitute(value,bound):
 
 
 def validate_settings(node, resources=(), allow_unbound=False):
+    from workflow_engine.catalog.settings import validate_execution_settings
+    validate_execution_settings(node,operation=True)
     tool, settings = node['tool'], node['settings']
     spec = operation_spec(tool, settings.get('operation'))
     args = parse_arguments(settings)

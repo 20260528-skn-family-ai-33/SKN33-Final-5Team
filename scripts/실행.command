@@ -12,7 +12,7 @@ case "$A4B_STATUS" in
 esac
 if [ ! -d node_modules ]; then npm ci || exit 1; fi
 if ! node --env-file-if-exists=.env --import tsx --input-type=module -e "import {agentPython} from './Backend/api/src/paths.ts';import {existsSync} from 'node:fs';process.exit(existsSync(agentPython())?0:1);"; then
-  Backend/scripts/setup-agent-demo.sh || exit 1
+  scripts/setup/setup-agent-demo.sh || exit 1
 fi
 npm run build || exit 1
 export PORT="$A4B_DEMO_PORT"

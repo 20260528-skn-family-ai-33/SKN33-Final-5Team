@@ -178,6 +178,11 @@ def make_verification_node(storage, verifier=None, mode=None):
                         node['settings']['file_ids']=[i for i in raw.get('document_ids',[]) if i in assets and supports(assets[i],kind)]
                 version=hashlib.sha256(json.dumps(raw,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
                 snapshot,_=project_operations(snapshot,strict=label!='previous')
+                # Optional unset compatibility keys have no execution meaning.
+                # Sending them for every node can exceed the verifier's context
+                # budget. Preserve empty lists/false/zero and the original draft.
+                for node in snapshot['workflow']['nodes']:
+                    node['settings']={key:value for key,value in node['settings'].items() if value is not None}
                 return draft_from_backend(snapshot, draft_id=state['session_id'], version=version)
             previous_adapted = adapt(previous, 'previous')
             candidate_adapted = adapt(draft, 'candidate')
@@ -193,9 +198,12 @@ def make_verification_node(storage, verifier=None, mode=None):
                 tools=tools_for_drafts(previous,draft), previous_draft=previous_adapted,
                 candidate_draft=candidate_adapted))
             # defer records the same input as shadow but leaves the model call to
-            # scripts/run-deferred-verifications.py, so the user does not wait for it.
+            # scripts/run/run-deferred-verifications.py, so the user does not wait for it.
             result = (pending_result(request_id) if setting == 'defer'
                       else (verifier or verify)(payload).model_dump(mode='json'))
+            if setting != 'defer':
+                from agent_builder.design.verifier_columns import reconcile_stored_column_findings
+                result=reconcile_stored_column_findings(payload,result)
         except (ValueError, TypeError, KeyError) as error:
             result = dict(request_id=request_id, route='manual_review', execution_allowed=False,
                           model_output=None, findings=[dict(code='integration_contract_error', severity='review',

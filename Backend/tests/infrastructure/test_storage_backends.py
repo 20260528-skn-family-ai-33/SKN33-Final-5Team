@@ -296,7 +296,7 @@ def test_workspace_markers_expand_per_dialect():
 
 
 def load_migrator():
-    spec = importlib.util.spec_from_file_location('migrate_sqlite_to_postgres', ROOT / 'scripts' / 'migrate-sqlite-to-postgres.py')
+    spec = importlib.util.spec_from_file_location('migrate_sqlite_to_postgres', ROOT / 'scripts' / 'deploy' / 'migrate-sqlite-to-postgres.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

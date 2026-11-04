@@ -229,9 +229,10 @@ def test_planner_accepts_operation_settings_and_preserves_exact_arguments(monkey
         def factory(**kwargs):
             captured['schema']=kwargs['response_format'].schema
             from jsonschema import Draft202012Validator
-            Draft202012Validator(captured['schema']).validate(raw)
             tools={t.name:t for t in kwargs['tools']}
             assert tools['inspect_tool'].invoke({'tool_id':tool})['id']==tool
+            # Native tools disclose alternative operations after explicit inspection.
+            Draft202012Validator(captured['schema']).validate(raw)
             class Agent:
                 def invoke(self,payload,*a,**kw):
                     context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
@@ -522,6 +523,10 @@ def test_runtime_file_read_operations_accept_scoped_uploaded_asset(tmp_path,tool
     store,agent,_=saved(tmp_path,{'entry':'read','nodes':[n],'edges':[]})
     store.add_asset({'id':identifier,'kind':'document','name':'upload.txt','format':'txt','original_path':relative,'hash':digest},[])
     try:
+        from agent_builder.conditions.input_requirements import preflight_execution
+        # Canonical file readers consume their own asset arguments, not native
+        # parsed-table selections. The service must not reject them beforehand.
+        assert preflight_execution(store.agent(agent)['config'],store,[identifier]) == []
         result=run_workflow(store,agent,'실행','unused',file_ids=[identifier])
         assert result['status']=='succeeded',result.get('error')
         assert result['outputs']['read']['result']==expected

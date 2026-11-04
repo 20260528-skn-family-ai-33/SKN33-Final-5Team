@@ -1,11 +1,12 @@
 # App, Python workers and document readers run in the container; Ollama runs on the host PC
 # so it can use the host GPU directly (Windows NVIDIA or Apple Silicon).
-# Prepare Ollama first: scripts/prepare-ollama.ps1 (Windows) or scripts/prepare-ollama.sh (macOS/Linux).
+# Prepare Ollama first: scripts/setup/prepare-ollama.ps1 (Windows) or scripts/setup/prepare-ollama.sh (macOS/Linux).
 # Values below can be overridden from a repository-root .env (Compose reads it for ${...}).
 services:
   app:
     build:
       context: .
+      dockerfile: infrastructure/docker/Dockerfile
       args:
         A4B_WITH_ML: ${A4B_WITH_ML:-1}
     image: a4b-agent-studio:local
@@ -33,7 +34,7 @@ services:
       A4B_DATABASE_TLS_SERVER_NAME: ${A4B_DATABASE_TLS_SERVER_NAME:-}
       A4B_AUTH_SESSION_SECONDS: ${A4B_AUTH_SESSION_SECONDS:-28800}
       # Business data: sqlite (local default) or postgres (RDS, same A4B_DATABASE_* settings as above).
-      # postgres needs scripts/apply-builder-migrations.py first; see README "업무 데이터 저장소".
+      # postgres needs scripts/deploy/apply-builder-migrations.py first; see docs/business-data-storage.md.
       A4B_STORAGE: ${A4B_STORAGE:-sqlite}
       A4B_WORKER_MAX_CONCURRENCY: ${A4B_WORKER_MAX_CONCURRENCY:-12}
       A4B_WORKER_CONTROL_CONCURRENCY: ${A4B_WORKER_CONTROL_CONCURRENCY:-4}
@@ -45,7 +46,7 @@ services:
       A4B_VERIFIER_BASE_URL: ${A4B_VERIFIER_BASE_URL:-${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}}
       A4B_VERIFIER_API_KEY: ${A4B_VERIFIER_API_KEY:-${A4B_LLM_API_KEY:-}}
       A4B_VERIFIER_MODEL: ${A4B_VERIFIER_MODEL:-qwen3.5:4b}
-      # defer records verifier input; run scripts/run-deferred-verifications.py later (see README).
+      # defer records verifier input; run scripts/run/run-deferred-verifications.py later (see README).
       A4B_VERIFIER_MODE: ${A4B_VERIFIER_MODE:-defer}
       # direct: the registered catalogue is passed in the design input. With files attached the
       # model often inspects the file and never calls list_tools, which the model mode rejects.
@@ -56,6 +57,8 @@ services:
       # Preserve main's enforced default; the root .env can explicitly turn either check off.
       A4B_CAPABILITY_MODE: ${A4B_CAPABILITY_MODE:-enforce}
       A4B_CONDITION_MODE: ${A4B_CONDITION_MODE:-enforce}
+      A4B_REQUIREMENT_MODE: ${A4B_REQUIREMENT_MODE:-off}
+      A4B_REQUIREMENT_GENERATION_MODE: ${A4B_REQUIREMENT_GENERATION_MODE:-baseline}
       A4B_MAIN_TIMEOUT_S: ${A4B_MAIN_TIMEOUT_S:-180}
       A4B_DESIGN_TIMEOUT_MS: ${A4B_DESIGN_TIMEOUT_MS:-600000}
       A4B_PARSER_URL: ${A4B_PARSER_URL:-}

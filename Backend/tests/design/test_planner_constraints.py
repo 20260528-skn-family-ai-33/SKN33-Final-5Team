@@ -7,6 +7,48 @@ from contracts.models import AgentDraft
 from agent_builder.design.nodes.direct_conversation import decoder_schema, make_direct_conversation
 from agent_builder.design.nodes.validation import validate_node
 from agent_builder.design.planner_constraints import native_decoder_schema, binding_repair_options
+
+
+def test_native_settings_do_not_offer_operation_executor_fields():
+    schema = native_decoder_schema(decoder_schema('v8'), [{'id':'csv','kind':'table'}])
+    settings = schema['$defs']['NativeNode_read_table']['properties']['settings']
+    assert set(settings['properties']) == {'file_ids', 'node_ref'}
+    assert settings['additionalProperties'] is False
+    for variant in schema['$defs']['WorkflowNode']['anyOf']:
+        if '$ref' not in variant:
+            assert variant['properties']['tool']['enum'] != ['read_table']
+
+
+def test_raw_file_operations_remain_available_without_parsed_tables(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    schema = native_decoder_schema(decoder_schema('v8'), [])
+    assert any(v.get('properties', {}).get('tool', {}).get('enum') == ['read_table']
+               for v in schema['$defs']['WorkflowNode']['anyOf'])
+
+
+@pytest.mark.parametrize('value,compare_field,value_type,operator,valid', [
+    (20, None, 'number', 'gte', True),
+    (20, 'amount', 'number', 'gte', False),
+    (20, None, 'text', 'gte', False),
+    (None, 'reorder_level', 'number', 'lt', True),
+    (None, None, 'text', 'is_empty', True),
+    ('서울', None, 'text', 'eq', True),
+])
+def test_filter_grammar_distinguishes_constants_columns_and_types(value,compare_field,value_type,operator,valid):
+    from jsonschema import Draft202012Validator
+    schema = native_decoder_schema(decoder_schema('v8'), [])
+    validator = Draft202012Validator({'$ref':'#/$defs/TypedFilterCondition', '$defs':schema['$defs']})
+    condition = {'field':'amount','operator':operator,'value':value,
+                 'compare_field':compare_field,'value_type':value_type}
+    assert validator.is_valid(condition) is valid
+
+
+def test_table_input_cannot_decode_an_artifact_output():
+    from jsonschema import Draft202012Validator
+    schema = native_decoder_schema(decoder_schema('v8'), [])
+    validator = Draft202012Validator({'$ref':'#/$defs/NativeBinding_write_result', '$defs':schema['$defs']})
+    assert validator.is_valid({'input':'table','node_id':'filter','output':'table'})
+    assert not validator.is_valid({'input':'table','node_id':'filter','output':'artifact'})
 from workflow_engine.catalog.registry import PORTS
 from tests.design.test_direct_conversation import draft, state, Fake
 from tests.workflow_engine.test_workflow import node, bind, edge

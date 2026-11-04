@@ -173,7 +173,7 @@ def _check_server(connection):
         raise RuntimeError('업무 데이터 DB 계정이 행 수준 보안을 우회할 수 있습니다. superuser나 BYPASSRLS가 아닌 앱 전용 계정으로 접속하세요.')
     version=connection.execute('SELECT max(version) FROM '+SCHEMA+'.schema_migrations').fetchone()[0] if row[1] else None
     if version is None or version<REQUIRED_SCHEMA_VERSION:
-        raise RuntimeError(f'업무 데이터 DB 스키마가 최신이 아닙니다(필요 {REQUIRED_SCHEMA_VERSION}, 현재 {version}). scripts/apply-builder-migrations.py로 마이그레이션을 먼저 적용하세요.')
+        raise RuntimeError(f'업무 데이터 DB 스키마가 최신이 아닙니다(필요 {REQUIRED_SCHEMA_VERSION}, 현재 {version}). scripts/deploy/apply-builder-migrations.py로 마이그레이션을 먼저 적용하세요.')
 
 
 def pool(role):

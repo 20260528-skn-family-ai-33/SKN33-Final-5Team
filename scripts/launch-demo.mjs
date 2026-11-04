@@ -32,7 +32,7 @@ async function running(){
 try{
  if(await running()){openBrowser();process.exit(0);}
  if(!existsSync(resolve(root,'node_modules')))run('npm',['ci']);
- run(process.execPath,[resolve(root,'Backend','api','scripts','setup-python.mjs'),'--if-missing']);
+ run(process.execPath,[resolve(root,'scripts','setup','setup-python.mjs'),'--if-missing']);
  run('npm',['run','build']);
  console.log('A4B 에이전트 생성 데모를 시작합니다. 종료하려면 Ctrl+C를 누르세요.');
  const server=spawn(process.execPath,['Backend/api/build-server/index.mjs'],{cwd:root,stdio:'inherit',env:{...process.env,PORT:port,A4B_FOCUSED_DEMO:'1'}});

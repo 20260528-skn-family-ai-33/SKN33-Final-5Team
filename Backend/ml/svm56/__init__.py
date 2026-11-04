@@ -1,1 +1,1 @@
-"""Optional, disabled-by-default SVM56 advisory integration candidate."""
+"""SVM56 advisory integration; enabled by default when the trusted bundle is installed."""

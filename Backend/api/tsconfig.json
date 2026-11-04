@@ -29,7 +29,7 @@
   "include": [
     "src/**/*.ts",
     "tests/**/*.ts",
-    "scripts/**/*.ts",
+    "../../scripts/verify/api/**/*.ts",
     "../../shared/**/*.ts"
   ],
   "exclude": [

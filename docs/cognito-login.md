@@ -11,7 +11,7 @@ React → Node 세션 → Cognito User Pool → RDS `a4b.users` 구조다. Cogni
 ```bash
 aws login --profile a4b3400
 aws sts get-caller-identity --profile a4b3400
-node scripts/configure-cognito.mjs --profile a4b3400 --expected-account YOUR_12_DIGIT_ACCOUNT_ID --origin http://localhost:3041
+node scripts/deploy/configure-cognito.mjs --profile a4b3400 --expected-account YOUR_12_DIGIT_ACCOUNT_ID --origin http://localhost:3041
 ```
 
 스크립트는 계정 번호를 먼저 확인하고 CloudFormation `a4b-cognito` 스택을 배포한다. 이메일 로그인, 공개 앱 클라이언트(비밀 키 없음), Code 흐름, 15분 Access/ID Token, Refresh Token 회전, Managed login 기본 스타일을 만든다. 사용자 풀은 Essentials 플랜이며 사용량에 따른 AWS 요금이 적용된다. 기존 EC2·RDS·S3 및 네트워크 설정은 수정하지 않는다. 사용자 풀은 Retain과 삭제 방지로 보호한다.
@@ -79,7 +79,7 @@ PGSERVICE=a4b_readonly pg_dump --schema-only --schema=a4b --no-password \
 
 ## 4. 사용자별 자료 분리 범위
 
-회원 정보는 RDS에 저장한다. 작업 공간은 `EASYFLOW_DATA_DIR/users/RDS_MEMBER_UUID/` 폴더로 정한다. 에이전트 빌더 업무 데이터는 `A4B_STORAGE=postgres`일 때 같은 RDS의 `a4b_builder` 스키마에 그 회원 ID를 `workspace_id`로 넣어 저장하고, 행 수준 보안으로 다시 막는다(README의 업무 데이터 저장소 절). 나머지 Node 업무 저장소는 계속 이 폴더에 격리한다.
+회원 정보는 RDS에 저장한다. 작업 공간은 `EASYFLOW_DATA_DIR/users/RDS_MEMBER_UUID/` 폴더로 정한다. 에이전트 빌더 업무 데이터는 `A4B_STORAGE=postgres`일 때 같은 RDS의 `a4b_builder` 스키마에 그 회원 ID를 `workspace_id`로 넣어 저장하고, 행 수준 보안으로 다시 막는다([업무 데이터 저장소](postgres-storage.md)). 나머지 Node 업무 저장소는 계속 이 폴더에 격리한다.
 
 - Node 워크플로우·실행 이력·암호화된 연결 계정 및 보호 키
 - Python 에이전트·대화·업로드 문서·문서 검토·실행 보고서

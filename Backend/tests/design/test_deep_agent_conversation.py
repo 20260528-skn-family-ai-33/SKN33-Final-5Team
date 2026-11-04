@@ -14,6 +14,24 @@ def state(messages):
     return {'messages':messages,'resources':[],'issues':[],'repair_count':0,'node_library':[]}
 
 
+def test_overlong_requirement_is_retried_before_state_update(monkeypatch):
+    calls = []
+    class Agent:
+        def invoke(self, payload, config):
+            calls.append(payload)
+            value = draft(questions=['실제 미정 조건은 무엇인가요?'])
+            if len(calls) == 1:
+                value['requirements'][0]['description'] = 'x' * 1001
+            return {'structured_response': value}
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent', lambda **kwargs: Agent())
+    original = state([{'role':'user','content':'업무 조건을 확인해줘'}])
+    result = make_conversation(None,'test',model_factory=lambda:object())(original)
+    assert len(calls) == 2
+    assert result['trace'][-1]['response_relation_repairs'] == 1
+    assert result['draft']['requirements'][0]['description'] == '실제 사용자 요청'
+    assert '1000' in calls[-1]['messages'][-1]['content']
+
+
 def draft(questions=None,unsupported=None,workflow=None):
     return {'name':'업무 설계','purpose':'요청 처리','instructions':'사용자 조건 적용','tool_ids':[],
         'document_ids':[],'requirements':[{'description':'실제 사용자 요청','evidence_id':'e1'}],
@@ -309,6 +327,29 @@ def test_length_error_is_not_parsed_as_json_and_retries_once_with_the_next_seed(
     assert len(calls)==2 and seeds==[42,43] and factories[1]['checkpointer'] is False
 
 
+def test_local_output_overflow_expands_once_without_changing_request_or_schema(monkeypatch):
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    models=[];payloads=[];factories=[]
+    class Agent:
+        def invoke(self,payload,config):
+            payloads.append(deepcopy(payload))
+            raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[],usage=None))
+    def factory(**kwargs):factories.append(kwargs);return Agent()
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','model')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_chat_model',lambda **kwargs:models.append(kwargs) or object())
+    original=state([{'role':'user','content':'표를 계산하고 집계해서 저장해줘.'}])
+    with pytest.raises(ValueError,match='길이 제한'):
+        make_conversation(None,'test')(original)
+    assert [m['max_tokens'] for m in models]==[4096,8192]
+    assert [m['seed'] for m in models]==[42,43]
+    assert len(payloads)==2 and payloads[0]==payloads[1]
+    assert factories[0]['response_format'].schema==factories[1]['response_format'].schema
+    assert not original.get('saved_agent_id')
+
+
 def test_seed_counts_attempts_within_the_same_user_turn(monkeypatch):
     seeds=[]
     class Agent:
@@ -572,3 +613,71 @@ def test_ollama_default_catalog_mode_supplies_selected_contract_without_forced_l
     assert set(captured['schema']['$defs']['WorkflowDefinition']['properties'])=={'first_step','next_steps'}
     assert captured['result']['trace'][-1]['tool_selection_fallback'] is False
     assert captured['result']['draft']['workflow']['nodes'][0]['id']=='step_1'
+
+
+def test_cancelled_send_is_removed_from_previous_draft_tool_candidates(monkeypatch):
+    from tests.workflow_engine.test_workflow import node
+
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    s = state([{'role':'user', 'content':'파일을 만들고 이메일로 보내줘'},
+               {'role':'user', 'content':'메일은 취소'}])
+    s['capability_assessment'] = {'decision':'existing_tools', 'tool_ids':['write_result']}
+    s['draft'] = draft(workflow={'entry':'mail', 'nodes':[node('mail', 'email.send')], 'edges':[]})
+    captured = run_capturing(monkeypatch, s, draft(questions=['저장할 형식을 알려주세요.']))
+    assert [tool['id'] for tool in captured['context']['selected_tool_contracts']] == ['write_result']
+
+
+def test_local_discovery_summary_keeps_all_tools_and_inspection_contracts(monkeypatch):
+    from workflow_engine.catalog.registry import TOOLS
+    from workflow_engine.catalog.canonical import planner_catalog
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    original=state([{'role':'user','content':'x=3으로 x*2를 계산해줘'}])
+    original['capability_assessment']={'decision':'existing_tools','tool_ids':['scalar_calculate']}
+    def factory(**kwargs):
+        tools={t.name:t for t in kwargs['tools']}
+        class Agent:
+            def invoke(self,payload,config):
+                context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
+                discovery=context['supported_tools']
+                assert [t['id'] for t in discovery]==[t['id'] for t in TOOLS]
+                assert tools['list_tools'].invoke({})==discovery
+                assert len(json.dumps(discovery)) < len(json.dumps(planner_catalog(TOOLS)))*0.65
+                assert all('native_contract' not in t and 'operation_contracts' not in t for t in discovery)
+                detailed=tools['inspect_tool'].invoke({'tool_id':'text_hash'})
+                assert detailed['id']=='text_hash' and detailed['native_contract']['input_ports']=={'text':'text'}
+                assert context['selected_tool_contracts'][0]['operation_contracts']
+                return {'structured_response':draft(questions=['출력 형식을 알려주세요'])}
+        return Agent()
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    result=make_conversation(None,'test',model_factory=lambda:object())(original)
+    assert result['draft']['questions']==['출력 형식을 알려주세요']
+
+
+def test_first_step_decoder_cannot_drop_required_input_or_reference_future_table(monkeypatch):
+    from jsonschema import Draft202012Validator
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    original=state([{'role':'user','content':'첨부한 두 표를 id 기준으로 결합해줘'}])
+    original['capability_assessment']={'decision':'existing_tools','tool_ids':['join_tables','calculate_columns','filter_sort']}
+    original['resources']=[{'id':id,'kind':'table','columns':['id'],'evidence_text':'id','name':id,'status':'ready'} for id in ('a','b')]
+    captured=run_capturing(monkeypatch,original,draft(questions=['결합 방식을 알려주세요']))
+    definitions=captured['schema']['$defs']
+    first=definitions['FirstBusinessStep']
+    assert not any(v['properties']['tool']['enum']==['calculate_columns'] for v in first['anyOf'])
+    assert not any(v['properties']['tool']['enum']==['filter_sort'] for v in first['anyOf'])
+    validator=Draft202012Validator({'$ref':'#/$defs/FirstBusinessStep','$defs':definitions})
+    constants={'keys':['id'],'how':'left','cardinality':'many_to_one','null_keys':'error','max_rows':100}
+    join=dict(tool='join_tables',label='결합',settings={'operation':'join','output_port':None,
+              'arguments_json':{**constants,'left':{'$binding':'left'},'right':{'$binding':'right'}}})
+    assert not validator.is_valid(join)
+    missing=deepcopy(join);missing['settings']['arguments_json']=constants
+    assert not validator.is_valid(missing)
+    literal=deepcopy(join)
+    literal['settings']['arguments_json']={**constants,'left':{'rows':[{'id':'A'}]},'right':{'rows':[{'id':'A'}]}}
+    validator.validate(literal)
+    reader=dict(tool='read_table',label='읽기',settings={'file_ids':['a'],'node_ref':None})
+    validator.validate(reader)
+    # Subsequent steps still accept references to actual earlier readers.
+    later=next(v for v in definitions['WorkflowNode']['anyOf']
+               if v['properties']['tool']['enum']==['join_tables'] and v['properties']['settings']['properties']['operation']['enum']==['join'])
+    assert any('$binding' in p.get('properties',{})
+               for p in later['properties']['settings']['properties']['arguments_json']['properties']['left']['anyOf'])

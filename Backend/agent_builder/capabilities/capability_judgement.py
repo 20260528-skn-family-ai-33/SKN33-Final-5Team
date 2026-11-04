@@ -39,7 +39,7 @@ def validate_assessment_result(result,state,*,model_calls=0):
         raise ValueError('지원 판단의 사유·누락 항목은 공백일 수 없습니다.')
     if len(set(value['tool_ids']))!=len(value['tool_ids']) or any(t not in {t['id'] for t in TOOLS} for t in value['tool_ids']):
         raise ValueError('등록되지 않았거나 중복된 도구 판단입니다.')
-    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    user=[m['content'] for m in _assessment_messages(state) if m.get('role')=='user']
     if any(not q.strip() or not any(q in text for text in user) for q in value['user_quotes']):
         raise ValueError('요청 원문 근거를 확인하지 못했습니다.')
     return result
@@ -65,8 +65,30 @@ def _native_schedule_label(action):
     """
     text=re.sub(r'[\s()·:,.]', '', action).casefold()
     text=re.sub(r'[월화수목금토일]요일|\d+(?:시|분)', '', text)
+    # Time-of-day words are part of the recurrence label ("매주 월요일 오전 8 시 예약", live 2026-11-03).
     return bool(re.search(r'매주|매일|주간|일간|weekly|daily',text)
-        and re.fullmatch(r'(?:매주|매일|주간|일간|weekly|daily|예약|schedule|스케줄링|스케줄)+',text))
+        and re.fullmatch(r'(?:매주|매일|주간|일간|weekly|daily|예약|schedule|스케줄링|스케줄'
+                         r'|오전|오후|아침|저녁|정오|자정|마다|에|한국시간|kst|시각)+',text))
+
+_NATIVE_SCHEDULE_REQUEST=re.compile(r'매일|매주|[월화수목금토일]요일\s*마다|daily|weekly',re.I)
+_NOT_NATIVE_SCHEDULE=re.compile(r'매월|매달|월간|매년|cron|크론',re.I)
+
+def reconcile_native_schedule(result,state):
+    """A refusal whose only gap was the app's own daily/weekly schedule goes to the condition checker.
+
+    Live 2026-11-03 (B-8): "매주 월요일 오전 8시마다 … 저장해줘" was refused twice (initial and review)
+    with only "주간 예약"/"매주 월요일 오전 8 시 예약" as the gap, although the app implements it.
+    This is not READY: the result is marked so the grounded condition checker must validate the
+    schedule slots (frequency, weekday, time, timezone, managed table) before any draft.
+    """
+    if (result['decision']!='manual_review' or not result.get('native_app_claims_removed')
+            or result['missing_actions'] or result['missing_conditions'] or not result['tool_ids']):
+        return result
+    if any(t not in {tool['id'] for tool in TOOLS} for t in result['tool_ids']):return result
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    if not user or not _NATIVE_SCHEDULE_REQUEST.search(user[-1]) or _NOT_NATIVE_SCHEDULE.search(user[-1]):return result
+    return {**result,'decision':'existing_tools','native_schedule_reconciled':True,
+        'reason':result['reason']+' 부족 항목이 앱의 일·주 예약뿐이라 예약 조건 검사로 넘깁니다.'}
 
 def normalize_native_claims(result):
     """Code checks explicit app facts; never turn a model refusal into READY."""
@@ -121,7 +143,9 @@ def _external_delivery(text):
         after=text[match.end():]
         before=text[match.end(1):match.start(2)]
         if re.search(r'(?:안|못)\s*$',before):continue
-        if re.match(r'\s*(?:지\s*)?(?:마|말|않)|\s*지는\s*(?:마|말|않)',after):continue
+        # A particle may sit between the verb stem and the negation: "보내지는 마", "보내지도 말고".
+        # Live 2026-11-03 (B-6 n01): "메일로 보내지는 마" was recorded as an external send request.
+        if re.match(r'\s*(?:지\s*)?(?:는|도)?\s*(?:마|말|않)|\s*지(?:는|도)\s*(?:마|말|않)',after):continue
         yield match
 
 def external_delivery_claims(result,state):
@@ -150,9 +174,153 @@ DEMOS=[
  {'request':'가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.','output':{'decision':'clarify','tool_ids':['filter_sort'],'missing_conditions':['선별할 가격 기준과 포함 여부'],'missing_actions':[],'reason':'가격 기준은 사용자 결정 사항','user_quotes':['가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.']}},
 ]
 
+REQUEST_UPDATE_RULE = """대화는 순서대로 적용합니다. authoritative_request는 가장 최근 사용자 발언입니다.
+최신 발언이 작업 일부를 취소하거나 범위를 좁히면 이전 요청의 해당 부분을 철회한 것으로 판단합니다.
+예: '매출을 요약하고 이메일로 보내줘' 뒤 '메일은 취소', '이메일은 안 해', '요약만'이면 매출 요약만 남습니다.
+취소된 이메일 발송이나 그 계정 연결을 missing_actions/missing_conditions에 남기지 않습니다.
+반대로 '메일은 취소하지 마'는 기존 메일 작업을 유지합니다. 조회나 초안 작성만 요청한 경우 발송을 추가하지 않습니다.
+'메일로는 보내줘'는 발송 요청입니다. 수신자 등 확인 질문에 답해도 철회되지 않은 요구와 조건은 유지합니다.
+이전 assistant의 지원 불가 답변과 unverified_assessment는 판정 근거가 아닌 검토 대상입니다.
+user_quotes에는 최신 변경 발언도 정확히 포함해 변경을 반영했다는 근거를 남깁니다.
+남은 요청을 실제 카탈로그로 판단하며, 요청 축소만으로 지원 확정·실행·저장 허가를 부여하지 않습니다."""
+
+
+_CHANNEL = r'(이메일|메일|e-?mail|슬랙|slack)'
+_KEEP = re.compile(_CHANNEL + r'(발송|전송)?(?:은|는)?취소하지(?:마|마요|마세요|말아|말아줘)')
+_SEND = re.compile(r'(?:다시)?' + _CHANNEL + r'(?:으?로(?:는|만)?)?(?:보내줘|보내주세요|발송해줘|전송해줘)')
+_DEDUP = r'중복(?:제거|처리)?'
+_JOIN = r'(?:과|와|이랑|랑|및|·)'
+_CANCEL = re.compile(r'(?:' + _DEDUP + _JOIN + r')?' + _CHANNEL + r'(?:발송|전송)?(?:' + _JOIN + _DEDUP + r')?'
+                     r'(?:은|는|을|를|도|으?로(?:는)?)?(?:취소(?:해(?:줘|주세요|요)?|할게(?:요)?|하고)?'
+                     r'|안해|안함|빼(?:줘)?|보내지(?:는|도)?(?:마|말아줘|말고))')
+_NO_SEND = re.compile(r'(?:(?:메일|이메일)?(?:발송|전송)(?:은|는)?하지|보내지)(?:는|도)?(?:마|말아줘|말고)')
+_MAIL_WORK = re.compile(r'(?:이메일|메일|e-?mail)(?:은|는|을|를)?(?:목록|내용|본문|제목|초안)?(?:은|는|을|를)?'
+                        r'(만)?(?:조회|검색|읽기|작성|준비)(만)?(?:해줘|해주세요|해)?$')
+
+
+def _channel(name):
+    return 'slack' if name.casefold() in ('슬랙', 'slack') else 'email'
+
+
+def delivery_directives(state):
+    """Replay explicit changes per channel. Other turns, including answers, leave them in force."""
+    asked_to_send = set()
+    directives = {}
+    for message in _assessment_messages(state):
+        if message['role'] != 'user':
+            continue
+        quote = message['content']
+        # Column values inside quotation marks are data; punctuation there cannot start a directive.
+        unquoted = re.sub(r"""(["']).*?\1""", lambda m: ' ' * len(m[0]), quote)
+        named_channels = {_channel(name) for name in re.findall(_CHANNEL, unquoted, re.I)}
+        for clause in re.split(r'[.!?~;,\n]+|(?<=취소하고)(?!\s*싶)\s*|(?<=말고)\s+', unquoted):
+            text = ''.join(clause.casefold().split())
+            keep, send, cancel = _KEEP.fullmatch(text), _SEND.fullmatch(text), _CANCEL.fullmatch(text)
+            if keep:
+                channel = _channel(keep[1])
+                if not keep[2] and channel not in asked_to_send:
+                    continue  # Keeping mail lookup or preparation does not request sending.
+                asked_to_send.add(channel)
+                channels, intent = [channel], 'retain_delivery'
+            elif cancel:
+                channels, intent = [_channel(cancel[1])], 'cancel_delivery'
+            elif _NO_SEND.fullmatch(text) and len(named_channels or asked_to_send) == 1:
+                channels, intent = named_channels or asked_to_send, 'cancel_delivery'
+                # An explicitly non-sending mail task replaces the old referent of "메일은 취소하지 마".
+                asked_to_send.difference_update(named_channels)
+            elif text in {'요약만', '요약만해줘', '전송취소', '발송취소'}:
+                channels, intent = asked_to_send, 'cancel_delivery'
+            elif (mail_work := _MAIL_WORK.search(text)) and (
+                    any(mail_work.groups()) or directives.get('email', {}).get('intent') == 'cancel_delivery'):
+                # "Keep mail" now refers to lookup/preparation, even if an older turn once requested a send.
+                asked_to_send.discard('email')
+                channels, intent = ['email'], 'cancel_delivery'
+            else:
+                channels = {_channel(m[1]) for m in _external_delivery(clause)
+                            if re.fullmatch(_CHANNEL, m[1], re.I)}
+                if send:
+                    channels.add(_channel(send[1]))
+                asked_to_send.update(channels)
+                # An initial compound request supplies context. A later explicit send
+                # replaces a previous cancellation for that channel.
+                if not send:
+                    channels = channels.intersection(directives)
+                intent = 'retain_delivery'
+            for channel in channels:
+                directives[channel] = {'channel': channel, 'intent': intent, 'quote': quote}
+    return directives
+
+
+def delivery_conflict(state, tool_ids):
+    for channel, directive in delivery_directives(state).items():
+        includes_send = channel == 'email' and 'email.send' in tool_ids
+        if includes_send != (directive['intent'] == 'retain_delivery'):
+            return directive
+    return None
+
+
+def guard_delivery_revision(result,state):
+    if result['decision'] != 'existing_tools':return result
+    directive = delivery_conflict(state, result['tool_ids'])
+    if not directive:return result
+    return {**result,'decision':'manual_review','model_decision':result['decision'],
+            'request_revision_conflict':directive,
+            'reason':'사용자의 발송 변경 요청과 선택한 도구가 일치하지 않아 재검토가 필요합니다.'}
+
+
+_NEW_TASK = re.compile(
+    r'^(?:(?:이제|지금부터)\s*)?(?:새(?:로운)?|다른|별개의)\s*(?:업무|작업|요청|질문)'
+    r'(?:[.:：]|(?:으로|로|이야|입니다|예요)(?=[\s.!?,]|$))'
+)
+_MATERIAL = re.compile(
+    r'(?<!\w)([가-힣A-Za-z_][\w.-]+?)(에서|으로부터|[을를의]|(?=\s+(?:파일|이미지|문서|자료|내역)))'
+    r'(?=\s|$)'
+)
+_GENERIC_MATERIALS = {'파일', '이미지', '자료', '결과', '내용', '원본', '문서', '데이터', '항목', '합계', '평균', '금액', '목록'}
+_ACTIONS = tuple(map(re.compile, (r'추출|뽑아|읽어|정리해', r'집계|합산|계산|합계|평균', r'비교|대조', r'선별|골라|필터', r'검수|대조 검토')))
+_COMPARISON_INPUT = re.compile(r'[^.!?\n]{1,60}?(?:와|과)\s*(?:비교|대조)')
+_REFERS_BACK = re.compile(r'거기|여기|원래|기존|다시|그대로|아까|앞서|이전|위의|대신|말고|바꿔|수정|취소|그리고|추가|이어서|함께|같이|그\s*(?:결과|자료|파일|표)|도(?=\s|$)')
+
+
+def _assessment_messages(state):
+    """Replay task boundaries so quotes and delivery decisions keep the same scope after a reply."""
+    messages = state.get('messages', [])
+    start = 0
+    materials, actions = set(), set()
+    for index, message in enumerate(messages):
+        if message.get('role') != 'user':
+            continue
+        request = message['content'].strip()
+        named = set()
+        names_input = False
+        for match in _MATERIAL.finditer(request):
+            name, role = match.groups()
+            if name in _GENERIC_MATERIALS:
+                continue
+            named.add(name)
+            # Direct objects can be new output fields ("품목별 비용을 집계"), rather than
+            # new input data. A source phrase or two explicit comparison inputs are stronger evidence.
+            if role in ('에서', '으로부터', '') or (role in ('을', '를') and _COMPARISON_INPUT.match(request[match.end():])):
+                names_input = True
+        requested = {action for action in _ACTIONS if action.search(request)}
+        # A long instruction may add a step. Without an explicit reset, require both
+        # a new named input and a different kind of work before discarding evidence.
+        independent = (materials and names_input and actions and requested and actions.isdisjoint(requested)
+                       and not any(material in request for material in materials) and not _REFERS_BACK.search(request))
+        if _NEW_TASK.match(request) or independent:
+            start = index
+            materials.clear()
+            actions.clear()
+        materials.update(named)
+        actions.update(requested)
+    return messages[start:]
+
+
 def assess_capability(state,transport):
     faults=input_issues(state)
     if faults:return {'decision':'system_error','issues':faults,'model_calls':0,'allows_execution':False,'allows_generation':False}
+    # The prompt, schema, initial decision and second-pass review must use the same evidence.
+    state = {**state, 'messages': _assessment_messages(state)}
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user:raise ValueError('사용자 요청이 필요합니다.')
     schema=Assessment.model_json_schema()
@@ -170,12 +338,13 @@ def assess_capability(state,transport):
             props['missing_actions']['minItems']=1;props['missing_conditions']['maxItems']=0
         variants.append(branch)
     transport.schema={'anyOf':variants}
-    messages=[{'role':'system','content':SYSTEM}, {'role':'user','content':json.dumps({
+    directives = delivery_directives(state)
+    messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE}, {'role':'user','content':json.dumps({
         'messages':state['messages'],'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,
         'app_capabilities':APP_CAPABILITIES,
         'tools':planner_catalog(TOOLS),
-        'authoritative_request':user[-1],'user_quote_catalog':user},ensure_ascii=False)}]
+        'authoritative_request':user[-1],'active_delivery_directives':directives,'user_quote_catalog':user},ensure_ascii=False)}]
     reply=transport.invoke(messages)
     content=reply.get('content') if isinstance(reply,dict) else reply.content
     result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=1)
@@ -189,11 +358,13 @@ def assess_capability(state,transport):
 조건 사이의 모순, 미정 기준·값·단위, 정책 선택은 기능이 아니라 사용자 결정입니다. missing_actions에 이런 항목만 남는다면 clarify로 바꾸고 그 항목을 missing_conditions로 옮깁니다.
 특히 reason에서 등록 도구 조합으로 가능하다고 설명하면서 decision을 missing_capability로 반환하면 모순입니다.
 등록 도구로 요청의 모든 기능이 가능하면 existing_tools와 실제 tool_ids를 반환합니다. 필수 정책이 미정이면 clarify입니다.
-외부 전송과 표 join은 미지원으로 유지합니다. calculate_columns의 명시적 사칙연산·열 이름 변경과 text_transform의 문자열 바꾸기는 등록된 지원 기능입니다. 그 밖의 임의 셀 변환은 지원한다고 가정하지 마세요. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
+표 join은 join_tables의 실제 등록 operation·입출력·정책과 대조합니다. 이메일·캘린더처럼 등록된 외부 동작은 기능 지원과 계정 연결 전제를 구분하고, Slack처럼 등록되지 않은 전송은 미지원으로 유지합니다. calculate_columns의 명시적 사칙연산·열 이름 변경과 text_transform의 문자열 바꾸기는 등록된 지원 기능입니다. 그 밖의 임의 셀 변환은 지원한다고 가정하지 마세요. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
 user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 실행/제작 허가가 아닙니다.'''
-        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+review_prompt},
-            messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'task':'실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
+        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+review_prompt},
+            messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'authoritative_request':user[-1],'request_update_rule':REQUEST_UPDATE_RULE,'active_delivery_directives':directives,'task':'최신 사용자 변경을 먼저 적용한 뒤 남은 요청을 실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1
         result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
-    return {**validate_assessment_result(external_delivery_claims(registered_policy_claims(normalize_native_claims(result),state),state),state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}
+    result=registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state)
+    result=external_delivery_claims(guard_delivery_revision(result,state),state)
+    return {**validate_assessment_result(result,state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

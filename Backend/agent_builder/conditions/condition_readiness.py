@@ -8,14 +8,17 @@ import hashlib
 import json
 import re
 from copy import deepcopy
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from workflow_engine.catalog.registry import TOOLS
-from agent_builder.conditions.input_resolution import latest_resolution, option_answer, value_answer, resolution_question, resolution_options, pending_nonanswer
+from agent_builder.conditions.input_resolution import (
+    column_amount, column_unit, executable_number, latest_resolution, numeric_answer,
+    numeric_column, option_answer, pending_nonanswer, resolution_question, resolution_options,
+)
 
 
 class ConditionContractError(ValueError):
@@ -72,7 +75,9 @@ def choice_options(key, state):
     return []
 
 
-SUPPORTED_OPERATION_NAMES = {'filter', 'deduplicate', 'schedule', 'output', 'sort'} | {tool['id'] for tool in TOOLS}
+_INVENTED_ACTION = re.compile(r'[A-Za-z][A-Za-z0-9]*(?:[_.][A-Za-z0-9]+)+')
+
+SUPPORTED_OPERATION_NAMES ={'filter', 'deduplicate', 'schedule', 'output', 'sort'} | {tool['id'] for tool in TOOLS}
 
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
@@ -292,7 +297,7 @@ _KO_DIGIT = {'일': 1, '이': 2, '삼': 3, '사': 4, '오': 5, '육': 6, '칠': 
 _KO_SMALL = {'십': 10, '백': 100, '천': 1000}
 _KO_BIG = {'만': 10000, '억': 100000000}
 _KO_RUN = re.compile(r'(?<![가-힣A-Za-z0-9_.])[\d.,일이삼사오육칠팔구십백천만억]+(?:\s(?<=[만억]\s)[\d.,일이삼사오육칠팔구십백천만억]+)*')
-_AMOUNT_UNIT = re.compile(r'\s*(?:원|개|점|명|건|kg|킬로)')
+_AMOUNT_UNIT = re.compile(r'\s*(?:원|개|점|명|건|(?i:kg|USD|KRW)|킬로|%|달러|유로|엔|[A-Z]{3}(?![A-Za-z]))')
 
 
 def _approximate_amount(text, start, end):
@@ -319,7 +324,7 @@ def _korean_amount(run):
     return total + section + (current or 0)
 
 
-def _korean_amounts(text):
+def _korean_amounts(text, field):
     """Amounts written with Korean numerals. A run counts only when a unit (원·개·점·명·건·kg) follows
     or it ends in 만/억 with no Hangul right after, so 백업·천천히·만약·비용이 are not numbers."""
     found = set()
@@ -338,22 +343,55 @@ def _korean_amounts(text):
             if not (_AMOUNT_UNIT.match(rest) or (run[-1] in _KO_BIG and not re.match(r'[가-힣]', rest))): continue
             value = _korean_amount(run)
             if value:
-                found.add(value)
+                counter = _AMOUNT_UNIT.match(rest)
+                found.add(column_amount(value, field, counter.group().strip() if counter else None))
                 break
     return found
 
 
-def _amounts(text):
-    result = set(_korean_amounts(text))
+def _amounts(text, field=None):
+    # A header such as 매출(백만원) names the unit, not a threshold of one.
+    if column_unit(field):
+        text = text.replace(field, ' ')
+    with localcontext() as context:
+        context.prec = max(context.prec, len(text) + 10)
+        return _extract_amounts(text, field)
+
+
+def _extract_amounts(text, field):
+    result = _korean_amounts(text, field)
     approximate_runs=[(m.start(),m.end()) for m in _KO_RUN.finditer(text)
                       if _approximate_amount(text,m.start(),m.end())]
     for match in re.finditer(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(천만|백만|십만|만|천|백)?', text):
+        # The Korean parser owns a larger compound such as "100억 원".
+        # Its digit prefix alone cannot ground a second threshold of 100.
+        if text[match.end():].startswith(('억', '조')):
+            continue
         if _approximate_amount(text, match.start(), match.end()): continue
         if any(start<=match.start()<end for start,end in approximate_runs): continue
         number, unit = match.groups()
-        result.add(Decimal(number.replace(',', '')) * {'천만': 10000000, '백만': 1000000,
-                   '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}[unit or ''])
-    return result
+        value = Decimal(number.replace(',', '')) * {'천만': 10000000, '백만': 1000000,
+                   '십만': 100000, '만': 10000, '천': 1000, '백': 100, '': 1}[unit or '']
+        counter = _AMOUNT_UNIT.match(text, match.end())
+        result.add(column_amount(value, field, counter.group().strip() if counter else None))
+    return result - {None}
+
+
+def _threshold_evidence_issue(slots, state):
+    threshold = slots.get('filter.value', {})
+    if threshold.get('status') != 'specified':
+        return None
+    field = slots.get('filter.field', {}).get('value')
+    stored = threshold.get('value')
+    if type(stored) not in (int, float):
+        operator = slots.get('filter.operator', {}).get('value')
+        if isinstance(stored, str) and operator in ('gt', 'gte', 'lt', 'lte') and (column_unit(field) or numeric_column(state, field)):
+            return 'filter.value: 숫자 열의 비교 기준을 실행 가능한 숫자로 확인해야 합니다.'
+        return None
+    value = Decimal(str(stored))
+    quote = '\n'.join(e['quote'] for e in threshold.get('evidence', []))
+    if not executable_number(value) or value not in _amounts(quote, field):
+        return 'filter.value: 열 단위의 기준 값에 대응하는 원문 수치를 확인하지 못했습니다.'
 
 
 def _value(key, value):
@@ -366,8 +404,8 @@ def _value(key, value):
     if key == 'filter.value':
         try:
             number = Decimal(value.replace(',', ''))
-            if not number.is_finite():
-                raise ValueError('유한한 기준 값이 필요합니다.')
+            if not executable_number(number):
+                raise ValueError('실행 시 정확히 표현할 수 있는 기준 값이 필요합니다.')
             return float(number)
         except InvalidOperation:
             return value
@@ -396,6 +434,10 @@ _DUP_OTHER = {'error': r'오류|에러|중단|멈춰|멈추|실패',
               'keep': r'유지|그대로|지우지\s*(?:마|말)|삭제하지\s*(?:마|말)|(?:다|모두|전부)\s*남'}
 _DUP_VAGUE = r'알아서|나중에\s*정|상관\s*없|확인만|합쳐|합치|최신|최근|큰\s*행|작은\s*행|높은|낮은'
 _KEEP_AS_IS = r'지우지\s*(?:마|말)|삭제하지\s*(?:마|말)'
+_CANCEL_DEDUP = re.compile(
+    r'중복\s*(?:제거|처리)?(?:\s*(?:과|와|이랑|랑|및|·)\s*(?:슬랙|이메일|메일)(?:\s*전송)?)?'
+    r'\s*(?:은|는|을|를|도)?\s*취소'
+    r'(?:(?:\s*해(?:\s*줘|\s*주세요|요)?|할게(?:요)?)?\s*(?=$|[,;])|하고(?!\s*싶)(?=\s|$))')
 
 
 def _acts(segment, table):
@@ -438,6 +480,12 @@ def policy_clauses(text, columns):
             action_segment = re.split(r'나머지|그\s*외', segment, maxsplit=1)[0]
             found, negated = _acts(action_segment, _MISSING_ACTS)
         else:
+            cancelled = _CANCEL_DEDUP.match(segment)
+            if cancelled:
+                # Keep rows explicitly so a checkpoint or later model proposal
+                # cannot reapply a previously requested first/last policy.
+                out.append((key, 'keep', cancelled.group().strip()))
+                continue
             if re.search(_DUP_VAGUE, segment):
                 out.append((key, 'conflict', segment.strip())); continue
             found, negated = _acts(segment, _DUP_ORDER)
@@ -460,13 +508,15 @@ def policy_clauses(text, columns):
     return out
 
 
-def explicit_policies(state, catalog):
+def explicit_policies(state, catalog, *, duplicate_candidate=None):
     """Only literal, narrow policy phrases; ambiguity stays unresolved.
 
     This is not a general Korean semantic parser. Later user turns override
     earlier explicit policies. Conflicting policies in one turn are not guessed.
     """
     result = {}
+    duplicate_candidate = duplicate_candidate or {}
+    candidate_turn = max((e.get('turn', -1) for e in duplicate_candidate.get('evidence', [])), default=-1)
     patterns = [
         ('output.format', r'(CSV|JSON)\s*(?:파일|산출물)?\s*(?:으로|로|저장|생성|만들)',
          {'CSV': 'csv', 'JSON': 'json'}),
@@ -489,14 +539,44 @@ def explicit_policies(state, catalog):
                     r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|[\s,.:]|$)|'
                     r'같은\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|[\s,.:]|$)|'
                     r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) + r'\s*(?:이|가)?\s*(?:같(?!거나)|겹치))')
-        matches = [col for col in columns if re.search(column_pattern(col), text, re.IGNORECASE)]
-        refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
-                and any(re.search(column_pattern(col), e['quote'], re.IGNORECASE) for col in matches)]
-        if len(matches) == 1 and refs and not re.search(r'중복[^.!?\n]{0,30}(?:말고|아니|않|제외)', text):
-            per_turn['duplicate.field'] = {'key':'duplicate.field','status':'specified','value':matches[0],
-                'evidence_ids':[refs[0]['id']],'evidence':[refs[0]],'extraction':'literal_column_rule'}
+        matches = {col: list(re.finditer(column_pattern(col), text, re.IGNORECASE)) for col in columns}
+        matches = {col: spans for col, spans in matches.items() if spans}
+        # Ignore only negatives attached to another policy. Keep corrections after
+        # commas and reasons like "누락이 많아서 제외" in the duplicate key's clause.
+        def negates_duplicate_key(field, match):
+            clause = re.split(r'[.!?\n;]', text[match.end():], maxsplit=1)[0]
+            others = '|'.join(re.escape(col) for col in columns if col != field)
+            if others:
+                other_field = r'(?<![\w])(?:' + others + r')(?=은|는|을|를|이|가|도|으로|로|[\s,.:]|$)'
+                clause = re.split(other_field, clause, maxsplit=1, flags=re.IGNORECASE)[0]
+            independent = (r'정렬\s*(?:은|을)?\s*하지\s*(?:말고|않)|'
+                           r'(?:빈\s*\w+|결측(?:치|값)?|누락(?:값|행)?)\s*(?:은|는|을|를|도)?\s*'
+                           r'(?:(?:유지|포함|제외|삭제)하지\s*(?:말고|않)|제외)|'
+                           r'(?:CSV|JSON)(?:으로|로|은|는)?\s*(?:저장하지\s*(?:말고|않)|말고|제외)')
+            return re.search(r'말고|아니|아닌|않|제외', re.sub(independent, '', clause, flags=re.IGNORECASE))
+
+        negated = {col for col, spans in matches.items() if any(negates_duplicate_key(col, m) for m in spans)}
+        if result.get('duplicate.field', {}).get('value') in negated:
+            del result['duplicate.field']
+        remaining = matches.keys() - negated
+        field = next(iter(remaining)) if len(remaining) == 1 else None
+        # A rejected value may also come from the model or a checkpoint. Ask
+        # again unless the candidate is supported by a later user answer.
+        if field is None and duplicate_candidate.get('value') in negated and candidate_turn <= turn:
+            field = duplicate_candidate['value']
+        if field is not None:
+            refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
+                    and re.search(column_pattern(field), e['quote'], re.IGNORECASE)]
+            if refs:
+                per_turn['duplicate.field'] = {
+                    'key': 'duplicate.field', 'status': 'missing' if field in negated else 'specified',
+                    'value': None if field in negated else field, 'evidence_ids': [refs[0]['id']],
+                    'evidence': [refs[0]], 'extraction': 'literal_column_rule',
+                }
         for key, pattern, mapping in patterns:
             for match in re.finditer(pattern, message['content'], re.IGNORECASE):
+                if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
+                    continue  # the named range is dropped; leave the operator to a question
                 tail = message['content'][match.end():match.end() + 16]
                 negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
                 token = re.sub(r'\s+', ' ', match.group(1))
@@ -508,6 +588,15 @@ def explicit_policies(state, catalog):
                 per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
+        in_schedule = 'schedule.frequency' in result or 'schedule' in (state.get('condition_ledger') or {}).get('operations', [])
+        for key, value, span in schedule_literals(text, follow_up=in_schedule):
+            refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
+            if not refs: continue
+            conflict = value == 'conflict'
+            per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
+                             'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
+                             'evidence': [refs[0]], 'extraction': 'literal_schedule_rule'}
+        cancelled_dedup = False
         for key, value, span in policy_clauses(text, columns):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
             if not refs: continue
@@ -516,6 +605,17 @@ def explicit_policies(state, catalog):
             per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                              'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                              'evidence': [refs[0]], 'extraction': 'literal_policy_clause'}
+            if key == 'duplicate.policy' and value == 'keep' and _CANCEL_DEDUP.fullmatch(span):
+                cancelled_dedup = True
+        duplicate_policy = per_turn.get('duplicate.policy', {})
+        if cancelled_dedup and duplicate_policy.get('value') == 'keep':
+            # Ending deduplication also releases its key. A later request may
+            # name a different key without using one of the literal patterns.
+            result.pop('duplicate.field', None)
+            per_turn.pop('duplicate.field', None)
+            if duplicate_candidate.get('status') == 'specified' and candidate_turn <= turn:
+                per_turn['duplicate.field'] = {**duplicate_policy, 'key': 'duplicate.field',
+                                               'status': 'missing', 'value': None}
         result.update(per_turn)
     # An explicit correction to the one recorded conflicting duplicate policy
     # can be short ("마지막 행으로 해줘"). Do not interpret unrelated replies or
@@ -546,13 +646,253 @@ def literal_condition_issues(state):
     if not (state.get('condition_required') or state.get('condition_enforced')) or ledger.get('decision')!='ready':
         return []
     catalog,_=source_catalog(state)
-    literals=explicit_policies(state,catalog)
-    issues=[]
+    literals=explicit_policies(state,catalog,duplicate_candidate=ledger.get('slots', {}).get('duplicate.field'))
+    issue = _threshold_evidence_issue(ledger.get('slots') or {}, state)
+    issues=[issue] if issue else []
     for key,item in literals.items():
         stored=(ledger.get('slots') or {}).get(key)
         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
             issues.append(f'{key}: 저장된 조건이 사용자 원문과 달라 재판정이 필요합니다.')
     return issues
+
+
+# "100만원 미만인 행은 빼고" removes the named range, so the kept rows are the opposite of "미만".
+# Live 2026-11-03 (qwen3.5:4b): this sentence was confirmed as lt and kept the wrong rows.
+# The clause ends at punctuation, a keep verb or a following empty/duplicate policy clause,
+# so "미만인 행만 남기고 빈 값은 제외" stays lt. The inverted meaning is asked, never guessed.
+_RANGE_CLAUSE_END = re.compile(r'[.!?,\n]|남기|남겨|남긴|골라|고르|뽑|추려|빈\s*(?:값|칸)|빈\s|결측|중복')
+_RANGE_EXCLUSION = re.compile(r'빼|제외|말고|지우|지워|삭제|버리|버려|없애|걸러')
+
+
+_MONTHLY_SCHEDULE = re.compile(r'매월|매달|매년|월간\s*(?:예약|실행|반복)|cron|크론', re.I)
+_MONTHLY_NEGATED = re.compile(r'\s*(?:은|는|이|가|도)?\s*(?:필요\s*없|말고|빼고|빼|하지\s*마|하지\s*말|안\s*해|아니)')
+
+
+def monthly_requested(text):
+    """A monthly/yearly recurrence the user asks for; "매월은 필요 없어", "매달 말고" do not count (PR #28 review)."""
+    return any(not _MONTHLY_NEGATED.match(text[m.end():m.end() + 10]) for m in _MONTHLY_SCHEDULE.finditer(text))
+_DAILY = re.compile(r'매일|날마다|하루\s*한\s*번|daily', re.I)
+_WEEKLY = re.compile(r'매주|주마다|[월화수목금토일]요일\s*마다|매\s*[월화수목금토일]요일|weekly', re.I)
+_SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
+_TIME = re.compile(r'(오전|오후|아침|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?!간)(?:\s*(\d{1,2})\s*분|\s*(반))?')
+_WEEKDAY_NAMES = '월화수목금토일'
+_TIMEZONES = [(r'한국\s*(?:시간|표준시)|서울\s*시간|KST', 'Asia/Seoul'), (r'(?<![A-Za-z])UTC(?![A-Za-z])|협정\s*세계시', 'UTC')]
+
+
+def last_user_request(state):
+    return next((m['content'] for m in reversed(state.get('messages', [])) if m.get('role') == 'user'), '')
+
+
+def schedule_literals(text, follow_up=False):
+    """Code-read daily/weekly schedule values with the span that proves each one.
+
+    Only written values are returned: "오전 8시" is 8, "오후 6시" is 18, but a bare "8시" could be
+    08:00 or 20:00 and is left for a question. Two different values for one key are a conflict.
+    A monthly/yearly recurrence yields nothing here; validate_conditions records it as unsupported.
+    """
+    if monthly_requested(text):
+        return []
+    found = {}
+    def add(key, value, span):
+        if key in found and found[key][0] != value:
+            found[key] = ('conflict', found[key][1])
+        else:
+            found.setdefault(key, (value, span))
+    for pattern, value in ((_DAILY, 'daily'), (_WEEKLY, 'weekly')):
+        for m in pattern.finditer(text):
+            if not _SCHEDULE_NEGATED.match(text[m.end():m.end() + 8]):
+                add('schedule.frequency', value, m.group(0))
+    if 'schedule.frequency' not in found and not follow_up:
+        return []
+    # "오후 6시로 바꿔줘" after "매일 오전 9시" changes only the time (PR #28 review P1).
+    if found.get('schedule.frequency', ('weekly',))[0] == 'weekly':
+        for m in re.finditer(r'([월화수목금토일])요일', text):
+            add('schedule.weekday', _WEEKDAY_NAMES.index(m.group(1)), m.group(0))
+    for m in _TIME.finditer(text):
+        period, hour, minute, half = m.group(1), int(m.group(2)), m.group(3), m.group(4)
+        if hour > 23 or (minute and int(minute) > 59):
+            continue
+        if period in ('오후', '저녁', '밤') and hour < 12:
+            hour += 12
+        elif period in ('오전', '아침', '새벽') and hour == 12:
+            hour = 0
+        elif not period and 1 <= hour <= 12:
+            if follow_up and 'schedule.frequency' not in found:
+                # "6시로 바꿔줘" changes the time but not to a known value; never keep the old one silently.
+                found['schedule.hour'] = ('conflict', m.group(0))
+            continue  # 08:00 or 20:00 is the user's decision
+        add('schedule.hour', hour, m.group(0))
+        add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
+    for pattern, zone in _TIMEZONES:
+        m = re.search(pattern, text, re.I)
+        if m:
+            add('schedule.timezone', zone, m.group(0))
+    return [(key, value, span) for key, (value, span) in found.items()]
+
+
+def _excludes_named_range(text, end):
+    """True when the operator word ending at `end` names rows to drop, not rows to keep."""
+    clause = _RANGE_CLAUSE_END.split(text[end:end + 20], maxsplit=1)[0]
+    return bool(_RANGE_EXCLUSION.search(clause))
+
+
+_WRITTEN_OPERATOR = {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}
+_OPERATOR_WORD = {value: word for word, value in _WRITTEN_OPERATOR.items()}
+_OPPOSITE_BOUND = {'gte': 'lt', 'gt': 'lte', 'lte': 'gt', 'lt': 'gte'}
+_WRITTEN_BOUND = re.compile(
+    r'(?<![\d.+-])(?P<amount>\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백|억)?\s*(?:원|개|점|명|건|kg|%)?)'
+    r'\s*(?P<operator>초과|이상|미만|이하)')
+_BOUND_JOIN = re.compile(r'\s*(?:이고|이며|이거나|또는|혹은|및|,)\s*')
+_BOUND_SUBJECT_END = r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:값\s*)?(?:이|가|은|는)?\s*(?:기준으로|기준)?\s*$'
+_RANGE_PROHIBITION = re.compile(r'^\s*(?:두|놓)?(?:하|으)?면\s*안\s*(?:돼요?|됩니다|된다|됨)(?=\s*(?:[.!?,;\n]|$))')
+_AFFIRMATIVE_END = re.compile(r'^(?:(?:해)?\s*(?:줘요?|주세요|주십시오)|해)?\s*(?=$|[.,;!?~])')
+_ACTION_CONNECTIVE = re.compile(r'^(?:하고|해서|하여|한\s+(?:뒤|후)|고|서)?\s+')
+_NEXT_OPERATION = re.compile(r'(?:(?:CSV|JSON|엑셀|파일|표)(?:으로|로)\s*)?(?:저장|출력|정렬|집계)'
+                             r'|[^\s.,]+\s+(?:큰|작은|높은|낮은)\s*순(?:서)?로\s*정렬', re.I)
+_QUOTED_TEXT = re.compile(r'''“[^”]*”|‘[^’]*’|「[^」]*」|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`''')
+
+
+def _range_action(suffix, subjects):
+    """Classify only the action on these rows, stopping before the next operation or condition."""
+    tail = re.sub(r'^\s*(?:인\s*)?(?:(?:행|항목|값|것)(?:들)?\s*)?(?:까지|부터|만|을|를|은|는)?\s*(?:으로|로)?\s*', '', suffix)
+    action = re.match(r'(제외|빼|삭제|지우|지워|버리|버려|없애|남기|남겨|포함|골라|고르|저장|바꾸|바꿔|변경)', tail)
+    if action:
+        rest = tail[action.end():]
+        if _RANGE_PROHIBITION.match(rest):
+            # Prohibiting these rows rules them out. Prohibiting *only* these rows is ambiguous.
+            qualifier = suffix[:len(suffix) - len(tail)]
+            if '만' not in qualifier and action.group() in ('남기', '남겨', '포함', '골라', '고르'):
+                return 'exclude'
+            return None
+        if re.match(_NEG, rest) or re.match(r'\s*(?:금지|하면\s*안|해서는?\s*안|할\s*필요[가는]?\s*없)', rest):
+            return None
+        # A connective is affirmative only when it actually introduces the next operation
+        # or named comparison. In "남기고 싶지 않아" it still belongs to the negated verb.
+        if not _AFFIRMATIVE_END.match(rest):
+            connective = _ACTION_CONNECTIVE.match(rest)
+            if not connective:
+                return None
+            following = rest[connective.end():]
+            if not _NEXT_OPERATION.match(following):
+                bound = _WRITTEN_BOUND.search(following)
+                if not bound or not any(pattern.fullmatch(following[:bound.start()]) for _, pattern in subjects):
+                    return None
+        return 'exclude' if _RANGE_EXCLUSION.fullmatch(action.group()) else 'include'
+    if re.match(r'말고', tail):
+        return 'exclude'
+    # Do not infer a predicate for unrecognized or negated phrasing.
+    if not tail or re.match(r'[,.;!?\n]|이고|이며|이거나|또는|혹은|및', tail):
+        return 'include'
+    return None
+
+
+def _comparison_turns(messages, subjects):
+    fields = {name for name, _ in subjects}
+    for message in messages:
+        if message.get('role') != 'user':
+            continue
+        # Quoted examples and literal cell text are not instructions for the filter.
+        text = _QUOTED_TEXT.sub(' ', message['content'])
+        turn = {}
+        previous_end, previous_field = None, None
+        unbound = False
+        for match in _WRITTEN_BOUND.finditer(text):
+            prefix = text[:match.start()]
+            owner = next((name for name, pattern in subjects if pattern.search(prefix)), None)
+            if owner is None and previous_end is not None and _BOUND_JOIN.fullmatch(text[previous_end:match.start()]):
+                owner = previous_field
+            previous_end, previous_field = match.end(), owner
+            if owner is None:
+                unbound = True
+                turn.clear()
+                continue
+            operator = _WRITTEN_OPERATOR[match['operator']]
+            side = 'lower' if operator in ('gt', 'gte') else 'upper'
+            action = _range_action(text[match.end():], subjects)
+            for amount in _amounts(match['amount'], owner):
+                turn.setdefault(owner, {}).setdefault(side, set()).add((amount, operator, action))
+        reverse = previous_end is None and re.search(r'반대로|(?:그|이전|기존)\s*(?:선별|필터|비교)?\s*조건.{0,8}(?:취소|삭제|없애|빼|바꿔)', text)
+        ambiguous_fields = fields if unbound else set()
+        if previous_end is None and (reverse or (re.search(r'\d', text) and re.search(r'[<>]|보다|넘|밑돌|초과|이상|미만|이하|임계값|기준값', text))):
+            # Other ways of writing a comparison ("amount > 30", "30을 넘는 행") invalidate
+            # stale evidence without guessing the new predicate or erasing another named field.
+            named = {name for name in fields if re.search(r'(?<![\w])' + re.escape(name) + r'(?![A-Za-z0-9_])', text)}
+            ambiguous_fields = named or fields
+        yield turn, ambiguous_fields
+
+
+def _field_bounds(turns, field):
+    """Track the last explicit lower and upper bounds independently for one exact column name."""
+    current, retired = {}, set()
+    for turn, ambiguous_fields in turns:
+        # An unnamed follow-up may replace this field's comparison. Leave the new draft alone
+        # instead of forcing it back to the old turn. A change naming another column is independent.
+        if field in ambiguous_fields:
+            current.clear()
+            retired.clear()
+        for side, entries in turn.get(field, {}).items():
+            if all(action is not None for _, _, action in entries):
+                retired.update((v, op) for v, op, action in current.get(side, ()) if action == 'include')
+            current[side] = entries
+    active = {}
+    for entries in current.values():
+        for value, operator, action in entries:
+            active.setdefault(value, set()).add((operator, action))
+    return active, retired
+
+
+def _draft_comparison_mismatches(state, draft):
+    plans = [draft.get('execution_plan')]
+    for node in (draft.get('workflow') or {}).get('nodes', []):
+        settings = node.get('settings') or {}
+        if node.get('tool') == 'filter_sort' and not settings.get('operation'):
+            plans.append(settings.get('execution_plan'))
+    fields = {rule['field'] for plan in plans for rule in (plan or {}).get('filters', []) if rule.get('field')}
+    if not fields:
+        return
+    subjects = [(field, re.compile(r'(?<![\w])' + re.escape(field) + _BOUND_SUBJECT_END))
+                for field in sorted(fields, key=len, reverse=True)]
+    turns = list(_comparison_turns(state.get('messages', []), subjects))
+    by_field = {}
+    for plan in plans:
+        for rule in (plan or {}).get('filters', []):
+            field, operator = rule.get('field'), rule.get('operator')
+            if not field or rule.get('value_type') != 'number' or rule.get('compare_field') or operator not in _OPERATOR_WORD:
+                continue
+            try:
+                value = Decimal(str(rule.get('value')))
+            except InvalidOperation:
+                continue
+            if not value.is_finite():
+                continue
+            if field not in by_field:
+                by_field[field] = _field_bounds(turns, field)
+            active, retired = by_field[field]
+            bounds = active.get(value, set())
+            allowed = {op for op, action in bounds if action == 'include'}
+            complements = {_OPPOSITE_BOUND[op] for op, action in bounds if action == 'exclude'}
+            if any(action is None for _, action in bounds) or operator in allowed or operator in complements:
+                continue
+            if allowed and all(action == 'include' for _, action in bounds):
+                replacement = next(iter(allowed)) if len(allowed) == 1 else None
+                expected = '·'.join(_OPERATOR_WORD[op] for op in sorted(allowed))
+                yield rule, replacement, f"{field} {rule['value']}의 비교 방식은 '{expected}'인데 초안은 '{_OPERATOR_WORD[operator]}'입니다."
+            elif complements or (value, operator) in retired:
+                yield rule, None, f"{field} {rule['value']}: 제외했거나 바뀐 이전 조건이 초안에 남아 있습니다."
+
+
+def canonical_written_operators(state, draft):
+    """Correct an operator only for a single, explicit inclusive/exclusive boundary on the same field and value."""
+    corrected, changes = deepcopy(draft or {}), []
+    for rule, operator, _ in _draft_comparison_mismatches(state, corrected):
+        if operator is not None:
+            changes.append(f"{rule['field']} {rule['value']}: {_OPERATOR_WORD[rule['operator']]}→{_OPERATOR_WORD[operator]}")
+            rule['operator'] = operator
+    return (corrected if changes else None), list(dict.fromkeys(changes))
+
+
+def written_comparison_issues(state, draft):
+    return list(dict.fromkeys(issue for _, _, issue in _draft_comparison_mismatches(state, draft)))
 
 
 def _grounded_enum(key, value, quote):
@@ -566,11 +906,20 @@ def _grounded_enum(key, value, quote):
     if key == 'missing.policy':
         policy={'exclude':r'제외|빼|삭제','keep':r'유지|포함|그대로','error':r'오류|에러|중단'}[value]
         return bool(re.search(r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?).{0,20}(?:'+policy+r')',quote))
+    if key == 'schedule.frequency':
+        # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
+        # match; a monthly/yearly one never grounds daily or weekly.
+        if monthly_requested(quote):
+            return False
+        return bool((_DAILY if value == 'daily' else _WEEKLY).search(quote))
     if key == 'filter.operator':
         aliases = {'gt': r'초과|보다\s*큰', 'gte': r'이상', 'lt': r'미만|보다\s*작은',
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
-        return bool(re.search(aliases[value], quote))
+        matches = list(re.finditer(aliases[value], quote))
+        if value in ('gt', 'gte', 'lt', 'lte') and any(_excludes_named_range(quote, m.end()) for m in matches):
+            return False
+        return bool(matches)
     return True
 
 
@@ -596,6 +945,13 @@ def validate_conditions(raw, state, catalog):
     if misplaced:
         proposal['unsupported_actions'] = [a for a in proposal['unsupported_actions'] if a not in misplaced]
         invalid.append('unsupported_actions: 지원 작업 이름은 미지원 동작이 아님 ('+', '.join(misplaced)+')')
+    # An identifier the model made up ("delete_duplicates_by_multiple_fields", "create_data") is not a
+    # request the user wrote. Live 2026-11-03 it ended a session with "지원 범위: create_data /
+    # inference_generation". It is dropped as a stated gap, but its presence never lets the turn be READY.
+    invented = [a for a in proposal['unsupported_actions'] if _INVENTED_ACTION.fullmatch(a.strip())]
+    if invented:
+        proposal['unsupported_actions'] = [a for a in proposal['unsupported_actions'] if a not in invented]
+        invalid.append('unsupported_actions: 원문에 없는 식별자 형태의 동작 ('+', '.join(invented)+')')
     by_id = {e['id']: e for e in catalog}
     previous = deepcopy(state.get('condition_ledger') or {})
     for key, old in previous.get('slots', {}).items():
@@ -622,8 +978,6 @@ def validate_conditions(raw, state, catalog):
                     raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
                 if key.endswith('.field') and value not in quote:
                     raise ValueError('원문에 없는 열 이름입니다.')
-                if key == 'filter.value' and isinstance(value, float) and Decimal(str(value)) not in _amounts(quote):
-                    raise ValueError('기준 값에 대응하는 원문 수치를 확인하지 못했습니다.')
                 # A text threshold (상태 '완료') must be written in the request too; live runs returned
                 # '}', '{200 만원}', 'kgs' as filter.value and they were confirmed unchecked.
                 if key == 'filter.value' and isinstance(value, str) and value not in quote:
@@ -659,7 +1013,14 @@ def validate_conditions(raw, state, catalog):
     for key, old in previous.get('slots', {}).items():
         if key not in slots:
             slots[key] = deepcopy(old)
-    literals = explicit_policies(state,catalog)
+    literals = explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'))
+    def _turn(item):
+        return max((e.get('turn', -1) for e in item.get('evidence', [])), default=-1)
+    for key, item in list(literals.items()):
+        # A schedule value the user corrected in a later turn (grounded by that turn) is the current one.
+        if key.startswith('schedule.') and slots.get(key, {}).get('status') == 'specified' and _turn(slots[key]) > _turn(item):
+            invalid.append(f'{key}: 이후 차례의 수정값을 우선')
+            literals.pop(key)
     for key, item in literals.items():
         if key not in slots or slots[key]['status']!=item['status'] or slots[key]['value']!=item['value']:
             invalid.append(f'{key}: 사용자의 명시적 정책 구절로 보존·대조')
@@ -671,12 +1032,21 @@ def validate_conditions(raw, state, catalog):
             value = CHOICES[choice['key']][choice['label']] if choice['key'] in CHOICES else choice['label']
             slots[choice['key']] = {'key': choice['key'], 'status': 'specified', 'value': value,
                                     'evidence_ids': [evidence[0]['id']], 'evidence': evidence}
-    amount = value_answer(state)
+    amount = numeric_answer(state)
     if amount:
         evidence = [e for e in catalog if e['source_id'] == 'user' and e.get('turn') == amount['turn']][:1]
-        if evidence and amount['value'] in _amounts(evidence[0]['quote']):
+        if evidence and amount['value'] is not None:
             slots['filter.value'] = {'key': 'filter.value', 'status': 'specified', 'value': float(amount['value']),
                                      'evidence_ids': [evidence[0]['id']], 'evidence': evidence}
+        else:
+            slots['filter.value'] = {'key': 'filter.value', 'status': 'missing', 'value': None,
+                                     'evidence_ids': [], 'evidence': []}
+    # The model may return filter.value before filter.field. Validate after
+    # both slots are known so its proposal uses the executor's column unit.
+    issue = _threshold_evidence_issue(slots, state)
+    if issue:
+        slots['filter.value'].update(status='missing', value=None)
+        invalid.append(issue)
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
     # A follow-up may focus on deduplication and omit the earlier filter from
     # the model's single-operation label. Preserve it whenever its three
@@ -688,6 +1058,14 @@ def validate_conditions(raw, state, catalog):
     if 'duplicate.policy' in literals and slots['duplicate.policy'].get('value') in ('first', 'last'):
         if 'deduplicate' not in operations:
             operations.append('deduplicate')
+    # A written daily/weekly schedule must not disappear because the single-operation proposal
+    # labelled the request "filter": live 2026-11-03, 17 of 17 READY schedule requests were
+    # confirmed without their schedule. The literal values above are its evidence; anything not
+    # written is asked. A monthly/yearly recurrence is a known unsupported schedule.
+    if 'schedule.frequency' in literals and 'schedule' not in operations:
+        operations.append('schedule')
+    if monthly_requested(last_user_request(state)) and '월간 예약' not in proposal['unsupported_actions']:
+        proposal['unsupported_actions'].append('월간 예약')
     if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
         # Do not lose a requested filter simply because the model labelled the
         # request as deduplication; ask for absent conditions rather than guess.
@@ -729,6 +1107,8 @@ def validate_conditions(raw, state, catalog):
                 'manual_review' if scope_review else
                 'ready' if not operations and slots.get('duplicate.policy',{}).get('value')=='keep' and not unresolved else
                 'manual_review' if not operations else 'clarify' if unresolved else 'ready')
+    if invented and decision == 'ready':
+        decision = 'manual_review'  # a dropped model claim may still hide a real gap; never auto-READY
     identity = json.dumps({'session': state.get('session_id', 'isolated'), 'messages': state.get('messages', []),
                            'versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}, sort_keys=True, ensure_ascii=False)
     questions = []
@@ -736,6 +1116,8 @@ def validate_conditions(raw, state, catalog):
         for key in unresolved[:3]:
             text = ('예약에는 지금 관리 표 파일이 필요합니다. 자료 연결로 업로드해주세요.' if key == 'input.table' else
                     ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') + QUESTIONS[key])
+            if key == 'filter.value' and amount and amount.get('issue'):
+                text = amount['issue']
             is_resolution = resolution and key in resolution['keys']
             questions.append({'id': hashlib.sha256((identity + key).encode()).hexdigest()[:24], 'key': key,
                               'text': resolution_question(key, resolution, text) if is_resolution else text,
@@ -756,7 +1138,7 @@ def judge_conditions(state, transport, max_contract_repairs=0):
         raise ValueError('조건 응답 수정 한도는 0~1회입니다.')
     messages, schema, catalog = prepare_conditions(state)
     nonanswer=pending_nonanswer(state)
-    if input_issues(state) or latest_resolution(state) or option_answer(state) or value_answer(state) or nonanswer:
+    if input_issues(state) or latest_resolution(state) or option_answer(state) or numeric_answer(state) or nonanswer:
         result = validate_conditions({'operations': [], 'conditions': [], 'unsupported_actions': []}, state, catalog)
         return {'ledger': result, 'model_calls': 0, 'messages': messages, 'metrics': {}}
     transport.schema = schema

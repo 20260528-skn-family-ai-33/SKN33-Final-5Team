@@ -1,9 +1,10 @@
 """Enforced capability decisions persist through generation, resume and save."""
 import hashlib
 import os
-from agent_builder.capabilities.capability_judgement import assess_capability, validate_assessment_result, AssessmentConflictError
+import re
+from agent_builder.capabilities.capability_judgement import assess_capability, guard_delivery_revision, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
-from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, value_answer, pending_nonanswer
+from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, numeric_answer, pending_nonanswer
 from agent_builder.conditions.condition_check import _pending_draft
 
 
@@ -13,6 +14,25 @@ def _question_text(text):
     if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
     if text.endswith(('?', '주세요.', '알려주세요', '주세요')):return text
     return text.rstrip('.')+'에 대해 알려주세요.'
+
+
+# Only explicit acknowledgements/non-progress replies may reuse a verdict.
+# Absence of a task verb is not evidence that the scope is unchanged:
+# "메일은 취소", "요약만" and unknown short replies must be reconsidered.
+_PASSIVE_REPLIES=frozenset({
+    '네','넵','예','응','응좋아','좋아','좋아요','알겠어','알겠어요','알겠습니다',
+    '확인','확인했어','확인했어요','확인했습니다','오케이','ok','okay',
+    '모두유지','전부유지','그대로','그만할래',
+})
+
+
+
+def _short_reply(state):
+    """Reuse only known passive replies; scope changes always reach assessment."""
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    if not user:return False
+    text=re.sub(r'[\s.!?~]+','',user[-1]).casefold()
+    return text in _PASSIVE_REPLIES
 
 
 def make_capability_check(model,transport=None,mode=None):
@@ -30,14 +50,15 @@ def make_capability_check(model,transport=None,mode=None):
             event=events[-1] if events and events[-1]['turn']==len(state.get('messages',[]))-1 else None
             previous=state.get('capability_assessment') or {}
             if faults:result=assess_capability(state,None)
-            elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or value_answer(state) or pending_nonanswer(state))
+            elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or numeric_answer(state) or pending_nonanswer(state))
                   and state.get('messages', [])[-1].get('role')=='user'
                   and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
                 # A non-answer or an offered closed-vocabulary choice for a condition question
                 # changes no supported-action facts. Reuse only with the original
                 # request/resources/catalog intact; condition_check still validates the slots.
                 validate_assessment_result(previous,state)
-                result={**previous,'model_calls':0,'answer_resolution':'condition_choice' if option_answer(state) or value_answer(state) else 'condition_nonanswer'}
+                resolution = 'condition_choice' if option_answer(state) or numeric_answer(state) else 'condition_nonanswer'
+                result = guard_delivery_revision({**previous, 'model_calls': 0, 'answer_resolution': resolution}, state)
             elif event and previous.get('decision')=='clarify' and event['kind'] in ('unknown','defer','guidance'):
                 validate_assessment_result(previous,state)
                 ids=set(event['question_ids'])
@@ -45,6 +66,15 @@ def make_capability_check(model,transport=None,mode=None):
                 deferred=event['kind']=='defer' or count>=2
                 result={**previous,'model_calls':0,'answer_resolution':event['kind']}
                 reuse_questions=True
+            elif (previous.get('decision') in ('missing_capability','manual_review') and _short_reply(state)
+                  and state.get('messages', [])[-1].get('role')=='user'
+                  and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
+                # A short reply with no new task ("네", "모두 유지", "그만할래") changes no supported-action
+                # facts. Re-judging the whole conversation flipped the verdict on every turn (live
+                # 2026-11-03: missing_capability -> existing_tools -> invented "월간 예약").
+                # A reply to a clarify question is an answer and is judged again (branches above/below).
+                validate_assessment_result(previous,state)
+                result={**previous,'model_calls':0,'answer_resolution':'short_reply'}
             else:
                 if transport is None:
                     from agent_builder.design.nodes.direct_conversation import OllamaPlanner
@@ -67,6 +97,8 @@ def make_capability_check(model,transport=None,mode=None):
             pending=[q for q in state.get('pending_questions',[]) if q.get('source')!='capability']
             update.update(capability_questions=[],pending_questions=pending,confirmed=False,saved_agent_id=None,gap_condition_review=None,
                           issues=[],semantic_issues=[])
+            if result.get('native_schedule_reconciled'):
+                update['condition_required']=True  # schedule slots must be grounded before any draft
         elif decision=='clarify':
             questions=(state.get('capability_questions',[]) if reuse_questions else [])
             if not questions:

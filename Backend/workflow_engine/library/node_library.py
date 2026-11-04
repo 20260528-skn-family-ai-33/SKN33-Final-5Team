@@ -28,6 +28,12 @@ class NodeSpec(BaseModel):
             raise ValueError('에이전트 지시사항은 10자 이상 입력하세요.')
         if self.kind == 'processing' and (self.model or self.reference):
             raise ValueError('처리 노드는 모델과 참고 텍스트를 사용하지 않습니다.')
+        from workflow_engine.catalog.registry import uses_operation
+        from workflow_engine.catalog.settings import validate_execution_settings
+        selected={'tool':self.tool,'settings':self.settings.model_dump()}
+        validate_execution_settings(selected,operation=uses_operation(selected))
+        if uses_operation(selected) and self.execution_plan is not None:
+            raise ValueError('확장 동작의 실행 계약은 노드 라이브러리의 기본 execution_plan을 사용하지 않습니다.')
         projection_port=(self.tool in ('json_transform','list_transform') and bool(self.settings.operation))
         if self.settings.node_ref or self.settings.file_ids or any(getattr(self.settings,key) is not None for key in ['agent_id','agent_version','output_node']) or (self.settings.output_port is not None and not projection_port):
             raise ValueError('노드는 다른 노드나 개인 자료 ID를 내장하지 않습니다. 파일은 워크플로우에서 연결하세요.')

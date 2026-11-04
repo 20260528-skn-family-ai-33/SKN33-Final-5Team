@@ -17,7 +17,7 @@ export async function readDocument(node:FlowNode,input:Json[],signal?:AbortSigna
   if(!allowed.has(ext))throw new Error('이 형식은 문서 읽기에서 지원하지 않아요. 문서 분석 설정과 지원 형식을 확인하세요.');
   const dir=await mkdtemp(join(tmpdir(),'easyflow-document-'));try{
    const source=join(dir,'input.'+ext),output=join(dir,'output.json');await writeFile(source,decodeBinaryFile(file));
-   const python=doclingPython();if(!python)throw new Error('Docling 환경이 없습니다. Backend/scripts/setup-document-demo.sh로 설치하세요.');
+   const python=doclingPython();if(!python)throw new Error('Docling 환경이 없습니다. scripts/setup/setup-document-demo.sh로 설치하세요.');
    const configured=Number(process.env.A4B_PDF_TIMEOUT_MS);const timeout=Number.isFinite(configured)&&configured>0&&configured<=1800000?configured:300000;
    await run(python,[backendPath('documents/parsers/document_worker.py'),source,output],{timeout,maxBuffer:1024*1024,signal,env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1'}});
    const data=JSON.parse(await readFile(output,'utf8'));if(data.error||!data.text?.trim())throw new Error('문서에서 실제 본문을 추출하지 못했어요.');

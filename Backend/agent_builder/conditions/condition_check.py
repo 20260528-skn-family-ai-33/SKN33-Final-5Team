@@ -157,15 +157,24 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
 
 
 def audit_conditions(state):
+    from agent_builder.conditions.condition_readiness import canonical_written_operators, literal_condition_issues
+    corrected, changes = canonical_written_operators(state, state.get('draft') or {})
+    update = {}
+    trace = list(state.get('trace', []))
+    if corrected is not None:
+        state = {**state, 'draft': corrected}
+        update['draft'] = corrected
+        trace.append({'node': 'condition_audit', 'label': '원문 비교 방식 반영', 'status': 'completed',
+                      'detail': ', '.join(changes), 'model_calls': 0})
+        update['trace'] = trace
     ledger = state.get('condition_ledger')
     if not ledger or ledger.get('decision') != 'ready':
-        return {}
-    from agent_builder.conditions.condition_readiness import literal_condition_issues
+        return update
     from agent_builder.design.planner_constraints import table_tool_issues
     issues = literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
-    update = {'trace': state.get('trace', []) + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
+    update['trace'] = trace + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
-               'issues': issues, 'enforced': state.get('condition_enforced', False)}]}
+               'issues': issues, 'enforced': state.get('condition_enforced', False)}]
     if state.get('condition_enforced') and issues:
         update['semantic_issues'] = list(dict.fromkeys(state.get('semantic_issues', []) + issues))
         if state['draft'].get('questions') or state['draft'].get('unsupported'):

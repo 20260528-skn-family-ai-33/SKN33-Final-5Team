@@ -131,3 +131,64 @@ def test_answers_to_questions_keep_the_whole_conversation():
     transport = Fake([answer('비용 큰 것들만 골라서 파일로 만들어줘.')])
     assert assess_capability(s, transport)['decision'] == 'existing_tools'
     assert len(quote_enum(transport)) == 2
+
+
+# Second review (cde7e55): two axes at once. Each case checks both that the right draft is kept
+# and that the wrong draft (old or dropped condition) is still stopped.
+def blocked(s, *filters):
+    return bool(written_comparison_issues(s, drafted(*filters)))
+
+
+def test_include_changed_to_exclude_takes_the_old_condition_back():
+    s = talk('amount가 30 이상인 행만 남겨 JSON으로 저장해줘.', '저장할까요?', '아니, amount가 30 이상인 행은 제외하고 저장해줘.')
+    assert corrected(s, flt('lt', 30.0)) == (['lt'], [])
+    assert not blocked(s, flt('lt', 30.0))
+    assert corrected(s, flt('gte', 30.0)) == (['gte'], []) and blocked(s, flt('gte', 30.0))
+
+
+def test_audit_keeps_the_right_draft_after_include_becomes_exclude():
+    from agent_builder.conditions.condition_check import audit_conditions
+    s = {**talk('amount가 30 이상인 행만 남겨 JSON으로 저장해줘.', '저장할까요?', '아니, amount가 30 이상인 행은 제외하고 저장해줘.'),
+         'draft': drafted(flt('lt', 30.0)), 'trace': []}
+    assert audit_conditions(s) == {}
+
+
+def test_dropped_range_in_the_same_turn_is_not_kept():
+    s = talk('amount가 30 이상인 행은 제외해줘.')
+    assert blocked(s, flt('gte', 30.0)) and not blocked(s, flt('lt', 30.0))
+
+
+@pytest.mark.parametrize('text,fields,right,wrong,fixed_in_code', [
+    # amount's kept range is the opposite of a dropped one: not guessed, so the wrong draft is stopped.
+    ('total_amount가 30 이상인 행만 남기고, amount가 30 이상인 행은 제외해서 JSON으로 저장해줘.',
+     ['total_amount', 'amount'], ['gte', 'lt'], ['gte', 'gte'], False),
+    ('30 이상인 amount_total만 남기고 amount는 30 미만만.', ['amount_total', 'amount'], ['gte', 'lt'], ['gte', 'gte'], True),
+    ('총매출이 30 이상인 행만 남기고 매출이 30 미만인 행만.', ['총매출', '매출'], ['gte', 'lt'], ['gte', 'gte'], True),
+])
+def test_partly_overlapping_column_names_are_different_columns(text, fields, right, wrong, fixed_in_code):
+    s = talk(text)
+    good = [flt(o, 30.0, field=f) for f, o in zip(fields, right)]
+    bad = [flt(o, 30.0, field=f) for f, o in zip(fields, wrong)]
+    assert corrected(s, *good) == (right, []) and not blocked(s, *good)
+    if fixed_in_code:
+        assert corrected(s, *bad)[0] == right
+    else:
+        assert corrected(s, *bad)[0] == wrong and blocked(s, *bad)
+
+
+def test_column_name_inside_a_longer_word_is_not_the_subject():
+    assert not blocked(talk('매출액이 30 이상인 행만 저장해줘.'), flt('gt', 30.0, field='매출'))
+    assert blocked(talk('매출은 30 이상인 행만 저장해줘.'), flt('gt', 30.0, field='매출'))
+
+
+def test_changing_the_upper_bound_keeps_the_lower_bound():
+    s = talk('amount가 30 이상이고 amount가 100 이하인 행만 남겨 JSON으로 저장해줘.', '저장할까요?',
+             '하한은 그대로 두고 amount가 200 이하인 행까지 남겨줘.')
+    assert not blocked(s, flt('gte', 30.0), flt('lte', 200.0))
+    assert blocked(s, flt('gte', 30.0), flt('lte', 100.0))
+
+
+def test_changing_the_lower_bound_keeps_the_upper_bound():
+    s = talk('amount가 30 이상이고 amount가 100 이하인 행만.', '저장할까요?', 'amount가 50 이상으로 바꿔줘.')
+    assert not blocked(s, flt('gte', 50.0), flt('lte', 100.0))
+    assert blocked(s, flt('gte', 30.0), flt('lte', 100.0))

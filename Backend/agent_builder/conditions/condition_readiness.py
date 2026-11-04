@@ -661,47 +661,73 @@ def written_comparisons(text):
 _JOINED_COMPARISON = re.compile(r'\s*(?:인|이)?\s*(?:거나|이거나|이고|이며|또는|혹은|및|,|이면서)?\s*')
 
 
+# A column name ends where a particle, a separator or the text does: "amount가" names amount,
+# "amount_total" and "매출액" do not (PR #39 second review).
+_FIELD_END = r'(?![A-Za-z0-9_])(?=$|[^가-힣]|(?:으로|이고|이며|이면|은|는|이|가|을|를|만|의|에|과|와|도|로|인)(?:[^가-힣]|$))'
+_LOWER, _UPPER = {'gt', 'gte'}, {'lt', 'lte'}
+
+
 def _names_field(text, match, field):
     """True when `field` is the subject of the comparison `match`.
 
     The field must sit right before the number ("amount가 30 이상", "점수 열 기준으로 90점 이상")
     or right after the operator ("100만원 초과인 비용"). A field named elsewhere in the clause
-    ("qty와 price를 곱한 amount 열을 만들고 amount가 30 이상") is not the subject (PR #39 review 1).
+    ("qty와 price를 곱한 amount 열을 만들고 amount가 30 이상") is not the subject (PR #39 review 1),
+    and the whole column name must match: "total_amount가 30 이상" says nothing about amount.
     """
     if not field:
         return False
-    before = text[max(0, match.start() - 16):match.start()]
-    after = text[match.end():match.end() + 8]
-    name = re.escape(str(field))
-    return bool(re.search(name + r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:값\s*)?(?:이|가|은|는|의)?\s*(?:기준으로|기준|에서)?\s*$', before, re.I)
-                or re.match(r'\s*(?:인|한)?\s*' + name, after, re.I))
+    name = r'(?<![A-Za-z0-9_가-힣])' + re.escape(str(field))
+    return bool(re.search(name + r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:값\s*)?(?:이|가|은|는|의)?\s*(?:기준으로|기준|에서)?\s*$',
+                          text[:match.start()], re.I)
+                or re.match(r'\s*(?:인|한)?\s*' + re.escape(str(field)) + _FIELD_END, text[match.end():], re.I))
+
+
+def _side(operator):
+    return 'lower' if operator in _LOWER else 'upper'
 
 
 def _field_comparisons(state, field):
-    """({value: operators} from the latest turn that compares `field`, {values only earlier turns used}).
+    """({value: operators} the user currently asks for on `field`, {value: operators} they took back).
 
-    A later turn that compares the same field replaces the earlier turns' comparisons for it
-    ("30 이상" then "아니, 30 초과"), and other fields keep theirs (PR #39 review 2). Dropped ranges
-    ("qty가 30 이상인 행은 제외") are never used: their kept range is the opposite, which code does not guess.
+    Kept per bound: a later turn that states a lower bound ("30 초과로 바꿔줘") replaces only the
+    earlier lower bound, so "하한은 그대로 두고 200 이하까지" keeps "30 이상" (PR #39 second review).
+    A later turn that drops a range ("amount가 30 이상인 행은 제외") takes back the earlier included
+    condition with that number, and a draft keeping that dropped range is wrong; the kept range is the
+    opposite, which code does not guess, so it is never used to correct a draft.
     """
-    current, earlier = {}, set()
+    sides = {'lower': {}, 'upper': {}}; taken_back = {}
     for message in state.get('messages', []):
         if message.get('role') != 'user':
             continue
-        text = message['content']; turn = {}; previous = None
+        text = message['content']; kept = {'lower': {}, 'upper': {}}; dropped = {}; previous = None
         for m in _WRITTEN_COMPARISON.finditer(text):
             # "amount가 30 이상이거나 30 미만": a comparison joined straight to the previous one shares its subject.
             bound = _names_field(text, m, field) or bool(
                 previous and _JOINED_COMPARISON.fullmatch(text[previous.end():m.start()]) and _names_field(text, previous, field))
             previous = m
-            if not bound or _excludes_named_range(text, m.end()):
+            if not bound:
                 continue
+            operator = _OPERATOR_WORDS[m.group(1)]
             for amount in _amounts(m.group(0)):
-                turn.setdefault(Decimal(amount), set()).add(_OPERATOR_WORDS[m.group(1)])
-        if turn:
-            earlier |= set(current) - set(turn)
-            current = turn
-    return current, earlier - set(current)
+                if _excludes_named_range(text, m.end()):
+                    dropped.setdefault(Decimal(amount), set()).add(operator)
+                else:
+                    kept[_side(operator)].setdefault(Decimal(amount), set()).add(operator)
+        for side in sides:
+            for value, operators in list(sides[side].items()):
+                if kept[side] or value in dropped:
+                    taken_back.setdefault(value, set()).update(operators)
+                    del sides[side][value]
+            for value, operators in kept[side].items():
+                sides[side].setdefault(value, set()).update(operators)
+        for value, operators in dropped.items():  # the dropped range itself must not be kept
+            taken_back.setdefault(value, set()).update(operators)
+    current = {}
+    for side in sides.values():
+        for value, operators in side.items():
+            current.setdefault(value, set()).update(operators)
+    return current, {v: ops for v, ops in taken_back.items() if v not in current}
 
 
 def _constant_filters(draft):
@@ -746,7 +772,8 @@ def written_comparison_issues(state, draft):
 
     Live 2026-11-04 (RunPod, PR #27 head): "amount가 30 이상인 행만" was drafted as gt 30 on the full
     planner path in 3 of 8 runs, so the row with 30 was silently dropped while the run succeeded.
-    A threshold that only an earlier, replaced turn used ("30 이상" then "아니, 40 이상") is reported too.
+    A condition the user later replaced or dropped ("30 이상" then "아니, 40 이상", or "…30 이상인 행은
+    제외") is reported when the draft still uses it.
     Numbers the user did not write for that field (computed thresholds) are left alone.
     """
     issues = []
@@ -756,7 +783,7 @@ def written_comparison_issues(state, draft):
         if operators and f['operator'] not in operators:
             issue = (f"요청한 비교 방식과 초안이 다릅니다: {f.get('field')} {f.get('value')}은(는) "
                      f"'{'·'.join(_OPERATOR_LABELS[o] for o in sorted(operators))}'인데 초안은 '{_OPERATOR_LABELS[f['operator']]}'입니다.")
-        elif value in replaced:
+        elif f['operator'] in replaced.get(value, ()):
             issue = f"이후 발언에서 바뀐 이전 조건이 초안에 남아 있습니다: {f.get('field')} {f.get('value')}"
         else:
             continue

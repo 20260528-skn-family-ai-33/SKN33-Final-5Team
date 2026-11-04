@@ -26,6 +26,36 @@ def complete(calls):
     return conversation
 
 
+@pytest.mark.parametrize('reply, include_send', [('메일은 취소', True), ('메일은 취소하지 마', False)])
+def test_delivery_revision_is_checked_on_restored_assessment_and_final_workflow(reply, include_send):
+    from agent_builder.capabilities.capability_gate import require_save_ready
+    from agent_builder.design.nodes.validation import validate_node
+    from tests.workflow_engine.test_workflow import node
+
+    s = state('비용을 선별하고 메일로 보내줘.')
+    s['messages'].extend([{'role': 'user', 'content': reply}, {'role': 'user', 'content': '네'}])
+    stale = assessment(s)
+    if include_send:
+        stale['tool_ids'].append('email.send')
+    s.update(capability_enforced=True, capability_assessment=stale, capability_fingerprint=input_fingerprint(s))
+    assert generation_gate(s)['capability_generation_route'] == 'recheck'
+
+    current = assessment(s)
+    if not include_send:
+        current['tool_ids'].append('email.send')
+    s.update(capability_assessment=current, draft=workflow_draft(s), confirmed=True)
+    if include_send:
+        send = node('mail', 'email.send', operation='execute', arguments_json='{}')
+        s['draft']['workflow']['nodes'].append(send)
+    else:
+        # Listing a tool does not make it an executable workflow step.
+        s['draft']['tool_ids'].append('email.send')
+    assert blocking_issue(s) is None
+    assert any('발송' in issue for issue in validate_node(s)['issues'])
+    with pytest.raises(ValueError, match='발송'):
+        require_save_ready(s)
+
+
 def test_missing_fingerprint_requires_real_reassessment_and_survives_persistence(tmp_path):
     from agent_builder.capabilities.capability_check import make_capability_check
     s=state();s.update(capability_enforced=True,capability_assessment=assessment(s))

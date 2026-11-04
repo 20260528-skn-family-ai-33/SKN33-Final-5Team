@@ -1,0 +1,224 @@
+{
+  "checked_at": "2026-11-03T12:58:34.369434+00:00",
+  "basis": "Unchanged current local PR28 fixes; fresh sessions, actual RunPod Qwen 4B; verifier defer",
+  "python": "1709 passed, 4 subtests passed, 7 warnings",
+  "cases": [
+    {
+      "case": "filter",
+      "passed": true,
+      "seconds": 24.66,
+      "dialogue": [
+        {
+          "input": "반품 건 정리용으로 비용 100만원 초과인 행만 남겨줘. 빈 비용은 제외해. 중복 거래ID는 마지막 행만 남기고 정렬하지 말고 JSON으로 저장해.",
+          "status": "ready",
+          "questions": []
+        }
+      ],
+      "rows": [
+        {
+          "거래ID": "E",
+          "비용": "2000000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "B",
+          "비용": "1800000",
+          "지점": "부산"
+        }
+      ],
+      "execution_status": "succeeded",
+      "report_file_verified": true
+    },
+    {
+      "case": "exclude_range",
+      "passed": true,
+      "seconds": 14.58,
+      "dialogue": [
+        {
+          "input": "비용 100만원 미만인 행은 빼고 나머지만 남겨줘. 빈 비용은 제외하고 중복은 모두 유지해서 JSON으로 저장해.",
+          "status": "needs_clarification",
+          "questions": [
+            "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
+            "선별할 기준 값은 얼마인가요?"
+          ]
+        },
+        {
+          "input": "100만원 이상",
+          "status": "ready",
+          "questions": []
+        }
+      ],
+      "rows": [
+        {
+          "거래ID": "B",
+          "비용": "1500000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "D",
+          "비용": "1000000",
+          "지점": "부산"
+        },
+        {
+          "거래ID": "E",
+          "비용": "2000000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "B",
+          "비용": "1800000",
+          "지점": "부산"
+        }
+      ],
+      "execution_status": "succeeded",
+      "report_file_verified": true
+    },
+    {
+      "case": "cancel_delivery",
+      "passed": true,
+      "seconds": 27.48,
+      "dialogue": [
+        {
+          "input": "비용 100만원 초과인 행만 남겨줘. 빈 비용은 제외하고 중복은 모두 유지해서 JSON으로 저장하고 이메일로 보내줘.",
+          "status": "unsupported",
+          "questions": []
+        },
+        {
+          "input": "메일은 취소",
+          "status": "ready",
+          "questions": []
+        }
+      ],
+      "rows": [
+        {
+          "거래ID": "B",
+          "비용": "1500000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "E",
+          "비용": "2000000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "B",
+          "비용": "1800000",
+          "지점": "부산"
+        }
+      ],
+      "execution_status": "succeeded",
+      "report_file_verified": true
+    },
+    {
+      "case": "duplicate_question",
+      "passed": true,
+      "seconds": 18.58,
+      "dialogue": [
+        {
+          "input": "중복된 행은 첫 행만 남겨서 JSON으로 저장해줘. 중복 판단 열은 아직 정하지 않았어. 빈 값은 그대로 유지해.",
+          "status": "needs_clarification",
+          "questions": [
+            "어느 열의 값이 같으면 중복으로 볼까요?"
+          ]
+        },
+        {
+          "input": "네",
+          "status": "needs_clarification",
+          "questions": [
+            "어느 열의 값이 같으면 중복으로 볼까요?"
+          ]
+        },
+        {
+          "input": "거래ID",
+          "status": "ready",
+          "questions": []
+        }
+      ],
+      "rows": [
+        {
+          "거래ID": "A",
+          "비용": "900000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "B",
+          "비용": "1500000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "C",
+          "비용": "",
+          "지점": "부산"
+        },
+        {
+          "거래ID": "D",
+          "비용": "1000000",
+          "지점": "부산"
+        },
+        {
+          "거래ID": "E",
+          "비용": "2000000",
+          "지점": "서울"
+        },
+        {
+          "거래ID": "F",
+          "비용": "500000",
+          "지점": "서울"
+        }
+      ],
+      "execution_status": "succeeded",
+      "report_file_verified": true
+    },
+    {
+      "case": "receipt_cancel",
+      "passed": true,
+      "seconds": 2.8,
+      "dialogue": [
+        {
+          "input": "첨부한 영수증 내용을 한 줄씩 CSV 표로 정리해줘.",
+          "status": "needs_clarification",
+          "questions": [
+            "어떤 항목을 한 줄씩 뽑을까요? 쉼표로 구분해 적어 주세요. (예: 상품명, 단가, 수량, 금액)"
+          ]
+        },
+        {
+          "input": "그만할래",
+          "status": "needs_clarification",
+          "questions": []
+        }
+      ]
+    }
+  ],
+  "boundary_cases": [
+    {
+      "case": "replacement",
+      "passed": true,
+      "status": "succeeded",
+      "error": null,
+      "rows": [
+        {
+          "거래ID": "Z",
+          "비용": "2500000",
+          "지점": "부산"
+        }
+      ],
+      "report_bytes_verified": true
+    },
+    {
+      "case": "invalid",
+      "passed": true,
+      "status": "failed",
+      "error": "숫자로 변환할 수 없는 값이 있습니다. 처리 정책을 확인하세요.",
+      "rows": [],
+      "report_bytes_verified": false
+    },
+    {
+      "case": "empty",
+      "passed": true,
+      "status": "succeeded",
+      "error": null,
+      "rows": [],
+      "report_bytes_verified": true
+    }
+  ]
+}

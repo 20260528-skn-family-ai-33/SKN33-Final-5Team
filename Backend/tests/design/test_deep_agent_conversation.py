@@ -615,6 +615,18 @@ def test_ollama_default_catalog_mode_supplies_selected_contract_without_forced_l
     assert captured['result']['draft']['workflow']['nodes'][0]['id']=='step_1'
 
 
+def test_cancelled_send_is_removed_from_previous_draft_tool_candidates(monkeypatch):
+    from tests.workflow_engine.test_workflow import node
+
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    s = state([{'role':'user', 'content':'파일을 만들고 이메일로 보내줘'},
+               {'role':'user', 'content':'메일은 취소'}])
+    s['capability_assessment'] = {'decision':'existing_tools', 'tool_ids':['write_result']}
+    s['draft'] = draft(workflow={'entry':'mail', 'nodes':[node('mail', 'email.send')], 'edges':[]})
+    captured = run_capturing(monkeypatch, s, draft(questions=['저장할 형식을 알려주세요.']))
+    assert [tool['id'] for tool in captured['context']['selected_tool_contracts']] == ['write_result']
+
+
 def test_local_discovery_summary_keeps_all_tools_and_inspection_contracts(monkeypatch):
     from workflow_engine.catalog.registry import TOOLS
     from workflow_engine.catalog.canonical import planner_catalog

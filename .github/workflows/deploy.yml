@@ -149,7 +149,14 @@ jobs:
       - name: Test receipt clarification
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
         working-directory: Backend
-        run: .venv-agent/bin/python -m pytest -q tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py
+        run: |
+          tests=(tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py)
+          if [[ -f tests/workflow_engine/test_receipt_fields.py ]]; then tests+=(tests/workflow_engine/test_receipt_fields.py); fi
+          .venv-agent/bin/python -m pytest -q "${tests[@]}"
+      - name: Test document parser routing and OCR coverage
+        if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/documents/analysis/test_pipeline.py') != ''
+        working-directory: Backend
+        run: .venv-document-analysis/bin/python -m unittest discover -s tests/documents/analysis -p test_pipeline.py
       - name: Test business-data storage on PostgreSQL
         if: needs.resolve-image.outputs.target != 'frontend'
         env:

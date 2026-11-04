@@ -56,6 +56,70 @@ class PipelineTests(unittest.TestCase):
         Image.new('RGB', (100, 90), 'white').save(path)
         return path
 
+    def test_undetected_receipt_body_is_read_once_without_repeating_known_regions(self):
+        from PIL import ImageDraw
+
+        source = self.root / 'small-receipt.png'
+        photo = Image.new('RGB', (250, 384), 'white')
+        draw = ImageDraw.Draw(photo)
+        for y, text in [(9, 'STORE'), (50, 'ADDRESS'), (115, 'RETURNS'),
+                        (154, 'DATE 2024-01-04'), (201, '1 ITEM 12,000'), (305, 'TOTAL 12,000'), (330, 'THANK YOU')]:
+            draw.text((8, y), text, fill='black')
+        photo.save(source)
+        boxes = [[5, 46, 232, 96], [13, 4, 239, 39], [4, 328, 210, 356], [5, 109, 162, 137]]
+        class ReceiptEngines(Engines):
+            gap_score = .98
+            gap_boxes = [[24, 462, 300, 490], [24, 915, 300, 945]]
+            gap_texts = ['DATE 2024-01-04', 'TOTAL 12,000']
+
+            def run(self, engine, **kwargs):
+                result = super().run(engine, **kwargs)
+                if engine == 'layout':
+                    result['outputs'][0]['result']['boxes'] = [
+                        dict(label='text', score=.98, coordinate=box) for box in boxes]
+                elif engine == 'paddleocr':
+                    for output in result['outputs']:
+                        if Path(output['source']).name.startswith('ocr-'):
+                            with Image.open(output['source']) as masked:
+                                assert masked.crop((0, 0, masked.width, 100 * 3)).convert('L').getextrema() == (255, 255)
+                                assert masked.crop((0, 145 * 3, masked.width, 322 * 3)).convert('L').getextrema()[0] < 50
+                            output['result'] = {'rec_texts': self.gap_texts, 'rec_boxes': self.gap_boxes,
+                                                'rec_scores': [self.gap_score] * len(self.gap_texts)}
+                return result
+
+        payload = run(source, self.work, engines=ReceiptEngines())
+        data = payload['document_analysis']
+        self.assertEqual(payload['text'].count('TOTAL 12,000'), 1)
+        self.assertEqual(payload['text'].count('정산금엑 000017'), len(boxes))
+        self.assertEqual(data['status'], 'succeeded')
+        gap, = [b for b in data['blocks'] if b['data'].get('upright_y_bands')]
+        self.assertEqual(gap['data']['upright_y_bands'], [(138, 328)])
+
+        limited = run(source, self.root / 'limited', engines=ReceiptEngines(), max_supplements=4)
+        self.assertEqual(limited['document_analysis']['status'], 'partial')
+        self.assertIn('supplement_limit_reached', limited['document_analysis']['review_reasons'])
+        self.assertNotIn('TOTAL 12,000', limited['text'])
+
+        weak_engine = ReceiptEngines()
+        weak_engine.gap_score = .42
+        weak = run(source, self.root / 'weak', engines=weak_engine)['document_analysis']
+        self.assertEqual(weak['status'], 'partial')
+        self.assertTrue(any(reason.startswith('low_confidence_uncovered_ocr:') for reason in weak['review_reasons']))
+
+        # A fifth region now splits the receipt body into two distinct missing bands.
+        # A good date at y=154 must not mark the amount at y=305 as successfully read.
+        boxes.append([0, 210, 249, 235])
+        one_line = ReceiptEngines()
+        one_line.gap_texts = ['DATE 2024-01-04']
+        for rec_boxes, expected_unread in [([[24, 462, 300, 490]], [(236, 328)]),
+                                           ([], [(138, 210), (236, 328)])]:
+            with self.subTest(rec_boxes=rec_boxes):
+                one_line.gap_boxes = rec_boxes
+                partial = run(source, self.root / ('partial-' + str(len(rec_boxes))), engines=one_line)['document_analysis']
+                self.assertEqual(partial['status'], 'partial')
+                gap, = [b for b in partial['blocks'] if b['data'].get('upright_y_bands')]
+                self.assertEqual(gap['data']['unverified_y_bands'], expected_unread)
+
     def test_jpeg_with_oversized_png_uses_cpu_for_layout_and_ocr(self):
         source = self.root / 'large-photo.jpg'
         size = (2500, 2400)

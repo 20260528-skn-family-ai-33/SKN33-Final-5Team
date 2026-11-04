@@ -156,16 +156,45 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
     return check
 
 
+def _confirmed_schedule(state, ledger):
+    """The draft with its schedule taken from the confirmed slots, or None when nothing changes.
+
+    The schedule is fully decided before generation (every slot specified and grounded), so the
+    planner has nothing to choose. Live 2026-11-03 (RunPod, weekly request with every value written):
+    the planner left draft.schedule empty in 2 of 3 runs and the turn ended validation_failed.
+    """
+    if not state.get('condition_enforced') or 'schedule' not in (ledger.get('operations') or []):
+        return None
+    slots = ledger.get('slots') or {}
+    spec = {key: (slots.get('schedule.' + key) or {}).get('value') for key in ('frequency', 'timezone', 'hour', 'minute', 'weekday')}
+    if spec['frequency'] == 'daily':
+        spec['weekday'] = None
+    if any(spec[key] is None for key in ('frequency', 'timezone', 'hour', 'minute')) or (spec['frequency'] == 'weekly' and spec['weekday'] is None):
+        return None  # not fully confirmed; plan_issues keeps reporting the mismatch
+    from contracts.models import ScheduleSpec
+    spec = ScheduleSpec(**spec).model_dump()
+    draft = state.get('draft') or {}
+    if draft.get('schedule') == spec:
+        return None
+    return {**deepcopy(draft), 'schedule': spec}
+
+
 def audit_conditions(state):
     ledger = state.get('condition_ledger')
     if not ledger or ledger.get('decision') != 'ready':
         return {}
     from agent_builder.conditions.condition_readiness import literal_condition_issues
     from agent_builder.design.planner_constraints import table_tool_issues
+    filled = _confirmed_schedule(state, ledger)
+    if filled is not None:
+        state = {**state, 'draft': filled}
     issues = literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
     update = {'trace': state.get('trace', []) + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
                'issues': issues, 'enforced': state.get('condition_enforced', False)}]}
+    if filled is not None:
+        update['draft'] = filled
+        update['trace'][-1]['schedule_filled'] = filled['schedule']
     if state.get('condition_enforced') and issues:
         update['semantic_issues'] = list(dict.fromkeys(state.get('semantic_issues', []) + issues))
         if state['draft'].get('questions') or state['draft'].get('unsupported'):

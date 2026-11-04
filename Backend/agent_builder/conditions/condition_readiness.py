@@ -794,22 +794,31 @@ def _comparison_turns(messages, subjects):
         # Quoted examples and literal cell text are not instructions for the filter.
         text = _QUOTED_TEXT.sub(' ', message['content'])
         turn = {}
+        replaced_fields = set()
         previous_end, previous_field = None, None
         unbound = False
         for match in _WRITTEN_BOUND.finditer(text):
             prefix = text[:match.start()]
-            owner = next((name for name, pattern in subjects if pattern.search(prefix)), None)
+            subject = next(((name, found) for name, pattern in subjects if (found := pattern.search(prefix))), None)
+            owner = subject[0] if subject else None
             if owner is None and previous_end is not None and _BOUND_JOIN.fullmatch(text[previous_end:match.start()]):
                 owner = previous_field
             previous_end, previous_field = match.end(), owner
             if owner is None:
                 unbound = True
                 turn.clear()
+                replaced_fields.clear()
                 continue
             operator = _WRITTEN_OPERATOR[match['operator']]
             side = 'lower' if operator in ('gt', 'gte') else 'upper'
             action = _range_action(text[match.end():], subjects)
             for amount in _amounts(match['amount'], owner):
+                # #44: replacing the whole condition also retires the opposite bound.
+                # Anchor the marker to this subject, not another field in the same turn.
+                # Keep the existing polarity guard: quoted/negated/unclear actions do not replace it.
+                if (subject and action is not None
+                        and re.search(r'(?:기존|이전)\s*조건\s*대신\s*$', prefix[:subject[1].start()])):
+                    replaced_fields.add(owner)
                 turn.setdefault(owner, {}).setdefault(side, set()).add((amount, operator, action))
         reverse = previous_end is None and re.search(r'반대로|(?:그|이전|기존)\s*(?:선별|필터|비교)?\s*조건.{0,8}(?:취소|삭제|없애|빼|바꿔)', text)
         ambiguous_fields = fields if unbound else set()
@@ -818,21 +827,28 @@ def _comparison_turns(messages, subjects):
             # stale evidence without guessing the new predicate or erasing another named field.
             named = {name for name in fields if re.search(r'(?<![\w])' + re.escape(name) + r'(?![A-Za-z0-9_])', text)}
             ambiguous_fields = named or fields
-        yield turn, ambiguous_fields
+        yield turn, ambiguous_fields, replaced_fields
 
 
 def _field_bounds(turns, field):
-    """Track the last explicit lower and upper bounds independently for one exact column name."""
+    """Track bounds independently unless the user explicitly replaces this field's whole condition.
+
+    Retired values are thresholds, not (value, operator) pairs (#45). Explicit exclusion
+    remains an active predicate, so its valid complementary range is still accepted.
+    """
     current, retired = {}, set()
-    for turn, ambiguous_fields in turns:
+    for turn, ambiguous_fields, replaced_fields in turns:
         # An unnamed follow-up may replace this field's comparison. Leave the new draft alone
         # instead of forcing it back to the old turn. A change naming another column is independent.
         if field in ambiguous_fields:
             current.clear()
             retired.clear()
+        if field in replaced_fields:
+            retired.update(v for entries in current.values() for v, _, action in entries if action is not None)
+            current.clear()
         for side, entries in turn.get(field, {}).items():
             if all(action is not None for _, _, action in entries):
-                retired.update((v, op) for v, op, action in current.get(side, ()) if action == 'include')
+                retired.update(v for v, _, action in current.get(side, ()) if action == 'include')
             current[side] = entries
     active = {}
     for entries in current.values():
@@ -877,7 +893,7 @@ def _draft_comparison_mismatches(state, draft):
                 replacement = next(iter(allowed)) if len(allowed) == 1 else None
                 expected = '·'.join(_OPERATOR_WORD[op] for op in sorted(allowed))
                 yield rule, replacement, f"{field} {rule['value']}의 비교 방식은 '{expected}'인데 초안은 '{_OPERATOR_WORD[operator]}'입니다."
-            elif complements or (value, operator) in retired:
+            elif complements or value in retired:
                 yield rule, None, f"{field} {rule['value']}: 제외했거나 바뀐 이전 조건이 초안에 남아 있습니다."
 
 

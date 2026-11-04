@@ -26,6 +26,7 @@ _PASSIVE_REPLIES=frozenset({
 })
 
 
+
 def _short_reply(state):
     """Reuse only known passive replies; scope changes always reach assessment."""
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']

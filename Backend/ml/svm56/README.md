@@ -1,5 +1,10 @@
 # SVM 도구 추천 참고 연동안
 
+설치·활성 상태 진단: [팀 모델 전달·설치 안내](../../../docs/svm-deployment.md).
+저장소 루트에서 `npm run ml:install -- --source "/path/to/bundle"`,
+`npm run ml:check -- --probe`로 설치와 실제 추천 연결을 구분해 확인합니다.
+모델 파일은 별도 팀 공유 ZIP에 있으며 Git clone만으로 설치되지 않습니다.
+
 기본값은 A4B_TOOL_ADVICE_MODE=hint, A4B_TOOL_ADVICE_BACKEND=svm56입니다. 명시적으로 A4B_TOOL_ADVICE_MODE=off를 지정한 경우에만 추천을 끕니다. 로컬 기본 파일 위치는 저장소의 runtime/ml-bundle/model/recommender_char_svm_5431.joblib 및 runtime/ml-bundle/catalog/catalog_56.json이며 실행 디렉터리에 의존하지 않습니다. 팀 패키지의 model·catalog 폴더를 이 위치에 복사하세요. A4B_SVM_MODEL_PATH와 A4B_SVM_CATALOG_PATH에 신뢰 가능한 로컬 파일을 지정하세요. 본 브랜치에는 모델 파일, 원본·합성 데이터, 카탈로그를 게시하지 않습니다. 파일은 별도 전달한 팀 공유 ZIP에서 확보하며 모델과 카탈로그 해시가 코드에 고정되어 있습니다. joblib는 신뢰할 수 있는 파일만 사용해야 합니다.
 
 이 코드는 56개 도구를 서비스 실행에 등록하지 않으며 등록된 도구에 대해서만 참고 후보를 반환합니다. 전체 도구 선택 경로를 유지해야 합니다. SVM margin은 확률이 아닙니다. 기준 패키지는 `A4B_ML_Qwen_전체작업자료_2026-10-31/08_서비스연동패키지`이며 고정 모델의 `reply_review`·`review_summary`는 양성 0건으로 미학습입니다.

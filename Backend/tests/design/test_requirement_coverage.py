@@ -141,6 +141,39 @@ def test_canonical_sum_operation_is_accepted_without_enforcing_native_tool_setti
     assert not coverage_report(state,state['draft'])['issues']
 
 
+def test_uploaded_join_decoder_separates_bound_inputs_from_constants(monkeypatch):
+    from workflow_engine.catalog.canonical import operation_variants
+    from agent_builder.design.requirement_generation import constrain_uploaded_join_inputs
+    from jsonschema import Draft202012Validator
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    schema=AgentDraft.model_json_schema();base=deepcopy(schema['$defs']['WorkflowNode'])
+    schema['$defs']['WorkflowNode']={'anyOf':operation_variants(base,schema['$defs']['Binding'],{'join_tables'})}
+    original=deepcopy(schema);state=joined()
+    constrained=constrain_uploaded_join_inputs(schema,state)
+    assert schema==original
+    assert [v['properties']['settings']['properties']['operation']['enum']
+            for v in constrained['$defs']['WorkflowNode']['anyOf']]==[['join']]
+    candidate=deepcopy(state['draft']['workflow']['nodes'][2])
+    candidate['settings']={k:candidate['settings'].get(k) for k in ('operation','arguments_json','output_port')}
+    candidate['settings']['arguments_json']=json.loads(candidate['settings']['arguments_json'])
+    validator=Draft202012Validator({'$ref':'#/$defs/WorkflowNode','$defs':constrained['$defs']})
+    validator.validate(candidate)
+    duplicate=deepcopy(candidate)
+    duplicate['settings']['arguments_json'].update(left={'rows':[]},right={'rows':[]})
+    assert not validator.is_valid(duplicate)
+    missing=deepcopy(candidate);missing['bindings']=[]
+    assert not validator.is_valid(missing)
+    # Direction/policy values are still authored by the model in baseline;
+    # later requirement validation must reject a direction contrary to the user.
+    inner=deepcopy(candidate);inner['settings']['arguments_json']['how']='inner'
+    validator.validate(inner)
+    unsealed=deepcopy(state);unsealed['requirement_digest']='invalid'
+    assert constrain_uploaded_join_inputs(schema,unsealed)==original
+    unresolved=deepcopy(state);unresolved['requirement_ledger']['unresolved']=['자료가 모호함']
+    unresolved['requirement_digest']=plan_digest(unresolved['requirement_ledger'])
+    assert constrain_uploaded_join_inputs(schema,unresolved)==original
+
+
 def test_generation_schema_fixes_join_criteria_but_never_duplicates_bound_tables(monkeypatch):
     from workflow_engine.catalog.canonical import operation_variants
     from agent_builder.design.requirement_generation import constrain_generation,generation_requirements

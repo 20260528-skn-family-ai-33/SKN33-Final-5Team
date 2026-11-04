@@ -155,7 +155,7 @@ def make_conversation(api_key,model,model_factory=None):
             registry_read=True
             from agent_builder.design.graph import _timing_event
             _timing_event({'event':'builder_tool_executed','tool':'list_tools'})
-            return planner_catalog(catalog)
+            return planner_catalog(catalog,discovery=inline_contracts)
         selected_contract_ids=set((state.get('capability_assessment') or {}).get('tool_ids',[])) & {t['id'] for t in catalog}
         from agent_builder.design.requirement_generation import generation_requirements, constrain_generation, constrain_ordered_steps, generation_mode, output_budget, TOOLS as REQUIREMENT_TOOLS
         requirement_specs,required_steps=generation_requirements(state)
@@ -360,8 +360,10 @@ def make_conversation(api_key,model,model_factory=None):
         decoder_schema={}
         def planner_format():
             from agent_builder.design.operation_steps import schema_for
+            from agent_builder.design.requirement_generation import constrain_uploaded_join_inputs
             decoder_schema.clear()
-            constrained=constrain_generation(schema,state) if requirement_generation_mode=='bounded' else deepcopy(schema)
+            source_constrained=constrain_uploaded_join_inputs(schema,state)
+            constrained=constrain_generation(source_constrained,state) if requirement_generation_mode=='bounded' else source_constrained
             decoder_schema.update(schema_for(constrained) if ordered_encoding() else constrained)
             if ordered_encoding() and required_steps and requirement_generation_mode=='bounded':
                 bounded=constrain_ordered_steps(decoder_schema,state)
@@ -418,6 +420,11 @@ def make_conversation(api_key,model,model_factory=None):
         for n in ((context['current_draft'] or {}).get('workflow') or {}).get('nodes',[]):
             n['settings']=compact_settings(n['settings'])
         if inline_contracts:
+            # Keep all IDs discoverable, but do not repeat every native contract
+            # beside the selected detailed contracts. The previous two-table
+            # prompt consumed 15297/16384 tokens before final JSON generation.
+            context['supported_tools']=planner_catalog(catalog,discovery=True)
+            context['tool_discovery_instruction']='supported_tools는 전체 도구 발견용 요약입니다. 선택한 도구의 실제 설정·포트는 selected_tool_contracts를 따르고, 다른 도구가 필요하면 inspect_tool로 상세 계약을 조회하세요.'
             context['selected_tool_contracts']=planner_catalog([t for t in catalog if t['id'] in selected_contract_ids],details=True,native_first=True)
             for contract in context['selected_tool_contracts']:
                 if 'native_contract' in contract:
@@ -444,7 +451,7 @@ def make_conversation(api_key,model,model_factory=None):
         from langchain.agents.structured_output import StructuredOutputValidationError
         length_retried=False
         def invoke_agent(active_agent,messages):
-            nonlocal seed,length_retried
+            nonlocal seed,length_retried,planner_token_budget
             schema_failures=0;attempt=0
             while True:
                 attempt+=1
@@ -464,10 +471,19 @@ def make_conversation(api_key,model,model_factory=None):
                             'finish_reasons':[getattr(choice,'finish_reason',None) for choice in (getattr(completion,'choices',None) or [])],
                             'prompt_tokens':getattr(usage,'prompt_tokens',None),
                             'completion_tokens':getattr(usage,'completion_tokens',None),'seed':seed})
-                        # The failed attempt leaves no state behind, so a user retry would reuse
-                        # this seed. Try the next seed once here; a second overflow is reported.
+                        # The failed response is never parsed or saved. A complex local
+                        # draft may need more than 4096 output tokens; changing only
+                        # the seed repeats the same truncation. Expand once, with the
+                        # same schema/messages and a hard cap. A second overflow fails.
                         if not length_retried:
                             length_retried=True;seed+=1
+                            old_budget=planner_token_budget
+                            if os.getenv('A4B_MAIN_PROVIDER')=='ollama' and registry_read:
+                                planner_token_budget=min(8192,max(4096,planner_token_budget)*2)
+                            _timing_event({'event':'model_length_retry','seed':seed,
+                                'previous_local_max_tokens':old_budget,
+                                'local_max_tokens':planner_token_budget,
+                                'expanded':planner_token_budget>old_budget})
                             agent_options['model']=chat_model(seed,planner_token_budget)
                             active_agent=create_deep_agent(**agent_options,checkpointer=False)
                             continue

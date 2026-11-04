@@ -278,17 +278,18 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
     return [variant,projection]
 
 
-def planner_catalog(tools, *, details=False, native_first=False):
+def planner_catalog(tools, *, details=False, native_first=False, discovery=False):
     """Full ID discovery without repeating paths, versions and large descriptions."""
+    if details and discovery:raise ValueError('도구 발견 요약과 상세 실행 계약은 별도 조회하세요.')
     result=[]
     for tool in tools:
         item={k:tool[k] for k in ('id','name')}
-        item['description']=tool['description'][:120]
+        item['description']=tool['description'][:80 if discovery else 120]
         # Union ports across different operations are not a node contract.
         # Native ports remain discoverable; exact operation ports are inspected.
-        if tool.get('execution_status')=='native_ready' or not tool.get('operation_contracts'):
+        if not discovery and (tool.get('execution_status')=='native_ready' or not tool.get('operation_contracts')):
             item.update(input_ports=tool['input_ports'],output_ports=tool['output_ports'])
-        if tool.get('execution_status')=='native_ready':
+        if not discovery and tool.get('execution_status')=='native_ready':
             item['native_contract'] = {'operation': None, 'arguments_json': None,
                 'input_ports': tool['input_ports'], 'output_ports': tool['output_ports'],
                 'description': tool['description'].split(' 확장 동작은')[0]}

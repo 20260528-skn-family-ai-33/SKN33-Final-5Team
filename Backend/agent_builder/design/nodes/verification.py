@@ -201,6 +201,9 @@ def make_verification_node(storage, verifier=None, mode=None):
             # scripts/run-deferred-verifications.py, so the user does not wait for it.
             result = (pending_result(request_id) if setting == 'defer'
                       else (verifier or verify)(payload).model_dump(mode='json'))
+            if setting != 'defer':
+                from agent_builder.design.verifier_columns import reconcile_stored_column_findings
+                result=reconcile_stored_column_findings(payload,result)
         except (ValueError, TypeError, KeyError) as error:
             result = dict(request_id=request_id, route='manual_review', execution_allowed=False,
                           model_output=None, findings=[dict(code='integration_contract_error', severity='review',

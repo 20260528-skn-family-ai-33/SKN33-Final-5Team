@@ -63,6 +63,41 @@ def _literal(value):
     return {'type':kind,'enum':[value]}
 
 
+def constrain_uploaded_join_inputs(schema,state):
+    """Uploaded Tables must use graph inputs, not duplicate constant Table values.
+
+    This is an input contract, not a prescribed graph: the model still chooses
+    every node, source reader, policy value and connection. Unsealed/ambiguous
+    sources and explicit literal-table calculations keep the general grammar.
+    """
+    result=deepcopy(schema);specs,_=generation_requirements(state)
+    joins=[s for s in specs if s['kind']=='join']
+    if len(joins)!=1 or (state.get('requirement_ledger') or {}).get('unresolved'):return result
+    join=joins[0];left=join.get('left_sources',[]);right=join.get('right_sources',[])
+    assets={r['id']:r for r in state.get('resources',[])}
+    if (len(left)!=1 or len(right)!=1 or left==right
+            or any(id not in assets or assets[id].get('kind')!='table' for id in left+right)):
+        return result
+    compatible=[]
+    for variant in result['$defs']['WorkflowNode']['anyOf']:
+        if variant['properties']['tool'].get('enum')!=['join_tables']:
+            compatible.append(variant);continue
+        settings=variant['properties']['settings']['properties']
+        # join_records consumes/returns records and cannot implement this
+        # Table join contract (including null-key and max-row policies).
+        if settings.get('operation',{}).get('enum')!=['join']:continue
+        compatible.append(variant)
+        arguments=settings['arguments_json']
+        if arguments.get('type')!='object':continue
+        for name in ('left','right'):arguments['properties'].pop(name,None)
+        arguments['required']=[name for name in arguments.get('required',[]) if name not in ('left','right')]
+        binding=variant['properties']['bindings']
+        binding.update(minItems=2,maxItems=2)
+        binding['items']['properties']['input']={'type':'string','enum':['left','right']}
+    result['$defs']['WorkflowNode']['anyOf']=compatible
+    return result
+
+
 def constrain_generation(schema,state):
     result=deepcopy(schema);specs,order=generation_requirements(state)
     if not specs:return result

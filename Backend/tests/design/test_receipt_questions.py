@@ -7,6 +7,8 @@ from tests.design.test_builder import draft
 
 
 REQUEST = '영수증 파일 올려주면 내용 추출해줄래?'
+EXCEL_REQUEST = '영수증 올려주면 내용 추출해서 엑셀에 정리해줄 수 있어?'
+OLD_BUTTON_REPLIES = ['자료 연결 후 기준 입력', '자료 연결 후 기준 입력', '연결 자료에서 기준 확인 후 입력']
 RECEIPT = {'name': 'receipt.png', 'kind': 'document', 'format': 'png',
            'text': '상호명: A4B 상점\n결제 금액: 12,000원', 'columns': []}
 
@@ -50,9 +52,10 @@ def only_question(session, key):
     return question
 
 
-def test_upload_advances_to_fields_and_selection_survives_worker_restart(studio):
+@pytest.mark.parametrize('prompt', [REQUEST, EXCEL_REQUEST])
+def test_upload_advances_to_fields_and_selection_survives_worker_restart(studio, prompt):
     act, planner_inputs = studio
-    upload = only_question(act('message', content=REQUEST), 'receipt.attachment')
+    upload = only_question(act('message', content=prompt), 'receipt.attachment')
     assert upload['action']['type'] == 'attach_receipt'
 
     attached = act('upload', asset=RECEIPT, rows=[])
@@ -66,7 +69,8 @@ def test_upload_advances_to_fields_and_selection_survives_worker_restart(studio)
         act('message', question_id=upload['id'], content='날짜')
     answer = '영수증에서 추출할 항목: 날짜, 상호명, 승인번호'
     result = act('message', question_id=fields['id'], content=answer)
-    assert [m['content'] for m in result['messages'] if m['role'] == 'user'] == [REQUEST, answer]
+    for messages in (result['messages'], planner_inputs[-1]['messages']):
+        assert [m['content'] for m in messages if m['role'] == 'user'] == [prompt, answer]
     assert planner_inputs[-1]['resources'][0]['id'] == attached['resources'][0]['id']
     assert not any(q['key'].startswith('receipt.') for q in result['pending_questions'])
 
@@ -98,9 +102,13 @@ def test_already_named_fields_are_passed_to_planning_with_attached_receipt(studi
     assert planner_inputs and planner_inputs[0]['messages'][0]['content'] == request
 
 
-def test_reopened_capability_questions_from_before_the_change_accept_an_upload(tmp_path, monkeypatch):
+@pytest.mark.parametrize('prompt,prior_choices', [
+    (REQUEST, []), (EXCEL_REQUEST, OLD_BUTTON_REPLIES[:2]), (EXCEL_REQUEST, OLD_BUTTON_REPLIES),
+])
+def test_reopened_capability_questions_resume_with_selected_fields(tmp_path, monkeypatch, prompt, prior_choices):
     from agent_builder.design.graph import build_graph
     from infrastructure.persistence.storage import Storage
+    from langgraph.types import Command
     from service.handlers import design
     from tests.capabilities.test_capability_assessment import packet
     from tests.conditions.test_condition_readiness import Fake, state
@@ -108,10 +116,10 @@ def test_reopened_capability_questions_from_before_the_change_accept_an_upload(t
     # Create the actual persisted interrupt that an old, still-open chat contains.
     store = Storage(tmp_path)
     session = store.new_session('test', uid())
-    old_state = {**state(REQUEST), 'session_id': session['id']}
+    old_state = {**state(prompt), 'session_id': session['id']}
     decision = packet(old_state, 'clarify', conditions=[
-        '연결된 영수증 파일이 있는지 확인해야 합니다.',
-        '내용을 추출할 구체적인 항목을 정의해야 합니다.',
+        '연결된 영수증 파일이 있는지, 그리고 어떤 형식(PDF, 이미지 등)으로 있는지 확인해야 합니다.',
+        '내용을 추출할 구체적인 항목 (예: 금액, 날짜, 업체명 등) 을 정의해야 합니다.',
     ])
     with monkeypatch.context() as old:
         old.setenv('A4B_ATTACHMENT_PRECHECK', 'off')
@@ -119,7 +127,16 @@ def test_reopened_capability_questions_from_before_the_change_accept_an_upload(t
                                         capability_mode='enforce', capability_transport=Fake([decision]),
                                         condition_mode='off', verifier_mode='off')
         try:
-            result = graph.invoke(old_state, {'configurable': {'thread_id': session['id']}})
+            config = {'configurable': {'thread_id': session['id']}}
+            result = graph.invoke(old_state, config)
+            for index, choice in enumerate(prior_choices):
+                if index == 2:
+                    asset = {**RECEIPT, 'id': uid()}
+                    store.add_asset(asset, [])
+                    session['file_ids'].append(asset['id'])
+                    graph.update_state(config, {'resources': [asset]})
+                result = graph.invoke(Command(resume={'type': 'message', 'content': choice,
+                                     'question_id': result['pending_questions'][0]['id']}), config)
             assert {q['source'] for q in result['pending_questions']} == {'capability'}
             session = store.update_session(session, session['revision'], result)
         finally:
@@ -127,11 +144,16 @@ def test_reopened_capability_questions_from_before_the_change_accept_an_upload(t
             store.close()
 
     request = {'directory': str(tmp_path), 'id': session['id'], 'revision': session['revision']}
-    only_question(handle({**request, 'action': 'session'}), 'receipt.attachment')
-    attached = handle({**request, 'action': 'upload', 'asset': RECEIPT, 'rows': []})
+    reopened = handle({**request, 'action': 'session'})
+    if reopened['resources']:
+        attached = reopened
+    else:
+        only_question(reopened, 'receipt.attachment')
+        attached = handle({**request, 'action': 'upload', 'asset': RECEIPT, 'rows': []})
     fields = only_question(attached, 'receipt.fields')
     assert handle({**request, 'action': 'session'})['pending_questions'] == [fields]
-    assert [m['content'] for m in attached['messages'] if m['role'] == 'user'] == [REQUEST]
+    user_turns = [prompt, *prior_choices]
+    assert [m['content'] for m in attached['messages'] if m['role'] == 'user'] == user_turns
 
     capability = Fake([packet(old_state, tools=['read_document', 'extract_information'])])
 
@@ -140,19 +162,43 @@ def test_reopened_capability_questions_from_before_the_change_accept_an_upload(t
                            condition_mode='off', verifier_mode='off', requirement_mode='off')
     monkeypatch.setattr(design, 'build_graph', reassess)
     answer = '영수증에서 추출할 항목: 상호명, 승인번호'
+    planner_inputs = []
+    def planner(current):
+        planner_inputs.append(current)
+        return {'draft': draft(['추가할 항목이 있나요?'])}
     resumed = handle({**request, 'action': 'message', 'revision': attached['revision'],
-                      'question_id': fields['id'], 'content': answer},
-                     conversation=lambda _: {'draft': draft(['결과는 어떤 형식으로 저장할까요?'])})
+                      'question_id': fields['id'], 'content': answer}, conversation=planner)
     assert resumed['capability_assessment']['decision'] == 'existing_tools'
     assert capability.calls == 1
-    assert answer in [m['content'] for m in resumed['messages'] if m['role'] == 'user']
+    assert [m['content'] for m in planner_inputs[0]['messages'] if m['role'] == 'user'] == [*user_turns, answer]
 
 
 @pytest.mark.parametrize('prompt', [
     '청구서 PDF에서 내용을 추출해 줘.',
     '매일 들어오는 영수증의 금액을 추출해서 담당자에게 메일로 보내줘.',
+    '영수증과 발주서의 금액을 추출해서 엑셀에 비교해줘.',
 ])
 def test_other_document_and_scheduled_requests_stay_with_the_planner(studio, prompt):
     act, planner_inputs = studio
     act('message', content=prompt)
     assert planner_inputs and planner_inputs[0]['messages'][0]['content'] == prompt
+
+
+@pytest.mark.parametrize('later_prompt,question_source', [
+    ('영수증 추출을 취소해줘.', 'capability'),
+    ('영수증과 장부를 비교해줘.', 'capability'),
+    (None, 'condition'),
+])
+def test_unrelated_pending_questions_keep_their_original_controls(later_prompt, question_source):
+    from agent_builder.design.receipt_intake import legacy_receipt_intake
+
+    user_inputs = [EXCEL_REQUEST, OLD_BUTTON_REPLIES[0]]
+    if later_prompt:
+        user_inputs.append(later_prompt)
+    user_inputs.append(OLD_BUTTON_REPLIES[-1])
+    session = {'messages': [{'role': 'user', 'content': text} for text in user_inputs],
+               'status': 'needs_clarification', 'pending_questions': [
+                   {'id': 'file', 'source': 'capability', 'text': '파일 형식은 무엇인가요?'},
+                   {'id': 'fields', 'source': question_source, 'text': '필요한 항목은 무엇인가요?'},
+               ]}
+    assert legacy_receipt_intake(session) is None

@@ -167,6 +167,7 @@ output_ports에 있는 것만 사용합니다. file_ids는 이번 대화의 실�
 명시적으로 연결합니다. JSON에서 표를 선택하면 settings.output_port="table"로 결과 자료형을 선언합니다. 없는 경로·항목·계정 연결은 추측하지 않습니다.
 목록·객체 안에 앞 결과를 넣어야 하면 arguments_json의 해당 위치에 {"$binding":"입력 인자명"}을 쓰고 같은 이름의 binding을 연결합니다. 예: create_spreadsheet의 sheets=[{"name":"Result","table":{"$binding":"sheets"}}], binding.input=sheets.
 기존 22개 도구는 operation=null이면 기존 settings와 기존 포트를 그대로 씁니다. 업로드 CSV 두 개를 연결할 때는 각각 별도의 read_table(operation=null, file_ids=[각 실제 파일 ID])로 table을 읽고 join_tables의 left/right 입력에 연결합니다. 일반 실행 순서는 read_left → read_right → join → write_result이며 write_result는 join의 table을 받습니다.
+연결한 표를 그대로 CSV/JSON으로 저장할 때는 read_table(operation=null, file_ids=실제 연결 ID)의 table 출력을 write_result의 table 입력에 연결합니다. write_result.settings.format을 지정하고 filter_sort나 json_transform은 변환만을 위해 추가하지 않습니다. 글로벌 실행 조건은 filters=[], sort=[], missing_policy=keep, duplicate_policy=keep입니다. 파일이 아직 없으면 file_ids=[]로 실행 시 자료를 받습니다. 내부 자료 ID와 기본 저장 폴더는 사용자에게 묻지 않습니다. 기본 결과 위치는 서버 reports이며 다른 외부 저장 위치를 사용자가 명시하면 그 요구를 보존해 별도로 검토합니다.
 Ollama 생성 규격에서 arguments_json이 객체이면 문자열로 감싸지 말고 실제 JSON 객체로 작성합니다. 저장 시 앱이 문자열로 정규화합니다.
 계정 연결이 필요한 도구도 등록된 기능입니다. 연결 필요와 도구 미구현을 구분하고,
 Slack 등 등록되지 않은 공급자를 Gmail로 대체하지 않습니다.

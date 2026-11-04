@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.conditions.input_resolution import latest_resolution, option_answer, numeric_answer, resolution_question, resolution_options, pending_nonanswer
+from agent_builder.conditions.revisions import cancellation_turns, evidence_retired, replacement_needs_review
 
 
 class ConditionContractError(ValueError):
@@ -486,9 +487,9 @@ def explicit_policies(state, catalog):
         columns = {col for resource in state.get('resources', []) if resource.get('kind') == 'table'
                    for col in resource.get('columns', []) if isinstance(col, str) and col.strip()}
         def column_pattern(col):
-            return (r'(?:중복\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|도|으로|로|[\s,.:]|$)|'
+            return (r'(?:중복\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|도|만|으로|로|[\s,.:]|$)|'
                     r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) +
-                    r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|[\s,.:]|$)|'
+                    r'\s+(?:열\s+)?중복(?=은|는|을|를|과|와|만|[\s,.:]|$)|'
                     r'같은\s*' + re.escape(col) + r'(?=은|는|을|를|이|가|[\s,.:]|$)|'
                     r'(?<![가-힣A-Za-z0-9_])' + re.escape(col) + r'\s*(?:이|가)?\s*(?:같(?!거나)|겹치))')
         matches = [col for col in columns if re.search(column_pattern(col), text, re.IGNORECASE)]
@@ -557,7 +558,9 @@ def explicit_policies(state, catalog):
         latest_user=max((i for i,m in enumerate(state.get('messages',[])) if m.get('role')=='user'),default=-1)
         if refs and refs[-1].get('turn')==latest_user:
             result['duplicate.policy']=deepcopy(old)
-    return result
+    cutoffs = cancellation_turns(state)
+    return {key: item for key, item in result.items()
+            if not evidence_retired(key, item.get('evidence', []), cutoffs)}
 
 
 def literal_condition_issues(state):
@@ -568,6 +571,10 @@ def literal_condition_issues(state):
     catalog,_=source_catalog(state)
     literals=explicit_policies(state,catalog)
     issues=[]
+    cutoffs = cancellation_turns(state)
+    for key, item in ledger.get('slots', {}).items():
+        if evidence_retired(key, item.get('evidence', []), cutoffs):
+            issues.append(f'{key}: 철회한 조건이 남아 있어 재판정이 필요합니다.')
     for key,item in literals.items():
         stored=(ledger.get('slots') or {}).get(key)
         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
@@ -704,6 +711,10 @@ def validate_conditions(raw, state, catalog):
         invalid.append('unsupported_actions: 원문에 없는 식별자 형태의 동작 ('+', '.join(invented)+')')
     by_id = {e['id']: e for e in catalog}
     previous = deepcopy(state.get('condition_ledger') or {})
+    cutoffs = cancellation_turns(state)
+    previous['slots'] = {key: item for key, item in previous.get('slots', {}).items()
+                         if not evidence_retired(key, item.get('evidence', []), cutoffs)}
+    scope_review = scope_review or replacement_needs_review(state, cutoffs)
     for key, old in previous.get('slots', {}).items():
         if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
             old.update(status='missing', value=None, evidence_ids=[], evidence=[])
@@ -717,6 +728,8 @@ def validate_conditions(raw, state, catalog):
         evidence = [by_id[e] for e in condition['evidence_ids'] if e in by_id]
         if len(evidence) != len(condition['evidence_ids']):
             raise ValueError('이번 요청에 없는 근거 ID입니다.')
+        if evidence_retired(key, evidence, cutoffs):
+            continue
         item = {**condition, 'evidence': evidence}
         if condition['status'] == 'specified':
             if not evidence:
@@ -783,7 +796,10 @@ def validate_conditions(raw, state, catalog):
         if evidence and amount['value'] in _amounts(evidence[0]['quote']):
             slots['filter.value'] = {'key': 'filter.value', 'status': 'specified', 'value': float(amount['value']),
                                      'evidence_ids': [evidence[0]['id']], 'evidence': evidence}
-    operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
+    proposed = [op for op in proposal['operations'] if op not in cutoffs or latest > cutoffs[op]]
+    retained = [op for op in previous.get('operations', []) if op not in cutoffs or
+                any(key.startswith('filter.' if op == 'filter' else 'duplicate.') for key in previous['slots'])]
+    operations = list(dict.fromkeys(proposed + retained))
     # A follow-up may focus on deduplication and omit the earlier filter from
     # the model's single-operation label. Preserve it whenever its three
     # individually grounded slots still exist; do not synthesize missing values.
@@ -858,6 +874,7 @@ def validate_conditions(raw, state, catalog):
                               'options': (resolution_options(state) if not resolution['deferred'] else []) if is_resolution
                                          else [] if key == 'input.table' else choice_options(key, state)})
     return {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
+            'retired_operation_turns': cutoffs,
             'outside_scope': outside_scope and decision == 'manual_review' and not cancelled and resolution is None,
             'unresolved': unresolved, 'questions': questions, 'issues': issues,
             'resolution': resolution,

@@ -5,6 +5,13 @@ from workflow_engine.workflow import workflow_errors
 
 def validate_node(state):
     draft=AgentDraft.model_validate({k:v for k,v in state['draft'].items() if k!='node_snapshots'}).model_dump();issues=list(state.get('semantic_issues',[]))
+    from agent_builder.design.question_policy import internal_table_question
+    questions = draft['questions']
+    rejected = [i for i, question in enumerate(questions) if internal_table_question(question, state, draft)]
+    if rejected:
+        issues.append('내부 자료 ID·기본 저장 위치는 사용자 질문이 아닙니다. 연결 자료 ID 또는 실행 시 입력 계약과 서버 reports 저장을 사용해 초안을 수정하세요.')
+        draft['questions'] = [q for i, q in enumerate(questions) if i not in rejected]
+        draft['question_options'] = [options for i, options in enumerate(draft.get('question_options', [])) if i not in rejected]
     from agent_builder.conditions.condition_readiness import literal_condition_issues
     issues.extend(literal_condition_issues(state))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']
@@ -77,4 +84,10 @@ def validate_node(state):
         issues.append('생성기의 미지원 판정이 현재 요청의 도구 지원 판단과 충돌합니다. 초안을 다시 생성하거나 검토해야 합니다.')
     status=('validation_failed' if support_conflict else 'unsupported' if draft['unsupported'] else
             'needs_clarification' if draft['questions'] or issues else 'ready')
-    return {'draft':draft,'issues':list(dict.fromkeys(issues)),'status':status,'trace':state.get('trace',[])+[{'node':'validate','label':'설정·근거 검증','status':'completed' if not issues else 'needs_input','detail':'필수 설정·등록 도구·자료 범위·인용 원문을 검사했습니다.' if not issues else ' / '.join(issues)}]}
+    update = {'draft':draft,'issues':list(dict.fromkeys(issues)),'status':status,'trace':state.get('trace',[])+[{'node':'validate','label':'설정·근거 검증','status':'completed' if not issues else 'needs_input','detail':'필수 설정·등록 도구·자료 범위·인용 원문을 검사했습니다.' if not issues else ' / '.join(issues)}]}
+    if rejected and state.get('messages', []) and state['messages'][-1]['role'] == 'assistant':
+        reply = '필요한 설정을 자동으로 구성하지 못해 초안 수정을 진행합니다.'
+        if draft['questions']:
+            reply += '\n' + '\n'.join(draft['questions'])
+        update['messages'] = state['messages'][:-1] + [{'role': 'assistant', 'content': reply}]
+    return update

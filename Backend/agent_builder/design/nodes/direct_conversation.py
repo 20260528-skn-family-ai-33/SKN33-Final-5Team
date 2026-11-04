@@ -401,6 +401,54 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 # Transport already has the full grammar. Avoid repeating all
                 # sixteen node variants in the language model's prompt context.
                 context.pop('schema')
+        from agent_builder.design.planner_constraints import passthrough_format
+        serialization_format = passthrough_format(state)
+        if serialization_format:
+            # Keep the model responsible for the graph, but expose only the
+            # compatible native table ports. Do not mix canonical operation ports.
+            context['schema'] = native_decoder_schema(decoder_schema(version), resources,
+                allowed_tools=('read_table', 'write_result', 'finish'))
+            definitions = context['schema']['$defs']
+            definitions['NodeSettings']['properties']['operation'] = {'type': 'null'}
+            definitions['NodeSettings']['properties']['node_ref'] = {'type': 'null'}
+            identifiers = {tool: tool + '_1' for tool in ('read_table', 'write_result', 'finish')}
+            for tool, identifier in identifiers.items():
+                definitions['NativeNode_' + tool]['properties']['id'] = {'type': 'string', 'enum': [identifier]}
+            for binding in definitions['NativeBinding_write_result']['anyOf']:
+                binding['properties']['node_id'] = {'type': 'string', 'enum': [identifiers['read_table']]}
+            graph = definitions['WorkflowDefinition']['properties']
+            graph['entry'] = {'type': 'string', 'enum': [identifiers['read_table']]}
+            for field in ('source', 'target'):
+                definitions['WorkflowEdge']['properties'][field] = {'type': 'string', 'enum': list(identifiers.values())}
+            for binding in definitions['NativeBinding_finish']['anyOf']:
+                binding['properties']['node_id'] = {'type': 'string', 'enum': [identifiers['write_result']]}
+            output_settings = deepcopy(definitions['NodeSettings'])
+            output_settings['properties']['format'] = {'type': 'string', 'enum': [serialization_format]}
+            output_settings['required'] = list(dict.fromkeys([*output_settings.get('required', []), 'format']))
+            definitions['NativeNode_write_result']['properties']['settings'] = output_settings
+            for key in ('questions', 'question_options', 'unsupported'):
+                context['schema']['properties'][key]['maxItems'] = 0
+            context['schema']['properties']['workflow'] = {'$ref': '#/$defs/WorkflowDefinition'}
+            context['schema']['required'] = list(dict.fromkeys([*context['schema']['required'], 'workflow', 'execution_plan']))
+            plan = definitions['ExecutionPlan']['properties']
+            plan['filters']['maxItems'] = plan['sort']['maxItems'] = 0
+            for field, value in [('missing_policy', 'keep'), ('duplicate_policy', 'keep'),
+                                 ('output_format', serialization_format)]:
+                plan[field] = {'type': 'string', 'enum': [value]}
+            definitions['ExecutionPlan']['required'] = list(dict.fromkeys([
+                *definitions['ExecutionPlan'].get('required', []), 'filters', 'sort', 'missing_policy', 'duplicate_policy', 'output_format']))
+            context['source_quote_catalog'] = source_quote_choices(state['messages'], resources)
+            context['schema'] = citation_decoder_schema(context['schema'], context['source_quote_catalog'])
+            context['schema']['properties']['requirements']['minItems'] = 1
+            llm.schema = context['schema']
+            context['node_library'] = []
+            context['current_draft'] = None if not state.get('issues') else context.get('current_draft')
+            context['table_serialization_contract'] = {
+                'format': serialization_format, 'preserve_all_rows_and_columns': True,
+                'read_table_operation': None, 'read_output': 'table', 'write_input': 'table',
+                'destination': 'reports', 'internal_ids_are_not_user_questions': True}
+            context['supported_tools'] = [t for t in context['supported_tools']
+                                          if t['id'] in ('read_table', 'write_result', 'finish')]
         if use_linear:
             context['supported_tools']=[t for t in context['supported_tools'] if t['id'] in linear_plan.ALLOWED]
             context['output_contract']['workflow_encoding']='ordered_steps_v1'

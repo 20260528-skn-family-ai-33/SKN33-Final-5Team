@@ -73,6 +73,13 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
                     'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
                         'detail':'outside_scope: 비교·요약 업무를 전체 설계기로 위임','mode':setting,'model_calls':0,'metrics':{}}]}
         assessment=state.get('capability_assessment') or {}
+        from agent_builder.design.planner_constraints import passthrough_format
+        if setting == 'enforce' and passthrough_format(state):
+            return {'condition_ledger': None, 'condition_enforced': False, 'condition_required': False,
+                    'condition_route': 'conversation', 'condition_template': False, 'pending_questions': [],
+                    'trace': state.get('trace', []) + [{'node': 'condition_check', 'label': '업무 조건 확인',
+                        'status': 'completed', 'detail': 'outside_scope: 전체 표의 형식 저장을 설계기로 위임',
+                        'mode': setting, 'model_calls': 0, 'metrics': {}}]}
         table_contract_tools={'read_table','filter_sort','write_result','finish'}
         selected=set(assessment.get('tool_ids',[]))
         if setting=='enforce' and assessment.get('decision')=='existing_tools' and selected-table_contract_tools:
@@ -123,6 +130,21 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
                           condition_required=False, pending_questions=[])
             update['trace'][-1].update(status='completed', detail='outside_scope: 기존 설계 경로로 위임')
             return update
+        if setting == 'enforce' and ledger['decision'] == 'unsupported':
+            from agent_builder.capabilities.capability_gate import capability_enforced, blocking_issue
+            if capability_enforced(state) and blocking_issue(state) is None:
+                # Neither model verdict silently overrides the other. In particular,
+                # a scoped extractor cannot declare a new missing service capability.
+                issues = ['지원 판단과 조건 검사의 미지원 판정이 충돌합니다. 요청을 보존하고 재검토가 필요합니다.']
+                ledger = {**ledger, 'decision': 'manual_review', 'issues': issues,
+                          'reported_unsupported_actions': ledger.get('unsupported_actions', []),
+                          'unsupported_actions': []}
+                update.update(condition_ledger=ledger, condition_route='stop', status='validation_failed',
+                              confirmed=False, saved_agent_id=None, pending_questions=[],
+                              draft=_pending_draft(state, ledger), issues=issues, verification_enforced=False,
+                              messages=state.get('messages', []) + [{'role': 'assistant', 'content': issues[0]}])
+                update['trace'][-1].update(detail='manual_review: 지원 판정 충돌')
+                return update
         if setting == 'shadow' or ledger['decision'] == 'ready':
             if setting == 'enforce':
                 update['pending_questions'] = []

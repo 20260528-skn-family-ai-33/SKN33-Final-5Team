@@ -14,3 +14,9 @@ def test_other_policy_negation_does_not_erase_explicit_duplicate_column(tail):
 def test_negated_duplicate_column_is_not_selected(text):
     s=state(text);s['resources']=[{'id':'sales','kind':'table','columns':['거래ID','비용']}]
     assert 'duplicate.field' not in explicit_policies(s,source_catalog(s)[0])
+
+
+@pytest.mark.parametrize('text', ['거래ID 중복만 첫 행을 남겨줘.', '중복 거래ID만 첫 행을 남겨줘.'])
+def test_named_duplicate_column_with_only_particle_is_grounded(text):
+    s=state(text);s['resources']=[{'id':'sales','kind':'table','columns':['거래ID','비용']}]
+    assert explicit_policies(s,source_catalog(s)[0])['duplicate.field']['value']=='거래ID'

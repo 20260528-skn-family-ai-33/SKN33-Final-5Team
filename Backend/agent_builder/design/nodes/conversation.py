@@ -138,7 +138,11 @@ def make_conversation(api_key,model,model_factory=None):
         # same tool scope and node bounds the direct planner enforces, and show only those
         # tools (the full catalogue alone was ~9.5k+ prompt tokens of a 16k context).
         scoped=table_plan_scope(state)
-        catalog=[t for t in TOOLS if t['id'] in TABLE_PLAN_TOOLS] if scoped else TOOLS
+        from agent_builder.design.planner_constraints import passthrough_format
+        serialization_format = passthrough_format(state)
+        serialization_tools = {'read_table', 'write_result', 'finish'}
+        catalog=([t for t in TOOLS if t['id'] in serialization_tools] if serialization_format else
+                 [t for t in TOOLS if t['id'] in TABLE_PLAN_TOOLS] if scoped else TOOLS)
         @tool
         def list_tools() -> list[dict]:
             """현재 에이전트에 연결할 수 있는 검증된 업무 도구 명세를 조회합니다."""
@@ -154,7 +158,7 @@ def make_conversation(api_key,model,model_factory=None):
         if selected_contract_ids:
             if any(r.get('kind')=='table' for r in resources.values()):selected_contract_ids.add('read_table')
             if any(r.get('kind')=='document' for r in resources.values()):selected_contract_ids.add('read_document')
-        inline_contracts=bool(os.getenv('A4B_MAIN_PROVIDER')=='ollama' and selected_contract_ids)
+        inline_contracts=bool(os.getenv('A4B_MAIN_PROVIDER')=='ollama' and selected_contract_ids and not serialization_format)
         selected_contracts_read=inline_contracts
         active_operation_ids=(selected_contract_ids|{'finish'}) if inline_contracts else None
         variable_names=set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{0,39})(?=\s*(?:[=+*/%]|값))',' '.join(m['content'] for m in state['messages'] if m['role']=='user')))
@@ -239,6 +243,8 @@ def make_conversation(api_key,model,model_factory=None):
             condition['value_type']={'enum':['boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'text']}
             schema['$defs']['ExecutionPlan']['properties']['filters'].update(minItems=1,maxItems=1)
         plan_properties=schema['$defs']['ExecutionPlan']['properties']
+        if scoped and 'filter' not in ledger.get('operations', []):
+            plan_properties['filters']['maxItems'] = 0
         for key,field in [('missing.policy','missing_policy'),('duplicate.policy','duplicate_policy'),('duplicate.field','duplicate_field'),('output.format','output_format')]:
             if key in confirmed:plan_properties[field]={'enum':[confirmed[key]]}
         if confirmed.get('sort.policy')=='none':plan_properties['sort']['maxItems']=0
@@ -302,6 +308,26 @@ def make_conversation(api_key,model,model_factory=None):
                 variants=[v for v in variants if v['properties']['tool']['enum'][0] in active_operation_ids]
             variants.extend(operation_variants(operation_node_schema,schema['$defs']['Binding'],active_operation_ids,variable_names))
         schema['$defs']['WorkflowNode']={'anyOf':variants}
+        if serialization_format:
+            # Keep native settings and ports together; canonical operation variants
+            # use result/records and cannot feed the legacy write_result table port.
+            variants = [v for v in native_variants if v['properties']['tool']['enum'][0] in serialization_tools]
+            for variant in variants:
+                identifier = variant['properties']['tool']['enum'][0]
+                if identifier == 'write_result':
+                    variant['properties']['settings']['properties']['format'] = {'type': 'string', 'enum': [serialization_format]}
+                    binding = variant['properties']['bindings']['items']['properties']
+                    binding['input'] = binding['output'] = {'type': 'string', 'enum': ['table']}
+            schema['$defs']['WorkflowNode'] = {'anyOf': variants}
+            for key in ('questions', 'question_options', 'unsupported'):
+                schema['properties'][key]['maxItems'] = 0
+            schema['properties']['workflow'] = {'$ref': '#/$defs/WorkflowDefinition'}
+            schema['properties']['tool_ids']['items']['enum'] = sorted(serialization_tools)
+            plan_properties['filters']['maxItems'] = plan_properties['sort']['maxItems'] = 0
+            for field, value in [('missing_policy', 'keep'), ('duplicate_policy', 'keep'), ('output_format', serialization_format)]:
+                plan_properties[field] = {'type': 'string', 'enum': [value]}
+            schema['$defs']['ExecutionPlan']['required'] = list(dict.fromkeys([
+                *schema['$defs']['ExecutionPlan'].get('required', []), 'filters', 'sort', 'missing_policy', 'duplicate_policy', 'output_format']))
         if scoped:
             # Conditions are confirmed: no re-asking or support reversal at this stage, and a
             # node floor/ceiling matching the existing audit (read, filter_sort, write_result if

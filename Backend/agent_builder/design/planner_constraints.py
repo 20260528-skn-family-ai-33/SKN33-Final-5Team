@@ -1,5 +1,6 @@
 """Generation-only native IDs/typed ports. Never rewrite a returned workflow."""
 from copy import deepcopy
+import re
 from workflow_engine.catalog.registry import PORTS, node_ports
 
 REQUIRED_INPUTS = {'filter_sort':{'table'}, 'write_result':{'table'}, 'aggregate_table':{'table'},
@@ -12,6 +13,31 @@ NODE_ID_PATTERN = '^[a-zA-Z][a-zA-Z0-9_-]{0,39}$'
 # keeps it last). A scoped grammar never offers their outputs as upstream inputs.
 # Register any new terminal tool here; producers are otherwise derived from PORTS.
 TERMINAL_TOOLS = ('finish',)
+
+
+def passthrough_format(state):
+    """Narrow, supported whole-table serialization; never classify other work."""
+    from agent_builder.capabilities.capability_gate import capability_enforced, blocking_issue
+    if not capability_enforced(state) or blocking_issue(state):
+        return None
+    selected = set((state.get('capability_assessment') or {}).get('tool_ids', []))
+    if not {'read_table', 'write_result'} <= selected or selected - set(TABLE_PLAN_TOOLS):
+        return None
+    if state.get('required_node_refs') or len([r for r in state.get('resources', []) if r.get('kind') == 'table']) > 1:
+        return None
+    users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
+    # Only the complete initial request is classified here. Never infer that
+    # later instructions or unrecognised trailing work can be discarded.
+    if len(users) != 1:
+        return None
+    names = [re.escape(r['name']) for r in state.get('resources', [])
+             if r.get('kind') == 'table' and isinstance(r.get('name'), str)]
+    source = r'(?:CSV|JSON|표\s*파일' + ''.join('|' + name for name in names) + ')'
+    keep = r'(?:그대로(?:\s*유지(?:해서|하고|한\s*채))?|(?:모든|전체)\s*행\s*(?:과|및|·)\s*열\s*(?:을|은)?\s*(?:그대로\s*)?유지(?:해서|하고|한\s*채))'
+    pattern = (r'\s*(?:(?:첨부한|연결한|업로드한)\s*)?' + source + r'\s*(?:파일)?\s*(?:의|을|를)?\s*' + keep +
+               r'\s*(CSV|JSON)\s*(?:파일|형식)?\s*(?:으로|로)\s*(?:변환(?:해서|하고)?\s*)?저장(?:해\s*줘|해\s*주세요|해|하세요)(?:요)?\s*[.!?。]*\s*')
+    match = re.fullmatch(pattern, users[0], re.I)
+    return match[1].lower() if match else None
 
 
 def ready_table_slots(ledger):

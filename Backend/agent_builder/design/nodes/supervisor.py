@@ -13,6 +13,11 @@ def supervisor_node(state):
                     'status':'needs_input','detail':issue}]}
     if state.get('condition_template') and state.get('issues'):
         return {'route':'invalid','status':'validation_failed','trace':state.get('trace',[])+[{'node':'supervisor','label':'대표 업무 검증 보류','status':'needs_input','detail':'템플릿의 조건·자료 오류를 확인하세요. 저장은 차단됐습니다.'}]}
+    if any(issue.startswith('내부 자료 ID·기본 저장 위치는 사용자 질문이 아닙니다.') for issue in state.get('issues', [])):
+        repair = state.get('repair_count', 0) < 2
+        return {'route': 'repair' if repair else 'invalid', 'status': 'needs_clarification' if repair else 'validation_failed',
+                'confirmed': False, 'trace': state.get('trace', []) + [{'node': 'supervisor', 'label': '내부 설정 질문 수정',
+                'status': 'needs_input', 'detail': '내부 설정은 생성기가 수정합니다. 사용자 조건은 보존합니다.'}]}
     if state.get('verification_enforced'):
         decision=state.get('verification_route')
         if decision in ['manual_review','unsupported']:

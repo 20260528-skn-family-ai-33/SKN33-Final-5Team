@@ -19,7 +19,10 @@ def main():
     args = parser.parse_args()
     try:
         with contextlib.redirect_stdout(sys.stderr):
-            if os.environ.get('A4B_DOCUMENT_BENCHMARK_ARM') == 'docling-paddle-fixed-v1':
+            if args.source.suffix.lower() == '.pdf' and os.environ.get('A4B_PARSER_URL'):
+                from documents.analysis.remote_pdf import parse_remote_pdf
+                result = parse_remote_pdf(args.source, args.work_dir or args.output.parent)
+            elif os.environ.get('A4B_DOCUMENT_BENCHMARK_ARM') == 'docling-paddle-fixed-v1':
                 from documents.analysis.benchmark_baseline import run as baseline_run
                 result = baseline_run(args.source, args.work_dir or args.output.parent)
             else:

@@ -5,8 +5,9 @@ from workflow_engine.workflow import workflow_errors
 
 def validate_node(state):
     draft=AgentDraft.model_validate({k:v for k,v in state['draft'].items() if k!='node_snapshots'}).model_dump();issues=list(state.get('semantic_issues',[]))
-    from agent_builder.conditions.condition_readiness import literal_condition_issues
+    from agent_builder.conditions.condition_readiness import literal_condition_issues, written_comparison_issues
     issues.extend(literal_condition_issues(state))
+    issues.extend(written_comparison_issues(state, draft))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']
     if not draft['name'].strip(): issues.append('에이전트 이름이 필요합니다.')
     from agent_builder.design.name_policy import invalid_workflow_name

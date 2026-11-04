@@ -641,6 +641,97 @@ def schedule_literals(text, follow_up=False):
     return [(key, value, span) for key, (value, span) in found.items()]
 
 
+_WRITTEN_COMPARISON = re.compile(r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?'
+                                 r'\s*(?:원|점|개|명|건|kg)?\s*(초과|이상|미만|이하)')
+_OPERATOR_WORDS = {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}
+_OPERATOR_LABELS = {v: k for k, v in _OPERATOR_WORDS.items()}
+
+
+def written_comparisons(text):
+    """(value, operator) pairs the user wrote, e.g. "30 이상" -> (30, 'gte'). Dropped ranges are skipped."""
+    pairs = []
+    for m in _WRITTEN_COMPARISON.finditer(text):
+        if _excludes_named_range(text, m.end()):
+            continue
+        for amount in _amounts(m.group(0)):
+            pairs.append((Decimal(amount), _OPERATOR_WORDS[m.group(1)]))
+    return pairs
+
+
+def _written_operators(state):
+    written = {}
+    for message in state.get('messages', []):
+        if message.get('role') == 'user':
+            for value, operator in written_comparisons(message['content']):
+                written.setdefault(value, set()).add(operator)
+    return written
+
+
+def canonical_written_operators(state, draft):
+    """Set a drafted constant comparison to the one operator the user wrote for that number.
+
+    Returns (draft, changes); draft is None when nothing changes. Like a unique written weekday,
+    a unique written "30 이상" is applied in code: live 2026-11-04 the planner repeated gt 30 after
+    being told it was wrong, so 4 of 8 valid requests ended unsaved. A number written with two
+    different operators is left for written_comparison_issues to report.
+    """
+    from copy import deepcopy
+    written = _written_operators(state)
+    if not written or not draft:
+        return None, []
+    fixed = deepcopy(draft); changes = []
+    plans = [n['settings'].get('execution_plan') for n in ((fixed.get('workflow') or {}).get('nodes') or [])
+             if n.get('tool') == 'filter_sort' and not n['settings'].get('operation') and n['settings'].get('execution_plan')]
+    if fixed.get('execution_plan'):
+        plans.append(fixed['execution_plan'])
+    for plan in plans:
+        for f in plan.get('filters') or []:
+            if f.get('compare_field') or f.get('operator') not in _OPERATOR_LABELS:
+                continue
+            try:
+                value = Decimal(str(f.get('value')))
+            except (InvalidOperation, ValueError):
+                continue
+            stated = written.get(value) or set()
+            if len(stated) == 1 and f['operator'] not in stated:
+                target = next(iter(stated))
+                changes.append(f"{f.get('field')} {f.get('value')}: {_OPERATOR_LABELS[f['operator']]}→{_OPERATOR_LABELS[target]}")
+                f['operator'] = target
+    return (fixed if changes else None), list(dict.fromkeys(changes))
+
+
+def written_comparison_issues(state, draft):
+    """A drafted constant comparison must keep the operator the user wrote for that same number.
+
+    Live 2026-11-04 (RunPod, PR #27 head): "amount가 30 이상인 행만" was drafted as gt 30 on the full
+    planner path in 3 of 8 runs, so the row with 30 was silently dropped while the run succeeded.
+    The grounded single-table checker does not run on that path. Only numbers written in the request
+    are compared, so thresholds computed by the workflow are left alone.
+    """
+    written = _written_operators(state)
+    if not written:
+        return []
+    plans = [n['settings'].get('execution_plan') or {} for n in ((draft.get('workflow') or {}).get('nodes') or [])
+             if n.get('tool') == 'filter_sort' and not n['settings'].get('operation')]
+    plans.append(draft.get('execution_plan') or {})
+    issues = []
+    for plan in plans:
+        for f in plan.get('filters') or []:
+            if f.get('compare_field') or f.get('operator') not in _OPERATOR_LABELS:
+                continue
+            try:
+                value = Decimal(str(f.get('value')))
+            except (InvalidOperation, ValueError):
+                continue
+            stated = written.get(value)
+            if stated and f['operator'] not in stated:
+                issue = (f"요청한 비교 방식과 초안이 다릅니다: {f.get('field')} {f.get('value')}은(는) "
+                         f"'{'·'.join(_OPERATOR_LABELS[o] for o in sorted(stated))}'인데 초안은 '{_OPERATOR_LABELS[f['operator']]}'입니다.")
+                if issue not in issues:
+                    issues.append(issue)
+    return issues
+
+
 def _excludes_named_range(text, end):
     """True when the operator word ending at `end` names rows to drop, not rows to keep."""
     clause = _RANGE_CLAUSE_END.split(text[end:end + 20], maxsplit=1)[0]

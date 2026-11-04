@@ -158,6 +158,9 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
 
 
 def _confirmed_schedule(state, ledger):
+    from agent_builder.conditions.schedule_policy import schedule_request_issues
+    if schedule_request_issues(state):
+        return None
     if not state.get('condition_enforced') or 'schedule' not in ledger.get('operations', []):
         return None
     slots = ledger.get('slots', {})
@@ -195,7 +198,8 @@ def audit_conditions(state):
     if filled is not None:
         state = {**state, 'draft': filled}
     from agent_builder.design.planner_constraints import table_tool_issues
-    issues = literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
+    from agent_builder.conditions.schedule_policy import schedule_request_issues
+    issues = schedule_request_issues(state) + literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
     update['trace'] = trace + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
                'issues': issues, 'enforced': state.get('condition_enforced', False)}]

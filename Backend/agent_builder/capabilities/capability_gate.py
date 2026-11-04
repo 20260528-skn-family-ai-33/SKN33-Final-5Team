@@ -54,6 +54,10 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    from agent_builder.conditions.schedule_policy import schedule_request_issues
+    schedule_issues = schedule_request_issues(state)
+    if schedule_issues:
+        raise ValueError(schedule_issues[0])
     from agent_builder.design.sorting import sort_request_issues
     sorting = sort_request_issues(state, state.get('draft') or {})
     if sorting:

@@ -67,6 +67,9 @@ def literal_schema(value):
 
 
 def table_plan_scope(state):
+    from agent_builder.design.sorting import sorting_requested
+    if sorting_requested(state):
+        return False
     return (bool(state.get('condition_enforced')) and not state.get('required_node_refs') and
             ready_table_slots(state.get('condition_ledger')) is not None and
             len([r for r in state.get('resources',[]) if r.get('kind')=='table']) <= 1)

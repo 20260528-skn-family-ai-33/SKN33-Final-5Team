@@ -12,7 +12,8 @@ from workflow_engine.executors.legacy_tools.read_table import read_table_node
 from service.worker import handle
 from langgraph.types import Command
 
-PROMPT='stock이 reorder_level보다 작은 행을 숫자 오름차순으로 CSV 저장'
+# Shared fixtures exercise filtering and persistence without an unrelated sort requirement.
+PROMPT='stock이 reorder_level보다 작은 행을 CSV 저장'
 def draft(questions=None):
     return {'name':'재고 정리','purpose':'재고 부족 행 정리','instructions':PROMPT,'tool_ids':['read_table','filter_sort','write_result'],'document_ids':[],'requirements':[{'description':'재고 부족과 정렬','source_id':'user','quote':PROMPT}],'questions':questions or [],'unsupported':[],'explanation':'설정을 정리했습니다.','execution_plan':{'filters':[],'sort':[],'match':'all','missing_policy':'ask','duplicate_policy':'keep','duplicate_field':None,'output_format':'csv'}}
 def initial():return {'session_id':uid(),'messages':[{'role':'user','content':PROMPT}],'resources':[],'draft':None,'trace':[],'confirmed':False,'saved_agent_id':None,'base_agent_id':None,'base_version':0,'model':'gpt-4.1-mini','credential_id':uid()}

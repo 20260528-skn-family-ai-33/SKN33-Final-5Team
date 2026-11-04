@@ -1,38 +1,85 @@
-"""Keep a requested sort from disappearing in native table plans."""
+"""Replay explicit ordering changes and audit native table execution settings."""
 import re
 
-_SORT = re.compile(r'정렬|오름차순|내림차순|(?:큰|작은|높은|낮은|많은|적은)\s*순(?:서)?')
-_NO_SORT = re.compile(r'정렬\s*(?:은|을)?\s*(?:하지\s*(?:마|말|않)|안\s*해|없이)|입력\s*순서.*유지')
+_DIRECTION = re.compile(r'내림차순|오름차순|(?:큰|작은|높은|낮은|많은|적은)\s*순(?:서)?')
+_SORT = re.compile(r'정렬(?=$|[\s,.!?]|해|하|은|을)')
+_CANCEL = re.compile(r'정렬\s*(?:은|을)?\s*(?:취소|하지\s*(?:마|말|않)|안\s*해|없이)|입력\s*순서.*유지')
 
 
-def sorting_requested(state):
-    requested = False
+def sorting_contract(state):
+    fields = {str(column) for resource in state.get('resources', []) for column in resource.get('columns', [])}
+    slots = (state.get('condition_ledger') or {}).get('slots', {})
+    fields.update(str(item['value']) for key, item in slots.items()
+                  if key.endswith('.field') and item.get('status') == 'specified')
+    orders = {}
+    unresolved = False
+    cancelled = False
     for message in state.get('messages', []):
         if message.get('role') != 'user':
             continue
         text = re.sub(r"""(["']).*?\1""", '', message['content'])
-        for clause in re.split(r'[.!?;\n]+', text):
-            if _NO_SORT.search(clause):
-                requested = False
+        for clause in re.split(r'[.!?;\n]+|(?<=말고)\s*', text):
+            if not (_SORT.search(clause) or _DIRECTION.search(clause)):
                 continue
-            if _SORT.search(clause):
-                requested = True
-    return requested
+            named = [field for field in sorted(fields, key=len, reverse=True)
+                     if re.search(r'(?<![\w])' + re.escape(field)
+                                  + r'(?=$|[^\w]|이|가|은|는|을|를|의|합계)', clause)]
+            if _CANCEL.search(clause):
+                if named:
+                    for field in named:
+                        orders.pop(field, None)
+                else:
+                    orders.clear()
+                    unresolved = False
+                cancelled = True
+                continue
+            direction = _DIRECTION.search(clause)
+            if len(named) != 1 or direction is None:
+                for field in named:
+                    orders.pop(field, None)
+                unresolved = True
+                continue
+            word = direction.group()
+            orders[named[0]] = 'descending' if re.search(r'내림|큰|높은|많은', word) else 'ascending'
+            cancelled = False
+    return {'orders': orders, 'unresolved': unresolved, 'cancelled': cancelled}
+
+
+def sorting_requested(state):
+    contract = sorting_contract(state)
+    return bool(contract['orders'] or contract['unresolved'])
 
 
 def sort_request_issues(state, draft):
-    if (state.get('condition_ledger') or {}).get('decision') != 'ready':
+    if draft.get('questions') or draft.get('unsupported'):
         return []
-    if draft.get('questions') or draft.get('unsupported') or not sorting_requested(state):
-        return []
+    contract = sorting_contract(state)
     nodes = (draft.get('workflow') or {}).get('nodes', [])
-    # Canonical operations and saved workflows have their own input contracts.
     if not nodes:
         return []
-    if any(node['settings'].get('operation') or node['tool'] == 'saved_workflow' for node in nodes):
-        return []
     plans = [node['settings'].get('execution_plan') or draft.get('execution_plan', {})
-             for node in nodes if node['tool'] == 'filter_sort']
-    if not any(plan.get('sort') for plan in plans):
-        return ['요청한 정렬 조건이 실행 설정에 없습니다. 정렬 열·방향을 반영하거나 확인해야 합니다.']
+             for node in nodes if node['tool'] == 'filter_sort' and not node['settings'].get('operation')]
+    actual = [order for plan in plans for order in plan.get('sort', [])]
+    from workflow_engine.catalog.canonical import parse_arguments
+    for node in nodes:
+        if node['tool'] == 'filter_sort' and node['settings'].get('operation') == 'sort':
+            try:
+                keys = parse_arguments(node['settings']).get('keys', [])
+                actual.extend({'field': key['column'],
+                               'direction': 'descending' if key.get('descending', False) else 'ascending'}
+                              for key in keys)
+            except (ValueError, KeyError, TypeError):
+                return ['정렬 도구의 열·방향 인자를 확인해야 합니다.']
+    if contract['orders']:
+        expected = contract['orders']
+        if not actual or any(order['field'] not in expected or order['direction'] != expected[order['field']]
+                             for order in actual) or set(expected) != {order['field'] for order in actual}:
+            return ['요청한 정렬 조건의 열·방향이 실행 설정과 다릅니다. 정렬을 반영하거나 확인해야 합니다.']
+    elif contract['cancelled'] and actual:
+        return ['취소한 정렬 조건이 실행 설정에 남아 있습니다.']
+    elif contract['unresolved']:
+        # Without a table or a confirmed condition contract this can be unrelated
+        # historical text. A table request needs clarification before approval.
+        if state.get('resources') or (state.get('condition_ledger') or {}).get('decision') == 'ready':
+            return ['정렬할 열·방향을 확정하지 못했습니다. 사용자에게 확인해야 합니다.']
     return []

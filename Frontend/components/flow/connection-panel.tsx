@@ -24,7 +24,7 @@ export async function request<T = any>(path: string, body?: unknown, method?: st
   try { result = text ? JSON.parse(text) : null; }
   catch { throw new Error('응답을 읽지 못했어요. 잠시 후 다시 시도해주세요.'); }
   if(response.status===401)window.dispatchEvent(new Event('a4b:unauthenticated'));
-  if (!response.ok) throw new Error(result?.error || '요청에 실패했어요. 다시 시도해주세요.');
+  if (!response.ok) throw new Error(result?.error || '요청에 실패했어요. 다시 시도해주세요.', {cause: result});
   return result as T;
 }
 

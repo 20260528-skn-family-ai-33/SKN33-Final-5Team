@@ -9,10 +9,11 @@ type Props = {
   action: ReceiptAction;
   disabled: boolean;
   onAttach: () => void;
+  onLibrary: () => void;
   onAnswer: (answer: string) => void;
 };
 
-export function ReceiptQuestion({text, action, disabled, onAttach, onAnswer}: Props) {
+export function ReceiptQuestion({text, action, disabled, onAttach, onLibrary, onAnswer}: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [other, setOther] = useState('');
 
@@ -22,6 +23,7 @@ export function ReceiptQuestion({text, action, disabled, onAttach, onAnswer}: Pr
       <button type="button" className="as-button" disabled={disabled} onClick={onAttach}>
         <Paperclip size={15} /> 영수증 파일 첨부
       </button>
+      <button type="button" className="as-button" disabled={disabled} onClick={onLibrary}>내 자료에서 선택</button>
     </div>;
   }
 

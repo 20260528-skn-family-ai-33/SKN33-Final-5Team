@@ -12,7 +12,7 @@ from agent_builder.tool_gap import jobs as tool_gap_jobs, redesign as tool_gap_r
 from langgraph.types import Command
 
 # Actions that only read or update session state: the model conversation is never invoked.
-STATE_ONLY={'session','upload','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'}
+STATE_ONLY={'session','upload','attach_asset','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'}
 
 
 def public_state(storage,s,graph):
@@ -21,6 +21,9 @@ def public_state(storage,s,graph):
     if not state and s.get('agent_id'):
         base=storage.agent(s['agent_id']);old=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {})
         state={'draft':base['config'],'messages':old.get('messages',[]),'status':'editing'}
+    if state.get('status') != 'saved' and any(r['id'] not in s['file_ids'] for r in state.get('resources', [])):
+        state = {'messages':state.get('messages', []), 'status':'validation_failed',
+                 'issues':['연결 자료가 삭제됐습니다. 업무 설명을 보내 남은 자료로 설정을 다시 확인하세요.']}
     legacy = legacy_receipt_intake(state)
     if legacy:
         # Keep the recorded transcript; only adapt the controls for the interrupted turn.
@@ -84,17 +87,29 @@ def session_action(c):
                 raise ValueError('대화 버전이 변경됐습니다. 현재 미지원 요청을 다시 확인하세요.')
             state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
             return {'tool_gap':export_gap(state,s)}
-        if action=='upload':
+        if action in ('upload','attach_asset'):
             if s['revision']!=data['revision']:raise ValueError('대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
             if len(s['file_ids'])>=10:raise ValueError('자료는 최대 10개 연결할 수 있습니다.')
             config={'configurable':{'thread_id':s['id']}}
             state=graph.get_state(config).values or {}
             if state.get('status')=='saved':raise ValueError('저장된 에이전트의 자료를 바꾸려면 설정 수정 대화를 시작하세요.')
-            a={**data['asset'],'id':uid(),'created_at':now()}
-            prompt=receipt_upload_prompt(state,a)
-            storage.add_asset(a,data['rows']);s['file_ids'].append(a['id'])
-            resources=[storage.asset(id) for id in s['file_ids']]
-            s=storage.update_session(s,data['revision'],prompt)
+            storage.begin_write()
+            try:
+                resources=[storage.asset(id) for id in s['file_ids']]
+                if action=='attach_asset':
+                    a=storage.asset(data['asset_id'])
+                    if a['id'] in s['file_ids']:raise ValueError('이미 이 설계에 연결된 자료입니다.')
+                else:
+                    a={**data['asset'],'id':uid(),'created_at':now()}
+                prompt=receipt_upload_prompt({**state,'resources':resources},a)
+                if action=='upload':storage.add_asset(a,data['rows'],commit=False)
+                s['file_ids'].append(a['id'])
+                if state.get('draft'):s['draft_name']=state['draft'].get('name')
+                resources.append(a)
+                s=storage.update_session(s,data['revision'],prompt)
+            except Exception:
+                storage.db.rollback()
+                raise
             if prompt:
                 _install_receipt_question(graph,config,prompt,resources)
             elif state:

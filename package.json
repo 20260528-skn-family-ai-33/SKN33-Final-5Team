@@ -6,10 +6,10 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "setup": "node Backend/api/scripts/setup-python.mjs",
-    "ml:install": "node --env-file-if-exists=.env scripts/svm-bundle.mjs install",
-    "ml:check": "node --env-file-if-exists=.env scripts/svm-bundle.mjs check",
-    "setup:docling": "node Backend/api/scripts/setup-python.mjs --docling",
+    "setup": "node scripts/setup/setup-python.mjs",
+    "ml:install": "node --env-file-if-exists=.env scripts/setup/svm-bundle.mjs install",
+    "ml:check": "node --env-file-if-exists=.env scripts/setup/svm-bundle.mjs check",
+    "setup:docling": "node scripts/setup/setup-python.mjs --docling",
     "demo": "node scripts/launch-demo.mjs",
     "dev": "npm run build && node --env-file-if-exists=.env --import tsx Backend/api/src/launch.ts",
     "build": "npm run build:app && npm run build:server",
@@ -19,8 +19,8 @@
     "check": "tsc -p Frontend --noEmit --incremental false && tsc -p Backend/api --noEmit --incremental false",
     "test": "node --import tsx --test --test-concurrency=4 --test-timeout=900000 \"Backend/api/tests/*.test.ts\" \"Frontend/tests/*.test.ts\"",
     "pretest": "npm run build",
-    "test:python": "node --env-file-if-exists=.env --import tsx Backend/api/scripts/test-python.ts",
-    "verify:review:live": "node --import tsx Backend/api/scripts/live-check-reply-review.ts",
+    "test:python": "node --env-file-if-exists=.env --import tsx scripts/verify/api/test-python.ts",
+    "verify:review:live": "node --import tsx scripts/verify/api/live-check-reply-review.ts",
     "tool-lab": "node --import tsx Backend/api/src/tool-lab/cli.ts",
     "tool-lab:demo": "node --import tsx Backend/api/src/tool-lab/cli.ts --demo",
     "tool-lab:gap": "node --import tsx Backend/api/src/tool-lab/gap-cli.ts"

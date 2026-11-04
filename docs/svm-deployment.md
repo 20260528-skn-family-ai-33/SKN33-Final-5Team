@@ -62,7 +62,7 @@ EC2처럼 Compose 대신 기존 컨테이너 설정을 이어받는 배포는 �
 docker exec -w /app/Backend a4b-jhd-aws /app/Backend/.venv-agent/bin/python -m ml.svm56.bundle_cli check --probe
 ```
 
-현재 `scripts/deploy-a4b-ec2.sh`는 기존 컨테이너의 환경변수와 bind mount를 이어받습니다.
+현재 `scripts/deploy/deploy-a4b-ec2.sh`는 기존 컨테이너의 환경변수와 bind mount를 이어받습니다.
 **코드 배포만으로 기존 `off` 설정이나 빠진 모델 마운트가 바뀌지 않습니다.** 운영 담당자가
 현재 모델 경로와 마운트를 확인한 뒤 배포 절차에 맞춰 반영해야 합니다. 진단 명령은 이를 자동 변경하지 않습니다.
 기존 배포가 마운트 개수를 제한하므로 모델 마운트를 임의로 추가하지 말고 배포 설정과 함께 검토합니다.

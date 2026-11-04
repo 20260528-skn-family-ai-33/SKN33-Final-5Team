@@ -19,7 +19,7 @@ logs=/workspace/logs
 auth_dir=${A4B_AUTH_DIR:-/run/a4b-auth}
 gateway_key=$auth_dir/gateway-token
 parser_key=$auth_dir/parser-api-key
-for file in "$repo/scripts/runpod-ollama-proxy.py" "$parser"; do
+for file in "$repo/scripts/runpod/runpod-ollama-proxy.py" "$parser"; do
   if [[ ! -s "$file" ]]; then
     echo "Missing deployment file: $file" >&2
     exit 1
@@ -122,7 +122,7 @@ if ! "$ollama" show qwen3.5:4b >/dev/null 2>&1; then
   model_cache_changed=true
 fi
 if ! "$ollama" show a4b-qwen35-4b-16k >/dev/null 2>&1; then
-  "$ollama" create a4b-qwen35-4b-16k -f "$repo/Backend/scripts/ollama/Modelfile.a4b-qwen35-4b-16k"
+  "$ollama" create a4b-qwen35-4b-16k -f "$repo/scripts/setup/ollama/Modelfile.a4b-qwen35-4b-16k"
   model_cache_changed=true
 fi
 if "$model_cache_changed" || [[ ! -s "$model_cache/manifests.tar" ]]; then
@@ -137,7 +137,7 @@ if "$model_cache_changed" || [[ ! -s "$model_cache/manifests.tar" ]]; then
   mv -f "$model_cache/manifests.tar.new" "$model_cache/manifests.tar"
 fi
 
-A4B_GATEWAY_TOKEN=$(<"$gateway_key") python3 "$repo/scripts/runpod-ollama-proxy.py" >"$logs/gateway.log" 2>&1 &
+A4B_GATEWAY_TOKEN=$(<"$gateway_key") python3 "$repo/scripts/runpod/runpod-ollama-proxy.py" >"$logs/gateway.log" 2>&1 &
 pids+=("$!")
 A4B_PARSER_API_KEY=$(<"$parser_key") PADDLE_PDX_CACHE_HOME=/workspace/paddlex \
   FLAGS_allocator_strategy=auto_growth "$python" "$parser" >"$logs/parser.log" 2>&1 &

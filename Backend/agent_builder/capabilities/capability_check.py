@@ -12,8 +12,13 @@ def _question_text(text):
     import re
     text=text.strip()
     if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
-    if text.endswith(('?', '주세요.', '알려주세요', '주세요')):return text
-    return text.rstrip('.')+'에 대해 알려주세요.'
+    if text.endswith(('?', '？')):return text
+    stem=text.rstrip('.').rstrip()
+    if stem.endswith('해야 합니다'):
+        return stem.removesuffix('해야 합니다')+'해 주세요.'
+    if stem.endswith(('니다','세요')):
+        return stem+'.'
+    return stem+'에 대해 알려주세요.'
 
 
 # Only explicit acknowledgements/non-progress replies may reuse a verdict.

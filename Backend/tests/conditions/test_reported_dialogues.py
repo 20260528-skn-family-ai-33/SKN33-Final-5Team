@@ -60,6 +60,17 @@ def test_capability_file_id_is_an_upload_instruction_not_internal_noun():
     assert _question_text('비교할 기간')=='비교할 기간에 대해 알려주세요.'
 
 
+@pytest.mark.parametrize(('condition', 'prompt'), [
+    ('파일 형식을 확인해야 합니다.', '파일 형식을 확인해 주세요.'),
+    ('필요한 항목을 정의해야 합니다', '필요한 항목을 정의해 주세요.'),
+    ('자료 연결이 필요합니다.', '자료 연결이 필요합니다.'),
+    ('어떤 형식인가요?', '어떤 형식인가요?'),
+])
+def test_complete_condition_sentence_is_not_treated_as_a_noun(condition, prompt):
+    from agent_builder.capabilities.capability_check import _question_text
+    assert _question_text(condition) == prompt
+
+
 def test_keep_only_is_ready_without_empty_review():
     s=state('중복된 행은 모두 유지해')
     r=validate_conditions(proposal(s,{'duplicate.policy':'keep','duplicate.field':None},['deduplicate']),s,source_catalog(s)[0])

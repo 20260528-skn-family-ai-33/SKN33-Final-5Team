@@ -71,3 +71,8 @@
 .nl-form-fields{display:flex;flex-direction:column;gap:16px;min-width:0;margin:0;padding:0;border:0}.nl-form-fields:disabled{opacity:.75}
 
 .as-global-error{margin:12px 24px}
+.as-receipt-fields fieldset{border:0;min-width:0;margin:0;padding:0}
+.as-receipt-fields legend{margin:0 0 8px;padding:0}
+.as-receipt-options{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:10px}
+.as-receipt-options label{display:inline-flex;align-items:center;gap:4px}
+.as-receipt-fields .as-field{margin:0 0 10px}

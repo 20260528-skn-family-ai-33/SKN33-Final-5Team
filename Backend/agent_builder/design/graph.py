@@ -62,18 +62,18 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         # cancellation of the document fixed flow's field question (see document_rows_cancel_reply).
         from agent_builder.design.attachment_precheck import missing_attachment_reply
         from agent_builder.design.document_rows_template import document_rows_cancel_reply
-        return missing_attachment_reply(state) or document_rows_cancel_reply(state)
+        from agent_builder.design.receipt_intake import receipt_intake
+        return receipt_intake(state) or missing_attachment_reply(state) or document_rows_cancel_reply(state)
     def attachment_gate(state):
         quick=quick_reply(state)
-        return {**quick,'status':'needs_clarification','issues':[],'semantic_issues':[],'pending_questions':[],'condition_enforced':False} if quick else {}
-    def after_attachment(state):
-        # Routing sees the gate's output; the cancel reply is then the last message.
-        from agent_builder.design.document_rows_template import CANCELLED
-        messages=state.get('messages',[])
-        cancelled=bool(messages) and messages[-1]['role']=='assistant' and messages[-1]['content']==CANCELLED
-        return 'ask' if cancelled or quick_reply(state) else 'continue'
+        if quick:
+            return {'status':'needs_clarification','issues':[],'semantic_issues':[],'pending_questions':[],
+                    'condition_enforced':False,'attachment_route':'ask',**quick}
+        if any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
+            return {'pending_questions':[],'attachment_route':'continue'}
+        return {'attachment_route':'continue'}
     graph.add_node('attachment_gate',attachment_gate)
-    graph.add_conditional_edges('attachment_gate',after_attachment,{'ask':'await_input','continue':'capability_check'})
+    graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'capability_check'})
     graph.add_node('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode)))
     graph.add_node('await_capability',await_capability_node)
     graph.add_node('generation_gate',generation_gate)

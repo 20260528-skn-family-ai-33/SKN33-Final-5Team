@@ -91,6 +91,63 @@ test('DOM: startup API failure is visible on the node-library screen too',async(
  try{assert.match(document.querySelector('[role=alert]')?.textContent||'',/카탈로그 연결 오류/);}finally{await h.close();}
 });
 function readySession(){return {id:'ready',revision:1,status:'ready',base_version:0,messages:[{role:'user',content:'합계를 계산해줘'},{role:'assistant',content:'설정 확인'}],draft:{...A.config,explanation:'설정 확인'},resources:[],trace:[],issues:[]};}
+test('DOM: receipt clarification uploads a file and submits only chosen fields to its pending question',async()=>{
+ const attach={id:'a'.repeat(24),key:'receipt.attachment',text:'영수증을 첨부해 주세요.',action:{type:'attach_receipt'}};
+ const fields={id:'b'.repeat(24),key:'receipt.fields',text:'어떤 항목을 추출할까요?',action:{type:'select_fields',options:['날짜','상호명','결제 금액']}};
+ function waiting(question:typeof attach,revision:number){
+  const session=readySession();
+  const content=(question.key==='receipt.fields'?'영수증.pdf 파일을 연결했어요. ':'')+question.text;
+  return {...session,revision,status:'needs_clarification',messages:[{role:'assistant',content}],
+   draft:{...session.draft,questions:[question.text],question_options:[['나중에 결정']]},pending_questions:[question]};
+ }
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return waiting(attach,1);
+  if(path.endsWith('/upload'))return waiting(fields,2);
+  if(path.endsWith('/message'))return readySession();
+ });
+ try{
+  const picker=document.querySelector('input[type=file]') as HTMLInputElement;
+  let opened=0;picker.addEventListener('click',()=>{opened++;});
+  await click(button('영수증 파일 첨부'));
+  assert.equal(opened,1);assert.ok(picker.accept.includes('.pdf')&&picker.accept.includes('.jpg'));assert.ok(!picker.accept.includes('.csv'));
+  assert.equal(buttons().some(b=>b.textContent==='나중에 결정'),false);
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/message')).length,0);
+  async function pick(name:string) {
+   Object.defineProperty(picker,'files',{configurable:true,value:[new dom.window.File(['receipt'],name)]});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  }
+  await pick('잘못된 파일.csv');
+  assert.match(document.querySelector('[role=alert]')?.textContent||'',/영수증 사진이나 PDF/);
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/upload')).length,0);
+  await pick('영수증.pdf');
+  const deadline=Date.now()+3000;
+  while(!document.querySelector('.as-receipt-fields')){assert.ok(Date.now()<deadline,'Upload did not reach field selection');await h.flush();}
+  assert.equal(h.calls.find(c=>c.path.endsWith('/upload'))?.body.fileName,'영수증.pdf');
+  assert.equal(document.querySelector('.as-message.assistant p')?.textContent,'영수증.pdf 파일을 연결했어요.');
+  await pick('재첨부.csv');
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/upload')).length,1);
+  assert.equal(button('선택한 항목으로 계속').disabled,true);
+  await click(field('날짜'));await click(field('결제 금액'));await input(field('다른 항목 추가'),'승인번호');
+  await click(button('선택한 항목으로 계속'));
+  const answers=h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body);
+  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id}]);
+ }finally{await h.close();}
+});
+test('DOM: reopened receipt session replaces only superseded question lines on the active turn',async()=>{
+ const oldFile='영수증 파일 형식을 알려주세요.', oldFields='추출할 항목을 알려주세요.';
+ const oldReply='이전 답변입니다.\n'+oldFile;
+ const question={id:'a'.repeat(24),key:'receipt.attachment',text:'영수증을 첨부해 주세요.',
+  supersedes_texts:[oldFile,oldFields],action:{type:'attach_receipt'}};
+ const stored={...readySession(),status:'needs_clarification',pending_questions:[question],
+  messages:[{role:'assistant',content:oldReply},{role:'user',content:'영수증을 읽어 줘'},
+            {role:'assistant',content:['제출 안내입니다.',oldFile,'• '+oldFields,'추가 안내도 확인하세요.'].join('\n')}]};
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?stored:undefined);
+ try{
+  assert.ok(button('영수증 파일 첨부'));
+  assert.deepEqual(Array.from(document.querySelectorAll('.as-message.assistant p'),p=>p.textContent),
+   [oldReply,'제출 안내입니다.\n추가 안내도 확인하세요.']);
+ }finally{await h.close();}
+});
 test('DOM: workflow save still enters execution when the list refresh alone fails',async()=>{
  let catalogReads=0;
  const h=await setup('',{'a4b-builder-session':'ready'},path=>{

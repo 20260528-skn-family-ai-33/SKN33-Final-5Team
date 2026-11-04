@@ -1,6 +1,6 @@
 """Shared source resolution for the registered document/table entrypoints."""
 from documents.resources.document_resources import document_chunks
-from documents.resources.document_resources import supports
+from documents.resources.document_resources import saved_input, supports
 
 
 def replacement_files(readers, provided, storage):
@@ -14,7 +14,7 @@ def replacement_files(readers, provided, storage):
             if original in replacements:
                 continue  # Explicit reuse of the same original remains supported.
             matches = ([original] if original in provided else
-                       [i for i in provided if storage.asset(i).get('name') == storage.asset(original).get('name')])
+                       [i for i in provided if storage.asset(i).get('name') == saved_input(storage,original).get('name')])
             if len(matches) != 1:
                 raise ValueError('새 실행 파일을 읽기 노드에 유일하게 연결할 수 없습니다. 원래 파일 이름으로 첨부하거나 파일 선택을 수정하세요.')
             replacement = matches[0]
@@ -53,7 +53,7 @@ def source_file_ids(node,file_ids,storage,config,outputs=None):
         replacements = replacement_files([r for r in readers if r['id'] in active], provided, storage)
         ids = [replacements[old] for old in selected]
     else:
-        ids=[i for i in selected or config['document_ids'] if supports(storage.asset(i),expected)]
+        ids=[i for i in selected or config['document_ids'] if supports(saved_input(storage,i),expected)]
     if not ids:
         raise ValueError('이번 실행에 사용할 '+('문서' if expected=='document' else '표 파일')+'를 연결하세요.')
     if tool=='read_table' and len(ids)!=1:raise ValueError('표 읽기 노드는 한 파일을 선택해야 합니다. 파일을 하나만 연결하세요.')

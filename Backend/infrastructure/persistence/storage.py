@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from documents.resources.document_resources import RemovedUpload, available_inputs
 from infrastructure.persistence.ids import uid, now
 from infrastructure.persistence.db import enable_wal, open_database, workspace_id
 from workflow_engine.catalog.registry import TOOLS
@@ -66,11 +67,12 @@ class Storage:
         base=self.agent(agent_id) if agent_id else None
         if node_refs is not None and (not isinstance(node_refs,list) or len(node_refs)>10 or any(not isinstance(ref,str) for ref in node_refs) or len(set(node_refs))!=len(node_refs)):
             raise ValueError('선택한 노드 버전을 확인하세요. 중복 없이 최대 10개 선택할 수 있습니다.')
-        files=base['config']['document_ids'] if base else []
+        inputs=available_inputs(self,base['config']['document_ids']) if base else []
+        files=[asset['id'] for asset in inputs]
         if base and base['config'].get('schedule'):
             from workflow_engine.scheduling.schedules import Schedules
             source=Schedules(self).source(agent_id)
-            if source:files=[source['asset_id']]+[id for id in files if self.asset(id)['kind']=='document']
+            if source:files=[source['asset_id']]+[asset['id'] for asset in inputs if asset['kind']=='document']
         s={'id':uid(),'model':model,'credential_id':credential_id,'agent_id':agent_id,'base_version':base['version'] if base else 0,'file_ids':files,'created_at':now()}
         from workflow_engine.library.node_library import get, default_nodes, list_nodes
         s['required_node_refs']=node_refs or []
@@ -78,9 +80,14 @@ class Storage:
         if base:
             refs={n['ref'] for n in s['node_library']}
             s['node_library'] += [n for n in base['config'].get('node_snapshots',[]) if n['ref'] not in refs]
-        self.db.execute('INSERT INTO builder_sessions({wsc}id,json) VALUES({wsv}?,?)',(s['id'],json.dumps(s,ensure_ascii=False)))
-        if self.business:self.business.open_session(s)
-        self.db.commit()
+            self.begin_write()
+        try:
+            if base:self.require_assets(files)
+            self.db.execute('INSERT INTO builder_sessions({wsc}id,json) VALUES({wsv}?,?)',(s['id'],json.dumps(s,ensure_ascii=False)))
+            if self.business:self.business.open_session(s)
+            self.db.commit()
+        except Exception:
+            self.db.rollback();raise
         return self.session(s['id'])
     def update_session(self,s,expected,design_state=None):
         if design_state and design_state.get('draft'):
@@ -101,13 +108,14 @@ class Storage:
         row=self.db.execute('SELECT json FROM builder_assets WHERE {ws} AND id=?',(id,)).fetchone()
         if not row: raise ValueError('연결한 자료를 찾을 수 없습니다.')
         asset=json.loads(row[0])
-        if 'pending_delete' in asset:raise ValueError('삭제 중인 자료입니다.')
+        if 'pending_delete' in asset or asset.get('deleted'):raise RemovedUpload(asset)
         return asset
     def require_assets(self,ids):
         if ids:
             params=','.join('?' for _ in ids)
             count=self.db.execute('SELECT count(*) FROM builder_assets WHERE {ws} AND id IN ('+params+') AND '+
-                                  self.json_text('json','pending_delete')+' IS NULL',tuple(ids)).fetchone()[0]
+                                  self.json_text('json','pending_delete')+' IS NULL AND '+
+                                  self.json_text('json','deleted')+' IS NULL',tuple(ids)).fetchone()[0]
             if count!=len(set(ids)):raise ValueError('자료가 삭제됐습니다. 연결 자료를 다시 확인하세요.')
     def document_review(self,id):
         row=self.db.execute('SELECT json FROM document_reviews WHERE {ws} AND asset_id=?',(id,)).fetchone()
@@ -115,7 +123,9 @@ class Storage:
     def document_review_history(self,id):
         return [json.loads(row[0]) for row in self.db.execute('SELECT json FROM document_review_events WHERE {ws} AND asset_id=? ORDER BY revision DESC LIMIT 50',(id,))]
     def rows(self,id):
-        row=self.db.execute('SELECT rows_json FROM builder_assets WHERE {ws} AND id=?',(id,)).fetchone()
+        row=self.db.execute('SELECT rows_json FROM builder_assets WHERE {ws} AND id=? AND '+
+                            self.json_text('json','pending_delete')+' IS NULL AND '+
+                            self.json_text('json','deleted')+' IS NULL',(id,)).fetchone()
         if not row: raise ValueError('표 파일을 찾을 수 없습니다.')
         return json.loads(row[0])
     def agents(self):

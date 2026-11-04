@@ -1,6 +1,6 @@
 """A3: run a saved role (agent node) over the actual run inputs."""
 import json
-from documents.resources.document_resources import supports
+from documents.resources.document_resources import saved_input, supports
 
 def run_agent_node(node,state,storage,config,llm):
     from deepagents import create_deep_agent
@@ -17,7 +17,7 @@ def run_agent_node(node,state,storage,config,llm):
     if reviews:inputs['reviews']=reviews
     docs=inputs.get('documents')
     if docs is None:
-        ids=[id for id in (state.get('file_ids') or config['document_ids']) if supports(storage.asset(id),'document')]
+        ids=[id for id in (state.get('file_ids') or config['document_ids']) if supports(saved_input(storage,id),'document')]
         docs=document_chunks(storage,ids)
     context={'request':state['request'],'inputs':inputs,'documents':docs,'reference':spec['reference'],'workflow_instructions':config.get('instructions','')}
     if len(json.dumps(context,ensure_ascii=False))>45000:

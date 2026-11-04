@@ -6,6 +6,7 @@ This does not execute tools, query a model, or prove output correctness.
 from agent_builder.conditions.condition_readiness import input_issues
 from workflow_engine.executors.sources import source_file_ids
 from workflow_engine.catalog.registry import uses_operation
+from documents.resources.document_resources import RemovedUpload
 
 
 def _request_inputs(config, dependencies, supplied_prompt, depth=0):
@@ -89,12 +90,17 @@ def execution_requirements(config, storage, file_ids=None, dependencies=None, pa
     workflow = config.get('workflow')
     if not workflow and not execution_request_required(config, dependencies):
         # Saved table plans from before the graph builder still run through the legacy table reader.
-        selected = [storage.asset(i) for i in file_ids or config.get('document_ids', [])]
+        issues = []
+        try:
+            selected = [storage.asset(i) for i in file_ids or config.get('document_ids', [])]
+        except RemovedUpload as error:
+            selected = []
+            issues.append(str(error))
         tables = [asset['id'] for asset in selected if asset.get('kind') == 'table']
         ready = bool(tables) and (not file_ids or len(tables) == len(selected))
         return [dict(node_id=path+'read_table', kind='table', timing='execution', required_before_start=True,
                      fields=[], file_ids=tables, ready=ready,
-                     issues=[] if ready else ['이번 실행에 사용할 표 파일을 연결하세요.'])]
+                     issues=[] if ready else issues or ['이번 실행에 사용할 표 파일을 연결하세요.'])]
     if not workflow or depth > 10:
         return []
     prefix = _prefix(workflow)

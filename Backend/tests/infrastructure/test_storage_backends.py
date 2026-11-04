@@ -232,6 +232,27 @@ def test_reuse_and_named_upload_usages(backend, tmp_path):
     assert [u['id'] for u in row['usages'] if u['kind'] == 'draft'] == [draft_id]
     with pytest.raises(ValueError, match=workflow_name):
         call(alice, 'prepare_asset_delete', id=asset['id'])
+    # After the managed source changes, both the saved version and the historic run
+    # still list the old sample. Neither needs its original bytes to stay available.
+    store = Storage(alice)
+    try:
+        replacement = {**asset, 'id':uid(), 'name':'next-stock.csv'}
+        store.add_asset(replacement, store.rows(asset['id']))
+        Schedules(store).replace_source(workflow_id, replacement['id'])
+    finally:
+        store.close()
+    call(alice, 'prepare_asset_delete', id=asset['id'])
+    call(alice, 'finish_asset_delete', id=asset['id'])
+    assert [r['id'] for r in call(alice,'assets')['assets']] == [replacement['id']]
+    historical = call(alice,'agent',id=workflow_id)
+    assert historical['resources'] == [] and historical['tests'][0]['file_ids'] == [asset['id']]
+    assert historical['source']['asset_id'] == replacement['id']
+    assert call(alice,'session',id=draft_id)['resources'] == []
+    assert call(alice,'new_session',model='test',credential_id=uid(),agent_id=workflow_id)['file_ids'] == [replacement['id']]
+    with pytest.raises(ValueError, match='삭제'):
+        call(alice,'asset_preview',id=asset['id'])
+    new_run = call(alice,'test',id=workflow_id,content='교체한 자료로 부족 재고를 정리해줘')
+    assert new_run['status'] == 'succeeded' and new_run['file_ids'] == [replacement['id']]
 
 
 def test_session_revision_is_an_optimistic_lock(backend, tmp_path):

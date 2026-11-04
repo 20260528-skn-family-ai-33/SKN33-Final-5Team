@@ -148,7 +148,10 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         resume_pending=bool(forced_run_id and graph.get_state(cfg).values)
         # Persist each checkpoint before the next node starts so a killed worker
         # can resume its input and completed steps without losing or replaying them.
-        result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':request,'file_ids':file_ids or [],'messages':[{'role':'user','content':request}],'customer_message':request,'reply_draft':reply_draft},cfg,durability='sync')
+        request=run['request']  # A reclaimed start uses the input persisted by its original owner.
+        # Run Now can use the saved schedule instructions, separately from real customer input.
+        task_prompt=request or (config.get('instructions','') if config.get('schedule') else '')
+        result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':task_prompt,'file_ids':run['file_ids'],'messages':[{'role':'user','content':request}] if request else [],'customer_message':request,'reply_draft':run.get('reply_draft')},cfg,durability='sync')
         snapshot=graph.get_state(cfg);state=snapshot.values;outputs=state.get('outputs',{})
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]
         from workflow_engine.execution_path import artifact_output_ids

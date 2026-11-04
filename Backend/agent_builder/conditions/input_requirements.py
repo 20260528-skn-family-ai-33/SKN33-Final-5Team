@@ -5,6 +5,47 @@ This does not execute tools, query a model, or prove output correctness.
 """
 from agent_builder.conditions.condition_readiness import input_issues
 from workflow_engine.executors.sources import source_file_ids
+from workflow_engine.catalog.registry import uses_operation
+
+
+def _request_inputs(config, dependencies, supplied_prompt, depth=0):
+    """Return (has a file reader, consumes the initial user request), including pinned children."""
+    workflow = config.get('workflow')
+    if not workflow:
+        table_plan = 'read_table' in config.get('tool_ids', []) and bool(config.get('execution_plan'))
+        return table_plan, not table_plan
+    file_reader = False
+    for node in workflow['nodes']:
+        tool, settings = node['tool'], node['settings']
+        if uses_operation(node):
+            # Operations consume the arguments and upstream bindings saved in the graph.
+            continue
+        if tool in ('read_table', 'read_document'):
+            file_reader = True
+        elif tool == 'saved_workflow':
+            child = dependencies.get(node['id'])
+            if not child or depth >= 10:
+                return file_reader, True
+            child_prompt = supplied_prompt or any(b['input'] == 'text' for b in node.get('bindings', []))
+            files, needs_text = _request_inputs(child['config'], child.get('workflow_dependencies', {}), child_prompt, depth + 1)
+            if needs_text:
+                return file_reader, True
+            file_reader |= files
+        elif tool == 'condition' and settings.get('condition_operator') == 'semantic' and not any(b['input']=='answer' for b in node.get('bindings', [])):
+            return file_reader, True
+        elif tool == 'reply_review' and not any(b['input'] == 'table' for b in node.get('bindings', [])):
+            return file_reader, True  # A customer's message cannot come from saved schedule instructions.
+        elif not supplied_prompt and (tool in ('agent_node', 'compose_answer') or
+                (tool == 'search_document' and not (settings.get('query') or '').strip())):
+            return file_reader, True
+        # ask_user collects its own answer after the workflow starts.
+    return file_reader, False
+
+
+def execution_request_required(config, dependencies=None):
+    scheduled_prompt = bool(config.get('schedule') and (config.get('instructions') or '').strip())
+    file_reader, needs_text = _request_inputs(config, dependencies or {}, scheduled_prompt)
+    return needs_text or not (file_reader or scheduled_prompt)
 
 
 def _prefix(workflow):
@@ -46,6 +87,14 @@ def _fields(nodes, reader_id, config):
 
 def execution_requirements(config, storage, file_ids=None, dependencies=None, path='', depth=0, _external_ports=()):
     workflow = config.get('workflow')
+    if not workflow and not execution_request_required(config, dependencies):
+        # Saved table plans from before the graph builder still run through the legacy table reader.
+        selected = [storage.asset(i) for i in file_ids or config.get('document_ids', [])]
+        tables = [asset['id'] for asset in selected if asset.get('kind') == 'table']
+        ready = bool(tables) and (not file_ids or len(tables) == len(selected))
+        return [dict(node_id=path+'read_table', kind='table', timing='execution', required_before_start=True,
+                     fields=[], file_ids=tables, ready=ready,
+                     issues=[] if ready else ['이번 실행에 사용할 표 파일을 연결하세요.'])]
     if not workflow or depth > 10:
         return []
     prefix = _prefix(workflow)

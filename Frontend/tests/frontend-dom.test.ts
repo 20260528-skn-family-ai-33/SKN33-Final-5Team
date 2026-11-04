@@ -57,6 +57,73 @@ async function submit(form:HTMLFormElement){await act(async()=>{form.dispatchEve
 test('DOM: service link overrides old session and renders the requested execution screen',async()=>{
  const h=await setup('?service=A',{'a4b-builder-session':'old'});try{assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.ok(document.querySelector('.screen-run'));assert.equal(localStorage.getItem('a4b-builder-session'),null);assert.equal(h.calls.some(c=>c.path.includes('/session?')),false);}finally{await h.close();}
 });
+test('DOM: a saved receipt workflow starts with just an attached file when Run is clicked',async()=>{
+ const receipt={...A,config:{...A.config,tool_ids:['read_document','extract_information','create_spreadsheet']}};
+ const requirement={kind:'document',fields:[],required_before_start:true,ready:false,issues:['실행할 문서를 연결하세요.']};
+ const h=await setup('?service=A',{},path=>{
+  if(path.includes('/agent?'))return {...snapshot(receipt),request_required:false,input_requirements:[requirement]};
+  if(path.endsWith('/run_upload'))return {asset:{id:'receipt-file',name:'영수증.pdf',kind:'document'}};
+  if(path.endsWith('/test'))return {id:'receipt-run',status:'succeeded',answer:'완료',steps:[],rows:[]};
+ });
+ try {
+  const run=button('워크플로우 실행');
+  assert.ok(field('추가 요청 (선택)'));assert.equal(run.disabled,true);
+  assert.match(document.querySelector('.as-run-files')?.textContent||'',/실행할 문서를 연결/);
+  const picker=document.querySelectorAll<HTMLInputElement>('input[type=file]')[2];
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['receipt'],'영수증.pdf')]});
+  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const deadline=Date.now()+3000;
+  while(run.disabled){assert.ok(Date.now()<deadline,'File did not enable Run');await h.flush();}
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/test')).length,0);
+  await click(run);
+  assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/test')).map(c=>c.body),
+   [{id:'A',content:'',fileIds:['receipt-file']}]);
+ }finally{await h.close();}
+});
+test('DOM: saved documents satisfy saved extraction inputs; an unbound inquiry or confirmation still needs an answer',async()=>{
+ const requirement={kind:'document',fields:[],required_before_start:true,ready:true};
+ const stored={...snapshot(A),request_required:false,input_requirements:[requirement]};
+ const optional=await setup('?service=A',{},path=>path.includes('/agent?')?stored:undefined);
+ try{assert.equal(button('워크플로우 실행').disabled,false);}finally{await optional.close();}
+ const mixed={...stored,agent:{...A,config:{...A.config,tool_ids:['read_document','reply_review']}},
+  request_required:true};
+ const review=await setup('?service=A',{},path=>path.includes('/agent?')?mixed:undefined);
+ try{
+  assert.equal(button('워크플로우 실행').disabled,true);
+  await input(field('고객 문의'),'환불이 가능한가요?');assert.equal(button('워크플로우 실행').disabled,false);
+ }finally{await review.close();}
+ const waiting={...stored,tests:[{id:'interrupted',status:'needs_input',answer:'승인할까요?',question:{question:'승인할까요?'},steps:[],rows:[]}]};
+ const resume=await setup('?service=A',{},path=>path.includes('/agent?')?waiting:undefined);
+ try{
+  assert.equal(button('답변하고 이어 실행').disabled,true);
+  await input(field('확인 질문에 답변'),'네');assert.equal(button('답변하고 이어 실행').disabled,false);
+ }finally{await resume.close();}
+});
+test('DOM: an incompatible replacement blocks a receipt run until removed; a file with document capability works',async()=>{
+ const saved={id:'original',kind:'document',name:'원래 영수증.pdf'};
+ const requirement={kind:'document',required_before_start:true,ready:true,fields:[],file_ids:[saved.id]};
+ const h=await setup('?service=A',{},(path,body)=>{
+  if(path.includes('/agent?'))return {...snapshot(A),request_required:false,resources:[saved],input_requirements:[requirement]};
+  if(path.endsWith('/run_upload'))return {asset:{id:body.fileName,kind:'table',name:body.fileName,
+   capabilities:body.fileName==='분석된 표.xlsx'?['table','document']:['table']}};
+ });
+ try{
+  const run=button('워크플로우 실행');
+  const picker=document.querySelectorAll<HTMLInputElement>('input[type=file]')[2];
+  async function attach(name:string) {
+   Object.defineProperty(picker,'files',{configurable:true,value:[new dom.window.File(['table'],name)]});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+   const deadline=Date.now()+3000;
+   while(!document.querySelector('[aria-label="'+name+' 제거"]')){assert.ok(Date.now()<deadline);await h.flush();}
+  }
+  assert.match(document.querySelector('.as-run-files small')?.textContent||'',/원래 영수증.pdf/);
+  await attach('표.csv');assert.equal(run.disabled,true);
+  assert.match(document.querySelector('.as-run-files small')?.textContent||'',/문서를 첨부/);
+  await click(document.querySelector('[aria-label="표.csv 제거"]')!);assert.equal(run.disabled,false);
+  await attach('분석된 표.xlsx');assert.equal(run.disabled,false);
+  assert.equal(h.calls.some(c=>c.path.endsWith('/test')),false);
+ }finally{await h.close();}
+});
 test('DOM: choosing B while initial A loads cannot be undone by late A response',async()=>{
  const pending=deferred();const h=await setup('?service=A',{},path=>path.endsWith('/agent?id=A')?pending.promise:undefined);
  try{const b=buttons().find(b=>b.textContent?.includes('서비스 B'));assert.ok(b);await click(b);assert.equal(document.querySelector('h1')?.textContent,'서비스 B');await act(async()=>{pending.resolve(snapshot(A));await tick();});assert.equal(document.querySelector('h1')?.textContent,'서비스 B');}finally{await h.close();}
@@ -193,9 +260,9 @@ if(process.env.A4B_FRONTEND_REVIEW_URL&&process.env.A4B_FRONTEND_REVIEW_IDS){
    else{const downloadButton=buttons().find(b=>b.textContent?.includes('결과 다운로드'));assert.ok(downloadButton);const downloads:{url:string;name:string}[]=[];dom.window.HTMLAnchorElement.prototype.click=function(){downloads.push({url:this.href,name:this.download});};await click(downloadButton);assert.equal(downloads.length,1);assert.match(downloads[0].name,/json$/);payload=await (await originalFetch(downloads[0].url)).json() as any[];}
    assert.equal(payload.length,2);assert.ok(payload.some(row=>Object.values(row).includes(30)));assert.ok(payload.some(row=>Object.values(row).includes(40)));}finally{await h.close();}
  });
- test('DOM + real API: missing input shows preflight error without a false completion',async()=>{
+ test('DOM + real API: missing input shows file guidance before execution',async()=>{
   const h=await setup('?service='+ids['브라우저 검증 - 파일 필요'],{},live);
-  try{await until(()=>document.querySelector('h1')?.textContent==='브라우저 검증 - 파일 필요');await click(button('워크플로우 실행'));await until(()=>!!document.querySelector('[role=alert]'));assert.match(document.querySelector('[role=alert]')?.textContent||'',/자료|표|파일/);assert.equal(document.querySelector('.as-result-title'),null);}finally{await h.close();}
+  try{await until(()=>document.querySelector('h1')?.textContent==='브라우저 검증 - 파일 필요');assert.equal(button('워크플로우 실행').disabled,true);assert.match(document.querySelector('.as-run-files small')?.textContent||'',/자료|표|파일/);assert.equal(h.calls.filter(c=>c.path.endsWith('/test')).length,0);assert.equal(document.querySelector('.as-result-title'),null);}finally{await h.close();}
  });
  test('DOM + real API: paused schedule runs now using its managed source',async()=>{
   const h=await setup('?service='+ids['브라우저 검증 - 예약'],{},live);

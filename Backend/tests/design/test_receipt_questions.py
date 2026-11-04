@@ -242,14 +242,13 @@ def test_legacy_planner_migration_keeps_an_independent_question():
     assert legacy_receipt_intake(session) is None
 
 
-def test_selected_receipt_fields_produce_a_real_workbook(studio, tmp_path):
+@pytest.mark.parametrize('run_uploads', [False, True], ids=['saved-sample', 'new-receipts'])
+def test_file_only_run_exports_selected_fields_of_the_requested_receipts(studio, tmp_path, monkeypatch, run_uploads):
     import base64
     import io
     import json
     from openpyxl import load_workbook
-    from infrastructure.persistence.storage import Storage
     from workflow_engine.executors.schemas import Facts
-    from workflow_engine.runner import run_workflow
 
     class ReceiptFacts:
         def with_structured_output(self, schema, **kwargs):
@@ -257,11 +256,12 @@ def test_selected_receipt_fields_produce_a_real_workbook(studio, tmp_path):
             return self
 
         def invoke(self, messages):
-            source = json.loads(messages[-1]['content'])['documents'][0]['source_id']
+            doc = json.loads(messages[-1]['content'])['documents'][0]
+            evidence = dict(line.split(': ', 1) for line in doc['text'].splitlines())
+            evidence['승인번호'] = '없는번호'  # Deliberately ungrounded; the output cell must be empty.
             return Facts.model_validate({'facts': [
-                {'field': field, 'value': value, 'source_id': source, 'quote': field + ': ' + value}
-                for field, value in [('날짜', '2026-11-05'), ('상호명', 'A4B 상점'),
-                                     ('결제 금액', '12,000원'), ('승인번호', '없는번호')]
+                {'field': field, 'value': value, 'source_id': doc['source_id'], 'quote': field + ': ' + value}
+                for field, value in evidence.items()
             ]})
 
     act, _ = studio
@@ -273,15 +273,33 @@ def test_selected_receipt_fields_produce_a_real_workbook(studio, tmp_path):
     ready = act('message', content='영수증에서 추출할 항목: ' + ', '.join(fields), question_id=question['id'])
     assert_workbook_draft(ready, fields, attached['resources'][0])
     saved = act('confirm')
-    store = Storage(tmp_path)
-    try:
-        run = run_workflow(store, saved['saved_agent_id'], '영수증을 엑셀로 정리해줘', 'unused', llm=ReceiptFacts())
-    finally:
-        store.close()
+    job = {'directory': str(tmp_path), 'id': saved['saved_agent_id']}
+    assert handle({**job, 'action': 'agent'})['request_required'] is False
+    monkeypatch.setattr('workflow_engine.runner.create_chat_model', lambda **_: ReceiptFacts())
+    expected = [('2026-11-05', 'A4B 상점', '12,000원', None)]
+    file_ids = []
+    if run_uploads:
+        wrong = handle({**job, 'action': 'run_upload', 'asset': {'name': 'bad.csv', 'kind': 'table',
+                       'format': 'csv', 'columns': ['금액']}, 'rows': [{'금액': 1000}]})['asset']
+        with pytest.raises(ValueError, match='자료|문서'):
+            handle({**job, 'action': 'test', 'file_ids': [wrong['id']]})
+        assert not handle({**job, 'action': 'agent'})['tests']
+        expected = [('2026-12-02', '빵집', '3,000원', None), ('2026-12-03', '서점', '18,000원', None)]
+        for index, (date, shop, amount, _) in enumerate(expected):
+            asset = {**RECEIPT, 'name': f'replacement-{index}.png',
+                     'text': f'날짜: {date}\n상호명: {shop}\n결제 금액: {amount}'}
+            uploaded = handle({**job, 'action': 'run_upload', 'asset': asset, 'rows': []})
+            file_ids.append(uploaded['asset']['id'])
+    content = {} if run_uploads else {'content': '  \n'}
+    run = handle({**job, 'action': 'test', 'file_ids': file_ids, **content})
     assert run['status'] == 'succeeded', run.get('error')
+    assert run['file_ids'] == file_ids
+    persisted = handle({**job, 'action': 'run', 'id': run['id']})['run']
+    assert persisted['request'] == ''
+    assert not [m for m in persisted['messages'] if m['role'] == 'user']
     workbook = load_workbook(io.BytesIO(base64.b64decode(run['artifact']['content'])))
     try:
-        assert list(workbook.active.values) == [tuple(fields), ('2026-11-05', 'A4B 상점', '12,000원', None)]
+        assert list(workbook.active.values) == [tuple(fields), *expected]
     finally:
         workbook.close()
 

@@ -71,10 +71,10 @@ def sort_request_issues(state, draft):
             except (ValueError, KeyError, TypeError):
                 return ['정렬 도구의 열·방향 인자를 확인해야 합니다.']
     if contract['orders']:
-        expected = contract['orders']
-        if not actual or any(order['field'] not in expected or order['direction'] != expected[order['field']]
-                             for order in actual) or set(expected) != {order['field'] for order in actual}:
-            return ['요청한 정렬 조건의 열·방향이 실행 설정과 다릅니다. 정렬을 반영하거나 확인해야 합니다.']
+        expected = list(contract['orders'].items())
+        actual_keys = [(order['field'], order['direction']) for order in actual]
+        if actual_keys != expected:
+            return ['요청한 정렬 조건의 열·방향·키 우선순위가 실행 설정과 다릅니다. 정렬을 반영하거나 확인해야 합니다.']
     elif contract['cancelled'] and actual:
         return ['취소한 정렬 조건이 실행 설정에 남아 있습니다.']
     elif contract['unresolved']:

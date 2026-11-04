@@ -244,3 +244,45 @@ def test_canonical_operations_do_not_bypass_sort_audit():
     assert not sort_request_issues(s, d)
     d['workflow']['nodes'].pop()
     assert sort_request_issues(s, d)
+
+
+@pytest.mark.parametrize('canonical', [False, True])
+@pytest.mark.parametrize('reversed_keys', [False, True])
+def test_multiple_sort_keys_preserve_requested_priority(canonical, reversed_keys):
+    import json
+    from agent_builder.design.sorting import sort_request_issues
+    from workflow_engine.executors.legacy_tools.filter_sort import filter_sort_node
+
+    s = filter_state()
+    s['resources'] = [{'id': 't', 'kind': 'table', 'name': '비용.csv', 'columns': ['비용', '날짜']}]
+    s['messages'].append({'role': 'user', 'content':
+        '비용 내림차순으로 먼저 정렬해줘. 날짜 오름차순으로 동률을 정렬해줘.'})
+    keys = [{'field': '비용', 'direction': 'descending', 'value_type': 'number'},
+            {'field': '날짜', 'direction': 'ascending', 'value_type': 'text'}]
+    if reversed_keys:
+        keys.reverse()
+    sorter = s['draft']['workflow']['nodes'][1]
+    sorter['settings']['execution_plan']['sort'] = keys
+    if canonical:
+        sorter['settings'].update(operation='sort', arguments_json=json.dumps({
+            'keys': [{'column': key['field'], 'descending': key['direction'] == 'descending'} for key in keys]}))
+        # Input port and operation validation are covered separately. The same
+        # audit must compare priority before accepting either representation.
+        assert bool(sort_request_issues(s, s['draft'])) == reversed_keys
+    else:
+        result = validate_node(s)
+        assert (result['status'] != 'ready') == reversed_keys
+    if reversed_keys:
+        with pytest.raises(ValueError, match='우선순위'):
+            require_save_ready({**s, 'status': 'ready', 'confirmed': True})
+    else:
+        require_save_ready({**s, 'status': 'ready', 'confirmed': True})
+
+    context = {'rows': [{'비용': 2000000, '날짜': '2026-11-03'},
+                        {'비용': 3000000, '날짜': '2026-11-04'},
+                        {'비용': 3000000, '날짜': '2026-11-02'}],
+               'columns': ['비용', '날짜'], 'trace': []}
+    filter_sort_node(context, [], keys, missing_policy='error', duplicate_policy='keep')
+    if not reversed_keys:
+        assert [(row['비용'], row['날짜']) for row in context['rows']] == [
+            (3000000, '2026-11-02'), (3000000, '2026-11-04'), (2000000, '2026-11-03')]

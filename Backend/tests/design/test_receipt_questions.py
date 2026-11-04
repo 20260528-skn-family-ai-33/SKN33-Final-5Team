@@ -109,6 +109,69 @@ def test_an_existing_receipt_goes_directly_to_fields(studio):
     only_question(act('message', content=REQUEST), 'receipt.fields')
 
 
+def test_old_field_control_shows_grounded_values_and_uses_them_in_excel(studio, tmp_path, monkeypatch):
+    import base64
+    import io
+    from openpyxl import load_workbook
+    from agent_builder.design import receipt_intake
+
+    act, _ = studio
+    body = ('2010-03-24 21:17 P0S 번호: 0016\n매장명: 동네 상점\n승인번호: 00091\n'
+            '상품코드 상품명 단가 수량 금액\n0012345678901 우유 1,000 2 2,000\n'
+            '부가세 과세 물품가액 1,818\n상품가격에 이미 포함된 부가세( 182)\n합 계 2,000')
+    with monkeypatch.context() as old:
+        old.setattr(receipt_intake, '_field_action', lambda *_: {'type':'select_fields', 'options':['날짜','상호명','결제 금액']})
+        act('message', content=SCREENSHOT_REQUEST)
+        previous = act('upload', asset={**RECEIPT, 'text':body}, rows=[])
+    prior_question = only_question(previous, 'receipt.fields')
+    assert 'item_details' not in prior_question['action']
+    reopened = act('session')
+    question = only_question(reopened, 'receipt.fields')
+    assert question['id'] == prior_question['id'] and previous['revision'] == reopened['revision']
+    assert previous['messages'] == reopened['messages']
+    action = question['action']
+    assert action['has_readable_text'] is True
+    detected = {field['label']: field['value'] for field in action['detected_fields']}
+    assert detected == {'날짜':'2010-03-24', '거래시간':'21:17', 'POS번호':'0016',
+                        '상호명':'동네 상점', '승인번호':'00091', '결제 금액':'2,000', '부가세':'182', '과세 물품가액':'1,818'}
+    assert '매장명' not in action['options']
+    assert action['item_details']['selected_by_default'] is True
+    assert action['item_details']['preview'][0]['상품코드'] == '0012345678901'
+
+    fields = ['POS번호', '거래시간', '승인번호', '과세 물품가액', '부가세', '결제 금액']
+    ready = act('message', content='영수증에서 추출할 항목: ' + ', '.join(fields), question_id=question['id'])
+    assert ready['status'] == 'ready', ready['issues']
+    saved = act('confirm')
+    monkeypatch.setattr('workflow_engine.runner.create_chat_model', lambda **_: object())
+    run = handle({'directory': str(tmp_path), 'id': saved['saved_agent_id'], 'action': 'test'})
+    assert run['status'] == 'succeeded', run.get('error')
+    book = load_workbook(io.BytesIO(base64.b64decode(run['artifact']['content'])))
+    try:
+        assert list(book['영수증'].values) == [tuple(fields), tuple(detected[k] for k in fields)]
+    finally:
+        book.close()
+
+
+def test_receipt_detection_distinguishes_empty_ambiguous_and_multi_file_evidence(studio):
+    act, _ = studio
+    act('message', content=SCREENSHOT_REQUEST)
+    empty = act('upload', asset={**RECEIPT, 'text':''}, rows=[])
+    action = only_question(empty, 'receipt.fields')['action']
+    assert not action['has_readable_text'] and action['detected_fields'] == []
+    assert not action['item_details']['preview'] and not action['item_details']['selected_by_default']
+
+    unread = act('upload', asset={**RECEIPT, 'text':'[등] 2010-03-24 21:17 P08 번호: 1016'}, rows=[])
+    assert 'POS번호' not in [f['label'] for f in only_question(unread, 'receipt.fields')['action']['detected_fields']]
+    first = act('upload', asset={**RECEIPT, 'text':'POS번호: 17\nPOS번호: 11\n영업시간: 09:00~19:00\n합계: 2,000'}, rows=[])
+    detected = only_question(first, 'receipt.fields')['action']['detected_fields']
+    assert [item['value'] for item in detected if item['label'] == '거래시간'] == ['21:17']
+    assert 'POS번호' not in [item['label'] for item in detected]
+    second = act('upload', asset={**RECEIPT, 'text':'합계: 3,500'}, rows=[])
+    matches = [item for item in only_question(second, 'receipt.fields')['action']['detected_fields']
+               if item['label'] == '결제 금액']
+    assert matches == [{'label':'결제 금액'}]
+
+
 def test_library_receipt_follows_the_same_question_and_deletes_from_both_drafts(studio, tmp_path):
     act, _ = studio
     first = act('upload', asset=RECEIPT, rows=[])
@@ -339,6 +402,58 @@ def test_file_only_run_exports_selected_fields_of_the_requested_receipts(studio,
     workbook = load_workbook(io.BytesIO(base64.b64decode(run['artifact']['content'])))
     try:
         assert list(workbook.active.values) == [tuple(fields), *expected]
+    finally:
+        workbook.close()
+
+
+@pytest.mark.parametrize('include_summary', [False, True], ids=['items-only', 'separate-sheets'])
+def test_selected_item_columns_are_saved_and_run_as_an_item_table(studio, tmp_path, monkeypatch, include_summary):
+    import base64
+    import io
+    from openpyxl import load_workbook
+
+    act, planner = studio
+    act('message', content=SCREENSHOT_REQUEST)
+    name = '편의점-영수증.png'
+    body = ('상품코드 상품명 단가 수량 금액\n'
+            '0012345678901 우유 1,000 2 2,000\n'
+            '0098765432101 물 1,000 1 1,000\n합 계 3,000')
+    attached = act('upload', asset={**RECEIPT, 'name': name, 'text': body}, rows=[])
+    question = only_question(attached, 'receipt.fields')
+    answer = '영수증 품목 시트: 금액, 상품코드'
+    if include_summary:
+        answer = '영수증에서 추출할 항목: 결제 금액\n' + answer
+    ready = act('message', content=answer, question_id=question['id'])
+    assert ready['status'] == 'ready', ready['issues']
+    assert not planner
+    if include_summary:
+        from copy import deepcopy
+        from agent_builder.design.graph import build_graph
+        from agent_builder.design.requirement_coverage import coverage_report
+        from infrastructure.persistence.storage import Storage
+        store = Storage(tmp_path)
+        graph, connection = build_graph(store, conversation=lambda _: {})
+        try:
+            state = graph.get_state({'configurable': {'thread_id': ready['id']}}).values
+            swapped = deepcopy(ready['draft'])
+            left, right = swapped['workflow']['nodes'][-1]['bindings']
+            left['node_id'], right['node_id'] = right['node_id'], left['node_id']
+            assert not coverage_report(state, ready['draft'])['issues']
+            assert coverage_report(state, swapped)['issues']
+        finally:
+            connection.close()
+            store.close()
+    saved = act('confirm')
+    monkeypatch.setattr('workflow_engine.runner.create_chat_model', lambda **_: object())
+    run = handle({'directory': str(tmp_path), 'id': saved['saved_agent_id'], 'action': 'test'})
+    assert run['status'] == 'succeeded', run.get('error')
+    workbook = load_workbook(io.BytesIO(base64.b64decode(run['artifact']['content'])))
+    try:
+        assert workbook.sheetnames == (['영수증', '상품내역'] if include_summary else ['상품내역'])
+        assert list(workbook['상품내역'].values) == [
+            ('파일명', '금액', '상품코드'), (name, 2000, '0012345678901'), (name, 1000, '0098765432101')]
+        if include_summary:
+            assert list(workbook['영수증'].values) == [('결제 금액',), ('3,000',)]
     finally:
         workbook.close()
 

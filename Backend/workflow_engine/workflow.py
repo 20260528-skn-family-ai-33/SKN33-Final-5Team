@@ -123,6 +123,10 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
         if tool=='condition' and settings['condition_operator']=='has_missing' and 'records' not in supplied:issues.append('누락 분기는 추출 결과 records가 필요합니다: '+id)
         if tool=='condition' and settings['condition_operator']=='semantic' and not settings['instructions']:issues.append('의미 분기의 판단 기준이 필요합니다: '+id)
         if tool=='extract_information' and not settings['fields']:issues.append('추출할 항목이 필요합니다: '+id)
+        if tool=='extract_information' and settings.get('extraction_mode')=='receipt_items':
+            from workflow_engine.executors.document.receipt_items import item_field_issue
+            issue=item_field_issue(settings['fields'])
+            if issue:issues.append(issue)
         if tool=='extract_information' and settings.get('extraction_mode')=='rows':
             from workflow_engine.executors.document.extract_information import reserved_field_issue
             if reserved_field_issue(settings['fields']):issues.append(reserved_field_issue(settings['fields'])+': '+id)

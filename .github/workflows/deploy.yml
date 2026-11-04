@@ -151,7 +151,8 @@ jobs:
         working-directory: Backend
         run: |
           tests=(tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py)
-          for suite in test_receipt_fields test_manual_run_inputs test_run_answer; do
+          if [[ -f tests/documents/test_file_inspection.py ]]; then tests+=(tests/documents/test_file_inspection.py); fi
+          for suite in test_receipt_fields test_receipt_items test_manual_run_inputs test_run_answer; do
             path="tests/workflow_engine/${suite}.py"
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done

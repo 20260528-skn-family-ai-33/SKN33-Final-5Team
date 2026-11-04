@@ -21,9 +21,9 @@ def _operation_inputs(node):
     if tool == 'create_spreadsheet':
         # A bound workbook is verified separately against its sheet contract.
         sheets = args.get('sheets')
-        if not isinstance(sheets, list) or len(sheets) != 1 or not isinstance(sheets[0], dict):
+        if not isinstance(sheets, list) or not all(isinstance(sheet,dict) for sheet in sheets):
             return set()
-        data = [sheets[0].get('table')]
+        data = [sheet.get('table') for sheet in sheets]
     else:
         if tool == 'export_result':
             ports = {'write_json': ('value',), 'serialize': ('value',), 'write_csv': ('rows',)}.get(operation, ())

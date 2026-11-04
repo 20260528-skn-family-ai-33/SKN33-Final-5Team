@@ -1,17 +1,41 @@
 """Recognize directly printed receipt headers without estimating missing OCR values."""
 from datetime import date
 import re
+from documents.resources.file_inspection import labeled_value
 
 
 _ALIASES = {
     '날짜': 'date', '거래일': 'date', '거래일자': 'date', '결제일': 'date', '결제일자': 'date',
+    '구매일': 'date', '판매일': 'date', '영수일': 'date', '승인일': 'date', 'date': 'date', 'transactiondate': 'date',
     '상호': 'merchant', '상호명': 'merchant', '가맹점명': 'merchant', '매장명': 'merchant',
     '결제금액': 'paid', '총결제금액': 'paid', '최종결제금액': 'paid', '실결제금액': 'paid',
+    '합계': 'paid', '총합계': 'paid', '결제합계': 'paid',
+    '결제총액': 'paid', '받을금액': 'paid', '합계금액': 'paid', 'amountpaid': 'paid',
+    'total': 'paid', 'grandtotal': 'paid', 'merchant': 'merchant',
+    '거래시간': 'time', '거래시각': 'time', '결제시간': 'time', '결제시각': 'time',
+    'pos번호': 'pos', 'p0s번호': 'pos', 'posno': 'pos', 'posid': 'pos',
+    '부가세': 'vat', '부가가치세': 'vat', 'vat': 'vat', '과세물품가액': 'taxable',
+    '부가세과세물품가액': 'taxable', '공급가액': 'net',
 }
+_DISPLAY = {'date':'날짜', 'merchant':'상호명', 'paid':'결제 금액', 'time':'거래시간', 'pos':'POS번호',
+            'vat':'부가세', 'taxable':'과세 물품가액', 'net':'공급가액'}
+
+
+def _compact(field):
+    return ''.join(field.casefold().split())
+
+
+def canonical_label(field):
+    return _DISPLAY.get(_ALIASES.get(_compact(field)), field)
+
+
 _DATE = re.compile(r'(?<!\d)(?P<y>(?:19|20)\d{2})\s*[-./년]\s*(?P<m>\d{1,2})\s*[-./월]\s*(?P<d>\d{1,2})(?!\d)(?:\s*일)?')
 _TRANSACTION = re.compile(r'날짜|거래일|구매일|판매일|결제일|영수일|승인일|매출일|일시|transactiondate|date:', re.I)
-_OTHER_DATE = re.compile(r'유효|기한|만료|교환|반품기간|쿠폰|적립기간|expir|\bexp\.?\s*date|valid\s+until|coupon', re.I)
-_TIME = re.compile(r'\b(?:[01]?\d|2[0-3])[ \t]*:[ \t]*[0-5]\d(?:\b|:)')
+_OTHER_DATE = re.compile(r'유효|기한|만료|교환|반품기간|쿠폰|적립기간|영업시간|운영시간|개점|폐점|expir|\bexp\.?\s*date|valid\s+until|coupon', re.I)
+_TIME = re.compile(r'(?<!\d)(?:[01]?\d|2[0-3])[ \t]*:[ \t]*[0-5]\d(?::[0-5]\d)?(?![:\d])')
+_TIME_LABEL = re.compile(r'(?:거래|결제)(?:시간|시각)[:：]?')
+_POS = re.compile(r'(?<![a-z0-9])P[O0]S[ \t]*(?:(?:번호|ID|NO\.?)\s*[:：#]?\s*|[:：#]\s*)'
+                  r'([a-z0-9][a-z0-9-]{0,31})(?![\w.-])', re.I)
 _MONEY = (r'(?P<value>(?:(?:USD|EUR|GBP|KRW|JPY)[ \t]*)?(?:[₩￦$€£¥][ \t]*)?-?'
           r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?(?:[ \t]*(?:원|USD|EUR|GBP|KRW|JPY))?)')
 _METHOD = r'(?:[ \t]*\((?:신용카드|체크카드|카드|현금|일시불|visa|mastercard|credit|debit|cash)\))?'
@@ -25,6 +49,12 @@ def _labeled(labels, value, boundary=''):
 
 _PAID = _labeled(('최종결제금액', '실결제금액', '총결제금액', '결제금액', '결제합계', '결제총액', '받을금액', 'amount paid'), _MONEY + _METHOD)
 _TOTAL = _labeled(('합계', '총합계', '합계금액', 'total', 'grand total'), _MONEY + _METHOD)
+_TAX_LABELS = {
+    'taxable': _labeled(('부가세과세물품가액','과세물품가액'), _MONEY),
+    'net': _labeled(('공급가액',), _MONEY),
+    'vat': _labeled(('부가세','부가가치세','상품가격에이미포함된부가세','vat'),
+                    r'(?P<paren>\()?[ \t]*' + _MONEY + r'[ \t]*(?(paren)\))'),
+}
 _MERCHANT = _labeled(('상호명', '상호', '가맹점명', '매장명', 'merchant'), r'(?P<value>[^:：\r\n]{1,80})', r'(?=[ \t:：])')
 _AMOUNT_ONLY = re.compile(_MONEY)
 _PAID_PREFIX = re.compile(
@@ -60,15 +90,30 @@ def _date_candidate(line):
 
 def recognized_facts(fields, parts):
     """A missing/ambiguous total must not be replaced by a grounded VAT or subtotal."""
-    wanted = {field: _ALIASES.get(''.join(field.split())) for field in fields}
+    wanted = {field: _ALIASES.get(_compact(field), 'named:' + _compact(field)) for field in fields}
     candidates = {kind: [] for kind in wanted.values() if kind}
     for part in parts:
         previous = ''
         for raw_line in part['text'].splitlines(keepends=True):
             line = raw_line.strip()
             hits = {}
+            pair = labeled_value(line)
+            if pair and 'named:' + _compact(pair[0]) in candidates:
+                hits['named:' + _compact(pair[0])] = (1, pair[1], pair[1])
             if 'date' in candidates:
                 hits['date'] = _date_candidate(line)
+            if 'time' in candidates:
+                times = _TIME.findall(line)
+                explicit = _TIME_LABEL.match(''.join(line.split()))
+                if len(times) == 1 and (explicit or _date_candidate(line)):
+                    hits['time'] = (2 if explicit else 1, times[0], times[0])
+            if 'pos' in candidates:
+                for identifier in _POS.findall(line):
+                    candidates['pos'].append((1, identifier, dict(source_id=part['source_id'], quote=line, value=identifier)))
+            for kind, pattern in _TAX_LABELS.items():
+                if kind in candidates and (match := pattern.fullmatch(line)):
+                    value = match['value'].strip()
+                    hits[kind] = (1, value, value)
             if 'paid' in candidates:
                 # Without OCR geometry a lone label and its amount can occupy consecutive
                 # lines. Join only within the same source, with nothing between them.
@@ -100,12 +145,14 @@ def recognized_facts(fields, parts):
             rank = max(hit[0] for hit in hits)
             best = {key: fact for priority, key, fact in hits if priority == rank}
             result[field] = next(iter(best.values())) if len(best) == 1 else None
+        elif kind in ('pos', 'time') or kind in _TAX_LABELS:
+            result[field] = None
     return result
 
 
 def model_fact(field, fact, sources):
     """In other layouts still accept a cited value when its printed label supports it."""
-    kind = _ALIASES.get(''.join(field.split()))
+    kind = _ALIASES.get(_compact(field))
     if not fact or kind not in ('date', 'paid'):
         return fact
     source = sources.get(fact.get('source_id'))

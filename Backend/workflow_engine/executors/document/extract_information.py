@@ -46,6 +46,9 @@ def execute(node,state,storage,config,llm):
     table_rows = []
     if sum((len(d['text']) for d in docs)) > 45000:
         raise ValueError('추출 범위가 큽니다. 문서를 줄이거나 검색 노드를 먼저 연결하세요.')
+    if settings.get('extraction_mode') == 'receipt_items':
+        from workflow_engine.executors.document.receipt_items import extract_items
+        return extract_items(docs, settings['fields'])
     rows_mode = settings.get('extraction_mode') == 'rows'
     if rows_mode and reserved_field_issue(settings['fields']):
         raise ValueError(reserved_field_issue(settings['fields']))

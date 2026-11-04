@@ -15,7 +15,7 @@ class Read(Strict):
 
 
 class ExtractFields(Strict):
-    kind: Literal['extract_fields']
+    kind: Literal['extract_fields', 'receipt_items']
     fields: list[str] = Field(min_length=1, max_length=40)
 
 
@@ -59,6 +59,11 @@ class Export(Strict):
     format: Literal['csv', 'json', 'md', 'xlsx', 'pdf']
 
 
+class ReceiptWorkbook(Strict):
+    kind: Literal['receipt_workbook']
+    sheets: list[Literal['영수증', '상품내역']] = Field(min_length=1, max_length=2)
+
+
 class Policy(Strict):
     kind: Literal['policy']
     missing_policy: Literal['exclude', 'keep', 'error'] | None
@@ -71,7 +76,7 @@ class Other(Strict):
     action: str = Field(min_length=1, max_length=300)
 
 
-Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | Policy | Other,
+Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other,
                  Field(discriminator='kind')]
 
 

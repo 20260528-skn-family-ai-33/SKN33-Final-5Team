@@ -3,6 +3,7 @@ from copy import deepcopy
 import os
 
 from .requirement_ledger import ledger_fingerprint, plan_digest
+from .table_step_order import deduplication_step
 
 
 TOOLS={'compute':'calculate_columns','filter':'filter_sort','sort':'filter_sort',
@@ -40,11 +41,16 @@ def generation_requirements(state):
     if (not files or any(id not in assets or assets[id].get('kind')!='table' for id in files)
             or state.get('required_node_refs')):return specs,[]
     order=['read_table']*len(files)
+    previous=None
     for s in specs:
-        if s['kind'] in ('read','policy'):continue
+        if s['kind']=='read' or s['kind']=='policy' and not deduplication_step(s):continue
         tool=TOOLS[s['kind']]
-        if tool=='filter_sort' and order[-1:]==['filter_sort']:continue
+        # Only filter -> sort has the same order within one legacy node.
+        # A destructive duplicate policy always gets its own stage here.
+        if previous=='filter' and s['kind']=='sort':
+            previous=s['kind'];continue
         order.append(tool)
+        previous=s['kind']
     if any(s['kind']=='policy' for s in specs) and 'filter_sort' not in order:
         return specs,[]  # no invented policy placement
     return specs,order if 1<=len(order)<=15 else []

@@ -9,6 +9,7 @@ from copy import deepcopy
 from contracts.numeric_criteria import number_value
 
 from .requirement_contracts import RequirementPlan
+from .table_step_order import deduplication_step
 
 
 SYSTEM = '''사용자의 최종 업무 요구사항을 추출해 JSON으로 반환한다. 각 task는 실제 요청된 업무 한 가지다.
@@ -20,6 +21,7 @@ compute=새 열의 계산식과 이름. filter=행 선별 비교조건. sort=정
 aggregate=그룹 열·count/sum·합계 원본 열. 집계 출력 열은 count/sum.
 join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 유일은 many_to_one.
 policy=일반 표의 빈값/중복 행 처리. 결합의 키 유일성·null 키·최대 행 수는 join의 필드값이다.
+첫 행·마지막 행 선택과 중복 오류 검사는 순서가 있는 처리 단계다. 선별 전/후 등 사용자가 지정한 위치에 policy를 작성한다.
 export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자료 ID는 실제 목록에서 선택한다.
 후속 답변에서 바꾸지 않은 조건도 유지한다. 필요한 값이 미정이면 unresolved에 적고 추측하지 않는다.
 요약·개인정보 제거·검수·분기·예약·기타 표현할 수 없는 업무나 추가 조건은 other로 남긴다.
@@ -29,7 +31,7 @@ export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자�
 def ledger_fingerprint(state):
     from agent_builder.capabilities.capability_gate import input_fingerprint
     # Version seals the interpretation contract as well as the input/catalog.
-    return hashlib.sha256(('a4b.requirements.v1:' + input_fingerprint(state)).encode()).hexdigest()
+    return hashlib.sha256(('a4b.requirements.v2-policy-order:' + input_fingerprint(state)).encode()).hexdigest()
 
 
 def plan_digest(plan):
@@ -152,10 +154,11 @@ def extract_plan(raw,state):
         if type(source) is not int or not 0<=source<len(users):
             raise ValueError('요구사항의 사용자 발화를 확인하지 못했습니다.')
         kind=(item.get('spec') or {}).get('kind')
-        dependency=[previous] if previous and kind not in ('read','policy') else []
+        ordered_policy=deduplication_step(item.get('spec') or {})
+        dependency=[previous] if previous and (kind not in ('read','policy') or ordered_policy) else []
         task={**item,'id':'r'+str(index),'depends_on':dependency,'quote':users[source]}
         tasks.append(task)
-        if kind not in ('read','policy','export'):previous=task['id']
+        if kind not in ('read','policy','export') or ordered_policy:previous=task['id']
     return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
 
 

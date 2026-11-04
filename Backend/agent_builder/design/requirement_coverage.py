@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from contracts.numeric_criteria import number_value
 from .requirement_ledger import ledger_fingerprint, plan_digest, validate_plan
+from .table_step_order import same_node_precedes
 
 
 def _formula(value):
@@ -159,8 +160,10 @@ def coverage_report(state,draft):
             reason='현재 규칙으로 실행 설정을 검증할 수 없습니다' if spec['kind']=='other' else '일치하는 실제 실행 단계·설정이 없습니다'
             problems.append(f"요구사항 검증: {task['id']} {task['description']} — {reason}.")
     # Find a single consistent assignment, not disconnected matches in different
-    # branches or unused parallel inputs. Same-node filter/sort/policy is valid.
+    # branches or unused parallel inputs. Sharing a node must also preserve its
+    # internal dedup -> missing values -> filter -> sort execution order.
     tasks=plan['tasks'];selected={};attempts=0
+    specs={t['id']:t['spec'] for t in tasks}
     exports=[t['id'] for t in tasks if t['spec']['kind']=='export']
     from workflow_engine.execution_path import artifact_output_ids, artifact_origin
     try:
@@ -181,7 +184,8 @@ def coverage_report(state,draft):
                        for t in tasks if t['spec']['kind']!='export') if exports else True
         task=tasks[index]
         for node_id in candidates[task['id']]:
-            if all(selected[d]==node_id or selected[d] in upstream[node_id] for d in task['depends_on']):
+            if all((selected[d]==node_id and same_node_precedes(specs[d],task['spec'])) or
+                   selected[d] in upstream[node_id] for d in task['depends_on']):
                 selected[task['id']]=node_id
                 if assign(index+1):return True
         selected.pop(task['id'],None)

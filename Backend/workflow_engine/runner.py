@@ -150,7 +150,8 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':request,'file_ids':file_ids or [],'messages':[{'role':'user','content':request}],'customer_message':request,'reply_draft':reply_draft},cfg,durability='sync')
         snapshot=graph.get_state(cfg);state=snapshot.values;outputs=state.get('outputs',{})
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]
-        artifacts=[v['artifact'] for v in outputs.values() if v.get('artifact')]
+        from workflow_engine.execution_path import artifact_output_ids
+        artifacts=[outputs[id]['artifact'] for id in artifact_output_ids(config['workflow'],outputs)]
         tools_by_id={n['id']:n['tool'] for n in config['workflow']['nodes']}
         transformed_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool'] in ('text_transform','base64_codec','text_hash','date_transform') and n['id'] in outputs for b in n['bindings'] if b['input']=='text' and b['output']=='text'}
         operation_nodes={n['id'] for n in config['workflow']['nodes'] if uses_operation(n)}

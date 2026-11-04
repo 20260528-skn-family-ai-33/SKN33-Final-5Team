@@ -4,7 +4,7 @@ import json
 import os
 import ast
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from copy import deepcopy
 
 from .requirement_contracts import RequirementPlan
@@ -35,6 +35,19 @@ def plan_digest(plan):
     return hashlib.sha256(json.dumps(plan,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
 
 
+def number_value(value):
+    """Normalize supported decimal notation; never turn malformed 1,2 into 12."""
+    text=str(value).strip()
+    if not re.fullmatch(r'[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?',text):
+        raise ValueError('숫자 표기를 확인하세요: '+text[:80])
+    try:
+        result=Decimal(text.replace(',',''))
+        if not result.is_finite():raise ValueError('유한한 숫자가 필요합니다.')
+        return result
+    except InvalidOperation as error:
+        raise ValueError('숫자 표기를 확인하세요: '+text[:80]) from error
+
+
 def validate_plan(raw, state):
     plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
     json.dumps(plan,allow_nan=False)
@@ -46,7 +59,9 @@ def validate_plan(raw, state):
     text='\n'.join(users)
     from agent_builder.conditions.condition_readiness import _amounts
     numbers=_amounts(text)
-    numbers|={Decimal(v.replace(',','')) for v in re.findall(r'(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?',text)}
+    for value in re.findall(r'(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?',text):
+        try:numbers.add(number_value(value))
+        except ValueError:pass
     for task in plan['tasks']:
         index=task['source_message']
         if index>=len(users) or not task['quote'].strip() or task['quote'] not in users[index]:
@@ -72,8 +87,10 @@ def validate_plan(raw, state):
                     raise ValueError('선별 조건은 기준 값 또는 비교 열 중 하나만 가져야 합니다.')
                 if f['compare_field']==f['field']:
                     raise ValueError('같은 열을 자기 자신과 비교하는 조건을 요청 근거로 확정할 수 없습니다.')
-                if f['value_type']=='number' and f['value'] is not None and Decimal(str(f['value'])) not in numbers:
-                    raise ValueError('선별 기준 숫자가 사용자 원문에서 확인되지 않습니다.')
+                if f['value_type']=='number' and f['value'] is not None:
+                    number=number_value(f['value'])
+                    if number not in numbers:raise ValueError('선별 기준 숫자가 사용자 원문에서 확인되지 않습니다.')
+                    if isinstance(f['value'],str):f['value']=str(number)
         if spec['kind']=='aggregate' and ((spec['aggregation']=='sum') != bool(spec['sum_field'])):
             raise ValueError('합계/건수 요구사항의 원본 열을 확인하세요.')
         if spec['kind']=='policy' and spec['missing_policy'] is None and spec['duplicate_policy'] is None:
@@ -154,7 +171,21 @@ def extract_plan(raw,state):
     return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
 
 
-def make_requirement_check(model, transport=None, mode=None):
+def requirement_transport(model, api_key=''):
+    from infrastructure.llm.model_factory import LOCAL_MODEL_API_KEY
+    if os.getenv('A4B_MAIN_PROVIDER')=='ollama' and api_key in (None,'',LOCAL_MODEL_API_KEY):
+        from agent_builder.design.nodes.direct_conversation import OllamaPlanner
+        return OllamaPlanner(model,temperature=0)
+    class Structured:
+        def invoke(self,messages):
+            from infrastructure.llm.model_factory import create_chat_model
+            llm=create_chat_model(api_key,model,timeout=70,max_retries=0,temperature=0)
+            parsed=llm.with_structured_output(self.schema,method='json_schema').invoke(messages)
+            return dict(content=parsed.model_dump_json() if hasattr(parsed,'model_dump_json') else json.dumps(parsed))
+    return Structured()
+
+
+def make_requirement_check(model, transport=None, mode=None, *, api_key=''):
     setting=mode or os.getenv('A4B_REQUIREMENT_MODE','off')
     if setting not in ('off','enforce'):
         raise ValueError('A4B_REQUIREMENT_MODE는 off/enforce이어야 합니다.')
@@ -172,8 +203,7 @@ def make_requirement_check(model, transport=None, mode=None):
         try:
             active=transport
             if active is None:
-                from agent_builder.design.nodes.direct_conversation import OllamaPlanner
-                active=OllamaPlanner(model,temperature=0)
+                active=requirement_transport(model,api_key)
             active.schema=extraction_schema(len([m for m in state['messages'] if m['role']=='user']),
                                             [a['id'] for a in state.get('resources',[])])
             payload={'user_messages':[m['content'] for m in state['messages'] if m['role']=='user'],

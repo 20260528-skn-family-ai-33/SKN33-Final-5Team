@@ -25,7 +25,7 @@ def replacement_files(readers, provided, storage):
     return replacements
 
 
-def source_file_ids(node,file_ids,storage,config):
+def source_file_ids(node,file_ids,storage,config,outputs=None):
     """Shared file selection for preflight and execution; never reads file rows."""
     tool=node['tool'];settings=node['settings']
     expected='document' if tool=='read_document' else 'table'
@@ -43,7 +43,14 @@ def source_file_ids(node,file_ids,storage,config):
     elif provided:
         # Never bind several source slots by upload order or silently reuse old data.
         # Existing selected IDs are exact; replacements must match unique filenames.
-        replacements = replacement_files(readers, provided, storage)
+        from workflow_engine.execution_path import execution_path
+        workflow=config.get('workflow') or {}
+        path=execution_path(workflow,outputs)
+        if node['id'] not in {n['id'] for n in path}:
+            # Preflight can describe a future branch but must not require its sibling.
+            path=execution_path(workflow,outputs,start=node['id'])
+        active={n['id'] for n in path}
+        replacements = replacement_files([r for r in readers if r['id'] in active], provided, storage)
         ids = [replacements[old] for old in selected]
     else:
         ids=[i for i in selected or config['document_ids'] if supports(storage.asset(i),expected)]
@@ -58,7 +65,7 @@ def read_source(node,state,storage,config,external_port):
     _inputs={b['input']:state['outputs'][b['node_id']][b['output']] for b in node['bindings']}
     if external_port in state.get('external_inputs',{}):
         return {external_port:state['external_inputs'][external_port]}
-    ids=source_file_ids(node,state['file_ids'],storage,config)
+    ids=source_file_ids(node,state['file_ids'],storage,config,state.get('outputs'))
     if node['tool']=='read_document':return {'documents':document_chunks(storage,ids)}
     asset=storage.asset(ids[0])
     return {'table':{'rows':storage.rows(ids[0]),'columns':asset['columns'],'file_id':ids[0]}}

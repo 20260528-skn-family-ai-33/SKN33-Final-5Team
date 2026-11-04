@@ -8,7 +8,7 @@ import json
 import os
 from decimal import Decimal
 
-from .requirement_ledger import ledger_fingerprint, plan_digest, validate_plan
+from .requirement_ledger import ledger_fingerprint, plan_digest, validate_plan, number_value
 
 
 def _formula(value):
@@ -29,7 +29,7 @@ def _condition(value):
     result=dict(value)
     if result.get('value_type')=='number' and result.get('value') is not None:
         if isinstance(result['value'],bool):raise ValueError('숫자 기준에 bool을 사용할 수 없습니다.')
-        result['value']=str(Decimal(str(result['value'])).normalize())
+        result['value']=str(number_value(result['value']).normalize())
     return json.dumps(result,ensure_ascii=False,sort_keys=True)
 
 
@@ -88,6 +88,13 @@ def _matches(spec,node,draft,sources):
             return settings.get('format')==('markdown' if fmt=='md' else fmt)
         if tool=='export_result' and operation in ('serialize','write_json','write_csv'):
             return args.get('format',operation.removeprefix('write_'))==fmt
+        if tool=='create_spreadsheet' and operation=='create' and fmt=='xlsx':
+            sheets=args.get('sheets')
+            # Prove the actual sheet data binding, not an unrelated attached table.
+            if not isinstance(sheets,list) or len(sheets)!=1:return False
+            table=sheets[0].get('table')
+            return (isinstance(table,dict) and set(table)=={'$binding'} and
+                    any(b['input']==table['$binding'] and b['output']=='table' for b in node['bindings']))
         return False
     if kind=='policy':
         if tool!='filter_sort' or operation:return False
@@ -121,13 +128,37 @@ def coverage_report(state,draft):
             seen.add(item);todo.extend(parents.get(item,[]))
         return seen
     upstream={id:ancestors(id) for id in nodes}
+    source_cache={};resolving=set()
     def sources(id):
-        found=set()
-        for nid in upstream.get(id,set())|{id}:
-            n=nodes.get(nid)
-            if not n:continue
-            if n['tool'] in ('read_table','read_document'):
-                found.update(n['settings'].get('file_ids') or draft.get('document_ids',[]))
+        if id in source_cache:return source_cache[id]
+        if id in resolving or id not in nodes:return set()
+        resolving.add(id);n=nodes[id];found=set()
+        if n['tool'] in ('read_table','read_document'):
+            operation=n['settings'].get('operation')
+            if operation:
+                key={'read_csv':'path','read_text':'path','parse':'source','extract_content':'asset'}.get(operation)
+                args=_arguments(n)
+                def references(value):
+                    if isinstance(value,dict):
+                        if 'asset_id' in value:return {value['asset_id']}
+                        if set(value)=={'$binding'}:
+                            binding=next((b for b in n['bindings'] if b['input']==value['$binding']),None)
+                            return sources(binding['node_id']) if binding else set()
+                        return set().union(*(references(v) for v in value.values())) if value else set()
+                    if isinstance(value,list):return set().union(*(references(v) for v in value)) if value else set()
+                    return set()
+                if key in args:found=references(args[key])
+                elif key:
+                    binding=next((b for b in n['bindings'] if b['input']==key),None)
+                    if binding:found=sources(binding['node_id'])
+            else:
+                from documents.resources.document_resources import supports
+                kind='table' if n['tool']=='read_table' else 'document'
+                compatible={r['id'] for r in state.get('resources',[]) if supports(r,kind)}
+                found=set(n['settings'].get('file_ids') or [i for i in draft.get('document_ids',[]) if i in compatible])
+        else:
+            for parent in parents.get(id,[]):found.update(sources(parent))
+        resolving.remove(id);source_cache[id]=found
         return found
     if any(e.get('branch') in ('yes','no') for e in workflow.get('edges',[])):
         problems.append('요구사항 검증: 분기별 업무 포함 여부는 추가 검토가 필요합니다. 공통 경로의 포함만으로 승인하지 않습니다.')
@@ -150,6 +181,13 @@ def coverage_report(state,draft):
     # branches or unused parallel inputs. Same-node filter/sort/policy is valid.
     tasks=plan['tasks'];selected={};attempts=0
     exports=[t['id'] for t in tasks if t['spec']['kind']=='export']
+    from workflow_engine.execution_path import artifact_output_ids, artifact_origin
+    try:
+        output_ids=artifact_output_ids(workflow)
+        final_output=artifact_origin(workflow,output_ids[-1]) if output_ids else None
+    except (ValueError,KeyError,TypeError) as error:
+        final_output=None
+        problems.append('요구사항 검증: 최종 다운로드 경로를 확인할 수 없습니다. '+str(error))
     if len(exports)>1:
         problems.append('요구사항 검증: 복수 결과 파일의 저장 위치·개별 출력은 추가 검토가 필요합니다.')
     def assign(index):
@@ -157,6 +195,7 @@ def coverage_report(state,draft):
         attempts+=1
         if attempts>4096:return False
         if index==len(tasks):
+            if exports and any(selected[e]!=final_output for e in exports):return False
             return all(any(selected[t['id']]==selected[e] or selected[t['id']] in upstream[selected[e]] for e in exports)
                        for t in tasks if t['spec']['kind']!='export') if exports else True
         task=tasks[index]

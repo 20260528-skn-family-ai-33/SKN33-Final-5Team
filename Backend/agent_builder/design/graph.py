@@ -71,7 +71,7 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_node('generation_gate',generation_gate)
     graph.add_node('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode)))
     from agent_builder.design.requirement_ledger import make_requirement_check
-    graph.add_node('requirements',_timed_node('requirements',make_requirement_check(model,requirement_transport,requirement_mode)))
+    graph.add_node('requirements',_timed_node('requirements',make_requirement_check(model,requirement_transport,requirement_mode,api_key=api_key)))
     planner=conversation or make_conversation(api_key,model)
     def guarded_plan(state):
         # A restored checkpoint can resume directly at this node, bypassing edges.

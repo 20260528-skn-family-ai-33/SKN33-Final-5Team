@@ -347,6 +347,9 @@ def make_direct_conversation(api_key, model, model_factory=None):
     version = prompt_version()
     llm = model_factory() if model_factory else OllamaPlanner(model)
     def conversation_node(state):
+        from agent_builder.design.sorting import sorting_requested
+        sort_requested = sorting_requested(state)
+        decoder_ledger = state.get('condition_ledger') if state.get('condition_enforced') and not sort_requested else None
         use_linear=version=='v8' and linear_plan.eligible(state)
         table_scope=version in ('v7','v8') and linear_plan.eligible(state)
         resources = [{k:v for k,v in r.items() if k not in ('rows','pages','parser_metadata','fixture')}
@@ -377,11 +380,11 @@ def make_direct_conversation(api_key, model, model_factory=None):
         if version in ('v4','v5','v6','v7','v8'):
             context['source_quote_catalog'] = source_quote_choices(state['messages'], resources)
             context['schema'] = citation_decoder_schema(context['schema'], context['source_quote_catalog'])
-            if version in ('v5','v6','v7','v8') and state.get('condition_enforced'):
+            if version in ('v5','v6','v7','v8') and decoder_ledger is not None:
                 context['schema'] = planning_decoder_schema(context['schema'], state.get('condition_ledger') or {})
             context['citation_scope'] = '최근 사용자 발언 12개(발언별 앞 4000자)부터 제공 자료 발췌·열 이름 순으로 최대 64구간·총 6000자. 전체 문서 검색 결과가 아닙니다.'
             if version in ('v6','v7','v8'):
-                context['schema']=native_decoder_schema(context['schema'],resources,state.get('condition_ledger') if state.get('condition_enforced') else None, require_ready_draft=version in ('v7','v8'), allowed_tools=linear_plan.ALLOWED if table_scope else None)
+                context['schema']=native_decoder_schema(context['schema'],resources,decoder_ledger, require_ready_draft=version in ('v7','v8'), allowed_tools=linear_plan.ALLOWED if table_scope else None)
                 if table_scope:
                     context['supported_tools']=[t for t in context['supported_tools'] if t['id'] in linear_plan.ALLOWED]
                 # On a new turn the previous draft can contain obsolete questions

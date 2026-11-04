@@ -262,7 +262,8 @@ def make_conversation(api_key,model,model_factory=None):
         plan_properties=schema['$defs']['ExecutionPlan']['properties']
         for key,field in [('missing.policy','missing_policy'),('duplicate.policy','duplicate_policy'),('duplicate.field','duplicate_field'),('output.format','output_format')]:
             if key in confirmed:plan_properties[field]={'enum':[confirmed[key]]}
-        if confirmed.get('sort.policy')=='none':plan_properties['sort']['maxItems']=0
+        from agent_builder.design.sorting import sorting_requested
+        if confirmed.get('sort.policy')=='none' and not sorting_requested(state):plan_properties['sort']['maxItems']=0
         variants=[]
         for tool_name in schema['$defs']['WorkflowNode']['properties']['tool']['enum']:
             from workflow_engine.catalog.registry import NATIVE_IDS

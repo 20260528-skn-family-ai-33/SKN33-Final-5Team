@@ -39,7 +39,7 @@ def validate_assessment_result(result,state,*,model_calls=0):
         raise ValueError('지원 판단의 사유·누락 항목은 공백일 수 없습니다.')
     if len(set(value['tool_ids']))!=len(value['tool_ids']) or any(t not in {t['id'] for t in TOOLS} for t in value['tool_ids']):
         raise ValueError('등록되지 않았거나 중복된 도구 판단입니다.')
-    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    user=[m['content'] for m in _assessment_messages(state) if m.get('role')=='user']
     if any(not q.strip() or not any(q in text for text in user) for q in value['user_quotes']):
         raise ValueError('요청 원문 근거를 확인하지 못했습니다.')
     return result
@@ -206,7 +206,7 @@ def delivery_directives(state):
     """Replay explicit changes per channel. Other turns, including answers, leave them in force."""
     asked_to_send = set()
     directives = {}
-    for message in state.get('messages', []):
+    for message in _assessment_messages(state):
         if message['role'] != 'user':
             continue
         quote = message['content']
@@ -268,27 +268,52 @@ def guard_delivery_revision(result,state):
             'reason':'사용자의 발송 변경 요청과 선택한 도구가 일치하지 않아 재검토가 필요합니다.'}
 
 
-_TASK_REQUEST = re.compile(
-    r'(?:만들어|정리해|저장해|보내|골라|남겨|뽑아|계산해|비교해|합산해|집계해|요약해|예약해|변환해|추출해|분석해)'
-    r'\s*(?:줘|주(?:세요|십시오|시겠어요)|줄래)'
+_NEW_TASK = re.compile(
+    r'^(?:(?:이제|지금부터)\s*)?(?:새(?:로운)?|다른|별개의)\s*(?:업무|작업|요청|질문)'
+    r'(?:[.:：]|(?:으로|로|이야|입니다|예요)(?=[\s.!?,]|$))'
 )
-_CONTINUATION = re.compile(
-    r'원래|기존|다시|그대로|아까|방금|앞서|이전|같은\s*조건|그\s*(?:조건|표|파일|요청|작업|기준|결과)'
-    r'|위\s*(?:조건|내용)|대신|말고|바꿔|수정|취소|철회|빼(?:고|줘)|하지\s*(?:마|말|않)|안\s*해'
-    r'|그만|만\s*(?:해|남겨|하고)|그리고|추가|이어서|(?:결과|파일|형식)(?:으로|로)?도|^(?:네|아니)[\s,.]'
+_MATERIAL = re.compile(
+    r'(?<!\w)([가-힣A-Za-z_][\w.-]+?)(에서|으로부터|[을를의]|(?=\s+(?:파일|이미지|문서|자료|내역)))'
+    r'(?=\s|$)'
 )
+_GENERIC_MATERIALS = {'파일', '이미지', '자료', '결과', '내용', '원본', '문서', '데이터', '항목', '합계', '평균', '금액', '목록'}
+_ACTIONS = tuple(map(re.compile, (r'추출|뽑아|읽어|정리해', r'집계|합산|계산|합계|평균', r'비교|대조', r'선별|골라|필터', r'검수|대조 검토')))
+_COMPARISON_INPUT = re.compile(r'[^.!?\n]{1,60}?(?:와|과)\s*(?:비교|대조)')
+_REFERS_BACK = re.compile(r'거기|여기|원래|기존|다시|그대로|아까|앞서|이전|위의|대신|말고|바꿔|수정|취소|그리고|추가|이어서|함께|같이|그\s*(?:결과|자료|파일|표)|도(?=\s|$)')
 
 
 def _assessment_messages(state):
-    """Keep follow-ups with their evidence; a new standalone task supplies its own quotes."""
+    """Replay task boundaries so quotes and delivery decisions keep the same scope after a reply."""
     messages = state.get('messages', [])
-    if (not messages or messages[-1]['role'] != 'user' or state.get('pending_questions')
-            or state.get('capability_questions') or not any(m['role'] == 'user' for m in messages[:-1])):
-        return messages
-    request = messages[-1]['content'].strip()
-    if len(''.join(request.split())) <= 12 or not _TASK_REQUEST.search(request) or _CONTINUATION.search(request):
-        return messages
-    return messages[-1:]
+    start = 0
+    materials, actions = set(), set()
+    for index, message in enumerate(messages):
+        if message.get('role') != 'user':
+            continue
+        request = message['content'].strip()
+        named = set()
+        names_input = False
+        for match in _MATERIAL.finditer(request):
+            name, role = match.groups()
+            if name in _GENERIC_MATERIALS:
+                continue
+            named.add(name)
+            # Direct objects can be new output fields ("품목별 비용을 집계"), rather than
+            # new input data. A source phrase or two explicit comparison inputs are stronger evidence.
+            if role in ('에서', '으로부터', '') or (role in ('을', '를') and _COMPARISON_INPUT.match(request[match.end():])):
+                names_input = True
+        requested = {action for action in _ACTIONS if action.search(request)}
+        # A long instruction may add a step. Without an explicit reset, require both
+        # a new named input and a different kind of work before discarding evidence.
+        independent = (materials and names_input and actions and requested and actions.isdisjoint(requested)
+                       and not any(material in request for material in materials) and not _REFERS_BACK.search(request))
+        if _NEW_TASK.match(request) or independent:
+            start = index
+            materials.clear()
+            actions.clear()
+        materials.update(named)
+        actions.update(requested)
+    return messages[start:]
 
 
 def assess_capability(state,transport):

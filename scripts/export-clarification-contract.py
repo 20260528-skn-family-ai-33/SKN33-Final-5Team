@@ -41,7 +41,7 @@ def run(payload, values=None, operation='filter', unsupported=None, conflict_key
 
 def write(name,value):
     p=DEST/name;p.parent.mkdir(parents=True,exist_ok=True)
-    p.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n')
+    p.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 
 
 def export():

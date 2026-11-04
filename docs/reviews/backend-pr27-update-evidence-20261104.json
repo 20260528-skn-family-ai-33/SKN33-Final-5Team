@@ -1,0 +1,132 @@
+{
+  "date_kst": "2026-11-04",
+  "pr_number": 27,
+  "integrated_main": "9ee07cdb3051be89dcc7dc04025f6b958655d714",
+  "integration_commit_before_local_commit": "ca229a0133e6d21107b8fe725fe075094171630a",
+  "scope": "Original PR27 plus local operation-contract and opt-in request coverage changes; local isolated verification only",
+  "validation": {
+    "python_full": {
+      "passed": 1665,
+      "skipped": 2,
+      "subtests_passed": 4,
+      "failed": 0,
+      "errors": 0,
+      "summary": "1665 passed, 2 skipped, 4 subtests passed in 90.98s (0:01:30)",
+      "temp_directory": "Explicit writable workspace temp directory",
+      "junit_sha256": "101d4e93825a76b8f8e7e5320a968d96bfd551337b989562e1272b64e95e4c0c"
+    },
+    "python_initial_attempt": {
+      "passed": 1639,
+      "failed": 30,
+      "errors": 22,
+      "skipped": 2,
+      "cause": "Windows sandbox temporary-directory access errors in document fixtures",
+      "code_changed_for_retry": false,
+      "resolution": "Set TEMP/TMP to writable workspace. Affected 26 tests + 4 subtests passed; full clean retry recorded separately."
+    },
+    "typescript_check": "passed",
+    "build": "passed",
+    "node_python_model_requirement_contract": {
+      "passed": 3,
+      "skipped": 0,
+      "failed": 0,
+      "compared_execution_modes": 110
+    },
+    "historical_node_full": "See backend-contract-audit-20261103.md: timeout and isolated retry preserved; not rerun as a full Node suite in this update",
+    "changed_source_matches_previously_verified_python_hashes": true
+  },
+  "activation": {
+    "request_coverage_code_default": "off",
+    "request_coverage_example": "enforce",
+    "generation_mode_default": "baseline",
+    "experimental_generation_mode": "bounded (opt-in, final live verification pending)",
+    "production_settings_changed": false
+  },
+  "earlier_real_qwen": {
+    "original_pr27": "Single-table and two-table generation/save/execution succeeded at original code version; see original evidence JSON",
+    "coverage_iteration": {
+      "single_table_save_execution": "passed",
+      "negative_mutations_blocked": 5,
+      "mutations_are_independent_qwen_generations": false,
+      "result_rows": [
+        {
+          "item": "B",
+          "qty": "4",
+          "amount": 40
+        },
+        {
+          "item": "A",
+          "qty": "3",
+          "amount": 30
+        }
+      ]
+    },
+    "final_candidate_live_validation": "pending; original successes must not be attributed to this final candidate"
+  },
+  "blockers": {
+    "team_server": "User confirmed team leader stopped the shared RunPod; endpoint returned HTTP 404 afterwards",
+    "new_gpu": "No new Pod created: low-cost capacity unavailable; no automatic reservation"
+  },
+  "remaining": [
+    "Final real-Qwen single/two-table baseline generation/save/execute and file readback",
+    "Derived-column false findings in frozen legacy verifier",
+    "Experimental bounded generation compatibility and response length",
+    "Deployment model bundle/settings and public UI end-to-end checks",
+    "Review-tool training data, AI label reliability and Google live integration remain separate work"
+  ],
+  "actions": {
+    "ml_retrained": false,
+    "new_ml_test_data_created": false,
+    "gpu_created": false,
+    "existing_pods_changed": false,
+    "production_deployed": false
+  },
+  "source_sha256": {
+    ".env.example": "e565b617b3ce4cec6f8ec23f3e62380eb84655ed9676b0a9066c2f2e3baef600",
+    "Backend/agent_builder/capabilities/capability_gate.py": "5f08daf96aa5572863f42155a3442167faf72b38ad92d10a82d663eaaeb8734e",
+    "Backend/agent_builder/design/graph.py": "4febede125e0ed641b3d961adb8f25a81d6281a852d0815e3fb21bbd86caabc8",
+    "Backend/agent_builder/design/nodes/conversation.py": "8c910ee45e33c2f1174f7aa0d0732890d818975d9e385aa1ae763b80b47764b9",
+    "Backend/agent_builder/design/nodes/direct_conversation.py": "8b6a610f87734ec1ba1ffc76f8ef2c7182f0c5ada2dcddf70ad639072674166c",
+    "Backend/agent_builder/design/nodes/validation.py": "72f84ce96d3798932076f2c475264c0dbef4fcdcda5f95ba7c3d66e99b9db2ef",
+    "Backend/agent_builder/design/nodes/verification.py": "d00ac42c8038f3b6576c05782fa8d878946d77c94bc797bd3fb5bf6760d245d0",
+    "Backend/agent_builder/design/operation_steps.py": "abe02b2466526bd47316c4d532f179a31733164a2851f896e7e3e5459557f5c7",
+    "Backend/agent_builder/design/processing_guard.py": "5e44a97a4119f52c43cd2cc7a72b7fc7a25d7c5e5ac23ece300f0822c05dc9d7",
+    "Backend/agent_builder/design/requirement_contracts.py": "0e985b90c6300c2767ea9223a6b61c8c129fec3c86037078d710ddd4882f7bad",
+    "Backend/agent_builder/design/requirement_coverage.py": "7edac6c66224bc7a53388fe5367de1a2970d511ab12f475f3a76f1344fed5fc0",
+    "Backend/agent_builder/design/requirement_generation.py": "598d5df0a14510a2dbc51c7966843b6addec9d051e4f27b627639d0671b8a3c6",
+    "Backend/agent_builder/design/requirement_ledger.py": "0043038947375f87f2fd48ea22031d762fda448954fb0e964e3ac83bb9fe3467",
+    "Backend/contracts/models.py": "d56ed835243689e524ebef066267b99c65f8e32c46a6ca97abfcff41e97d1b91",
+    "Backend/tests/design/test_requirement_coverage.py": "86d1afb352d39c357f39d09186906e1c8b80e5b42d911a961598e1d5ab1b5b5e",
+    "Backend/tests/design/test_task_omission.py": "a92835933e7ba0c2a9ef0041ddb9e364eda818f54a2aa0e696901748ab8695b8",
+    "Backend/tests/verification/test_verifier_bridge.py": "2c6198950a6a9b5c1a2a8b7a744f12388fdb5c20024eb62b55093540c468aee2"
+  },
+  "local_log_sha256": {
+    "PR27_UPDATE_CPU.log": "b58e7055eca96c4262e13298cc11374855056725f87c026554ef35473f183dc4",
+    "PR27_DOCUMENT_RETRY.log": "a945a0ee6ce7602fb31ae847734e3dc8f721700735c03fc8fe8be87802e35dbe",
+    "PR27_UPDATE_CPU_RETRY.log": "c93c4e7c145e2f844592fb6021c3413d73e4851e07631c8cb74b02c6528d1ba9",
+    "PR27_UPDATE_TYPES.log": "dedec7409ec73d451f9ea56357e16d0d5e5fc989227c4c40610e3ee620e109f5",
+    "PR27_UPDATE_BUILD.log": "331ac59b49463130b59495c5bec1d0457c2f882023a8b7923d093dd940114570",
+    "PR27_UPDATE_NODE_PYTHON.log": "ec536e6bc09aad6e4d150eb0d64bc4e5887a5cf3817df867879b1398e0632e3e"
+  },
+  "source_sha256_representation": "Local tested working-tree bytes; Git may normalize CRLF to LF. Use git_blob_sha256 for repository-byte comparisons.",
+  "git_blob_sha256": {
+    ".env.example": "e565b617b3ce4cec6f8ec23f3e62380eb84655ed9676b0a9066c2f2e3baef600",
+    "Backend/agent_builder/capabilities/capability_gate.py": "5f08daf96aa5572863f42155a3442167faf72b38ad92d10a82d663eaaeb8734e",
+    "Backend/agent_builder/design/graph.py": "4febede125e0ed641b3d961adb8f25a81d6281a852d0815e3fb21bbd86caabc8",
+    "Backend/agent_builder/design/nodes/conversation.py": "62b15b3923c6c7761691fba99dceb4bbcf72ab7d6e1d89c29499e8324b7c3b63",
+    "Backend/agent_builder/design/nodes/direct_conversation.py": "8b6a610f87734ec1ba1ffc76f8ef2c7182f0c5ada2dcddf70ad639072674166c",
+    "Backend/agent_builder/design/nodes/validation.py": "72f84ce96d3798932076f2c475264c0dbef4fcdcda5f95ba7c3d66e99b9db2ef",
+    "Backend/agent_builder/design/nodes/verification.py": "d00ac42c8038f3b6576c05782fa8d878946d77c94bc797bd3fb5bf6760d245d0",
+    "Backend/agent_builder/design/operation_steps.py": "abe02b2466526bd47316c4d532f179a31733164a2851f896e7e3e5459557f5c7",
+    "Backend/agent_builder/design/processing_guard.py": "5e44a97a4119f52c43cd2cc7a72b7fc7a25d7c5e5ac23ece300f0822c05dc9d7",
+    "Backend/agent_builder/design/requirement_contracts.py": "0e985b90c6300c2767ea9223a6b61c8c129fec3c86037078d710ddd4882f7bad",
+    "Backend/agent_builder/design/requirement_coverage.py": "7edac6c66224bc7a53388fe5367de1a2970d511ab12f475f3a76f1344fed5fc0",
+    "Backend/agent_builder/design/requirement_generation.py": "598d5df0a14510a2dbc51c7966843b6addec9d051e4f27b627639d0671b8a3c6",
+    "Backend/agent_builder/design/requirement_ledger.py": "0043038947375f87f2fd48ea22031d762fda448954fb0e964e3ac83bb9fe3467",
+    "Backend/contracts/models.py": "d56ed835243689e524ebef066267b99c65f8e32c46a6ca97abfcff41e97d1b91",
+    "Backend/tests/design/test_requirement_coverage.py": "86d1afb352d39c357f39d09186906e1c8b80e5b42d911a961598e1d5ab1b5b5e",
+    "Backend/tests/design/test_task_omission.py": "a92835933e7ba0c2a9ef0041ddb9e364eda818f54a2aa0e696901748ab8695b8",
+    "Backend/tests/verification/test_verifier_bridge.py": "2c6198950a6a9b5c1a2a8b7a744f12388fdb5c20024eb62b55093540c468aee2"
+  },
+  "source_commit": "1ec05dd3b48e9884e306211a5170bc6109502845"
+}

@@ -38,6 +38,12 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    from agent_builder.design.requirement_coverage import requirement_issues
+    missing_requirements=requirement_issues(state,state.get('draft') or {})
+    if missing_requirements:raise ValueError(' / '.join(missing_requirements))
+    from agent_builder.design.processing_guard import processing_issues
+    missing_processing=processing_issues(state,state.get('draft') or {})
+    if missing_processing:raise ValueError(missing_processing[0])
     from agent_builder.design.name_policy import invalid_workflow_name
     if invalid_workflow_name((state.get('draft') or {}).get('name')):
         raise ValueError('도구 식별자만으로는 저장할 수 없습니다. 업무 이름을 확인해주세요.')

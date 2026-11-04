@@ -217,6 +217,25 @@ def test_bound_child_table_does_not_require_a_second_file(tmp_path):
     store.close()
 
 
+@pytest.mark.parametrize('bound_port,other_tool', [('documents','read_table'),('table','read_document')])
+def test_bound_child_input_defers_only_matching_source(tmp_path,bound_port,other_tool):
+    store=Storage(tmp_path)
+    parent=workflow_draft(state())
+    child=node('child','saved_workflow',[bind(bound_port,'previous',bound_port)])
+    parent['workflow']={'entry':'child','nodes':[child],'edges':[]}
+    supplied_tool='read_document' if bound_port=='documents' else 'read_table'
+    child_config=workflow_draft(state())
+    child_config['workflow']={'entry':'supplied','nodes':[node('supplied',supplied_tool),node('other',other_tool)],
+                              'edges':[edge('supplied','other')]}
+    try:
+        requirements=execution_requirements(parent,store,[],{'child':{'config':child_config}})
+        assert [r['node_id'] for r in requirements]==['child/other']
+        assert not requirements[0]['ready'] and requirements[0]['required_before_start']
+        with pytest.raises(ValueError,match='실행 전 자료 확인'):
+            preflight_execution(parent,store,[],{'child':{'config':child_config}})
+    finally:store.close()
+
+
 def test_review_change_rechecks_conditions_before_new_confirmation(tmp_path, monkeypatch):
     monkeypatch.setenv('A4B_CONDITION_PLAN_MODE', 'template')
     s = state()

@@ -230,12 +230,14 @@
         "id": "read_table",
         "version": 1,
         "description": "연결한 CSV·Excel·JSON 파일의 실제 행을 읽습니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
-        "input_ports": {
-          "file_id": "file"
-        },
+        "input_ports": {},
         "output_ports": {
           "table": "table"
-        }
+        },
+        "native_settings": [
+          "file_ids"
+        ],
+        "operation_contract_fingerprint": "8d95ba4c6c7da13d168e5ffdfb7bd4335eafaf8574e2bcefc162e0fb38661325"
       },
       {
         "id": "filter_sort",
@@ -246,7 +248,11 @@
         },
         "output_ports": {
           "table": "table"
-        }
+        },
+        "native_settings": [
+          "execution_plan"
+        ],
+        "operation_contract_fingerprint": "2a33f0ec37bfa31792ad43ba0e10798298ab593210cec29591360e569a74a484"
       },
       {
         "id": "write_result",
@@ -257,7 +263,11 @@
         },
         "output_ports": {
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [
+          "format"
+        ],
+        "operation_contract_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
         "id": "agent_node",
@@ -271,7 +281,11 @@
         },
         "output_ports": {
           "text": "text"
-        }
+        },
+        "native_settings": [
+          "instructions"
+        ],
+        "operation_contract_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
         "id": "aggregate_table",
@@ -282,7 +296,13 @@
         },
         "output_ports": {
           "table": "table"
-        }
+        },
+        "native_settings": [
+          "fields",
+          "aggregation",
+          "sum_field"
+        ],
+        "operation_contract_fingerprint": "6f0bee438b65bafb6ad941896d9c4a6e948f30357bce28695b980e6aea2c2d98"
       },
       {
         "id": "calculate_columns",
@@ -293,7 +313,18 @@
         },
         "output_ports": {
           "table": "table"
-        }
+        },
+        "native_settings": [
+          "table_operation",
+          "calculation_formula",
+          "output_column",
+          "rename_from",
+          "rename_to",
+          "fields",
+          "date_input_format",
+          "date_timezone"
+        ],
+        "operation_contract_fingerprint": "d3e96772930ec6bc4eec67b0b5dd7c1790bd83a382f06cb25382cffd9fa1b375"
       },
       {
         "id": "text_transform",
@@ -304,7 +335,12 @@
         },
         "output_ports": {
           "text": "text"
-        }
+        },
+        "native_settings": [
+          "text_find",
+          "text_replacement"
+        ],
+        "operation_contract_fingerprint": "9d43f80373d28ede307e4e16e9783b21f7c8f58f66aeeb65466997da93336682"
       },
       {
         "id": "base64_codec",
@@ -315,7 +351,11 @@
         },
         "output_ports": {
           "text": "text"
-        }
+        },
+        "native_settings": [
+          "codec_mode"
+        ],
+        "operation_contract_fingerprint": "9d262c5c786c5445b39561ecfbb43a03670f2de1f69cf3e742ea2727ffa9fcbf"
       },
       {
         "id": "text_hash",
@@ -326,7 +366,9 @@
         },
         "output_ports": {
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "822093b35339eddd6d83399ca2fe56c959380a41991fc76fc07655543780e76f"
       },
       {
         "id": "date_transform",
@@ -337,7 +379,13 @@
         },
         "output_ports": {
           "text": "text"
-        }
+        },
+        "native_settings": [
+          "date_operation",
+          "date_seconds",
+          "date_output_format"
+        ],
+        "operation_contract_fingerprint": "b4a799cc119be801681ad1978107cb98b54e99fd250b99366bd50e17d5b6299e"
       },
       {
         "id": "text_statistics",
@@ -348,7 +396,12 @@
         },
         "output_ports": {
           "records": "records"
-        }
+        },
+        "native_settings": [
+          "statistics_unit",
+          "include_whitespace"
+        ],
+        "operation_contract_fingerprint": "608a440b84954a46f694cd16968ae6488ec3aa53d6168a2754e5663e38e91b18"
       },
       {
         "id": "finish",
@@ -361,7 +414,11 @@
         "output_ports": {
           "text": "text",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [
+          "instructions"
+        ],
+        "operation_contract_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
         "id": "read_document",
@@ -370,7 +427,11 @@
         "input_ports": {},
         "output_ports": {
           "documents": "documents"
-        }
+        },
+        "native_settings": [
+          "file_ids"
+        ],
+        "operation_contract_fingerprint": "d944e542a8090da8fad623ea45e507dbb0205ee6eac18e9d2fdde136870e9c6d"
       },
       {
         "id": "search_document",
@@ -381,7 +442,11 @@
         },
         "output_ports": {
           "documents": "documents"
-        }
+        },
+        "native_settings": [
+          "query"
+        ],
+        "operation_contract_fingerprint": "b5b178129a7579148c5f8b1fdc08f8808b95dbf404004aa550583c4432e4f105"
       },
       {
         "id": "extract_information",
@@ -392,7 +457,13 @@
         },
         "output_ports": {
           "records": "records"
-        }
+        },
+        "native_settings": [
+          "fields",
+          "extraction_mode",
+          "instructions"
+        ],
+        "operation_contract_fingerprint": "cf043eb6b2de5e042f9a43a747ca69121295c67c4e97e4c38201e056bde54504"
       },
       {
         "id": "reply_review",
@@ -405,7 +476,12 @@
         },
         "output_ports": {
           "reviews": "reviews"
-        }
+        },
+        "native_settings": [
+          "fields",
+          "instructions"
+        ],
+        "operation_contract_fingerprint": "59f670992239ceceaadb4685e61a7857fff78f7e3e55a505e9139b43b1a41e85"
       },
       {
         "id": "compose_answer",
@@ -418,7 +494,11 @@
         },
         "output_ports": {
           "text": "text"
-        }
+        },
+        "native_settings": [
+          "instructions"
+        ],
+        "operation_contract_fingerprint": "1808188b31a5a3f559e647b333309dd7278b93c28c76c4ed6cda3583e229319b"
       },
       {
         "id": "export_result",
@@ -427,12 +507,15 @@
         "input_ports": {
           "records": "records",
           "text": "text",
-          "documents": "documents",
           "answer": "text"
         },
         "output_ports": {
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [
+          "format"
+        ],
+        "operation_contract_fingerprint": "b36d07bcbf7e2b56a07047016cca1ccaf02852d6fb9143004bfd1632140ba25b"
       },
       {
         "id": "condition",
@@ -454,7 +537,13 @@
           "answer": "text",
           "documents": "documents",
           "decision": "boolean"
-        }
+        },
+        "native_settings": [
+          "condition_field",
+          "condition_operator",
+          "instructions"
+        ],
+        "operation_contract_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
         "id": "ask_user",
@@ -470,7 +559,12 @@
           "text": "text",
           "documents": "documents",
           "answer": "text"
-        }
+        },
+        "native_settings": [
+          "question",
+          "instructions"
+        ],
+        "operation_contract_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
         "id": "review_summary",
@@ -481,7 +575,9 @@
         },
         "output_ports": {
           "table": "table"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "34033c6fedc2baaec60b86b4a48b428994be354ed71b1eefee9dac7481bdfb11"
       },
       {
         "id": "saved_workflow",
@@ -502,7 +598,14 @@
           "text": "text",
           "reviews": "reviews",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [
+          "agent_id",
+          "agent_version",
+          "output_node",
+          "output_port"
+        ],
+        "operation_contract_fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
         "id": "read_web",
@@ -518,7 +621,9 @@
           "text": "text",
           "document": "json",
           "documents": "documents"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "7612c53e93b2d813cd09b54aa195e18f974bb19b6fa2bae0cab3d6cca164867b"
       },
       {
         "id": "join_tables",
@@ -538,7 +643,9 @@
           "text": "text",
           "table": "table",
           "records": "records"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "f51f240b3a4e701be8df7f54d1442762063187b325eec3b8eea10b6eb2d65ce1"
       },
       {
         "id": "compare_tables",
@@ -554,7 +661,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "eeb3d6ea5e8214bbdd8b594b80a84a7cc677c6b3ccb5a2deecb4985393e3206e"
       },
       {
         "id": "create_spreadsheet",
@@ -568,7 +677,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "51187b0536ec27a9f223f95c4ff2512aec4ff5d4b85e7cc9b0e69c83244d75e5"
       },
       {
         "id": "edit_spreadsheet",
@@ -590,7 +701,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "7e2f2b7f799ba888e32ced506df0c09a7a65e4dd2981c486ed5109c3c2e9db44"
       },
       {
         "id": "create_document",
@@ -605,7 +718,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "c0d2e15c6f03ed31202708e4ce5ac82eb1fb66163d78581768efb5dd0f40b20a"
       },
       {
         "id": "edit_document",
@@ -627,7 +742,9 @@
           "text": "text",
           "document": "json",
           "documents": "documents"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "64390f3d7f228d74fc61d7d5e4e65fba88fd83c2e62c632c801fd26176a7f4af"
       },
       {
         "id": "format_document",
@@ -643,7 +760,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "61b07f6f688cdc843ea16f7f2c91f76276619383d4dbd90f1868c66474f634ab"
       },
       {
         "id": "fill_template",
@@ -659,7 +778,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "4f700efc1d6f160b7e697ba1ebb01a82a233c8303022ff935bbe0a90c4e3772d"
       },
       {
         "id": "convert_format",
@@ -676,7 +797,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "90aedb46a6754f1d516241a770785a0ed3ba586345d17f366783713aae7e6bfc"
       },
       {
         "id": "proofread_document",
@@ -690,7 +813,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "9114356bc09abe12da0bd286cbf146c6c893a382cee264093ec3ea2d91341645"
       },
       {
         "id": "translate_document",
@@ -707,7 +832,9 @@
           "text": "text",
           "document": "json",
           "documents": "documents"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "cd6acd34b52f192475634f3be21ce71f13b570873579d44bf3c1be5be936709e"
       },
       {
         "id": "compare_documents",
@@ -721,7 +848,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "b14d6ecfc4f57664a7c3b553c4be6b1e41a2e45dd5035795885bfe2189087b60"
       },
       {
         "id": "verify_content_requirements",
@@ -736,7 +865,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "15c22f41ebddefcb98bd7c5abdde8c340ac096d7186b89e8a2bb96064fb4e5dd"
       },
       {
         "id": "review_document",
@@ -750,7 +881,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "74220326af680527c15f84f8dd0b7843f7d187fa714dfb4cb0f08d106fa6567e"
       },
       {
         "id": "validate_document_format",
@@ -764,7 +897,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "914d67e75e7caf6b963fafed062900e00793e14021a45b35ac8e760942865099"
       },
       {
         "id": "check_document_links",
@@ -779,7 +914,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "6241acbaf05e7a26faf8fbf877e8f66ba06285b92a4f42b5cf609120b0f20301"
       },
       {
         "id": "detect_language",
@@ -792,7 +929,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "9d9c27d4794804c5744d3863758f15155b392d6e70cc937f21a4f887cb3441d2"
       },
       {
         "id": "document_visual_qa",
@@ -805,7 +944,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "5c00f87ee48501bc4508d82869b301ff37ada394c02690c81b96c21e71c63bd7"
       },
       {
         "id": "classify_document",
@@ -819,7 +960,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "494bbd7f3ac76e72d2c57db5aa7fe7632b1d30838aa579b0af3e281be7531605"
       },
       {
         "id": "verify_table_calculations",
@@ -833,7 +976,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "e58a352f1836b6edade711b8ce5e6f15752156641980688c8fabfe9e39ad07c3"
       },
       {
         "id": "split_pdf",
@@ -849,7 +994,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "24764a5f30bd6001daac3078c8c673499ceeb6d6647093bfdc8a87efa6fa1cb7"
       },
       {
         "id": "merge_documents",
@@ -864,7 +1011,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "6216f9f73b3a642be920c4717274f90627257f193e1c25b902a93702c3010f13"
       },
       {
         "id": "compress_pdf",
@@ -880,7 +1029,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "8f5199b6f71664bd0b8e7d66219f21b7c6e03b2e9a0add7ba3d2612f7bb44a61"
       },
       {
         "id": "render_document_pages",
@@ -895,7 +1046,9 @@
           "result": "json",
           "text": "text",
           "pages": "json"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "b061c27710cdf1913c153aaffb6050bd7897da8229e1a2d407021dd029d572e0"
       },
       {
         "id": "annotate_document",
@@ -911,7 +1064,9 @@
           "text": "text",
           "asset": "json",
           "artifact": "artifact"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "29bdfa4e1746c3bcd8b2abcf5a4a97c0f611ac88421788fa299e728bc769511b"
       },
       {
         "id": "scalar_calculate",
@@ -924,7 +1079,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "0451d114da717ec660a8079504852c6f4c9bb2e68d4de7469fb62610273e258d"
       },
       {
         "id": "json_transform",
@@ -938,7 +1095,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "9b8d93272def91dd70636f8fafe659e2012d7068cfbe5229af4a77153d104292"
       },
       {
         "id": "list_transform",
@@ -951,7 +1110,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "d198783dfdcf0fca3bf1e18e200fd8b280ae2bd3d79c5fb916e07fee6144cd0a"
       },
       {
         "id": "url_transform",
@@ -967,7 +1128,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "3907f0030569e38e21ae3f501468d4dae4059d233c3c17c8bd6d35a8ce47cdd2"
       },
       {
         "id": "email.prepare",
@@ -985,7 +1148,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "46b0675de0c76ffaa70c18758e90443f171d8b62ab048e1123b08d6cc0b57b35"
       },
       {
         "id": "email.send",
@@ -1002,7 +1167,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "c920b80991d9e4e31c5c19681b671e1e1c93368f67409f7e0924c7f9301b0d1b"
       },
       {
         "id": "email.list",
@@ -1016,7 +1183,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "bc736fd60d505498ce86bd6a4a76abb4dddae50d47b24e07ce1b684f2aeadb20"
       },
       {
         "id": "email.get",
@@ -1029,7 +1198,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "e56a5ace75661e5e74e483ca80268c33ff8edeec10397d72abd0556b9a215474"
       },
       {
         "id": "email.attachment.get",
@@ -1042,7 +1213,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "ba87b68fd6c724592ae27cf0e2be95b790de6ff89d44cf3f733b7a04e1a09e7e"
       },
       {
         "id": "calendar.create_event",
@@ -1064,7 +1237,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "c173cc1ce19ad5f87e0db94ae29e3d5a9d505581aeb748659b42327c3c0d0650"
       },
       {
         "id": "calendar.list_events",
@@ -1081,7 +1256,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "c0417bd261806e5146237d041bf6289efb5253ddb16d6e67258c4210d24f1476"
       },
       {
         "id": "calendar.get_event",
@@ -1094,7 +1271,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "2b835cad7c4b30c17a9aa37b06420ff65637c2b493b915e09ca08609a0f65373"
       },
       {
         "id": "calendar.update_event",
@@ -1110,7 +1289,9 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "60b4793ad30da62b941921c0438e857a015eb57d50ad397b6f14491b0f3b0be9"
       },
       {
         "id": "calendar.delete_event",
@@ -1125,10 +1306,12 @@
         "output_ports": {
           "result": "json",
           "text": "text"
-        }
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "d193f0a71192f993c76ac953639e5e29bc78267a1f4edc595f563953e67a415b"
       }
     ],
-    "tool_catalog_fingerprint": "c8f927b9ac9d2648e646044d670c036753a8aa68b84a98ccde07c16b827ad20a",
+    "tool_catalog_fingerprint": "f26038943d468aa38ea5c8a84db76417da14a81a9a98e711e9ff771e369d7dcd",
     "ml_advice": {
       "status": "not_requested",
       "ml_candidates": [],

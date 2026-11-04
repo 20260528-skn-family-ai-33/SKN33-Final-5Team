@@ -172,6 +172,19 @@ def test_catalog_fingerprint_and_schema_artifacts_match_current_proposal():
     assert catalog=={'fingerprint':catalog_fingerprint(),'tools':tool_catalog()}
 
 
+def test_operation_contract_changes_invalidate_the_handoff_fingerprint(monkeypatch):
+    from agent_builder.conditions import clarification_contract as contract
+    previous=catalog_fingerprint()
+    tools=deepcopy(contract.TOOLS)
+    operation=next(t for t in tools if t['id']=='join_tables')['operation_contracts'][0]
+    operation['argument_constraints']['how']['enum']=['inner']
+    monkeypatch.setattr(contract,'TOOLS',tools)
+    assert catalog_fingerprint()!=previous
+    payload=load('01-ready')
+    with pytest.raises(ValueError,match='카탈로그 버전'):
+        to_builder_state(payload,expected_session_id=payload['session_id'],expected_revision=payload['revision'])
+
+
 def test_ready_output_requires_real_confirmed_condition_evidence():
     ready=load('01-ready','output')
     with pytest.raises(ValidationError):ClarificationOutput.model_validate({**ready,'confirmed_conditions':{}})

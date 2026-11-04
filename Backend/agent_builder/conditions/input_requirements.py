@@ -4,6 +4,7 @@ Branches and table inputs produced by subgraphs still receive runtime checks.
 This does not execute tools, query a model, or prove output correctness.
 """
 from agent_builder.conditions.condition_readiness import input_issues
+from workflow_engine.executors.sources import source_file_ids
 
 
 def _prefix(workflow):
@@ -43,32 +44,41 @@ def _fields(nodes, reader_id, config):
     return list(dict.fromkeys(fields))
 
 
-def execution_requirements(config, storage, file_ids=None, dependencies=None, path='', depth=0):
+def execution_requirements(config, storage, file_ids=None, dependencies=None, path='', depth=0, _external_ports=()):
     workflow = config.get('workflow')
     if not workflow or depth > 10:
         return []
     prefix = _prefix(workflow)
     prefix_ids = {n['id'] for n in prefix}
-    provided = [storage.asset(id) for id in file_ids or []]
     result = []
     for node in workflow['nodes']:
         if node['tool'] == 'saved_workflow' and node['id'] in prefix_ids:
             child = (dependencies or {}).get(node['id'])
-            # A table binding is supplied by the parent graph, not a new file.
-            if child and not any(b['input'] == 'table' for b in node['bindings']):
+            if child:
                 result += execution_requirements(child['config'], storage, file_ids,
-                    child.get('workflow_dependencies'), path + node['id'] + '/', depth + 1)
+                    child.get('workflow_dependencies'), path + node['id'] + '/', depth + 1,
+                    _external_ports={b['input'] for b in node['bindings']})
         if node['tool'] not in ('read_table', 'read_document'):
             continue
+        if node['settings'].get('operation'):
+            # Raw-file operations resolve their declared asset/path arguments;
+            # native parsed-table/document selection does not apply to them.
+            continue
+        source_port = 'table' if node['tool'] == 'read_table' else 'documents'
+        if source_port in _external_ports:
+            # The runner supplies this source directly from the parent graph.
+            # Other child sources still need their own execution-file checks.
+            continue
         kind = 'table' if node['tool'] == 'read_table' else 'document'
-        selected = [a for a in provided if a['kind'] == kind]
-        if not selected:
-            selected = [storage.asset(id) for id in node['settings'].get('file_ids') or config.get('document_ids', [])]
-            selected = [a for a in selected if a['kind'] == kind]
         fields = _fields(prefix, node['id'], config) if kind == 'table' else []
         issues = []
+        try:
+            selected = [storage.asset(id) for id in source_file_ids(node,file_ids or [],storage,config)]
+        except ValueError as error:
+            selected = []
+            issues.append(str(error))
         if not selected:
-            issues.append('실행할 표 파일을 연결하세요.' if kind == 'table' else '실행할 문서를 연결하세요.')
+            if not issues:issues.append('실행할 표 파일을 연결하세요.' if kind == 'table' else '실행할 문서를 연결하세요.')
         elif kind == 'table' and len(selected) != 1:
             issues.append('표 파일을 하나만 선택하세요.')
         else:

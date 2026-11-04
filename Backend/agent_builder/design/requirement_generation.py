@@ -3,6 +3,7 @@ from copy import deepcopy
 import os
 
 from .requirement_ledger import ledger_fingerprint, plan_digest
+from .table_step_order import deduplication_step
 
 
 TOOLS={'compute':'calculate_columns','filter':'filter_sort','sort':'filter_sort',
@@ -40,11 +41,17 @@ def generation_requirements(state):
     if (not files or any(id not in assets or assets[id].get('kind')!='table' for id in files)
             or state.get('required_node_refs')):return specs,[]
     order=['read_table']*len(files)
+    previous=None
     for s in specs:
-        if s['kind'] in ('read','policy'):continue
+        if s['kind']=='read' or s['kind']=='policy' and not deduplication_step(s):continue
         tool=TOOLS[s['kind']]
-        if tool=='filter_sort' and order[-1:]==['filter_sort']:continue
+        # Native phases are dedup -> missing -> filter -> sort. These adjacent
+        # forward transitions fit one node; filter -> dedup must stay separate.
+        if (previous=='filter' and s['kind']=='sort' or
+                previous=='policy' and s['kind'] in ('filter','sort')):
+            previous=s['kind'];continue
         order.append(tool)
+        previous=s['kind']
     if any(s['kind']=='policy' for s in specs) and 'filter_sort' not in order:
         return specs,[]  # no invented policy placement
     return specs,order if 1<=len(order)<=15 else []
@@ -119,6 +126,10 @@ def constrain_generation(schema,state):
         result['$defs']['WorkflowNode']['anyOf']=[v for v in variants if v['properties']['tool'].get('enum')!=['finish']]
         workflow=result['$defs']['WorkflowDefinition']['properties']
         if 'nodes' in workflow:workflow['nodes']['minItems']=max(workflow['nodes'].get('minItems',1),len(order))
+        remaining=result['$defs']['WorkflowNode']['anyOf']
+        if 'nodes' in workflow and all('enum' in v['properties']['id'] for v in remaining):
+            identifiers={id for v in remaining for id in v['properties']['id']['enum']}
+            workflow['nodes']['maxItems']=min(workflow['nodes'].get('maxItems',len(identifiers)),len(identifiers))
         if 'next_steps' in workflow:workflow['next_steps']['minItems']=max(workflow['next_steps'].get('minItems',0),len(order)-1)
         computes=[s for s in specs if s['kind']=='compute']
         aggregates=[s for s in specs if s['kind']=='aggregate']

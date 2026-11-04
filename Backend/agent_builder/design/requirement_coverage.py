@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from contracts.numeric_criteria import number_value
 from .requirement_ledger import ledger_fingerprint, plan_digest, validate_plan
+from .table_step_order import same_node_precedes
 
 
 def _formula(value):
@@ -37,6 +38,12 @@ def _condition(value):
 def _same_filters(actual, expected, actual_match, expected_match):
     return (actual_match==expected_match and
             sorted(map(_condition,actual))==sorted(map(_condition,expected)))
+
+
+def _missing_columns(plan):
+    return ({f['field'] for f in plan['filters'] if f['operator'] not in ('is_empty','not_empty')}
+            | {f['compare_field'] for f in plan['filters'] if f.get('compare_field')}
+            | {s['field'] for s in plan['sort']})
 
 
 def _arguments(node):
@@ -143,14 +150,36 @@ def coverage_report(state,draft):
         return result
     if any(e.get('branch') in ('yes','no') for e in workflow.get('edges',[])):
         problems.append('요구사항 검증: 분기별 업무 포함 여부는 추가 검토가 필요합니다. 공통 경로의 포함만으로 승인하지 않습니다.')
-    results=[];candidates={}
+    results=[];candidates={};policy_support={}
+    has_missing_columns=any(_missing_columns(n['settings'].get('execution_plan') or draft['execution_plan'])
+                            for n in nodes.values() if n['tool']=='filter_sort' and not n['settings'].get('operation'))
     for task in plan['tasks']:
         spec=task['spec'];matched=[]
+        # Missing values are handled on the columns touched by filtering/sorting;
+        # duplicate retention can deliberately run in a separate table stage.
+        split_policy=(spec['kind']=='policy' and spec.get('missing_policy') is not None
+                      and spec.get('duplicate_policy') in ('first','last','error'))
+        primary={**spec,'missing_policy':None} if split_policy else spec
         if spec['kind']!='other':
             for id,n in nodes.items():
                 try:
-                    if _matches(spec,n,draft,sources):matched.append(id)
+                    if _matches(primary,n,draft,sources):matched.append(id)
                 except (ValueError,TypeError,KeyError,ArithmeticError):pass
+        if split_policy:
+            missing={**spec,'duplicate_policy':None,'duplicate_field':None}
+            support=[]
+            for id,n in nodes.items():
+                try:
+                    settings=n['settings'].get('execution_plan') or draft['execution_plan']
+                    if (_matches(missing,n,draft,sources) and
+                            (_missing_columns(settings) or
+                             spec['missing_policy']=='exclude' and not settings['filters'] and not settings['sort'] or
+                             spec['missing_policy']=='keep' and not has_missing_columns)):
+                        support.append(id)
+                except (ValueError,TypeError,KeyError,ArithmeticError):pass
+            policy_support[task['id']]={id:[other for other in support
+                if other==id or other in upstream[id] or id in upstream[other]] for id in matched}
+            matched=[id for id in matched if policy_support[task['id']][id]]
         status='matched' if matched else 'unverified' if spec['kind']=='other' else 'missing_or_mismatched'
         candidates[task['id']]=matched
         results.append(dict(requirement_id=task['id'],description=task['description'],kind=spec['kind'],
@@ -159,8 +188,10 @@ def coverage_report(state,draft):
             reason='현재 규칙으로 실행 설정을 검증할 수 없습니다' if spec['kind']=='other' else '일치하는 실제 실행 단계·설정이 없습니다'
             problems.append(f"요구사항 검증: {task['id']} {task['description']} — {reason}.")
     # Find a single consistent assignment, not disconnected matches in different
-    # branches or unused parallel inputs. Same-node filter/sort/policy is valid.
-    tasks=plan['tasks'];selected={};attempts=0
+    # branches or unused parallel inputs. Sharing a node must also preserve its
+    # internal dedup -> missing values -> filter -> sort execution order.
+    tasks=plan['tasks'];selected={};selected_support={};attempts=0
+    specs={t['id']:t['spec'] for t in tasks}
     exports=[t['id'] for t in tasks if t['spec']['kind']=='export']
     from workflow_engine.execution_path import artifact_output_ids, artifact_origin
     try:
@@ -177,11 +208,17 @@ def coverage_report(state,draft):
         if attempts>4096:return False
         if index==len(tasks):
             if exports and any(selected[e]!=final_output for e in exports):return False
+            for task_id, options in policy_support.items():
+                valid=[id for id in options.get(selected[task_id],[]) if not exports or
+                       all(id==selected[e] or id in upstream[selected[e]] for e in exports)]
+                if not valid:return False
+                selected_support[task_id]=valid[0]
             return all(any(selected[t['id']]==selected[e] or selected[t['id']] in upstream[selected[e]] for e in exports)
                        for t in tasks if t['spec']['kind']!='export') if exports else True
         task=tasks[index]
         for node_id in candidates[task['id']]:
-            if all(selected[d]==node_id or selected[d] in upstream[node_id] for d in task['depends_on']):
+            if all((selected[d]==node_id and same_node_precedes(specs[d],task['spec'])) or
+                   selected[d] in upstream[node_id] for d in task['depends_on']):
                 selected[task['id']]=node_id
                 if assign(index+1):return True
         selected.pop(task['id'],None)
@@ -189,7 +226,11 @@ def coverage_report(state,draft):
     if not problems and not assign(0):
         problems.append('요구사항 검증: 처리 단계의 데이터 연결·선행 업무·최종 저장 경로가 요청과 일치하지 않습니다.')
     if not problems:
-        for item in results:item['node_ids']=[selected[item['requirement_id']]];item['status']='covered'
+        for item in results:
+            identifier=item['requirement_id']
+            item['node_ids']=list(dict.fromkeys([selected[identifier]]+
+                ([selected_support[identifier]] if identifier in selected_support else [])))
+            item['status']='covered'
     return dict(enabled=True,issues=problems,tasks=results)
 
 

@@ -54,6 +54,9 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    from agent_builder.design.table_step_order import table_order_issues
+    order_issues=table_order_issues(state,state.get('draft') or {})
+    if order_issues:raise ValueError(' / '.join(order_issues))
     issue = draft_delivery_issue(state, state.get('draft') or {})
     if issue:
         raise ValueError(issue)

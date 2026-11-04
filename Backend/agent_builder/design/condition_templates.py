@@ -2,13 +2,16 @@
 import re
 
 from contracts.models import AgentDraft, ExecutionPlan, NodeSettings, ScheduleSpec
+from .table_step_order import filter_dedup_order
 
 
 def compile_conditions(state):
     ledger=state.get('condition_ledger') or {}
-    if ledger.get('decision')!='ready' or len(ledger.get('operations',[]))!=1:
+    operations=ledger.get('operations',[])
+    combined=set(operations)=={'filter','deduplicate'}
+    if ledger.get('decision')!='ready' or not (len(operations)==1 or combined):
         raise ValueError('단일 대표 업무의 확정 조건이 필요합니다.')
-    operation=ledger['operations'][0]
+    operation='filter' if combined else operations[0]
     slots={key:item['value'] for key,item in ledger['slots'].items() if item['status']=='specified'}
     text='\n'.join(m['content'] for m in state.get('messages',[]) if m['role']=='user')
     if re.search(r'오름차순|내림차순',text):
@@ -37,8 +40,17 @@ def compile_conditions(state):
     add('read','read_table',file_ids=selected)
     last='read'
     if operation in ('filter','deduplicate'):
-        add('apply','filter_sort',[{'input':'table','node_id':last,'output':'table'}],execution_plan=plan)
-        last='apply'
+        order=filter_dedup_order(state)
+        if order=='ambiguous':
+            raise ValueError('선별·중복 제거 순서를 명확히 확인해야 합니다.')
+        if order=='filter_first' and plan['filters'] and plan['duplicate_policy'] in ('first','last','error'):
+            steps=[('filter',{**plan,'duplicate_policy':'keep','duplicate_field':None}),
+                   ('deduplicate',{**plan,'filters':[],'sort':[],'missing_policy':'keep'})]
+        else:
+            steps=[('apply',plan)]
+        for identifier,step_plan in steps:
+            add(identifier,'filter_sort',[{'input':'table','node_id':last,'output':'table'}],execution_plan=step_plan)
+            last=identifier
     if 'output.format' in slots or operation=='schedule':
         add('output','write_result',[{'input':'table','node_id':last,'output':'table'}],format=plan['output_format'])
     requirements=[]
@@ -50,7 +62,7 @@ def compile_conditions(state):
     if operation=='schedule':
         schedule=ScheduleSpec(**{key:slots.get('schedule.'+key) for key in ['frequency','timezone','hour','minute','weekday']}).model_dump()
     draft=AgentDraft(name='확정 조건의 표 업무',purpose='검증한 조건을 등록 도구에 적용',
-        instructions='확정된 조건과 정책을 적용합니다. '+str(slots),tool_ids=[n['tool'] for n in nodes],
+        instructions='확정된 조건과 정책을 적용합니다. '+str(slots),tool_ids=list(dict.fromkeys(n['tool'] for n in nodes)),
         document_ids=[r['id'] for r in state.get('resources',[])],requirements=requirements,
         questions=[],question_options=[],unsupported=[],explanation='대표 업무 템플릿으로 확정 조건을 실행 설정에 반영했습니다. 확인 후 저장하세요.',
         execution_plan=plan,workflow={'entry':'read','nodes':nodes,'edges':edges},schedule=schedule,

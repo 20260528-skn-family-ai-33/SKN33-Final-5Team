@@ -1217,7 +1217,15 @@ def plan_issues(ledger, draft):
         if not any(all(condition.get(k) == v for k, v in expected.items()) and not condition.get('compare_field') for condition in filters):
             problems.append('확정된 선별 열·비교·기준 값이 실행 설정과 다릅니다.')
     for key, field in [('duplicate.field', 'duplicate_field'), ('duplicate.policy', 'duplicate_policy'), ('missing.policy', 'missing_policy')]:
-        if key in slots and (not plans or any(plan.get(field) != slots[key] for plan in plans)):
+        applicable=plans
+        if key.startswith('duplicate.') and slots.get('duplicate.policy') in ('first','last','error'):
+            # A separate filtering stage keeps duplicates; only the retention
+            # stage owns the confirmed duplicate key and policy.
+            applicable=[plan for plan in plans if plan.get('duplicate_policy')!='keep']
+        elif key=='missing.policy':
+            # A dedup-only stage with keep must not reapply column filtering.
+            applicable=[plan for plan in plans if plan.get('filters') or plan.get('sort') or plan.get('missing_policy')!='keep'] or plans
+        if key in slots and (not applicable or any(plan.get(field) != slots[key] for plan in applicable)):
             problems.append('확정 조건이 실행 설정과 다릅니다: ' + key)
     if 'schedule' in ledger['operations']:
         spec = draft.get('schedule') or {}

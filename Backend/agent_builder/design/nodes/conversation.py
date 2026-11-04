@@ -12,6 +12,7 @@ from agent_builder.design.presentation import canonical_table_draft
 from workflow_engine.workflow import normalize_connections, workflow_errors
 from agent_builder.design.planner_constraints import ready_table_slots, table_plan_scope, TABLE_PLAN_TOOLS
 from agent_builder.design.native_settings import SCOPED_SETTINGS, NATIVE_SETTINGS, decoded_resource_tools
+from agent_builder.design.table_step_order import ORDER_INSTRUCTIONS, separate_filter_dedup
 
 # Inside the READY single-table scope each tool appears at most once, so its node ID is
 # fixed (read_table_1, ...): live drafts copied 36-char library UUIDs as IDs, corrupted
@@ -44,6 +45,9 @@ settings.node_ref는 node_library의 실제 ref만 사용하며 required_node_re
 reply_review는 실제 고객 문의·응대 초안 검수 요청에만 사용합니다. 후보 검수 보고서는 실제 발송이나 사람 승인 완료가 아닙니다. ask_user는 생성 조건 질문이 아니라 실행 중 사람 응답을 기다리는 도구입니다.
 예약 실행은 현재 지원되는 관리 표 자료로 daily/weekly를 설정합니다. 필요한 시각·시간대·요일이 미정이면 질문하고, 예약 없이 실행하면 schedule=null입니다. 예약에는 사용자 응답 대기 노드를 넣지 않습니다. report_destination=reports는 서버 보관함입니다.
 """
+
+
+SYSTEM += ORDER_INSTRUCTIONS
 
 
 class DraftResponseError(ValueError):
@@ -249,6 +253,10 @@ def make_conversation(api_key,model,model_factory=None):
         from copy import deepcopy
         ledger=state.get('condition_ledger') or {}
         confirmed={k:v['value'] for k,v in ledger.get('slots',{}).items() if v['status']=='specified'} if state.get('condition_enforced') and ledger.get('decision')=='ready' else {}
+        if separate_filter_dedup(state):
+            # A shared constrained plan would force deduplication into the
+            # filtering stage too. Per-stage settings are checked after generation.
+            confirmed={}
         # Decode inside the verified condition contract rather than asking the
         # model to copy it correctly and discovering a mismatch after generation.
         if 'filter' in ledger.get('operations',[]) and all(k in confirmed for k in ('filter.field','filter.operator','filter.value')):

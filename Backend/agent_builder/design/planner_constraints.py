@@ -2,6 +2,7 @@
 from copy import deepcopy
 from workflow_engine.catalog.registry import PORTS, node_ports
 from agent_builder.design.native_settings import NATIVE_SETTINGS, decoded_resource_tools
+from agent_builder.design.table_step_order import separate_filter_dedup
 
 REQUIRED_INPUTS = {'filter_sort':{'table'}, 'write_result':{'table'}, 'aggregate_table':{'table'},
     'review_summary':{'reviews'}, 'search_document':{'documents'}, 'extract_information':{'documents'},
@@ -68,6 +69,7 @@ def literal_schema(value):
 
 def table_plan_scope(state):
     return (bool(state.get('condition_enforced')) and not state.get('required_node_refs') and
+            not separate_filter_dedup(state) and
             ready_table_slots(state.get('condition_ledger')) is not None and
             len([r for r in state.get('resources',[]) if r.get('kind')=='table']) <= 1)
 

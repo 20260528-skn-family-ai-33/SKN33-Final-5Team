@@ -17,6 +17,30 @@
 
 ## RDS에 기록되는 데이터
 
+기존 운영 업무 표에 새 기록을 함께 남기는 설정은 `A4B_STORAGE=postgres`, `A4B_BUSINESS_RECORDS=a4b`입니다.
+Cognito와 PostgreSQL 회원 저장소를 쓰는 환경에서 **새로 시작하는** 빌더에 적용합니다.
+이미 자료가 있는 PostgreSQL 빌더에 설정만 추가하는 전환은 지원하지 않습니다.
+회원의 업무 데이터와 내부 상태는 같은 PostgreSQL 트랜잭션에서 저장합니다. LangGraph는 각 단계가 끝날 때 별도로 체크포인트를 저장합니다.
+
+| 앱에서 한 일 | 기존 `a4b`에서 볼 곳 | 내부 기록과 연결하는 값 |
+| --- | --- | --- |
+| 대화 시작·질문·응답 | `design_sessions.messages_json`, `workflows` | 대화 ID = `a4b_builder.checkpoints.thread_id` |
+| 설정 저장 | `workflow_versions`의 버전·그래프 | `workflow_id` = 빌더 에이전트 ID |
+| 자료 첨부 | `documents`, S3 사용 시 `document_versions`의 원본 위치·해시·바이트 수 | 문서 ID = 빌더 자료 ID |
+| 실행·실패·재시도 | `workflow_runs`, `node_runs`, 성공 결과는 `outputs` | `state_json->>'builder_run_id'` = 빌더 실행 ID. `state_json->>'checkpoint_thread_id'`로 재개 지점을 조회 |
+
+실패한 실행을 재시도하면 이전 실패 행은 보존하고 새 실행 행을 만듭니다. 원래 빌더 실행 ID로 두 행을 함께 찾을 수 있습니다.
+저장된 실행의 마지막 상태와 실패 단계를 확인하는 예입니다. `:builder_run_id`에 앱의 실행 ID를 입력합니다.
+
+```sql
+SELECT r.id, r.status, r.state_json->>'error' AS error,
+       n.node_key, n.status AS node_status, n.error_json
+FROM a4b.workflow_runs r
+LEFT JOIN a4b.node_runs n ON n.run_id = r.id
+WHERE r.state_json->>'builder_run_id' = :builder_run_id
+ORDER BY r.created_at, r.started_at, n.started_at;
+```
+
 | 업무 | 저장 위치와 내용 |
 | --- | --- |
 | 로그인 | 기존 `a4b.users`에 Cognito 제공자·사용자 식별자, 이메일, 이름을 등록하거나 갱신합니다. 회원 ID, 역할, 활성 상태도 여기서 읽습니다. |

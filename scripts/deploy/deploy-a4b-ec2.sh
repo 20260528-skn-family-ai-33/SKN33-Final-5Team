@@ -6,6 +6,7 @@ umask 077
 image=${1:?ECR image or restore required}
 public_url=${2:?Public HTTPS URL required}
 mode=${3:-production}
+fresh_volume=${4:-}
 [[ "$mode" == production || "$mode" == test ]]
 [[ "$image" == restore || "$image" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*:((verified|backend|frontend)-[0-9a-f]{40}|[0-9a-f]{40}-[0-9]+-[0-9]+)$ ]]
 [[ "$public_url" =~ ^https://[a-z0-9.-]+$ ]]
@@ -95,6 +96,12 @@ verify_health() {
 old_id=$(docker inspect -f '{{.Id}}' "$app")
 [[ $(docker inspect -f '{{.HostConfig.NetworkMode}} {{.HostConfig.RestartPolicy.Name}}' "$old_id") == 'host unless-stopped' ]]
 old_status=$(docker inspect -f '{{.State.Status}}' "$old_id")
+if [[ -n "$fresh_volume" ]]; then
+    [[ "$mode" == production && "$old_status" == exited && "$image" != restore && "$image" != *:frontend-* ]]
+    [[ "$fresh_volume" =~ ^a4b-fresh-[a-z0-9-]+$ ]]
+    [[ $(docker volume inspect -f '{{index .Labels "a4b.cutover.source"}}' "$fresh_volume") == "$old_id" ]]
+    [[ -z $(docker ps -q --filter "volume=$fresh_volume") ]]
+fi
 if [[ "$old_status" != running ]]; then
     [[ "$old_status" == exited && "$mode" == production && "$image" != restore && "$image" != *:frontend-* ]] ||
         { echo 'Only a stopped production backend can enter storage cutover.' >&2; exit 1; }
@@ -132,7 +139,15 @@ else
     mapfile -t mounts < <(docker inspect -f '{{range .HostConfig.Binds}}{{println .}}{{end}}' "$old_id" | sed '/^$/d')
     [[ ${#mounts[@]} -eq 2 ]]
     mount_args=()
-    for mount in "${mounts[@]}"; do mount_args+=(--volume "$mount"); done
+    replaced=0
+    for mount in "${mounts[@]}"; do
+        if [[ -n "$fresh_volume" && "$mount" =~ ^[^:]+:/app/data(:rw)?$ ]]; then
+            mount="$fresh_volume:/app/data"
+            ((replaced+=1))
+        fi
+        mount_args+=(--volume "$mount")
+    done
+    [[ -z "$fresh_volume" || "$replaced" == 1 ]]
 
     # Docker's env-file format is one assignment per line. Abort before cutover if
     # the running container's configuration cannot be represented without changes.

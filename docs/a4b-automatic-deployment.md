@@ -34,6 +34,15 @@ GitHub에 `production` 환경을 만들고 워크플로우 실행 브랜치를 `
 
 ### 업무 데이터 저장소 전환
 
+과거 빌더 기록을 SQLite에 보존하고 새 기록만 기존 `a4b` 업무 표에 남기는 전환도 가능합니다.
+먼저 DB 스키마·역할과 검증 이미지를 준비합니다. 기존 컨테이너를 정지한 뒤 실제 데이터 볼륨을 백업하고, 새 Docker 볼륨에 빌더 SQLite 파일과 관련 WAL/SHM/journal, 이전 식별자만 제외한 **나머지 파일 전부**를 권한과 함께 복사해 검증합니다.
+새 볼륨 이름은 `a4b-fresh-`로 시작하며 `a4b.cutover.source` 라벨은 정지한 원본 컨테이너의 전체 ID입니다.
+새 이미지에 이 볼륨을 `/app/data`로 마운트하고 평소와 같은 CA·앱 DB·데이터 경로로 `migrate-sqlite-to-postgres.py --confirm-empty`를 실행합니다.
+이 절차에서 기존 기록이 복사되는 작업 공간 수는 0이어야 합니다. 원본 볼륨은 종전 컨테이너에 보존합니다.
+운영 overrides에 `A4B_STORAGE=postgres`와 `A4B_BUSINESS_RECORDS=a4b`를 적용하고,
+`scripts/deploy/a4b-ssm-release.sh "$CUTOVER_IMAGE" "$PUBLIC_URL" production "$FRESH_VOLUME"`로 전환합니다.
+배포 스크립트는 사전 검사와 실제 새 컨테이너에 같은 볼륨을 사용하며 이후 일반 배포도 그 마운트를 재사용합니다.
+
 공개 주소의 첫 SQLite → PostgreSQL 전환은 점검 시간에 진행합니다. 이후 PostgreSQL → PostgreSQL 배포는 기존처럼 실행 중인 컨테이너를 대상으로 합니다.
 
 1. 수정된 배포 스크립트가 `main`에 있는지 확인합니다. 전환할 SHA의 백엔드 또는 전체 이미지를 준비하고, EC2에서 그 이미지 참조를 `CUTOVER_IMAGE`로 설정합니다. root 전용 `CUTOVER_ENV` 파일에 앱 DB 주소·CA 등 접속 설정과 **기존 컨테이너와 같은** `EASYFLOW_DATA_DIR`를 넣습니다. 관리자 접속 주소는 스키마를 적용하는 명령에만 환경 변수로 전달합니다.

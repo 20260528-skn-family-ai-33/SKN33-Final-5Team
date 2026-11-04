@@ -45,7 +45,7 @@ class RunLifecycle:
             self._save(run);self.db.commit()
         except Exception:self.db.rollback();raise
     def _save(self,run):
-        self.db.execute('INSERT INTO agent_tests({wsc}id,agent_id,json) VALUES({wsv}?,?,?) ON CONFLICT({wsc}id) DO UPDATE SET json=excluded.json',(run['id'],run['agent_id'],json.dumps(run,ensure_ascii=False)))
+        self.storage.write_test(run)
     def assert_owner(self,id,token):
         row=self.db.execute('SELECT token,expires_at,active FROM builder_run_leases WHERE {ws} AND run_id=?',(id,)).fetchone()
         if not row or row[0]!=token or not row[2] or row[1]<=now():raise ValueError('실행 소유권이 만료되었습니다. 실행 기록에서 재시도하세요.')

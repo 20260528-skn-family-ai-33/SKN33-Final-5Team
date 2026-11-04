@@ -84,12 +84,13 @@ def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inh
         def run(state,n=node):
             from time import perf_counter
             if ownership:ownership()
-            started=perf_counter()
+            started=perf_counter();started_at=now()
             result=executor(n,state,storage,config,llm)
             if ownership:ownership()
             validate_node_result(n['tool'],result,n)
             step={'node':n['id'],'label':n['label'],'status':'completed','detail':'등록된 '+n['tool']+' 코드를 실행했습니다.','parameters':execution_parameters(n,config),'bindings':n['bindings']}
             step['elapsed_ms']=round((perf_counter()-started)*1000,2)
+            step.update(started_at=started_at,finished_at=now())
             step['input_summary']=port_summary({b['input']:state['outputs'][b['node_id']][b['output']] for b in n['bindings']})
             step['output_summary']=port_summary(result)
             if n['tool']=='read_table' and not n['settings'].get('operation'):

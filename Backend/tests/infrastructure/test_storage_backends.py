@@ -32,6 +32,59 @@ SPEC = {'frequency': 'daily', 'timezone': 'Asia/Seoul', 'hour': 9, 'minute': 0, 
 ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.mark.skipif(not os.getenv('A4B_TEST_BUSINESS_SCHEMA'), reason='requires the restored a4b domain schema')
+def test_member_design_checkpoints_and_failed_run_retry_in_existing_tables(postgres_app_conninfo, tmp_path, monkeypatch):
+    import psycopg
+    from types import SimpleNamespace
+    from infrastructure.persistence.ids import now
+    from service.handlers.design import session_action
+    from tests.design.test_builder import fake_conversation, PROMPT
+    member = uid()
+    folder = tmp_path / 'users' / member
+    monkeypatch.setenv('A4B_STORAGE','postgres')
+    monkeypatch.setenv('A4B_BUSINESS_RECORDS','a4b')
+    monkeypatch.setenv('A4B_S3_BUCKET','a4b-fixture')
+    database.use_conninfo(postgres_app_conninfo)
+    with psycopg.connect(TEST_URL, autocommit=True) as admin:
+        admin.execute("INSERT INTO a4b.users (id,email,name,auth_provider,auth_subject) VALUES (%s,%s,'test','fixture',%s)", (member,member+'@example.test',member))
+        admin.execute("INSERT INTO a4b.document_types(code,label) VALUES ('other','Other') ON CONFLICT DO NOTHING")
+        store = Storage(folder)
+        try:
+            session = store.new_session('test-model','test-credential')
+            sid = session['id']
+            def action(kind, **fields):
+                return session_action(SimpleNamespace(storage=store,action=kind,data={'id':sid,**fields},
+                                                      api_key='',conversation=fake_conversation))
+            result = action('message', content=PROMPT, revision=0)
+            msgs, = admin.execute('SELECT messages_json FROM a4b.design_sessions WHERE id=%s AND created_by=%s',(sid,member)).fetchone()
+            assert msgs == result['messages'] and msgs[0]['content']==PROMPT
+            assert admin.execute('SELECT 1 FROM a4b_builder.checkpoints WHERE workspace_id=%s AND thread_id=%s',(member,sid)).fetchone()
+            version = store.save_agent({**initial(),'session_id':sid,'draft':draft(),'confirmed':True})
+            assert version == sid
+            assert admin.execute('SELECT version_no FROM a4b.workflow_versions WHERE workflow_id=%s',(sid,)).fetchone()==(1,)
+            asset_id=uid()
+            store.add_asset({'id':asset_id,'name':'receipt.pdf','kind':'document','format':'pdf','hash':'a'*64,
+                             'size_bytes':10,'original_path':'builder-originals/'+('a'*64)+'.pdf','created_at':now()},[])
+            assert admin.execute('SELECT size_bytes FROM a4b.document_versions WHERE document_id=%s',(asset_id,)).fetchone()==(10,)
+            run={'id':uid(),'agent_id':sid,'agent_version':1,'request':'test','created_at':now(),'steps':[],
+                 'config_snapshot':{'workflow':{'nodes':[{'id':'parse'}]}}}
+            lifecycle = RunLifecycle(store)
+            token=uid(); lifecycle.start(run,token)
+            run.update(status='failed',error='parser',steps=[{'node':'parse','status':'failed','detail':'parser'}])
+            lifecycle.finish(run,token)
+            token=uid(); lifecycle.start(run,token)
+            run.update(status='succeeded',answer='done',steps=[{'node':'parse','status':'completed'}])
+            lifecycle.finish(run,token)
+            assert set(admin.execute("SELECT status FROM a4b.workflow_runs WHERE requested_by=%s AND state_json->>'builder_run_id'=%s",(member,run['id'])).fetchall())=={('failed',),('succeeded',)}
+            assert admin.execute("SELECT error_json->>'detail' FROM a4b.node_runs WHERE run_id=%s",(run['id'],)).fetchone()==('parser',)
+            assert admin.execute("SELECT content_json->>'answer' FROM a4b.outputs WHERE created_by=%s",(member,)).fetchone()==('done',)
+            with pytest.raises(ValueError):
+                store.update_session(session, 0, {'messages':[]})
+            assert admin.execute('SELECT messages_json FROM a4b.design_sessions WHERE id=%s',(sid,)).fetchone()==(msgs,)
+        finally:
+            store.close(); database.use_conninfo(None)
+
+
 @pytest.fixture(scope='session')
 def postgres_app_conninfo():
     import psycopg

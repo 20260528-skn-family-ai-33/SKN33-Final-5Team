@@ -25,6 +25,20 @@ def _selected_fields(answer):
     return fields
 
 
+def _sheet_selection(answer):
+    from workflow_engine.executors.document.receipt_items import ITEM_FIELDS
+    item_prefix = '영수증 품목 시트:'
+    lines = answer.strip().splitlines()
+    if not lines or not lines[-1].startswith(item_prefix):
+        return _selected_fields(answer), []
+    items = [part.strip() for part in lines.pop().removeprefix(item_prefix).split(',')]
+    if (not items or len(set(items)) != len(items) or any(item not in ITEM_FIELDS for item in items)
+            or len(lines) > 1 or (lines and not lines[0].startswith('영수증에서 추출할 항목:'))):
+        return [], []
+    fields = _selected_fields(lines[0]) if lines else []
+    return (fields, items) if fields or not lines else ([], [])
+
+
 def receipt_workbook(state):
     if not any(q.get('key') == 'receipt.fields' for q in state.get('pending_questions', [])):
         return None
@@ -37,23 +51,43 @@ def receipt_workbook(state):
         return None
     request, answer = users[previous], users[-1]
     files = [r['id'] for r in state.get('resources', []) if receipt_document(r)]
-    fields = _selected_fields(answer)
-    if not fields or not files or input_issues(state) or state.get('base_agent_id') or state.get('required_node_refs'):
+    fields, items = _sheet_selection(answer)
+    if not (fields or items) or not files or input_issues(state) or state.get('base_agent_id') or state.get('required_node_refs'):
         return None
-    nodes = [
-        dict(id='read', tool='read_document', label='영수증 읽기', bindings=[], settings=_settings(file_ids=files)),
-        dict(id='extract', tool='extract_information', label='선택한 영수증 항목 추출',
-             bindings=[dict(input='documents', node_id='read', output='documents')],
-             settings=_settings(fields=fields, extraction_mode='fields')),
-        dict(id='excel', tool='create_spreadsheet', label='엑셀 파일 만들기',
-             bindings=[dict(input='sheets', node_id='extract', output='table')],
-             settings=dict(operation='create', arguments_json={'sheets': [{'name': '영수증', 'table': {'$binding': 'sheets'}}]})),
-    ]
+    nodes = [dict(id='read', tool='read_document', label='영수증 읽기', bindings=[], settings=_settings(file_ids=files))]
+    tasks = [dict(id='r1', source_message=previous, quote=request, description='연결한 영수증 읽기',
+                  depends_on=[], spec=dict(kind='read', file_ids=files))]
+    sheets, bindings, extracts = [], [], []
+    for name, node_id, mode, columns, port, kind in [
+            ('영수증', 'extract', 'fields', fields, 'summary_table', 'extract_fields'),
+            ('상품내역', 'items', 'receipt_items', items, 'item_table', 'receipt_items')]:
+        if not columns:
+            continue
+        if not (fields and items):
+            port = 'sheets'
+        label = name + ' 항목 추출'
+        nodes.append(dict(id=node_id, tool='extract_information', label=label,
+                          bindings=[dict(input='documents', node_id='read', output='documents')],
+                          settings=_settings(fields=columns, extraction_mode=mode)))
+        sheets.append({'name': name, 'table': {'$binding': port}})
+        bindings.append(dict(input=port, node_id=node_id, output='table'))
+        task_id = f'r{len(tasks) + 1}'
+        extracts.append(task_id)
+        tasks.append(dict(id=task_id, source_message=len(users)-1, quote=answer, description=label,
+                          depends_on=['r1'], spec=dict(kind=kind, fields=columns)))
+    nodes.append(dict(id='excel', tool='create_spreadsheet', label='엑셀 파일 만들기', bindings=bindings,
+                      settings=dict(operation='create', arguments_json={'sheets': sheets})))
+    export = dict(kind='receipt_workbook', sheets=[s['name'] for s in sheets]) if items else dict(kind='export', format='xlsx')
+    tasks.append(dict(id=f'r{len(tasks) + 1}', source_message=previous, quote=request, description='엑셀 파일 출력',
+                      depends_on=extracts, spec=export))
     labels = ', '.join(fields)
     if len(labels) > 1000:
         labels = f'선택한 {len(fields)}개'
-    description = '영수증마다 ' + labels + ' 항목을 한 행으로 정리해 엑셀(.xlsx) 파일을 만듭니다.'
-    tools = [n['tool'] for n in nodes]
+    description = (f'영수증 시트에는 영수증마다 {labels} 항목을 한 행으로 정리합니다. ' if fields else '')
+    if items:
+        description += f'상품내역 시트에는 각 영수증에서 확인한 {", ".join(items)} 항목을 상품별로 정리합니다. '
+    description += '엑셀(.xlsx) 파일로 저장합니다.'
+    tools = list(dict.fromkeys(n['tool'] for n in nodes))
     draft = AgentDraft(
         name='영수증 항목 엑셀 정리', purpose=request[:2000], instructions=description,
         tool_ids=tools, document_ids=files,
@@ -62,16 +96,8 @@ def receipt_workbook(state):
         questions=[], unsupported=[], explanation=description,
         execution_plan=dict(filters=[], sort=[], match='all', missing_policy='keep', duplicate_policy='keep',
                             duplicate_field=None, output_format='xlsx'),
-        workflow=dict(entry='read', nodes=nodes, edges=[dict(source='read', target='extract', branch='next'),
-                                                        dict(source='extract', target='excel', branch='next')])).model_dump()
-    tasks = [
-        dict(id='r1', source_message=previous, quote=request, description='연결한 영수증 읽기', depends_on=[],
-             spec=dict(kind='read', file_ids=files)),
-        dict(id='r2', source_message=len(users)-1, quote=answer, description='선택한 항목 추출', depends_on=['r1'],
-             spec=dict(kind='extract_fields', fields=fields)),
-        dict(id='r3', source_message=previous, quote=request, description='엑셀 파일 출력', depends_on=['r2'],
-             spec=dict(kind='export', format='xlsx')),
-    ]
+        workflow=dict(entry='read', nodes=nodes, edges=[dict(source=a['id'], target=b['id'], branch='next')
+                                                        for a,b in zip(nodes,nodes[1:])])).model_dump()
     ledger = validate_plan({'tasks': tasks, 'unresolved': []}, state)
     assessment = validate_assessment_result(dict(decision='existing_tools', tool_ids=tools, missing_actions=[],
         missing_conditions=[], reason='연결된 문서, 선택한 추출 항목, 명시한 엑셀 출력을 등록 도구로 처리합니다.',

@@ -49,9 +49,30 @@ def _matches(spec,node,draft,sources):
     args=_arguments(node);kind=spec['kind']
     if kind=='read':
         return tool in ('read_table','read_document') and set(spec['file_ids'])<=sources(node['id'])
-    if kind=='extract_fields':
-        return (tool=='extract_information' and not operation and settings.get('extraction_mode')=='fields'
+    if kind in ('extract_fields', 'receipt_items'):
+        mode = 'fields' if kind == 'extract_fields' else 'receipt_items'
+        return (tool=='extract_information' and not operation and settings.get('extraction_mode')==mode
                 and settings.get('fields')==spec['fields'])
+    if kind=='receipt_workbook':
+        if tool != 'create_spreadsheet' or operation != 'create':
+            return False
+        from workflow_engine.executors.canonical_operation import validate_settings
+        _, validated = validate_settings(node)
+        sheets = validated.get('sheets')
+        if not isinstance(sheets, list) or [s['name'] for s in sheets] != spec['sheets']:
+            return False
+        bindings = {b['input']: b for b in node['bindings']}
+        producers = {n['id']: n for n in draft['workflow']['nodes']}
+        for sheet in sheets:
+            table = sheet['table']
+            binding = bindings.get(table.get('$binding')) if isinstance(table, dict) and len(table) == 1 else None
+            if not binding or binding['output'] != 'table':
+                return False
+            producer = producers.get(binding['node_id'], {})
+            mode = 'receipt_items' if sheet['name'] == '상품내역' else 'fields'
+            if producer.get('tool') != 'extract_information' or producer['settings'].get('extraction_mode') != mode:
+                return False
+        return True
     if kind=='compute':
         if tool!='calculate_columns':return False
         if operation in ('compute','calculate_records'):
@@ -164,7 +185,7 @@ def coverage_report(state,draft):
     # Find a single consistent assignment, not disconnected matches in different
     # branches or unused parallel inputs. Same-node filter/sort/policy is valid.
     tasks=plan['tasks'];selected={};attempts=0
-    exports=[t['id'] for t in tasks if t['spec']['kind']=='export']
+    exports=[t['id'] for t in tasks if t['spec']['kind'] in ('export','receipt_workbook')]
     from workflow_engine.execution_path import artifact_output_ids, artifact_origin
     try:
         output_ids=artifact_output_ids(workflow)
@@ -181,7 +202,7 @@ def coverage_report(state,draft):
         if index==len(tasks):
             if exports and any(selected[e]!=final_output for e in exports):return False
             return all(any(selected[t['id']]==selected[e] or selected[t['id']] in upstream[selected[e]] for e in exports)
-                       for t in tasks if t['spec']['kind']!='export') if exports else True
+                       for t in tasks if t['id'] not in exports) if exports else True
         task=tasks[index]
         for node_id in candidates[task['id']]:
             if all(selected[d]==node_id or selected[d] in upstream[node_id] for d in task['depends_on']):

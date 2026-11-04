@@ -78,7 +78,7 @@ class NodeSettings(BaseModel):
     date_seconds: StrictInt | None = None
     date_output_format: str | None = Field(default=None, max_length=120)
     # extract_information: 'rows' returns one record per repeated item (e.g. receipt lines).
-    extraction_mode: Literal['fields','rows'] | None = None
+    extraction_mode: Literal['fields','rows','receipt_items'] | None = None
     file_ids: list[str]
     query: str | None
     fields: list[str]

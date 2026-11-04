@@ -90,6 +90,7 @@ def requires_model(config):
             from workflow_engine.unified_tools.model_operations import SPECS
             if (tool,operation_spec(tool,settings.get('operation'))['id']) in SPECS:return True
             continue
+        if tool=='extract_information' and settings.get('extraction_mode')=='receipt_items':continue
         if tool in ['search_document','extract_information','compose_answer','reply_review','agent_node'] or tool=='condition' and settings['condition_operator']=='semantic' or tool=='ask_user' and settings['instructions']:return True
         if tool=='saved_workflow':
             agent=config.get('_saved_workflows',{}).get(node['id'])

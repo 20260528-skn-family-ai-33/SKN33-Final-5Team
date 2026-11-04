@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import type {DocumentAnalysis} from '../lib/api-contracts';
 
 export const reasonLabel=(reason:string)=>{
@@ -19,6 +20,7 @@ export const reasonLabel=(reason:string)=>{
 const statusLabel:Record<string,string>={succeeded:'처리 완료',partial:'부분 처리',failed:'처리 실패'};
 const phaseLabel:Record<string,string>={primary:'기본 처리',fallback:'대체 처리',classification:'영역 분류',supplement:'영역 보완',comparison:'구조 대조'};
 export function DocumentAnalysisSummary({analysis,showText=false,humanReviewed=false}:{analysis?:DocumentAnalysis;showText?:boolean;humanReviewed?:boolean}){
+ const [showBody,setShowBody]=useState(false);
  if(!analysis)return null;
  const reasons=[...new Set(analysis.review_reasons.map(reasonLabel))];
  return <section aria-label="문서 내용 분석 결과" className="as-help">
@@ -28,8 +30,8 @@ export function DocumentAnalysisSummary({analysis,showText=false,humanReviewed=f
    <p className="as-small-muted">기본 처리: {analysis.primary_processor} · 원본 위치와 영역별 출처를 보존합니다.</p>
    {analysis.routes.map(route=><p key={route.id}>{phaseLabel[route.phase]||route.phase}: {route.processor} · {statusLabel[route.status]||route.status}</p>)}
   </details>
-  {showText&&<details><summary>문서·이미지에서 읽은 내용</summary><p className="as-small-muted">분석 본문의 앞부분입니다. 각 값은 원본과 대조하세요.</p>
-   <p className="as-preserve">{analysis.blocks.filter(b=>b.selected!==false&&b.text.trim()).map(b=>b.text).join('\n').slice(0,12000)}</p></details>}
+  {showText&&<details onToggle={event=>setShowBody(event.currentTarget.open)}><summary>문서·이미지에서 읽은 내용</summary>
+   {showBody&&<p className="as-preserve">{analysis.blocks.filter(b=>b.selected!==false&&b.text.trim()).map(b=>b.text).join('\n')}</p>}</details>}
   <p className="as-small-muted">처리 완료는 문서 전체의 정확성을 보증하지 않습니다.</p>
  </section>;
 }

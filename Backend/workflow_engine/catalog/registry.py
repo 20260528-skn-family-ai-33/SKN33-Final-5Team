@@ -93,7 +93,7 @@ for id,name,description in [
 # Ports can vary by instance, but never by the identity of a predecessor/successor.
 def node_ports(node):
     inputs,outputs=PORTS[node['tool']]
-    if node['tool']=='extract_information' and node['settings'].get('extraction_mode')=='fields':
+    if node['tool']=='extract_information' and node['settings'].get('extraction_mode') in ('fields','receipt_items'):
         return inputs, {**outputs, 'table':'table'}
     if node['tool']=='saved_workflow':
         port=node['settings'].get('output_port');return inputs,{port:outputs[port]} if port in outputs else {}
@@ -135,6 +135,19 @@ def uses_operation(node):
 
 def node_ports(node):
     if uses_operation(node):
-        try: return ports(node['tool'], operation_spec(node['tool'], node['settings'].get('operation')),node['settings'].get('output_port'))
+        try:
+            spec = operation_spec(node['tool'], node['settings'].get('operation'))
+            inputs, outputs = ports(node['tool'], spec, node['settings'].get('output_port'))
+            if node['tool'] == 'create_spreadsheet' and spec['id'] == 'create':
+                from workflow_engine.catalog.canonical import parse_arguments
+                sheets = parse_arguments(node['settings']).get('sheets', [])
+                if isinstance(sheets, list):
+                    for sheet in sheets:
+                        table = sheet.get('table') if isinstance(sheet, dict) else None
+                        if isinstance(table, dict) and set(table) == {'$binding'}:
+                            alias = table['$binding']
+                            if isinstance(alias, str) and alias.isidentifier():
+                                inputs[alias] = 'table'
+            return inputs, outputs
         except ValueError: return {}, {}
     return _native_node_ports(node)

@@ -201,11 +201,12 @@ test('DOM: an incompatible replacement blocks a receipt run until removed; a fil
 });
 test('DOM: design attachment offers a new upload or an existing file by id',async()=>{
  const asset={id:'mine',name:'기준표.csv',kind:'table',format:'csv',row_count:1,columns:['가격'],profile:{},preview:[]};
+ const inspection={id:asset.id,name:asset.name,kind:'table',has_readable_text:true,columns:['가격'],fields:[],snippets:[],preview:[{가격:1300}]};
  const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>{
   if(path.includes('/session?'))return readySession();
   if(path.endsWith('/assets'))return {assets:[],next:'12'};
   if(path.endsWith('/assets?before=12'))return {assets:[asset],next:null};
-  if(path.endsWith('/attach_asset'))return {...readySession(),revision:2,resources:[asset]};
+  if(path.endsWith('/attach_asset'))return {...readySession(),revision:2,resources:[asset],file_inspection:[inspection]};
  });
  try{
   await click(button('자료 연결'));
@@ -217,7 +218,73 @@ test('DOM: design attachment offers a new upload or an existing file by id',asyn
   assert.equal(h.calls.some(c=>c.path.endsWith('/upload')),false);
   assert.equal(document.querySelector('[role=dialog]'),null);
   assert.match(document.querySelector('.as-config')?.textContent||'',/기준표.csv/);
+  const card=document.querySelector('details.as-inspected-source') as HTMLDetailsElement;
+  assert.equal(card.open,false);await click(card.querySelector('summary')!);
+  assert.equal(card.querySelector('td')?.textContent,'1300');
+  const composer=document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement;
+  await input(composer,'지난달 자료만 사용해 주세요.');await click(field('가격'));await click(button('요청에 추가'));
+  assert.equal(composer.value,'지난달 자료만 사용해 주세요.\n기준표.csv에서 가격 항목을 추출해 주세요.');
+  assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
  }finally{await h.close();}
+});
+test('DOM: a fresh file-first design opens real document excerpts and explains unreadable files on restore',async()=>{
+ const files=[
+  {id:'slides',name:'소개.pptx',kind:'document',has_readable_text:true,columns:[],fields:[{label:'담당자',value:'김담당'}],snippets:['담당자: 김담당'],preview:[]},
+  {id:'photo',name:'흐린 사진.jpg',kind:'document',has_readable_text:false,partial:true,columns:[],fields:[],snippets:[],preview:[]},
+ ];
+ const text='담당자: 김담당\n'+'긴 본문 '.repeat(3000)+'마지막 문단';
+ const session={...readySession(),messages:[],draft:null,status:'empty',file_inspection:files,
+  resources:[{id:'slides',name:'소개.pptx',kind:'document',text}]};
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined);
+ try{
+  const cards=Array.from(document.querySelectorAll<HTMLDetailsElement>('details.as-inspected-source'));
+  assert.deepEqual(cards.map(card=>card.open),[true,true]);assert.ok(!document.querySelector('.as-welcome'));
+  assert.equal(cards[0].querySelector('blockquote')?.textContent,'담당자: 김담당');
+  assert.match(cards[1].textContent||'',/읽어 낸 글자가 없어요/);
+  assert.equal(cards[1].querySelector('input[type=checkbox]'),null);
+  await click(button('읽은 내용 전체 보기'));
+  assert.equal(document.querySelector('.as-resource-dialog .as-preserve')?.textContent,text);
+ }finally{await h.close();}
+});
+test('DOM: a first upload offers observed file values before the first chat message',async()=>{
+ const file={id:'uploaded',name:'접수.txt',kind:'document',has_readable_text:true,columns:[],fields:[{label:'접수번호',value:'A-120'}],snippets:['접수번호: A-120'],preview:[]};
+ const h=await setup('',{},path=>{
+  if(path.endsWith('/sessions'))return {id:'new',revision:0};
+  if(path.endsWith('/upload'))return {...readySession(),id:'new',revision:1,messages:[],draft:null,status:'empty',file_inspection:[file]};
+ });
+ try{
+  await click(button('자료 연결'));await click(button('새 파일 올리기'));
+  const picker=document.querySelector('input[type=file]') as HTMLInputElement;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['접수번호: A-120'],'접수.txt')]});
+  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const deadline=Date.now()+3000;
+  while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
+  const card=document.querySelector('.as-inspected-source') as HTMLDetailsElement;assert.ok(card.open);
+  assert.match(card.textContent||'',/접수번호: A-120/);await click(field('접수번호'));await click(button('요청에 추가'));
+  assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement).value,'접수.txt에서 접수번호 항목을 추출해 주세요.');
+  assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
+ }finally{await h.close();}
+});
+test('DOM: named sheet selections preserve their sheet names and the primary sheet is previewed once',async()=>{
+ const sheets=['서울','부산'].map((name,index)=>({name,columns:['주문번호','금액'],preview:[{주문번호:index+1,금액:index*100+100}]}));
+ const file={id:'sheet',name:'지점.xlsx',kind:'table',has_readable_text:true,columns:sheets[0].columns,
+  preview:[{'주문번호':'1','금액':'100'}],tables:sheets,fields:[],snippets:[]};
+ const session={...readySession(),messages:[],draft:null,file_inspection:[file]};
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined);
+ try{
+  assert.deepEqual(Array.from(document.querySelectorAll('.as-file-preview caption'),el=>el.textContent),['서울','부산']);
+  const group=Array.from(document.querySelectorAll('fieldset')).find(el=>el.querySelector('legend')?.textContent==='부산의 열 선택')!;
+  await click(group.querySelectorAll('input')[1]);await click(button('요청에 추가'));
+  const composer=document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement;
+  assert.equal(composer.value,'지점.xlsx에서 「부산」의 금액 항목을 추출해 주세요.');assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
+ }finally{await h.close();}
+});
+test('DOM: equal sheet headers and equal first row do not hide a different set of source rows',async()=>{
+ const file={id:'sheet',name:'배송.xlsx',kind:'table',has_readable_text:true,columns:['송장'],fields:[],snippets:[],
+  preview:[{송장:'0001'},{송장:'0002'}],tables:[{name:'반송',columns:['송장'],preview:[{송장:'0001'},{송장:'0003'}]}]};
+ const h=await setup('',{'a4b-builder-session':'ready'},p=>p.includes('/session?')?{...readySession(),file_inspection:[file]}:undefined);
+ try{assert.deepEqual(Array.from(document.querySelectorAll('.as-file-preview tbody'),el=>el.textContent),
+  ['00010002','00010003']);}finally{await h.close();}
 });
 
 test('DOM: named workflows protect used uploads and failed cleanup offers an immediate retry',async()=>{
@@ -325,10 +392,41 @@ test('DOM: receipt clarification uploads a file and submits only chosen fields t
   await pick('재첨부.csv');
   assert.equal(h.calls.filter(c=>c.path.endsWith('/upload')).length,1);
   assert.equal(button('선택한 항목으로 계속').disabled,true);
+  assert.equal(document.querySelector('.as-receipt-items'),null);
   await click(field('날짜'));await click(field('결제 금액'));await input(field('다른 항목 추가'),'승인번호');
   await click(button('선택한 항목으로 계속'));
   const answers=h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body);
   assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id}]);
+ }finally{await h.close();}
+});
+for(const [name,withSummary,itemColumns] of [
+ ['items only',false,['상품코드','금액']],['summary only',true,[]],['summary and items',true,['상품코드','상품명','단가','수량','금액']],
+] as const) test('DOM: grounded Excel receipt submits '+name+' to the current question',async()=>{
+ const columns=['상품코드','상품명','단가','수량','금액'];
+ const question={id:'c'.repeat(24),key:'receipt.fields',text:'엑셀에 담을 항목을 선택해 주세요.',
+  action:{type:'select_fields',options:['날짜','결제 금액','승인번호'],detected_fields:[{label:'날짜',value:'2010-03-24'},{label:'승인번호'}],
+   item_details:{label:'상품별 구매 내역',selected_by_default:true,options:columns,preview:[{'상품코드':'0123','상품명':null,'단가':'1,300','수량':'2','금액':'2,600'}]}}};
+ const saved={...readySession(),status:'needs_clarification',pending_questions:[question]};
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return saved;
+  if(path.endsWith('/message'))return readySession();
+ });
+ try {
+  const next=button('선택한 항목으로 계속');
+  assert.ok(field('날짜').checked);assert.equal(field('결제 금액').checked,false);
+  assert.match(field('승인번호').parentElement?.textContent||'',/파일별 값이 다름/);
+  assert.match(field('결제 금액').parentElement?.textContent||'',/원본에서 확인 안 됨/);
+  assert.ok(document.querySelector('.as-receipt-fields')?.textContent?.includes('2010-03-24'));
+  assert.deepEqual(Array.from(document.querySelectorAll('.as-receipt-items tbody td'),cell=>cell.textContent),['0123','확인 안 됨','1,300','2','2,600']);
+  if(!withSummary)await click(field('날짜'));else await input(field('다른 항목 추가'),'부가세');
+  for(const column of columns){
+   assert.ok(field(column).checked);
+   if(!(itemColumns as readonly string[]).includes(column))await click(field(column));
+  }
+  await click(next);
+  const lines=[...(withSummary?['영수증에서 추출할 항목: 날짜, 부가세']:[]),...(itemColumns.length?['영수증 품목 시트: '+itemColumns.join(', ')]:[])];
+  assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body),
+   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n')}]);
  }finally{await h.close();}
 });
 test('DOM: reopened receipt session replaces only superseded question lines on the active turn',async()=>{

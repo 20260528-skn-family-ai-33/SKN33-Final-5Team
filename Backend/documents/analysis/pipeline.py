@@ -61,18 +61,31 @@ def valid_ocr_box(box):
             and box[0] < box[2] and box[1] < box[3])
 
 
-def unread_ocr_bands(result, bands, scale):
-    """Credit only bands containing a located, legible OCR piece in the scaled input."""
+def ocr_in_bands(result, bands, scale):
+    """Keep newly located pieces; only legible, scored pieces establish coverage."""
     texts = result.get('rec_texts') or []
     boxes = result.get('rec_boxes') or []
     scores = result.get('rec_scores') or []
-    if len(texts) != len(boxes) or len(texts) != len(scores):
-        return bands
+    selected = {'rec_texts': [], 'rec_boxes': [], 'rec_scores': []}
+    if len(texts) != len(boxes):
+        return selected, bands
+    scored = len(scores) == len(texts)
     centers = []
-    for text, box, score in zip(texts, boxes, scores):
-        if text.strip() and isinstance(score, (int, float)) and .6 <= score <= 1 and valid_ocr_box(box):
-            centers.append((box[1] + box[3]) / (2 * scale))
-    return [(top, bottom) for top, bottom in bands if not any(top <= y < bottom for y in centers)]
+    for i, (text, box) in enumerate(zip(texts, boxes)):
+        if not valid_ocr_box(box):
+            continue
+        center = (box[1] + box[3]) / (2 * scale)
+        if not any(top <= center < bottom for top, bottom in bands):
+            continue
+        selected['rec_texts'].append(text)
+        selected['rec_boxes'].append(box)
+        if scored:
+            score = scores[i]
+            selected['rec_scores'].append(score)
+            if text.strip() and isinstance(score, (int, float)) and .6 <= score <= 1:
+                centers.append(center)
+    unread = [(top, bottom) for top, bottom in bands if not any(top <= y < bottom for y in centers)]
+    return selected, unread
 
 
 def ocr_text(result):
@@ -369,13 +382,9 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                     review('supplement_limit_reached')
                     break
                 resolution = png_resolution(picture)
-                # Keep page geometry and scale, but mask known lines so the same evidence is not counted twice.
-                if bands:
-                    whole = Image.new('RGB', picture.size, 'white')
-                    for top, bottom in bands:
-                        whole.paste(picture.crop((0, top, picture.width, bottom)), (0, top))
-                else:
-                    whole = picture.copy()
+                # Recognize with the full page context (masking may fuse adjacent numeric
+                # columns). Select only new lines by their coordinates after recognition.
+                whole = picture.copy()
                 if scale > 1:
                     whole = whole.resize((picture.width * scale, picture.height * scale), Image.LANCZOS)
                 if scale > 1 and resolution:
@@ -400,15 +409,18 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                 job = mapped[output['source']]
                 seen.add(output['source'])
                 region = job['parent']
-                text = ocr_text(output['result'])
+                prediction = output['result']
+                bands = job.get('bands') or []
+                if bands:
+                    prediction, unread = ocr_in_bands(prediction, bands, job['scale'])
+                text = ocr_text(prediction)
                 item = block('ocr-' + str(len(result['blocks']) + 1), 'text', region['native_location'],
                              parent=region['id'], unit=region['unit_id'], text=text, engine='paddleocr',
-                             data={'ocr_scores': output['result'].get('rec_scores', []), 'crop_origin': job['origin'],
+                             data={'ocr_scores': prediction.get('rec_scores', []), 'crop_origin': job['origin'],
                                    'crop_scale': job['scale']})
                 item['parser_version'] = recognized['version']
-                if job.get('bands'):
-                    item['data']['upright_y_bands'] = job['bands']
-                    unread = unread_ocr_bands(output['result'], job['bands'], job['scale'])
+                if bands:
+                    item['data']['upright_y_bands'] = bands
                     if unread:
                         item['data']['unverified_y_bands'] = unread
                         review('low_confidence_uncovered_ocr:' + region['id'])

@@ -136,8 +136,9 @@ def execute(node, state, storage, config, llm):
     ids = set(config.get('document_ids', [])) | set(state.get('file_ids', []))
     spec, args = validate_settings(node, [storage.asset(i) for i in ids])
     bound={b['input']: state['outputs'][b['node_id']][b['output']] for b in node['bindings']}
+    nested_inputs = binding_names(args)
     args=substitute(args,bound)
-    args.update({k:v for k,v in bound.items() if k not in args})
+    args.update({k:v for k,v in bound.items() if k not in args and k not in nested_inputs})
     context = execution_context(storage)
     args = resolve_assets(args, storage, context, ids)
     if spec.get('runtime_id') in ('file.read_text','file.read_csv') and isinstance(args.get('path'),dict):

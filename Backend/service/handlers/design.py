@@ -4,7 +4,8 @@ Every action here loads the session's LangGraph conversation (build_graph) first
 """
 from infrastructure.persistence.ids import uid, now
 from agent_builder.design.graph import build_graph
-from agent_builder.design.receipt_intake import legacy_receipt_intake, receipt_upload_prompt
+from agent_builder.design.receipt_intake import current_receipt_questions, legacy_receipt_intake, receipt_upload_prompt
+from documents.resources.file_inspection import inspect_file
 from agent_builder.conditions.input_requirements import design_requirements
 from agent_builder.tool_gap.gap import describe_gap, export_gap
 from agent_builder.tool_gap.choice import present_choice, choose, redesign_context
@@ -30,8 +31,11 @@ def public_state(storage,s,graph):
         state = {**state, 'draft':legacy['draft'], 'pending_questions':legacy['pending_questions']}
     from agent_builder.capabilities.capability_gate import blocking_issue, capability_enforced
     issue=blocking_issue(state) if state.get('status')=='ready' else None
-    return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':[storage.asset(id) for id in s['file_ids']],
-            'condition_ledger':state.get('condition_ledger'),'pending_questions':state.get('pending_questions',[]),
+    resources=[storage.asset(id) for id in s['file_ids']]
+    inspections=[inspect_file(asset) for asset in resources]
+    return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
+            'file_inspection':inspections,
+            'condition_ledger':state.get('condition_ledger'),'pending_questions':current_receipt_questions(state,resources,inspections),
             'gap_condition_review':state.get('gap_condition_review'),
             'input_requirements':design_requirements(state) if state.get('condition_enforced') else [],
             'tool_gap':(export_gap(state,s) if describe_gap(state,s['id']) else None),

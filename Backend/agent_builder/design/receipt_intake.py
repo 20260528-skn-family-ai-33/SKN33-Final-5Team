@@ -48,6 +48,52 @@ def receipt_document(resource):
     return resource.get('kind') == 'document' and fmt.lower().lstrip('.') in _RECEIPT_FORMATS
 
 
+def _field_action(documents, workbook, inspections=None):
+    from documents.resources.document_resources import chunks_for_asset
+    from documents.resources.file_inspection import inspect_file
+    from workflow_engine.executors.document.receipt_fields import canonical_label, recognized_facts
+    from workflow_engine.executors.document.receipt_items import ITEM_FIELDS, preview_items
+
+    by_id = {i['id']: i for i in inspections or []}
+    values, rows, item_columns = {}, [], set()
+    all_have_items = bool(documents)
+    readable = False
+    for document in documents:
+        inventory = by_id.get(document['id']) or inspect_file(document)
+        readable |= inventory['has_readable_text']
+        chunks = list(chunks_for_asset(document))
+        labels = [canonical_label(f['label']) for f in inventory['fields']]
+        candidates = list(dict.fromkeys([*_FIELD_CHOICES, '거래시간', 'POS번호', '부가세', '과세 물품가액', '공급가액', *labels]))
+        for field, fact in recognized_facts(candidates, chunks).items():
+            if fact:
+                values.setdefault(field, set()).add(fact['value'])
+        if workbook:
+            sample = preview_items(chunks, limit=5)
+            all_have_items &= bool(sample)
+            item_columns.update(field for field in ITEM_FIELDS if any(row.get(field) is not None for row in sample))
+            rows.extend(sample[:5-len(rows)])
+
+    detected = [{'label': field, **({'value': next(iter(hits))[:160]} if len(hits)==1 else {})}
+                for field, hits in values.items()]
+    action = {'type': 'select_fields', 'options': list(dict.fromkeys([*_FIELD_CHOICES, *values])),
+              'detected_fields': detected, 'has_readable_text': readable}
+    if workbook:
+        action['item_details'] = {'label':'상품별 구매 내역', 'options':[f for f in ITEM_FIELDS if f in item_columns],
+                                  'selected_by_default': bool(item_columns) and all_have_items, 'preview':rows}
+    return action
+
+
+def current_receipt_questions(state, resources, inspections):
+    """Refresh a previously interrupted receipt's controls from the current reviewed assets."""
+    pending = state.get('pending_questions') or []
+    if not any(q.get('key') == 'receipt.fields' for q in pending):
+        return pending
+    documents = [r for r in resources if receipt_document(r)]
+    workbook = receipt_workbook_request(_request(state))
+    return [{**q, 'action': _field_action(documents, workbook, inspections)}
+            if q.get('key') == 'receipt.fields' else q for q in pending]
+
+
 def _question(state, original_id=None):
     documents = [r for r in state.get('resources', []) if receipt_document(r)]
     workbook = receipt_workbook_request(_request(state))
@@ -56,7 +102,7 @@ def _question(state, original_id=None):
         text = '엑셀(.xlsx)에 담을 항목을 선택해 주세요.' if workbook else '어떤 항목을 추출할까요?'
         prefix = ', '.join(r['name'] for r in documents if r.get('name'))
         message = (f'{prefix} 파일을 연결했어요. ' if prefix else '') + text
-        action = {'type': 'select_fields', 'options': list(_FIELD_CHOICES)}
+        action = _field_action(documents, workbook)
     else:
         key = 'receipt.attachment'
         text = '영수증 사진이나 PDF를 올려 주세요.'

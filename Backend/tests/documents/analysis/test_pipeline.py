@@ -56,6 +56,13 @@ class PipelineTests(unittest.TestCase):
         Image.new('RGB', (100, 90), 'white').save(path)
         return path
 
+    def test_unscored_ocr_in_a_gap_is_displayed_but_requires_review(self):
+        from documents.analysis.pipeline import ocr_in_bands
+        raw = {'rec_boxes': [[0, 1, 8, 4], [0, 20, 8, 24]], 'rec_texts': ['known', 'new']}
+        selected, unread = ocr_in_bands(raw, [(10, 15)], 2)
+        self.assertEqual(selected, {'rec_texts': ['new'], 'rec_boxes': [[0, 20, 8, 24]], 'rec_scores': []})
+        self.assertEqual(unread, [(10, 15)])
+
     def test_undetected_receipt_body_is_read_once_without_repeating_known_regions(self):
         from PIL import ImageDraw
 
@@ -80,16 +87,17 @@ class PipelineTests(unittest.TestCase):
                 elif engine == 'paddleocr':
                     for output in result['outputs']:
                         if Path(output['source']).name.startswith('ocr-'):
-                            with Image.open(output['source']) as masked:
-                                assert masked.crop((0, 0, masked.width, 100 * 3)).convert('L').getextrema() == (255, 255)
-                                assert masked.crop((0, 145 * 3, masked.width, 322 * 3)).convert('L').getextrema()[0] < 50
-                            output['result'] = {'rec_texts': self.gap_texts, 'rec_boxes': self.gap_boxes,
-                                                'rec_scores': [self.gap_score] * len(self.gap_texts)}
+                            with Image.open(output['source']) as full:
+                                assert full.crop((0, 0, full.width, 100 * 3)).convert('L').getextrema()[0] < 50
+                            output['result'] = {'rec_texts': ['ALREADY READ STORE', *self.gap_texts],
+                                                'rec_boxes': [[24, 27, 120, 48], *self.gap_boxes],
+                                                'rec_scores': [.99, *([self.gap_score] * len(self.gap_texts))]}
                 return result
 
         payload = run(source, self.work, engines=ReceiptEngines())
         data = payload['document_analysis']
         self.assertEqual(payload['text'].count('TOTAL 12,000'), 1)
+        self.assertNotIn('ALREADY READ STORE', payload['text'])
         self.assertEqual(payload['text'].count('정산금엑 000017'), len(boxes))
         self.assertEqual(data['status'], 'succeeded')
         gap, = [b for b in data['blocks'] if b['data'].get('upright_y_bands')]

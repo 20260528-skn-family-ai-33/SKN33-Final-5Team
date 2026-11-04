@@ -744,16 +744,39 @@ _WRITTEN_BOUND = re.compile(
     r'\s*(?P<operator>초과|이상|미만|이하)')
 _BOUND_JOIN = re.compile(r'\s*(?:이고|이며|이거나|또는|혹은|및|,)\s*')
 _BOUND_SUBJECT_END = r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:값\s*)?(?:이|가|은|는)?\s*(?:기준으로|기준)?\s*$'
+_RANGE_PROHIBITION = re.compile(r'^\s*(?:두|놓)?(?:하|으)?면\s*안\s*(?:돼요?|됩니다|된다|됨)(?=\s*(?:[.!?,;\n]|$))')
+_AFFIRMATIVE_END = re.compile(r'^(?:(?:해)?\s*(?:줘요?|주세요|주십시오)|해)?\s*(?=$|[.,;!?~])')
+_ACTION_CONNECTIVE = re.compile(r'^(?:하고|해서|하여|한\s+(?:뒤|후)|고|서)?\s+')
+_NEXT_OPERATION = re.compile(r'(?:(?:CSV|JSON|엑셀|파일|표)(?:으로|로)\s*)?(?:저장|출력|정렬|집계)'
+                             r'|[^\s.,]+\s+(?:큰|작은|높은|낮은)\s*순(?:서)?로\s*정렬', re.I)
+_QUOTED_TEXT = re.compile(r'''“[^”]*”|‘[^’]*’|「[^」]*」|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`''')
 
 
-def _range_action(suffix):
+def _range_action(suffix, subjects):
     """Classify only the action on these rows, stopping before the next operation or condition."""
     tail = re.sub(r'^\s*(?:인\s*)?(?:(?:행|항목|값|것)(?:들)?\s*)?(?:까지|부터|만|을|를|은|는)?\s*(?:으로|로)?\s*', '', suffix)
     action = re.match(r'(제외|빼|삭제|지우|지워|버리|버려|없애|남기|남겨|포함|골라|고르|저장|바꾸|바꿔|변경)', tail)
     if action:
         rest = tail[action.end():]
+        if _RANGE_PROHIBITION.match(rest):
+            # Prohibiting these rows rules them out. Prohibiting *only* these rows is ambiguous.
+            qualifier = suffix[:len(suffix) - len(tail)]
+            if '만' not in qualifier and action.group() in ('남기', '남겨', '포함', '골라', '고르'):
+                return 'exclude'
+            return None
         if re.match(_NEG, rest) or re.match(r'\s*(?:금지|하면\s*안|해서는?\s*안|할\s*필요[가는]?\s*없)', rest):
             return None
+        # A connective is affirmative only when it actually introduces the next operation
+        # or named comparison. In "남기고 싶지 않아" it still belongs to the negated verb.
+        if not _AFFIRMATIVE_END.match(rest):
+            connective = _ACTION_CONNECTIVE.match(rest)
+            if not connective:
+                return None
+            following = rest[connective.end():]
+            if not _NEXT_OPERATION.match(following):
+                bound = _WRITTEN_BOUND.search(following)
+                if not bound or not any(pattern.fullmatch(following[:bound.start()]) for _, pattern in subjects):
+                    return None
         return 'exclude' if _RANGE_EXCLUSION.fullmatch(action.group()) else 'include'
     if re.match(r'말고', tail):
         return 'exclude'
@@ -768,7 +791,8 @@ def _comparison_turns(messages, subjects):
     for message in messages:
         if message.get('role') != 'user':
             continue
-        text = message['content']
+        # Quoted examples and literal cell text are not instructions for the filter.
+        text = _QUOTED_TEXT.sub(' ', message['content'])
         turn = {}
         previous_end, previous_field = None, None
         unbound = False
@@ -784,7 +808,7 @@ def _comparison_turns(messages, subjects):
                 continue
             operator = _WRITTEN_OPERATOR[match['operator']]
             side = 'lower' if operator in ('gt', 'gte') else 'upper'
-            action = _range_action(text[match.end():])
+            action = _range_action(text[match.end():], subjects)
             for amount in _amounts(match['amount'], owner):
                 turn.setdefault(owner, {}).setdefault(side, set()).add((amount, operator, action))
         reverse = previous_end is None and re.search(r'반대로|(?:그|이전|기존)\s*(?:선별|필터|비교)?\s*조건.{0,8}(?:취소|삭제|없애|빼|바꿔)', text)

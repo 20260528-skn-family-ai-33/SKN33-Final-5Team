@@ -42,7 +42,7 @@
 1. 저장소 기본 Node/Python 환경을 준비합니다. ML 검증에는 `Backend/requirements/ml-svm56.txt`도 설치합니다.
 2. `python -m pytest Backend/tests -q`, `npm run check`, `npm run build`를 실행합니다. Node 전체 검사는 `A4B_AGENT_PYTHON`을 준비된 Python 경로로 지정한 뒤 `npm test`를 실행합니다.
 3. 전달받은 원본 통합 패키지의 데이터/카탈로그/고정 분할을 사용해 `Backend/ml/training/README.md`의 새 디렉터리 학습·비교 절차를 실행합니다.
-4. Docker는 `.env.example`의 선택 ML 빌드/마운트 설정과 정확한 모델 SHA256을 사용합니다. 기본 Qwen 프로필은 `Backend/scripts/setup-ollama-model.sh`로 준비합니다.
+4. Docker는 `.env.example`의 선택 ML 빌드/마운트 설정과 정확한 모델 SHA256을 사용합니다. 기본 Qwen 프로필은 `scripts/setup/setup-ollama-model.sh`로 준비합니다.
 5. 컨테이너의 `/app/Backend`에서 `python -m ml.svm56.verify_service --bundle /app/ml-bundle --model /app/ml-bundle/model/candidate.joblib --model-sha256 <검증한 SHA256>`로 실제 모델 진단을 실행합니다.
 
 ## PR #21 후속 수정 (1af944a 리뷰)

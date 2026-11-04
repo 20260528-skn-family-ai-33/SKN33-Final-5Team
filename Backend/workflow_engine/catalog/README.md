@@ -46,9 +46,9 @@ Docker 역시 같은 목록을 사용한다. 기존 환경은 setup을 다시 �
 검증:
 
 ```sh
-Backend/.venv-agent/bin/python scripts/verify-business-tools.py
+Backend/.venv-agent/bin/python scripts/verify/verify-business-tools.py
 PYTHONPATH=Backend Backend/.venv-agent/bin/python -m pytest Backend/tests/workflow_engine/test_business56.py -q
-Backend/.venv-agent/bin/python scripts/verify-business-tools-live.py --output /tmp/business56-live
+Backend/.venv-agent/bin/python scripts/verify/verify-business-tools-live.py --output /tmp/business56-live
 ```
 
 56개 각각의 저장·재조회·실행, Deep Agent/direct 생성 응답의 수용,

@@ -5,12 +5,12 @@ on:
     branches: [main]
     paths-ignore:
       - .github/workflows/deploy.yml
-      - scripts/deploy-a4b-ec2.sh
-      - scripts/a4b-ssm-command.sh
-      - scripts/a4b-ssm-release.sh
-      - scripts/a4b-frontend-release.py
-      - scripts/a4b-deploy-targets.py
-      - scripts/deploy-a4b-frontend.sh
+      - scripts/deploy/deploy-a4b-ec2.sh
+      - scripts/deploy/a4b-ssm-command.sh
+      - scripts/deploy/a4b-ssm-release.sh
+      - scripts/deploy/a4b-frontend-release.py
+      - scripts/deploy/a4b-deploy-targets.py
+      - scripts/deploy/deploy-a4b-frontend.sh
       - docs/a4b-automatic-deployment.md
   workflow_dispatch:
     inputs:
@@ -78,10 +78,10 @@ jobs:
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
           target=$DEPLOY_TARGET
           if [[ "$target" == auto ]]; then
-            live=$(bash scripts/a4b-ssm-command.sh 'set -eu; app=a4b-jhd-aws; docker exec "$app" grep -oE "a4b-release=[0-9a-f]{40}" /app/Frontend/dist-app/index.html | cut -d= -f2 || true; docker inspect -f "{{.Config.Image}}" "$app"')
+            live=$(bash scripts/deploy/a4b-ssm-command.sh 'set -eu; app=a4b-jhd-aws; docker exec "$app" grep -oE "a4b-release=[0-9a-f]{40}" /app/Frontend/dist-app/index.html | cut -d= -f2 || true; docker inspect -f "{{.Config.Image}}" "$app"')
             backend=$(tail -n 1 <<< "$live" | sed -nE 's/.*:(verified-|backend-)?([0-9a-f]{40})(-[0-9]+-[0-9]+)?$/\2/p')
             frontend=$(head -n 1 <<< "$live" | sed -nE '/^[0-9a-f]{40}$/p')
-            target=$(python3 scripts/a4b-deploy-targets.py "$commit" "$frontend" "$backend")
+            target=$(python3 scripts/deploy/a4b-deploy-targets.py "$commit" "$frontend" "$backend")
           fi
           case "$target" in
             none) echo 'target=none' >> "$GITHUB_OUTPUT"; exit 0 ;;
@@ -124,8 +124,11 @@ jobs:
       - name: Set up Python workers for integration tests
         if: needs.resolve-image.outputs.target != 'frontend'
         run: |
-          bash Backend/scripts/setup-agent-demo.sh
-          bash Backend/scripts/setup-document-analysis.sh
+          setup=scripts/setup
+          # A manually selected branch may still use the original layout.
+          if [[ ! -f "$setup/setup-agent-demo.sh" ]]; then setup=Backend/scripts; fi
+          bash "$setup/setup-agent-demo.sh"
+          bash "$setup/setup-document-analysis.sh"
       - run: npm run check
         if: needs.resolve-image.outputs.target != 'frontend'
       - run: npm test
@@ -169,6 +172,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          # Manually selected branches can still use the original root Dockerfile.
+          file: ${{ hashFiles('infrastructure/docker/Dockerfile') != '' && 'infrastructure/docker/Dockerfile' || 'Dockerfile' }}
           target: ${{ needs.resolve-image.outputs.target == 'all' && 'standalone' || needs.resolve-image.outputs.target }}
           build-args: A4B_FRONTEND_COMMIT=${{ needs.resolve-image.outputs.commit }}
           push: true
@@ -220,7 +225,7 @@ jobs:
           fi
           [[ "$ECR_REPOSITORY" =~ ^[0-9]{12}\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/[a-z0-9][a-z0-9._/-]*$ ]]
           [[ "$IMAGE_TAG" =~ ^(verified|backend|frontend)-[0-9a-f]{40}$ ]]
-          bash deployment/scripts/a4b-ssm-release.sh "$ECR_REPOSITORY:$IMAGE_TAG" "$PUBLIC_URL" "$mode"
+          bash deployment/scripts/deploy/a4b-ssm-release.sh "$ECR_REPOSITORY:$IMAGE_TAG" "$PUBLIC_URL" "$mode"
 
   restore:
     if: github.ref == 'refs/heads/main' && inputs.operation == 'restore'
@@ -243,4 +248,4 @@ jobs:
           role-to-assume: ${{ vars.A4B_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Restore the pre-test release
-        run: bash scripts/a4b-ssm-release.sh restore "$PUBLIC_URL"
+        run: bash scripts/deploy/a4b-ssm-release.sh restore "$PUBLIC_URL"

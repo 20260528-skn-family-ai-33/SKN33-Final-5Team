@@ -198,7 +198,7 @@ def make_verification_node(storage, verifier=None, mode=None):
                 tools=tools_for_drafts(previous,draft), previous_draft=previous_adapted,
                 candidate_draft=candidate_adapted))
             # defer records the same input as shadow but leaves the model call to
-            # scripts/run-deferred-verifications.py, so the user does not wait for it.
+            # scripts/run/run-deferred-verifications.py, so the user does not wait for it.
             result = (pending_result(request_id) if setting == 'defer'
                       else (verifier or verify)(payload).model_dump(mode='json'))
             if setting != 'defer':

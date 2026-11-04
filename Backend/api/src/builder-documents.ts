@@ -31,7 +31,7 @@ export function normalizeBuilderDocument(data:unknown):BuilderParsedDocument {
   parser_version:value.parser_version,warnings:value.warnings,page_count:value.page_count,parser_status:value.parser_status,parser_metadata:metadata};
 }
 export async function convertBuilderPdf(bytes:Uint8Array):Promise<BuilderParsedDocument>{
- const python=doclingPython();if(!python||!existsSync(python))throw new Error('Docling 환경이 없습니다. Backend/scripts/setup-document-demo.sh로 설치하세요.');
+ const python=doclingPython();if(!python||!existsSync(python))throw new Error('Docling 환경이 없습니다. scripts/setup/setup-document-demo.sh로 설치하세요.');
  const configured=Number(process.env.A4B_PDF_TIMEOUT_MS);
  const timeout=Number.isFinite(configured)&&configured>0&&configured<=1800000?configured:300000;
  const dir=await mkdtemp(join(tmpdir(),'a4b-builder-document-'));

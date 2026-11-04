@@ -31,7 +31,8 @@
     "Frontend/**/*.ts",
     "Frontend/**/*.tsx",
     "shared/**/*.ts",
-    "Backend/api/**/*.ts"
+    "Backend/api/**/*.ts",
+    "scripts/verify/api/**/*.ts"
   ],
   "exclude": [
     "node_modules",

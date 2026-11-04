@@ -11,7 +11,7 @@ React → Node 세션 → Cognito User Pool → RDS `a4b.users` 구조다. Cogni
 ```bash
 aws login --profile a4b3400
 aws sts get-caller-identity --profile a4b3400
-node scripts/configure-cognito.mjs --profile a4b3400 --expected-account YOUR_12_DIGIT_ACCOUNT_ID --origin http://localhost:3041
+node scripts/deploy/configure-cognito.mjs --profile a4b3400 --expected-account YOUR_12_DIGIT_ACCOUNT_ID --origin http://localhost:3041
 ```
 
 스크립트는 계정 번호를 먼저 확인하고 CloudFormation `a4b-cognito` 스택을 배포한다. 이메일 로그인, 공개 앱 클라이언트(비밀 키 없음), Code 흐름, 15분 Access/ID Token, Refresh Token 회전, Managed login 기본 스타일을 만든다. 사용자 풀은 Essentials 플랜이며 사용량에 따른 AWS 요금이 적용된다. 기존 EC2·RDS·S3 및 네트워크 설정은 수정하지 않는다. 사용자 풀은 Retain과 삭제 방지로 보호한다.

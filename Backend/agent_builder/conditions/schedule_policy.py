@@ -5,7 +5,12 @@ _CANCEL = re.compile(r'예약\s*(?:은|을)?\s*(?:없이|취소(?!하지\s*(?:�
 _DESTINATION = re.compile(r'(?:결과|보고서|파일)?\s*(?:보관|저장)\s*(?:위치|장소)|서버\s*보관함|reports', re.I)
 _UNDECIDED = re.compile(r'미정|모르|나중|먼저\s*물어|정하지\s*않')
 _REFUSE = re.compile(r'저장하지\s*마|보관하지\s*마|저장\s*금지|보관\s*금지')
-_RENEW = re.compile(r'매일|매주|daily|weekly', re.I)
+_RENEW = re.compile(
+    r'(?:매일|매주|daily|weekly).*(?:예약|실행|저장|보내)(?:해|하|해줘|줘|해주|할)'
+    r'|예약(?:을|은)?\s*(?:다시|재개).*?(?:해|하|줘)', re.I)
+_DESTINATION_SELECTED = re.compile(
+    r'(?:서버\s*보관함|reports)(?:에|으로|로|을|를)?\s*'
+    r'(?:저장|보관|선택|확정|할게|해줘|하겠|으로\s*할)', re.I)
 
 
 def schedule_request_issues(state):
@@ -25,7 +30,7 @@ def schedule_request_issues(state):
         if _DESTINATION.search(text):
             if _UNDECIDED.search(text) or _REFUSE.search(text):
                 destination_pending = True
-            elif re.search(r'(?:서버\s*보관함|reports)(?:에|으로)?\s*(?:저장|보관)', text, re.I):
+            elif _DESTINATION_SELECTED.search(text):
                 destination_pending = False
     issues = []
     if cancelled:

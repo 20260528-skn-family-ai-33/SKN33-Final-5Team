@@ -18,8 +18,10 @@ def sorting_contract(state):
         if message.get('role') != 'user':
             continue
         text = re.sub(r"""(["']).*?\1""", '', message['content'])
+        turn_orders = {}
+        priority_changed = bool(re.search(r'먼저|우선|동률', text))
         for clause in re.split(r'[.!?;\n]+|(?<=말고)\s*', text):
-            if not (_SORT.search(clause) or _DIRECTION.search(clause)):
+            if not (_SORT.search(clause) or _DIRECTION.search(clause) or _CANCEL.search(clause)):
                 continue
             named = [field for field in sorted(fields, key=len, reverse=True)
                      if re.search(r'(?<![\w])' + re.escape(field)
@@ -28,20 +30,39 @@ def sorting_contract(state):
                 if named:
                     for field in named:
                         orders.pop(field, None)
+                        turn_orders.pop(field, None)
                 else:
                     orders.clear()
+                    turn_orders.clear()
                     unresolved = False
                 cancelled = True
                 continue
             direction = _DIRECTION.search(clause)
+            if direction is not None:
+                # Bind the sort field to its direction, not to filter predicates
+                # elsewhere in the same sentence.
+                prefix = clause[:direction.start()]
+                named = [field for field in sorted(fields, key=len, reverse=True)
+                         if re.search(r'(?<![\w])' + re.escape(field)
+                                      + r'(?:이|가|은|는|을|를|의)?\s*(?:열(?:을|를|은|는)?\s*)?(?:합계(?:를|가|는)?\s*)?(?:(?:숫자|문자)\s*)?$', prefix)]
+            if direction is not None and not named:
+                inferred = re.search(r'(?:^|\s)([\w]+?)(?:이|가|은|는|을|를)?\s*(?:(?:숫자|문자)\s*)?$', prefix)
+                if inferred:
+                    named = [inferred.group(1)]
             if len(named) != 1 or direction is None:
                 for field in named:
                     orders.pop(field, None)
                 unresolved = True
                 continue
             word = direction.group()
-            orders[named[0]] = 'descending' if re.search(r'내림|큰|높은|많은', word) else 'ascending'
+            value = 'descending' if re.search(r'내림|큰|높은|많은', word) else 'ascending'
+            orders[named[0]] = value
+            turn_orders[named[0]] = value
             cancelled = False
+        if priority_changed and turn_orders:
+            # A new priority instruction replaces the previous key order.
+            orders = {**turn_orders, **{key: value for key, value in orders.items()
+                                       if key not in turn_orders}}
     return {'orders': orders, 'unresolved': unresolved, 'cancelled': cancelled}
 
 
@@ -70,6 +91,8 @@ def sort_request_issues(state, draft):
                               for key in keys)
             except (ValueError, KeyError, TypeError):
                 return ['정렬 도구의 열·방향 인자를 확인해야 합니다.']
+    if contract['unresolved']:
+        return ['정렬할 열·방향을 확정하지 못했습니다. 사용자에게 확인해야 합니다.']
     if contract['orders']:
         expected = list(contract['orders'].items())
         actual_keys = [(order['field'], order['direction']) for order in actual]
@@ -77,9 +100,4 @@ def sort_request_issues(state, draft):
             return ['요청한 정렬 조건의 열·방향·키 우선순위가 실행 설정과 다릅니다. 정렬을 반영하거나 확인해야 합니다.']
     elif contract['cancelled'] and actual:
         return ['취소한 정렬 조건이 실행 설정에 남아 있습니다.']
-    elif contract['unresolved']:
-        # Without a table or a confirmed condition contract this can be unrelated
-        # historical text. A table request needs clarification before approval.
-        if state.get('resources') or (state.get('condition_ledger') or {}).get('decision') == 'ready':
-            return ['정렬할 열·방향을 확정하지 못했습니다. 사용자에게 확인해야 합니다.']
     return []

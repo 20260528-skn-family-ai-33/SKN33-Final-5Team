@@ -286,3 +286,109 @@ def test_multiple_sort_keys_preserve_requested_priority(canonical, reversed_keys
     if not reversed_keys:
         assert [(row['비용'], row['날짜']) for row in context['rows']] == [
             (3000000, '2026-11-02'), (3000000, '2026-11-04'), (2000000, '2026-11-03')]
+
+
+def test_unattached_sort_is_not_silently_approved():
+    s = filter_state()
+    s.update(resources=[], condition_ledger=None)
+    s['messages'] = [{'role': 'user', 'content': '비용이 큰 순서로 정렬해서 JSON으로 저장해줘'}]
+    assert validate_node(s)['status'] != 'ready'
+    with pytest.raises(ValueError, match='정렬'):
+        require_save_ready({**s, 'status': 'ready', 'confirmed': True})
+
+
+def test_filter_field_does_not_confuse_sort_field():
+    s = filter_state()
+    s['resources'] = [{'id': 't', 'kind': 'table', 'name': '비용.csv', 'columns': ['비용', '날짜']}]
+    s['messages'].append({'role': 'user', 'content': '비용이 100만원 초과인 행을 날짜 오름차순으로 정렬해줘'})
+    s['draft']['workflow']['nodes'][1]['settings']['execution_plan']['sort'] = [
+        {'field': '날짜', 'direction': 'ascending', 'value_type': 'text'}]
+    assert validate_node(s)['status'] == 'ready'
+
+
+def test_input_order_reply_cancels_previous_sort():
+    s = filter_state()
+    s['messages'] += [{'role': 'user', 'content': '비용 내림차순으로 정렬해줘'},
+                      {'role': 'user', 'content': '입력 순서를 유지해줘'}]
+    assert validate_node(s)['status'] == 'ready'
+    s['draft']['workflow']['nodes'][1]['settings']['execution_plan']['sort'] = [
+        {'field': '비용', 'direction': 'descending', 'value_type': 'number'}]
+    assert validate_node(s)['status'] != 'ready'
+
+
+@pytest.mark.parametrize('reply', ['보고서 제목은 매일 비용 보고서로 해줘', '매주 보고서라는 이름으로 바꿔줘'])
+def test_metadata_does_not_reactivate_cancelled_schedule(reply):
+    s = scheduled_state()
+    s['messages'] += [{'role': 'user', 'content': '예약 없이 이번 한 번만 저장해줘'},
+                      {'role': 'user', 'content': reply}]
+    update = audit_conditions(s)
+    assert update.get('draft', s['draft'])['schedule'] is None
+    assert validate_node({**s, **update})['status'] != 'ready'
+    with pytest.raises(ValueError, match='예약'):
+        require_save_ready({**s, 'status': 'ready', 'confirmed': True})
+
+
+@pytest.mark.parametrize('reply', ['저장 위치는 서버 보관함으로 할게', '서버 보관함에 저장해줘', 'reports로 확정해줘'])
+def test_destination_selection_resolves_pending_question(reply):
+    s = scheduled_state()
+    s['messages'] += [{'role': 'user', 'content': '결과 보관 위치는 아직 미정이니 먼저 물어봐줘'},
+                      {'role': 'user', 'content': reply}]
+    s.update(audit_conditions(s))
+    assert s['draft']['report_destination'] == 'reports'
+    assert validate_node(s)['status'] == 'ready'
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_followup_sort_priority_replaces_previous_order(reverse):
+    from agent_builder.design.sorting import sorting_contract
+    s = filter_state()
+    s['resources'] = [{'id': 't', 'kind': 'table', 'name': '비용.csv', 'columns': ['비용', '날짜']}]
+    s['messages'] += [
+        {'role': 'user', 'content': '비용 내림차순으로 먼저 정렬해줘. 날짜 오름차순으로 동률을 정렬해줘.'},
+        {'role': 'user', 'content': '날짜 오름차순으로 먼저 정렬해줘. 비용 내림차순으로 동률을 정렬해줘.'}]
+    assert list(sorting_contract(s)['orders']) == ['날짜', '비용']
+    keys = [{'field': '날짜', 'direction': 'ascending', 'value_type': 'text'},
+            {'field': '비용', 'direction': 'descending', 'value_type': 'number'}]
+    s['draft']['workflow']['nodes'][1]['settings']['execution_plan']['sort'] = keys[::-1] if reverse else keys
+    assert (validate_node(s)['status'] == 'ready') == (not reverse)
+    if reverse:
+        with pytest.raises(ValueError, match='정렬'):
+            require_save_ready({**s, 'status': 'ready', 'confirmed': True})
+    else:
+        require_save_ready({**s, 'status': 'ready', 'confirmed': True})
+
+
+def test_explicit_schedule_renewal_is_allowed():
+    s = scheduled_state()
+    s['messages'] += [{'role': 'user', 'content': '예약 없이 이번 한 번만 저장해줘'},
+                      {'role': 'user', 'content': '매일 오전 9시에 다시 예약해줘'}]
+    s.update(audit_conditions(s))
+    assert s['draft']['schedule']['hour'] == 9
+    assert validate_node(s)['status'] == 'ready'
+
+
+def test_revised_sort_priority_is_saved_and_executed(tmp_path):
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.runner import run_workflow
+    s = scheduled_state()
+    s['resources'][0]['columns'] = ['비용', '날짜']
+    s['messages'] += [
+        {'role': 'user', 'content': '비용 내림차순으로 먼저 정렬해줘. 날짜 오름차순으로 동률을 정렬해줘.'},
+        {'role': 'user', 'content': '날짜 오름차순으로 먼저 정렬해줘. 비용 내림차순으로 동률을 정렬해줘.'}]
+    s['draft']['workflow']['nodes'][1]['settings']['execution_plan']['sort'] = [
+        {'field': '날짜', 'direction': 'ascending', 'value_type': 'text'},
+        {'field': '비용', 'direction': 'descending', 'value_type': 'number'}]
+    s.update(audit_conditions(s))
+    s.update(validate_node(s), confirmed=True)
+    assert s['status'] == 'ready'
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(s['resources'][0], [
+            {'비용': 3000000, '날짜': '11/04'}, {'비용': 2000000, '날짜': '11/03'},
+            {'비용': 4000000, '날짜': '11/03'}])
+        identifier = store.save_agent(s)
+        result = run_workflow(store, identifier, '실행', '', file_ids=['table'])
+        assert result['status'] == 'succeeded'
+        assert [row['비용'] for row in result['rows']] == [4000000, 2000000, 3000000]
+    finally:
+        store.close()

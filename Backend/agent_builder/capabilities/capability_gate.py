@@ -58,16 +58,16 @@ def require_save_ready(state):
     schedule_issues = schedule_request_issues(state)
     if schedule_issues:
         raise ValueError(schedule_issues[0])
-    from agent_builder.design.sorting import sort_request_issues
-    sorting = sort_request_issues(state, state.get('draft') or {})
-    if sorting:
-        raise ValueError(sorting[0])
     issue = draft_delivery_issue(state, state.get('draft') or {})
     if issue:
         raise ValueError(issue)
     from agent_builder.design.requirement_coverage import requirement_issues
     missing_requirements=requirement_issues(state,state.get('draft') or {})
     if missing_requirements:raise ValueError(' / '.join(missing_requirements))
+    from agent_builder.design.sorting import sort_request_issues
+    sorting = sort_request_issues(state, state.get('draft') or {})
+    if sorting:
+        raise ValueError(sorting[0])
     from agent_builder.design.processing_guard import processing_issues
     missing_processing=processing_issues(state,state.get('draft') or {})
     if missing_processing:raise ValueError(missing_processing[0])

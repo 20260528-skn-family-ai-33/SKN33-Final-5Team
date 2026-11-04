@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+from documents.resources.document_resources import RemovedUpload, saved_input
 
 from workflow_engine.catalog.canonical import operation_spec, arguments_spec, parse_arguments, ports
 from workflow_engine.unified_tools import dispatcher
@@ -92,7 +93,10 @@ def resolve_assets(value, storage, context, allowed):
     if 'asset_id' not in value: return {k: resolve_assets(v, storage, context, allowed) for k, v in value.items()}
     identifier = value['asset_id']
     if identifier not in allowed: raise ValueError('이번 실행에 연결되지 않은 자료 ID입니다.')
-    asset = storage.asset(identifier)
+    try:
+        asset = storage.asset(identifier)
+    except RemovedUpload as error:
+        raise ValueError(f"이 작업에 지정한 ‘{error.schema.get('name','파일')}’이 삭제됐습니다. 설정 수정에서 사용할 파일을 다시 지정하세요.") from error
     relative = asset.get('original_path', '')
     base = Path(storage.path).parent.resolve()
     source = (base / relative).resolve()
@@ -134,7 +138,8 @@ def file_artifact(asset, context):
 
 def execute(node, state, storage, config, llm):
     ids = set(config.get('document_ids', [])) | set(state.get('file_ids', []))
-    spec, args = validate_settings(node, [storage.asset(i) for i in ids])
+    spec, args = validate_settings(node, [saved_input(storage,i) for i in config.get('document_ids', [])] +
+                                   [storage.asset(i) for i in state.get('file_ids', [])])
     bound={b['input']: state['outputs'][b['node_id']][b['output']] for b in node['bindings']}
     nested_inputs = binding_names(args)
     args=substitute(args,bound)

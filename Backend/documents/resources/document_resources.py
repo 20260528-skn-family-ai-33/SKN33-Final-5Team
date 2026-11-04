@@ -2,6 +2,27 @@
 import json
 
 
+class RemovedUpload(ValueError):
+    """A saved reader may still need the input slot's name, type and columns."""
+    def __init__(self, record):
+        self.schema = {k: record[k] for k in ('id', 'name', 'kind', 'columns', 'input_kinds') if k in record}
+        self.schema['deleted'] = True
+        pending = 'pending_delete' in record
+        super().__init__('삭제 중인 자료입니다.' if pending else
+                         f"‘{record.get('name', '참고 파일')}’ 원본이 삭제됐습니다. 새 파일을 연결해 실행하세요.")
+
+
+def saved_input(storage, id):
+    try:
+        return storage.asset(id)
+    except RemovedUpload as error:
+        return error.schema
+
+
+def available_inputs(storage, ids):
+    return [asset for asset in (saved_input(storage, id) for id in ids) if not asset.get('deleted')]
+
+
 def analysis_of(asset):
     metadata = asset.get('parser_metadata') or {}
     analysis = metadata.get('document_analysis') or {}
@@ -9,6 +30,8 @@ def analysis_of(asset):
 
 
 def supports(asset, kind):
+    if asset.get('deleted'):
+        return kind in asset.get('input_kinds', [asset.get('kind')])
     if asset.get('kind') == kind:
         return True
     return kind == 'document' and bool(analysis_of(asset)) and bool(asset.get('text', '').strip())

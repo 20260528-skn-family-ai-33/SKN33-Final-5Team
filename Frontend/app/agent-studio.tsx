@@ -196,6 +196,8 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   ? (missingFile.issues?.[0] || (missingFile.kind === 'document' ? '실행할 문서를 첨부해 주세요.' : '실행할 표 파일을 첨부해 주세요.'))
   : !runFiles.length && savedRunFileNames.length
    ? '저장된 자료: ' + savedRunFileNames.join(', ') + '. 새 파일을 첨부하면 해당 종류의 자료를 교체합니다.'
+   : !runFiles.length && selected?.config.document_ids.some(id=>!agentResources.some(asset=>asset.id===id))
+   ? '기존 참고 파일이 삭제됐습니다. 해당 파일이 필요한 실행에는 새 자료를 추가하세요.'
    : '새 자료를 넣으면 이번 실행에 사용합니다.';
  const canStartRun = !missingFile && (!requestRequired || !!testText.trim());
  async function runTest(){

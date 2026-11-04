@@ -132,9 +132,10 @@ test('DOM: fallback save lets users rename an inline CSV and downloads identical
   assert.equal(document.querySelector('[role=dialog]'),null);assert.equal(location.search,'?service=A');
  }finally{await h.close();}
 });
-test('DOM: a saved receipt workflow starts with just an attached file when Run is clicked',async()=>{
- const receipt={...A,config:{...A.config,tool_ids:['read_document','extract_information','create_spreadsheet']}};
- const requirement={kind:'document',fields:[],required_before_start:true,ready:false,issues:['실행할 문서를 연결하세요.']};
+for(const deleted of [false,true]) test(`DOM: a saved receipt workflow starts with just a file (${deleted?'deleted sample':'missing input'})`,async()=>{
+ const receipt={...A,config:{...A.config,document_ids:deleted?['deleted-sample']:[],tool_ids:['read_document','extract_information','create_spreadsheet']}};
+ const guidance=deleted?'기존 영수증 원본이 삭제됐습니다. 새 파일을 연결해 실행하세요.':'실행할 문서를 연결하세요.';
+ const requirement={kind:'document',fields:[],required_before_start:true,ready:false,issues:[guidance]};
  const h=await setup('?service=A',{},path=>{
   if(path.includes('/agent?'))return {...snapshot(receipt),request_required:false,input_requirements:[requirement]};
   if(path.endsWith('/run_upload'))return {asset:{id:'receipt-file',name:'영수증.pdf',kind:'document'}};
@@ -143,7 +144,7 @@ test('DOM: a saved receipt workflow starts with just an attached file when Run i
  try {
   const run=button('워크플로우 실행');
   assert.ok(field('추가 요청 (선택)'));assert.equal(run.disabled,true);
-  assert.match(document.querySelector('.as-run-files')?.textContent||'',/실행할 문서를 연결/);
+  assert.ok(document.querySelector('.as-run-files')?.textContent?.includes(guidance));
   const picker=document.querySelectorAll<HTMLInputElement>('input[type=file]')[2];
   Object.defineProperty(picker,'files',{value:[new dom.window.File(['receipt'],'영수증.pdf')]});
   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
@@ -287,21 +288,26 @@ test('DOM: equal sheet headers and equal first row do not hide a different set o
   ['00010002','00010003']);}finally{await h.close();}
 });
 
-test('DOM: named workflows protect used uploads and failed cleanup offers an immediate retry',async()=>{
+test('DOM: historical and saved references can be deleted, live inputs stay protected and cleanup can retry',async()=>{
  const free={id:'free',name:'사본.jpg',format:'jpg',has_original:true};
  let tries=0;
  const h=await setup('?screen=assets',{},path=>{
-  if(path.endsWith('/assets'))return {assets:[{...free,id:'used',name:'기준표.csv',
-   usages:[{kind:'workflow',id:'wf',name:'월말 정산'}]},free],next:null};
+  if(path.endsWith('/assets'))return {assets:[
+   {...free,usages:[{kind:'workflow',id:'wf',name:'월말 정산'},{kind:'run',id:'wf',name:'월말 정산'}]},
+   {...free,id:'history',name:'실행.jpg',usages:[{kind:'run',id:'wf',name:'월말 정산'}]},
+   {...free,id:'active',name:'처리중.csv',usages:[{kind:'running',id:'wf',name:'월말 정산'}]},
+   {...free,id:'schedule',name:'예약.csv',usages:[{kind:'schedule',id:'wf',name:'월말 정산'}]}],next:null};
   if(path.endsWith('/assets?id=free') && ++tries===1)
    return new Response(JSON.stringify({error:'삭제를 다시 시도하세요.',pending_delete:true}),{status:503});
   if(path.endsWith('/assets?id=free'))return {deleted:true};
  },createElement(EntryApp));
  try{
   assert.match(document.querySelector('[aria-label="자료 사용처"]')?.textContent||'',/월말 정산.*저장된 워크플로우/);
-  assert.ok(button('사용 중 · 삭제 불가').disabled);
-  window.confirm=()=>true;await click(button('삭제'));assert.ok(button('삭제 재시도'));
-  await click(button('삭제 재시도'));assert.equal(document.querySelectorAll('article').length,1);
+  assert.ok(button('실행 완료 후 삭제').disabled && button('예약 소스 교체 후 삭제').disabled);
+  assert.equal((document.querySelector('[aria-label="실행.jpg 삭제"]') as HTMLButtonElement).disabled,false);
+  window.confirm=message=>{assert.match(String(message),/기존 실행 결과는 보관/);return true;};
+  await click(document.querySelector('[aria-label="사본.jpg 삭제"]')!);assert.ok(button('삭제 재시도'));
+  await click(button('삭제 재시도'));assert.equal(document.querySelectorAll('article').length,3);
  }finally{await h.close();}
 });
 

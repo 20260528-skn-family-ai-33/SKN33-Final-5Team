@@ -405,6 +405,29 @@ def test_file_only_run_exports_selected_fields_of_the_requested_receipts(studio,
     finally:
         workbook.close()
 
+    # Removing the saved sample must keep the old workbook and file-only runs usable.
+    original = attached['resources'][0]['id']
+    for action in ('prepare_asset_delete', 'finish_asset_delete'):
+        handle({**job, 'action': action, 'id': original})
+    assert original not in [a['id'] for a in handle({**job, 'action': 'assets'})['assets']]
+    detail = handle({**job, 'action': 'agent'})
+    assert detail['tests'][0]['artifact'] == run['artifact']
+    assert detail['request_required'] is False
+    assert not detail['input_requirements'][0]['ready']
+    with pytest.raises(ValueError, match='삭제'):
+        handle({**job, 'action': 'test'})
+    replacement = handle({**job, 'action': 'run_upload', 'rows': [], 'asset': {
+        **RECEIPT, 'name': '새 영수증.jpg',
+        'text': '날짜: 2026-11-06\n상호명: 새 상점\n결제 금액: 25,000원'}})['asset']
+    rerun = handle({**job, 'action': 'test', 'file_ids': [replacement['id']]})
+    assert rerun['status'] == 'succeeded', rerun.get('error')
+    replacement_book = load_workbook(io.BytesIO(base64.b64decode(rerun['artifact']['content'])))
+    try:
+        assert list(replacement_book.active.values) == [tuple(fields), ('2026-11-06', '새 상점', '25,000원', None)]
+    finally:
+        replacement_book.close()
+    assert handle({**job, 'action': 'run', 'id': run['id']})['run']['artifact'] == run['artifact']
+
 
 @pytest.mark.parametrize('include_summary', [False, True], ids=['items-only', 'separate-sheets'])
 def test_selected_item_columns_are_saved_and_run_as_an_item_table(studio, tmp_path, monkeypatch, include_summary):

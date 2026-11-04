@@ -1,5 +1,6 @@
 """The upload library is scoped to the current builder workspace."""
 import json
+from documents.resources.document_resources import supports
 
 
 def asset_usages(store, ids):
@@ -10,10 +11,11 @@ def asset_usages(store, ids):
     values = ','.join('(?)' for _ in ids)
     # Immutable snapshots can also refer to an input in nested settings, dependencies or evidence.
     quoted_id = """'%"' || wanted.id || '"%'"""
+    run_kind = f"CASE WHEN {store.json_text('r.json', 'status')}='running' THEN 'running' ELSE 'run' END"
     refs = [
-        f"""SELECT wanted.id, '{kind}', r.agent_id, r.agent_id, NULL
+        f"""SELECT wanted.id, {kind}, r.agent_id, r.agent_id, NULL
             FROM wanted JOIN {table} r ON CAST(r.json AS TEXT) LIKE {quoted_id} WHERE {{ws:r}}"""
-        for kind, table in [('workflow', 'agent_versions'), ('run', 'agent_tests')]
+        for kind, table in [("'workflow'", 'agent_versions'), (run_kind, 'agent_tests')]
     ]
     if store.db.table_exists('builder_data_sources'):
         refs.append("""SELECT wanted.id, 'schedule', r.agent_id, r.agent_id, NULL
@@ -42,7 +44,9 @@ def assets(c):
     before = c.data.get('before')
     bound = ' AND {seq} < ?' if before is not None else ''
     rows = store.db.execute(
-        'SELECT {seq},id,' + columns + ' FROM builder_assets WHERE {ws}' + bound + ' ORDER BY {seq} DESC LIMIT 51',
+        'SELECT {seq},id,' + columns + ' FROM builder_assets WHERE {ws} AND (' +
+        store.json_text('json','deleted') + ' IS NULL OR ' + store.json_text('json','pending_delete') +
+        ' IS NOT NULL)' + bound + ' ORDER BY {seq} DESC LIMIT 51',
         (before,) if before is not None else ()).fetchall()
     uses = asset_usages(store, [row[1] for row in rows[:50]])
     return {'assets': [
@@ -79,11 +83,16 @@ def prepare_delete(c):
         if 'pending_delete' in asset:
             db.commit()
             return asset['pending_delete']
+        if asset.get('deleted'):
+            db.commit()
+            return {}
 
-        labels = {'workflow': '저장된 워크플로우', 'run': '실행 기록', 'schedule': '예약 데이터 소스'}
-        for use in asset_usages(store, [id])[id]:
-            if use['kind'] in labels:
-                raise ValueError(f"{labels[use['kind']]} ‘{use['name']}’에서 사용하는 자료는 삭제할 수 없습니다.")
+        uses = asset_usages(store, [id])[id]
+        for use in uses:
+            if use['kind'] == 'schedule':
+                raise ValueError(f"‘{use['name']}’의 예약 데이터 소스를 교체한 후 삭제하세요.")
+            if use['kind'] == 'running':
+                raise ValueError(f"‘{use['name']}’ 실행 중입니다. 실행이 끝난 후 삭제하세요.")
 
         sessions = db.execute('SELECT id,json,revision FROM builder_sessions WHERE {ws} AND CAST(json AS TEXT) LIKE ?',
                               ('%"' + id + '"%',)).fetchall()
@@ -105,6 +114,10 @@ def prepare_delete(c):
             if asset.get('original_bucket'):
                 cleanup['bucket'] = asset['original_bucket']
         marker = {key: asset[key] for key in ('id', 'name', 'format', 'size_bytes', 'created_at') if key in asset}
+        if any(use['kind'] == 'workflow' for use in uses):
+            # Keep only the contract for immutable saved versions. Replacement files supply all actual data.
+            marker.update(deleted=True, kind=asset.get('kind'), columns=asset.get('columns', []),
+                          input_kinds=[k for k in ('table','document') if supports(asset,k)])
         marker['pending_delete'] = cleanup
         for table in ('document_review_events', 'document_reviews'):
             db.execute('DELETE FROM ' + table + ' WHERE {ws} AND asset_id=?', (id,))
@@ -121,7 +134,21 @@ def prepare_delete(c):
 
 def finish_delete(c):
     store = c.storage
-    store.db.execute('DELETE FROM builder_assets WHERE {ws} AND id=? AND ' +
-                     store.json_text('json', 'pending_delete') + ' IS NOT NULL', (c.data['id'],))
-    store.db.commit()
+    id = c.data['id']
+    store.begin_write()
+    try:
+        row = store.db.execute('SELECT json FROM builder_assets WHERE {ws} AND id=? AND ' +
+                               store.json_text('json','pending_delete') + ' IS NOT NULL', (id,)).fetchone()
+        if row:
+            marker = json.loads(row[0])
+            if marker.get('deleted'):
+                schema = {k: marker[k] for k in ('id','name','kind','columns','input_kinds','deleted') if k in marker}
+                store.db.execute('UPDATE builder_assets SET json=? WHERE {ws} AND id=?',
+                                 (json.dumps(schema, ensure_ascii=False), id))
+            else:
+                store.db.execute('DELETE FROM builder_assets WHERE {ws} AND id=?', (id,))
+        store.db.commit()
+    except Exception:
+        store.db.rollback()
+        raise
     return {'deleted': True}

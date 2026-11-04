@@ -3,6 +3,7 @@ import json
 from datetime import datetime,timedelta,time,timezone
 from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
 from infrastructure.persistence.ids import uid, now
+from documents.resources.document_resources import available_inputs
 
 def next_occurrence(spec,current=None):
     current=current or datetime.now(timezone.utc);zone=ZoneInfo(spec['timezone']);local=current.astimezone(zone)
@@ -45,7 +46,7 @@ class Schedules:
         from agent_builder.design.nodes.validation import validate_node
         config=AgentDraft.model_validate(agent['config']).model_dump()
         # Check the incoming source against the saved conditions, not the old sample.
-        document_ids=[id for id in config['document_ids'] if self.storage.asset(id)['kind']=='document']
+        document_ids=[a['id'] for a in available_inputs(self.storage,config['document_ids']) if a['kind']=='document']
         config['document_ids']=[asset_id]+document_ids
         if config.get('workflow'):
             for n in config['workflow']['nodes']:

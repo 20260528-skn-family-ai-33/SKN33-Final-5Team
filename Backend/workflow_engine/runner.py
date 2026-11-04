@@ -15,6 +15,7 @@ from verification.reply_review.state import collect_reviews, is_review_report_ar
 from workflow_engine.executors.dispatch import execute_node
 from workflow_engine.catalog.registry import uses_operation
 from workflow_engine.run_answer import public_run_answer
+from documents.resources.document_resources import saved_input
 
 
 class RunState(TypedDict,total=False):
@@ -76,7 +77,7 @@ def execution_parameters(node,config):
 def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inherit_checkpoint=False):
     from workflow_engine.library.reusable_workflows import reject_review_export
     reject_review_export(config,config.get('_saved_workflows',{}))
-    workflow=config['workflow'];issues=workflow_errors(workflow,config['tool_ids'],[storage.asset(id) for id in config['document_ids']],config['execution_plan'],runtime_resources=[storage.asset(id) for id in config.get('_runtime_file_ids',[])])
+    workflow=config['workflow'];issues=workflow_errors(workflow,config['tool_ids'],[saved_input(storage,id) for id in config['document_ids']],config['execution_plan'],runtime_resources=[storage.asset(id) for id in config.get('_runtime_file_ids',[])])
     if issues:raise ValueError(' / '.join(issues))
     connection=None if inherit_checkpoint else checkpoint_connection(storage)
     config={**config,'_ownership':ownership}

@@ -3,7 +3,7 @@ import {AlertCircle, ExternalLink, FolderOpen, RefreshCw, Trash2, Upload as Uplo
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
 import {request} from '../components/flow/connection-panel';
 
-type Usage = {kind: 'draft' | 'workflow' | 'run' | 'schedule'; id: string; name: string};
+type Usage = {kind: 'draft' | 'workflow' | 'run' | 'running' | 'schedule'; id: string; name: string};
 type Upload = {
   id: string; name: string; format?: string; size_bytes: number | null; created_at?: string;
   has_original: boolean; pending_delete: boolean;
@@ -108,7 +108,7 @@ export function AttachUploadDialog({mode, onLibrary, onClose, onNew, onSelect, c
 }
 
 const usageLabels: Record<Usage['kind'], string> = {
-  draft: '설계 중', workflow: '저장된 워크플로우', run: '실행 기록', schedule: '예약 데이터 소스',
+  draft: '설계 중', workflow: '저장된 워크플로우', run: '실행 기록', running: '실행 중', schedule: '예약 데이터 소스',
 };
 
 export function UploadLibrary() {
@@ -118,7 +118,10 @@ export function UploadLibrary() {
   const [notice, setNotice] = useState('');
 
   async function remove(asset: Upload) {
-    if (!asset.pending_delete && !window.confirm('「' + asset.name + '」 자료를 삭제할까요? 설계 중인 대화에서도 연결이 해제되며 복구할 수 없습니다.')) return;
+    const savedUse = asset.usages?.some(use => use.kind === 'workflow' || use.kind === 'run');
+    const impact = savedUse ? '기존 실행 결과는 보관됩니다. 이 원본이 필요한 다음 실행에는 새 파일을 연결하세요.' :
+      '이 파일이 연결된 설계 대화에서도 연결이 해제됩니다.';
+    if (!asset.pending_delete && !window.confirm('「' + asset.name + '」 원본을 삭제할까요? ' + impact + ' 삭제한 파일은 복구할 수 없습니다.')) return;
     setDeleting(asset.id); setError(''); setNotice('');
     try {
       await request(base + 'assets?id=' + encodeURIComponent(asset.id), undefined, 'DELETE');
@@ -143,15 +146,16 @@ export function UploadLibrary() {
       <h2>아직 올린 자료가 없습니다.</h2><p>설계 화면에서 ‘자료 연결’로 파일을 올리면 여기에 표시됩니다.</p></section>}
     <div className="entry-history-list">{items.map(asset => {
       const usages = asset.usages || [];
-      const protectedFile = usages.some(use => use.kind !== 'draft');
+      const blocked = usages.some(use => use.kind === 'schedule') ? '예약 소스 교체 후 삭제' :
+        usages.some(use => use.kind === 'running') ? '실행 완료 후 삭제' : '';
       return <article key={asset.id}>
       <div><h2>{asset.name}</h2><p>{uploadInfo(asset)}{asset.pending_delete && ' · 삭제 대기 중'}</p>
         {usages.length ? <ul aria-label="자료 사용처">{usages.map(use => <li key={use.kind + use.id}>
           {use.name} · {usageLabels[use.kind]}</li>)}</ul> : !asset.pending_delete && <p>연결된 사용처 없음</p>}
       </div>
       <button className="as-button" disabled={busy || asset.pending_delete} onClick={() => setSelected(asset)}>내용 보기</button>
-      <button className="as-button" disabled={busy || protectedFile} aria-label={asset.name + ' 삭제'} onClick={() => void remove(asset)}>
-        <Trash2 size={14}/>{deleting === asset.id ? '삭제 중…' : asset.pending_delete ? '삭제 재시도' : protectedFile ? '사용 중 · 삭제 불가' : '삭제'}
+      <button className="as-button" disabled={busy || (!asset.pending_delete && !!blocked)} aria-label={asset.name + ' 삭제'} onClick={() => void remove(asset)}>
+        <Trash2 size={14}/>{deleting === asset.id ? '삭제 중…' : asset.pending_delete ? '삭제 재시도' : blocked || '삭제'}
       </button>
     </article>;})}</div>
     {next && <button className="as-button" disabled={busy} onClick={() => void load(next)}>자료 더 보기</button>}

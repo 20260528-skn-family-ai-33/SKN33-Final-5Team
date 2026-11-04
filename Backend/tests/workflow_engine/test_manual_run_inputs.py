@@ -21,6 +21,34 @@ def test_saved_legacy_table_plan_advertises_its_required_table(tmp_path):
         store.close()
 
 
+def test_deleted_legacy_sample_keeps_detail_open_and_accepts_a_new_table(tmp_path):
+    from types import SimpleNamespace
+    from infrastructure.persistence.ids import uid
+    from infrastructure.persistence.storage import Storage
+    from service.handlers import library, uploads
+    from agent_builder.conditions.input_requirements import execution_requirements
+    from tests.design.test_builder import draft, initial
+
+    store = Storage(tmp_path)
+    try:
+        original = store.add_asset({'id':uid(), 'name':'old.csv', 'kind':'table', 'columns':['id']}, [{'id':1}])
+        config = {**draft(), 'workflow':None, 'document_ids':[original['id']],
+                  'tool_ids':['read_table','write_result'], 'execution_plan':{'output_format':'csv'}}
+        identifier = store.save_agent({**initial(), 'draft':config, 'confirmed':True})
+        deletion = SimpleNamespace(storage=store, data={'id':original['id']})
+        uploads.prepare_delete(deletion)
+        uploads.finish_delete(deletion)
+        detail = library.agent(SimpleNamespace(storage=store, data={'id':identifier}))
+        assert detail['resources'] == [] and detail['request_required'] is False
+        requirement, = detail['input_requirements']
+        assert not requirement['ready'] and '삭제' in requirement['issues'][0]
+        replacement = store.add_asset({'id':uid(), 'name':'new.csv', 'kind':'table', 'columns':['id']}, [{'id':2}])
+        requirement, = execution_requirements(config, store, [replacement['id']])
+        assert requirement['ready'] and requirement['file_ids'] == [replacement['id']]
+    finally:
+        store.close()
+
+
 def test_deletion_cannot_leave_a_dangling_legacy_run_file(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from infrastructure.persistence.ids import uid

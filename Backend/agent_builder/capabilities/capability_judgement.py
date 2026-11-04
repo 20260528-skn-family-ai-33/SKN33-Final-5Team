@@ -1,5 +1,6 @@
 """Opt-in catalog assessment. Not a generic READY permit or automatic tool factory."""
 import json
+import os
 import re
 from pydantic import BaseModel,ConfigDict,Field
 from typing import Literal
@@ -174,6 +175,26 @@ DEMOS=[
  {'request':'가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.','output':{'decision':'clarify','tool_ids':['filter_sort'],'missing_conditions':['선별할 가격 기준과 포함 여부'],'missing_actions':[],'reason':'가격 기준은 사용자 결정 사항','user_quotes':['가격이 낮은 상품만 정리하고 싶은데 낮은 기준은 아직 미정이야.']}},
 ]
 
+_NEW_TASK_WORDS=re.compile(r'줘|주세요|만들|정리|저장|보내|골라|남겨|뽑|계산|비교|합계|집계|요약|예약|매일|매주|변환|추출',re.I)
+
+def _task_window(state):
+    """Messages the capability judgment sees: the whole conversation, or only a new task request.
+
+    Live 2026-11-03 (A5): after a receipt request, a later sales-comparison request was refused with
+    "영수증 OCR 부족" on every turn because the whole conversation was judged as one request.
+    A latest user message that names work (a task word, longer than a short reply) and does not
+    answer a pending question starts a new task, so only it is judged. Answers to pending
+    questions keep the whole conversation, which they need ("100만원 초과로 해줘", "상품명, 수량").
+    """
+    if os.getenv('A4B_CAPABILITY_CONTEXT','window')=='full':return state['messages']
+    messages=state.get('messages',[])
+    if not messages or messages[-1].get('role')!='user' or state.get('pending_questions') or state.get('capability_questions'):
+        return messages
+    text=re.sub(r'\s+','',messages[-1]['content'])
+    if len(text)<=12 or not _NEW_TASK_WORDS.search(text) or len([m for m in messages if m.get('role')=='user'])<2:
+        return messages
+    return [messages[-1]]
+
 def assess_capability(state,transport):
     faults=input_issues(state)
     if faults:return {'decision':'system_error','issues':faults,'model_calls':0,'allows_execution':False,'allows_generation':False}
@@ -194,12 +215,13 @@ def assess_capability(state,transport):
             props['missing_actions']['minItems']=1;props['missing_conditions']['maxItems']=0
         variants.append(branch)
     transport.schema={'anyOf':variants}
+    window=_task_window(state)
     messages=[{'role':'system','content':SYSTEM}, {'role':'user','content':json.dumps({
-        'messages':state['messages'],'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
+        'messages':window,'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,
         'app_capabilities':APP_CAPABILITIES,
         'tools':planner_catalog(TOOLS),
-        'authoritative_request':user[-1],'user_quote_catalog':user},ensure_ascii=False)}]
+        'authoritative_request':user[-1],'user_quote_catalog':[m['content'] for m in window if m.get('role')=='user']},ensure_ascii=False)}]
     reply=transport.invoke(messages)
     content=reply.get('content') if isinstance(reply,dict) else reply.content
     result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=1)

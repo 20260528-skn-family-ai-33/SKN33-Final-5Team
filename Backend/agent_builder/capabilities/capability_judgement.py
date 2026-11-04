@@ -268,9 +268,34 @@ def guard_delivery_revision(result,state):
             'reason':'사용자의 발송 변경 요청과 선택한 도구가 일치하지 않아 재검토가 필요합니다.'}
 
 
+_TASK_REQUEST = re.compile(
+    r'(?:만들어|정리해|저장해|보내|골라|남겨|뽑아|계산해|비교해|합산해|집계해|요약해|예약해|변환해|추출해|분석해)'
+    r'\s*(?:줘|주(?:세요|십시오|시겠어요)|줄래)'
+)
+_CONTINUATION = re.compile(
+    r'원래|기존|다시|그대로|아까|방금|앞서|이전|같은\s*조건|그\s*(?:조건|표|파일|요청|작업|기준|결과)'
+    r'|위\s*(?:조건|내용)|대신|말고|바꿔|수정|취소|철회|빼(?:고|줘)|하지\s*(?:마|말|않)|안\s*해'
+    r'|그만|만\s*(?:해|남겨|하고)|그리고|추가|이어서|(?:결과|파일|형식)(?:으로|로)?도|^(?:네|아니)[\s,.]'
+)
+
+
+def _assessment_messages(state):
+    """Keep follow-ups with their evidence; a new standalone task supplies its own quotes."""
+    messages = state.get('messages', [])
+    if (not messages or messages[-1]['role'] != 'user' or state.get('pending_questions')
+            or state.get('capability_questions') or not any(m['role'] == 'user' for m in messages[:-1])):
+        return messages
+    request = messages[-1]['content'].strip()
+    if len(''.join(request.split())) <= 12 or not _TASK_REQUEST.search(request) or _CONTINUATION.search(request):
+        return messages
+    return messages[-1:]
+
+
 def assess_capability(state,transport):
     faults=input_issues(state)
     if faults:return {'decision':'system_error','issues':faults,'model_calls':0,'allows_execution':False,'allows_generation':False}
+    # The prompt, schema, initial decision and second-pass review must use the same evidence.
+    state = {**state, 'messages': _assessment_messages(state)}
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user:raise ValueError('사용자 요청이 필요합니다.')
     schema=Assessment.model_json_schema()

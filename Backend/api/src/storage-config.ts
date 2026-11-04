@@ -28,9 +28,12 @@ function limit(env:NodeJS.ProcessEnv,key:string,fallback:number,max:number){
  * process count is what must be bounded. Limits apply per server: with several servers on one
  * RDS, budget (sum of general+control over servers)×2 + member-store pools under max_connections.
  * Short ownership calls (heartbeat/interrupt) get their own slots so long runs cannot starve them.
+ * Long model calls and runs may hold only about two thirds of the general slots (long is part of
+ * general, so the budget above does not change); the rest keep schedules and screens moving.
  */
 export function workerLimits(env:NodeJS.ProcessEnv=process.env){
- return {general:limit(env,'A4B_WORKER_MAX_CONCURRENCY',12,64),control:limit(env,'A4B_WORKER_CONTROL_CONCURRENCY',4,32),
+ const general=limit(env,'A4B_WORKER_MAX_CONCURRENCY',12,64);
+ return {general,long:Math.max(1,general-Math.max(1,Math.floor(general/3))),control:limit(env,'A4B_WORKER_CONTROL_CONCURRENCY',4,32),
   queueMs:limit(env,'A4B_WORKER_QUEUE_TIMEOUT_MS',60000,600000)};
 }
 

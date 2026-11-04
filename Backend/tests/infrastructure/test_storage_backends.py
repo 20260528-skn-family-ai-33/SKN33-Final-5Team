@@ -365,6 +365,51 @@ def test_migration_copies_workspaces_once(tmp_path, monkeypatch, postgres_app_co
         database.use_conninfo(None)
 
 
+def test_nul_in_stored_json_does_not_break_status_queries(backend, tmp_path):
+    """PostgreSQL ->> fails on \\u0000 anywhere in the document; recovery and claims must not."""
+    store, _, agent_id = seed(workspace(tmp_path))
+    try:
+        run = {'id': uid(), 'agent_id': agent_id, 'status': 'running', 'created_at': '2026-11-03T00:00:00+00:00',
+               'outputs': {'node': {'text': 'a\x00\x00b \\u0000 \\\x00'}}}
+        store.save_test(run)
+        RunLifecycle(store).recover()
+        recovered = store.test(run['id'])
+        assert recovered['status'] == 'failed'
+        assert recovered['outputs']['node']['text'] == 'a\x00\x00b \\u0000 \\\x00'  # the stored document is unchanged
+        schedules = Schedules(store)
+        job = schedules.enqueue_test(agent_id, 0)
+        store.db.execute('UPDATE builder_schedule_jobs SET json=? WHERE {ws} AND id=?',
+                         (json.dumps({**job, 'note': 'a\x00b'}, ensure_ascii=False), job['id']))
+        store.db.commit()
+        [claimed] = schedules.claim_due(datetime.now(timezone.utc) + timedelta(seconds=30))
+        assert claimed['id'] == job['id'] and claimed['note'] == 'a\x00b'
+    finally:
+        store.close()
+
+
+def test_nul_in_string_channel_can_be_checkpointed(backend, tmp_path):
+    from typing import TypedDict
+    from langgraph.graph import StateGraph, START, END
+
+    class State(TypedDict):
+        text: str
+    store = Storage(workspace(tmp_path))
+    connection = checkpoint_connection(store)
+    try:
+        graph = StateGraph(State)
+        graph.add_node('step', lambda state: {'text': state['text'] + '\x00end'})
+        graph.add_edge(START, 'step')
+        graph.add_edge('step', END)
+        compiled = graph.compile(checkpointer=checkpointer(connection))
+        config = {'configurable': {'thread_id': str(uuid.uuid4())}}
+        compiled.invoke({'text': 'a\x00b'}, config)
+        kept = '�' if backend == 'postgres' else '\x00'  # jsonb cannot hold NUL
+        assert compiled.get_state(config).values['text'] == f'a{kept}b{kept}end'
+    finally:
+        connection.close()
+        store.close()
+
+
 def test_cancel_during_claim_never_runs_the_cancelled_job(backend, tmp_path):
     """A test job cancelled while claim_due holds it must not be returned as running."""
     import threading

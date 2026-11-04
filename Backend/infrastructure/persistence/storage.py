@@ -6,6 +6,8 @@ from workflow_engine.catalog.registry import TOOLS
 
 __all__=['Storage','enable_wal']
 
+NUL_ESCAPE=r'(?<!\\)((?:\\\\)*)\\u0000'
+
 # SQLite only. PostgreSQL tables come from infrastructure/db/migrations, applied explicitly.
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS registered_tools(id TEXT NOT NULL,version INTEGER NOT NULL,module_path TEXT NOT NULL,schema_json TEXT NOT NULL,PRIMARY KEY(id,version));
@@ -39,7 +41,12 @@ class Storage:
         if self.dialect=='sqlite':self.db.executescript(script)
     def begin_write(self):self.db.begin_write()
     def json_text(self,column,key):
-        return f"{column}->>'{key}'" if self.dialect=='postgres' else f"json_extract({column},'$.{key}')"
+        if self.dialect!='postgres':return f"json_extract({column},'$.{key}')"
+        # ->> decodes every string in the document and \u0000 has no text form, so one NUL in
+        # a run's output would fail the whole query. Only this read drops it; the row keeps it.
+        # An even run of backslashes before it is literal text: \\u0000 is not an escape.
+        text=f"{column}::text"
+        return f"(CASE WHEN position('\\u0000' in {text})>0 THEN regexp_replace({text},'{NUL_ESCAPE}','\\1','g') ELSE {text} END)::json->>'{key}'"
     def close(self): self.db.close()
     def session(self,id):
         row=self.db.execute('SELECT json,revision FROM builder_sessions WHERE {ws} AND id=?',(id,)).fetchone()

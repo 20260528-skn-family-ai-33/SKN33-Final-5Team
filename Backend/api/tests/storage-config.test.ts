@@ -4,7 +4,7 @@ import pg from 'pg';
 import {storageConfig,workerLimits,checkBuilderDatabase} from '../src/storage-config';
 import {spawnSync} from 'node:child_process';
 import {API_ROOT} from '../src/paths';
-import {WorkerSlots} from '../src/worker-slots';
+import {WorkerSlots,WorkerBusyError,createWorkerLanes} from '../src/worker-slots';
 import {PostgresCheckpointSaver} from '../src/graph-checkpointer';
 import {createAgentGraph,orchestrateWorkflow} from '../src/agents';
 
@@ -24,8 +24,9 @@ test('PostgreSQL business data uses the member-store address and TLS rules',()=>
  assert.equal((storageConfig({...env,A4B_DATABASE_TLS_SERVER_NAME:'a4b.abc.rds.amazonaws.com'}) as any).databaseServerName,'a4b.abc.rds.amazonaws.com');
 });
 test('worker limits default to 12 general and 4 control processes and reject unbounded values',()=>{
- assert.deepEqual(workerLimits({}),{general:12,control:4,queueMs:60000});
- assert.deepEqual(workerLimits({A4B_WORKER_MAX_CONCURRENCY:'3',A4B_WORKER_CONTROL_CONCURRENCY:'2'}),{general:3,control:2,queueMs:60000});
+ assert.deepEqual(workerLimits({}),{general:12,long:8,control:4,queueMs:60000});
+ assert.deepEqual(workerLimits({A4B_WORKER_MAX_CONCURRENCY:'3',A4B_WORKER_CONTROL_CONCURRENCY:'2'}),{general:3,long:2,control:2,queueMs:60000});
+ assert.equal(workerLimits({A4B_WORKER_MAX_CONCURRENCY:'1'}).long,1);
  for(const value of ['0','-1','1.5','abc','65'])assert.throws(()=>workerLimits({A4B_WORKER_MAX_CONCURRENCY:value}),/A4B_WORKER_MAX_CONCURRENCY/);
  assert.throws(()=>workerLimits({A4B_WORKER_CONTROL_CONCURRENCY:'33'}),/A4B_WORKER_CONTROL_CONCURRENCY/);
 });
@@ -41,6 +42,20 @@ test('worker slots never exceed the limit, hand over in order and time out',asyn
  await assert.rejects(slots.acquire(20,'서버에서 처리 중인 작업이 많습니다.'),/작업이 많습니다/);
  assert.deepEqual(slots.size,{active:2,waiting:0});
  releaseC();releaseD();assert.deepEqual(slots.size,{active:0,waiting:0});
+});
+test('long actions cannot take the slots short requests need',async()=>{
+ const lanes=createWorkerLanes({general:3,long:2,control:1,queueMs:30});
+ const first=await lanes.acquire('test'),second=await lanes.acquire('message');
+ await assert.rejects(lanes.acquire('scheduled_run'),WorkerBusyError);
+ assert.deepEqual(lanes.general.size,{active:2,waiting:0});// a long action waiting for its lane holds no general slot
+ const short=await lanes.acquire('claim_due');
+ await assert.rejects(lanes.acquire('recover_runs'),WorkerBusyError);// all three general slots are now taken
+ const control=await lanes.acquire('heartbeat_run');
+ first();first();// releasing twice frees one long and one general slot only
+ assert.deepEqual(lanes.long.size,{active:1,waiting:0});assert.deepEqual(lanes.general.size,{active:2,waiting:0});
+ const third=await lanes.acquire('retry_run');
+ for(const release of [second,third,short,control])release();
+ assert.deepEqual(lanes.general.size,{active:0,waiting:0});assert.deepEqual(lanes.long.size,{active:0,waiting:0});assert.deepEqual(lanes.control.size,{active:0,waiting:0});
 });
 
 // Runs only against the disposable test database prepared by the Python storage tests

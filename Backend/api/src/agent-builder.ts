@@ -16,7 +16,7 @@ import {parseCsv} from './binary';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {readXlsx,extractPdfText} from './document-files';
 import {storageConfig,workerLimits} from './storage-config';
-import {WorkerSlots} from './worker-slots';
+import {createWorkerLanes} from './worker-slots';
 
 export function builderReportBytes(artifact:{content:string;encoding?:string}):Buffer {
  return Buffer.from(artifact.content,artifact.encoding==='base64'?'base64':'utf8');
@@ -32,19 +32,13 @@ export function builderWorkerTimeout(action:string,env:NodeJS.ProcessEnv=process
  const configured=Number(execution?env.A4B_WORKER_TIMEOUT_MS:localDesign?env.A4B_DESIGN_TIMEOUT_MS:undefined);
  return Number.isFinite(configured)&&configured>0&&configured<=1800000?configured:fallback;
 }
-// Ownership calls (renewing or ending a run's lease) must never queue behind long runs.
-const CONTROL_ACTIONS=new Set(['heartbeat_run','interrupt_run']);
-let workerSlots:{general:WorkerSlots;control:WorkerSlots;queueMs:number}|null|undefined;
+let workerLanes:ReturnType<typeof createWorkerLanes>|null|undefined;
 /** With RDS each worker process holds connections, so processes are capped (SQLite: unlimited, as before). */
 function acquireWorkerSlot(action:string):Promise<()=>void>{
- if(workerSlots===undefined){
-  const limits=storageConfig().kind==='postgres'?workerLimits():undefined;
-  workerSlots=limits?{general:new WorkerSlots(limits.general),control:new WorkerSlots(limits.control),queueMs:limits.queueMs}:null;
- }
- if(!workerSlots)return Promise.resolve(()=>{});
- return (CONTROL_ACTIONS.has(action)?workerSlots.control:workerSlots.general).acquire(workerSlots.queueMs,'서버에서 처리 중인 작업이 많습니다. 잠시 후 다시 시도하세요.');
+ if(workerLanes===undefined)workerLanes=storageConfig().kind==='postgres'?createWorkerLanes(workerLimits()):null;
+ return workerLanes?workerLanes.acquire(action):Promise.resolve(()=>{});
 }
-export function resetWorkerSlots(){workerSlots=undefined;}
+export function resetWorkerSlots(){workerLanes=undefined;}
 export async function builderWorker(payload:Record<string,unknown>):Promise<any>{
  const python=agentPython();
  if(!existsSync(python))throw new Error('Deep Agents 실행 환경이 없습니다. Backend/scripts/setup-agent-demo.sh를 먼저 실행하세요.');

@@ -22,10 +22,18 @@ def checkpoint_connection(storage):
     return sqlite3.connect(storage.path,check_same_thread=False,timeout=10)
 
 
+def postgres_saver(connection):
+    from langgraph.checkpoint.postgres import PostgresSaver
+    class NulSafeSaver(PostgresSaver):
+        """PostgresSaver keeps plain string channels in jsonb, which cannot hold NUL. Other values go to blobs."""
+        def put(self,config,checkpoint,metadata,new_versions):
+            values={k:v.replace('\x00','�') if isinstance(v,str) else v for k,v in checkpoint['channel_values'].items()}
+            return super().put(config,{**checkpoint,'channel_values':values},metadata,new_versions)
+    return NulSafeSaver(connection)
+
+
 def checkpointer(connection):
-    if isinstance(connection,PostgresCheckpointConnection):
-        from langgraph.checkpoint.postgres import PostgresSaver
-        return PostgresSaver(connection.connection)
+    if isinstance(connection,PostgresCheckpointConnection):return postgres_saver(connection.connection)
     from langgraph.checkpoint.sqlite import SqliteSaver
     return SqliteSaver(connection)
 

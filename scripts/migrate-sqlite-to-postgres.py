@@ -177,7 +177,7 @@ def copy_python_checkpoints(conninfo, workspace, business):
     """Replays SqliteSaver checkpoints through PostgresSaver so its own format and blobs are used."""
     import psycopg
     from psycopg.rows import dict_row
-    from langgraph.checkpoint.postgres import PostgresSaver
+    from infrastructure.persistence.checkpoints import postgres_saver
     tuples = python_checkpoints(business)
     if not tuples:
         return 0
@@ -185,7 +185,7 @@ def copy_python_checkpoints(conninfo, workspace, business):
         connection.execute("SELECT set_config('a4b.workspace_id',%s,false)", (workspace,))
         existing = {(r['thread_id'], r['checkpoint_ns'], r['checkpoint_id']) for r in
                     connection.execute('SELECT thread_id,checkpoint_ns,checkpoint_id FROM a4b_builder.checkpoints')}
-        saver = PostgresSaver(connection)
+        saver = postgres_saver(connection)
         count = 0
         for item in tuples:
             conf = item.config['configurable']

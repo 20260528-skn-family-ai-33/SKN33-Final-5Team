@@ -484,9 +484,9 @@ npm run demo
 | --- | --- |
 | `A4B_STORAGE` | `sqlite`(기본). 작업 공간 폴더마다 `agent-builder.sqlite`를 씁니다. `EASYFLOW_PUBLIC_URL`이 localhost가 아니면 시작을 거부합니다. 운영은 `postgres`입니다. |
 | `A4B_DATABASE_URL`·`A4B_DATABASE_CA_FILE`·`A4B_DATABASE_TLS_SERVER_NAME` | `postgres`일 때 회원 저장소와 같은 값을 씁니다. TLS 규칙도 같아서 항상 인증서와 호스트 이름을 검증하고(`sslmode=verify-full`), 주소에 SSL 옵션을 넣으면 거부합니다. |
-| `A4B_WORKER_MAX_CONCURRENCY` | `postgres`일 때 서버 한 대에서 동시에 띄우는 Python 작업 수입니다. 기본 12이고, 넘치면 대기열에서 기다립니다. |
+| `A4B_WORKER_MAX_CONCURRENCY` | `postgres`일 때 서버 한 대에서 동시에 띄우는 Python 작업 수입니다. 기본 12이고, 넘치면 대기열에서 기다립니다. 모델 호출과 실행처럼 오래 걸리는 작업은 이 중 약 3분의 2(기본 8)까지만 쓰므로, 예약 확인과 화면 요청이 막히지 않습니다. |
 | `A4B_WORKER_CONTROL_CONCURRENCY` | 실행 소유권 갱신·중단(heartbeat·interrupt) 전용 상한입니다. 기본 4이고, 일반 작업 대기열에 막히지 않습니다. |
-| `A4B_WORKER_QUEUE_TIMEOUT_MS` | 빈 자리를 기다리는 최대 시간입니다. 기본 60000ms이고, 넘기면 "처리 중인 작업이 많습니다" 오류를 냅니다. |
+| `A4B_WORKER_QUEUE_TIMEOUT_MS` | 빈 자리를 기다리는 최대 시간입니다. 기본 60000ms이고, 넘기면 "처리 중인 작업이 많습니다" 오류를 냅니다. 예약 실행은 실패로 기록하지 않고, lease가 끝난 뒤(최대 5분) 다시 시도합니다. |
 | `A4B_DATABASE_POOL_MAX` | Python 작업 하나가 역할(업무 데이터·체크포인트)마다 여는 연결 수입니다. 기본 1이라 작업 하나가 연결을 최대 2개 씁니다. |
 
 **연결 수.** Python 작업은 요청마다 새 프로세스로 뜨기 때문에, 연결 수는 풀 크기가 아니라 프로세스 수로 정해집니다. 서버 한 대의 최대 연결 수는 `(A4B_WORKER_MAX_CONCURRENCY + A4B_WORKER_CONTROL_CONCURRENCY) × 2 + Node 풀 8`입니다(회원 저장소 5 + 어시스턴트 체크포인트 3). 기본값으로는 40입니다. 서버가 여러 대면 모든 서버의 합이 RDS `max_connections`에서 관리용 여유분을 뺀 값보다 작아야 합니다.

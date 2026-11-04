@@ -579,6 +579,8 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                     continue  # the named range is dropped; leave the operator to a question
                 tail = message['content'][match.end():match.end() + 16]
                 negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
+                if key == 'filter.operator':
+                    negated = _negates_named_comparison(message['content'], match.end())
                 token = re.sub(r'\s+', ' ', match.group(1))
                 value = None if negated else mapping.get(token, mapping.get(token.upper()))
                 refs = [e for e in catalog if e.get('turn') == turn and match.group(0) in e['quote']]
@@ -588,6 +590,17 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                 per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
+        # A later explicit answer resolves a negated comparison even after the
+        # pending question is cleared. Replaying the original conflict must not
+        # invalidate the user's confirmed operator during audit or the next turn.
+        answer = text.strip().rstrip('.!?。')
+        if result.get('filter.operator', {}).get('status') == 'conflict' and answer in CHOICES['filter.operator']:
+            refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user']
+            if refs:
+                per_turn['filter.operator'] = {
+                    'key': 'filter.operator', 'status': 'specified', 'value': CHOICES['filter.operator'][answer],
+                    'evidence_ids': [refs[0]['id']], 'evidence': [refs[0]], 'extraction': 'literal_policy_rule',
+                }
         in_schedule = 'schedule.frequency' in result or 'schedule' in (state.get('condition_ledger') or {}).get('operations', [])
         for key, value, span in schedule_literals(text, follow_up=in_schedule):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
@@ -734,6 +747,19 @@ def _excludes_named_range(text, end):
     """True when the operator word ending at `end` names rows to drop, not rows to keep."""
     clause = _RANGE_CLAUSE_END.split(text[end:end + 20], maxsplit=1)[0]
     return bool(_RANGE_EXCLUSION.search(clause))
+
+
+_COMPARISON_NEGATION = re.compile(
+    r'^\s*(?:이|가|은|는)?\s*(?:아니|아닌|아닐|아님|아닙|않|(?:하)?지\s*(?:않|마|말))')
+
+
+def _negates_named_comparison(text, end):
+    """A directly negated comparison is not evidence for its positive operator.
+
+    Do not infer a complement: the condition checker must ask, while the audit
+    can preserve a draft whose comparison was already interpreted by the planner.
+    """
+    return bool(_COMPARISON_NEGATION.match(text[end:]))
 
 
 _WRITTEN_OPERATOR = {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}
@@ -917,7 +943,10 @@ def _grounded_enum(key, value, quote):
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
         matches = list(re.finditer(aliases[value], quote))
-        if value in ('gt', 'gte', 'lt', 'lte') and any(_excludes_named_range(quote, m.end()) for m in matches):
+        if value in ('gt', 'gte', 'lt', 'lte') and any(
+            _excludes_named_range(quote, m.end()) or _negates_named_comparison(quote, m.end())
+            for m in matches
+        ):
             return False
         return bool(matches)
     return True

@@ -470,6 +470,7 @@ def explicit_policies(state, catalog):
     earlier explicit policies. Conflicting policies in one turn are not guessed.
     """
     result = {}
+    previous_operator = (state.get('condition_ledger') or {}).get('slots', {}).get('filter.operator', {})
     patterns = [
         ('output.format', r'(CSV|JSON)\s*(?:파일|산출물)?\s*(?:으로|로|저장|생성|만들)',
          {'CSV': 'csv', 'JSON': 'json'}),
@@ -509,8 +510,11 @@ def explicit_policies(state, catalog):
                 'evidence_ids':[refs[0]['id']],'evidence':[refs[0]],'extraction':'literal_column_rule'}
         for key, pattern, mapping in patterns:
             for match in re.finditer(pattern, message['content'], re.IGNORECASE):
-                if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
-                    continue  # the named range is dropped; leave the operator to a question
+                excludes_range = key == 'filter.operator' and _excludes_named_range(text, match.end())
+                if excludes_range and 'filter.operator' not in result and not any(
+                        e.get('source_id') == 'user' and e.get('turn', turn) < turn
+                        for e in previous_operator.get('evidence', [])):
+                    continue  # An initial exclusion still asks which range to keep.
                 tail = message['content'][match.end():match.end() + 16]
                 negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
                 token = re.sub(r'\s+', ' ', match.group(1))
@@ -518,11 +522,11 @@ def explicit_policies(state, catalog):
                 refs = [e for e in catalog if e.get('turn') == turn and match.group(0) in e['quote']]
                 if not refs: continue
                 old = per_turn.get(key)
-                conflict = negated or bool(old and old['value'] != value)
+                conflict = excludes_range or negated or bool(old and old['value'] != value)
                 per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
-        for key, value, span in schedule_literals(text):
+        for key, value, span in schedule_literals(text, revise_time='schedule.frequency' in result):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
             if not refs: continue
             conflict = value == 'conflict'
@@ -593,8 +597,20 @@ _RANGE_EXCLUSION = re.compile(r'빼|제외|말고|지우|지워|삭제|버리|�
 _MONTHLY_SCHEDULE = re.compile(r'매월|매달|매년|월간\s*(?:예약|실행|반복)|cron|크론', re.I)
 _DAILY = re.compile(r'매일|날마다|하루\s*한\s*번|daily', re.I)
 _WEEKLY = re.compile(r'매주|주마다|[월화수목금토일]요일\s*마다|매\s*[월화수목금토일]요일|weekly', re.I)
-_SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
+_SCHEDULE_NEGATED = re.compile(r'\s*(?:(?:예약|실행|반복)\s*)?(?:은|는|을|를)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
+_UTC_OFFSET = re.compile(r'(?<![A-Za-z])UTC\s*([+−-])\s*(\d{1,2})(?::?(\d{2}))?(?![\d:])', re.I)
+
+
+def _monthly_requested(text):
+    return any(not _SCHEDULE_NEGATED.match(text[m.end():]) for m in _MONTHLY_SCHEDULE.finditer(text))
 _TIME = re.compile(r'(오전|오후|아침|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?!간)(?:\s*(\d{1,2})\s*분|\s*(반))?')
+_REVISION_ACTION = r'(?:(?:바꿔|옮겨|조정해)(?:\s*(?:줘|주세요))?|(?:변경|수정)\s*(?:해(?:\s*(?:줘|주세요))?|(?:을\s*)?바랍니다))(?=[.!?,\s]|$)'
+_TIME_REVISION = re.compile(_TIME.pattern + r'\s*(?:으로|로)\s*' + _REVISION_ACTION)
+_TIMEZONE_REVISION = re.compile(
+    r'시간대\s*(?:를|는)?\s*(?P<zone>.+?)\s*(?:으로|로)\s*' + _REVISION_ACTION, re.I)
+_SCHEDULE_EDIT = re.compile(
+    r'(?P<field>시간대|예약\s*(?:시각|시간)|실행\s*(?:시각|시간)|예약)\s*(?:을|를|은|는)?'
+    r'[^.!?\n]{0,60}?' + _REVISION_ACTION)
 _WEEKDAY_NAMES = '월화수목금토일'
 _TIMEZONES = [(r'한국\s*(?:시간|표준시)|서울\s*시간|KST', 'Asia/Seoul'), (r'(?<![A-Za-z])UTC(?![A-Za-z])|협정\s*세계시', 'UTC')]
 
@@ -603,14 +619,14 @@ def last_user_request(state):
     return next((m['content'] for m in reversed(state.get('messages', [])) if m.get('role') == 'user'), '')
 
 
-def schedule_literals(text):
+def schedule_literals(text, *, revise_time=False):
     """Code-read daily/weekly schedule values with the span that proves each one.
 
     Only written values are returned: "오전 8시" is 8, "오후 6시" is 18, but a bare "8시" could be
     08:00 or 20:00 and is left for a question. Two different values for one key are a conflict.
     A monthly/yearly recurrence yields nothing here; validate_conditions records it as unsupported.
     """
-    if _MONTHLY_SCHEDULE.search(text):
+    if _monthly_requested(text):
         return []
     found = {}
     def add(key, value, span):
@@ -622,27 +638,58 @@ def schedule_literals(text):
         for m in pattern.finditer(text):
             if not _SCHEDULE_NEGATED.match(text[m.end():m.end() + 8]):
                 add('schedule.frequency', value, m.group(0))
-    if 'schedule.frequency' not in found:
-        return []
-    if found['schedule.frequency'][0] == 'weekly':
+    revisions = list(_TIME_REVISION.finditer(text)) if revise_time else []
+    timezone_revision = _TIMEZONE_REVISION.search(text) if revise_time else None
+    if revise_time and not timezone_revision:
+        # A recognized timezone can be the entire target, without a field label.
+        for pattern in (_UTC_OFFSET.pattern, *(pattern for pattern, _ in _TIMEZONES)):
+            timezone_revision = re.search(
+                r'(?P<zone>' + pattern + r')\s*(?:으로|로)\s*' + _REVISION_ACTION, text, re.I)
+            if timezone_revision:
+                break
+    edit = _SCHEDULE_EDIT.search(text) if revise_time else None
+    if edit and not revisions and not timezone_revision and 'schedule.frequency' not in found:
+        field = 'timezone' if edit['field'] == '시간대' else 'hour'
+        add('schedule.' + field, 'conflict', edit.group())
+    has_frequency = 'schedule.frequency' in found
+    if not has_frequency and not revisions and not timezone_revision:
+        return [(key, value, span) for key, (value, span) in found.items()]
+    if found.get('schedule.frequency', (None,))[0] == 'weekly':
         for m in re.finditer(r'([월화수목금토일])요일', text):
             add('schedule.weekday', _WEEKDAY_NAMES.index(m.group(1)), m.group(0))
-    for m in _TIME.finditer(text):
+    for m in revisions or (_TIME.finditer(text) if has_frequency else []):
         period, hour, minute, half = m.group(1), int(m.group(2)), m.group(3), m.group(4)
         if hour > 23 or (minute and int(minute) > 59):
+            if revisions:
+                add('schedule.hour', 'conflict', m.group(0))
             continue
         if period in ('오후', '저녁', '밤') and hour < 12:
             hour += 12
         elif period in ('오전', '아침', '새벽') and hour == 12:
             hour = 0
         elif not period and 1 <= hour <= 12:
+            if revisions:
+                add('schedule.hour', 'conflict', m.group(0))
+                add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
             continue  # 08:00 or 20:00 is the user's decision
         add('schedule.hour', hour, m.group(0))
         add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
+    zone_text = timezone_revision['zone'] if timezone_revision else text
+    for marker in re.finditer(r'(?<![A-Za-z])UTC\s*[+−-]', zone_text, re.I):
+        if not _UTC_OFFSET.match(zone_text, marker.start()):
+            add('schedule.timezone', 'conflict', marker.group())
+    for offset in _UTC_OFFSET.finditer(zone_text):
+        hour = int(offset[2])
+        zone = 'conflict'
+        if hour <= (14 if offset[1] == '+' else 12) and int(offset[3] or 0) == 0:
+            zone = 'UTC' if hour == 0 else f"Etc/GMT{'-' if offset[1] == '+' else '+'}{hour}"
+        add('schedule.timezone', zone, offset.group())
     for pattern, zone in _TIMEZONES:
-        m = re.search(pattern, text, re.I)
-        if m:
+        m = re.search(pattern, zone_text, re.I)
+        if m and not (zone == 'UTC' and re.match(r'UTC\s*[+−-]', zone_text[m.start():], re.I)):
             add('schedule.timezone', zone, m.group(0))
+    if timezone_revision and 'schedule.timezone' not in found:
+        add('schedule.timezone', 'conflict', timezone_revision['zone'])
     return [(key, value, span) for key, (value, span) in found.items()]
 
 
@@ -666,7 +713,7 @@ def _grounded_enum(key, value, quote):
     if key == 'schedule.frequency':
         # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
         # match; a monthly/yearly one never grounds daily or weekly.
-        if _MONTHLY_SCHEDULE.search(quote):
+        if _monthly_requested(quote):
             return False
         return bool((_DAILY if value == 'daily' else _WEEKLY).search(quote))
     if key == 'filter.operator':
@@ -816,8 +863,15 @@ def validate_conditions(raw, state, catalog):
     # written is asked. A monthly/yearly recurrence is a known unsupported schedule.
     if 'schedule.frequency' in literals and 'schedule' not in operations:
         operations.append('schedule')
-    if _MONTHLY_SCHEDULE.search(last_user_request(state)) and '월간 예약' not in proposal['unsupported_actions']:
-        proposal['unsupported_actions'].append('월간 예약')
+    latest_request = last_user_request(state)
+    if _monthly_requested(latest_request):
+        if '월간 예약' not in proposal['unsupported_actions']:
+            proposal['unsupported_actions'].append('월간 예약')
+    elif _MONTHLY_SCHEDULE.search(latest_request):
+        proposal['unsupported_actions'] = [
+            action for action in proposal['unsupported_actions']
+            if not re.fullmatch(r'(?:월간|매월|매달|매년)\s*(?:(?:자동|예약|실행|반복)\s*)*(?:예약|실행|반복)', action.strip())
+        ]
     if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
         # Do not lose a requested filter simply because the model labelled the
         # request as deduplication; ask for absent conditions rather than guess.
@@ -854,6 +908,12 @@ def validate_conditions(raw, state, catalog):
         unresolved.append('input.table')
     issues = input_issues(state)
     last_user = state.get('messages', [])[latest]['content'] if latest >= 0 else ''
+    # A prohibition on an unsupported recurrence is not a cancellation
+    # of the rest of this request.
+    for match in reversed(list(_MONTHLY_SCHEDULE.finditer(last_user))):
+        negation = _SCHEDULE_NEGATED.match(last_user[match.end():])
+        if negation:
+            last_user = last_user[:match.start()] + last_user[match.end() + negation.end():]
     cancelled = bool(re.search(r'그만\s*(해|할)|예약.{0,8}(취소|하지\s*마)|작업.{0,8}취소', last_user))
     decision = ('system_error' if issues else 'manual_review' if cancelled else 'deferred' if resolution and resolution['deferred'] else 'unsupported' if proposal['unsupported_actions'] else
                 'manual_review' if scope_review else
@@ -960,8 +1020,8 @@ def plan_issues(ledger, draft):
             if key.startswith('schedule.') and spec.get(key.split('.', 1)[1]) != value:
                 problems.append('확정된 예약 조건이 설정과 다릅니다: ' + key)
     if 'output.format' in slots:
-        outputs = [n for n in nodes if n['tool'] in ('write_result', 'export_result')]
-        if not outputs or any(n['settings'].get('format') != slots['output.format'] for n in outputs):
+        from workflow_engine.catalog.output_contracts import final_report_matches
+        if not final_report_matches(draft, slots['output.format']):
             problems.append('확정된 출력 형식이 결과 저장 설정과 다릅니다.')
     if slots.get('sort.policy') == 'none' and any(plan.get('sort') for plan in plans):
         problems.append('정렬하지 말라는 확정 조건과 실행 설정이 다릅니다.')

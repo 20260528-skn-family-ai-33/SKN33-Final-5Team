@@ -15,6 +15,10 @@ def internal_table_question(question, state, draft):
     if not (any(r.get('kind') == 'table' for r in state.get('resources', [])) or
             re.search(r'CSV|JSON|표\s*파일', users, re.I)):
         return False
+    for resource in state.get('resources', []):
+        for column in resource.get('columns', []):
+            if re.search(r'(?<!\w)' + re.escape(column) + r'`?\s*(?:열|컬럼)', question, re.I):
+                return False
     if re.search(r'(?:파일|자료)\s*(?:의\s*)?(?:실제\s*)?(?:자료\s*)?ID|file[_ ]?id', question, re.I):
         return True
     # Explicit custom destinations are not silently replaced with local reports.

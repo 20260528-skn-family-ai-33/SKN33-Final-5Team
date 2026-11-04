@@ -78,3 +78,67 @@ def test_monthly_request_is_unsupported_and_never_weekly():
 def test_requests_without_a_schedule_are_unchanged():
     result = ledger('비용이 50만원 이상인 행만 JSON으로 저장해줘. 빈 비용은 그대로 둬. 중복은 유지해.')
     assert 'schedule' not in result['operations'] and result['decision'] == 'ready'
+
+
+@pytest.mark.parametrize('edit, hour', [
+    ('오후 6시로 바꿔줘', 18),
+    ('오후 6시로 변경해주세요. 나머지는 그대로.', 18),
+    ('6시로 바꿔줘', None),
+    ('오후 6시로 변경 바랍니다.', 18),
+    ('오전 9시에서 오후 6시로 옮겨줘.', 18),
+    ('예약 시각을 저녁 식사 후로 바꿔줘.', None),
+])
+def test_followup_changes_hour_and_preserves_daily_frequency(edit, hour):
+    s = state('한국 시간 매일 오전 9시에' + TAIL)
+    s['resources'] = [TABLE]
+    s['condition_ledger'] = checked(s, proposal(s, FILTER))
+    s['messages'].append({'role': 'user', 'content': edit})
+    result = checked(s, proposal(s, {}))
+    assert result['decision'] == ('ready' if hour is not None else 'clarify')
+    assert result['slots']['schedule.hour']['value'] == hour
+    assert result['slots']['schedule.frequency']['value'] == 'daily'
+
+
+def test_utc_plus_nine_is_a_fixed_offset():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    result = ledger('UTC+9 기준 매일 오전 9시에' + TAIL)
+    assert result['decision'] == 'ready'
+    zone = ZoneInfo(result['slots']['schedule.timezone']['value'])
+    assert datetime(2026, 11, 4, 9, tzinfo=zone).utcoffset() == timedelta(hours=9)
+
+
+@pytest.mark.parametrize('action', ['월간 예약', '매월 예약 실행', '월간 자동 실행'])
+def test_prohibiting_monthly_schedule_does_not_block_filter(action):
+    s = state('비용이 10원 이상인 행만 CSV로 저장해줘. 매월 예약은 하지 마')
+    raw = proposal(s, {**FILTER, 'filter.value': '10', 'output.format': 'csv',
+                       'missing.policy': None, 'duplicate.policy': None})
+    raw['conditions'] = [c for c in raw['conditions'] if c['value'] is not None]
+    raw['unsupported_actions'] = [action]
+    result = checked(s, raw)
+    assert result['decision'] == 'ready'
+    assert result['operations'] == ['filter']
+
+
+
+def test_malformed_utc_offset_is_not_partially_accepted():
+    result = ledger('UTC+9:5 기준 매일 오전 9시에' + TAIL)
+    assert result['decision'] == 'clarify'
+    assert result['slots']['schedule.timezone']['value'] is None
+
+
+@pytest.mark.parametrize('edit, zone', [
+    ('시간대를 UTC+9로 바꿔줘.', 'Etc/GMT-9'),
+    ('한국 시간으로 바꿔줘.', 'Asia/Seoul'),
+    ('시간대를 UTC+9:5로 바꿔줘.', None),
+    ('시간대를 모르는 지역으로 바꿔줘.', None),
+])
+def test_timezone_followup_preserves_hour(edit, zone):
+    s = state('UTC 기준 매일 오전 9시에' + TAIL)
+    s['resources'] = [TABLE]
+    s['condition_ledger'] = checked(s, proposal(s, FILTER))
+    s['messages'].append({'role': 'user', 'content': edit})
+    result = checked(s, proposal(s, {}))
+    assert result['decision'] == ('ready' if zone else 'clarify')
+    assert result['slots']['schedule.timezone']['value'] == zone
+    assert result['slots']['schedule.hour']['value'] == 9

@@ -28,3 +28,59 @@ def ensure_requested_output(draft,format):
     if producer is not terminal:nodes.insert(nodes.index(terminal),output)
     else:nodes.append(output)
     draft['tool_ids']=list(dict.fromkeys(n['tool'] for n in nodes))
+
+
+def final_report_matches(draft, requested_format):
+    """Check the last artifact on every complete execution path."""
+    from workflow_engine.catalog.canonical import parse_arguments
+    from workflow_engine.catalog.registry import node_ports, uses_operation
+
+    workflow = draft.get('workflow') or {}
+    nodes = {node.get('id'): node for node in workflow.get('nodes', [])}
+    if None in nodes or workflow.get('entry') not in nodes:
+        return False
+    successors = {node_id: [] for node_id in nodes}
+    for edge in workflow.get('edges', []):
+        if edge['source'] not in nodes or edge['target'] not in nodes:
+            return False
+        successors[edge['source']].append(edge['target'])
+
+    # An artifact with an unknown format still replaces the prior artifact.
+    unknown_format = object()
+    formats = {}
+    for node_id, node in nodes.items():
+        settings = node['settings']
+        operation = settings.get('operation')
+        if not operation and node['tool'] == 'write_result':
+            formats[node_id] = settings.get('format') or draft.get('execution_plan', {}).get('output_format')
+        elif not operation and node['tool'] == 'export_result':
+            formats[node_id] = settings.get('format')
+        elif node['tool'] == 'export_result' and operation in ('write_csv', 'write_json'):
+            formats[node_id] = operation.removeprefix('write_')
+        elif node['tool'] == 'export_result' and operation == 'serialize':
+            try:
+                value = parse_arguments(settings).get('format')
+                formats[node_id] = value if isinstance(value, str) else unknown_format
+            except ValueError:
+                formats[node_id] = unknown_format
+        elif uses_operation(node) and 'asset' in node_ports(node)[1]:
+            formats[node_id] = unknown_format
+
+    pending = [(workflow.get('entry'), None)]
+    visited = set()
+    reached_end = False
+    while pending:
+        node_id, previous = pending.pop()
+        if node_id not in nodes:
+            return False
+        current = formats.get(node_id, previous)
+        if (node_id, current) in visited:
+            continue
+        visited.add((node_id, current))
+        if successors[node_id]:
+            pending.extend((target, current) for target in successors[node_id])
+        elif current != requested_format:
+            return False
+        else:
+            reached_end = True
+    return reached_end

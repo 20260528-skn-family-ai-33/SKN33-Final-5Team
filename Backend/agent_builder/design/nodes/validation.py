@@ -10,7 +10,7 @@ def validate_node(state):
     rejected = [i for i, question in enumerate(questions) if internal_table_question(question, state, draft)]
     if rejected:
         issues.append('내부 자료 ID·기본 저장 위치는 사용자 질문이 아닙니다. 연결 자료 ID 또는 실행 시 입력 계약과 서버 reports 저장을 사용해 초안을 수정하세요.')
-        draft['questions'] = [q for i, q in enumerate(questions) if i not in rejected]
+        questions = draft['questions'] = [q for i, q in enumerate(questions) if i not in rejected]
         draft['question_options'] = [options for i, options in enumerate(draft.get('question_options', [])) if i not in rejected]
     from agent_builder.conditions.condition_readiness import literal_condition_issues
     issues.extend(literal_condition_issues(state))
@@ -46,6 +46,23 @@ def validate_node(state):
         issues.extend(workflow_errors(draft['workflow'],draft['tool_ids'],state['resources'],draft['execution_plan']))
     elif state.get('required_node_refs'):
         issues.append('선택한 노드를 연결할 워크플로우가 필요합니다.')
+    from agent_builder.design.output_policy import requested_report_formats
+    from workflow_engine.catalog.output_contracts import final_report_matches
+    output_formats = requested_report_formats(texts)
+    if output_formats and not draft['questions'] and not draft['unsupported']:
+        # Reply review exports approved replies through its own decision flow.
+        uses_review_queue = any(node['tool'] == 'reply_review' for node in (draft.get('workflow') or {}).get('nodes', []))
+        if len(output_formats) > 1:
+            questions.append('결과 파일은 CSV와 JSON 중 어떤 형식으로 저장할까요?')
+        elif not uses_review_queue:
+            output_format = next(iter(output_formats))
+            if draft.get('workflow'):
+                matches = final_report_matches(draft, output_format)
+            else:
+                matches = ('write_result' in draft['tool_ids']
+                           and draft['execution_plan']['output_format'] == output_format)
+            if not matches:
+                issues.append('요청한 ' + output_format.upper() + ' 결과를 저장하는 단계가 모든 실행 경로의 최종 출력을 만들어야 합니다.')
     if not draft.get('workflow') and any(id in draft['tool_ids'] for id in ['filter_sort','write_result']) and 'read_table' not in draft['tool_ids']:issues.append('자료 처리·결과 생성 전에 표 파일 읽기 도구가 필요합니다.')
     filters=[n for n in (draft.get('workflow') or {}).get('nodes',[]) if n['tool']=='filter_sort' and not n['settings'].get('operation')]
     plans=[n['settings'].get('execution_plan') or draft['execution_plan'] for n in filters]

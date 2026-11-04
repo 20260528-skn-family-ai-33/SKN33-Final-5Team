@@ -63,3 +63,21 @@ def test_an_answer_to_the_question_confirms_the_operator():
           'condition_answers': [{'turn': 2, 'question_ids': [question['id']]}]}
     second = checked(s2, {'operations': [], 'conditions': [], 'unsupported_actions': []})
     assert second['slots']['filter.operator']['value'] == 'gte'
+
+
+def test_reversing_previous_filter_never_restores_old_comparison():
+    s = state('비용 100만원 미만인 행만 남겨줘.' + TAIL)
+    s['condition_ledger'] = checked(s, proposal(s, plan('lt')))
+    s['messages'].append({'role': 'user', 'content': '이제 비용 100만원 미만인 행은 빼줘.'})
+    result = checked(s, proposal(s, plan('gte')))
+    assert result['decision'] == 'clarify'
+    assert result['slots']['filter.operator']['value'] is None
+
+
+def test_filter_edit_retires_model_grounded_operator_even_if_replacement_omits_it():
+    s = state('비용이 100만원과 같은 행만 남겨줘.' + TAIL)
+    s['condition_ledger'] = checked(s, proposal(s, plan('eq')))
+    s['messages'].append({'role': 'user', 'content': '이제 비용 100만원 미만인 행은 빼줘.'})
+    result = checked(s, proposal(s, {}))
+    assert result['decision'] == 'clarify'
+    assert result['slots']['filter.operator']['value'] is None

@@ -50,3 +50,10 @@ def test_document_extraction_field_questions_are_unchanged():
     s['capability_assessment']['tool_ids'] = ['read_document', 'extract_information', 'export_result']
     r = validate_node(s)
     assert r['draft']['questions'] == ['어떤 항목을 추출할까요?']
+
+
+def test_file_id_column_question_is_not_internal():
+    s = question_state(['file_id 열에서 어떤 값을 남길까요?'])
+    s['resources'][0]['columns'].append('file_id')
+    result = validate_node(s)
+    assert result['draft']['questions'] == ['file_id 열에서 어떤 값을 남길까요?']

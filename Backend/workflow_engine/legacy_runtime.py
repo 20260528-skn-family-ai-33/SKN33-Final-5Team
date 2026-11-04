@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from infrastructure.llm.errors import public_error
 from infrastructure.llm.deep_agents import create_deep_agent
 from infrastructure.llm.model_factory import create_chat_model
 from langchain_core.tools import tool

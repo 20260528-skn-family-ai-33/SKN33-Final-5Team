@@ -23,7 +23,7 @@ export async function analyzeBuilderDocument(bytes:Uint8Array,format:string):Pro
  try{
   await new Promise<void>((accept,reject)=>{
    const child=spawn(documentPython(),[backendPath('documents/parsers/analyze_document.py'),source,output,'--work-dir',dir],{
-    cwd:PROJECT_ROOT,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe'],env:{...process.env,HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1'}});
+    cwd:PROJECT_ROOT,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe'],env:{...process.env,A4B_DOCUMENT_TIMEOUT_MS:String(timeout),HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1'}});
    let settled=false;
    const finish=(error?:Error)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):accept();};
    const timer=setTimeout(()=>{

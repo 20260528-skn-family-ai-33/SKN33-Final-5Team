@@ -5,6 +5,8 @@ from workflow_engine.workflow import workflow_errors
 
 def validate_node(state):
     draft=AgentDraft.model_validate({k:v for k,v in state['draft'].items() if k!='node_snapshots'}).model_dump();issues=list(state.get('semantic_issues',[]))
+    from agent_builder.design.sorting import sort_request_issues
+    issues.extend(sort_request_issues(state, draft))
     from agent_builder.conditions.condition_readiness import literal_condition_issues
     issues.extend(literal_condition_issues(state))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']

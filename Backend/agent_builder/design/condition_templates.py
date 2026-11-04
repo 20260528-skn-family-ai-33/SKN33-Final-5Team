@@ -1,5 +1,4 @@
 """Explicit experimental templates; not general natural-language planning."""
-import re
 
 from contracts.models import AgentDraft, ExecutionPlan, NodeSettings, ScheduleSpec
 
@@ -10,8 +9,8 @@ def compile_conditions(state):
         raise ValueError('단일 대표 업무의 확정 조건이 필요합니다.')
     operation=ledger['operations'][0]
     slots={key:item['value'] for key,item in ledger['slots'].items() if item['status']=='specified'}
-    text='\n'.join(m['content'] for m in state.get('messages',[]) if m['role']=='user')
-    if re.search(r'오름차순|내림차순',text):
+    from agent_builder.design.sorting import sorting_requested
+    if sorting_requested(state):
         raise ValueError('정렬이 포함된 요청은 이 대표 템플릿의 검증 범위 밖입니다.')
     plan=ExecutionPlan(filters=[],sort=[],match='all',missing_policy=slots.get('missing.policy','ask'),
         duplicate_policy=slots.get('duplicate.policy','keep'),duplicate_field=slots.get('duplicate.field'),

@@ -156,16 +156,43 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
     return check
 
 
+
+def _confirmed_schedule(state, ledger):
+    if not state.get('condition_enforced') or 'schedule' not in ledger.get('operations', []):
+        return None
+    slots = ledger.get('slots', {})
+    keys = ('frequency', 'timezone', 'hour', 'minute', 'weekday')
+    required = keys if slots.get('schedule.frequency', {}).get('value') == 'weekly' else keys[:-1]
+    if any(slots.get('schedule.' + key, {}).get('status') != 'specified' for key in required):
+        return None
+    from contracts.models import ScheduleSpec
+    spec = {key: slots.get('schedule.' + key, {}).get('value') for key in keys}
+    if spec['frequency'] == 'daily':
+        spec['weekday'] = None
+    spec = ScheduleSpec(**spec).model_dump()
+    draft = state.get('draft') or {}
+    if draft.get('schedule') == spec and draft.get('report_destination') == 'reports':
+        return None
+    # Schedule reports use the server's fixed reports destination.
+    return {**deepcopy(draft), 'schedule': spec, 'report_destination': 'reports'}
+
+
 def audit_conditions(state):
     ledger = state.get('condition_ledger')
     if not ledger or ledger.get('decision') != 'ready':
         return {}
+    filled = _confirmed_schedule(state, ledger)
+    if filled is not None:
+        state = {**state, 'draft': filled}
     from agent_builder.conditions.condition_readiness import literal_condition_issues
     from agent_builder.design.planner_constraints import table_tool_issues
     issues = literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
     update = {'trace': state.get('trace', []) + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
                'issues': issues, 'enforced': state.get('condition_enforced', False)}]}
+    if filled is not None:
+        update['draft'] = filled
+        update['trace'][-1]['schedule_filled'] = filled['schedule']
     if state.get('condition_enforced') and issues:
         update['semantic_issues'] = list(dict.fromkeys(state.get('semantic_issues', []) + issues))
         if state['draft'].get('questions') or state['draft'].get('unsupported'):

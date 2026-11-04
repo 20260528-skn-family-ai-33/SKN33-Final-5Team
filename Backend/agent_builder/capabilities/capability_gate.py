@@ -54,6 +54,10 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    from agent_builder.design.sorting import sort_request_issues
+    sorting = sort_request_issues(state, state.get('draft') or {})
+    if sorting:
+        raise ValueError(sorting[0])
     issue = draft_delivery_issue(state, state.get('draft') or {})
     if issue:
         raise ValueError(issue)

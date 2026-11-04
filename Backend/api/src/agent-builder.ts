@@ -232,7 +232,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
    payload.asset_id=data.assetId;
   }
-  if(['message','test','resume_run'].includes(workerAction)){
+  if(workerAction==='test'){
+   const content=data.content===undefined?'':data.content;
+   if(typeof content!=='string'||content.length>4000)throw new Error('실행 요청은 4,000자 이하의 텍스트로 입력하세요.');
+   payload.content=content.trim()?content:'';
+  }else if(['message','resume_run'].includes(workerAction)){
    if(typeof data.content!=='string'||!data.content.trim()||data.content.length>4000)throw new Error('설명은 1~4,000자로 입력하세요.');payload.content=data.content;
   }
   if(workerAction==='message'&&data.questionId!==undefined){
@@ -241,6 +245,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
    const current=await builderWorker({action:workerAction==='test'?'agent':['resume_run','retry_run'].includes(workerAction)?'run':'session',id:data.id});
+   if(workerAction==='test'&&!payload.content&&current.request_required)throw new Error('이 워크플로우에 필요한 실행 요청을 입력하세요.');
    const config=workerAction==='test'?current.agent.config:['resume_run','retry_run'].includes(workerAction)?current.run.config_snapshot:null;
    const needsModel=builderNeedsModel(config,workerAction==='test'?current.agent.workflow_dependencies:current.run?.workflow_dependencies);
    if(needsModel){

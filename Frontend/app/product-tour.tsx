@@ -38,7 +38,7 @@ export function tourSteps(scope: string): Step[] {
     if (scope === 'run')
         return [
             { target: 'saved-workflows', title: '실행할 워크플로우를 선택하세요', text: '저장한 흐름을 선택하면 실행에 사용할 요청과 자료를 넣는 화면이 열립니다.' },
-            { target: 'run-input', title: '이번에 처리할 요청을 입력하세요', text: '저장한 흐름에 전달할 내용입니다. 새 파일을 첨부하면 이번 실행에 사용합니다.' },
+            { target: 'run-input', title: '이번 실행의 요청과 자료를 확인하세요', text: '추가 요청이 선택인 경우에는 비워 두고 저장한 설정으로 실행할 수 있습니다. 새 파일을 첨부하면 이번 실행에 사용합니다.' },
             { target: 'run-submit', title: '실행하고 결과를 확인하세요', text: '실행 버튼을 누르면 저장한 설정으로 처리합니다. 완료 후 결과, 근거와 단계 기록을 확인할 수 있습니다. 안내 중에는 실제 실행하지 않습니다.' },
             { target: 'run-result', title: '결과와 처리 기록을 살펴보세요', text: '표나 답변을 확인하고, 필요한 경우 원문 근거와 처리 단계를 펼쳐보세요. 다운로드 버튼이 있으면 결과 파일도 받을 수 있습니다.' },
         ];

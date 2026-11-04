@@ -48,6 +48,12 @@ async function setup(search='',stored:Record<string,string>={},override?:(path:s
  return {root,calls,flush,close:async()=>{await act(async()=>{root.unmount();await new Promise(resolve=>setTimeout(resolve,0));});globalThis.fetch=originalFetch;}};
 }
 const buttons=()=>Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
+function capturePicker(write:(blob:Blob)=>void,onPick?:(options:any)=>void) {
+ Object.defineProperty(dom.window,'showSaveFilePicker',{configurable:true,value:(options:any)=>{
+  onPick?.(options);
+  return Promise.resolve({createWritable:async()=>({write,close:async()=>{},abort:async()=>{}})});
+ }});
+}
 function button(text:string){const b=buttons().find(b=>b.textContent?.trim()===text);assert.ok(b,'Missing button '+text);return b;}
 async function click(b:Element){await act(async()=>{(b as HTMLElement).click();await tick();});}
 function field(label:string){const l=Array.from(document.querySelectorAll('label')).find(l=>l.textContent?.startsWith(label));assert.ok(l,'Missing field '+label);const input=l.querySelector('input,textarea,select');assert.ok(input);return input as HTMLInputElement;}
@@ -56,6 +62,142 @@ async function submit(form:HTMLFormElement){await act(async()=>{form.dispatchEve
 
 test('DOM: service link overrides old session and renders the requested execution screen',async()=>{
  const h=await setup('?service=A',{'a4b-builder-session':'old'});try{assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.ok(document.querySelector('.screen-run'));assert.equal(localStorage.getItem('a4b-builder-session'),null);assert.equal(h.calls.some(c=>c.path.includes('/session?')),false);}finally{await h.close();}
+});
+test('DOM: historical XLSX chooses its destination before fetching the authenticated report and preserves unsent input',async()=>{
+ const previous={id:'previous',status:'succeeded',answer:'완료',steps:[],config_snapshot:{name:'영수증 정리'},
+  rows:[{field:'결제 금액',value:null,status:'not_found_or_unverified'}],report_path:'reports/previous.xlsx',
+  artifact:{name:'0123456789abcdef0123456789abcdef.xlsx',mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',content:'STALE'}};
+ const bytes=Uint8Array.from([80,75,3,4,255]);
+ const h=await setup('?service=A&run=previous',{},path=>{
+  if(path.includes('/agent?'))return snapshot(A,[{...previous,id:'latest'},previous]);
+  if(path==='/api/agent-builder/report?id=previous')return new Response(bytes,{headers:{'Content-Type':previous.artifact.mime}});
+ });
+ try{
+  await input(document.querySelector('textarea[data-tour="run-input"]') as HTMLTextAreaElement,'보존할 입력');
+  let saved:Blob|undefined;
+  capturePicker(blob=>{saved=blob;},options=>{
+   assert.equal(options.suggestedName,'영수증 정리 결과.xlsx');assert.deepEqual(options.types[0].accept,{[previous.artifact.mime]:['.xlsx']});
+   assert.equal(h.calls.some(c=>c.path.includes('/report?')),false);
+  });
+  await click(button('엑셀 파일 다운로드'));
+  assert.ok(document.body.textContent?.includes('원문에서 확인하지 못해 빈칸으로 둔 항목: 결제 금액'));
+  assert.ok(saved);assert.deepEqual(new Uint8Array(await saved.arrayBuffer()),bytes);
+  assert.equal(location.search,'?service=A&run=previous');assert.equal((document.querySelector('textarea[data-tour="run-input"]') as HTMLTextAreaElement).value,'보존할 입력');
+  Object.defineProperty(dom.window,'showSaveFilePicker',{value:async()=>{throw new dom.window.DOMException('cancel','AbortError');}});
+  await click(button('엑셀 파일 다운로드'));
+  assert.equal(h.calls.filter(c=>c.path.includes('/report?')).length,1);
+  assert.equal(document.querySelector('[role=alert]'),null);
+ }finally{await h.close();}
+});
+test('DOM: run history draws the saved version and design opens at reading size in either direction',async()=>{
+ const flow=(label:string)=>({entry:'read',nodes:[
+  {id:'read',tool:'read_document',label,settings:{},bindings:[]},
+  {id:'out',tool:'create_spreadsheet',label:'엑셀 만들기',settings:{},bindings:[]}
+ ],edges:[{source:'read',target:'out',branch:'next'}]});
+ const current={...A,version:2,config:{...A.config,workflow:flow('새 자료 읽기')}};
+ const previous={id:'previous',status:'succeeded',agent_version:1,answer:'확인할 항목이 하나 있어요.',rows:[],
+  config_snapshot:{workflow:flow('이전 영수증 읽기')},steps:[{node:'read',status:'completed',label:'읽기'}]};
+ const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(current,[previous]):undefined);
+ try{
+  const diagram=document.querySelector('.as-test-result [aria-label="워크플로우 흐름"]');
+  assert.ok(diagram);
+  assert.ok(diagram.textContent.includes('이전 영수증 읽기'));
+  assert.ok(!diagram.textContent.includes('새 자료 읽기'));
+  assert.ok(document.querySelector('.as-test-result')?.textContent?.includes(previous.answer));
+  await click(button('설계'));
+  const cards=()=>Array.from(document.querySelectorAll<HTMLElement>('.as-flow-canvas .as-flow-node'));
+  assert.equal(cards()[0].style.left,cards()[1].style.left);
+  assert.notEqual(cards()[0].style.top,cards()[1].style.top);
+  assert.equal(document.querySelector('.as-zoom span')?.textContent,'100%');
+  await click(button('가로로 보기'));
+  assert.equal(cards()[0].style.top,cards()[1].style.top);
+  assert.notEqual(cards()[0].style.left,cards()[1].style.left);
+  await click(cards()[1]);
+  assert.ok(document.querySelector('.as-node-inspector')?.textContent?.includes('엑셀 만들기'));
+ }finally{await h.close();}
+});
+test('DOM: fallback save lets users rename an inline CSV and downloads identical bytes without leaving the page',async()=>{
+ const csv='\ufeff이름,값\r\n가,1';
+ const run={id:'csv',status:'succeeded',answer:'완료',steps:[],rows:[],
+  artifact:{name:'추출_결과.csv',mime:'text/csv',encoding:'base64',content:Buffer.from(csv).toString('base64')}};
+ const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(A,[run]):undefined);
+ try{
+  const links:{url:string;name:string;target:string}[]=[];
+  dom.window.HTMLAnchorElement.prototype.click=function(){links.push({url:this.href,name:this.download,target:this.target});};
+  await click(button('CSV 파일 다운로드'));
+  assert.equal(field('파일 이름').value,'추출_결과');await input(field('파일 이름'),'11월 영수증.csv');
+  await click(button('저장'));
+  assert.equal(links.length,1);assert.equal(links[0].name,'11월 영수증.csv');assert.equal(links[0].target,'_blank');
+  assert.deepEqual(Buffer.from(await (await originalFetch(links[0].url)).arrayBuffer()),Buffer.from(csv));
+  assert.equal(document.querySelector('[role=dialog]'),null);assert.equal(location.search,'?service=A');
+ }finally{await h.close();}
+});
+test('DOM: a saved receipt workflow starts with just an attached file when Run is clicked',async()=>{
+ const receipt={...A,config:{...A.config,tool_ids:['read_document','extract_information','create_spreadsheet']}};
+ const requirement={kind:'document',fields:[],required_before_start:true,ready:false,issues:['실행할 문서를 연결하세요.']};
+ const h=await setup('?service=A',{},path=>{
+  if(path.includes('/agent?'))return {...snapshot(receipt),request_required:false,input_requirements:[requirement]};
+  if(path.endsWith('/run_upload'))return {asset:{id:'receipt-file',name:'영수증.pdf',kind:'document'}};
+  if(path.endsWith('/test'))return {id:'receipt-run',status:'succeeded',answer:'완료',steps:[],rows:[]};
+ });
+ try {
+  const run=button('워크플로우 실행');
+  assert.ok(field('추가 요청 (선택)'));assert.equal(run.disabled,true);
+  assert.match(document.querySelector('.as-run-files')?.textContent||'',/실행할 문서를 연결/);
+  const picker=document.querySelectorAll<HTMLInputElement>('input[type=file]')[2];
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['receipt'],'영수증.pdf')]});
+  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const deadline=Date.now()+3000;
+  while(run.disabled){assert.ok(Date.now()<deadline,'File did not enable Run');await h.flush();}
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/test')).length,0);
+  await click(run);
+  assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/test')).map(c=>c.body),
+   [{id:'A',content:'',fileIds:['receipt-file']}]);
+ }finally{await h.close();}
+});
+test('DOM: saved documents satisfy saved extraction inputs; an unbound inquiry or confirmation still needs an answer',async()=>{
+ const requirement={kind:'document',fields:[],required_before_start:true,ready:true};
+ const stored={...snapshot(A),request_required:false,input_requirements:[requirement]};
+ const optional=await setup('?service=A',{},path=>path.includes('/agent?')?stored:undefined);
+ try{assert.equal(button('워크플로우 실행').disabled,false);}finally{await optional.close();}
+ const mixed={...stored,agent:{...A,config:{...A.config,tool_ids:['read_document','reply_review']}},
+  request_required:true};
+ const review=await setup('?service=A',{},path=>path.includes('/agent?')?mixed:undefined);
+ try{
+  assert.equal(button('워크플로우 실행').disabled,true);
+  await input(field('고객 문의'),'환불이 가능한가요?');assert.equal(button('워크플로우 실행').disabled,false);
+ }finally{await review.close();}
+ const waiting={...stored,tests:[{id:'interrupted',status:'needs_input',answer:'승인할까요?',question:{question:'승인할까요?'},steps:[],rows:[]}]};
+ const resume=await setup('?service=A',{},path=>path.includes('/agent?')?waiting:undefined);
+ try{
+  assert.equal(button('답변하고 이어 실행').disabled,true);
+  await input(field('확인 질문에 답변'),'네');assert.equal(button('답변하고 이어 실행').disabled,false);
+ }finally{await resume.close();}
+});
+test('DOM: an incompatible replacement blocks a receipt run until removed; a file with document capability works',async()=>{
+ const saved={id:'original',kind:'document',name:'원래 영수증.pdf'};
+ const requirement={kind:'document',required_before_start:true,ready:true,fields:[],file_ids:[saved.id]};
+ const h=await setup('?service=A',{},(path,body)=>{
+  if(path.includes('/agent?'))return {...snapshot(A),request_required:false,resources:[saved],input_requirements:[requirement]};
+  if(path.endsWith('/run_upload'))return {asset:{id:body.fileName,kind:'table',name:body.fileName,
+   capabilities:body.fileName==='분석된 표.xlsx'?['table','document']:['table']}};
+ });
+ try{
+  const run=button('워크플로우 실행');
+  const picker=document.querySelectorAll<HTMLInputElement>('input[type=file]')[2];
+  async function attach(name:string) {
+   Object.defineProperty(picker,'files',{configurable:true,value:[new dom.window.File(['table'],name)]});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+   const deadline=Date.now()+3000;
+   while(!document.querySelector('[aria-label="'+name+' 제거"]')){assert.ok(Date.now()<deadline);await h.flush();}
+  }
+  assert.match(document.querySelector('.as-run-files small')?.textContent||'',/원래 영수증.pdf/);
+  await attach('표.csv');assert.equal(run.disabled,true);
+  assert.match(document.querySelector('.as-run-files small')?.textContent||'',/문서를 첨부/);
+  await click(document.querySelector('[aria-label="표.csv 제거"]')!);assert.equal(run.disabled,false);
+  await attach('분석된 표.xlsx');assert.equal(run.disabled,false);
+  assert.equal(h.calls.some(c=>c.path.endsWith('/test')),false);
+ }finally{await h.close();}
 });
 test('DOM: design attachment offers a new upload or an existing file by id',async()=>{
  const asset={id:'mine',name:'기준표.csv',kind:'table',format:'csv',row_count:1,columns:['가격'],profile:{},preview:[]};
@@ -243,15 +385,15 @@ if(process.env.A4B_FRONTEND_REVIEW_URL&&process.env.A4B_FRONTEND_REVIEW_IDS){
  async function until(predicate:()=>boolean){const deadline=Date.now()+20000;while(!predicate()){assert.ok(Date.now()<deadline,'Timed out waiting for real API / React DOM');await act(async()=>{await new Promise(r=>setTimeout(r,30));});}}
  test('DOM + real API: selected workflow computes actual sums and exposes a download',async()=>{
   const h=await setup('?service='+ids['브라우저 검증 - 합계'],{},live);
-  try{await until(()=>document.querySelector('h1')?.textContent==='브라우저 검증 - 합계');const priorTitle=document.querySelector('.as-result-title')?.textContent;await click(button('워크플로우 실행'));await until(()=>!!document.querySelector('.as-result-title')&&!document.querySelector('.as-busy'));assert.notEqual(document.querySelector('.as-result-title')?.textContent,priorTitle);assert.match(document.querySelector('.as-result-title')?.textContent||'',/실행 완료/);const cells=Array.from(document.querySelectorAll('.as-test-result td')).map(c=>c.textContent);assert.ok(cells.includes('30'));assert.ok(cells.includes('40'));const reportLink=document.querySelector('a[href*="report?id="]') as HTMLAnchorElement|null;
-   let payload:any[];
-   if(reportLink){const response=await originalFetch(base+reportLink.getAttribute('href'));assert.equal(response.status,200);assert.match(response.headers.get('Content-Disposition')||'',/attachment/);payload=await response.json() as any[];}
-   else{const downloadButton=buttons().find(b=>b.textContent?.includes('결과 다운로드'));assert.ok(downloadButton);const downloads:{url:string;name:string}[]=[];dom.window.HTMLAnchorElement.prototype.click=function(){downloads.push({url:this.href,name:this.download});};await click(downloadButton);assert.equal(downloads.length,1);assert.match(downloads[0].name,/json$/);payload=await (await originalFetch(downloads[0].url)).json() as any[];}
+  try{await until(()=>document.querySelector('h1')?.textContent==='브라우저 검증 - 합계');const priorTitle=document.querySelector('.as-result-title')?.textContent;await click(button('워크플로우 실행'));await until(()=>!!document.querySelector('.as-result-title')&&!document.querySelector('.as-busy'));assert.notEqual(document.querySelector('.as-result-title')?.textContent,priorTitle);assert.match(document.querySelector('.as-result-title')?.textContent||'',/실행 완료/);const cells=Array.from(document.querySelectorAll('.as-test-result td')).map(c=>c.textContent);assert.ok(cells.includes('30'));assert.ok(cells.includes('40'));let saved:Blob|undefined;
+   capturePicker(blob=>{saved=blob;});
+   await click(button('JSON 파일 다운로드'));await until(()=>!!saved);
+   const payload=JSON.parse(await saved!.text()) as any[];
    assert.equal(payload.length,2);assert.ok(payload.some(row=>Object.values(row).includes(30)));assert.ok(payload.some(row=>Object.values(row).includes(40)));}finally{await h.close();}
  });
- test('DOM + real API: missing input shows preflight error without a false completion',async()=>{
+ test('DOM + real API: missing input shows file guidance before execution',async()=>{
   const h=await setup('?service='+ids['브라우저 검증 - 파일 필요'],{},live);
-  try{await until(()=>document.querySelector('h1')?.textContent==='브라우저 검증 - 파일 필요');await click(button('워크플로우 실행'));await until(()=>!!document.querySelector('[role=alert]'));assert.match(document.querySelector('[role=alert]')?.textContent||'',/자료|표|파일/);assert.equal(document.querySelector('.as-result-title'),null);}finally{await h.close();}
+  try{await until(()=>document.querySelector('h1')?.textContent==='브라우저 검증 - 파일 필요');assert.equal(button('워크플로우 실행').disabled,true);assert.match(document.querySelector('.as-run-files small')?.textContent||'',/자료|표|파일/);assert.equal(h.calls.filter(c=>c.path.endsWith('/test')).length,0);assert.equal(document.querySelector('.as-result-title'),null);}finally{await h.close();}
  });
  test('DOM + real API: paused schedule runs now using its managed source',async()=>{
   const h=await setup('?service='+ids['브라우저 검증 - 예약'],{},live);

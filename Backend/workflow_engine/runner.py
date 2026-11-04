@@ -14,6 +14,7 @@ from workflow_engine.workflow import workflow_errors
 from verification.reply_review.state import collect_reviews, is_review_report_artifact
 from workflow_engine.executors.dispatch import execute_node
 from workflow_engine.catalog.registry import uses_operation
+from workflow_engine.run_answer import public_run_answer
 
 
 class RunState(TypedDict,total=False):
@@ -148,7 +149,10 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         resume_pending=bool(forced_run_id and graph.get_state(cfg).values)
         # Persist each checkpoint before the next node starts so a killed worker
         # can resume its input and completed steps without losing or replaying them.
-        result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':request,'file_ids':file_ids or [],'messages':[{'role':'user','content':request}],'customer_message':request,'reply_draft':reply_draft},cfg,durability='sync')
+        request=run['request']  # A reclaimed start uses the input persisted by its original owner.
+        # Run Now can use the saved schedule instructions, separately from real customer input.
+        task_prompt=request or (config.get('instructions','') if config.get('schedule') else '')
+        result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':task_prompt,'file_ids':run['file_ids'],'messages':[{'role':'user','content':request}] if request else [],'customer_message':request,'reply_draft':run.get('reply_draft')},cfg,durability='sync')
         snapshot=graph.get_state(cfg);state=snapshot.values;outputs=state.get('outputs',{})
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]
         from workflow_engine.execution_path import artifact_output_ids
@@ -162,6 +166,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         result_rows=next((v['records'] if 'records' in v else v['table']['rows'] for v in reversed(list(outputs.values())) if 'records' in v or 'table' in v),[])
         evidence=[e for v in outputs.values() for e in v.get('evidence',[])]+[r['evidence'] for r in (records[-1] if records else []) if r.get('evidence')]
         run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=artifacts[-1] if artifacts else None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
+        run['answer'] = public_run_answer(run['answer'], outputs)
     except Exception as error:
         from infrastructure.llm.errors import public_error
         state=(graph.get_state(cfg).values or {}) if graph else {}

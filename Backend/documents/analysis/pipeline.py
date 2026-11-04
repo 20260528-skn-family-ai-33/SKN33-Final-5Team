@@ -4,6 +4,7 @@ No engine confidence is treated as document accuracy. Native values are never
 overwritten by OCR, and conflicting parser candidates remain reviewable.
 """
 import json
+import math
 import os
 import re
 import time
@@ -30,6 +31,50 @@ def ocr_scale(size):
     return 1 if long_side >= OCR_UPSCALE_BELOW else min(OCR_MAX_SCALE, -(-OCR_UPSCALE_BELOW // long_side))
 
 
+def uncovered_ink_bands(picture, regions):
+    """Find substantial horizontal strips which contain detail but were never sent to an engine."""
+    from PIL import ImageChops
+
+    width, height = picture.size
+    cursor = 0
+    bands = []
+    intervals = sorted((int(r['bbox']['values'][1]), int(r['bbox']['values'][3]) + 1) for r in regions)
+    for top, bottom in [*intervals, (height, height)]:
+        top = min(height, max(0, top))
+        if top - cursor >= max(18, height * .10):
+            sample = picture.crop((0, cursor, width, top)).convert('L')
+            sample.thumbnail((384, 192))
+            # Horizontal contrast along several scan lines filters out blank margins and gradients.
+            shifts = ImageChops.difference(sample, ImageChops.offset(sample, 1, 0))
+            ink = shifts.point(lambda v: int(v >= 32)).tobytes()
+            w = sample.width
+            detailed_rows = sum(sum(ink[row + 1:row + w]) >= max(5, w // 30) for row in range(0, len(ink), w))
+            if detailed_rows >= 3:
+                bands.append((cursor, top))
+        cursor = min(height, max(cursor, bottom))
+    return bands
+
+
+def valid_ocr_box(box):
+    return (isinstance(box, (tuple, list)) and len(box) == 4
+            and all(isinstance(value, (int, float)) and math.isfinite(value) for value in box)
+            and box[0] < box[2] and box[1] < box[3])
+
+
+def unread_ocr_bands(result, bands, scale):
+    """Credit only bands containing a located, legible OCR piece in the scaled input."""
+    texts = result.get('rec_texts') or []
+    boxes = result.get('rec_boxes') or []
+    scores = result.get('rec_scores') or []
+    if len(texts) != len(boxes) or len(texts) != len(scores):
+        return bands
+    centers = []
+    for text, box, score in zip(texts, boxes, scores):
+        if text.strip() and isinstance(score, (int, float)) and .6 <= score <= 1 and valid_ocr_box(box):
+            centers.append((box[1] + box[3]) / (2 * scale))
+    return [(top, bottom) for top, bottom in bands if not any(top <= y < bottom for y in centers)]
+
+
 def ocr_text(result):
     """Join OCR pieces into visual lines using their boxes.
 
@@ -39,7 +84,7 @@ def ocr_text(result):
     detection order is kept.
     """
     texts, boxes = result.get('rec_texts', []), result.get('rec_boxes')
-    if not boxes or len(boxes) != len(texts):
+    if not boxes or len(boxes) != len(texts) or not all(valid_ocr_box(box) for box in boxes):
         return '\n'.join(texts)
     pieces = sorted(((float(b[1]), float(b[3]), float(b[0]), t) for t, b in zip(texts, boxes) if t.strip()),
                     key=lambda p: (p[0] + p[1]) / 2)
@@ -306,26 +351,44 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
         # An image with no usable text/table region would otherwise yield no text at all.
         # Receipt regions scored 0.51-0.54 against the 0.5 threshold, so a slightly worse photo
         # could drop every region; the whole upright image is OCR'd once instead.
-        covered = {j['context']['parent']['id'] for j in ocr_jobs + table_jobs}
+        covered = {}
+        for part in ocr_jobs + table_jobs:
+            covered.setdefault(part['context']['parent']['id'], []).append(part['parent'])
         for job in jobs:
             parent = job['parent']
-            if parent['id'] in covered:
-                continue
-            if len(ocr_jobs) + len(table_jobs) >= max_supplements:
-                review('supplement_limit_reached')
-                break
+            regions = covered.get(parent['id'], [])
+            if regions and fmt not in IMAGE_FORMATS:
+                continue  # Embedded figures and tabular documents have separate coverage policies.
             scale = ocr_scale(job['size'])
             path = work / ('ocr-' + parent['id'] + '.png')
             with Image.open(job['path']) as picture:
+                bands = uncovered_ink_bands(picture, regions) if regions else []
+                if regions and not bands:
+                    continue
+                if len(ocr_jobs) + len(table_jobs) >= max_supplements:
+                    review('supplement_limit_reached')
+                    break
                 resolution = png_resolution(picture)
-                whole = picture.resize((picture.width * scale, picture.height * scale), Image.LANCZOS) if scale > 1 else picture.copy()
+                # Keep page geometry and scale, but mask known lines so the same evidence is not counted twice.
+                if bands:
+                    whole = Image.new('RGB', picture.size, 'white')
+                    for top, bottom in bands:
+                        whole.paste(picture.crop((0, top, picture.width, bottom)), (0, top))
+                else:
+                    whole = picture.copy()
+                if scale > 1:
+                    whole = whole.resize((picture.width * scale, picture.height * scale), Image.LANCZOS)
                 if scale > 1 and resolution:
                     resolution = {'dpi': tuple(v * scale for v in resolution['dpi'])}
                 whole.save(path, **resolution)
-            rule = 'layout_unavailable' if layout_failed else 'no_text_region_detected'
-            result['routing_decisions'].append(dict(phase='supplement', scope=parent['id'], rule=rule, processor='paddleocr'))
-            review('whole_image_ocr_fallback:' + rule)
-            ocr_jobs.append(dict(path=path, parent=parent, context=job, origin=[0, 0], scale=scale))
+            rule = 'uncovered_image_bands' if bands else 'layout_unavailable' if layout_failed else 'no_text_region_detected'
+            decision = dict(phase='supplement', scope=parent['id'], rule=rule, processor='paddleocr')
+            if bands:
+                decision['upright_y_bands'] = bands
+            else:
+                review('whole_image_ocr_fallback:' + rule)
+            result['routing_decisions'].append(decision)
+            ocr_jobs.append(dict(path=path, parent=parent, context=job, origin=[0, 0], scale=scale, bands=bands))
 
     if ocr_jobs:
         try:
@@ -343,6 +406,12 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
                              data={'ocr_scores': output['result'].get('rec_scores', []), 'crop_origin': job['origin'],
                                    'crop_scale': job['scale']})
                 item['parser_version'] = recognized['version']
+                if job.get('bands'):
+                    item['data']['upright_y_bands'] = job['bands']
+                    unread = unread_ocr_bands(output['result'], job['bands'], job['scale'])
+                    if unread:
+                        item['data']['unverified_y_bands'] = unread
+                        review('low_confidence_uncovered_ocr:' + region['id'])
                 result['blocks'].append(item)
                 if not text.strip():
                     review('empty_ocr_region:' + region['id'])

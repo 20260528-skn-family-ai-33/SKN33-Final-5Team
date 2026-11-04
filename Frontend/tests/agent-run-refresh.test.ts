@@ -31,7 +31,7 @@ function harness({scheduled=false,current=run('running'),history=[current],pinne
   selected:{id:'manual-agent',version:1,config:{schedule:scheduled?{frequency:'daily'}:null}},
   testRun:current,history,busy:'',inFlight:{current:false},generation:{current:0},pinnedRun:{current:pinned},
   shouldRefreshAgentRuns,refreshedAgentRun,startAgentRunRefresh,encodeURIComponent,setInterval,clearInterval,
-  setAgentResources:()=>{},setSchedule:()=>{},setSource:()=>{},setJobs:()=>{},
+  applyRunInputs:()=>{},setSchedule:()=>{},setSource:()=>{},setJobs:()=>{},
  };
  const snapshot=(tests:Run[],id=context.selected.id)=>({agent:{...context.selected,id},tests,resources:[],schedule:null,source:null,jobs:[]});
  let load:(path:string)=>Promise<ReturnType<typeof snapshot>>=async()=>snapshot([completed]);

@@ -76,3 +76,18 @@
 .as-receipt-options{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:10px}
 .as-receipt-options label{display:inline-flex;align-items:center;gap:4px}
 .as-receipt-fields .as-field{margin:0 0 10px}
+
+/* The design canvas starts at reading size; fitting the whole graph is an explicit choice. */
+.as-flow-node strong{font-size:17px;line-height:1.3;max-width:100%;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.as-flow-node small,.as-flow-node .as-node-kind{font-size:12px}
+.flow-horizontal .as-flow-node i{top:calc(50% - 4px)}
+.flow-vertical .as-flow-node i{left:calc(50% - 4px);right:auto}
+.flow-vertical .as-port-in{top:-5px}
+.flow-vertical .as-port-out{top:auto;bottom:-5px}
+.as-desktop-canvas{align-items:flex-start}
+.as-test-result{min-width:0}
+
+.as-run-file-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 16px;margin:14px 0}
+.as-run-file-bar>div:first-child{min-width:0;display:grid;gap:3px;overflow-wrap:anywhere}
+.as-run-file-bar small{font-size:12px;color:var(--as-muted)}
+.as-run-file-bar strong{font-size:15px}

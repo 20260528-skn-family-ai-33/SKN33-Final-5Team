@@ -172,12 +172,17 @@ class Storage:
         if self.business:self.business.save_run(run)
     def save_test(self,run):
         self.write_test(run);self.db.commit()
-    def tests(self,agent_id):
+    def _read_test(self,raw):
         from verification.reply_review.decisions import decorate_run
-        return [decorate_run(self,json.loads(r[0])) for r in self.db.execute('SELECT json FROM agent_tests WHERE {ws} AND agent_id=? ORDER BY {seq} DESC LIMIT 20',(agent_id,))]
+        from workflow_engine.run_answer import public_run_answer
+        run=json.loads(raw)
+        if 'answer' in run:
+            run['answer']=public_run_answer(run['answer'],run.get('outputs',{}))
+        return decorate_run(self,run)
+    def tests(self,agent_id):
+        return [self._read_test(r[0]) for r in self.db.execute('SELECT json FROM agent_tests WHERE {ws} AND agent_id=? ORDER BY {seq} DESC LIMIT 20',(agent_id,))]
 
     def test(self,id):
         row=self.db.execute('SELECT json FROM agent_tests WHERE {ws} AND id=?',(id,)).fetchone()
         if not row:raise ValueError('실행을 찾을 수 없습니다.')
-        from verification.reply_review.decisions import decorate_run
-        return decorate_run(self,json.loads(row[0]))
+        return self._read_test(row[0])

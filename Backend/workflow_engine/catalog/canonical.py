@@ -92,6 +92,7 @@ def ports(tool, spec, selected=None):
 # Scalar policies whose domain must be checked before saving, even when table
 # inputs will only be supplied later. The executor still validates actual data.
 ARGUMENT_CONSTRAINTS = {
+ ('filter_sort','filter'):{'predicates':{'type':'array','items':'object','min_items':1},'combine':{'enum':['and','or']}},
  ('join_tables','join'):{'keys':{'type':'array','items':'string','min_items':1},'how':{'enum':['inner','left']},
      'cardinality':{'enum':['one_to_one','many_to_one']},'null_keys':{'enum':['error']},'max_rows':{'type':'positive_integer'}},
  ('join_tables','join_records'):{'keys':{'type':'array','items':'string','min_items':1},
@@ -112,8 +113,19 @@ def validate_constant_domains(tool,operation,args,placeholder_names):
         if 'enum' in rule:valid=value in rule['enum']
         if valid and rule.get('items')=='string':valid=all(isinstance(v,str) for v in value)
         if valid and rule.get('items')=='object':valid=all(isinstance(v,dict) for v in value)
-        if valid and 'min_items' in rule:valid=len(value)>=rule['min_items'] and all(v.strip() for v in value)
+        if valid and 'min_items' in rule:
+            valid=len(value)>=rule['min_items'] and (rule.get('items')!='string' or all(v.strip() for v in value))
         if not valid:raise ValueError(key+' 실행 인자의 허용 규격: '+json.dumps(rule,ensure_ascii=False))
+    if (tool,operation)==('filter_sort','filter') and 'predicates' in args and not placeholder_names(args['predicates']):
+        for predicate in args['predicates']:
+            valid=(isinstance(predicate,dict) and not set(predicate)-{'column','op','value','other_column'}
+                   and isinstance(predicate.get('column'),str) and bool(predicate['column'].strip())
+                   and predicate.get('op') in ('eq','ne','gt','ge','lt','le')
+                   and ('value' in predicate) != ('other_column' in predicate))
+            if valid and 'other_column' in predicate:
+                valid=isinstance(predicate['other_column'],str) and bool(predicate['other_column'].strip())
+            if not valid:
+                raise ValueError('predicates에는 column·op(eq/ne/gt/ge/lt/le)와 value 또는 other_column 하나가 필요합니다. 기본 필터의 field/operator/gte/lte 규격을 섞지 마세요.')
     if (tool,operation)==('create_spreadsheet','create') and 'sheets' in args:
         sheets=args['sheets']
         if isinstance(sheets,dict) and placeholder_names(sheets):return
@@ -150,7 +162,13 @@ def contract(tool, spec):
 
 
 PLANNER_INSTRUCTIONS = '''
+도구마다 native_contract와 operation_contracts는 서로 다른 실행 계약입니다. 한 노드에서 두 계약의 설정·포트를 섞지 않습니다.
+이미 첨부된 표(kind=table)는 read_table의 기본 동작으로 읽습니다. file_ids에 실제 자료 ID를 넣고 bindings=[]로 두면 출력은 table입니다. source나 table_ids로 다시 파싱하거나 자료 ID를 노드 ID로 연결하지 않습니다.
+native_contract가 요청을 지원하면 기본 동작의 settings와 포트를 사용합니다. 확장 동작이 필요하면 해당 operation의 필수 인자·출력 포트만 따릅니다. 인자를 binding으로 연결했다면 arguments_json에 같은 키를 상수로 중복 작성하지 않습니다.
+filter_sort에서 정렬만 요청했다면 execution_plan.filters=[]입니다. 결합의 null_keys=error와 빈 값 오류 정책은 is_empty/not_empty 선별 조건이 아닙니다. 사용자가 빈 행만 선택하거나 빈 행을 제외하라고 요청한 경우에만 해당 선별 조건을 추가합니다. 정렬이나 오류 정책을 구현하려고 임의의 필터를 추가하지 않습니다.
+filter_sort의 확장 operation=filter는 predicates=[{"column":"amount","op":"ge","value":20}], combine="and" 또는 "or"입니다. 기본 실행 조건의 field/operator/gte/lte/match와 섞지 않습니다. 열 비교는 value 대신 other_column 하나만 씁니다.
 56개 업무 도구와 제어·호환 도구는 supported_tools의 실제 계약을 따릅니다.
+finish는 해당 경로의 종료 노드입니다. 뒤에 처리·저장 노드나 다른 다음 경로를 연결하지 않습니다.
 이 앱에서 "화면에 보여줘", "결과를 출력해줘"는 실행 결과 영역에 text/표를 표시한다는 뜻입니다. 화면 종류·웹 브라우저·외부 시스템 중 선택하라고 다시 묻지 않습니다. 사용자가 외부 시스템을 명시한 경우만 별도 도구·연결을 확인합니다. 단순 계산은 formula와 variables가 주어졌으면 즉시 설계하며 출력용 파일이나 추가 역할이 필요하지 않습니다.
 create_spreadsheet.create의 sheets는 [{"name":"Data","table":{"columns":["id","amount"],"rows":[{"id":"A","amount":10}]}}] 형태입니다. 시트의 table 안에 columns와 rows를 지정하며 rows는 열 이름을 키로 하는 행 객체 목록입니다.
 scalar_calculate.evaluate는 수식의 모든 변수 값을 variables에 지정합니다. 예: formula="x*3+2", variables={"x":7}. 수식에 x가 있는데 variables={}이면 실행할 수 없습니다.
@@ -208,6 +226,18 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
                 settings['operation']={'type':'string','enum':[spec['id']]}
                 names=sorted(arguments_spec(identifier,spec))
                 properties={name:{} for name in names}
+                for name,kind in ports(identifier,spec)[0].items():
+                    if kind=='table':
+                        # A predecessor name is not a literal Table. References
+                        # remain explicit and are resolved by the normal executor.
+                        cell={'anyOf':[{'type':'null'},{'type':'boolean'},{'type':'number'},{'type':'string'}]}
+                        literal={'type':'object','properties':{
+                            'columns':{'type':'array','items':{'type':'string'}},
+                            'rows':{'type':'array','items':{'type':'object','additionalProperties':cell}}},
+                            'required':['rows'],'additionalProperties':False}
+                        reference={'type':'object','properties':{'$binding':{'type':'string','enum':[name]}},
+                                   'required':['$binding'],'additionalProperties':False}
+                        properties[name]={'anyOf':[reference,literal]}
                 for name,rule in ARGUMENT_CONSTRAINTS.get((identifier,spec['id']),{}).items():
                     kind=rule.get('type');prop={}
                     if kind=='positive_integer':prop={'type':'integer','minimum':1}
@@ -216,10 +246,18 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
                         prop['items']={'type':rule['items']}
                         if rule['items']=='object':prop['items']['additionalProperties']=True
                     if 'enum' in rule:prop['enum']=rule['enum']
+                    if 'min_items' in rule:prop['minItems']=rule['min_items']
                     properties[name]=prop
                 if identifier=='scalar_calculate':properties['variables']={'type':'object',
                     'properties':{name:{'type':'number'} for name in sorted(variable_names)},
                     'additionalProperties':{'type':'number'}}
+                if (identifier,spec['id'])==('filter_sort','filter'):
+                    common={'column':{'type':'string','minLength':1},'op':{'type':'string','enum':['eq','ne','gt','ge','lt','le']}}
+                    constant={'type':'object','properties':{**deepcopy(common),'value':{}},
+                              'required':['column','op','value'],'additionalProperties':False}
+                    column={'type':'object','properties':{**deepcopy(common),'other_column':{'type':'string','minLength':1}},
+                            'required':['column','op','other_column'],'additionalProperties':False}
+                    properties['predicates']={'type':'array','minItems':1,'items':{'anyOf':[constant,column]}}
                 if (identifier,spec['id'])==('create_spreadsheet','create'):
                     cell={'anyOf':[{'type':'null'},{'type':'boolean'},{'type':'number'},{'type':'string'}]}
                     row={'type':'object','properties':{name:deepcopy(cell) for name in sorted(variable_names)},
@@ -240,19 +278,24 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
     return [variant,projection]
 
 
-def planner_catalog(tools, *, details=False):
+def planner_catalog(tools, *, details=False, native_first=False, discovery=False):
     """Full ID discovery without repeating paths, versions and large descriptions."""
+    if details and discovery:raise ValueError('도구 발견 요약과 상세 실행 계약은 별도 조회하세요.')
     result=[]
     for tool in tools:
         item={k:tool[k] for k in ('id','name')}
-        item['description']=tool['description'][:120]
+        item['description']=tool['description'][:80 if discovery else 120]
         # Union ports across different operations are not a node contract.
         # Native ports remain discoverable; exact operation ports are inspected.
-        if tool.get('execution_status')=='native_ready' or not tool.get('operation_contracts'):
+        if not discovery and (tool.get('execution_status')=='native_ready' or not tool.get('operation_contracts')):
             item.update(input_ports=tool['input_ports'],output_ports=tool['output_ports'])
+        if not discovery and tool.get('execution_status')=='native_ready':
+            item['native_contract'] = {'operation': None, 'arguments_json': None,
+                'input_ports': tool['input_ports'], 'output_ports': tool['output_ports'],
+                'description': tool['description'].split(' 확장 동작은')[0]}
         contracts=tool.get('operation_contracts',[])
         if contracts:
-            if details:item['operation_contracts']=contracts
+            if details and not (native_first and tool.get('execution_status')=='native_ready'):item['operation_contracts']=contracts
             else:item['operations']=[o['id'] for o in contracts]
         result.append(item)
     return result

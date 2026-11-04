@@ -200,6 +200,22 @@ def test_model_refusal_is_never_turned_into_support_by_the_delivery_check():
     assert result['decision']=='missing_capability' and result['missing_actions']==['표 join']
 
 
+def test_capability_recheck_does_not_override_registered_join_as_unsupported():
+    s=state('두 표를 item 기준으로 left join한 뒤 JSON 파일로 저장해줘.')
+    class Recording(Fake):
+        def __init__(self,packets):super().__init__(packets);self.prompts=[]
+        def invoke(self,messages):
+            self.prompts.append(messages[0]['content'])
+            return super().invoke(messages)
+    first=packet(s,'missing_capability',actions=['표 join'])
+    review=packet(s,'existing_tools',tools=['read_table','join_tables','write_result'])
+    transport=Recording([first,review])
+    result=assess_capability(s,transport)
+    assert result['decision']=='existing_tools' and result['model_calls']==2
+    assert all('join_tables' in prompt for prompt in transport.prompts)
+    assert '표 join은 미지원으로 유지' not in transport.prompts[1]
+
+
 @pytest.mark.parametrize('decision', ['existing_tools','clarify','manual_review'])
 def test_registered_gmail_delivery_is_not_overridden_as_missing_tool(decision):
     s=state('결과를 이메일로 보내줘.')

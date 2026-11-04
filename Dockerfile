@@ -2,12 +2,21 @@ FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
+FROM build AS build-frontend
 COPY Frontend/ ./Frontend/
 COPY shared/ ./shared/
+RUN npm run build:app
+ARG A4B_FRONTEND_COMMIT
+RUN if [ -n "$A4B_FRONTEND_COMMIT" ]; then printf '\n<!-- a4b-release=%s -->\n' "$A4B_FRONTEND_COMMIT" >> Frontend/dist-app/index.html; fi
+
+FROM build AS build-backend
+COPY shared/ ./shared/
 COPY Backend/api/ ./Backend/api/
-RUN npm run build
-FROM node:24-bookworm-slim
+RUN npm run build:server
+
+FROM node:24-bookworm-slim AS backend
 WORKDIR /app
+RUN mkdir -p /app/Frontend/dist-app
 # libgl1/libglib2.0-0/libgomp1 are runtime libraries of the Paddle OCR stack (OpenCV, OpenMP).
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv libgl1 libglib2.0-0 libgomp1 poppler-utils && rm -rf /var/lib/apt/lists/*
 # OCR for photos and scanned pages: PaddleOCR on CPU (the host GPU is left to Ollama).
@@ -28,8 +37,7 @@ RUN case "$A4B_WITH_ML" in 1) /app/Backend/.venv-agent/bin/python -m pip install
 # Native document readers (CSV/Excel/PDF text/Word/PowerPoint). Every upload is routed here
 # (A4B_DOCUMENT_ROUTING defaults to on), so the image cannot accept files without it.
 RUN python3 -m venv /app/Backend/.venv-document-analysis && /app/Backend/.venv-document-analysis/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/document-analysis.txt
-COPY --from=build /app/Frontend/dist-app ./Frontend/dist-app
-COPY --from=build /app/Backend/api/build-server ./Backend/api/build-server
+COPY --from=build-backend /app/Backend/api/build-server ./Backend/api/build-server
 # Python worker packages (Backend/ is the import root). verification/ and documents/ were missing
 # from the original image (a4b_verifier, document_analysis); they are imported by the design graph.
 COPY Backend/service/ /app/Backend/service/
@@ -48,3 +56,10 @@ RUN cd /app/Backend && /app/Backend/.venv-agent/bin/python -c "import importlib;
 ENV HOST=0.0.0.0 PORT=3030 EASYFLOW_DATA_DIR=/app/data A4B_FOCUSED_DEMO=1
 EXPOSE 3030
 CMD ["node","Backend/api/build-server/index.mjs"]
+
+
+FROM scratch AS frontend
+COPY --from=build-frontend /app/Frontend/dist-app /dist
+
+FROM backend AS standalone
+COPY --from=frontend /dist /app/Frontend/dist-app

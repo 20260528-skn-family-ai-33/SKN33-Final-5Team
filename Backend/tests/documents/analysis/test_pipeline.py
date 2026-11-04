@@ -353,11 +353,21 @@ class PipelineTests(unittest.TestCase):
 
     def test_csv_quoted_newline_and_leading_zero_use_no_models(self):
         source = self.root / 'data.csv'
-        source.write_text('코드,설명\n000017,"줄1\n줄2"\n', encoding='utf-8')
+        source.write_text('코드,설명\n000017,"줄1\n줄2"\n', encoding='utf-8', newline='')
         engine = Engines()
         payload = run(source, self.work, engines=engine)
         blocks = payload['document_analysis']['blocks']
         self.assertEqual(blocks[1]['data']['fields'], ['000017', '줄1\n줄2'])
+        self.assertEqual(blocks[1]['native_location'], {'logical_row': 2})
+        self.assertEqual(engine.attempts, [])
+
+    def test_csv_crlf_inside_quoted_cell_is_preserved(self):
+        source = self.root / 'windows.csv'
+        source.write_bytes('코드,설명\r\n000017,"줄1\r\n줄2"\r\n'.encode('utf-8'))
+        engine = Engines()
+        payload = run(source, self.work, engines=engine)
+        blocks = payload['document_analysis']['blocks']
+        self.assertEqual(blocks[1]['data']['fields'], ['000017', '줄1\r\n줄2'])
         self.assertEqual(blocks[1]['native_location'], {'logical_row': 2})
         self.assertEqual(engine.attempts, [])
 

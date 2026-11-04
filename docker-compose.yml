@@ -51,6 +51,8 @@ services:
       # Preserve main's enforced default; the root .env can explicitly turn either check off.
       A4B_CAPABILITY_MODE: ${A4B_CAPABILITY_MODE:-enforce}
       A4B_CONDITION_MODE: ${A4B_CONDITION_MODE:-enforce}
+      A4B_REQUIREMENT_MODE: ${A4B_REQUIREMENT_MODE:-off}
+      A4B_REQUIREMENT_GENERATION_MODE: ${A4B_REQUIREMENT_GENERATION_MODE:-baseline}
       A4B_MAIN_TIMEOUT_S: ${A4B_MAIN_TIMEOUT_S:-180}
       A4B_DESIGN_TIMEOUT_MS: ${A4B_DESIGN_TIMEOUT_MS:-600000}
       A4B_PARSER_URL: ${A4B_PARSER_URL:-}

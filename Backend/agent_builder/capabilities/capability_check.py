@@ -2,9 +2,9 @@
 import hashlib
 import os
 import re
-from agent_builder.capabilities.capability_judgement import assess_capability, validate_assessment_result, AssessmentConflictError
+from agent_builder.capabilities.capability_judgement import assess_capability, guard_delivery_revision, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
-from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, value_answer, pending_nonanswer
+from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, numeric_answer, pending_nonanswer
 from agent_builder.conditions.condition_check import _pending_draft
 
 
@@ -16,24 +16,23 @@ def _question_text(text):
     return text.rstrip('.')+'에 대해 알려주세요.'
 
 
-_TASK_WORDS=re.compile(r'줘|주세요|해\s*줄|만들|정리|저장|보내|발송|공유|골라|고르|남겨|뽑|계산|비교|합계|집계|'
-                       r'바꿔|변경|추가|대신|말고|필터|선별|제외|포함|파일|표|csv|json|엑셀|xlsx|예약|매일|매주',re.I)
+# Only explicit acknowledgements/non-progress replies may reuse a verdict.
+# Absence of a task verb is not evidence that the scope is unchanged:
+# "메일은 취소", "요약만" and unknown short replies must be reconsidered.
+_PASSIVE_REPLIES=frozenset({
+    '네','넵','예','응','응좋아','좋아','좋아요','알겠어','알겠어요','알겠습니다',
+    '확인','확인했어','확인했어요','확인했습니다','오케이','ok','okay',
+    '모두유지','전부유지','그대로','그만할래',
+})
 
-
-_WITHDRAWAL=re.compile(r'필요\s*없|빼|말고|없이|안\s*해|하지\s*마|하지\s*말|제외')
 
 
 def _short_reply(state):
-    """A brief reply that names no new work: no digits, no request verb, at most 12 characters."""
+    """Reuse only known passive replies; scope changes always reach assessment."""
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user:return False
-    text=re.sub(r'[\s.!?~]+','',user[-1])
-    if _WITHDRAWAL.search(text):
-        return False  # "슬랙은 필요 없어" removes the refused action; it must be judged again (PR #28 review)
-    refused=[w for a in ((state.get('capability_assessment') or {}).get('missing_actions') or []) for w in re.findall(r'[가-힣A-Za-z]{2,}',a)]
-    if any(w in text for w in refused if w not in ('외부','기능','전송','발송')):
-        return False  # the reply talks about the refused action itself
-    return 0<len(text)<=12 and not re.search(r'\d',text) and not _TASK_WORDS.search(text)
+    text=re.sub(r'[\s.!?~]+','',user[-1]).casefold()
+    return text in _PASSIVE_REPLIES
 
 
 def make_capability_check(model,transport=None,mode=None):
@@ -51,14 +50,15 @@ def make_capability_check(model,transport=None,mode=None):
             event=events[-1] if events and events[-1]['turn']==len(state.get('messages',[]))-1 else None
             previous=state.get('capability_assessment') or {}
             if faults:result=assess_capability(state,None)
-            elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or value_answer(state) or pending_nonanswer(state))
+            elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or numeric_answer(state) or pending_nonanswer(state))
                   and state.get('messages', [])[-1].get('role')=='user'
                   and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
                 # A non-answer or an offered closed-vocabulary choice for a condition question
                 # changes no supported-action facts. Reuse only with the original
                 # request/resources/catalog intact; condition_check still validates the slots.
                 validate_assessment_result(previous,state)
-                result={**previous,'model_calls':0,'answer_resolution':'condition_choice' if option_answer(state) or value_answer(state) else 'condition_nonanswer'}
+                resolution = 'condition_choice' if option_answer(state) or numeric_answer(state) else 'condition_nonanswer'
+                result = guard_delivery_revision({**previous, 'model_calls': 0, 'answer_resolution': resolution}, state)
             elif event and previous.get('decision')=='clarify' and event['kind'] in ('unknown','defer','guidance'):
                 validate_assessment_result(previous,state)
                 ids=set(event['question_ids'])

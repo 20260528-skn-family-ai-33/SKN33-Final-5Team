@@ -5,21 +5,25 @@ import re
 from pathlib import PurePath
 
 from agent_builder.conditions.condition_check import _pending_draft
+from agent_builder.conditions.input_resolution import answer_kind
 
 
-# Only general extraction requests belong here. Named fields, output formats,
-# scheduled work and requests with additional actions belong to the planner.
+# Collect missing receipt inputs before planning; preserve an optional export request.
 _CONTEXT = re.compile(r'파일|사진|이미지|pdf|문서|스캔본|내용|정보|항목|데이터|텍스트|글자|'
                       r'올려주면|올리면|올려서|올렸는데|첨부하면|첨부해서|업로드하면|업로드해서|'
                       r'에서|으로|안에|있는|속|의|을|를|에|좀')
 _REQUEST_ENDING = re.compile(r'주세요|줄래요?|주실|있을까요|있나요|있어요?|있니|싶어요?|'
                              r'가능|한가요|할래|할|해|하|줘|줄|고|수|요')
+_EXPORT = re.compile(r'^(?:해서|하여|해|고|서)?(?:엑셀|excel|xlsx|csv)(?:파일)?'
+                     r'(?:형식)?(?:으로|로|에)?(?:정리|저장|출력|만들어?)')
 _RECEIPT_FORMATS = {'pdf', 'jpeg', 'jpg', 'png', 'bmp', 'webp', 'tif', 'tiff', 'heic'}
 _FIELD_CHOICES = ['날짜', '상호명', '결제 금액']
 
 
 def _request(state):
-    return next((m['content'] for m in reversed(state.get('messages', [])) if m['role'] == 'user'), '')
+    # Old conversations store button clicks as user turns, including clicks before attachment.
+    return next((m['content'] for m in reversed(state.get('messages', []))
+                 if m['role'] == 'user' and answer_kind(m['content']) != 'guidance'), '')
 
 
 def simple_receipt_request(text):
@@ -29,7 +33,10 @@ def simple_receipt_request(text):
         return False
     body = compact[receipt.end():]
     action = re.search(r'추출|뽑아|읽어', body)
-    return bool(action and not _CONTEXT.sub('', body[:action.start()]) and not _REQUEST_ENDING.sub('', body[action.end():]))
+    if not action or _CONTEXT.sub('', body[:action.start()]):
+        return False
+    ending = _EXPORT.sub('', body[action.end():], count=1)
+    return not _REQUEST_ENDING.sub('', ending)
 
 
 def receipt_document(resource):

@@ -45,9 +45,10 @@ def generation_requirements(state):
     for s in specs:
         if s['kind']=='read' or s['kind']=='policy' and not deduplication_step(s):continue
         tool=TOOLS[s['kind']]
-        # Only filter -> sort has the same order within one legacy node.
-        # A destructive duplicate policy always gets its own stage here.
-        if previous=='filter' and s['kind']=='sort':
+        # Native phases are dedup -> missing -> filter -> sort. These adjacent
+        # forward transitions fit one node; filter -> dedup must stay separate.
+        if (previous=='filter' and s['kind']=='sort' or
+                previous=='policy' and s['kind'] in ('filter','sort')):
             previous=s['kind'];continue
         order.append(tool)
         previous=s['kind']
@@ -125,6 +126,10 @@ def constrain_generation(schema,state):
         result['$defs']['WorkflowNode']['anyOf']=[v for v in variants if v['properties']['tool'].get('enum')!=['finish']]
         workflow=result['$defs']['WorkflowDefinition']['properties']
         if 'nodes' in workflow:workflow['nodes']['minItems']=max(workflow['nodes'].get('minItems',1),len(order))
+        remaining=result['$defs']['WorkflowNode']['anyOf']
+        if 'nodes' in workflow and all('enum' in v['properties']['id'] for v in remaining):
+            identifiers={id for v in remaining for id in v['properties']['id']['enum']}
+            workflow['nodes']['maxItems']=min(workflow['nodes'].get('maxItems',len(identifiers)),len(identifiers))
         if 'next_steps' in workflow:workflow['next_steps']['minItems']=max(workflow['next_steps'].get('minItems',0),len(order)-1)
         computes=[s for s in specs if s['kind']=='compute']
         aggregates=[s for s in specs if s['kind']=='aggregate']

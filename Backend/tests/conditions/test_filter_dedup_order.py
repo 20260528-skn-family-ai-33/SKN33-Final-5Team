@@ -59,7 +59,7 @@ def draft_for(s, order='merged'):
 
 def requirements(s, filter_first=True):
     specs = [dict(kind='filter', filters=deepcopy(workflow_draft(s)['execution_plan']['filters']), match='all'),
-             dict(kind='policy', missing_policy=None, duplicate_policy='last', duplicate_field='거래ID')]
+             dict(kind='policy', missing_policy='error', duplicate_policy='last', duplicate_field='거래ID')]
     if not filter_first:
         specs.reverse()
     specs.append(dict(kind='export', format='json'))

@@ -31,7 +31,7 @@ export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자�
 def ledger_fingerprint(state):
     from agent_builder.capabilities.capability_gate import input_fingerprint
     # Version seals the interpretation contract as well as the input/catalog.
-    return hashlib.sha256(('a4b.requirements.v2-policy-order:' + input_fingerprint(state)).encode()).hexdigest()
+    return hashlib.sha256(('a4b.requirements.v3-policy-stages:' + input_fingerprint(state)).encode()).hexdigest()
 
 
 def plan_digest(plan):

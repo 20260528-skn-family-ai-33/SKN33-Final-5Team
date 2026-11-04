@@ -32,6 +32,9 @@ def same_node_precedes(before, after):
 
 _FILTER = re.compile(r'선별|필터(?:링)?|골라|고른|고르|추려|추린|거른')
 _DEDUP = re.compile(r'중복|(?:첫|마지막)\s*행')
+_KEEP = re.compile(r'중복(?:은|을|도)?\s*(?:그대로\s*)?(?:유지|보존|남겨|남기)(?!(?:하)?지\s*(?:마|말|않))')
+_CANCEL_FILTER = re.compile(r'(?:선별|필터(?:링)?)(?:하)?지\s*(?:마|말|않)|(?:선별|필터(?:링)?)(?:은|을)?\s*(?:취소|빼|제외)')
+_CANCEL_DEDUP = re.compile(r'중복.{0,15}(?:제거(?:하)?지\s*(?:마|말|않)|제거(?:는|를)?\s*(?:취소|빼|제외))|(?:첫|마지막)\s*행.{0,10}선택(?:하)?지\s*(?:마|말|않)')
 _SEQUENCE = re.compile(r'(?:뒤|후|다음|나서)(?:에)?(?=\s|[,;]|$)')
 _QUOTES = re.compile(r'''“[^”]*”|‘[^’]*’|"[^"]*"|'[^']*'|`[^`]*`''')
 _NEGATED_ACTION = re.compile(
@@ -68,65 +71,146 @@ def _ledger_order(state):
             if deduplication_step(before) and after['kind'] == 'filter':
                 found.add('dedup_first')
             pending.extend(tasks[dependency]['depends_on'])
-    return next(iter(found)) if len(found) == 1 else 'ambiguous' if found else None
+    return 'filter_first' if 'filter_first' in found else 'dedup_first' if found else None
 
 
-def filter_dedup_order(state):
-    """Read explicit Korean before/after clauses only, never unordered policy lists.
+def _text_steps(state):
+    """Retain the latest explicit chain, with each action's own source phrase.
 
-    The latest explicit ordering wins; an unrelated follow-up retains it.
-    Unknown wording stays with the planner and the structured requirement ledger.
+    None means no textual instruction; [] means an explicit cancellation, which
+    must not fall back to an earlier ledger. Quotes never change the active chain.
     """
     from agent_builder.capabilities.capability_judgement import _assessment_messages
-    order = None
+    steps = None
     for message in _assessment_messages(state):
         if message.get('role') != 'user':
             continue
-        found = set()
-        for clause in re.split(r'[.!?;\n]', _QUOTES.sub(' ', message['content'])):
-            markers = sorted([(m.start(), 'filter') for m in _FILTER.finditer(clause)] +
-                             [(m.start(), 'deduplicate') for m in _DEDUP.finditer(clause)])
-            for link in _SEQUENCE.finditer(clause):
-                before = [kind for position, kind in markers if position < link.start()]
-                after = [kind for position, kind in markers if position >= link.end()]
-                if before and after and before[-1] != after[0]:
-                    if _NEGATED_ACTION.search(clause):
-                        found.add('ambiguous')
-                    else:
-                        found.add('filter_first' if before[-1] == 'filter' else 'dedup_first')
-        if found:
-            order = next(iter(found)) if len(found) == 1 else 'ambiguous'
-    return order or _ledger_order(state)
+        text = _QUOTES.sub(' ', message['content'])
+        chains = []
+        for clause in re.split(r'[.!?;\n]', text):
+            if _KEEP.search(clause) or _CANCEL_FILTER.search(clause) or _CANCEL_DEDUP.search(clause):
+                steps = []
+                chains = []
+                continue
+            markers = sorted([(m.start(), m.end(), 'filter') for m in _FILTER.finditer(clause)] +
+                             [(m.start(), m.end(), 'deduplicate') for m in _DEDUP.finditer(clause)])
+            linked = any(any(a[0] < link.start() and b[0] >= link.end() and a[2] != b[2]
+                             for a, b in zip(markers, markers[1:]))
+                         for link in _SEQUENCE.finditer(clause))
+            if not linked:
+                continue
+            if _NEGATED_ACTION.search(clause) or re.search(r'또는|혹은', clause):
+                chains.append('ambiguous')
+                continue
+            chain = []
+            start = 0
+            for position, end, kind in markers:
+                phrase = clause[start:end]
+                new_filter = kind == 'filter' and any(
+                    column in phrase for resource in state.get('resources', [])
+                    for column in resource.get('columns', []))
+                if chain and chain[-1]['kind'] == kind and not new_filter:
+                    chain[-1]['text'] += phrase
+                else:
+                    chain.append(dict(kind=kind, text=phrase))
+                start = end
+            chains.append(chain)
+        if chains:
+            # Separate contradictory clauses have no single unambiguous chain.
+            steps = chains[0] if len(chains) == 1 else 'ambiguous'
+    return steps
+
+
+def filter_dedup_order(state):
+    steps = _text_steps(state)
+    if steps is None:
+        return _ledger_order(state)
+    if steps == 'ambiguous':
+        return 'ambiguous'
+    if not steps:
+        return None
+    # Any filter -> dedup transition needs independent per-stage settings,
+    # including a longer filter -> dedup -> filter chain.
+    return ('filter_first' if any(a['kind'] == 'filter' and b['kind'] == 'deduplicate'
+                                 for a, b in zip(steps, steps[1:])) else 'dedup_first')
 
 
 def separate_filter_dedup(state):
-    return filter_dedup_order(state) in ('filter_first', 'ambiguous')
+    if filter_dedup_order(state) in ('filter_first', 'ambiguous'):
+        return True
+    from .requirement_generation import generation_requirements
+    # Fixed IDs and a shared confirmed plan cannot represent repeated stages,
+    # even when their ordering comes entirely from the sealed requirement ledger.
+    return generation_requirements(state)[1].count('filter_sort') > 1
 
 
-def table_order_issues(state, draft):
-    """Check data bindings, not node labels or the array/edge presentation order."""
-    order = filter_dedup_order(state)
-    if not order or draft.get('questions') or draft.get('unsupported'):
-        return []
-    if order == 'ambiguous':
-        return ['선별·중복 제거 순서를 명확히 확인해야 합니다.']
-    from .content_lineage import content_ancestors
-    nodes = {n['id']: n for n in (draft.get('workflow') or {}).get('nodes', [])}
-    filters, duplicates = [], []
+def _step_candidates(step, nodes, draft):
+    from agent_builder.conditions.condition_readiness import _amounts
+    from contracts.numeric_criteria import number_value
+    candidates = []
+    fields = set()
+    amounts = _amounts(step['text']) if step['kind'] == 'filter' else set()
+    operators = {operator for word, operator in [('초과', 'gt'), ('이상', 'gte'), ('미만', 'lt'), ('이하', 'lte')]
+                 if word in step['text']}
     for identifier, node in nodes.items():
         if node['tool'] != 'filter_sort' or node['settings'].get('operation'):
             continue
         plan = node['settings'].get('execution_plan') or draft.get('execution_plan') or {}
-        if plan.get('filters'):
-            filters.append(identifier)
-        if plan.get('duplicate_policy') in ('first', 'last', 'error'):
-            duplicates.append(identifier)
-    first, second = (filters, duplicates) if order == 'filter_first' else (duplicates, filters)
-    if first and second and all(
-        (a == b and order == 'dedup_first') or a in content_ancestors(nodes, b)
-        for a in first for b in second
-    ):
+        if step['kind'] == 'filter':
+            used = {f['field'] for f in plan.get('filters', [])}
+            # Repeated filters on the same column still represent different
+            # requested actions. Bind explicit thresholds to their own stage.
+            numeric = [f for f in plan.get('filters', []) if f.get('value_type') == 'number'
+                       and f.get('value') is not None]
+            if amounts and numeric:
+                try:
+                    if not any(number_value(f['value']) in amounts and
+                               (not operators or f['operator'] in operators) for f in numeric):
+                        continue
+                except (ValueError, TypeError):
+                    continue
+        else:
+            if plan.get('duplicate_policy') not in ('first', 'last', 'error'):
+                continue
+            used = {plan['duplicate_field']} if plan.get('duplicate_field') else set()
+        if used:
+            candidates.append((identifier, used))
+            fields.update(used)
+    mentioned = {field for field in fields if field in step['text']}
+    return [identifier for identifier, used in candidates if not mentioned or mentioned <= used]
+
+
+def table_order_issues(state, draft):
+    """Assign requested actions to a consistent chain of actual table inputs."""
+    steps = _text_steps(state)
+    if draft.get('questions') or draft.get('unsupported') or steps == []:
         return []
-    expected = '선별 → 중복 제거' if order == 'filter_first' else '중복 제거 → 선별'
+    if steps is None:
+        # A sealed ledger already matches exact settings and per-task dependencies
+        # in coverage_report, including chains containing both order directions.
+        return []
+    if steps == 'ambiguous':
+        return ['선별·중복 제거 순서를 명확히 확인해야 합니다.']
+    from .content_lineage import content_ancestors
+    nodes = {n['id']: n for n in (draft.get('workflow') or {}).get('nodes', [])}
+    upstream = {identifier: content_ancestors(nodes, identifier) for identifier in nodes}
+    candidates = [_step_candidates(step, nodes, draft) for step in steps]
+    from workflow_engine.execution_path import artifact_output_ids, artifact_origin
+    try:
+        outputs = artifact_output_ids(draft['workflow'])
+        if outputs:
+            final = artifact_origin(draft['workflow'], outputs[-1])
+            saved_path = upstream[final] | {final}
+            candidates = [[identifier for identifier in options if identifier in saved_path]
+                          for options in candidates]
+    except (ValueError, KeyError, TypeError):
+        candidates = [[] for _ in steps]
+    reachable = set(candidates[0])
+    for index, options in enumerate(candidates[1:], 1):
+        share = steps[index - 1]['kind'] == 'deduplicate' and steps[index]['kind'] == 'filter'
+        reachable = {b for b in options if any((a == b and share) or a in upstream[b] for a in reachable)}
+    if reachable:
+        return []
+    expected = ' → '.join('선별' if step['kind'] == 'filter' else '중복 제거' for step in steps)
     return [f'요청한 처리 순서({expected})가 실제 표 데이터 연결에 반영되지 않았습니다. '
             'filter_sort 내부는 중복 제거가 먼저이므로 다른 순서는 단계별 설정과 입력 연결을 분리해야 합니다.']

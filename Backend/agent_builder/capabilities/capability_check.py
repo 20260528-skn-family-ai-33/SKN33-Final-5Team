@@ -1,6 +1,7 @@
 """Enforced capability decisions persist through generation, resume and save."""
 import hashlib
 import os
+import re
 from agent_builder.capabilities.capability_judgement import assess_capability, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
 from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, value_answer, pending_nonanswer
@@ -13,6 +14,26 @@ def _question_text(text):
     if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
     if text.endswith(('?', '주세요.', '알려주세요', '주세요')):return text
     return text.rstrip('.')+'에 대해 알려주세요.'
+
+
+_TASK_WORDS=re.compile(r'줘|주세요|해\s*줄|만들|정리|저장|보내|발송|공유|골라|고르|남겨|뽑|계산|비교|합계|집계|'
+                       r'바꿔|변경|추가|대신|말고|필터|선별|제외|포함|파일|표|csv|json|엑셀|xlsx|예약|매일|매주',re.I)
+
+
+_WITHDRAWAL=re.compile(r'필요\s*없|빼|말고|없이|안\s*해|하지\s*마|하지\s*말|제외')
+
+
+def _short_reply(state):
+    """A brief reply that names no new work: no digits, no request verb, at most 12 characters."""
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    if not user:return False
+    text=re.sub(r'[\s.!?~]+','',user[-1])
+    if _WITHDRAWAL.search(text):
+        return False  # "슬랙은 필요 없어" removes the refused action; it must be judged again (PR #28 review)
+    refused=[w for a in ((state.get('capability_assessment') or {}).get('missing_actions') or []) for w in re.findall(r'[가-힣A-Za-z]{2,}',a)]
+    if any(w in text for w in refused if w not in ('외부','기능','전송','발송')):
+        return False  # the reply talks about the refused action itself
+    return 0<len(text)<=12 and not re.search(r'\d',text) and not _TASK_WORDS.search(text)
 
 
 def make_capability_check(model,transport=None,mode=None):
@@ -45,6 +66,15 @@ def make_capability_check(model,transport=None,mode=None):
                 deferred=event['kind']=='defer' or count>=2
                 result={**previous,'model_calls':0,'answer_resolution':event['kind']}
                 reuse_questions=True
+            elif (previous.get('decision') in ('missing_capability','manual_review') and _short_reply(state)
+                  and state.get('messages', [])[-1].get('role')=='user'
+                  and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
+                # A short reply with no new task ("네", "모두 유지", "그만할래") changes no supported-action
+                # facts. Re-judging the whole conversation flipped the verdict on every turn (live
+                # 2026-11-03: missing_capability -> existing_tools -> invented "월간 예약").
+                # A reply to a clarify question is an answer and is judged again (branches above/below).
+                validate_assessment_result(previous,state)
+                result={**previous,'model_calls':0,'answer_resolution':'short_reply'}
             else:
                 if transport is None:
                     from agent_builder.design.nodes.direct_conversation import OllamaPlanner
@@ -67,6 +97,8 @@ def make_capability_check(model,transport=None,mode=None):
             pending=[q for q in state.get('pending_questions',[]) if q.get('source')!='capability']
             update.update(capability_questions=[],pending_questions=pending,confirmed=False,saved_agent_id=None,gap_condition_review=None,
                           issues=[],semantic_issues=[])
+            if result.get('native_schedule_reconciled'):
+                update['condition_required']=True  # schedule slots must be grounded before any draft
         elif decision=='clarify':
             questions=(state.get('capability_questions',[]) if reuse_questions else [])
             if not questions:

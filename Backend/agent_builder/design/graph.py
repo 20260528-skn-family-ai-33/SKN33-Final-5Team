@@ -57,13 +57,21 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         from workflow_engine.library.reusable_workflows import catalog
         return {**resources_node(state),'saved_workflows':catalog(storage,state.get('model',model),state.get('credential_id',''))}
     graph.add_node('resources',_timed_node('resources',available_resources))
-    def attachment_gate(state):
+    def quick_reply(state):
+        # Code-only replies that must come before the capability model: a missing upload, or a
+        # cancellation of the document fixed flow's field question (see document_rows_cancel_reply).
         from agent_builder.design.attachment_precheck import missing_attachment_reply
-        quick=missing_attachment_reply(state)
+        from agent_builder.design.document_rows_template import document_rows_cancel_reply
+        return missing_attachment_reply(state) or document_rows_cancel_reply(state)
+    def attachment_gate(state):
+        quick=quick_reply(state)
         return {**quick,'status':'needs_clarification','issues':[],'semantic_issues':[],'pending_questions':[],'condition_enforced':False} if quick else {}
     def after_attachment(state):
-        from agent_builder.design.attachment_precheck import missing_attachment_reply
-        return 'ask' if missing_attachment_reply(state) else 'continue'
+        # Routing sees the gate's output; the cancel reply is then the last message.
+        from agent_builder.design.document_rows_template import CANCELLED
+        messages=state.get('messages',[])
+        cancelled=bool(messages) and messages[-1]['role']=='assistant' and messages[-1]['content']==CANCELLED
+        return 'ask' if cancelled or quick_reply(state) else 'continue'
     graph.add_node('attachment_gate',attachment_gate)
     graph.add_conditional_edges('attachment_gate',after_attachment,{'ask':'await_input','continue':'capability_check'})
     graph.add_node('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode)))

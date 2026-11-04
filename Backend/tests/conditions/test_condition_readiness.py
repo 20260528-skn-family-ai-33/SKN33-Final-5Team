@@ -85,9 +85,13 @@ def test_foreign_evidence_and_duplicate_slots_are_rejected():
     with pytest.raises(ValueError): checked(s, raw)
 
 
-@pytest.mark.parametrize('frequency,weekday,expected', [('daily', None, 'ready'), ('weekly', None, 'clarify'), ('weekly', '0', 'ready')])
-def test_schedule_conditional_required_weekday(frequency, weekday, expected):
-    s = state('한국 시간 매주 월요일 8시 0분에 실행해줘.')
+@pytest.mark.parametrize('text,frequency,weekday,expected', [
+    ('한국 시간 매일 8시 0분에 실행해줘.', 'daily', None, 'ready'),
+    # The weekday is not written, so it must be asked (a written one is now read in code).
+    ('한국 시간 매주 8시 0분에 실행해줘.', 'weekly', None, 'clarify'),
+    ('한국 시간 매주 월요일 8시 0분에 실행해줘.', 'weekly', '0', 'ready')])
+def test_schedule_conditional_required_weekday(text, frequency, weekday, expected):
+    s = state(text)
     # Isolate weekday validation from the separate managed-file prerequisite.
     s['resources'] = [{'id': 'table', 'kind': 'table', 'columns': ['비용']}]
     values = {'schedule.frequency': frequency, 'schedule.hour': '8', 'schedule.minute': '0', 'schedule.timezone': 'Asia/Seoul'}

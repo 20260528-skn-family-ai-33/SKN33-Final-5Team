@@ -1,10 +1,25 @@
 """A reversible off/shadow/enforce adapter; off makes no additional LLM calls."""
 import json
 import os
+import re
 from copy import deepcopy
 
 from agent_builder.conditions.condition_readiness import judge_conditions, plan_issues
 from contracts.models import AgentDraft
+
+# A comparison/summary word alone does not make a request multi-step analysis. When the
+# conversation also states a single-table selection (a numeric threshold, "행만 남겨", or an
+# empty/duplicate policy), the grounded checker must stay on: live 2026-11-03 runs sent
+# "반품 건 정리를 위해 비용이 100만원 초과인 행만 남겨줘. 빈 비용은 제외해…" to the full planner,
+# which failed 9/9 such requests and confirmed 3 of them with the wrong policies.
+# Real analysis work is still delegated below when the capability check selects extended tools.
+_THRESHOLD = (r'(?:\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)'
+              r'\s*(?:원|점|개|명|건|kg|%)?\s*(?:을|를|이|가|보다)?\s*'
+              r'(?:초과|이상|미만|이하|넘|밑돌|보다\s*(?:크|작|많|적))')
+_SINGLE_TABLE_SIGNAL = re.compile(
+    _THRESHOLD + r'|행(?:만|은|을|들)?\s*(?:남겨|남기|골라|고르|뽑|추려|걸러|빼)'
+    r'|중복\s*[가-힣A-Za-z0-9_]*\s*(?:은|는|이|가)?\s*(?:첫|마지막|모두|전부|유지|제거|오류)'
+    r'|빈\s*[가-힣A-Za-z0-9_]{0,8}\s*(?:은|는|이|가|이면|이\s*있으면)?\s*(?:제외|유지|그대로|오류|빼)')
 
 
 def condition_mode(mode=None):
@@ -52,9 +67,11 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         import re
         outside_table_scope=(re.search(r'비교|증감|증가율|감소율|변화율|반품|환불|정정|그 전주',user_requests) or
             ('요약' in user_requests and not re.search(r'선별|중복|필터',user_requests)))
-        if setting=='enforce' and outside_table_scope:
+        if setting=='enforce' and outside_table_scope and not _SINGLE_TABLE_SIGNAL.search(user_requests):
             return {'condition_ledger':None,'condition_enforced':False,'condition_required':False,
-                    'condition_route':'conversation','condition_template':False,'pending_questions':[]}
+                    'condition_route':'conversation','condition_template':False,'pending_questions':[],
+                    'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
+                        'detail':'outside_scope: 비교·요약 업무를 전체 설계기로 위임','mode':setting,'model_calls':0,'metrics':{}}]}
         assessment=state.get('capability_assessment') or {}
         table_contract_tools={'read_table','filter_sort','write_result','finish'}
         selected=set(assessment.get('tool_ids',[]))

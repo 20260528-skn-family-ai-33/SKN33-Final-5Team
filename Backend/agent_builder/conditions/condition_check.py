@@ -57,7 +57,7 @@ def _pending_draft(state, ledger):
         workflow=None, schedule=None, report_destination=None).model_dump()
 
 
-def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=None):
+def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=None, error_observer=None):
     configured = condition_mode(mode)
     def check(state):
         setting='enforce' if state.get('condition_required') or state.get('condition_enforced') else configured
@@ -101,6 +101,7 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             ledger = result['ledger']
             detail = ledger['decision']
         except Exception as error:
+            if error_observer and setting=='enforce':error_observer(error)
             # A model/contract error is not a business clarification or unsupported request.
             ledger = {**deepcopy(state.get('condition_ledger') or {}),
                       'decision': 'system_error', 'issues': ['조건 판정을 완료하지 못했습니다. 모델 연결과 출력 계약을 확인하세요.'],

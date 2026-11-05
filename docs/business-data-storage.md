@@ -25,6 +25,7 @@ Cognito와 PostgreSQL 회원 저장소를 쓰는 환경에서 **새로 시작하
 | 앱에서 한 일 | 기존 `a4b`에서 볼 곳 | 내부 기록과 연결하는 값 |
 | --- | --- | --- |
 | 대화 시작·질문·응답 | `design_sessions.messages_json`, `workflows` | 대화 ID = `a4b_builder.checkpoints.thread_id` |
+| 생성 요청·질문 대기·생성 차단·오류 | `a4b.workflow_generation_requests` | `id` = 생성 요청 ID, `session_id` = 설계 대화 ID |
 | 설정 저장 | `workflow_versions`의 버전·그래프 | `workflow_id` = 빌더 에이전트 ID |
 | 자료 첨부 | `documents`, S3 사용 시 `document_versions`의 원본 위치·해시·바이트 수 | 문서 ID = 빌더 자료 ID |
 | 실행·실패·재시도 | `workflow_runs`, `node_runs`, 성공 결과는 `outputs` | `state_json->>'builder_run_id'` = 빌더 실행 ID. `state_json->>'checkpoint_thread_id'`로 재개 지점을 조회 |
@@ -40,6 +41,36 @@ LEFT JOIN a4b.node_runs n ON n.run_id = r.id
 WHERE r.state_json->>'builder_run_id' = :builder_run_id
 ORDER BY r.created_at, r.started_at, n.started_at;
 ```
+
+### 워크플로우가 만들어지지 않은 이유 조회
+
+`message`(업무 설명·추가 답변)와 `confirm`(저장 확인)마다 새 생성 요청 ID를 발급합니다. 응답의 `generation_request_id`로 해당 요청을 찾습니다. 같은 대화의 후속 답변과 재시도는 이전 요청의 이력을 덮어쓰지 않습니다. 이 기록은 실행 이력인 `workflow_runs`와 별개이며, `A4B_STORAGE=postgres`이면 `A4B_BUSINESS_RECORDS` 설정과 관계없이 RDS에 저장됩니다.
+
+`a4b.workflow_generation_requests`의 `workspace_id`는 회원 ID, `id`는 요청 ID, `session_id`는 대화 ID입니다. `json`에는 요청 본문(최대 4,000자, 알려진 비밀값 마스킹), 요청 당시 대화 revision, 단계·세부 노드, 상태, 사유 코드·설명, 예외 유형, 시작·갱신·종료 시각, 저장한 워크플로우 ID, 단계별 `events`가 있습니다. 모델 호출 직전에 단계를 커밋하므로 워커 제한 시간 초과도 마지막 단계에 연결합니다. 워크플로우 저장과 `succeeded` 기록은 같은 트랜잭션으로 커밋합니다. 로컬 SQLite에서는 기존과 같이 `builder_generation_requests`를 사용하고, PostgreSQL 이전 시 `a4b.workflow_generation_requests`로 복사합니다.
+
+| 필드 | 값과 의미 |
+| --- | --- |
+| `stage` | `request_analysis` 요청 분석 · `design` 설계 · `validation` 검증 · `save` 저장 |
+| `status` | `running` 처리 중 · `waiting_input` 추가 질문 대기 · `waiting_confirmation` 저장 확인 대기 · `blocked` 도구·검증 문제로 생성 차단 · `failed` 시스템·모델·저장 오류 · `succeeded` 저장 완료 |
+| `reason_code` 예 | `model_timeout`, `invalid_model_response`, `model_connection_failed`, `unsupported_tools`, `verification_failed`, `save_failed`, `worker_timeout`, `worker_busy` |
+
+`waiting_input`과 `waiting_confirmation`은 오류가 아닙니다. `finished_at`은 해당 HTTP 생성 요청의 처리가 끝난 시각이며 대화 자체의 종료 시각은 아닙니다. 참고용 검증(`shadow`)의 오류는 `events`에 경고로 남기고, 실제 생성 차단 사유로 분류하지 않습니다. 검증 강제(`enforce`)가 생성·저장을 막으면 최종 상태와 사유에도 기록합니다. 원시 모델 응답·제공자 오류 본문·연결 계정 키는 이력에 저장하지 않습니다.
+
+다음 조회는 관리자 등 조회 권한이 있는 계정에서 실행합니다. 앱 계정으로 직접 조회할 때는 연결의 `a4b.workspace_id`를 해당 회원 ID로 설정해야 합니다. 행 수준 보안으로 다른 회원의 이력은 보이지 않습니다.
+
+```sql
+SELECT workspace_id, id AS request_id, session_id,
+       json->>'request_text' AS request_text,
+       json->>'stage' AS stage, json->>'node' AS node,
+       json->>'status' AS status, json->>'reason_code' AS reason_code,
+       json->>'reason' AS reason, json->>'error_type' AS error_type,
+       json->>'started_at' AS started_at, json->>'finished_at' AS finished_at
+FROM a4b.workflow_generation_requests
+WHERE session_id = :session_id
+ORDER BY seq DESC;
+```
+
+앱에서도 `GET /api/agent-builder/generation_history?id=<대화 ID>`로 현재 회원의 해당 대화에 대한 최근 50건과 단계별 이력을 조회할 수 있습니다. DB에는 50건 이전 기록도 보존합니다. 기존 생성 요청의 이력을 소급 생성하지 않으며, 마이그레이션 `004_generation_requests.sql` 적용과 새 서버 배포 이후 수락한 요청부터 기록합니다. 잘못된 HTTP 형식·인증 실패처럼 생성 요청을 수락하기 전의 거절은 포함하지 않습니다. DB 자체에 접속할 수 없으면 DB에 실패 이력을 기록할 수 없고 요청도 실패합니다. 서버 전체가 비정상 종료된 경우 마지막으로 커밋된 `running` 단계가 남을 수 있으며, 이를 성공이나 질문 대기로 추정하지 않습니다.
 
 | 업무 | 저장 위치와 내용 |
 | --- | --- |
@@ -73,7 +104,7 @@ docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /a
 docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/apply-builder-migrations.py
 ```
 
-`002`는 LangGraph 체크포인트 표에 작업 공간 열과 보안 정책을 더하고, `003`은 볼륨 이전 완료 기록을 저장할 표를 만듭니다. 이미 적용한 버전은 건너뜁니다.
+`002`는 LangGraph 체크포인트 표에 작업 공간 열과 보안 정책을 더하고, `003`은 볼륨 이전 완료 기록, `004`는 `a4b.workflow_generation_requests`와 행 수준 보안을 만듭니다. 적용 버전은 계속 `a4b_builder.schema_migrations`에서 관리합니다. 이미 적용한 버전은 건너뜁니다. 새 서버는 스키마 버전 4를 요구하므로 배포 전에 관리자 계정으로 마이그레이션을 적용합니다. 현재 자동 배포는 SQL 마이그레이션을 실행하지 않으므로 머지에 앞서 이 한 번의 적용을 완료해야 합니다. 적용 누락 시 새 이미지의 사전 검사가 실패하고 기존 앱을 유지합니다.
 
 ## 기존 SQLite 자료 옮기기
 

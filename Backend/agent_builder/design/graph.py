@@ -2,6 +2,7 @@ import time
 import json
 import os
 from langgraph.graph import StateGraph, START, END
+from langgraph.errors import GraphBubbleUp
 from infrastructure.persistence.checkpoints import checkpoint_connection, checkpointer
 from contracts.models import BuilderState
 from agent_builder.design.nodes.resources import resources_node
@@ -53,10 +54,29 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     connection=checkpoint_connection(storage)
     saver=checkpointer(connection)
     graph=StateGraph(BuilderState)
+    def observed_error(error):
+        audit=getattr(storage,'generation_audit',None)
+        if audit:audit.error(error)
+    def add(name,fn):
+        def observed(state):
+            audit=getattr(storage,'generation_audit',None)
+            if audit:audit.enter(name)
+            try:
+                result=fn(state)
+            except GraphBubbleUp:
+                # LangGraph interrupts request user input/approval; they are control flow.
+                raise
+            except Exception as error:
+                if audit:audit.error(error)
+                raise
+            if audit and isinstance(result,dict) and ('status' in result or name=='verification'):
+                audit.observed(name,{**state,**result})
+            return result
+        graph.add_node(name,observed)
     def available_resources(state):
         from workflow_engine.library.reusable_workflows import catalog
         return {**resources_node(state),'saved_workflows':catalog(storage,state.get('model',model),state.get('credential_id',''))}
-    graph.add_node('resources',_timed_node('resources',available_resources))
+    add('resources',_timed_node('resources',available_resources))
     def quick_reply(state):
         # Code-only replies that must come before the capability model: a missing upload, or a
         # cancellation of the document fixed flow's field question (see document_rows_cancel_reply).
@@ -76,14 +96,14 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
                 return {**workbook, 'attachment_route':'validate'}
             return {'pending_questions':[],'attachment_route':'continue'}
         return {'attachment_route':'continue'}
-    graph.add_node('attachment_gate',attachment_gate)
+    add('attachment_gate',attachment_gate)
     graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'capability_check','validate':'validate'})
-    graph.add_node('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode)))
-    graph.add_node('await_capability',await_capability_node)
-    graph.add_node('generation_gate',generation_gate)
-    graph.add_node('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode)))
+    add('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode,error_observer=observed_error)))
+    add('await_capability',await_capability_node)
+    add('generation_gate',generation_gate)
+    add('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode,error_observer=observed_error)))
     from agent_builder.design.requirement_ledger import make_requirement_check
-    graph.add_node('requirements',_timed_node('requirements',make_requirement_check(model,requirement_transport,requirement_mode,api_key=api_key)))
+    add('requirements',_timed_node('requirements',make_requirement_check(model,requirement_transport,requirement_mode,api_key=api_key,error_observer=observed_error)))
     planner=conversation or make_conversation(api_key,model)
     def guarded_plan(state):
         # A restored checkpoint can resume directly at this node, bypassing edges.
@@ -111,16 +131,16 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     def guarded_template(state):
         require_ready(state)
         return template_node(state)
-    graph.add_node('template_plan',guarded_template)
-    graph.add_node('conversation',_timed_node('conversation',guarded_plan))
-    graph.add_node('condition_audit',_timed_node('condition_audit',audit_conditions))
-    graph.add_node('validate',_timed_node('validate',validate_node))
-    graph.add_node('verification',_timed_node('verification',make_verification_node(storage,verifier,verifier_mode)))
-    graph.add_node('supervisor',_timed_node('supervisor',supervisor_node))
-    graph.add_node('await_input',await_input_node)
-    graph.add_node('await_approval',await_approval_node)
-    graph.add_node('save',make_save_node(storage))
-    graph.add_node('tool_gap',tool_gap_node)
+    add('template_plan',guarded_template)
+    add('conversation',_timed_node('conversation',guarded_plan))
+    add('condition_audit',_timed_node('condition_audit',audit_conditions))
+    add('validate',_timed_node('validate',validate_node))
+    add('verification',_timed_node('verification',make_verification_node(storage,verifier,verifier_mode)))
+    add('supervisor',_timed_node('supervisor',supervisor_node))
+    add('await_input',await_input_node)
+    add('await_approval',await_approval_node)
+    add('save',make_save_node(storage))
+    add('tool_gap',tool_gap_node)
     graph.add_edge(START,'resources');graph.add_edge('resources','attachment_gate')
     graph.add_conditional_edges('capability_check',lambda s:s['capability_route'],{'conditions':'condition_check','supervisor':'supervisor','stop':END,'await_capability':'await_capability'})
     graph.add_edge('await_capability','attachment_gate')

@@ -55,7 +55,7 @@ export function builderDatabase(config:Extract<StorageConfig,{kind:'postgres'}>)
 export async function closeBuilderDatabase(){const current=pool;pool=undefined;await current?.end();}
 
 // Must match REQUIRED_SCHEMA_VERSION in Backend/infrastructure/persistence/db.py.
-export const REQUIRED_SCHEMA_VERSION=3;
+export const REQUIRED_SCHEMA_VERSION=4;
 /**
  * Connects as the app account before the server takes traffic: the schema must be migrated,
  * the account must not bypass row-level security, and it must be able to use the tables.
@@ -76,11 +76,11 @@ export async function checkBuilderDatabase(config:StorageConfig,database:pg.Pool
  const {rows:[access]}=await database.query(`SELECT bool_and(coalesce(c.relrowsecurity AND c.relforcerowsecurity
     AND has_table_privilege(current_user,c.oid,p.privilege), false)) AS ok
   FROM unnest(ARRAY['registered_tools','builder_sessions','builder_assets','agent_versions','agent_tests',
-    'builder_run_leases','builder_data_sources','builder_schedules','builder_schedule_jobs','reply_review_decisions',
+    'a4b.workflow_generation_requests','builder_run_leases','builder_data_sources','builder_schedules','builder_schedule_jobs','reply_review_decisions',
     'document_reviews','document_review_events','builder_tool_gap_jobs','reusable_nodes','builder_verifications',
     'preprocessing_batches','preprocessing_examples','agent_checkpoints','checkpoints','checkpoint_blobs','checkpoint_writes']) t(name)
   CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) p(privilege)
-  LEFT JOIN pg_class c ON c.oid=to_regclass('a4b_builder.'||t.name)`);
+  LEFT JOIN pg_class c ON c.oid=to_regclass(CASE WHEN position('.' in t.name)>0 THEN t.name ELSE 'a4b_builder.'||t.name END)`);
  if(!access?.ok)throw new Error('업무 데이터 표의 행 수준 보안과 앱 계정의 SELECT·INSERT·UPDATE·DELETE 권한을 확인하세요.');
  if(process.env.A4B_BUSINESS_RECORDS==='a4b'){
   const {rows:[domain]}=await database.query(`SELECT bool_and(coalesce(has_table_privilege(current_user,

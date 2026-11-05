@@ -34,6 +34,7 @@ TABLES = {
     'builder_assets': ['id', 'json', 'rows_json'],
     'agent_versions': ['agent_id', 'version', 'json'],
     'agent_tests': ['id', 'agent_id', 'json'],
+    'builder_generation_requests': ['id', 'session_id', 'json'],
     'builder_run_leases': ['run_id', 'token', 'expires_at', 'pid', 'active'],
     'builder_data_sources': ['agent_id', 'id', 'asset_id', 'version', 'updated_at'],
     'builder_schedules': ['agent_id', 'json', 'next_at', 'active'],
@@ -156,8 +157,9 @@ def survey(folder):
 
 
 def copy_rows(target, workspace, table, columns, rows):
+    destination = 'a4b.workflow_generation_requests' if table=='builder_generation_requests' else f'a4b_builder.{table}'
     fields = ['workspace_id', *columns]
-    sql = (f'INSERT INTO a4b_builder.{table}({",".join(fields)}) '
+    sql = (f'INSERT INTO {destination}({",".join(fields)}) '
            f'VALUES({",".join(["%s"] * len(fields))}) ON CONFLICT DO NOTHING')
     # PostgreSQL json preserves the original text but has no equality operator.
     comparisons = [field + ('::text' if field.endswith('json') else '') for field in fields]
@@ -168,7 +170,7 @@ def copy_rows(target, workspace, table, columns, rows):
             inserted += 1
             continue
         conditions = [f'{field} IS NULL' if value is None else f'{field}=%s' for field, value in zip(comparisons, values)]
-        existing = target.execute(f'SELECT 1 FROM a4b_builder.{table} WHERE ' + ' AND '.join(conditions),
+        existing = target.execute(f'SELECT 1 FROM {destination} WHERE ' + ' AND '.join(conditions),
                                   [value for value in values if value is not None]).fetchone()
         if not existing:
             raise ValueError(f'기존 PostgreSQL 행이 SQLite 원본과 다릅니다: {workspace}/{table}')

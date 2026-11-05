@@ -59,6 +59,23 @@ def _install_receipt_question(graph, config, prompt, resources):
 
 
 def session_action(c):
+    if c.action not in ('message','confirm'):
+        return _session_action(c)
+    from infrastructure.persistence.generation_history import GenerationHistory
+    audit = GenerationHistory.start(c.storage,{**c.data,'action':c.action})
+    c.storage.generation_audit = audit
+    try:
+        result = _session_action(c)
+        audit.finish(result)
+        return {**result,'generation_request_id':audit.id}
+    except Exception as error:
+        audit.fail(error)
+        raise
+    finally:
+        c.storage.generation_audit = None
+
+
+def _session_action(c):
     storage=c.storage;data=c.data;action=c.action;api_key=c.api_key;conversation=c.conversation;connection=None
     try:
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in STATE_ONLY else None)
@@ -168,6 +185,8 @@ def session_action(c):
         after=graph.get_state(config).values
         if after.get('saved_agent_id'):
             s['agent_id']=after['saved_agent_id'];s['base_version']=storage.agent(s['agent_id'])['version']
-        s=storage.update_session(s,data['revision'],after);return public_state(storage,s,graph)
+        s=storage.update_session(s,data['revision'],after)
+        if getattr(storage,'generation_audit',None):storage.generation_audit.finish(after,graph.get_state(config).next)
+        return public_state(storage,s,graph)
     finally:
         if connection:connection.close()

@@ -5,7 +5,7 @@ LangGraph conversation first, exactly as the original single worker did.
 """
 from infrastructure.persistence.storage import Storage
 from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
-from service.handlers import design, library, reviews, runs, schedules, uploads
+from service.handlers import design, generation, library, reviews, runs, schedules, uploads
 
 
 class Context:
@@ -15,6 +15,9 @@ class Context:
 
 
 ACTIONS={
+    'begin_generation':generation.begin,
+    'interrupt_generation':generation.interrupt,
+    'generation_history':generation.listing,
     'recover_runs':runs.recover_runs,
     'interrupt_run':runs.interrupt_run,
     'heartbeat_run':runs.heartbeat_run,

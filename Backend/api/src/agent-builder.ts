@@ -16,7 +16,7 @@ import {parseCsv} from './binary';
 import {binaryObjectPath,deleteUploadFiles,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {readXlsx,extractPdfText} from './document-files';
 import {storageConfig,workerLimits} from './storage-config';
-import {createWorkerLanes} from './worker-slots';
+import {createWorkerLanes,WorkerBusyError} from './worker-slots';
 
 export function builderReportBytes(artifact:{content:string;encoding?:string}):Buffer {
  return Buffer.from(artifact.content,artifact.encoding==='base64'?'base64':'utf8');
@@ -39,7 +39,25 @@ function acquireWorkerSlot(action:string):Promise<()=>void>{
  return workerLanes?workerLanes.acquire(action):Promise.resolve(()=>{});
 }
 export function resetWorkerSlots(){workerLanes=undefined;}
+class BuilderWorkerError extends Error {
+ constructor(message:string,readonly reasonCode:string){super(message);}
+}
+function generationFailureCode(error:unknown){
+ return error instanceof WorkerBusyError?'worker_busy':error instanceof BuilderWorkerError?error.reasonCode:'request_rejected';
+}
 export async function builderWorker(payload:Record<string,unknown>):Promise<any>{
+ if(!['message','confirm'].includes(String(payload.action)))return runBuilderWorker(payload);
+ const generation_request_id=String(payload.generation_request_id||randomUUID());
+ // HTTP requests register before resolving model credentials; direct callers register here.
+ if(!payload.generation_request_id)await runBuilderWorker({...payload,action:'begin_generation',request_action:payload.action,generation_request_id});
+ try{return await runBuilderWorker({...payload,generation_request_id});}
+ catch(error){
+  try{await runBuilderWorker({action:'interrupt_generation',id:payload.id,generation_request_id,reason_code:generationFailureCode(error)});}
+  catch{throw new Error('생성 요청에 실패했고 이력 종료 상태도 기록하지 못했습니다. 서버와 DB 연결을 확인하세요.',{cause:error});}
+  throw error;
+ }
+}
+async function runBuilderWorker(payload:Record<string,unknown>):Promise<any>{
  const python=agentPython();
  if(!existsSync(python))throw new Error('Deep Agents 실행 환경이 없습니다. scripts/setup/setup-agent-demo.sh를 먼저 실행하세요.');
  const release=await acquireWorkerSlot(String(payload.action));
@@ -55,18 +73,18 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
   timing('worker_start');
   let child:ChildProcessWithoutNullStreams;
   try{child=spawn(python,[backendPath('service/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,EASYFLOW_DATA_DIR:dataDirectory(),A4B_TIMING_LOG:timingPath,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});}
-  catch(error){release();throw error;}
+  catch(error){release();throw new BuilderWorkerError('Python 실행 환경을 시작하지 못했습니다.','worker_start_failed');}
   let stdout='',settled=false,heartbeatBusy=false;
   let heartbeat:ReturnType<typeof setInterval>|undefined;
   const clear=()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat);};
-  const fail=async(message:string)=>{
+  const fail=async(message:string,reasonCode='worker_failed')=>{
    if(settled)return;settled=true;clear();timing(child.exitCode===null&&child.signalCode===null?'worker_interrupted':'worker_failed');child.kill('SIGKILL');
    if(execution)await builderWorker({action:'interrupt_run',id:runId,execution_token:executionToken}).catch(()=>{});
-   reject(new Error(message));
+   reject(new BuilderWorkerError(message,reasonCode));
   };
   const timeout=builderWorkerTimeout(String(payload.action));
   const timeoutMessage=execution?'실행 시간이 초과됐습니다. 실행 기록을 확인하고 실패 단계부터 재시도하세요.':'모델 설계 응답 시간이 초과됐습니다. 대화는 보존되어 있으니 서버 상태와 응답 제한 시간을 확인한 뒤 다시 시도하세요.';
-  const timer=setTimeout(()=>void fail(timeoutMessage),timeout);
+  const timer=setTimeout(()=>void fail(timeoutMessage,'worker_timeout'),timeout);
   if(execution){
    heartbeat=setInterval(()=>{
     if(settled||heartbeatBusy)return;heartbeatBusy=true;
@@ -75,7 +93,7 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
    },20000);heartbeat.unref();
   }
   // The slot is freed only when the process is gone, not when the request settles.
-  child.on('error',()=>{release();void fail('Python 실행 환경을 시작하지 못했습니다.');});
+  child.on('error',()=>{release();void fail('Python 실행 환경을 시작하지 못했습니다.','worker_start_failed');});
   child.stdout.on('data',chunk=>{stdout+=String(chunk);if(Buffer.byteLength(stdout)>12*1024*1024)void fail('에이전트 결과 크기 제한을 넘었습니다.');});
   child.stderr.resume();child.stdin.on('error',()=>{});
   child.on('close',()=>{
@@ -89,7 +107,7 @@ export async function builderWorker(payload:Record<string,unknown>):Promise<any>
      const bytes=builderReportBytes(data.result.artifact);
      void saveWorkspaceFile(binaryObjectPath('results',bytes),bytes).then(()=>accept(data.result),reject);
     }else accept(data.result);}
-   catch{void fail('에이전트 응답을 읽지 못했습니다. 실행 기록과 Python 환경을 확인하세요.');}
+   catch{void fail('에이전트 응답을 읽지 못했습니다. 실행 기록과 Python 환경을 확인하세요.','worker_response_invalid');}
   });
   child.stdin.end(JSON.stringify({...workerPayload,directory:dataDirectory()}));
  });
@@ -211,12 +229,13 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,['upload','run_upload','source_upload'].includes(action)?12*1024*1024:100000);
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('요청 형식을 확인하세요.');
  const workerAction=action==='sessions'&&method==='POST'?'new_session':action;
- if(!['new_session','session','agent','upload','attach_asset','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+ if(!['new_session','session','generation_history','agent','upload','attach_asset','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','generation_history','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
  if(workerAction!=='new_session'&&!idPattern.test(data.id||''))throw new Error('항목 ID를 확인하세요.');
- const lockKey=['session','agent','run'].includes(workerAction)?undefined:builderLockKey(data.id,workerAction==='test');
+ const lockKey=['session','generation_history','agent','run'].includes(workerAction)?undefined:builderLockKey(data.id,workerAction==='test');
  if(lockKey&&locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
  if(lockKey)locks.add(lockKey);
  let stagedUpload:{original:string;directory?:string}|undefined;
+ let generationRequestId:string|undefined;
  try{
   let payload:any={action:workerAction,id:data.id};
   if(workerAction==='new_session'){
@@ -244,6 +263,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    payload.question_id=data.questionId;
   }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
+   if(['message','confirm'].includes(workerAction)){
+    payload.generation_request_id=randomUUID();
+    await builderWorker({...payload,action:'begin_generation',request_action:workerAction});
+    generationRequestId=payload.generation_request_id;
+   }
    const current=await builderWorker({action:workerAction==='test'?'agent':['resume_run','retry_run'].includes(workerAction)?'run':'session',id:data.id});
    if(workerAction==='test'&&!payload.content&&current.request_required)throw new Error('이 워크플로우에 필요한 실행 요청을 입력하세요.');
    const config=workerAction==='test'?current.agent.config:['resume_run','retry_run'].includes(workerAction)?current.run.config_snapshot:null;
@@ -278,6 +302,10 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(workerAction==='test'&&data.fileIds!==undefined){if(!Array.isArray(data.fileIds)||data.fileIds.length>10||data.fileIds.some((id:unknown)=>typeof id!=='string'||!idPattern.test(id)))throw new Error('실행 자료 ID를 확인하세요.');payload.file_ids=data.fileIds;}
   json(res,200,await builderWorker(payload));return true;
  }catch(error){
+  if(generationRequestId){
+   try{await builderWorker({action:'interrupt_generation',id:data.id,generation_request_id:generationRequestId,reason_code:generationFailureCode(error)});}
+   catch{throw new Error('생성 요청에 실패했고 이력 종료 상태도 기록하지 못했습니다. 서버와 DB 연결을 확인하세요.',{cause:error});}
+  }
   if(stagedUpload){
    // A worker may report an error after committing the attachment. Check before removing its files.
    try{

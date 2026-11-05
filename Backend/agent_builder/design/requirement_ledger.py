@@ -176,7 +176,7 @@ def requirement_transport(model, api_key=''):
     return Structured()
 
 
-def make_requirement_check(model, transport=None, mode=None, *, api_key=''):
+def make_requirement_check(model, transport=None, mode=None, *, api_key='', error_observer=None):
     setting=mode or os.getenv('A4B_REQUIREMENT_MODE','off')
     if setting not in ('off','enforce'):
         raise ValueError('A4B_REQUIREMENT_MODE는 off/enforce이어야 합니다.')
@@ -218,6 +218,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key=''):
                 if plan['unresolved']:raise ValueError(' / '.join(plan['unresolved']))
                 break
         except (ValueError,TypeError,KeyError,RuntimeError,OSError) as error:
+            if error_observer:error_observer(error)
             detail='요청 업무 목록을 확정하지 못했습니다. '+str(error)[:400]
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,

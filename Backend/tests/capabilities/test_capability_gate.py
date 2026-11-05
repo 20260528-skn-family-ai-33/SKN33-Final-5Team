@@ -427,3 +427,12 @@ def test_column_question_is_not_dropped_when_a_file_is_already_attached():
     result=assessment(s,'clarify',questions=['기준 금액', '비용 열의 정확한 이름'])
     out=make_capability_check('test',transport=Fake([result]),mode='enforce')(s)
     assert len(out['capability_questions'])==2
+
+
+def test_named_column_does_not_hide_a_compound_question_about_missing_policy():
+    from agent_builder.capabilities.capability_check import make_capability_check
+    s=state('비용이 기준 금액을 초과하는 행을 JSON으로 저장해줘.')
+    questions=['기준 금액', '비용 열의 정확한 이름과 빈 값 처리 방법은 무엇인가요?']
+    result=assessment(s,'clarify',questions=questions)
+    out=make_capability_check('test',transport=Fake([result]),mode='enforce')(s)
+    assert out['capability_assessment']['missing_conditions']==questions

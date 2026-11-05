@@ -1034,13 +1034,15 @@ def validate_conditions(raw, state, catalog):
         if key not in slots:
             slots[key] = deepcopy(old)
     literals = explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'))
-    if slots.get('filter.field', {}).get('status') != 'specified':
+    if slots.get('filter.field', {}).get('status', 'missing') == 'missing':
         named = []
         for evidence in catalog:
             if evidence.get('source_id') != 'user':
                 continue
-            for match in re.finditer(r'(?<![가-힣A-Za-z0-9_])([가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)(?:이|가|은|는)\s*기준\s*(?:금액|값|수량|가격)', evidence['quote']):
-                named.append((match.group(1), evidence))
+            for match in re.finditer(r'(?<![가-힣A-Za-z0-9_])([가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)'
+                                     r'(?:\s+열)?(?:이|가|은|는)\s*기준\s*(?:금액|값|수량|가격)', evidence['quote']):
+                if match.group(1) != '열':
+                    named.append((match.group(1), evidence))
         if len({field for field, _ in named}) == 1 and not any(
             m.get('role') == 'user' and re.search(r'(?:열|항목|필드).{0,12}(?:변경|바꿔|바꾸)',m['content'])
             for m in state.get('messages',[])[named[-1][1].get('turn',-1)+1:]

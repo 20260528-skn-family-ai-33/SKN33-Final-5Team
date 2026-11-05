@@ -95,7 +95,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
         if result['decision']=='clarify' and not state.get('resources'):
             user_text='\n'.join(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')
             def already_named_column(question):
-                match=re.search(r'([가-힣A-Za-z_][가-힣A-Za-z0-9_]*)\s*열(?:의)?\s*(?:정확한\s*)?이름',question)
+                match=re.fullmatch(r'([가-힣A-Za-z_][가-힣A-Za-z0-9_]*)\s*열(?:의)?\s*(?:정확한\s*)?이름'
+                                   r'(?:은\s*무엇인가요|을\s*알려주세요)?[.?!？]?', question.strip())
                 return bool(match and re.search(r'(?<![가-힣A-Za-z0-9_])'+re.escape(match.group(1))+
                     r'(?=이|가|은|는|을|를|\s|[,.!?]|$)',user_text))
             remaining=[question for question in result['missing_conditions'] if not already_named_column(question)]

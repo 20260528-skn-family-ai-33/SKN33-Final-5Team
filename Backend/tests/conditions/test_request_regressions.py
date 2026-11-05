@@ -99,6 +99,21 @@ def test_named_filter_field_is_preserved_after_capability_question():
     assert result['slots']['filter.field']['value'] == '비용'
 
 
+def test_named_filter_column_with_explicit_column_suffix():
+    s = state('비용 열이 기준 금액을 초과하는 행을 저장해줘. 기준은 200만원 초과, JSON으로 저장.')
+    raw = proposal(s, {'filter.operator': 'gt', 'filter.value': '2000000', 'output.format': 'json'})
+    assert checked(s, raw)['slots']['filter.field']['value'] == '비용'
+
+
+def test_named_filter_fallback_preserves_conflicting_column():
+    s = state('비용이 기준 금액을 초과하는 행을 JSON으로 저장해줘. 비용과 매출 중 어느 열로 할지는 미정이야.')
+    raw = proposal(s, {'filter.field': None, 'filter.operator': 'gt', 'filter.value': None})
+    raw['conditions'][0]['status'] = 'conflict'
+    result = checked(s, raw)
+    assert result['slots']['filter.field']['status'] == 'conflict'
+    assert 'filter.field' in result['unresolved']
+
+
 def test_no_schedule_request_can_be_saved_and_run_with_boundary_and_duplicates(tmp_path):
     from agent_builder.design.condition_templates import compile_conditions
     from infrastructure.persistence.storage import Storage

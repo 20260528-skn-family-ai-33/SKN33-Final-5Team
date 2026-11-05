@@ -406,6 +406,9 @@ def make_conversation(api_key,model,model_factory=None):
         agent=create_deep_agent(**agent_options)
         context={'available_evidence':[{'evidence_id':id,**value} for id,value in evidence.items()],'current_draft':state.get('draft'),'validation_issues':state.get('issues',[]),'available_resources':[{k:v for k,v in r.items() if k not in ['text','evidence_text']} for r in resources.values()],'saved_workflows':state.get('saved_workflows',[]),'node_library':state.get('node_library',[]),'required_node_refs':state.get('required_node_refs',[]),'supported_tools':planner_catalog(catalog),'repair_instruction':'검증 오류는 원문 인용 및 설정을 바로 고쳐 해결하세요. file_ids는 노드 이름이 아니라 available_resources의 실제 id만 사용합니다. binding은 반드시 이전 노드의 실제 출력 포트를 가리켜야 합니다. 확정 조건과 이미 답한 내용은 유지합니다.'}
         ledger=state.get('requirement_ledger')
+        if ledger and any(t['spec']['kind']=='reply_draft' for t in ledger['tasks']):
+            context['reply_draft_instruction']=('초안 작성은 agent_node가 실행합니다. 초안만 요청한 경우 이 역할 하나로 구성하고 '
+                'settings.instructions에는 해당 업무의 사용자 발언 전체를 그대로 넣으세요. 별도 발송·예약은 추가하지 않습니다.')
         context['request_requirements']=({'tasks':[{k:v for k,v in t.items() if k!='quote'} for t in ledger['tasks']],
                                           'unresolved':ledger['unresolved']} if ledger else None)
         if required_steps:

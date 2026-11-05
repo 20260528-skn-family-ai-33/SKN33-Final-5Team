@@ -465,3 +465,75 @@ def test_single_filter_match_mode_is_equivalent_but_multiple_filters_are_not():
     other={'field':'qty','operator':'gt','value':10,'compare_field':None,'value_type':'number'}
     assert _same_filters([one],[one],'any','all')
     assert not _same_filters([one,other],[one,other],'any','all')
+
+
+def test_draft_only_requires_executable_instructions_and_disallows_extra_actions():
+    request='배송 지연 안내 답변 초안을 작성해줘. 사유는 확인 중이니 추측하지 말고 확인 후 안내해.'
+    state=seed()
+    state['messages']=[dict(role='user',content=request)]
+    ledger=dict(tasks=[dict(id='r1',source_message=0,quote=request,description='응대 초안',depends_on=[],
+                            spec=dict(kind='reply_draft'))],unresolved=[])
+    state.update(requirement_ledger=ledger,requirement_fingerprint=ledger_fingerprint(state),
+                 requirement_digest=plan_digest(ledger))
+    role=node('reply','agent_node',instructions=request)
+    generated=dict(workflow=dict(entry='reply',nodes=[role],edges=[]))
+    assert not coverage_report(state,generated)['issues']
+    role['settings']['instructions']='도착일을 내일로 약속하세요.'
+    assert coverage_report(state,generated)['issues']
+    role['settings']['instructions']=request
+    generated['workflow']['nodes'].append(node('out','write_result',format='json'))
+    assert coverage_report(state,generated)['issues']
+
+
+def test_builtin_reply_role_receives_the_user_facts_through_workflow_instructions():
+    from agent_builder.design.requirement_coverage import _matches_reply_draft
+    from workflow_engine.library.node_library import default_nodes
+    role=next(n for n in default_nodes() if n['spec']['name']=='응대 초안 에이전트')
+    request='배송 지연 안내 답변 초안을 작성해줘. 예정일은 아직 확인 중입니다.'
+    executable=node('reply','agent_node',node_ref=role['ref'],instructions=role['spec']['instructions'])
+    state={'node_library':[role]}
+    assert _matches_reply_draft(executable,{'instructions':request},state,request)
+    assert not _matches_reply_draft(executable,{'instructions':'내일 도착한다고 약속하세요.'},state,request)
+    substituted=deepcopy(role)
+    substituted['spec']['instructions']='응대를 작성하지 말고 판매 내역을 분류하세요.'
+    assert not _matches_reply_draft(executable,{'instructions':request},{'node_library':[substituted]},request)
+
+
+def test_reply_draft_kind_cannot_substitute_for_an_unrelated_request():
+    state=seed()
+    state['requirement_ledger']['tasks'][0]['spec']={'kind':'reply_draft'}
+    with pytest.raises(ValueError,match='답변 초안 작성 요청'):
+        validate_plan(state['requirement_ledger'],state)
+
+
+@pytest.mark.parametrize(('text', 'remaining'), [
+    ('지연 사유와 도착 예정일은 아직 확인 중입니다. 확인 후 안내할게요.',
+     ['주문번호']),
+    ('도착 예정일은 아직 확인 중이야. 확인되는 대로 다시 안내할게.',
+     ['배송 지연 사유', '주문번호']),
+    ('배송 지연 사유가 아직 확인 안 됐어. 확인되면 안내해.',
+     ['도착 예정일', '주문번호']),
+    ('도착 예정일은 확인 중이 아닙니다. 확인 후 안내할게요.',
+     ['배송 지연 사유', '도착 예정일', '주문번호']),
+    ('지연 사유와 도착 예정일을 확인해서 구체적으로 적어주세요.',
+     ['배송 지연 사유', '도착 예정일', '주문번호']),
+])
+def test_explicitly_pending_facts_in_a_reply_draft(text, remaining):
+    from agent_builder.design.requirement_ledger import extract_plan
+    state={'messages':[dict(role='user',content='배송 안내 답변 초안을 작성해줘. '+text)]}
+    raw=dict(tasks=[dict(source_message=0,description='초안',spec=dict(kind='reply_draft'))],
+             unresolved=['배송 지연 사유','도착 예정일','주문번호'])
+    assert extract_plan(raw,state)['unresolved']==remaining
+
+
+def test_delivery_fact_reconciliation_never_drops_lookup_or_a_followup():
+    from agent_builder.design.requirement_ledger import extract_plan
+    request='배송 안내 답변 초안을 작성해줘. 도착 예정일은 확인 중입니다. 확인 후 안내할게요.'
+    state={'messages':[dict(role='user',content=request)]}
+    raw=dict(tasks=[dict(source_message=0,description='초안',spec=dict(kind='reply_draft')),
+                    dict(source_message=0,description='조회',spec=dict(kind='other',action='조회'))],
+             unresolved=['도착 예정일'])
+    assert extract_plan(raw,state)['unresolved']==['도착 예정일']
+    raw['tasks'].pop()
+    state['messages'].append(dict(role='user',content='도착 예정일을 꼭 확인해서 넣어줘.'))
+    assert extract_plan(raw,state)['unresolved']==['도착 예정일']

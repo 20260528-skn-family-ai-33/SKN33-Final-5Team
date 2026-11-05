@@ -27,15 +27,22 @@ export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자�
 열 이름이 사용자 원문에 명시되어 있으면 실제 파일이 아직 없어도 그 이름을 기록한다. 파일과 열의 실제 존재는 실행 시 확인한다.
 사용자가 사실을 확인 중이라고 밝히고 확인 후 안내하도록 요청한 답변 초안에는 원인이나 예정일을 추측하지 않는다.
 단순 답장 초안에는 사용자가 요청하지 않은 메시지 채널이나 연락처를 필수 미정 항목으로 추가하지 않는다.
+답변·답장·응대 초안 작성은 reply_draft다. 사과, 아직 확인 중인 사실, 후속 안내는 초안 내용이다. 실제 발송·조회·예약 등 별도 업무는 초안에 포함시키지 말고 별개로 기록한다.
 후속 답변에서 바꾸지 않은 조건도 유지한다. 필요한 값이 미정이면 unresolved에 적고 추측하지 않는다.
 요약·개인정보 제거·검수·분기·예약·기타 표현할 수 없는 업무나 추가 조건은 other로 남긴다.
 모든 사용자 요구를 기록한 뒤 tasks를 끝내고 unresolved를 작성한다. JSON 이외에는 출력하지 않는다.'''
 
 
+_REPLY_DRAFT_REQUEST = re.compile(r'(?:답변|답장|응대|회신|안내)\s*(?:문\s*)?초안')
+
+
 def ledger_fingerprint(state):
     from agent_builder.capabilities.capability_gate import input_fingerprint
     # Version seals the interpretation contract as well as the input/catalog.
-    return hashlib.sha256(('a4b.requirements.v1:' + input_fingerprint(state)).encode()).hexdigest()
+    # A previously cached "other" must be re-extracted for the new draft contract.
+    reply = any(_REPLY_DRAFT_REQUEST.search(m['content']) for m in state.get('messages',[]) if m['role']=='user')
+    version = 'a4b.requirements.reply.v2:' if reply else 'a4b.requirements.v1:'
+    return hashlib.sha256((version + input_fingerprint(state)).encode()).hexdigest()
 
 
 def plan_digest(plan):
@@ -65,6 +72,8 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
+        if spec['kind']=='reply_draft' and not _REPLY_DRAFT_REQUEST.search(task['quote']):
+            raise ValueError('답변 초안 작성 요청을 사용자 원문에서 확인할 수 없습니다.')
         if spec['kind'] in ('extract_fields','receipt_items') and (len(set(spec['fields']))!=len(spec['fields']) or
                 any(not field.strip() or field not in task['quote'] for field in spec['fields'])):
             raise ValueError('추출할 항목을 사용자 원문에서 확인할 수 없습니다.')
@@ -144,6 +153,29 @@ def extraction_schema(user_count=None,asset_ids=None):
     return schema
 
 
+_DELIVERY_FACT = r'(?:(?:배송\s*)?지연\s*(?:사유|원인)|도착\s*예정일)'
+_PENDING_DELIVERY = re.compile(
+    rf'(?P<fields>{_DELIVERY_FACT}(?:\s*(?:와|과|및|,)\s*{_DELIVERY_FACT})*)'
+    r'\s*(?:은|는|이|가)\s*(?:아직\s*)?(?:확인\s*중(?:이야|입니다|이에요|이다)'
+    r'|확인(?:되지\s*않았|이?\s*안\s*(?:됐|되었))(?:습니다|어요|어|다))(?=[.!。\s]|$)')
+
+
+def _reply_draft_pending_facts(plan, state):
+    """Only a draft can report explicitly pending facts instead of resolving them."""
+    if len(plan['tasks']) != 1 or plan['tasks'][0]['spec']['kind'] != 'reply_draft':
+        return set()
+    users = [m['content'] for m in state['messages'] if m['role']=='user']
+    if len(users)!=1 or not re.search(r'확인(?:이?\s*되(?:는\s*대로|면)|\s*후).{0,15}안내', users[0]):
+        return set()
+    # Do not infer a date, a cause, or an equivalent requirement from a question.
+    # A positive statement and a later-update instruction are both required.
+    fields = set()
+    for match in _PENDING_DELIVERY.finditer(users[0]):
+        for field in re.findall(_DELIVERY_FACT, match['fields']):
+            fields.add(re.sub(r'\s+', '', field).removeprefix('배송'))
+    return fields
+
+
 def extract_plan(raw,state):
     """Code owns IDs and sequential data dependencies, not the model.
 
@@ -165,7 +197,12 @@ def extract_plan(raw,state):
         task={**item,'id':'r'+str(index),'depends_on':dependency,'quote':users[source]}
         tasks.append(task)
         if kind not in ('read','policy','export'):previous=task['id']
-    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+    plan = validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+    if plan['unresolved']:
+        pending = _reply_draft_pending_facts(plan, state)
+        plan['unresolved'] = [item for item in plan['unresolved']
+                              if re.sub(r'\s+', '', item).removeprefix('배송') not in pending]
+    return plan
 
 
 def requirement_transport(model, api_key=''):

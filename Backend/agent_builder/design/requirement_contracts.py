@@ -76,7 +76,11 @@ class Other(Strict):
     action: str = Field(min_length=1, max_length=300)
 
 
-Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other,
+class ReplyDraft(Strict):
+    kind: Literal['reply_draft']
+
+
+Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | ReplyDraft | Other,
                  Field(discriminator='kind')]
 
 

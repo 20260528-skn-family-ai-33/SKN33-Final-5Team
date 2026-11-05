@@ -70,6 +70,24 @@ def _arguments(node):
     return parse_arguments(node['settings']) if node['settings'].get('operation') else {}
 
 
+def _matches_reply_draft(node, draft, state, quote):
+    if node['tool']!='agent_node' or node['settings'].get('operation'):
+        return False
+    if (node['settings'].get('instructions') or '').strip()==quote.strip():
+        return True
+    # The built-in role reads workflow_instructions through inspect_inputs.
+    # Verify its actual version and specification, not its display label.
+    if (draft.get('instructions') or '').strip()!=quote.strip():
+        return False
+    from workflow_engine.library.node_library import default_nodes
+    role=next((item for item in default_nodes() if item['spec']['name']=='응대 초안 에이전트'),None)
+    if role is None:
+        return False
+    ref=node['settings'].get('node_ref')
+    return (ref==role['ref'] and any(item['ref']==ref and item['spec']==role['spec']
+                                     for item in state.get('node_library',[])))
+
+
 def _matches(spec,node,draft,sources):
     tool=node['tool'];settings=node['settings'];operation=settings.get('operation')
     args=_arguments(node);kind=spec['kind']
@@ -199,7 +217,12 @@ def coverage_report(state,draft):
         if spec['kind']!='other':
             for id,n in nodes.items():
                 try:
-                    if (_matches(spec,n,draft,sources) or
+                    if spec['kind']=='reply_draft':
+                        # The native role executes these instructions with the actual run input.
+                        # A label or a promise in the workflow description is insufficient.
+                        if _matches_reply_draft(n,draft,state,task['quote']):
+                            matched.append(id)
+                    elif (_matches(spec,n,draft,sources) or
                             _implied_filter_task(spec,n,draft,plan['tasks'])):
                         matched.append(id)
                 except (ValueError,TypeError,KeyError,ArithmeticError):pass
@@ -213,6 +236,10 @@ def coverage_report(state,draft):
     # Find a single consistent assignment, not disconnected matches in different
     # branches or unused parallel inputs. Same-node filter/sort/policy is valid.
     tasks=plan['tasks'];selected={};attempts=0
+    if all(t['spec']['kind']=='reply_draft' for t in tasks):
+        if (draft.get('schedule') or len(nodes)!=1 or workflow.get('entry') not in nodes
+                or any(n['tool']!='agent_node' or n.get('bindings') for n in nodes.values())):
+            problems.append('요구사항 검증: 단독 답변 초안에는 원문으로 초안을 작성하는 역할 하나만 연결하세요.')
     exports=[t['id'] for t in tasks if t['spec']['kind'] in ('export','receipt_workbook')]
     from workflow_engine.execution_path import artifact_output_ids, artifact_origin
     try:

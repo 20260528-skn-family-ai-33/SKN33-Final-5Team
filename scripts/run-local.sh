@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-BUNDLED_NODE="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin"
-if ! command -v node >/dev/null 2>&1; then PATH="$BUNDLED_NODE:$PATH"; export PATH; fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js를 설치하고 PATH에 추가해 주세요." >&2
+  exit 1
+fi
 cd "$ROOT/Frontend"
 node ../node_modules/vite/bin/vite.js build
 cd "$ROOT"

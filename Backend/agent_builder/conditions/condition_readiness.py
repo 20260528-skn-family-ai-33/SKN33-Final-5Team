@@ -522,7 +522,7 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
          {'CSV': 'csv', 'JSON': 'json'}),
         ('sort.policy', r'정렬\s*(?:은|을)?\s*(하지\s*말|하지\s*마|하지\s*않|안\s*해|없이)',
          {'하지 말': 'none', '하지 마': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
-        ('filter.operator', r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?\s*(초과|이상|미만|이하)',
+        ('filter.operator', r'(?:(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?|기준\s*(?:금액|값|수량|가격)(?:을|를|이|가)?)\s*(초과|이상|미만|이하)',
          {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}),
     ]
     for turn, message in enumerate(state.get('messages', [])):
@@ -578,7 +578,7 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                 if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
                     continue  # the named range is dropped; leave the operator to a question
                 tail = message['content'][match.end():match.end() + 16]
-                negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
+                negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|아닌|않|하지\s*마)', tail))
                 token = re.sub(r'\s+', ' ', match.group(1))
                 value = None if negated else mapping.get(token, mapping.get(token.upper()))
                 refs = [e for e in catalog if e.get('turn') == turn and match.group(0) in e['quote']]
@@ -933,7 +933,11 @@ def _grounded_enum(key, value, quote):
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
         matches = list(re.finditer(aliases[value], quote))
-        if value in ('gt', 'gte', 'lt', 'lte') and any(_excludes_named_range(quote, m.end()) for m in matches):
+        if value in ('gt', 'gte', 'lt', 'lte') and any(
+            _excludes_named_range(quote, m.end()) or
+            re.match(r'\s*(?:가|이)?\s*(?:아니|아닌|않|하지\s*마)', quote[m.end():])
+            for m in matches
+        ):
             return False
         return bool(matches)
     return True
@@ -1030,6 +1034,21 @@ def validate_conditions(raw, state, catalog):
         if key not in slots:
             slots[key] = deepcopy(old)
     literals = explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'))
+    if slots.get('filter.field', {}).get('status') != 'specified':
+        named = []
+        for evidence in catalog:
+            if evidence.get('source_id') != 'user':
+                continue
+            for match in re.finditer(r'(?<![가-힣A-Za-z0-9_])([가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)(?:이|가|은|는)\s*기준\s*(?:금액|값|수량|가격)', evidence['quote']):
+                named.append((match.group(1), evidence))
+        if len({field for field, _ in named}) == 1 and not any(
+            m.get('role') == 'user' and re.search(r'(?:열|항목|필드).{0,12}(?:변경|바꿔|바꾸)',m['content'])
+            for m in state.get('messages',[])[named[-1][1].get('turn',-1)+1:]
+        ):
+            field, evidence = named[-1]
+            slots['filter.field'] = {'key': 'filter.field', 'status': 'specified', 'value': field,
+                                     'evidence_ids': [evidence['id']], 'evidence': [evidence],
+                                     'extraction': 'literal_filter_field'}
     def _turn(item):
         return max((e.get('turn', -1) for e in item.get('evidence', [])), default=-1)
     for key, item in list(literals.items()):
@@ -1088,11 +1107,10 @@ def validate_conditions(raw, state, catalog):
         if 'filter' not in operations:operations.insert(0,'filter')
     required = list(dict.fromkeys(key for operation in operations for key in REQUIRED[operation]))
     filter_field=slots.get('filter.field',{}).get('value')
-    if 'filter' in operations and filter_field and any(
+    filter_value=slots.get('filter.value',{}).get('value')
+    if ('filter' in operations and filter_field and not isinstance(filter_value,(int,float)) and any(
         r.get('kind')=='table' and (r.get('profile',{}).get(filter_field,{}) or {}).get('missing',0)>0
-        for r in state.get('resources',[])):
-        # A known empty value in the actual filter column needs a user or
-        # document-backed policy; model defaults are not user decisions.
+        for r in state.get('resources',[]))):
         required.append('missing.policy')
     if slots.get('schedule.frequency', {}).get('value') == 'weekly':
         required.append('schedule.weekday')
@@ -1118,7 +1136,10 @@ def validate_conditions(raw, state, catalog):
         unresolved.append('input.table')
     issues = input_issues(state)
     last_user = state.get('messages', [])[latest]['content'] if latest >= 0 else ''
-    cancelled = bool(re.search(r'그만\s*(해|할)|예약.{0,8}(취소|하지\s*마)|작업.{0,8}취소', last_user))
+    prior_schedule = ('schedule' in previous.get('operations', []) or
+                      bool((state.get('draft') or {}).get('schedule')))
+    cancelled = bool(re.search(r'그만\s*(해|할)|작업.{0,8}취소|예약.{0,8}취소', last_user) or
+                     prior_schedule and re.search(r'예약.{0,8}하지\s*마', last_user))
     decision = ('system_error' if issues else 'manual_review' if cancelled else 'deferred' if resolution and resolution['deferred'] else 'unsupported' if proposal['unsupported_actions'] else
                 'manual_review' if scope_review else
                 'ready' if not operations and slots.get('duplicate.policy',{}).get('value')=='keep' and not unresolved else
@@ -1216,6 +1237,12 @@ def plan_issues(ledger, draft):
             problems.append('단일 선별 계약에 없는 추가 선별 조건이 있거나 조건이 누락됐습니다.')
         if not any(all(condition.get(k) == v for k, v in expected.items()) and not condition.get('compare_field') for condition in filters):
             problems.append('확정된 선별 열·비교·기준 값이 실행 설정과 다릅니다.')
+        if 'deduplicate' not in ledger['operations'] and 'duplicate.policy' not in slots:
+            if any(plan.get('duplicate_policy') != 'keep' for plan in plans):
+                problems.append('요청하지 않은 중복 처리가 추가됐습니다. 중복 행을 모두 유지하세요.')
+        if 'missing.policy' not in slots and expected['value_type'] == 'number':
+            if any(plan.get('missing_policy') != 'exclude' for plan in plans):
+                problems.append('숫자 비교에서 빈 값 처리 요청이 없으면 빈 값을 제외하세요.')
     for key, field in [('duplicate.field', 'duplicate_field'), ('duplicate.policy', 'duplicate_policy'), ('missing.policy', 'missing_policy')]:
         if key in slots and (not plans or any(plan.get(field) != slots[key] for plan in plans)):
             problems.append('확정 조건이 실행 설정과 다릅니다: ' + key)

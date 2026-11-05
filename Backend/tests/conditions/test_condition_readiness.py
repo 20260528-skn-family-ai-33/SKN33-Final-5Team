@@ -195,13 +195,12 @@ def test_supported_filter_and_dedup_missing_threshold_asks_user():
     assert {'filter.operator','filter.value'}.issubset(ledger['unresolved'])
 
 
-def test_known_missing_filter_values_require_grounded_policy():
+def test_known_missing_numeric_filter_values_default_to_exclusion():
     s=state('비용이 100만원 초과인 거래를 JSON으로 저장해줘. 중복 거래ID는 마지막 행을 유지해.')
     s['resources']=[{'id':'table','kind':'table','columns':['비용','거래ID'],'profile':{'비용':{'missing':1}}}]
     raw=proposal(s,{'filter.field':'비용','filter.operator':'gt','filter.value':'1000000','duplicate.field':'거래ID','duplicate.policy':'last','output.format':'json'},['filter','deduplicate'])
     ledger=checked(s,raw)
-    assert ledger['decision']=='clarify' and 'missing.policy' in ledger['unresolved']
-    assert any('빈 값' in q['text'] for q in ledger['questions'])
+    assert ledger['decision']=='ready' and 'missing.policy' not in ledger['unresolved']
     raw['conditions'].append({'key':'missing.policy','value':'exclude','status':'specified','evidence_ids':['user:0:0']})
     assert checked(s,raw)['slots']['missing.policy']['status']=='missing'
 

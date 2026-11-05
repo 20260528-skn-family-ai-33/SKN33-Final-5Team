@@ -92,6 +92,15 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
             if isinstance(error,AssessmentConflictError):
                 result.update(issues=['모델의 지원 판정과 누락 항목이 서로 맞지 않습니다. 요청을 보존하고 생성·저장을 중단했습니다.'],
                               assessment_conflict=error.reported,model_calls=error.model_calls)
+        if result['decision']=='clarify' and not state.get('resources'):
+            user_text='\n'.join(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')
+            def already_named_column(question):
+                match=re.search(r'([가-힣A-Za-z_][가-힣A-Za-z0-9_]*)\s*열(?:의)?\s*(?:정확한\s*)?이름',question)
+                return bool(match and re.search(r'(?<![가-힣A-Za-z0-9_])'+re.escape(match.group(1))+
+                    r'(?=이|가|은|는|을|를|\s|[,.!?]|$)',user_text))
+            remaining=[question for question in result['missing_conditions'] if not already_named_column(question)]
+            if remaining:
+                result={**result,'missing_conditions':remaining}
         fingerprint=input_fingerprint(state)
         decision=result['decision']
         update={'capability_route':'conditions','capability_assessment':result,'capability_enforced':True,

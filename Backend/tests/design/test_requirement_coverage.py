@@ -402,3 +402,66 @@ def test_empty_policy_is_rejected_and_extraction_format_repair_is_bounded():
     result=make_requirement_check('fixture',active,mode='enforce')(state)
     assert result['requirement_route']=='plan' and active.calls==2
     assert result['trace'][-1]['model_calls']==2
+
+@pytest.mark.parametrize('resolved', [True, False])
+def test_unresolved_requirements_are_rechecked_without_silently_discarding_them(resolved):
+    state=seed();plan=deepcopy(state['requirement_ledger']);transport=Extraction(plan)
+    valid=transport.invoke([dict(content=json.dumps({'user_messages':[REQUEST],'resources':[]}))])
+    pending=json.loads(valid['content']);pending['unresolved']=['사용자가 정하지 않은 필수 기준']
+    class Recheck:
+        calls=0
+        def invoke(self,messages):
+            self.calls+=1
+            if self.calls==1 or not resolved:return dict(content=json.dumps(pending))
+            assert '필수인지' in messages[-1]['content']
+            return valid
+    active=Recheck()
+    for key in ('requirement_ledger','requirement_fingerprint','requirement_digest'):state.pop(key)
+    result=make_requirement_check('fixture',active,mode='enforce')(state)
+    assert active.calls==2
+    assert result['requirement_route']==('plan' if resolved else 'stop')
+    if not resolved:assert '사용자가 정하지 않은 필수 기준' in result['issues'][0]
+
+
+def test_strict_threshold_also_covers_explicit_exclusion_of_same_boundary():
+    state=seed(); ledger=state['requirement_ledger']; nodes=state['draft']['workflow']['nodes']
+    actual=nodes[2]['settings']['execution_plan']['filters'][0]
+    actual['operator']='gt'; ledger['tasks'][1]['spec']['filters'][0]['operator']='gt'
+    boundary=deepcopy(ledger['tasks'][1]);boundary['id']='r6';boundary['depends_on']=[]
+    boundary['spec']['filters'][0]['operator']='ne';ledger['tasks'].append(boundary)
+    state['requirement_digest']=plan_digest(ledger)
+    assert not coverage_report(state,state['draft'])['issues']
+    boundary['spec']['filters'][0]['value']=10;state['requirement_digest']=plan_digest(ledger)
+    assert any('r6' in issue for issue in coverage_report(state,state['draft'])['issues'])
+
+
+def test_nonempty_requirement_is_covered_only_with_explicit_exclude():
+    state=seed();ledger=state['requirement_ledger'];plan=state['draft']['workflow']['nodes'][2]['settings']['execution_plan']
+    plan['filters'][0]['operator']='gt';ledger['tasks'][1]['spec']['filters'][0]['operator']='gt'
+    plan['missing_policy']='exclude';ledger['tasks'][4]['spec']['missing_policy']='exclude'
+    required=deepcopy(ledger['tasks'][1]);required['id']='r6';required['depends_on']=[]
+    required['spec']['filters'][0].update(operator='not_empty',value=None,value_type='text')
+    ledger['tasks'].append(required);state['requirement_digest']=plan_digest(ledger)
+    assert not coverage_report(state,state['draft'])['issues']
+    plan['missing_policy']='keep'
+    assert any('r6' in issue for issue in coverage_report(state,state['draft'])['issues'])
+
+
+def test_boundary_implication_never_covers_a_different_column_or_extra_filter():
+    state=seed();ledger=state['requirement_ledger'];plan=state['draft']['workflow']['nodes'][2]['settings']['execution_plan']
+    plan['filters'][0]['operator']='gt';ledger['tasks'][1]['spec']['filters'][0]['operator']='gt'
+    boundary=deepcopy(ledger['tasks'][1]);boundary['id']='r6';boundary['depends_on']=[]
+    boundary['spec']['filters'][0].update(operator='ne',field='qty');ledger['tasks'].append(boundary)
+    state['requirement_digest']=plan_digest(ledger)
+    assert any('r6' in issue for issue in coverage_report(state,state['draft'])['issues'])
+    boundary['spec']['filters'][0]['field']='amount';plan['filters'].append(deepcopy(plan['filters'][0]));plan['match']='any'
+    state['requirement_digest']=plan_digest(ledger)
+    assert any('r6' in issue for issue in coverage_report(state,state['draft'])['issues'])
+
+
+def test_single_filter_match_mode_is_equivalent_but_multiple_filters_are_not():
+    from agent_builder.design.requirement_coverage import _same_filters
+    one={'field':'amount','operator':'gt','value':20,'compare_field':None,'value_type':'number'}
+    other={'field':'qty','operator':'gt','value':10,'compare_field':None,'value_type':'number'}
+    assert _same_filters([one],[one],'any','all')
+    assert not _same_filters([one,other],[one,other],'any','all')

@@ -810,3 +810,28 @@ test('DOM: canonical aggregate loads executed grouping and saves edited sum argu
   assert.deepEqual(JSON.parse(body.spec.settings.arguments_json),{group_by:['channel'],value_column:'net_amount',null_policy:'exclude'});
  }finally{await h.close();}
 });
+
+test('DOM: tool gap choices record the selected decision and show its state',async()=>{
+ const choice={gap_id:'gap_'+'a'.repeat(24),revision:3,state_fingerprint:'b'.repeat(64),status:'awaiting_choice',prompt:'어떻게 진행할까요?',options:[{id:'create_tool',label:'새 도구 제작'},{id:'redesign_workflow',label:'워크플로우 재설계'},{id:'defer',label:'나중에 결정'}]};
+ const session={...readySession(),revision:3,status:'unsupported',tool_gap_choice:choice};
+ const h=await setup('',{'a4b-builder-session':'ready'},(path,body)=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/tool_gap_choice'))return {...session,revision:4,tool_gap_choice:{...choice,revision:4,status:'deferred'}};
+ });
+ try{
+  assert.ok(button('새 도구 제작'));assert.ok(button('워크플로우 재설계'));
+  await click(button('나중에 결정'));
+  const sent=h.calls.find(c=>c.path.endsWith('/tool_gap_choice'))?.body;
+  assert.equal(sent.choice,'defer');assert.equal(sent.revision,3);assert.equal(sent.gapId,choice.gap_id);assert.equal(sent.stateFingerprint,choice.state_fingerprint);
+  assert.match(document.body.textContent||'',/나중에 결정하도록 기록/);
+ }finally{await h.close();}
+});
+
+test('DOM: generated internal draft title is presented in Korean while explicit names are preserved',async()=>{
+ const session={...readySession(),draft:{...readySession().draft,name:'delivery_delay_response_draft',purpose:'배송 지연 안내 답변'}};
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined);
+ try{assert.equal(document.querySelector('.as-setting-section h3')?.textContent,'배송 지연 안내 답변');}finally{await h.close();}
+ const explicit={...session,messages:[{role:'user',content:'이름은 delivery_delay_response_draft로 해줘'}]};
+ const h2=await setup('',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?explicit:undefined);
+ try{assert.equal(document.querySelector('.as-setting-section h3')?.textContent,'delivery_delay_response_draft');}finally{await h2.close();}
+});

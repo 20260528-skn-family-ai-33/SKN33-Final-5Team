@@ -410,3 +410,20 @@ def test_direct_storage_requires_each_enforced_gate_and_confirmation(tmp_path,ga
     else:s.update(verification_required=True,verification_route='manual_review')
     with pytest.raises(ValueError):store.save_agent(s)
     assert not store.agents();store.close()
+
+
+def test_capability_question_preserves_unknown_threshold_but_drops_already_named_column():
+    from agent_builder.capabilities.capability_check import make_capability_check
+    s=state('비용이 기준 금액을 초과하는 행만 JSON으로 저장해줘. 기준 금액은 물어봐줘.')
+    result=assessment(s,'clarify',questions=['기준 금액', '비용 열의 정확한 이름'])
+    out=make_capability_check('test',transport=Fake([result]),mode='enforce')(s)
+    assert [q['text'] for q in out['capability_questions']]==['기준 금액에 대해 알려주세요.']
+
+
+def test_column_question_is_not_dropped_when_a_file_is_already_attached():
+    from agent_builder.capabilities.capability_check import make_capability_check
+    s=state('비용이 기준 금액을 초과하는 행만 JSON으로 저장해줘.')
+    s['resources']=[{'id':'table','kind':'table','columns':['가격']}]
+    result=assessment(s,'clarify',questions=['기준 금액', '비용 열의 정확한 이름'])
+    out=make_capability_check('test',transport=Fake([result]),mode='enforce')(s)
+    assert len(out['capability_questions'])==2

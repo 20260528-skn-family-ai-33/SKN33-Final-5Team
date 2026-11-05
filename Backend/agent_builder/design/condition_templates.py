@@ -18,6 +18,8 @@ def compile_conditions(state):
         output_format=slots.get('output.format','json')).model_dump()
     if operation=='filter':
         value=slots['filter.value']
+        if isinstance(value,(int,float)) and 'missing.policy' not in slots:
+            plan['missing_policy']='exclude'
         plan['filters']=[{'field':slots['filter.field'],'operator':slots['filter.operator'],'value':value,
             'compare_field':None,'value_type':'number' if isinstance(value,(int,float)) else 'text'}]
     fields=[key for key in [slots.get('filter.field'),slots.get('duplicate.field')] if key]

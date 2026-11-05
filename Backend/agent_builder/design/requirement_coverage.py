@@ -35,8 +35,34 @@ def _condition(value):
 
 
 def _same_filters(actual, expected, actual_match, expected_match):
-    return (actual_match==expected_match and
+    return ((actual_match==expected_match or len(actual)==len(expected)==1) and
             sorted(map(_condition,actual))==sorted(map(_condition,expected)))
+
+
+def _implied_filter_task(spec, node, draft, tasks):
+    """Recognize only consequences of another independently required filter."""
+    if spec['kind'] != 'filter' or len(spec['filters']) != 1 or node['tool'] != 'filter_sort' or node['settings'].get('operation'):
+        return False
+    expected=spec['filters'][0]
+    if expected['operator'] not in ('ne','not_empty') or expected.get('compare_field'):
+        return False
+    plan=node['settings'].get('execution_plan') or draft['execution_plan']
+    if len(plan['filters']) != 1:
+        return False
+    actual=plan['filters'][0]
+    if actual.get('field') != expected['field'] or actual.get('compare_field') or actual.get('value_type') != 'number':
+        return False
+    if actual.get('operator') not in ('gt','lt') or actual.get('value') is None:
+        return False
+    if expected['operator']=='ne':
+        if expected.get('value_type') != 'number' or expected.get('value') is None:
+            return False
+        if number_value(actual['value']) != number_value(expected['value']):
+            return False
+    elif plan.get('missing_policy') != 'exclude':
+        return False
+    return any(task['spec']['kind']=='filter' and _same_filters(
+        plan['filters'],task['spec']['filters'],plan['match'],task['spec']['match']) for task in tasks)
 
 
 def _arguments(node):
@@ -173,7 +199,9 @@ def coverage_report(state,draft):
         if spec['kind']!='other':
             for id,n in nodes.items():
                 try:
-                    if _matches(spec,n,draft,sources):matched.append(id)
+                    if (_matches(spec,n,draft,sources) or
+                            _implied_filter_task(spec,n,draft,plan['tasks'])):
+                        matched.append(id)
                 except (ValueError,TypeError,KeyError,ArithmeticError):pass
         status='matched' if matched else 'unverified' if spec['kind']=='other' else 'missing_or_mismatched'
         candidates[task['id']]=matched

@@ -25,7 +25,7 @@ export class WorkerSlots {
 }
 
 // Ownership calls (renewing or ending a run's lease) must never queue behind long runs.
-const CONTROL_ACTIONS=new Set(['heartbeat_run','interrupt_run']);
+const CONTROL_ACTIONS=new Set(['heartbeat_run','interrupt_run','begin_generation','interrupt_generation']);
 // Model calls and runs last minutes. Anything else (schedule checks, screens) ends in seconds.
 const LONG_ACTIONS=new Set(['message','confirm','test','scheduled_run','retry_run','resume_run']);
 const BUSY='서버에서 처리 중인 작업이 많습니다. 잠시 후 다시 시도하세요.';

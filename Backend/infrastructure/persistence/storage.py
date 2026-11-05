@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS builder_sessions(id TEXT PRIMARY KEY,json TEXT NOT NU
 CREATE TABLE IF NOT EXISTS builder_assets(id TEXT PRIMARY KEY,json TEXT NOT NULL,rows_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS agent_versions(agent_id TEXT NOT NULL,version INTEGER NOT NULL,json TEXT NOT NULL,PRIMARY KEY(agent_id,version));
 CREATE TABLE IF NOT EXISTS agent_tests(id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS builder_generation_requests(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,json TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS generation_requests_session ON builder_generation_requests(session_id);
 CREATE TABLE IF NOT EXISTS builder_run_leases(run_id TEXT PRIMARY KEY,token TEXT NOT NULL,expires_at TEXT NOT NULL,pid INTEGER NOT NULL,active INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS builder_schedule_jobs(id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,slot_key TEXT NOT NULL,state TEXT NOT NULL,lease_until TEXT,lease_token TEXT,json TEXT NOT NULL,UNIQUE(agent_id,slot_key));
 CREATE TABLE IF NOT EXISTS reply_review_decisions(run_id TEXT NOT NULL REFERENCES agent_tests(id),review_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(run_id,review_id));
@@ -159,6 +161,7 @@ class Storage:
                     # Repair old partial saves on idempotent replays without pausing a healthy schedule.
                     if draft.get('schedule') and (not schedules.get(old['id']) or not schedules.source(old['id'])):
                         schedules.configure(old['id'],commit=False)
+                    if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'])
                     self.db.commit();return old['id']
             id=state.get('base_agent_id') or (session_id if self.business else uid())
             row=self.db.execute('SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=?',(id,)).fetchone()
@@ -175,6 +178,7 @@ class Storage:
             if self.business:self.business.save_version(a)
             if draft.get('schedule'):schedules.configure(id,commit=False)
             else:self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(id,))
+            if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id)
             self.db.commit();return id
         except Exception:self.db.rollback();raise
     def write_test(self,run):

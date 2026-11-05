@@ -40,7 +40,7 @@ def _short_reply(state):
     return text in _PASSIVE_REPLIES
 
 
-def make_capability_check(model,transport=None,mode=None):
+def make_capability_check(model,transport=None,mode=None,error_observer=None):
     setting=mode or os.getenv('A4B_CAPABILITY_MODE','off')
     if setting not in ('off','enforce'):raise ValueError('A4B_CAPABILITY_MODE는 off/enforce이어야 합니다.')
     def check(state):
@@ -87,6 +87,7 @@ def make_capability_check(model,transport=None,mode=None):
                 else:active=transport
                 result=assess_capability(state,active)
         except Exception as error:
+            if error_observer:error_observer(error)
             result={'decision':'system_error','issues':['도구 지원 판단을 완료하지 못했습니다.'], 'error_type':type(error).__name__,'model_calls':None}
             if isinstance(error,AssessmentConflictError):
                 result.update(issues=['모델의 지원 판정과 누락 항목이 서로 맞지 않습니다. 요청을 보존하고 생성·저장을 중단했습니다.'],

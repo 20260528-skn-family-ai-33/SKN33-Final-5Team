@@ -2,7 +2,8 @@
 
 A4B_TEST_DATABASE_URL must point at a disposable database whose name contains "test"
 (docker compose --profile test-db up -d postgres-test). The fixture drops and recreates the
-a4b_builder schema there, then connects as a non-superuser app role so row-level security applies.
+a4b_builder schema and its generation-history table in a4b, then connects as a non-superuser
+app role so row-level security applies. Other a4b business tables are preserved.
 """
 import importlib.util
 import json
@@ -103,6 +104,7 @@ def postgres_app_conninfo():
         pytest.fail('A4B_TEST_DATABASE_URL의 DB 이름에 test가 들어간 일회용 DB만 사용할 수 있습니다.')
     with psycopg.connect(TEST_URL, autocommit=True) as connection:
         connection.execute('DROP SCHEMA IF EXISTS a4b_builder CASCADE')
+        connection.execute('DROP TABLE IF EXISTS a4b.workflow_generation_requests')
         connection.execute("DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='a4b_app') THEN CREATE ROLE a4b_app NOLOGIN; END IF; END$$")
         connection.execute(f"DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{APP_ROLE}') THEN CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'; END IF; END$$")
         connection.execute(f'GRANT a4b_app TO {APP_ROLE}')
@@ -132,6 +134,36 @@ def workspace(tmp_path):
     folder = tmp_path / 'users' / str(uuid.uuid4())
     folder.mkdir(parents=True)
     return folder
+
+
+def test_generation_history_persists_failures_waiting_and_workspace_isolation(backend,tmp_path):
+    from infrastructure.persistence.generation_history import GenerationHistory, history
+    alice,bob=workspace(tmp_path),workspace(tmp_path)
+    store=Storage(alice)
+    other=Storage(bob)
+    try:
+        session=store.new_session('test-model','test-credential')
+        audit=GenerationHistory.start(store,dict(id=session['id'],action='message',revision=0,content='create workflow'))
+        audit.enter('conversation');audit.fail(TimeoutError('provider secret'))
+        waiting=GenerationHistory.start(store,dict(id=session['id'],action='message',revision=0,content='retry workflow'))
+        waiting.enter('capability_check');waiting.finish(dict(status='needs_clarification',pending_questions=[dict(source='capability',text='Which input?')]))
+        rows=history(store,session['id'])
+        assert [r['status'] for r in rows]==['waiting_input','failed']
+        assert rows[1]['stage']=='design' and rows[1]['reason_code']=='model_timeout'
+        assert rows[0]['error_type'] is None and rows[0]['stage']=='request_analysis'
+        assert not other.db.execute(f'SELECT id FROM {audit.table} WHERE {{ws}} AND id=?',(audit.id,)).fetchone()
+        if backend=='postgres':
+            assert audit.table=='a4b.workflow_generation_requests'
+            assert store.db.execute("SELECT to_regclass('a4b_builder.builder_generation_requests')").fetchone()==(None,)
+            raw=store.db.execute(f'SELECT json FROM {audit.table} WHERE {{ws}} AND id=?',(audit.id,)).fetchone()[0]
+            assert load_migrator().copy_rows(store.db.connection,store.workspace_id,'builder_generation_requests',
+                                            ['id','session_id','json'],[(audit.id,session['id'],raw)])==0
+        with pytest.raises(ValueError):history(other,session['id'])
+    finally:
+        store.close();other.close()
+    reopened=Storage(alice)
+    try:assert history(reopened,session['id'])==rows
+    finally:reopened.close()
 
 
 def seed(folder):

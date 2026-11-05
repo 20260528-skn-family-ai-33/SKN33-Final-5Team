@@ -55,6 +55,9 @@ test('long actions cannot take the slots short requests need',async()=>{
  const short=await lanes.acquire('claim_due');
  await assert.rejects(lanes.acquire('recover_runs'),WorkerBusyError);// all three general slots are now taken
  const control=await lanes.acquire('heartbeat_run');
+ control();
+ const generation=await lanes.acquire('interrupt_generation');generation();
+ const startGeneration=await lanes.acquire('begin_generation');startGeneration();
  first();first();// releasing twice frees one long and one general slot only
  assert.deepEqual(lanes.long.size,{active:1,waiting:0});assert.deepEqual(lanes.general.size,{active:2,waiting:0});
  const third=await lanes.acquire('retry_run');

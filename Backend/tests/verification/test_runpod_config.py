@@ -1,5 +1,6 @@
 from dataclasses import asdict
 import json
+import shutil
 from pathlib import Path
 import subprocess
 from unittest.mock import patch
@@ -58,8 +59,8 @@ def test_bearer_key_is_only_sent_as_header(monkeypatch):
 
 
 def test_env_file_is_loaded_before_defaults_without_shell_execution(tmp_path,monkeypatch):
-    node=Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
-    if not node.exists():pytest.skip('bundled Node unavailable')
+    node=shutil.which('node')
+    if not node:pytest.skip('Node.js unavailable')
     import os
     env={k:v for k,v in os.environ.items() if not k.startswith('A4B_')}
     config=tmp_path/'runpod.env'
@@ -76,8 +77,8 @@ def test_env_file_is_loaded_before_defaults_without_shell_execution(tmp_path,mon
 
 def test_lens_style_shared_ollama_url(tmp_path,monkeypatch):
     import os
-    node=Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
-    if not node.exists():pytest.skip('bundled Node unavailable')
+    node=shutil.which('node')
+    if not node:pytest.skip('Node.js unavailable')
     config=tmp_path/'simple.env'
     config.write_text('A4B_LLM_BASE_URL=https://example-pod-11434.proxy.runpod.net/v1\nA4B_LLM_MODEL=qwen3:8b-q4_K_M\nA4B_VERIFIER_MODEL=qwen3.5:4b\n')
     env={k:v for k,v in os.environ.items() if not k.startswith('A4B_')}

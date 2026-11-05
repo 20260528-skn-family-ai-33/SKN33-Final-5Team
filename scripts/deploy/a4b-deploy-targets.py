@@ -22,13 +22,13 @@ BACKEND_SCRIPTS = {
 
 
 def areas(path):
-    if path.startswith((b'Backend/', b'scripts/verify/api/', b'scripts/setup/ollama/', b'infrastructure/db/')) or path in BACKEND_SCRIPTS:
+    if path.startswith((b'Backend/', b'runtime/ml-bundle/', b'scripts/verify/api/', b'scripts/setup/ollama/', b'infrastructure/db/')) or path in BACKEND_SCRIPTS:
         return {'backend'}
     if path.startswith((b'Frontend/', b'scripts/verify/frontend/')):
         return {'frontend'}
     if path.startswith(b'shared/') or path in {
         b'infrastructure/docker/Dockerfile', b'infrastructure/docker/Dockerfile.dockerignore',
-        b'Dockerfile', b'.dockerignore', b'package.json', b'package-lock.json', b'tsconfig.json',
+        b'Dockerfile', b'.dockerignore', b'.gitattributes', b'package.json', b'package-lock.json', b'tsconfig.json',
     }:
         return {'frontend', 'backend'}
     return set()

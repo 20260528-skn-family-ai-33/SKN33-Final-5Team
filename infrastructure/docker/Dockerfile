@@ -30,7 +30,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY Backend/requirements/agent-lock.txt Backend/requirements/canonical-tools.txt Backend/requirements/document-analysis.txt /app/Backend/requirements/
 RUN python3 -m venv /app/Backend/.venv-agent && /app/Backend/.venv-agent/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/agent-lock.txt
-# Pinned SVM56 runtime is enabled by default. Weights stay in a read-only host mount.
+# Pinned SVM56 runtime and model ship together in each backend release.
 ARG A4B_WITH_ML=1
 COPY Backend/requirements/ml-svm56.txt /app/Backend/requirements/
 RUN case "$A4B_WITH_ML" in 1) /app/Backend/.venv-agent/bin/python -m pip install --no-cache-dir -r /app/Backend/requirements/ml-svm56.txt ;; 0) : ;; *) exit 1 ;; esac
@@ -48,6 +48,10 @@ COPY Backend/documents/ /app/Backend/documents/
 COPY Backend/verification/ /app/Backend/verification/
 COPY Backend/infrastructure/ /app/Backend/infrastructure/
 COPY Backend/contracts/ /app/Backend/contracts/
+COPY runtime/ml-bundle/model/recommender_char_svm_5431.joblib /app/runtime/ml-bundle/model/
+COPY runtime/ml-bundle/catalog/catalog_56.json /app/runtime/ml-bundle/catalog/
+# Reject missing/corrupt assets, dependency drift, and models that cannot recommend.
+RUN if [ "$A4B_WITH_ML" = 1 ]; then cd /app/Backend && .venv-agent/bin/python -m ml.svm56.bundle_cli check --probe; fi
 # docs/ is not copied: the server and workers never read it (examples serve tests and dev scripts).
 COPY scripts/run/run-deferred-verifications.py /app/scripts/run/run-deferred-verifications.py
 RUN ln -s run/run-deferred-verifications.py /app/scripts/run-deferred-verifications.py

@@ -1,7 +1,27 @@
 # SVM 모델 전달·설치·연결 확인
 
-SVM 추천 코드는 main에 있지만 모델 파일은 Git과 Docker 이미지에 들어 있지 않습니다.
-`hint / svm56` 설정만으로 모델이 설치되지는 않습니다. 아래 순서로 **각 실행 환경**을 확인합니다.
+기준 SVM 모델과 카탈로그는 `runtime/ml-bundle`에서 Git으로 관리하고, 백엔드 Docker 이미지에 함께 포함합니다.
+`hint / svm56`이 기본값이며, GitHub Actions와 이미지 빌드에서 실제 추천까지 검사합니다.
+EC2는 새 이미지의 SVM 검사가 성공한 뒤에만 기존 컨테이너를 교체합니다.
+개발 PC의 성공과 운영 활성화는 별개이므로 아래 순서로 **각 실행 환경**을 확인합니다.
+
+## GitHub Actions → ECR → EC2 자동배포
+
+1. `.gitattributes`는 모델과 카탈로그를 `-text`로 지정해 원본 바이트를 보존합니다.
+   카탈로그의 JSON 내용이 같아도 CRLF/LF 변환이 일어나면 고정 SHA256 검사가 실패합니다.
+2. `Dockerfile.dockerignore`는 다른 runtime 자료를 제외하고 기준 모델·카탈로그 두 파일만 허용합니다.
+3. Dockerfile은 두 파일을 `/app/runtime/ml-bundle`에 복사합니다. 기본 `A4B_WITH_ML=1` 빌드는
+   `check --probe`가 실제 `source=svm56` 후보를 생성해야 성공합니다.
+4. `runtime/ml-bundle/` 변경은 백엔드 배포 대상입니다. 모델만 바뀌어도 main push에서
+   새 이미지가 생성되며, 프론트만 바뀌면 기존 프론트 전용 배포를 유지합니다.
+5. EC2 배포는 현재 환경변수·마운트를 이어받아 새 이미지로 DB preflight와 오프라인 SVM probe를 실행합니다.
+   모델 누락, 해시 불일치, 의존성 불일치, `off`/다른 backend, 잘못된 경로 등은 컨테이너 교체 전에 배포를 차단합니다.
+   실패한 probe에서는 기존 앱을 중지하지 않습니다. 컨테이너 교체 후 앱 health 실패 시 기존 복귀 절차를 사용합니다.
+
+EC2에는 모델 전용 파일 복사나 추가 마운트가 필요하지 않습니다. 모델이 앱 이미지와 함께 버전 관리되므로
+이전 이미지로 복귀할 때 모델도 함께 돌아갑니다. 모델 포함 이전 이미지로 복귀하면 SVM도 그 이전 상태로 돌아갑니다.
+명시적으로 설정한 `A4B_SVM_MODEL_PATH`/`A4B_SVM_CATALOG_PATH`는 이미지의 기본 경로보다 우선하므로
+오래된 외부 경로를 유지한 배포는 probe에서 차단됩니다. GitHub Actions의 probe는 Qwen 호출이나 실제 외부 업무를 실행하지 않습니다.
 
 ## 팀 공유 파일
 
@@ -62,10 +82,10 @@ EC2처럼 Compose 대신 기존 컨테이너 설정을 이어받는 배포는 �
 docker exec -w /app/Backend a4b-jhd-aws /app/Backend/.venv-agent/bin/python -m ml.svm56.bundle_cli check --probe
 ```
 
-현재 `scripts/deploy/deploy-a4b-ec2.sh`는 기존 컨테이너의 환경변수와 bind mount를 이어받습니다.
-**코드 배포만으로 기존 `off` 설정이나 빠진 모델 마운트가 바뀌지 않습니다.** 운영 담당자가
-현재 모델 경로와 마운트를 확인한 뒤 배포 절차에 맞춰 반영해야 합니다. 진단 명령은 이를 자동 변경하지 않습니다.
-기존 배포가 마운트 개수를 제한하므로 모델 마운트를 임의로 추가하지 말고 배포 설정과 함께 검토합니다.
+`scripts/deploy/deploy-a4b-ec2.sh`는 기존 컨테이너의 환경변수와 bind mount를 이어받습니다.
+EC2의 기본 모델 위치는 이미지 내부 `/app/runtime/ml-bundle`이며 기존 마운트 2개 제한을 유지합니다.
+기존 `off` 설정이나 잘못된 명시적 경로는 자동으로 덮어쓰지 않고 배포 전 probe에서 실패로 보고합니다.
+설정 변경이 필요하면 운영의 `env-overrides` 절차를 따릅니다. 진단 명령은 설정을 자동 변경하지 않습니다.
 
 ## 결과 읽는 법
 

@@ -24,6 +24,17 @@
 DELIVERY_MANIFEST.json
 DELIVERY_README.txt
 **/runtime
+# Include only the pinned SVM pair; other runtime files never enter the build.
+!runtime
+runtime/*
+!runtime/ml-bundle
+runtime/ml-bundle/*
+!runtime/ml-bundle/model
+!runtime/ml-bundle/catalog
+runtime/ml-bundle/model/*
+runtime/ml-bundle/catalog/*
+!runtime/ml-bundle/model/recommender_char_svm_5431.joblib
+!runtime/ml-bundle/catalog/catalog_56.json
 **/tests/fixtures
 /ml
 /참고

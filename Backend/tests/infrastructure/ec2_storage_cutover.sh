@@ -27,7 +27,12 @@ docker() {
             esac ;;
         image|stop|ps) return 0 ;;
         volume) echo "$mock_old_id" ;;
-        run) [[ "$failure" != preflight ]] ;;
+        run)
+            if [[ "$*" == *'ml.svm56.bundle_cli check --probe'* ]]; then
+                [[ "$failure" != svm ]]
+            else
+                [[ "$failure" != preflight ]]
+            fi ;;
         create) echo "$mock_new_id" ;;
         start) [[ "$failure" != start || "$2" != "$mock_new_id" ]] ;;
         rm) return 0 ;;
@@ -73,5 +78,9 @@ check exited postgres none postgres blocked unrelated-stopped
 check running postgres none postgres ok normal-deploy
 grep -q -- "^stop $mock_old_id" "$fixture"/normal-deploy
 absent -q -- '--sqlite-stopped-at' "$fixture"/normal-deploy
+grep -q -- '^run .*--network none .*--workdir /app/Backend .*ml.svm56.bundle_cli check --probe' "$fixture"/normal-deploy
+check running postgres svm postgres blocked bad-svm
+absent -E '^(create |stop |start |rename )' "$fixture"/bad-svm
+grep -q -- 'SVM preflight failed before container replacement' "$fixture"/result
 check running postgres start postgres blocked normal-rollback
 grep -q -- "^start $mock_old_id" "$fixture"/normal-rollback

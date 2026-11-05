@@ -195,6 +195,12 @@ print("\n".join(key + "=" + value for key, value in settings.items()))
         echo 'Preflight failed before container replacement.' >&2
         exit 1
     fi
+    # Use the effective production settings, including any explicit model paths.
+    # This offline probe must pass before stopping or replacing the running app.
+    if ! docker run --rm --network none --env-file "$env_file" "${mount_args[@]}" --workdir /app/Backend "$image" /app/Backend/.venv-agent/bin/python -m ml.svm56.bundle_cli check --probe; then
+        echo 'SVM preflight failed before container replacement.' >&2
+        exit 1
+    fi
     new_id=$(docker create --network host --restart unless-stopped --env-file "$env_file" "${mount_args[@]}" "$image")
     if [[ "$image" == *:backend-* ]]; then
         docker cp -L "$old_id:/app/Frontend/dist-app/." - | docker cp - "$new_id:/app/Frontend/dist-app/"

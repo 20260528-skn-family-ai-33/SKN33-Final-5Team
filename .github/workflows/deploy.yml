@@ -142,6 +142,13 @@ jobs:
           if [[ ! -f "$setup/setup-agent-demo.sh" ]]; then setup=Backend/scripts; fi
           bash "$setup/setup-agent-demo.sh"
           bash "$setup/setup-document-analysis.sh"
+      - name: Verify the bundled SVM and deployment guards
+        if: needs.resolve-image.outputs.target != 'frontend'
+        working-directory: Backend
+        run: |
+          .venv-agent/bin/python -m pip install -r requirements/ml-svm56.txt
+          .venv-agent/bin/python -m ml.svm56.bundle_cli check --probe
+          .venv-agent/bin/python -m pytest -q tests/ml/svm56 tests/deployment tests/design/test_direct_svm_advice.py
       - run: npm run check
         if: needs.resolve-image.outputs.target != 'frontend'
       - run: npm test

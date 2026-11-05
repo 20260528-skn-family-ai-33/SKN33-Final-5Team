@@ -15,3 +15,5 @@
 Backend/tests/fixtures/parser_handoff/** -text
 Backend/tests/fixtures/qwen_verifier/** -text
 Backend/ml/legacy/** -text
+runtime/ml-bundle/model/recommender_char_svm_5431.joblib -text
+runtime/ml-bundle/catalog/catalog_56.json -text whitespace=cr-at-eol

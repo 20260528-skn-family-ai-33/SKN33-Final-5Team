@@ -19,8 +19,14 @@ compute=새 열의 계산식과 이름. filter=행 선별 비교조건. sort=정
 상수 비교는 value에 기준값, compare_field=null. 열 비교는 value=null, compare_field에 상대 열.
 aggregate=그룹 열·count/sum·합계 원본 열. 집계 출력 열은 count/sum.
 join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 유일은 many_to_one.
-policy=일반 표의 빈값/중복 행 처리. 결합의 키 유일성·null 키·최대 행 수는 join의 필드값이다.
+policy=일반 표의 빈값/중복 행 처리. 사용자가 정하지 않은 정책 값은 null로 둔다. 빈 값 제외는 filter가 아닌 policy.missing_policy=exclude다.
+중복 유지 요청만 있으면 duplicate_policy=keep이며 missing_policy는 null이다. 결합의 키 유일성·null 키·최대 행 수는 join의 필드값이다.
+기준값 초과 조건에서 정확히 그 기준값을 제외한다는 설명은 같은 필터의 경계 설명이다. 별도의 같지 않음 필터를 추가하지 않는다.
 export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자료 ID는 실제 목록에서 선택한다.
+파일을 실행할 때 연결하겠다고 요청했다면 현재 파일 ID가 없는 것은 미정 조건이 아니다. read의 file_ids=[]로 기록한다.
+열 이름이 사용자 원문에 명시되어 있으면 실제 파일이 아직 없어도 그 이름을 기록한다. 파일과 열의 실제 존재는 실행 시 확인한다.
+사용자가 사실을 확인 중이라고 밝히고 확인 후 안내하도록 요청한 답변 초안에는 원인이나 예정일을 추측하지 않는다.
+단순 답장 초안에는 사용자가 요청하지 않은 메시지 채널이나 연락처를 필수 미정 항목으로 추가하지 않는다.
 후속 답변에서 바꾸지 않은 조건도 유지한다. 필요한 값이 미정이면 unresolved에 적고 추측하지 않는다.
 요약·개인정보 제거·검수·분기·예약·기타 표현할 수 없는 업무나 추가 조건은 other로 남긴다.
 모든 사용자 요구를 기록한 뒤 tasks를 끝내고 unresolved를 작성한다. JSON 이외에는 출력하지 않는다.'''
@@ -215,7 +221,15 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key=''):
                     messages=messages+[dict(role='user',content='앞선 추출은 무효입니다. 다음 응답 계약 오류를 해결하여 원래 사용자 요구만 새로 추출하세요. '
                         '조건 값을 추측하거나 사용자 업무를 삭제하지 마세요. 오류: '+str(error)[:400])]
                     continue
-                if plan['unresolved']:raise ValueError(' / '.join(plan['unresolved']))
+                if plan['unresolved']:
+                    if not attempt:
+                        messages=messages+[dict(role='user',content='앞선 추출의 미정 항목이 업무 수행에 실제로 필수인지 원문과 대조해 다시 확인하세요. '
+                            '실행 때 연결할 파일이나 원문에 이미 명시된 열은 미정이 아닙니다. 사용자가 확인 후 안내한다고 한 미확인 사실, '
+                            '요청하지 않은 연락처·채널은 단순 답장 초안의 필수 정보가 아닙니다. '
+                            '실제로 필요한 값은 계속 unresolved로 남기고, 요청한 업무를 빠뜨리지 말고 전체 JSON을 다시 반환하세요. '
+                            '미정 항목: '+ ' / '.join(plan['unresolved'])[:400])]
+                        continue
+                    raise ValueError(' / '.join(plan['unresolved']))
                 break
         except (ValueError,TypeError,KeyError,RuntimeError,OSError) as error:
             detail='요청 업무 목록을 확정하지 못했습니다. '+str(error)[:400]

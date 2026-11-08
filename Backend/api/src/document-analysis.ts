@@ -10,11 +10,12 @@ import {analysisSupportsFormat,validateDocumentAnalysis} from './document-analys
 export {DOCUMENT_FORMATS,analysisSupportsFormat,routingEnabled,validateDocumentAnalysis} from './document-analysis-contract';
 export type {DocumentAnalysis,AnalysisBlock} from './document-analysis-contract';
 
-export async function analyzeBuilderDocument(bytes:Uint8Array,format:string):Promise<BuilderParsedDocument>{
+export async function analyzeBuilderDocument(bytes:Uint8Array,format:string,onArtifactDirectory?:(relative:string)=>void):Promise<BuilderParsedDocument>{
  if(!analysisSupportsFormat(format))throw new Error('지원하지 않는 문서 분석 형식입니다.');
  const hash=createHash('sha256').update(bytes).digest('hex');
  const relative=join('document-results',hash,randomUUID()),dir=dataDirectory(relative);
  await mkdir(dir,{recursive:true});
+ onArtifactDirectory?.(relative.split(sep).join('/'));
  const source=join(dir,'input.'+format),output=join(dir,'result.json');
  await writeFile(source,bytes);
  const configured=Number(process.env.A4B_DOCUMENT_TIMEOUT_MS||process.env.A4B_PDF_TIMEOUT_MS);

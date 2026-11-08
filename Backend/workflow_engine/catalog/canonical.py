@@ -19,6 +19,7 @@ OPERATIONS = {t['id']: [o for o in t['operations'] if not o.get('backend_tool')]
 
 def operation_spec(tool, operation):
     options = OPERATIONS.get(tool, [])
+    if tool=='email.list' and operation is None:operation='execute'
     if operation is None and len(options) == 1:
         return options[0]
     found = next((o for o in options if o['id'] == operation), None)
@@ -76,6 +77,7 @@ def ports(tool, spec, selected=None):
     for name in ('text', 'body', 'subject', 'url', 'timestamp', 'formula'):
         if name in inputs: inputs[name] = 'text'
     outputs = {'result': 'json', 'text': 'text'}
+    if tool=='email.get' or tool=='email.list' and spec['id']=='read_messages': outputs['documents']='documents'
     declared = spec.get('outputs', '')
     if re.search(r'\btable:Table\b', declared): outputs['table'] = 'table'
     if re.search(r'\bdocument:Document\b', declared): outputs.update(document='json', documents='documents', text='text')
@@ -92,6 +94,7 @@ def ports(tool, spec, selected=None):
 # Scalar policies whose domain must be checked before saving, even when table
 # inputs will only be supplied later. The executor still validates actual data.
 ARGUMENT_CONSTRAINTS = {
+ ('email.list','read_messages'):{'max_results':{'type':'positive_integer','maximum':10}},
  ('filter_sort','filter'):{'predicates':{'type':'array','items':'object','min_items':1},'combine':{'enum':['and','or']}},
  ('join_tables','join'):{'keys':{'type':'array','items':'string','min_items':1},'how':{'enum':['inner','left']},
      'cardinality':{'enum':['one_to_one','many_to_one']},'null_keys':{'enum':['error']},'max_rows':{'type':'positive_integer'}},
@@ -105,12 +108,17 @@ ARGUMENT_CONSTRAINTS = {
 
 
 def validate_constant_domains(tool,operation,args,placeholder_names):
+    if tool in ('email.get','email.attachment.get') and 'message_id' in args:
+        message_id=args['message_id']
+        if not placeholder_names(message_id) and (not isinstance(message_id,str) or message_id.strip() in ('','$binding')):
+            raise ValueError('Gmail 메시지 ID를 지정하거나 email.list 검색 결과의 실제 ID를 message_id에 연결하세요.')
     for key,rule in ARGUMENT_CONSTRAINTS.get((tool,operation),{}).items():
         if key not in args or placeholder_names(args[key]):continue
         value=args[key];kind=rule.get('type')
         valid=(kind is None or kind=='array' and isinstance(value,list) or kind=='object' and isinstance(value,dict)
                or kind=='string' and isinstance(value,str) or kind=='positive_integer' and type(value) is int and value>0)
         if 'enum' in rule:valid=value in rule['enum']
+        if valid and 'maximum' in rule:valid=value<=rule['maximum']
         if valid and rule.get('items')=='string':valid=all(isinstance(v,str) for v in value)
         if valid and rule.get('items')=='object':valid=all(isinstance(v,dict) for v in value)
         if valid and 'min_items' in rule:
@@ -188,6 +196,10 @@ output_ports에 있는 것만 사용합니다. file_ids는 이번 대화의 실�
 Ollama 생성 규격에서 arguments_json이 객체이면 문자열로 감싸지 말고 실제 JSON 객체로 작성합니다. 저장 시 앱이 문자열로 정규화합니다.
 계정 연결이 필요한 도구도 등록된 기능입니다. 연결 필요와 도구 미구현을 구분하고,
 Slack 등 등록되지 않은 공급자를 Gmail로 대체하지 않습니다.
+사용자가 Gmail 메시지 ID를 직접 제공하지 않았다면 먼저 email.list로 메일을 검색합니다. 제목은 query 검색 조건에만 사용합니다.
+첫 메일은 email.list의 result에서 json_transform.lookup(path=["messages",0,"id"])으로 ID를 선택해 email.get의 message_id에 연결합니다. 문자열 "$binding"은 ID가 아닙니다.
+Gmail 요약·답장 초안에는 email.get의 documents를 compose_answer에 연결합니다. 초안 작성은 발송 없이 화면에 표시합니다.
+최근 여러 메일(예: 최근 5개)의 본문 요약은 email.list의 operation="read_messages", arguments_json={"max_results":5}로 한 번에 읽고 documents를 compose_answer 기본 동작에 연결합니다. query는 선택적인 Gmail 검색 조건이며, 한 번에 1~10개를 읽습니다. read_messages는 목록의 실제 ID로 본문을 읽고 출처를 보존하므로 별도 반복·ID 선택·read_document·파일 첨부가 필요하지 않습니다. 검색 결과가 5개보다 적으면 실제 개수만 처리하고, 빈 결과는 추측하지 않습니다. 본문 생략·읽기 불가 표시는 요약에서 숨기지 않습니다. 계정 연결은 실행 전제이며 기능 부족이 아닙니다.
 '''
 
 

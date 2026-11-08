@@ -55,7 +55,7 @@ export function builderDatabase(config:Extract<StorageConfig,{kind:'postgres'}>)
 export async function closeBuilderDatabase(){const current=pool;pool=undefined;await current?.end();}
 
 // Must match REQUIRED_SCHEMA_VERSION in Backend/infrastructure/persistence/db.py.
-export const REQUIRED_SCHEMA_VERSION=4;
+export const REQUIRED_SCHEMA_VERSION=6;
 /**
  * Connects as the app account before the server takes traffic: the schema must be migrated,
  * the account must not bypass row-level security, and it must be able to use the tables.
@@ -75,7 +75,7 @@ export async function checkBuilderDatabase(config:StorageConfig,database:pg.Pool
  if(!(version>=REQUIRED_SCHEMA_VERSION))throw new Error(`업무 데이터 DB 스키마가 최신이 아니거나 권한이 없습니다(필요 ${REQUIRED_SCHEMA_VERSION}). scripts/deploy/apply-builder-migrations.py와 a4b_app 권한을 확인하세요.`);
  const {rows:[access]}=await database.query(`SELECT bool_and(coalesce(c.relrowsecurity AND c.relforcerowsecurity
     AND has_table_privilege(current_user,c.oid,p.privilege), false)) AS ok
-  FROM unnest(ARRAY['registered_tools','builder_sessions','builder_assets','agent_versions','agent_tests',
+  FROM unnest(ARRAY['registered_tools','builder_sessions','builder_assets','library_spaces','library_folders','library_asset_placements','teams','team_members','team_invitations','agent_versions','agent_tests',
     'a4b.workflow_generation_requests','builder_run_leases','builder_data_sources','builder_schedules','builder_schedule_jobs','reply_review_decisions',
     'document_reviews','document_review_events','builder_tool_gap_jobs','reusable_nodes','builder_verifications',
     'preprocessing_batches','preprocessing_examples','agent_checkpoints','checkpoints','checkpoint_blobs','checkpoint_writes']) t(name)

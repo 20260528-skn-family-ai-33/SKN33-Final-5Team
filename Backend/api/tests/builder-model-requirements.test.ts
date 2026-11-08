@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {builderNeedsModel} from '../src/builder-model-requirements';
+import test from 'node:test';import assert from 'node:assert/strict';import {builderNeedsGmail,builderNeedsModel} from '../src/builder-model-requirements';
 import {readFileSync,existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {backendPath,agentPython,BACKEND_ROOT} from '../src/paths';
@@ -21,12 +21,25 @@ test('every canonical operation follows its model-connection contract',()=>{
  }
 });
 
+test('Gmail collection uses the member connection and summarization additionally needs the model',()=>{
+ const read={id:'mail',tool:'email.list',settings:{operation:'read_messages',arguments_json:'{"max_results":5}'}};
+ const config={workflow:{nodes:[read]}};
+ assert.equal(builderNeedsGmail(config),true);
+ assert.equal(builderNeedsModel(config),false);
+ const summary={workflow:{nodes:[read,{id:'summary',tool:'compose_answer',settings:{}}]}};
+ assert.equal(builderNeedsGmail(summary),true);
+ assert.equal(builderNeedsModel(summary),true);
+ const reused={workflow:{nodes:[{id:'saved',tool:'saved_workflow',settings:{}}]}};
+ assert.equal(builderNeedsGmail(reused,{saved:{config:summary}}),true);
+ assert.equal(builderNeedsGmail({workflow:{nodes:[{tool:'calendar.list_events'}]}}),false);
+});
+
 test('Node credential routing agrees with the Python executor for all tool modes',{skip:!existsSync(agentPython())},()=>{
  const script=`import json\nfrom workflow_engine.catalog.registry import NATIVE_IDS\nfrom workflow_engine.catalog.canonical import OPERATIONS\nfrom workflow_engine.library.reusable_workflows import requires_model\nrows=[]\nfor tool in sorted(NATIVE_IDS):\n n={'id':'step','tool':tool,'settings':{'instructions':None,'condition_operator':None}}\n rows.append({'node':n,'requires_model':requires_model({'workflow':{'nodes':[n]}})})\nfor tool,specs in OPERATIONS.items():\n for spec in specs:\n  n={'id':'step','tool':tool,'settings':{'operation':spec['id']}}\n  rows.append({'node':n,'requires_model':requires_model({'workflow':{'nodes':[n]}})})\nprint(json.dumps(rows))`;
  const result=spawnSync(agentPython(),['-c',script],{cwd:BACKEND_ROOT,encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);
  const cases=JSON.parse(result.stdout);
- assert.equal(cases.length,110);
+ assert.equal(cases.length,111);
  for(const row of cases)assert.equal(builderNeedsModel({workflow:{nodes:[row.node]}}),row.requires_model,
   row.node.tool+':'+String(row.node.settings.operation||'native'));
 });

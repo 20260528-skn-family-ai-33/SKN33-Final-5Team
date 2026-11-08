@@ -31,7 +31,7 @@ export function ReceiptQuestion({text, action, disabled, onAttach, onLibrary, on
       <button type="button" className="as-button" disabled={disabled} onClick={onAttach}>
         <Paperclip size={15} /> 영수증 파일 첨부
       </button>
-      <button type="button" className="as-button" disabled={disabled} onClick={onLibrary}>내 자료에서 선택</button>
+      <button type="button" className="as-button" disabled={disabled} onClick={onLibrary}>자료함에서 선택</button>
     </div>;
   }
 

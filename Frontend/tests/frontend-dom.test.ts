@@ -34,13 +34,13 @@ const A=agent('A','서비스 A'),B=agent('B','서비스 B');
 function snapshot(a:any,tests:any[]=[]) {return {agent:a,resources:[],schedule:a.config.schedule?{active:false,spec:a.config.schedule,next_run_at:'2026-11-01T00:00:00Z'}:null,source:null,jobs:[],tests};}
 const tick=()=>new Promise(r=>setImmediate(r));
 function deferred(){let resolve!:(v:any)=>void;const promise=new Promise<any>(r=>{resolve=r;});return {promise,resolve};}
-async function setup(search='',stored:Record<string,string>={},override?:(path:string,body:any)=>Promise<any>|any,component?:any){
+async function setup(search='',stored:Record<string,string>={},override?:(path:string,body:any,method:string)=>Promise<any>|any,component?:any){
  dom.window.close();installDOM(search);for(const [k,v] of Object.entries(stored))localStorage.setItem(k,v);
  const calls:{path:string;body:any}[]=[];
  globalThis.fetch=(async(input:any,init:any)=>{
   const path=String(input),body=init?.body?JSON.parse(init.body):undefined;calls.push({path,body});
-  let value=override?await override(path,body):undefined;
-  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path.endsWith('/agents'))value={agents:[A,B]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(path.includes('/connection'))value={connection:{model:'qwen3:8b-q4_K_M',credential:{id:'local-model',provider:'openai',name:'Ollama · Qwen'}},health:{status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'}};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
+  let value=override?await override(path,body,init?.method||'GET'):undefined;
+  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path.endsWith('/agents'))value={agents:[A,B]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(/\/library(?:\?|$)/.test(path))value={space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[],next:null};else if(path.includes('/connection'))value={connection:{model:'qwen3:8b-q4_K_M',credential:{id:'local-model',provider:'openai',name:'Ollama · Qwen'}},health:{status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'}};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
   return value instanceof Response?value:new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
  }) as any;
  const root=createRoot(document.getElementById('root'));await act(async()=>{root.render(component||createElement(AgentStudio));await tick();});
@@ -56,13 +56,124 @@ function capturePicker(write:(blob:Blob)=>void,onPick?:(options:any)=>void) {
 }
 function button(text:string){const b=buttons().find(b=>b.textContent?.trim()===text);assert.ok(b,'Missing button '+text);return b;}
 async function click(b:Element){await act(async()=>{(b as HTMLElement).click();await tick();});}
-function field(label:string){const l=Array.from(document.querySelectorAll('label')).find(l=>l.textContent?.startsWith(label));assert.ok(l,'Missing field '+label);const input=l.querySelector('input,textarea,select');assert.ok(input);return input as HTMLInputElement;}
+function field(label:string){const l=Array.from(document.querySelectorAll('label')).find(l=>l.textContent?.startsWith(label));assert.ok(l,'Missing field '+label);const input=l.querySelector('input,textarea,select')||l.control;assert.ok(input);return input as HTMLInputElement;}
 async function input(el:HTMLInputElement|HTMLTextAreaElement,value:string){await act(async()=>{const proto=el.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event('input',{bubbles:true}));el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});}
 async function submit(form:HTMLFormElement){await act(async()=>{form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));await tick();});}
 
 test('DOM: service link overrides old session and renders the requested execution screen',async()=>{
  const h=await setup('?service=A',{'a4b-builder-session':'old'});try{assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.ok(document.querySelector('.screen-run'));assert.equal(localStorage.getItem('a4b-builder-session'),null);assert.equal(h.calls.some(c=>c.path.includes('/session?')),false);}finally{await h.close();}
 });
+test('DOM: a new Gmail connection closes the dialog while an existing connection stays manageable',async()=>{
+ let connectionVersion=0;
+ const endpoint='/api/agent-builder/gmail';
+ const h=await setup('?screen=connections',{},(path,_body,method)=>{
+  if(path!==endpoint)return undefined;
+  if(method==='POST')return {authorizationUrl:'https://accounts.google.com/o/oauth2/v2/auth',connectionVersion,expiresAt:Date.now()+60000};
+  return {configured:true,connected:true,connectionVersion,email:connectionVersion?'new-account@example.com':'connected-account@example.com'};
+ },createElement(EntryApp));
+ try{
+  dom.window.open=()=>null;
+  await click(button('연결 관리'));
+  assert.match(document.querySelector('.service-connection-account')!.textContent!,/connected-account@example.com/);
+  assert.match(document.querySelector('[role="dialog"]')!.textContent!,/connected-account@example.com/);
+  assert.ok(button('연결 확인'));
+  await click(button('계정 다시 연결'));
+  assert.ok(document.querySelector('a[href="https://accounts.google.com/o/oauth2/v2/auth"]'));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,1250));});
+  assert.ok(button('연결 확인'));
+  connectionVersion++;
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,1250));});
+  assert.equal(document.querySelector('[role="dialog"]'),null);
+  assert.match(document.querySelector('.service-connection-account')!.textContent!,/new-account@example.com/);
+  assert.doesNotMatch(document.querySelector('.service-connection-account')!.textContent!,/connected-account@example.com/);
+  assert.equal(location.search,'?screen=connections');
+ }finally{await h.close();}
+});
+test('connections: the shared sidebar opens Gmail management and disconnect refreshes the card',async()=>{
+ let connected=true;
+ const h=await setup('?screen=workflows',{},(path,_body,method)=>{
+  if(path==='/api/agent-builder/gmail'){
+   if(method==='DELETE')connected=false;
+   return {configured:true,connected,connectionVersion:1,email:connected?'team@example.com':null};
+  }
+ },createElement(EntryApp));
+ try{
+  assert.equal(document.querySelector('.workspace-header')?.textContent?.includes('Gmail'),false);
+  await click(button('서비스 연결'));
+  assert.equal(location.search,'?screen=connections');
+  assert.equal(document.querySelector('h1')?.textContent,'서비스 연결');
+  assert.match(document.querySelector('.service-connection-state')!.textContent!,/연결됨/);
+  assert.match(document.querySelector('.service-connection-account')!.textContent!,/team@example.com/);
+  await click(button('연결 관리'));
+  assert.match(document.querySelector('.gmail-connected-account')!.textContent!,/team@example.com/);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/gmail/test')),false);
+  await click(button('A4B 연결 해제'));
+  assert.match(document.querySelector('.service-connection-state')!.textContent!,/연결 안 됨/);
+  assert.ok(button('Google에서 연결'));
+  assert.equal(document.querySelector('.service-connection-account'),null);
+  assert.doesNotMatch(document.body.textContent!,/team@example.com/);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/test')),false);
+ }finally{await h.close();}
+});
+
+test('connections: a slow account refresh cannot restore the address after disconnect',async()=>{
+ const waiting=deferred();let reads=0;
+ const h=await setup('?screen=connections',{},(path,_body,method)=>{
+  if(path!=='/api/agent-builder/gmail')return undefined;
+  if(method==='DELETE')return {connected:false};
+  if(++reads===2)return waiting.promise;
+  return {configured:true,connected:true,connectionVersion:1,email:'previous-account@example.com'};
+ },createElement(EntryApp));
+ try{
+  await click(button('연결 관리'));
+  await click(button('A4B 연결 해제'));
+  await act(async()=>{waiting.resolve({configured:true,connected:true,connectionVersion:1,email:'previous-account@example.com'});await tick();});
+  assert.equal(document.querySelector('.service-connection-account'),null);
+  assert.doesNotMatch(document.body.textContent!,/previous-account@example.com/);
+  assert.ok(button('Google에서 연결'));
+ }finally{await h.close();}
+});
+
+test('rename: saving updates the card, version and search without changing other workflows',async()=>{
+ const renamed={...A,version:2,config:{...A.config,name:'월간 매출 정리'}};
+ const h=await setup('?screen=workflows',{},(path,body)=>{
+  if(path==='/api/agent-builder/rename_agent'){
+   assert.deepEqual(body,{id:'A',version:1,name:'월간 매출 정리'});
+   return {agent:renamed};
+  }
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('button[aria-label="서비스 A 이름 변경"]')!);
+  await input(field('워크플로우 이름'),'  월간 매출 정리  ');
+  await click(button('이름 저장'));
+  assert.equal(document.querySelector('[role=dialog]'),null);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
+  assert.ok(document.querySelector('button[aria-label="월간 매출 정리 실행하기"]'));
+  assert.match(document.querySelector('.entry-workflow-card .as-status')!.textContent!,/2/);
+  await input(document.querySelector('input[aria-label="워크플로우 검색"]') as HTMLInputElement,'월간');
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/rename_agent')).length,1);
+ }finally{await h.close();}
+});
+
+test('rename: cancel and version conflicts preserve the existing name and allow recovery',async()=>{
+ const h=await setup('?screen=workflows',{},path=>{
+  if(path==='/api/agent-builder/rename_agent')return new Response(JSON.stringify({error:'다른 곳에서 워크플로우가 수정됐어요. 목록을 새로고침하고 다시 시도해주세요.'}),{status:400});
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('button[aria-label="서비스 A 이름 변경"]')!);
+  await input(field('워크플로우 이름'),'취소할 이름');await click(button('취소'));
+  assert.equal(h.calls.some(call=>call.path.endsWith('/rename_agent')),false);
+  await click(document.querySelector('button[aria-label="서비스 A 이름 변경"]')!);
+  assert.equal(field('워크플로우 이름').value,'서비스 A');
+  await input(field('워크플로우 이름'),'   ');assert.equal(button('이름 저장').disabled,true);
+  await input(field('워크플로우 이름'),'새 이름');await click(button('이름 저장'));
+  assert.match(document.querySelector('[role=alert]')!.textContent!,/새로고침/);
+  assert.ok(document.querySelector('button[aria-label="서비스 A 이름 변경"]'));
+  assert.equal(button('이름 저장').disabled,false);
+ }finally{await h.close();}
+});
+
 test('DOM: historical XLSX chooses its destination before fetching the authenticated report and preserves unsent input',async()=>{
  const previous={id:'previous',status:'succeeded',answer:'완료',steps:[],config_snapshot:{name:'영수증 정리'},
   rows:[{field:'결제 금액',value:null,status:'not_found_or_unverified'}],report_path:'reports/previous.xlsx',
@@ -212,7 +323,7 @@ test('DOM: design attachment offers a new upload or an existing file by id',asyn
  try{
   await click(button('자료 연결'));
   assert.ok(button('새 파일 올리기'));
-  await click(button('내 자료에서 선택'));
+  await click(button('자료함에서 선택'));
   await click(button('자료 더 보기'));
   await click(document.querySelector('[role=dialog] .as-resource')!);
   assert.deepEqual(h.calls.find(c=>c.path.endsWith('/attach_asset'))?.body,{id:'ready',revision:1,assetId:'mine'});
@@ -290,16 +401,16 @@ test('DOM: equal sheet headers and equal first row do not hide a different set o
 
 test('DOM: historical and saved references can be deleted, live inputs stay protected and cleanup can retry',async()=>{
  const free={id:'free',name:'사본.jpg',format:'jpg',has_original:true};
- let tries=0;
+ let tries=0,removed=false;
  const h=await setup('?screen=assets',{},path=>{
-  if(path.endsWith('/assets'))return {assets:[
+  if(path.endsWith('/library'))return {space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[
    {...free,usages:[{kind:'workflow',id:'wf',name:'월말 정산'},{kind:'run',id:'wf',name:'월말 정산'}]},
    {...free,id:'history',name:'실행.jpg',usages:[{kind:'run',id:'wf',name:'월말 정산'}]},
    {...free,id:'active',name:'처리중.csv',usages:[{kind:'running',id:'wf',name:'월말 정산'}]},
-   {...free,id:'schedule',name:'예약.csv',usages:[{kind:'schedule',id:'wf',name:'월말 정산'}]}],next:null};
+   {...free,id:'schedule',name:'예약.csv',usages:[{kind:'schedule',id:'wf',name:'월말 정산'}]}].filter(asset=>!removed||asset.id!=='free'),next:null};
   if(path.endsWith('/assets?id=free') && ++tries===1)
    return new Response(JSON.stringify({error:'삭제를 다시 시도하세요.',pending_delete:true}),{status:503});
-  if(path.endsWith('/assets?id=free'))return {deleted:true};
+  if(path.endsWith('/assets?id=free')){removed=true;return {deleted:true};}
  },createElement(EntryApp));
  try{
   assert.match(document.querySelector('[aria-label="자료 사용처"]')?.textContent||'',/월말 정산.*저장된 워크플로우/);
@@ -313,13 +424,14 @@ test('DOM: historical and saved references can be deleted, live inputs stay prot
 
 test('DOM: open my uploads from the designer, preview and confirm deletion',async()=>{
  const asset={id:'first',name:'영수증.jpg',format:'jpg',size_bytes:2048,has_original:true};
+ let removed=false;
  const h=await setup('?screen=workflow',{},path=>{
-  if(path.endsWith('/assets'))return {assets:[asset],next:null};
+  if(path.endsWith('/library'))return {space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:removed?[]:[asset],next:null};
   if(path.includes('/asset_preview?'))return {text:'영수증 내용',columns:[],rows:[]};
-  if(path.endsWith('/assets?id=first'))return {deleted:true};
+  if(path.endsWith('/assets?id=first')){removed=true;return {deleted:true};}
  },createElement(EntryApp));
  try{
-  await click(button('내 자료'));assert.equal(document.querySelector('h1')?.textContent,'내 자료');
+  await click(button('자료함'));assert.equal(document.querySelector('h1')?.textContent,'자료함');
   await click(button('내용 보기'));assert.match(document.querySelector('[role=dialog]')?.textContent||'',/영수증 내용/);
   assert.equal(document.querySelector('[role=dialog] a')?.getAttribute('href'),'/api/agent-builder/original?id=first');
   await click(document.querySelector('[role=dialog] [data-slot=dialog-close]')!);
@@ -685,7 +797,7 @@ test('navigation: cancelling browser back from a dirty editor restores the URL a
 test('redesign: infrastructure controls and model fields are absent from all product menus',async()=>{
  for(const screen of ['workflows','workflow','nodes','history']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['워크플로우','실행 기록','작업 라이브러리','내 자료']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
+  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['워크플로우','실행 기록','작업 라이브러리','자료함','서비스 연결']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
  }
 });
 test('redesign: changing a saved workflow can be cancelled without losing an unsent request',async()=>{
@@ -703,9 +815,9 @@ test('redesign: library hides manual creation and preserves saved-node edits',as
 
 test('workspace shell: brand, help and create action keep identical markup across all product screens',async()=>{
  let header='';
- for(const screen of ['workflows','history','nodes','workflow','run']){
+ for(const screen of ['workflows','history','nodes','workflow','run','assets','connections']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{const current=document.querySelector('.workspace-header')!.innerHTML;if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(buttons().filter(b=>b.textContent?.trim()==='새 워크플로우').length,1);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
+  try{const current=document.querySelector('.workspace-header')!.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(buttons().filter(b=>b.textContent?.trim()==='새 워크플로우').length,1);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
  }
 });
 test('workspace library: pending startup does not show zero counts or an editable empty form',async()=>{
@@ -776,7 +888,7 @@ test('run page: a pending workflow list must not announce that no saved workflow
  const waiting=deferred();
  const h=await setup('?screen=run',{},path=>path.endsWith('/agents')?waiting.promise:undefined);
  try{
-  assert.match(document.querySelector('[role="status"]')!.textContent!,/불러오고/);
+  assert.match(document.querySelector('.as-loading[role="status"]')!.textContent!,/불러오고/);
   assert.ok(!document.body.textContent?.includes('저장한 워크플로우가 필요합니다.'));
   await act(async()=>{waiting.resolve({agents:[]});await tick();});
   assert.ok(document.body.textContent?.includes('저장한 워크플로우가 필요합니다.'));

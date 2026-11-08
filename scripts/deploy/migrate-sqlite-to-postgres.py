@@ -1,8 +1,8 @@
 """One-off copy of SQLite workspaces into the PostgreSQL business-data schema.
 
-Walks <data>/users/<member ID>/ and copies each folder's agent-builder.sqlite (business
+Walks <data>/users/<member ID>/ and <data>/teams/<team ID>/ and copies each folder's agent-builder.sqlite (business
 tables and Python LangGraph checkpoints) and agent-checkpoints.sqlite (Node assistant
-checkpoints) with the folder name as workspace_id. An existing business row or Node
+checkpoints) with the member ID or team:<team ID> as workspace_id. An existing business row or Node
 checkpoint must match its source. Stop the app first so no worker is writing.
 
   Backend/.venv-agent/bin/python scripts/deploy/migrate-sqlite-to-postgres.py --dry-run
@@ -32,6 +32,9 @@ TABLES = {
     'registered_tools': ['id', 'version', 'module_path', 'schema_json'],
     'builder_sessions': ['id', 'json', 'revision'],
     'builder_assets': ['id', 'json', 'rows_json'],
+    'library_spaces': ['id', 'kind', 'owner_id', 'name', 'created_at'],
+    'library_folders': ['id', 'space_id', 'parent_id', 'parent_key', 'name', 'name_key', 'created_at', 'updated_at'],
+    'library_asset_placements': ['asset_id', 'space_id', 'folder_id', 'updated_at'],
     'agent_versions': ['agent_id', 'version', 'json'],
     'agent_tests': ['id', 'agent_id', 'json'],
     'builder_generation_requests': ['id', 'session_id', 'json'],
@@ -54,6 +57,7 @@ PARENTS = {
     'reply_review_decisions': ('run_id', 'agent_tests', 'id'),
     'document_reviews': ('asset_id', 'builder_assets', 'id'),
     'document_review_events': ('asset_id', 'builder_assets', 'id'),
+    'library_asset_placements': ('asset_id', 'builder_assets', 'id'),
     'preprocessing_examples': ('batch_id', 'preprocessing_batches', 'id'),
 }
 
@@ -76,6 +80,20 @@ def workspaces(data_dir, include_local=False):
     data_dir = Path(data_dir)
     if not data_dir.is_dir():
         raise ValueError(f'데이터 볼륨을 찾을 수 없습니다: {data_dir}')
+    central = data_dir / 'teams.sqlite'
+    if central.exists():
+        # Central memberships use actor-scoped RLS rather than workspace RLS.
+        # Do not report a successful cutover that leaves copied team files orphaned.
+        try:
+            connection = read_only(central)
+            try:
+                for table in ('teams', 'team_members', 'team_invitations'):
+                    if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() and connection.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone():
+                        raise ValueError('중앙 팀 저장소 teams.sqlite에 팀 정보가 있어 이전을 중단합니다. 원본 teams.sqlite와 teams 폴더를 보존하고 중앙 팀 정보 이전을 먼저 준비하세요. 팀 자료는 아직 복사하지 않았습니다.')
+            finally:
+                connection.close()
+        except sqlite3.DatabaseError as error:
+            raise ValueError('중앙 팀 저장소 teams.sqlite를 확인할 수 없어 이전을 중단합니다. 원본 파일을 보존하고 저장소 상태를 확인하세요.') from error
     found = []
     users = data_dir / 'users'
     if users.is_dir():
@@ -84,6 +102,13 @@ def workspaces(data_dir, include_local=False):
                 if not WORKSPACE.fullmatch(folder.name):
                     raise ValueError(f'업무 DB가 있는 폴더의 회원 ID를 확인하세요: {folder.name}')
                 found.append((folder.name.lower(), folder))
+    teams = data_dir / 'teams'
+    if teams.is_dir():
+        for folder in sorted(teams.iterdir()):
+            if folder.is_dir() and has_database(folder):
+                if not WORKSPACE.fullmatch(folder.name):
+                    raise ValueError(f'업무 DB가 있는 폴더의 팀 ID를 확인하세요: {folder.name}')
+                found.append(('team:' + folder.name.lower(), folder))
     if has_database(data_dir):
         if not include_local:
             raise ValueError('루트 작업 공간의 SQLite 자료도 이전하려면 --include-local을 지정하세요.')
@@ -103,6 +128,18 @@ def source_rows(connection, table):
         return [], 0
     columns = TABLES[table]
     rows = connection.execute(f'SELECT {",".join(columns)} FROM {table} ORDER BY rowid').fetchall()
+    if table == 'library_folders':
+        # A folder can be moved below a newer folder, so insertion order no longer
+        # guarantees that its parent has been imported before the immediate FK check.
+        pending = rows
+        rows, imported = [], set()
+        while pending:
+            ready = [row for row in pending if row[2] is None or (row[1], row[2]) in imported]
+            if not ready:
+                raise ValueError('자료함 폴더의 부모 연결을 확인하세요. 폴더를 누락한 채 이전할 수 없습니다.')
+            rows.extend(ready)
+            imported.update((row[1], row[0]) for row in ready)
+            pending = [row for row in pending if (row[1], row[0]) not in imported]
     if table not in PARENTS:
         return rows, 0
     column, parent, key = PARENTS[table]

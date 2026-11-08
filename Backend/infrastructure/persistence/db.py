@@ -17,7 +17,7 @@ from urllib.parse import urlsplit, parse_qsl
 
 SCHEMA='a4b_builder'
 # Latest infrastructure/db/migrations version the code needs. Raise with each new migration.
-REQUIRED_SCHEMA_VERSION=4
+REQUIRED_SCHEMA_VERSION=6
 LOOPBACK={'localhost','127.0.0.1','::1'}
 WORKSPACE=re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',re.I)
 _WRITE=re.compile(r'\s*(INSERT|UPDATE|DELETE)\b',re.I)
@@ -36,8 +36,17 @@ def storage_kind(env=None):
 
 
 def workspace_id(directory):
-    """data/users/<member ID>/ is that member's workspace; any other folder is 'local'."""
+    """The server selects a personal or team directory after authorization.
+
+    A team UUID has its own prefix, so it can never reuse a member's namespace.
+    Neither this function nor a worker request grants team membership.
+    """
     path=Path(directory).resolve()
+    if path.parent.name=='teams':
+        if not WORKSPACE.fullmatch(path.name):raise ValueError('팀 작업 공간 폴더 이름은 팀 ID(UUID)여야 합니다.')
+        return 'team:'+path.name.lower()
+    if path.name=='teams' or any(parent.name=='teams' for parent in path.parents):
+        raise ValueError('팀 작업 공간은 teams/<팀 ID(UUID)> 폴더여야 합니다.')
     if path.parent.name!='users':return 'local'
     if WORKSPACE.fullmatch(path.name):return path.name.lower()
     # The shared schema must not merge a malformed member folder into the 'local' workspace.

@@ -3,7 +3,7 @@ import {startBuilderScheduler,createBuilderScheduleState} from './agent-builder-
 import {handleAgentBuilder} from './agent-builder';
 import {type IncomingMessage, type ServerResponse} from 'node:http';
 import {randomUUID,randomBytes} from 'node:crypto';
-import {Store} from './store';
+import {GMAIL_CONNECTION_ID,Store} from './store';
 import {executeFlow} from './engine';
 import {assertWebhookJsonSize,buildWebhookResponse,prepareWebhookResponse} from './webhook-response';
 import {readWebhookRequest,WebhookRequestError} from './webhook-request';
@@ -14,7 +14,7 @@ import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
 import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointer';
 import {storageConfig,builderDatabase} from './storage-config';
-import {OAuthManager,createCredentialRefresher} from './oauth';
+import {GMAIL_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
 import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems,splitBinaryItem} from './binary';
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
@@ -32,13 +32,58 @@ const webhookSecurityHeaders=Object.freeze({
 export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string){
 const store=new Store(dataDirectory());
 const scheduleState=createBuilderScheduleState();
-const stopScheduler=startBuilderScheduler(store,scheduleState);
 const storage=storageConfig();
 const agentCheckpointer=storage.kind==='postgres'?new PostgresCheckpointSaver(builderDatabase(storage),ownerId||'local'):new SqliteCheckpointSaver(dataDirectory('agent-checkpoints.sqlite'));
 const chatInFlight=new Set<string>();
 const oauth=new OAuthManager({port,publicOrigin});
 const getUsableCredential=createCredentialRefresher();
 const usableCredential=(id:string,signal?:AbortSignal)=>getUsableCredential(store.getCredential(id),updated=>store.saveCredential(updated),{signal});
+const gmailClientId=process.env.A4B_GMAIL_CLIENT_ID?.trim();
+const gmailClientSecret=process.env.A4B_GMAIL_CLIENT_SECRET?.trim();
+let gmailConnectionRevision=0;
+let gmailConnectionCompleted=0;
+let gmailIdentityRevision=0;
+let gmailIdentity:{revision:number;email:string}|undefined;
+let gmailIdentityPending:{revision:number;request:Promise<string>}|undefined;
+const gmailAccountError='연결된 Gmail 주소를 확인하지 못했어요. 상태를 새로고침하거나 계정을 다시 연결해주세요.';
+function resetGmailIdentity(){
+ gmailIdentityRevision++;
+ gmailIdentity=undefined;
+ gmailIdentityPending=undefined;
+}
+async function gmailAccessToken():Promise<string|undefined>{
+ if(!store.gmailConnected())return undefined;
+ const saved=store.getGmailCredential();
+ const current=await getUsableCredential(saved,updated=>{
+  const latest=store.getGmailCredential();
+  if(latest.data.accessToken!==saved.data.accessToken||latest.data.refreshToken!==saved.data.refreshToken)throw new Error('Gmail 연결이 바뀌었습니다.');
+  store.saveGmailCredential(updated);
+ });
+ if(current.data.scope!==GMAIL_OAUTH.scope||typeof current.data.accessToken!=='string'||!current.data.accessToken)throw new Error('Gmail 읽기 권한으로 계정을 다시 연결해주세요.');
+ return current.data.accessToken;
+}
+async function gmailEmail(force=false):Promise<string>{
+ if(!store.gmailConnected())throw new Error('Gmail 계정을 먼저 연결해주세요.');
+ const revision=gmailIdentityRevision;
+ if(!force&&gmailIdentity?.revision===revision)return gmailIdentity.email;
+ if(gmailIdentityPending?.revision===revision)return gmailIdentityPending.request;
+ const pending={revision,request:(async()=>{
+  const token=await gmailAccessToken();
+  if(!token)throw new Error('Gmail 계정을 먼저 연결해주세요.');
+  const response=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile',{headers:{Authorization:`Bearer ${token}`},redirect:'error',signal:AbortSignal.timeout(10000)});
+  if(!response.ok)throw new Error(gmailAccountError);
+  const profile=await response.json() as {emailAddress?:unknown};
+  if(typeof profile.emailAddress!=='string'||!profile.emailAddress.trim())throw new Error(gmailAccountError);
+  // A profile requested before disconnect/reconnect must never identify the new connection.
+  if(revision!==gmailIdentityRevision||!store.gmailConnected())throw new Error(gmailAccountError);
+  gmailIdentity={revision,email:profile.emailAddress};
+  return profile.emailAddress;
+ })()};
+ gmailIdentityPending=pending;
+ try{return await pending.request;}
+ finally{if(gmailIdentityPending===pending)gmailIdentityPending=undefined;}
+}
+const stopScheduler=startBuilderScheduler(store,scheduleState,gmailAccessToken);
 const controllers=new Map<string,AbortController>();
 const inFlight=new Set<string>();
 type PendingWebhook={res:ServerResponse;node:FlowNode;mode:'lastNode'|'responseNode';timer?:ReturnType<typeof setTimeout>;responseError?:string};
@@ -152,7 +197,41 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
   if(path.startsWith('/api/')){
    if(!['GET','HEAD'].includes(method)&&req.headers['content-type']&&!String(req.headers['content-type']).startsWith('application/json'))return json(res,415,{error:'JSON 입력을 사용해주세요.'});
    if(path==='/api/agent-builder/schedule-health'&&method==='GET')return json(res,200,{...scheduleState});
-   if(await handleAgentBuilder(req,res,url,store,body,json))return;
+   if(path==='/api/agent-builder/gmail'){
+    if(method==='GET'){
+     const revision=gmailIdentityRevision;
+     let account:{email:string|null;accountError?:string}={email:null};
+     if(store.gmailConnected()){
+      try{account={email:await gmailEmail()};}
+      catch{account={email:null,accountError:gmailAccountError};}
+     }
+     const connected=store.gmailConnected();
+     if(!connected)account={email:null};
+     else if(revision!==gmailIdentityRevision)account={email:null,accountError:gmailAccountError};
+     return json(res,200,{configured:!!(gmailClientId&&gmailClientSecret),connected,connectionVersion:gmailConnectionCompleted,...account});
+    }
+    if(method==='POST'){
+     if(!gmailClientId||!gmailClientSecret)throw new Error('서버에 Gmail OAuth 앱 정보가 필요해요.');
+     oauth.cancel(GMAIL_CONNECTION_ID);
+     gmailConnectionRevision++;
+     resetGmailIdentity();
+     return json(res,200,{...oauth.begin({id:GMAIL_CONNECTION_ID,name:'Gmail',service:'gmail',clientId:gmailClientId,clientSecret:gmailClientSecret},authority),connectionVersion:gmailConnectionCompleted});
+    }
+    if(method==='DELETE'){
+     oauth.cancel(GMAIL_CONNECTION_ID);
+     gmailConnectionRevision++;
+     resetGmailIdentity();
+     store.disconnectGmail();
+     return json(res,200,{connected:false});
+    }
+   }
+   if(path==='/api/agent-builder/gmail/test'&&method==='POST'){
+    if(!store.gmailConnected())throw new Error('Gmail 계정을 먼저 연결해주세요.');
+    try{
+     return json(res,200,{email:await gmailEmail(true)});
+    }catch{throw new Error('Gmail에 연결하지 못했어요. Gmail API 설정과 읽기 권한을 확인한 뒤 다시 연결해주세요.');}
+   }
+   if(await handleAgentBuilder(req,res,url,store,body,json,gmailAccessToken))return;
    if(path==='/api/health')return json(res,200,{ok:true,standalone:true,version:'0.2.0',credentials:store.listCredentials().length});
    if(path==='/api/webhook/response'&&method==='GET'){
     const response=store.getWebhookResponse(url.searchParams.get('executionId')||'');if(!response)return json(res,404,{error:'저장된 Webhook 응답을 찾을 수 없어요.'});const fileName=response.fileName.replace(/[\/\\\u0000-\u001f\u007f]/g,'_').slice(0,200).toWellFormed(),extension=fileName.split('.').at(-1)?.replace(/[^a-z0-9]/gi,'')||'bin';
@@ -175,10 +254,41 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});
     if(method==='DELETE'){const id=url.searchParams.get('id')||'';if(store.listFlows().some(f=>f.active&&f.nodes.some(n=>n.credentialId===id)))throw new Error('이 계정을 사용하는 자동 실행을 먼저 꺼주세요.');store.deleteCredential(id);return json(res,200,{ok:true});}
    }
-   if(path==='/api/oauth/begin'&&method==='POST')return json(res,200,oauth.begin(await body(req),authority));
+   if(path==='/api/oauth/begin'&&method==='POST'){
+    const input=await body(req);
+    if(input?.id===GMAIL_CONNECTION_ID||input?.service==='gmail')throw new Error('Gmail 설정에서 계정을 연결해주세요.');
+    return json(res,200,oauth.begin(input,authority));
+   }
    if(path==='/api/oauth/callback'&&method==='GET'){
-    let ok=false;let message='';try{const credential=await oauth.complete({state:url.searchParams.get('state')||undefined,code:url.searchParams.get('code')||undefined,error:url.searchParams.get('error')||undefined},authority);store.saveCredential(credential);ok=true;message='계정 연결을 마쳤어요. 이 창을 닫고 Easyflow로 돌아가세요.';}catch{message='계정을 연결하지 못했어요. Easyflow에서 로그인 정보를 확인하고 다시 연결해주세요.';}
-    res.writeHead(ok?200:400,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'"});res.end(`<!doctype html><html lang="ko"><meta charset="utf-8"><title>Easyflow 계정 연결</title><style>body{background:#201c28;color:#f2eafa;font:16px system-ui;padding:72px;line-height:1.8}h1{font-size:26px;color:#ff917d}</style><h1>${ok?'연결 완료':'연결 확인이 필요해요'}</h1><p>${message}</p><script>if(window.opener)window.opener.postMessage({type:'easyflow-oauth',ok:${ok}},location.origin);history.replaceState(null,'',location.pathname);</script></html>`);return;
+    const gmailRevision=gmailConnectionRevision;
+    let ok=false,gmail=false;let message='';try{
+     const credential=await oauth.complete({state:url.searchParams.get('state')||undefined,code:url.searchParams.get('code')||undefined,error:url.searchParams.get('error')||undefined},authority);
+     if(credential.id===GMAIL_CONNECTION_ID){
+      if(gmailRevision!==gmailConnectionRevision||credential.data.scope!==GMAIL_OAUTH.scope)throw new Error('Gmail 읽기 권한으로 다시 연결해주세요.');
+      store.saveGmailCredential(credential);
+      gmailConnectionCompleted++;
+      resetGmailIdentity();
+      gmail=true;
+     }else store.saveCredential(credential);
+     ok=true;message='계정 연결을 마쳤어요. 이 창을 닫고 Easyflow로 돌아가세요.';
+    }catch{message='계정을 연결하지 못했어요. Easyflow에서 로그인 정보를 확인하고 다시 연결해주세요.';}
+    res.writeHead(ok?200:400,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'"});res.end(`<!doctype html><html lang="ko"><meta charset="utf-8"><title>A4B 계정 연결</title><style>body{background:#201c28;color:#f2eafa;font:16px system-ui;padding:72px;line-height:1.8}h1{font-size:26px;color:#ff917d}a{color:#f2eafa}</style><h1>${ok?'연결 완료':'연결 확인이 필요해요'}</h1><p>${message}</p><a href="/?screen=workflows">A4B로 돌아가기</a><script>
+const opener=window.opener;
+if(opener)opener.postMessage({type:'easyflow-oauth',ok:${ok}},location.origin);
+history.replaceState(null,'',location.pathname);
+if(${gmail}){
+ if(opener)window.close();
+ else{
+  let destination='/?screen=workflows';
+  try{
+   const saved=sessionStorage.getItem('a4b-gmail-return');
+   sessionStorage.removeItem('a4b-gmail-return');
+   if(saved){const url=new URL(saved,location.origin);if(url.origin===location.origin&&url.pathname==='/')destination=url.href;}
+  }catch{}
+  location.replace(destination);
+ }
+}
+</script></html>`);return;
    }
    if(path==='/api/credentials/test'&&method==='POST'){
     const c=await usableCredential((await body(req)).id);let target='';let headers:Record<string,string>={};

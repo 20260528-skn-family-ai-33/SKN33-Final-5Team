@@ -316,6 +316,97 @@ def test_saved_agent_versions_tests_and_order(backend, tmp_path):
         store.close()
 
 
+def test_workflow_rename_preserves_history_execution_and_schedule(backend, tmp_path):
+    from service.dispatch import handle
+
+    folder = workspace(tmp_path)
+    store, _, agent_id = seed(folder)
+    original = store.agent(agent_id)
+    schedules = Schedules(store)
+    schedules.activate(agent_id, True)
+    before = schedules.get(agent_id)
+    source = schedules.source(agent_id)
+    queued = schedules.enqueue_test(agent_id, 300)
+    store.close()
+
+    renamed = handle({'action':'rename_agent', 'directory':str(folder), 'id':agent_id,
+                      'name':'  매일 재고 확인  ', 'base_version':1})['agent']
+    assert renamed['config'] == {**original['config'], 'name':'매일 재고 확인'}
+    assert renamed == {**original, 'config':renamed['config'], 'version':2, 'updated_at':renamed['updated_at']}
+    store = Storage(folder)
+    try:
+        assert store.agent(agent_id) == renamed
+        assert store.agent_version(agent_id, 1) == original
+        assert store.agents() == [renamed]
+        schedules = Schedules(store)
+        assert schedules.get(agent_id) == {**before, 'agent_version':2}
+        assert schedules.source(agent_id) == source
+        # Already queued work retains the exact version selected when it was queued.
+        assert schedules.jobs(agent_id)[0]['agent_snapshot'] == queued['agent_snapshot'] == original
+        due = datetime.now(timezone.utc) - timedelta(seconds=1)
+        store.db.execute('UPDATE builder_schedules SET next_at=? WHERE {ws} AND agent_id=?', (due.isoformat(), agent_id))
+        store.db.commit()
+        [job] = schedules.claim_due()
+        assert job['agent_snapshot'] == renamed
+    finally:
+        store.close()
+
+
+def test_workflow_rename_rejects_invalid_stale_and_other_workspace_writes(backend, tmp_path):
+    alice, bob = workspace(tmp_path), workspace(tmp_path)
+    store, _, agent_id = seed(alice)
+    other = Storage(bob)
+    try:
+        for name in ['', '  ', '가'*61, '첫 줄\n다음 줄', '이름\x00', '첫 줄\u2028다음 줄', None]:
+            with pytest.raises(ValueError):
+                store.rename_agent(agent_id, name, 1)
+        for version in [0, -1, True, 1.5, '1', None]:
+            with pytest.raises(ValueError, match='버전'):
+                store.rename_agent(agent_id, '새 이름', version)
+        first = store.rename_agent(agent_id, '새 이름', 1)
+        assert first['version'] == 2
+        # Retrying the same request does not append a duplicate revision.
+        assert store.rename_agent(agent_id, '새 이름', 1) == first
+        with pytest.raises(ValueError, match='다른 곳'):
+            store.rename_agent(agent_id, '오래된 수정', 1)
+        with pytest.raises(ValueError, match='찾을 수 없습니다'):
+            other.rename_agent(agent_id, '다른 회원 수정', 2)
+        assert other.agents() == []
+        assert store.agent(agent_id) == first
+        # A rejected write rolls back cleanly and permits the next valid revision.
+        assert store.rename_agent(agent_id, '최종 이름', 2)['version'] == 3
+    finally:
+        store.close()
+        other.close()
+
+
+def test_concurrent_workflow_renames_allow_only_one_base_version(backend, tmp_path):
+    folder = workspace(tmp_path)
+    store, _, agent_id = seed(folder)
+    store.close()
+
+    def rename(name):
+        member = Storage(folder)
+        try:
+            try:
+                return member.rename_agent(agent_id, name, 1)
+            except ValueError as error:
+                assert '다른 곳' in str(error)
+                return None
+        finally:
+            member.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(rename, ['첫 번째 변경', '두 번째 변경']))
+    [winner] = [result for result in results if result]
+    store = Storage(folder)
+    try:
+        assert store.agent(agent_id) == winner
+        assert winner['version'] == 2
+    finally:
+        store.close()
+
+
 def test_schedule_job_is_claimed_once_and_lease_is_owned(backend, tmp_path):
     folder = workspace(tmp_path)
     store, _, agent_id = seed(folder)

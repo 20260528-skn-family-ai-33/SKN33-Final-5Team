@@ -12,6 +12,11 @@ export const GOOGLE_SHEETS_OAUTH={
  scope:'https://www.googleapis.com/auth/spreadsheets',
  readonlyScope:'https://www.googleapis.com/auth/spreadsheets.readonly',
 } as const;
+export const GMAIL_OAUTH={
+ authorizationUrl:GOOGLE_SHEETS_OAUTH.authorizationUrl,
+ tokenUrl:GOOGLE_SHEETS_OAUTH.tokenUrl,
+ scope:'https://www.googleapis.com/auth/gmail.readonly',
+} as const;
 export const OAUTH_STATE_TTL_MS=10*60*1000;
 const TOKEN_EXPIRY_BUFFER_MS=60*1000;
 const MAX_PENDING=128;
@@ -53,17 +58,15 @@ function config(input:OAuthBeginInput):OAuthConfig {
  const clientId=string(input.clientId,2048,'등록한 앱의 클라이언트 ID를 입력해주세요.',true)!.trim();
  const clientSecret=string(input.clientSecret,MAX_TOKEN_LENGTH,'클라이언트 비밀 값을 확인해주세요.');
  const service=string(input.service,120,'연결할 서비스 종류를 확인해주세요.');
- const google=service==='googleSheets';
- let authorizationUrl=validateOAuthEndpoint(input.authorizationUrl||(google?GOOGLE_SHEETS_OAUTH.authorizationUrl:undefined));
- let tokenUrl=validateOAuthEndpoint(input.tokenUrl||(google?GOOGLE_SHEETS_OAUTH.tokenUrl:undefined));
- const scope=string(input.scope,4096,'요청할 권한 범위를 확인해주세요.')?.trim()||(google?GOOGLE_SHEETS_OAUTH.scope:'');
+ const google=service==='googleSheets'?GOOGLE_SHEETS_OAUTH:service==='gmail'?GMAIL_OAUTH:undefined;
+ const authorizationUrl=validateOAuthEndpoint(input.authorizationUrl||google?.authorizationUrl);
+ const tokenUrl=validateOAuthEndpoint(input.tokenUrl||google?.tokenUrl);
+ const scope=string(input.scope,4096,'요청할 권한 범위를 확인해주세요.')?.trim()||(google?.scope||'');
  const tokenAuthMethod=input.tokenAuthMethod||'body';
  if(!['body','basic','none'].includes(tokenAuthMethod))throw new Error('클라이언트 인증 방법을 확인해주세요.');
  if(tokenAuthMethod==='basic'&&!clientSecret)throw new Error('Basic 클라이언트 인증에는 클라이언트 비밀 값이 필요해요.');
- if(google){
-  if(authorizationUrl!==GOOGLE_SHEETS_OAUTH.authorizationUrl||tokenUrl!==GOOGLE_SHEETS_OAUTH.tokenUrl||!scope.split(/\s+/).every(value=>value===GOOGLE_SHEETS_OAUTH.scope||value===GOOGLE_SHEETS_OAUTH.readonlyScope)||tokenAuthMethod!=='body')throw new Error('Google Sheets 연결에는 공식 로그인·토큰 주소와 Sheets 권한을 사용해주세요.');
-  authorizationUrl=GOOGLE_SHEETS_OAUTH.authorizationUrl;tokenUrl=GOOGLE_SHEETS_OAUTH.tokenUrl;
- }
+ if(service==='googleSheets'&&(authorizationUrl!==GOOGLE_SHEETS_OAUTH.authorizationUrl||tokenUrl!==GOOGLE_SHEETS_OAUTH.tokenUrl||!scope.split(/\s+/).every(value=>value===GOOGLE_SHEETS_OAUTH.scope||value===GOOGLE_SHEETS_OAUTH.readonlyScope)||tokenAuthMethod!=='body'))throw new Error('Google Sheets 연결에는 공식 로그인·토큰 주소와 Sheets 권한을 사용해주세요.');
+ if(service==='gmail'&&(authorizationUrl!==GMAIL_OAUTH.authorizationUrl||tokenUrl!==GMAIL_OAUTH.tokenUrl||scope!==GMAIL_OAUTH.scope||tokenAuthMethod!=='body'||!clientSecret))throw new Error('Gmail 연결에는 등록된 Google 앱과 Gmail 읽기 권한을 사용해주세요.');
  return {clientId,...(clientSecret?{clientSecret}:{}),authorizationUrl,tokenUrl,scope,tokenAuthMethod,...(service?{service}:{})};
 }
 
@@ -154,8 +157,11 @@ export class OAuthManager {
   authorization.searchParams.set('client_id',oauth.clientId);authorization.searchParams.set('response_type','code');authorization.searchParams.set('redirect_uri',redirectUri);authorization.searchParams.set('state',stateId);
   authorization.searchParams.set('code_challenge',createHash('sha256').update(verifier).digest('base64url'));authorization.searchParams.set('code_challenge_method','S256');
   if(oauth.scope)authorization.searchParams.set('scope',oauth.scope);
-  if(oauth.service==='googleSheets'){authorization.searchParams.set('access_type','offline');authorization.searchParams.set('prompt','consent');}
+  if(oauth.service==='googleSheets'||oauth.service==='gmail'){authorization.searchParams.set('access_type','offline');authorization.searchParams.set('prompt','consent');}
   return {stateId,authorizationUrl:authorization.toString(),redirectUri,expiresAt};
+ }
+ cancel(id:string):void {
+  for(const [state,pending] of this.pending)if(pending.input.id===id)this.pending.delete(state);
  }
  /** The server consumes this result internally and persists it encrypted; never send this object to a browser. */
  async complete(query:{state?:string;code?:string;error?:string},callbackAuthority:string,options:{signal?:AbortSignal}={}):Promise<CredentialInput> {

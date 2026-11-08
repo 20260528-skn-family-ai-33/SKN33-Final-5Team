@@ -8,8 +8,9 @@ import os
 import re
 
 # Past-tense reference to something the user believes is already attached.
-_UPLOADED = re.compile(r'(올려\s*준|올려\s*드린|올린|첨부(한|된|해\s*준)|첨부\s*파일|첨부파일|업로드(한|된|해\s*준)|보내\s*준|보낸|붙여\s*준|넣어\s*준|넣은)')
+_UPLOADED = re.compile(r'(올려\s*준|올려\s*드린|올린|첨부(한|된|해\s*준)|첨부\s*파일|첨부파일|업로드(한|된|해\s*준)|보내\s*준|보낸(?!\s*사람)|붙여\s*준|넣어\s*준|넣은)')
 _OBJECT = re.compile(r'(파일|이미지|사진|영수증|문서|자료|스캔|엑셀|pdf|csv|xlsx|표)', re.IGNORECASE)
+_EMAIL_ATTACHMENT = re.compile(r'(?:Gmail|메일)(?:의|에|에서)\s*(?:본문\s*(?:과|및)\s*)?첨부(?:한|된)?\s*파일', re.IGNORECASE)
 # The file is meant for a later run, not for this design conversation.
 _LATER = re.compile(r'(실행\s*(할\s*때|시)|나중에|매일|매주|매월|예약|올리면|올릴|업로드하면|넣으면|넣을|받으면|들어오면)')
 
@@ -18,6 +19,7 @@ EXPLANATION = '요청에 올린 파일이 언급됐지만 연결된 파일이 �
 
 
 def refers_to_attached_file(text):
+    text=_EMAIL_ATTACHMENT.sub('메일',text)
     imminent=bool(re.search(r'올려\s*줄\s*(?:게|테)|올릴\s*테|첨부해\s*줄\s*(?:게|테)',text))
     later=bool(re.search(r'실행\s*(?:할\s*때|시)|나중에|예약',text))
     return bool(_OBJECT.search(text) and ((imminent and not later) or (_UPLOADED.search(text) and not _LATER.search(text))))

@@ -3,8 +3,9 @@ Transport/token injection allows offline tests without exposing connector creden
 """
 from __future__ import annotations
 import base64,datetime,json,mimetypes,os,re,socket
-from email.message import EmailMessage
+from email.message import EmailMessage, Message
 from email import policy
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.error import HTTPError,URLError
 from urllib.parse import quote,urlencode
@@ -114,6 +115,119 @@ class GmailAdapter:
         return self.transport.request("GET","/gmail/v1/users/me/messages/"+identifier(message_id,"message_id"),query={"format":format})
     def attachment_get(self,message_id,attachment_id):
         return self.transport.request("GET","/gmail/v1/users/me/messages/"+identifier(message_id,"message_id")+"/attachments/"+identifier(attachment_id,"attachment_id"))
+
+
+class GmailHtmlText(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts=[]
+        self.hidden=0
+
+    def handle_starttag(self,tag,attrs):
+        if tag in {'script','style','head'}: self.hidden+=1
+        elif tag in {'br','p','div','li','tr'}: self.parts.append('\n')
+
+    def handle_endtag(self,tag):
+        if tag in {'script','style','head'}: self.hidden=max(0,self.hidden-1)
+
+    def handle_data(self,data):
+        if not self.hidden: self.parts.append(data)
+
+
+def gmail_documents(message):
+    """Expose a bounded plain-text view while preserving the Gmail API result port."""
+    if not isinstance(message,dict) or not message.get('id') or not isinstance(message.get('payload'),dict):
+        return []
+    payload=message['payload']
+    plain,html=[],[]
+
+    def collect(part):
+        if part.get('filename'):
+            return
+        mime=part.get('mimeType')
+        encoded=part.get('body',{}).get('data')
+        if mime in {'text/plain','text/html'} and isinstance(encoded,str):
+            headers={h['name'].lower():h['value'] for h in part.get('headers',[])}
+            metadata=Message()
+            metadata['Content-Type']=headers.get('content-type',mime)
+            try:
+                body=base64.b64decode(encoded+'='*(-len(encoded)%4),altchars=b'-_',validate=True)
+                try: decoded=body.decode(metadata.get_content_charset() or 'utf-8',errors='replace')
+                except LookupError: decoded=body.decode('utf-8',errors='replace')
+            except ValueError:
+                decoded=''
+            (plain if mime=='text/plain' else html).append(decoded)
+        for child in part.get('parts',[]):
+            collect(child)
+
+    collect(payload)
+    body='\n'.join(plain).strip()
+    if not body and html:
+        parser=GmailHtmlText()
+        parser.feed('\n'.join(html))
+        parser.close()
+        body=''.join(parser.parts).strip()
+    if not body:
+        return []
+    headers={h['name'].lower():h['value'] for h in payload.get('headers',[])}
+    title=headers.get('subject') or '제목 없는 메일'
+    text=f"제목: {title}\n보낸 사람: {headers.get('from','')}\n\n{body}"
+    text=text if len(text)<=30000 else text[:30000]+'\n[이후 본문 생략]'
+    return [{'source_id':'gmail:'+message['id'],'file_id':None,'file_name':title,'page':None,
+             'offset':0,'parser_engine':'gmail','derived_result':True,'text':text}]
+
+
+def read_gmail_messages(call,query=None,max_results=5):
+    """Collect a bounded first search page through read-only, account-scoped calls.
+
+    Gmail's newest-first list order is retained (Google's list-messages guide:
+    https://developers.google.com/workspace/gmail/api/guides/list-messages).
+    A failed read aborts the whole batch rather than
+    returning a successful summary of only the messages fetched before failure.
+    """
+    if type(max_results) is not int or not 1<=max_results<=10:
+        raise ValueError('Gmail 본문 조회는 한 번에 1~10개를 지정해주세요.')
+    if query is not None and not isinstance(query,str):
+        raise ValueError('Gmail 검색 조건은 문자열이어야 합니다.')
+    listing=call('email.list',{'query':query,'max_results':max_results})
+    messages=listing.get('messages',[]) if isinstance(listing,dict) else None
+    if not isinstance(messages,list) or len(messages)>max_results:
+        raise ValueError('Gmail 메일 목록 응답을 확인하지 못했습니다.')
+    ids=[item.get('id') if isinstance(item,dict) else None for item in messages]
+    if any(not isinstance(id,str) or not id for id in ids) or len(set(ids))!=len(ids):
+        raise ValueError('Gmail 메일 목록에 유효한 메시지 ID가 없습니다.')
+    documents=[];metadata=[];unavailable=[];truncated=[]
+    # Keep every selected message in the native summarizer's bounded context.
+    per_message=min(8000,40000//len(ids)) if ids else 8000
+    for id in ids:
+        try:
+            message=call('email.get',{'message_id':id,'format':'full'})
+        except Exception as error:
+            if isinstance(error,GoogleApiError) and error.status in {401,403}:raise
+            raise ValueError(f'Gmail 메일 {len(documents)+1}번째 읽기에 실패해 전체 요약을 중단했습니다. 연결 상태를 확인하고 다시 실행해주세요.') from None
+        if not isinstance(message,dict) or message.get('id')!=id or not isinstance(message.get('payload'),dict):
+            raise ValueError('Gmail 메일 본문 응답을 확인하지 못해 전체 요약을 중단했습니다.')
+        chunks=gmail_documents(message)
+        if chunks:
+            chunk=chunks[0]
+        else:
+            unavailable.append(id)
+            headers={h['name'].lower():h['value'] for h in message['payload'].get('headers',[])}
+            title=headers.get('subject') or '제목 없는 메일'
+            chunk={'source_id':'gmail:'+id,'file_id':None,'file_name':title,'page':None,'offset':0,
+                   'parser_engine':'gmail','derived_result':True,'body_unavailable':True,
+                   'text':f"제목: {title}\n보낸 사람: {headers.get('from','')}\n\n[읽을 수 있는 텍스트 본문이 없습니다.]"}
+        if len(chunk['text'])>per_message:
+            marker='\n[이후 본문 생략]'
+            chunk={**chunk,'text':chunk['text'][:per_message-len(marker)]+marker,'truncated':True}
+            truncated.append(id)
+        documents.append(chunk)
+        metadata.append({key:message[key] for key in ('id','threadId','internalDate') if key in message})
+    return {'messages':metadata,'documents':documents,'requested_count':max_results,'returned_count':len(documents),
+            'body_unavailable_message_ids':unavailable,'truncated_message_ids':truncated,
+            'nextPageToken':listing.get('nextPageToken'),'complete':True}
+
+
 def timestamp(value):
     clean_text(value,"timestamp")
     dt=datetime.datetime.fromisoformat(value.replace("Z","+00:00"))

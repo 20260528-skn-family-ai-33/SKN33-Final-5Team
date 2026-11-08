@@ -7,7 +7,7 @@ import {baseDataDirectory, dataDirectory} from './paths';
 const bucket = process.env.A4B_S3_BUCKET?.trim();
 const region = process.env.AWS_REGION?.trim();
 const client = bucket ? new S3Client({region, maxAttempts: 3}) : undefined;
-const workspacePattern = /^users\/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+const workspacePattern = /^(?:users|teams)\/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const filePattern = /^(?:builder-originals\/[a-f0-9]{64}\.[a-z0-9]+|(?:uploads|results)\/[a-f0-9]{64})$/;
 
 export function validateWorkspaceFiles(authenticated: boolean) {
@@ -56,7 +56,7 @@ export async function deleteUploadFiles(cleanup: {original?: string; bucket?: st
         abortSignal: AbortSignal.timeout(20000),
       });
     } catch {
-      throw new Error('S3에서 원본을 삭제하지 못했습니다. 내 자료에서 삭제를 다시 시도하세요.');
+      throw new Error('S3에서 원본을 삭제하지 못했습니다. 자료함에서 삭제를 다시 시도하세요.');
     }
   }
   if (original) await rm(dataDirectory(original), {force: true});

@@ -1,6 +1,6 @@
 import {parseToolGapChoiceRequest,parseRedesignDecisionRequest} from './tool-gap-contract';
 import {agentPython,backendPath,dataDirectory} from './paths';
-import {builderNeedsModel} from './builder-model-requirements';
+import {builderNeedsGmail,builderNeedsModel} from './builder-model-requirements';
 import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {extname} from 'node:path';
 import {existsSync,mkdirSync,appendFileSync} from 'node:fs';
@@ -17,12 +17,58 @@ import {binaryObjectPath,deleteUploadFiles,readWorkspaceFile,saveWorkspaceFile,w
 import {readXlsx,extractPdfText} from './document-files';
 import {storageConfig,workerLimits} from './storage-config';
 import {createWorkerLanes,WorkerBusyError} from './worker-slots';
+import {assertTeamLibraryAccess} from './team-library-access';
 
 export function builderReportBytes(artifact:{content:string;encoding?:string}):Buffer {
  return Buffer.from(artifact.content,artifact.encoding==='base64'?'base64':'utf8');
 }
 
 const idPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function libraryBody(value:any,keys:string[]){
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!keys.includes(key)))throw new Error('자료함 요청 형식을 확인하세요.');
+ return value as Record<string,any>;
+}
+function libraryFolderId(value:unknown){
+ if(value===undefined||value===null)return null;
+ if(typeof value!=='string'||!idPattern.test(value))throw new Error('폴더 ID를 확인하세요.');
+ return value;
+}
+function libraryName(value:unknown){
+ const name=typeof value==='string'?value.normalize('NFC').trim():'';
+ if(typeof value!=='string'||/[\/\\\p{C}\u2028\u2029]/u.test(value)||!name||[...name].length>80||['.','..'].includes(name))throw new Error('폴더 이름을 한 줄로 1~80자 입력하세요. /와 \\는 사용할 수 없습니다.');
+ return name;
+}
+function libraryQuery(url:URL,keys:string[]){
+ for(const key of url.searchParams.keys())if(!keys.includes(key)||url.searchParams.getAll(key).length!==1)throw new Error('자료함 조회 조건을 확인하세요.');
+}
+type StagedUpload={original?:string;bucket?:string;directory?:string};
+async function reconcileStagedUpload(staged:StagedUpload){
+ // A worker can commit successfully before its response is lost. Never remove a registered original.
+ try{
+  if(!staged.original){await deleteUploadFiles(staged);return;}
+  const {registered}=await builderWorker({action:'original_registered',original:staged.original});
+  if(!registered)await deleteUploadFiles(staged);
+ }catch{console.warn('Failed to reconcile staged upload',staged.original);}
+}
+/** Shared by direct uploads and server-authorized team-to-personal copies. */
+export async function persistLibraryUpload(input:{fileName:string;data:string},folder_id:string|null=null,
+ source?:{team_id:string;asset_id:string;team_name:string},authorize?:()=>Promise<unknown>){
+ await builderWorker({action:'validate_destination',folder_id});
+ const staged:StagedUpload={};
+ try{
+  const parsed=await parseBuilderAsset(input,directory=>{staged.directory=directory;}),asset:Record<string,any>=parsed.asset;
+  const relative='builder-originals/'+randomBytes(32).toString('hex')+'.'+parsed.asset.format;
+  const bytes=Buffer.from(input.data,'base64');
+  staged.original=relative;
+  const bucket=await saveWorkspaceFile(relative,bytes);staged.bucket=bucket;
+  await mkdir(dataDirectory('builder-originals'),{recursive:true});await writeFile(dataDirectory(relative),bytes);
+  Object.assign(asset,{original_path:relative,original_bucket:bucket,version:1,
+   processing_status:asset.parser_status==='partial'?'partial':'ready',...(source?{copied_from_team:source}:{})});
+  // Parsing can take time; a revoked membership must not register a new copy afterwards.
+  if(authorize)await authorize();
+  return await builderWorker({action:'library_upload',...parsed,folder_id});
+ }catch(error){if(staged.original||staged.directory)await reconcileStagedUpload(staged);throw error;}
+}
 const locks=new Set<string>();
 const builderLockKey=(id:string,test=false)=>dataDirectory()+':'+(test?'test:':'')+id;
 export function builderWorkerTimeout(action:string,env:NodeJS.ProcessEnv=process.env):number {
@@ -61,6 +107,10 @@ async function runBuilderWorker(payload:Record<string,unknown>):Promise<any>{
  const python=agentPython();
  if(!existsSync(python))throw new Error('Deep Agents 실행 환경이 없습니다. scripts/setup/setup-agent-demo.sh를 먼저 실행하세요.');
  const release=await acquireWorkerSlot(String(payload.action));
+ // Recheck after waiting for a worker slot: membership may have changed while
+ // queued. Server-only reconciliation can still remove unregistered files.
+ try{if(payload.action!=='original_registered')await assertTeamLibraryAccess();}
+ catch(error){release();throw error;}
  const execution=['test','scheduled_run','retry_run','resume_run'].includes(String(payload.action));
  const runId=payload.action==='test'?randomUUID():String(payload.id||'');
  const executionToken=execution?randomUUID():undefined;
@@ -112,12 +162,12 @@ async function runBuilderWorker(payload:Record<string,unknown>):Promise<any>{
   child.stdin.end(JSON.stringify({...workerPayload,directory:dataDirectory()}));
  });
 }
-export async function parseBuilderAsset(input:any){
+export async function parseBuilderAsset(input:any,onArtifactDirectory?:(relative:string)=>void){
  if(typeof input?.fileName!=='string'||!input.fileName.trim()||input.fileName.length>200||/[\/\\\u0000-\u001f]/.test(input.fileName))throw new Error('파일 이름을 확인하세요.');
  if(typeof input.data!=='string'||input.data.length>11200000||input.data.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))throw new Error('파일 데이터를 확인하세요.');
  const bytes=Buffer.from(input.data,'base64');if(bytes.toString('base64')!==input.data)throw new Error('파일 데이터를 확인하세요.');if(!bytes.length||bytes.length>8*1024*1024)throw new Error('파일은 8MB 이하로 연결하세요.');
  const format=extname(input.fileName).slice(1).toLowerCase();let rows:Record<string,unknown>[]=[],text='',pages:string[]=[],kind='table',documentMeta:Record<string,unknown>={};
- const routed=routingEnabled()&&analysisSupportsFormat(format)?await analyzeBuilderDocument(bytes,format):undefined;
+ const routed=routingEnabled()&&analysisSupportsFormat(format)?await analyzeBuilderDocument(bytes,format,onArtifactDirectory):undefined;
  if(format==='csv'||format==='tsv'){
   let decoded:string;try{decoded=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{decoded=new TextDecoder('euc-kr',{fatal:true}).decode(bytes);}
   rows=parseCsv(decoded,{delimiter:format==='tsv'?'\t':','});
@@ -136,9 +186,40 @@ export async function parseBuilderAsset(input:any){
  return {asset:{name:input.fileName,kind,format,size_bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex'),row_count:rows.length,columns,profile,preview:rows.slice(0,3),text,pages,
   capabilities:[kind,...(kind==='table'&&routed?.text.trim()?['document']:[])],...documentMeta},rows};
 }
-export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void):Promise<boolean>{
+export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void,gmailAccessToken?:()=>Promise<string|undefined>):Promise<boolean>{
  if(!url.pathname.startsWith('/api/agent-builder/'))return false;
  const action=url.pathname.slice('/api/agent-builder/'.length),method=req.method||'GET';
+ if(['library','library_upload','folders','asset_move'].includes(action)){
+  const allowed=action==='library'?['GET']:action==='folders'?['POST','PATCH','DELETE']:['POST'];
+  if(!allowed.includes(method)){res.setHeader('Allow',allowed.join(', '));json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+  res.setHeader('Cache-Control','no-store');
+  if(action==='library'){
+   libraryQuery(url,['folder_id','before','q']);
+   const folder_id=libraryFolderId(url.searchParams.get('folder_id')),before=url.searchParams.get('before'),q=url.searchParams.get('q');
+   if(before!==null&&(!/^[1-9]\d*$/.test(before)||!Number.isSafeInteger(Number(before))))throw new Error('자료 목록 위치를 확인하세요.');
+   if(q!==null&&([...q].length>200||/[\u0000-\u001f\u007f\u0085\u2028\u2029]/.test(q)))throw new Error('검색어를 한 줄로 200자 이하 입력하세요.');
+   json(res,200,await builderWorker({action:'library',folder_id,before:before===null?null:Number(before),...(q===null?{}:{q:q.trim()})}));return true;
+  }
+  if(action==='folders'&&method==='DELETE'){
+   libraryQuery(url,['id']);const id=url.searchParams.get('id');
+   if(!id||!idPattern.test(id))throw new Error('폴더 ID를 확인하세요.');
+   json(res,200,await builderWorker({action:'folder_delete',id}));return true;
+  }
+  libraryQuery(url,[]);
+  const data=libraryBody(await readBody(req,action==='library_upload'?12*1024*1024:4096),
+   action==='library_upload'?['fileName','data','folder_id']:action==='asset_move'?['id','folder_id']:method==='POST'?['name','parent_id']:['id','name','parent_id']);
+  if(action==='folders'){
+   if(method==='POST'){json(res,200,await builderWorker({action:'folder_create',name:libraryName(data.name),parent_id:libraryFolderId(data.parent_id)}));return true;}
+   if(typeof data.id!=='string'||!idPattern.test(data.id)||(Object.hasOwn(data,'name')?1:0)+(Object.hasOwn(data,'parent_id')?1:0)!==1)throw new Error('폴더 ID와 변경할 항목 하나를 입력하세요.');
+   json(res,200,await builderWorker({action:'folder_update',id:data.id,...(Object.hasOwn(data,'name')?{name:libraryName(data.name)}:{parent_id:libraryFolderId(data.parent_id)})}));return true;
+  }
+  const folder_id=libraryFolderId(data.folder_id);
+  if(action==='asset_move'){
+   if(typeof data.id!=='string'||!idPattern.test(data.id)||!Object.hasOwn(data,'folder_id'))throw new Error('자료 ID와 이동할 폴더를 확인하세요.');
+   json(res,200,await builderWorker({action:'asset_move',id:data.id,folder_id}));return true;
+  }
+  json(res,200,await persistLibraryUpload(data as {fileName:string;data:string},folder_id));return true;
+ }
  if(action==='assets'&&method==='GET'){
   const before=url.searchParams.get('before');
   if(before!==null&&(!/^[1-9]\d*$/.test(before)||!Number.isSafeInteger(Number(before))))throw new Error('자료 목록 위치를 확인하세요.');
@@ -155,7 +236,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     await deleteUploadFiles(cleanup);
     json(res,200,await builderWorker({action:'finish_asset_delete',id}));
    }catch{
-    json(res,503,{error:'자료 삭제를 마치지 못했습니다. 삭제 재시도를 눌러주세요.',pending_delete:true});
+    json(res,503,{error:'자료 삭제를 마치지 못했습니다. 자료함에서 삭제 재시도를 눌러주세요.',pending_delete:true});
    }
   }else json(res,200,await builderWorker({action,id}));
   return true;
@@ -201,6 +282,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  }
  if(action==='catalog'&&method==='GET'){json(res,200,await builderWorker({action:'catalog'}));return true;}
  if(action==='agents'&&method==='GET'){json(res,200,await builderWorker({action:'agents'}));return true;}
+ if(action==='rename_agent'&&method==='POST'){
+  const data=await readBody(req,4096);
+  if(typeof data?.id!=='string'||!idPattern.test(data.id)||!Number.isSafeInteger(data.version)||data.version<1||typeof data.name!=='string')throw new Error('워크플로우 ID, 버전, 이름을 확인해주세요.');
+  json(res,200,await builderWorker({action:'rename_agent',id:data.id,base_version:data.version,name:data.name}));return true;
+ }
  if(action==='tool_gap_replan_decision'&&method==='POST'){
   const data=parseRedesignDecisionRequest(await readBody(req,10000));
   const lockKey=builderLockKey(data.id);
@@ -234,7 +320,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  const lockKey=['session','generation_history','agent','run'].includes(workerAction)?undefined:builderLockKey(data.id,workerAction==='test');
  if(lockKey&&locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
  if(lockKey)locks.add(lockKey);
- let stagedUpload:{original:string;directory?:string}|undefined;
+ let stagedUpload:StagedUpload|undefined;
  let generationRequestId:string|undefined;
  try{
   let payload:any={action:workerAction,id:data.id};
@@ -271,7 +357,8 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    const current=await builderWorker({action:workerAction==='test'?'agent':['resume_run','retry_run'].includes(workerAction)?'run':'session',id:data.id});
    if(workerAction==='test'&&!payload.content&&current.request_required)throw new Error('이 워크플로우에 필요한 실행 요청을 입력하세요.');
    const config=workerAction==='test'?current.agent.config:['resume_run','retry_run'].includes(workerAction)?current.run.config_snapshot:null;
-   const needsModel=builderNeedsModel(config,workerAction==='test'?current.agent.workflow_dependencies:current.run?.workflow_dependencies);
+   const dependencies=workerAction==='test'?current.agent.workflow_dependencies:current.run?.workflow_dependencies;
+   const needsModel=builderNeedsModel(config,dependencies);
    if(needsModel){
     const credentialId=workerAction==='test'?current.agent.credential_id:['resume_run','retry_run'].includes(workerAction)?current.run.credential_id:current.credential_id;
     if(process.env.A4B_REQUIRE_LOCAL_MODEL==='1'&&credentialId!==LOCAL_MODEL_ID)throw new Error('이 작업은 이전 모델 연결로 저장됐습니다. Qwen으로 다시 만들어주세요.');
@@ -279,6 +366,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     if(credential.provider!=='openai')throw new Error('모델 연결 계정을 확인하세요.');
     payload.api_key=credential.data.apiKey||credential.data.token;
    }
+   if(builderNeedsGmail(config,dependencies))payload.gmail_access_token=await gmailAccessToken?.();
   }
   if(['upload','run_upload','source_upload'].includes(workerAction)){
    Object.assign(payload,await parseBuilderAsset(data));
@@ -306,13 +394,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    try{await builderWorker({action:'interrupt_generation',id:data.id,generation_request_id:generationRequestId,reason_code:generationFailureCode(error)});}
    catch{throw new Error('생성 요청에 실패했고 이력 종료 상태도 기록하지 못했습니다. 서버와 DB 연결을 확인하세요.',{cause:error});}
   }
-  if(stagedUpload){
-   // A worker may report an error after committing the attachment. Check before removing its files.
-   try{
-    const {registered}=await builderWorker({action:'original_registered',original:stagedUpload.original});
-    if(!registered)await deleteUploadFiles(stagedUpload);
-   }catch{console.warn('Failed to reconcile staged upload',stagedUpload.original);}
-  }
+  if(stagedUpload)await reconcileStagedUpload(stagedUpload);
   throw error;
  }finally{if(lockKey)locks.delete(lockKey);}
 }

@@ -36,7 +36,7 @@ const button = (label: string) => {
   assert.ok(found, 'Missing button: ' + label);
   return found;
 };
-const response = (value: string) => new Response(JSON.stringify({health: {status: value}}), {headers: {'Content-Type': 'application/json'}});
+const response = (value: string, target = 'runpod') => new Response(JSON.stringify({health: {status: value, target}}), {headers: {'Content-Type': 'application/json'}});
 async function mount(fetcher: typeof fetch, strict = false, configureWindow?: () => void) {
   dom.window.close(); installDom();
   configureWindow?.();
@@ -66,7 +66,7 @@ test('AI status shows a failure, retries without overlap, and recovers using the
   try {
     assert.equal(status(), 'AI 일시 중단');
     await click(button('AI 일시 중단'));
-    assert.match(document.body.textContent || '', /AI 연결을 확인하지 못했어요/);
+    assert.match(document.body.textContent || '', /공용 RunPod AI 서버에 연결하지 못했어요/);
     await click(button('다시 확인'));
     assert.equal(status(), 'AI 연결 확인 중');
     assert.equal(button('다시 확인').disabled, true);
@@ -75,7 +75,7 @@ test('AI status shows a failure, retries without overlap, and recovers using the
     await act(async () => {resolveRetry(response('ready')); await tick();});
     assert.equal(status(), 'AI 사용 가능');
     assert.equal(button('다시 확인').disabled, false);
-    assert.match(document.body.textContent || '', /워크플로우를 만들고 AI 작업을 실행할 수 있어요/);
+    assert.match(document.body.textContent || '', /공용 RunPod AI 서버에 연결되어 AI 작업을 실행할 수 있어요/);
     assert.match(document.body.textContent || '', /마지막 확인/);
   } finally {await h.close();}
 });
@@ -105,10 +105,66 @@ test('AI status ignores a stale request after StrictMode restarts the effect and
   assert.equal(signal.aborted, true);
 });
 
-test('AI status treats missing or unconfigured health as unavailable', async () => {
-  for (const value of [{}, {health: {status: 'unconfigured'}}]) {
+test('AI status only turns green for a ready RunPod target', async () => {
+  for (const value of [{}, {health: {status: 'unconfigured'}}, {health: {status: 'ready'}},
+    {health: {status: 'ready', target: 'local'}}, {health: {status: 'ready', target: 'remote'}},
+    {health: {status: 'ready', target: 'unconfigured'}}, {health: {status: 'unavailable', target: 'runpod'}},
+    {health: {status: 'ready', target: 'RUNPOD'}}, {health: {status: 'ready', target: ['runpod']}}]) {
     const h = await mount((async () => new Response(JSON.stringify(value))) as typeof fetch);
     try {assert.equal(status(), 'AI 일시 중단');}
+    finally {await h.close();}
+  }
+});
+
+test('AI status rechecks on visible return and focus without overlapping requests', async () => {
+  const signals: AbortSignal[] = [];
+  const pending: ((value: Response) => void)[] = [];
+  let visibility = 'visible';
+  const h = await mount((async (_path: any, init: RequestInit) => {
+    signals.push(init.signal as AbortSignal);
+    return signals.length === 1 ? response('ready') : await new Promise<Response>(resolve => pending.push(resolve));
+  }) as typeof fetch, false, () => {
+    Object.defineProperty(document, 'visibilityState', {configurable: true, get: () => visibility});
+  });
+  try {
+    assert.equal(status(), 'AI 사용 가능');
+    await act(async () => {
+      visibility = 'hidden'; document.dispatchEvent(new dom.window.Event('visibilitychange'));
+      window.dispatchEvent(new dom.window.Event('focus')); await tick();
+    });
+    assert.equal(signals.length, 1);
+    await act(async () => {
+      visibility = 'visible'; document.dispatchEvent(new dom.window.Event('visibilitychange'));
+      window.dispatchEvent(new dom.window.Event('focus')); await tick();
+    });
+    assert.equal(signals.length, 2); assert.equal(status(), 'AI 연결 확인 중');
+    await act(async () => {pending.shift()!(response('ready', 'local')); await tick();});
+    assert.equal(status(), 'AI 일시 중단');
+    await act(async () => {window.dispatchEvent(new dom.window.Event('focus')); await tick();});
+    assert.equal(signals.length, 3); assert.equal(status(), 'AI 연결 확인 중');
+    await act(async () => {pending.shift()!(response('ready')); await tick();});
+    assert.equal(status(), 'AI 사용 가능');
+  } finally {await h.close();}
+  let lateCalls = 0;
+  globalThis.fetch = (async () => {lateCalls++; return response('ready');}) as typeof fetch;
+  try {
+    await act(async () => {
+      window.dispatchEvent(new dom.window.Event('focus'));
+      document.dispatchEvent(new dom.window.Event('visibilitychange')); await tick();
+    });
+    assert.equal(lateCalls, 0, 'unmount removes focus and visibility listeners');
+  } finally {globalThis.fetch = originalFetch;}
+});
+
+test('AI status fails closed for malformed responses and network failures', async () => {
+  for (const fetcher of [
+    async () => {throw new Error('network unavailable');},
+    async () => new Response('invalid JSON'),
+    async () => new Response('null'),
+    async () => new Response(JSON.stringify({health: {status: ['ready'], target: 'runpod'}})),
+  ]) {
+    const h = await mount(fetcher as typeof fetch);
+    try {assert.equal(status(), 'AI 일시 중단'); assert.equal(document.querySelector('.ai-status-badge')?.getAttribute('data-status'), 'unavailable');}
     finally {await h.close();}
   }
 });

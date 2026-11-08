@@ -4,14 +4,14 @@ import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover';
 import './ai-status.css';
 
 type Status = 'checking' | 'ready' | 'unavailable';
-type Connection = {health?: {status?: string}};
+type Connection = {health?: {status?: string; target?: string}};
 const labels: Record<Status, string> = {
   checking: 'AI 연결 확인 중',
   ready: 'AI 사용 가능',
   unavailable: 'AI 일시 중단',
 };
 
-/** Check model availability separately from loading the workspace itself. */
+/** Show shared RunPod availability independently of a member's local model setup. */
 export function AiStatus() {
   const [status, setStatus] = useState<Status>('checking');
   const [lastChecked, setLastChecked] = useState<Date>();
@@ -36,7 +36,7 @@ export function AiStatus() {
         });
         if (!response.ok) throw new Error('Connection unavailable');
         const value = await response.json() as Connection;
-        if (active && !controller.signal.aborted) setStatus(value.health?.status === 'ready' ? 'ready' : 'unavailable');
+        if (active && !controller.signal.aborted) setStatus(value.health?.status === 'ready' && value.health.target === 'runpod' ? 'ready' : 'unavailable');
       } catch {
         if (active) setStatus('unavailable');
       } finally {
@@ -51,29 +51,34 @@ export function AiStatus() {
       }
     }
 
+    const refreshWhenVisible = () => {if (document.visibilityState === 'visible') void refresh();};
     check.current = () => void refresh();
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
     void refresh();
     return () => {
       active = false;
       check.current = () => {};
       window.clearTimeout(timeout);
       window.clearTimeout(nextCheck);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
       request?.abort();
     };
   }, []);
 
   return <Popover>
     <PopoverTrigger asChild>
-      <button type="button" className="ai-status-badge" data-status={status} aria-label={'AI 상태: ' + labels[status]}>
+      <button type="button" className="ai-status-badge" data-status={status} aria-label={'공용 RunPod AI 서버 상태: ' + labels[status]}>
         <span className="ai-status-dot" aria-hidden="true"/>
         <span role="status" aria-live="polite">{labels[status]}</span>
       </button>
     </PopoverTrigger>
-    <PopoverContent className="ai-status-details" align="end" sideOffset={10} aria-label="AI 연결 상태">
-      <h2>AI 연결 상태</h2>
-      <p>{status === 'ready' ? '워크플로우를 만들고 AI 작업을 실행할 수 있어요.'
-        : status === 'checking' ? 'AI가 응답하는지 확인하고 있어요.'
-        : 'AI 연결을 확인하지 못했어요. 잠시 후 다시 확인해주세요.'}</p>
+    <PopoverContent className="ai-status-details" align="end" sideOffset={10} aria-label="공용 RunPod AI 서버 상태">
+      <h2>공용 RunPod AI 서버 상태</h2>
+      <p>{status === 'ready' ? '공용 RunPod AI 서버에 연결되어 AI 작업을 실행할 수 있어요.'
+        : status === 'checking' ? '공용 RunPod AI 서버가 응답하는지 확인하고 있어요.'
+        : '공용 RunPod AI 서버에 연결하지 못했어요. 잠시 후 다시 확인해주세요.'}</p>
       {lastChecked && <small>마지막 확인 {lastChecked.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'})}</small>}
       <button type="button" className="as-button" disabled={status === 'checking'} onClick={() => check.current()}>
         <RefreshCw size={14} aria-hidden="true"/>다시 확인

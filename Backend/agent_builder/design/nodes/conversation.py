@@ -112,7 +112,9 @@ def validated_draft_response(result, evidence, state=None):
         raise DraftResponseError('invalid_draft', details[:1200]) from error
     from agent_builder.design.native_settings import draft_setting_issues
     from agent_builder.design.runtime_inputs import runtime_file_question_issues
-    issues = draft_setting_issues(candidate) + runtime_file_question_issues(candidate, state or {})
+    from agent_builder.design.explicit_processing import explicit_processing_issues
+    issues = (draft_setting_issues(candidate) + runtime_file_question_issues(candidate, state or {})
+              + explicit_processing_issues(state or {}, candidate))
     if issues:
         raise DraftResponseError('invalid_planning_contract', ' / '.join(issues))
     return raw
@@ -195,10 +197,7 @@ def make_conversation(api_key,model,model_factory=None):
         # Capability selection identifies business tools, not execution controls.
         # A requested human review must remain expressible without another discovery call.
         active_operation_ids=(selected_contract_ids|{'finish','ask_user'}) if inline_contracts else None
-        # Non-native table policies (fill missing values / project columns) are
-        # needed to complete ordinary table requests. Ollama may skip inspection
-        # tool calls, so include their registered contracts up front.
-        inspected_operation_ids=(selected_contract_ids & {'filter_sort','calculate_columns'}) if inline_contracts and not scoped else set()
+        inspected_operation_ids=set()
         variable_names=set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{0,39})(?=\s*(?:[=+*/%]|값))',' '.join(m['content'] for m in state['messages'] if m['role']=='user')))
         variable_names.update(c for r in resources.values() for c in r.get('columns',[]))
         variable_names=set(sorted(variable_names)[:64])
@@ -477,7 +476,6 @@ def make_conversation(api_key,model,model_factory=None):
             context['supported_tools']=planner_catalog(catalog,discovery=True)
             context['tool_discovery_instruction']='supported_tools는 전체 도구 발견용 요약입니다. 선택한 도구의 실제 설정·포트는 selected_tool_contracts를 따르고, 다른 도구가 필요하면 inspect_tool로 상세 계약을 조회하세요.'
             context['selected_tool_contracts']=planner_catalog([t for t in catalog if t['id'] in selected_contract_ids],details=True,native_first=True)
-            context['additional_operation_contracts']=planner_catalog([t for t in catalog if t['id'] in inspected_operation_ids],details=True)
             context['task_completeness_instruction']=(
                 '지원 판정의 tool_ids는 추천 목록이며 업무 단계 목록이 아닙니다. 사용자 원문의 각 동작을 실제 노드에 대응시키세요. '
                 '수량×단가 같은 계산을 합산 전에 요청하면 실제 calculate_columns 계산 단계를 먼저 구성해야 합니다. '

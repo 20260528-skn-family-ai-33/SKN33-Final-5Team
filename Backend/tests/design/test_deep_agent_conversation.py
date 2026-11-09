@@ -760,15 +760,3 @@ def test_incomplete_capability_selection_does_not_remove_processing_family(monke
     assert expected<=contracts and expected<=enabled
     assert not {'email.send','http.request'} & enabled
     assert original['capability_assessment']['tool_ids']==selected
-
-
-def test_table_policies_have_contracts_without_ollama_tool_calls(monkeypatch):
-    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
-    original=state([{'role':'user','content':'결합 후 빈 합계는 0으로 채워줘'}])
-    original['capability_assessment']={'decision':'existing_tools','tool_ids':['join_tables']}
-    captured=run_capturing(monkeypatch,original,draft(questions=['표를 알려주세요']))
-    contracts=captured['context']['additional_operation_contracts']
-    assert any(t['id']=='filter_sort' and any(o['id']=='handle_missing' for o in t['operation_contracts']) for t in contracts)
-    variants=captured['schema']['$defs']['WorkflowNode']['anyOf']
-    assert any(v['properties']['tool']['enum']==['filter_sort'] and
-               v['properties']['settings']['properties'].get('operation',{}).get('enum')==['handle_missing'] for v in variants)

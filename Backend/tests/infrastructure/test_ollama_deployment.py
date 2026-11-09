@@ -42,3 +42,17 @@ def test_invalid_deployment_limits_fail_before_network(monkeypatch,key,value):
     monkeypatch.setenv('A4B_MAIN_BASE_URL','https://example.test/v1')
     monkeypatch.setenv(key,value)
     with pytest.raises(ValueError,match=key):OllamaPlanner('final664')
+
+
+@pytest.mark.parametrize('empty',['','   '])
+def test_empty_compose_overrides_preserve_native_and_chat_defaults(monkeypatch,empty):
+    from infrastructure.llm.model_factory import create_chat_model
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL','https://example.test/v1')
+    for key in ['A4B_OLLAMA_NUM_CTX','A4B_OLLAMA_NUM_PREDICT','A4B_OLLAMA_TEMPERATURE']:
+        monkeypatch.setenv(key,empty)
+    native=OllamaPlanner('final664',temperature=0.2)
+    assert (native.num_ctx,native.num_predict,native.temperature)==(16384,4096,0.2)
+    model=create_chat_model('','final664',max_tokens=8192,temperature=0.2)
+    wire=model._get_request_payload('test')
+    assert wire['max_tokens']==8192 and wire['temperature']==0.2

@@ -153,6 +153,12 @@ jobs:
         if: needs.resolve-image.outputs.target != 'frontend'
       - run: npm test
         if: needs.resolve-image.outputs.target != 'frontend'
+      - name: Test Ollama configuration, transport and output recovery
+        if: needs.resolve-image.outputs.target != 'frontend'
+        working-directory: Backend
+        run: |
+          .venv-agent/bin/python -m pip install -r requirements/local-integration.txt
+          .venv-agent/bin/python -m pytest -q tests/infrastructure/test_ollama_deployment.py tests/design/test_ollama_planning.py tests/design/test_deep_agent_conversation.py tests/design/test_direct_conversation.py
       - name: Test receipt workflows and saved run results
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
         working-directory: Backend

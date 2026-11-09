@@ -24,6 +24,12 @@ export async function localModelHealth(){
  let connection:ReturnType<typeof localModelConnection>;
  try{connection=localModelConnection();}catch{return result('unconfigured','unconfigured','공용 RunPod AI 서버 설정을 확인해주세요.');}
  if(!connection)return result('unconfigured','unconfigured','공용 RunPod AI 서버 설정이 필요합니다.');
+ const required=[{role:'설계',model:connection.model}];
+ if(process.env.A4B_CAPABILITY_MODE==='enforce'){
+  const model=process.env.A4B_CAPABILITY_MODEL||connection.model;
+  if(model.length>120||!/^[-\w./:]+$/.test(model))return result('unconfigured','unconfigured','지원 판정 모델 설정(A4B_CAPABILITY_MODEL)을 확인해주세요.');
+  required.push({role:'지원 판정',model});
+ }
  const target=modelHealthTarget(process.env.A4B_MAIN_BASE_URL!);
  if(target!=='runpod')return result('unconfigured',target,'공용 RunPod AI 서버가 연결되어 있지 않습니다.');
  try{const headers:Record<string,string>={'Cache-Control':'no-store'};if(process.env.A4B_MAIN_API_KEY)headers.Authorization='Bearer '+process.env.A4B_MAIN_API_KEY;
@@ -32,7 +38,8 @@ export async function localModelHealth(){
   // Ollama expands an omitted tag to :latest in /v1/models. Registry ports
   // belong to the prefix, so inspect only the final model-name segment.
   const canonical=(name:string)=>process.env.A4B_MAIN_PROVIDER==='ollama'&&!name.slice(name.lastIndexOf('/')+1).includes(':')?name+':latest':name;
-  if(!body.data?.some(m=>canonical(m.id)===canonical(connection.model)))return result('unavailable',target,'RunPod에서 설정한 AI 모델을 찾지 못했습니다.');
+  const missing=required.filter(({model})=>!body.data?.some(m=>canonical(m.id)===canonical(model)));
+  if(missing.length)return result('unavailable',target,'RunPod에서 '+missing.map(({role,model})=>`${role} 모델 (${model})`).join(', ')+'을 찾지 못했습니다.');
   return result('ready',target,'공용 RunPod AI 서버 응답과 모델 준비를 확인했습니다.');
  }catch{return result('unavailable',target,'공용 RunPod AI 서버에 연결할 수 없습니다. 잠시 후 다시 확인해주세요.');}
 }

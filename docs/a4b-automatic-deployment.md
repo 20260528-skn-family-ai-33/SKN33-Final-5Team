@@ -21,6 +21,43 @@ GitHub에 `production` 환경을 만들고 워크플로우 실행 브랜치를 `
 
 새 이미지가 시작된 뒤 EC2의 앱 화면과 공개 `/api/health`를 확인하고, 실패하면 이전 컨테이너를 다시 시작합니다. ECR에서 새 이미지를 받으면서 이전 버전도 보관할 디스크 공간을 확인한 뒤 첫 배포를 실행합니다.
 
+### RunPod 모델 설정 선택
+
+기본 [AWS 환경변수 예시](../infrastructure/env/.env.aws.example)는
+[RunPod 기본 설치](../scripts/runpod/README.md)의 `scripts/start-runpod-qwen-parser.sh`와 맞춥니다.
+이 설치는 `qwen3.5:4b`와 `a4b-qwen35-4b-16k`를 준비합니다. 설계와 지원 판정은
+`a4b-qwen35-4b-16k`를 공유하며, `A4B_CAPABILITY_MODEL`을 비워 두면 설계 모델을 사용합니다.
+native 문맥은 16,384이고 `/v1` 모델의 Modelfile에도 같은 문맥이 등록됩니다.
+
+#### 9B 모델 설정
+
+[9B 추가 설정 예시](../infrastructure/env/.env.aws.qwen35-9b.example)는 별도로 준비된
+최종664·기존105 파인튜닝 모델을 사용하는 경우에만 적용합니다. 기본 시작 스크립트는
+이 두 모델을 내려받거나 등록하지 않으며, 비공개 어댑터와 GGUF는 이 저장소에 포함되지 않습니다.
+
+1. 전달받은 모델 패키지의 `python serving/verify.py`로 무결성을 확인하고,
+   해당 패키지의 `README_KO.md`에 따라 고정 원본·어댑터 병합, GGUF 변환·검증·등록을 완료합니다.
+   원본 9B나 4B의 이름만 바꾸어 파인튜닝 모델로 사용하지 않습니다.
+2. 사용할 Ollama 서버에 `a4b-qwen35-9b-final664-pilot32k`,
+   `a4b-qwen35-9b-previous-pilot32k`, `qwen3.5:4b`가 등록되어 있어야 합니다.
+   두 9B 모델의 Modelfile에서 `PARAMETER num_ctx 32768`을 확인합니다.
+   `A4B_OLLAMA_NUM_CTX=32768`은 native 요청 설정이며, `/v1` 모델의 등록 설정을 변경하지 않습니다.
+3. 각 모델에 실제 요청을 보내 응답과 GPU 로딩·문맥 길이를 확인하고, GPU 파서도 별도로 검증합니다.
+   화면의 AI 상태 검사는 모델 목록과 이름을 확인하므로 추론 성공이나 메모리 여유를 보장하지 않습니다.
+4. 기본 예시를 `.env.aws`로 복사해 AWS 설정·주소·인증 값을 채우고, 9B 예시를
+   `.env.aws.qwen35-9b`로 복사합니다. 두 파일의 접근 권한을 제한하고 아래 순서로 적용합니다.
+
+   ```bash
+   docker compose --env-file .env.aws --env-file .env.aws.qwen35-9b config --quiet
+   docker compose --env-file .env.aws --env-file .env.aws.qwen35-9b up -d --build
+   ```
+
+두 번째 파일은 모델 설정만 덮어쓰므로 첫 번째 파일의 Cognito·RDS·S3·접속 주소와 인증 값을 유지합니다.
+GitHub Actions의 기존 EC2 배포는 이 예시 파일을 자동으로 읽지 않고 현재 컨테이너 설정을 재사용합니다.
+따라서 이미 운영 중인 9B 서버를 기본 4B 예시로 다시 설정할 필요가 없습니다.
+모델 연결 화면까지 바뀐 버전을 반영할 때는 `target=all`로 프런트엔드와 백엔드를 함께 배포한 뒤,
+EC2에서 모델 호출·파서 연결을 다시 확인합니다.
+
 ### 배포 영역
 
 워크플로우는 `Use workflow from`을 `main`으로 두고, `branch`에 테스트할 브랜치를 입력합니다.

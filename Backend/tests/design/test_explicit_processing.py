@@ -60,3 +60,42 @@ def test_clarification_and_cancelled_review_do_not_force_a_graph():
     d.pop('questions');s['messages'].append({'role':'user','content':'분석하지 말고 기간만 추출해줘.'})
     d['workflow']['nodes']=[d['workflow']['nodes'][0]]
     assert explicit_processing_issues(s,d)==[]
+
+
+def test_deepagent_retries_actual_missing_calculation_with_specific_feedback(monkeypatch):
+    from tests.design.test_deep_agent_conversation import draft, state
+    from agent_builder.design.nodes.conversation import make_conversation
+    s,valid=table_case()
+    original=state(s['messages']);original['resources']=[dict(id='table',name='orders',text='',profile={},**s['resources'][0])]
+    invalid=deepcopy(valid);invalid['workflow']['nodes']=[n for n in invalid['workflow']['nodes'] if n['id']!='calc']
+    invalid['workflow']['nodes'][1]['bindings']=[bind('table','read','table')]
+    invalid['workflow']['edges']=[edge('read','sum'),edge('sum','out')]
+    calls=[]
+    class Agent:
+        def invoke(self,payload,*a,**kw):
+            calls.append(payload)
+            return {'structured_response':draft(workflow=(invalid if len(calls)==1 else valid)['workflow'])}
+    monkeypatch.setenv('A4B_PLANNER_MODE','deepagent')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    result=make_conversation('','test',model_factory=lambda:object())(original)
+    assert len(calls)==2 and '수량 * 단가' in calls[-1]['messages'][-1]['content']
+    assert result['draft']['workflow']['nodes'][1]['tool']=='calculate_columns'
+    assert original.get('draft') is None
+
+
+def test_validation_cannot_approve_extraction_only_as_contract_analysis():
+    from tests.design.test_deep_agent_conversation import draft, state
+    from agent_builder.design.nodes.validation import validate_node
+    s,d=document_case();s=state(s['messages'])
+    w=deepcopy(d['workflow']);w['nodes']=[n for n in w['nodes'] if n['id']!='analysis']
+    w['nodes'][-1]['bindings']=[bind('records','extract','records')]
+    w['edges']=[edge('read','extract'),edge('extract','human')]
+    raw=draft(workflow=w);raw['tool_ids']=[n['tool'] for n in w['nodes']]
+    raw['requirements']=[{'description':'계약 검토','source_id':'user','quote':s['messages'][0]['content']}]
+    result=validate_node({**s,'draft':raw})
+    assert result['status']!='ready' and any('분석' in issue for issue in result['issues'])
+
+
+def test_table_discrepancy_request_does_not_require_document_synthesis():
+    s,d=table_case();s['messages']=[{'role':'user','content':'두 표의 모순된 내용을 검토해줘.'}]
+    assert explicit_processing_issues(s,d)==[]

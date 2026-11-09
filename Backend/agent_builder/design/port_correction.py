@@ -19,7 +19,7 @@ def correction_contract(workflow):
     expected = [{'source': a, 'target': b, 'branch': 'next'} for a, b in zip(ids, ids[1:])]
     if workflow['edges'] != expected:
         return None
-    actual = {}; pending = []; properties = {}
+    actual = {}; pending = []; properties = {}; by = {n['id']:n for n in nodes}
     for node in nodes:
         inputs, outputs = node_ports(node)
         valid = []; invalid = []
@@ -46,6 +46,21 @@ def correction_contract(workflow):
                         if node['tool'] != 'ask_user' and port not in {b['input'] for b in node['bindings']}:
                             continue
                         choices['b'+str(len(choices)+1)] = {'input': port, 'node_id': source, 'output': output}
+            # Extraction returns records, not documents. For a grounded answer,
+            # the exact document input consumed by that extraction is a valid
+            # source; an unrelated earlier reader is not. Do not bypass searches,
+            # branches, operation variants or combine ambiguous document inputs.
+            if node['tool'] == 'compose_answer':
+                for binding in invalid:
+                    source = by[binding['node_id']]
+                    if (binding['input'] != 'documents' or source['tool'] != 'extract_information'
+                            or source['settings'].get('operation')):
+                        continue
+                    origins = [b for b in source['bindings'] if b['input']=='documents'
+                               and actual.get(b['node_id'],{}).get(b['output'])=='documents']
+                    if len(origins) == 1:
+                        choice = {**origins[0], 'input':'documents'}
+                        if choice not in choices.values(): choices['b'+str(len(choices)+1)] = choice
             if not choices:
                 return None
             keep = [key for key, value in choices.items() if value in valid]

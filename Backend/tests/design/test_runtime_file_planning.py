@@ -370,3 +370,21 @@ def test_sum_correction_does_not_guess_an_ambiguous_source_or_computed_columns()
     assert column_contract(w,s['resources'])==[]
     w,s=aggregate_source_case();w['nodes'][0]['tool']='calculate_columns'
     assert column_contract(w,s['resources'])==[]
+
+
+def test_analysis_correction_uses_the_extractors_original_document_only():
+    from agent_builder.design.port_correction import correction_contract, correct_connections
+    w={'entry':'unrelated','nodes':[node('unrelated','read_document'),node('read','read_document'),
+       node('extract','extract_information',[bind('documents','read','documents')],fields=['기간']),
+       node('analysis','compose_answer',[bind('documents','extract','documents')],instructions='모순을 분석하고 수정 제안을 작성하세요.')],
+       'edges':[edge('unrelated','read'),edge('read','extract'),edge('extract','analysis')]}
+    contract=correction_contract(w)
+    choices=contract['nodes'][0]['choices']
+    assert list(choices.values())==[bind('documents','read','documents')]
+    class Model:
+        def with_structured_output(self,*a,**kw):return self
+        def invoke(self,*a):return {'analysis':['b1']}
+    result,_=correct_connections(w,[],Model())
+    assert result['nodes'][-1]['bindings']==[bind('documents','read','documents')]
+    assert result['nodes'][-1]['settings']==w['nodes'][-1]['settings']
+    assert w['nodes'][-1]['bindings'][0]['node_id']=='extract'

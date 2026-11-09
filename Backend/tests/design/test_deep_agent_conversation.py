@@ -720,13 +720,9 @@ def test_first_step_decoder_cannot_drop_required_input_or_reference_future_table
     captured=run_capturing(monkeypatch,original,draft(questions=['결합 방식을 알려주세요']))
     definitions=captured['schema']['$defs']
     first=definitions['FirstBusinessStep']
-    # Native transforms require predecessor inputs. Extension operations can
-    # start with an explicit constant table, but cannot omit that input.
-    assert not any(v['properties']['tool']['enum'] in (['calculate_columns'],['filter_sort'])
-                   and 'operation' not in v['properties']['settings']['properties'] for v in first['anyOf'])
+    assert not any(v['properties']['tool']['enum']==['calculate_columns'] for v in first['anyOf'])
+    assert not any(v['properties']['tool']['enum']==['filter_sort'] for v in first['anyOf'])
     validator=Draft202012Validator({'$ref':'#/$defs/FirstBusinessStep','$defs':definitions})
-    for tool in ('calculate_columns','filter_sort'):
-        assert not validator.is_valid(dict(tool=tool,label='입력 누락',settings={}))
     constants={'keys':['id'],'how':'left','cardinality':'many_to_one','null_keys':'error','max_rows':100}
     join=dict(tool='join_tables',label='결합',settings={'operation':'join','output_port':None,
               'arguments_json':{**constants,'left':{'$binding':'left'},'right':{'$binding':'right'}}})

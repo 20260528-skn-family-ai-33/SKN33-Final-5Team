@@ -18,6 +18,9 @@ def literal_products(state):
     # infer formulas from prose or use document content as user instructions.
     columns = {c for r in state.get('resources', []) if r.get('kind') == 'table'
                for c in r.get('columns', []) if c.isidentifier()}
+    if not columns: return []
+    names = '|'.join(re.escape(c) for c in sorted(columns, key=lambda c: (-len(c), c)))
+    pattern = re.compile(rf'(?<!\w)({names})\s*[*×]\s*({names})(?=$|\s|[.,;:)]|(?:를|을|로|와|과|에)(?:\s|$))')
     products = set()
     for text in _requests(state):
         # A later cancellation/replacement invalidates this narrow extraction.
@@ -26,10 +29,7 @@ def literal_products(state):
             products.clear()
             continue
         if not re.search(r'계산|곱|합산|합계', text): continue
-        for left in columns:
-            for right in columns:
-                pattern = rf'(?<!\w){re.escape(left)}\s*[*×]\s*{re.escape(right)}(?=$|\s|[.,;:)]|(?:를|을|로|와|과|에)(?:\s|$))'
-                if re.search(pattern, text): products.add(left+' * '+right)
+        products.update(left+' * '+right for left,right in pattern.findall(text))
     return sorted(products)
 
 
@@ -65,7 +65,7 @@ def explicit_processing_issues(state, draft):
         if re.search(r'모순|상충', text) and re.search(r'검토|분석|찾|확인', text): review = True
         if re.search(r'수정\s*(?:제안|안)|개선\s*안', text): suggestion = True
         if re.search(r'(?:사람|담당자).{0,20}확인', text): human = True
-    if review:
+    if review and any(re.search(r'문서|계약서|\bpdf\b', text, re.IGNORECASE) for text in _requests(state)):
         analysis = []
         for key, node in nodes.items():
             if node['tool'] not in ('compose_answer', 'agent_node', 'review_document'): continue

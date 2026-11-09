@@ -33,3 +33,53 @@ def expand_node_settings(raw):
             if isinstance(node, dict) and isinstance(node.get('settings'), dict):
                 node['settings'] = {**deepcopy(defaults), **node['settings']}
     return result
+
+
+def constrain_draft_settings(schema):
+    """Decode valid required settings; never choose a business column for the model."""
+    from copy import deepcopy
+    result = deepcopy(schema)
+    result['properties']['instructions'].update(
+        minLength=1, pattern=r'^[ \t\r\n]*[^ \t\r\n](.|\n)*$',
+        description='사용자가 요청한 전체 업무를 실행할 지시사항입니다. 빈 문자열을 쓰지 마세요. 노드별 settings.instructions와 별개인 초안 최상위 필드입니다.')
+
+    def visit(value):
+        if isinstance(value, list):
+            for child in value: visit(child)
+        elif isinstance(value, dict):
+            for child in list(value.values()): visit(child)
+            props = value.get('properties', {})
+            if props.get('tool', {}).get('enum') != ['aggregate_table']:
+                return
+            settings = props.get('settings', {})
+            fields = settings.get('properties', {})
+            if 'aggregation' not in fields or 'sum_field' not in fields:
+                return  # Operation variants have a different contract.
+            variants = []
+            for aggregation in fields['aggregation'].get('enum', ['count', 'sum']):
+                if aggregation not in ('count', 'sum'): continue
+                variant = deepcopy(settings)
+                variant['properties']['aggregation'] = {'type':'string', 'enum':[aggregation]}
+                if aggregation == 'sum':
+                    column = variant['properties']['sum_field']
+                    variant['properties']['sum_field'] = {
+                        'type':'string', 'minLength':1, 'pattern':r'^[ \t\r\n]*[^ \t\r\n](.|\n)*$',
+                        **({'enum':column['enum']} if 'enum' in column else {})}
+                variants.append(variant)
+            if variants: props['settings'] = {**settings, 'anyOf':variants}
+    visit(result)
+    return result
+
+
+def draft_setting_issues(draft):
+    """Check required values even when a provider ignores its response schema."""
+    issues = []
+    if not isinstance(draft.get('instructions'), str) or not draft['instructions'].strip():
+        issues.append('에이전트 지시사항을 비우지 말고 사용자가 요청한 업무를 작성하세요.')
+    for node in (draft.get('workflow') or {}).get('nodes', []):
+        settings = node.get('settings', {})
+        if node.get('tool') == 'aggregate_table' and not settings.get('operation') and settings.get('aggregation') == 'sum':
+            column = settings.get('sum_field')
+            if not isinstance(column, str) or not column.strip():
+                issues.append('합계 단계의 sum_field에 사용자 요청의 숫자 열을 지정하세요. 열이 미정이면 questions로 질문하고 workflow=null로 대기하세요.')
+    return issues

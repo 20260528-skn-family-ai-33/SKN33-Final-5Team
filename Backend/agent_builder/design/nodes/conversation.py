@@ -93,7 +93,7 @@ def draft_response(result):
     return raw
 
 
-def validated_draft_response(result, evidence):
+def validated_draft_response(result, evidence, state=None):
     """Check application constraints inside the bounded generation-repair path."""
     from copy import deepcopy
     from pydantic import ValidationError
@@ -110,6 +110,11 @@ def validated_draft_response(result, evidence):
     except ValidationError as error:
         details = json.dumps(error.errors(include_input=False, include_url=False), ensure_ascii=False, default=str)
         raise DraftResponseError('invalid_draft', details[:1200]) from error
+    from agent_builder.design.native_settings import draft_setting_issues
+    from agent_builder.design.runtime_inputs import runtime_file_question_issues
+    issues = draft_setting_issues(candidate) + runtime_file_question_issues(candidate, state or {})
+    if issues:
+        raise DraftResponseError('invalid_planning_contract', ' / '.join(issues))
     return raw
 
 def make_conversation(api_key,model,model_factory=None):
@@ -132,6 +137,8 @@ def make_conversation(api_key,model,model_factory=None):
         options={'temperature':0.2,'presence_penalty':0} if local else {}
         return model_factory() if model_factory else create_chat_model(model=model,api_key=api_key,timeout=70,max_retries=1,max_tokens=token_budget if local else 9000,seed=seed,**options)
     def conversation_node(state):
+        from agent_builder.design.runtime_inputs import runtime_file_context, constrain_runtime_readers
+        runtime_file = runtime_file_context(state)
         latest_turn=max((i for i,m in enumerate(state['messages']) if m['role']=='user'),default=-1)
         used_seeds=[t['seed'] for t in state.get('trace',[]) if t.get('node')=='conversation' and t.get('user_turn')==latest_turn and 'seed' in t]
         seed=max([base_seed-1,*used_seeds])+1
@@ -177,7 +184,9 @@ def make_conversation(api_key,model,model_factory=None):
             if any(r.get('kind')=='document' for r in resources.values()):selected_contract_ids.add('read_document')
         inline_contracts=bool(os.getenv('A4B_MAIN_PROVIDER')=='ollama' and selected_contract_ids)
         selected_contracts_read=inline_contracts
-        active_operation_ids=(selected_contract_ids|{'finish'}) if inline_contracts else None
+        # Capability selection identifies business tools, not execution controls.
+        # A requested human review must remain expressible without another discovery call.
+        active_operation_ids=(selected_contract_ids|{'finish','ask_user'}) if inline_contracts else None
         inspected_operation_ids=set()
         variable_names=set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{0,39})(?=\s*(?:[=+*/%]|값))',' '.join(m['content'] for m in state['messages'] if m['role']=='user')))
         variable_names.update(c for r in resources.values() for c in r.get('columns',[]))
@@ -375,6 +384,9 @@ def make_conversation(api_key,model,model_factory=None):
             if ordered_encoding() and required_steps and requirement_generation_mode=='bounded':
                 bounded=constrain_ordered_steps(decoder_schema,state)
                 decoder_schema.clear();decoder_schema.update(bounded)
+            from agent_builder.design.native_settings import constrain_draft_settings
+            constrained = constrain_runtime_readers(constrain_draft_settings(decoder_schema), state)
+            decoder_schema.clear();decoder_schema.update(constrained)
             return ProviderStrategy(decoder_schema,strict=True)
         final_format=planner_format()
         @wrap_model_call
@@ -404,6 +416,8 @@ def make_conversation(api_key,model,model_factory=None):
         if ordered_encoding():
             from agent_builder.design.operation_steps import INSTRUCTIONS
             agent_options['system_prompt']+=INSTRUCTIONS
+        if runtime_file:
+            agent_options['system_prompt']+='\n'+runtime_file['instruction']
         agent=create_deep_agent(**agent_options)
         context={'available_evidence':[{'evidence_id':id,**value} for id,value in evidence.items()],'current_draft':state.get('draft'),'validation_issues':state.get('issues',[]),'available_resources':[{k:v for k,v in r.items() if k not in ['text','evidence_text']} for r in resources.values()],'saved_workflows':state.get('saved_workflows',[]),'node_library':state.get('node_library',[]),'required_node_refs':state.get('required_node_refs',[]),'supported_tools':planner_catalog(catalog),'repair_instruction':'검증 오류는 원문 인용 및 설정을 바로 고쳐 해결하세요. file_ids는 노드 이름이 아니라 available_resources의 실제 id만 사용합니다. binding은 반드시 이전 노드의 실제 출력 포트를 가리켜야 합니다. 확정 조건과 이미 답한 내용은 유지합니다.'}
         ledger=state.get('requirement_ledger')
@@ -424,6 +438,10 @@ def make_conversation(api_key,model,model_factory=None):
         for snapshot in context['node_library']:
             snapshot['spec']['settings']=compact_settings(snapshot['spec']['settings'])
         context['current_draft']=deepcopy(context['current_draft'])
+        if runtime_file:
+            context['runtime_file_input']=runtime_file
+            if not state.get('issues') and not (context['current_draft'] or {}).get('workflow'):
+                context['current_draft']=None
         for n in ((context['current_draft'] or {}).get('workflow') or {}).get('nodes',[]):
             n['settings']=compact_settings(n['settings'])
         if inline_contracts:
@@ -433,6 +451,7 @@ def make_conversation(api_key,model,model_factory=None):
             context['supported_tools']=planner_catalog(catalog,discovery=True)
             context['tool_discovery_instruction']='supported_tools는 전체 도구 발견용 요약입니다. 선택한 도구의 실제 설정·포트는 selected_tool_contracts를 따르고, 다른 도구가 필요하면 inspect_tool로 상세 계약을 조회하세요.'
             context['selected_tool_contracts']=planner_catalog([t for t in catalog if t['id'] in selected_contract_ids],details=True,native_first=True)
+            context['execution_control_contracts']=planner_catalog([t for t in catalog if t['id']=='ask_user'],details=True,native_first=True)
             for contract in context['selected_tool_contracts']:
                 if 'native_contract' in contract:
                     contract['native_contract']['settings_fields'] = list(NATIVE_SETTINGS[contract['id']])
@@ -513,7 +532,7 @@ def make_conversation(api_key,model,model_factory=None):
         content_fallback=result.get('structured_response') is None
         conversation_tool_calls=[call['name'] for message in result.get('messages',[]) for call in getattr(message,'tool_calls',[])]
         parse_error=None
-        try:raw=validated_draft_response(result,evidence)
+        try:raw=validated_draft_response(result,evidence,state)
         except ValueError as error:
             from agent_builder.design.graph import _timing_event
             _timing_event({'event':'draft_parse_error','attempt':'initial','code':getattr(error,'code','other'),'detail':str(error)[:400]})
@@ -533,14 +552,22 @@ def make_conversation(api_key,model,model_factory=None):
                 '사용자의 기존 조건과 근거를 보존하고 도구 호출명이 아닌 업무 이름을 사용하세요.'+
                 (' 코드 진단: '+str(parse_error)[:400] if parse_error else ''))
             retry_agent=create_deep_agent(**agent_options,checkpointer=False)
-            retry=invoke_agent(retry_agent,[*messages,{'role':'user','content':correction}])
+            # Repair the actual failed candidate, not a fresh guess from the same
+            # original context. Keep tool calls out of this final-answer transcript.
+            repair_messages=list(messages)
+            previous=result.get('structured_response')
+            if isinstance(previous,dict):
+                repair_messages.append({'role':'assistant','content':json.dumps(previous,ensure_ascii=False)})
+            retry=invoke_agent(retry_agent,[*repair_messages,{'role':'user','content':correction}])
             content_fallback=content_fallback or retry.get('structured_response') is None
             conversation_tool_calls.extend(call['name'] for message in retry.get('messages',[]) for call in getattr(message,'tool_calls',[]))
             result=retry
-            try:raw=validated_draft_response(result,evidence)
+            try:raw=validated_draft_response(result,evidence,state)
             except ValueError as error:
                 from agent_builder.design.graph import _timing_event
                 _timing_event({'event':'draft_parse_error','attempt':'retry','code':getattr(error,'code','other'),'detail':str(error)[:400]})
+                if getattr(error,'code',None)=='invalid_planning_contract':
+                    raise ValueError('모델이 실행 입력·필수 설정을 한 번 다시 확인했지만 초안을 완성하지 못했습니다. 대화는 보존되며 실행·저장은 진행하지 않았습니다.') from error
                 raise ValueError('모델 응답을 읽을 수 없어 한 번 다시 생성했지만 완료하지 못했습니다. 요청을 확인한 뒤 다시 시도해주세요.') from error
             if not raw.get('workflow') and not raw.get('questions') and not raw.get('unsupported'):
                 raise ValueError('워크플로우 초안이 비어 있어 한 번 다시 생성했지만 완성하지 못했습니다. 대화는 보존되며 요청을 확인한 뒤 다시 시도할 수 있습니다.')

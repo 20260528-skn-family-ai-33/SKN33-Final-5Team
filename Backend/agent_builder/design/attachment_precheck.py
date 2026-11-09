@@ -29,6 +29,9 @@ def missing_attachment_reply(state):
     """Return a clarification result, or None to continue with the model planner."""
     if os.getenv('A4B_ATTACHMENT_PRECHECK', 'on') == 'off' or state.get('resources'):
         return None
+    from agent_builder.design.runtime_inputs import runtime_file_context
+    if runtime_file_context(state):
+        return None
     users = [m for m in state.get('messages', []) if m['role'] == 'user']
     if not users or not refers_to_attached_file(users[-1]['content']):
         return None

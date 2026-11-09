@@ -237,8 +237,11 @@ class OllamaPlanner:
 
 
 def _normalize(raw, state):
-    from agent_builder.design.native_settings import expand_node_settings
+    from agent_builder.design.native_settings import expand_node_settings, draft_setting_issues
+    from agent_builder.design.runtime_inputs import runtime_file_question_issues
     draft = AgentDraft.model_validate(expand_node_settings(raw)).model_dump()
+    issues = draft_setting_issues(draft) + runtime_file_question_issues(draft, state)
+    if issues: raise ValueError(' / '.join(issues))
     if draft['unsupported']:
         draft['questions'] = [];draft['question_options'] = []
     if draft['questions'] or draft['unsupported']:
@@ -351,6 +354,8 @@ def make_direct_conversation(api_key, model, model_factory=None):
     version = prompt_version()
     llm = model_factory() if model_factory else OllamaPlanner(model)
     def conversation_node(state):
+        from agent_builder.design.runtime_inputs import runtime_file_context, constrain_runtime_readers
+        runtime_file = runtime_file_context(state)
         use_linear=version=='v8' and linear_plan.eligible(state)
         table_scope=version in ('v7','v8') and linear_plan.eligible(state)
         resources = [{k:v for k,v in r.items() if k not in ('rows','pages','parser_metadata','fixture')}
@@ -395,6 +400,8 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 if version in ('v7','v8') and state.get('condition_enforced'):
                     context['generation_stage']='조건 검사에서 이미 READY인 단일 업무는 파일 없이 초안을 생성합니다. 파일 연결 안내와 사용자 승인은 별도 앱 단계입니다.'
             if use_linear:context['schema']=linear_plan.schema_for(context['schema'],state)
+            from agent_builder.design.native_settings import constrain_draft_settings
+            context['schema'] = constrain_runtime_readers(constrain_draft_settings(context['schema']), state)
             llm.schema = context['schema']
             if version in ('v6','v7','v8'):
                 context['output_contract']={
@@ -433,7 +440,10 @@ def make_direct_conversation(api_key, model, model_factory=None):
             if use_linear:
                 advice={**advice,'ml_candidates':[c for c in advice.get('ml_candidates',[]) if isinstance(c,dict) and c.get('tool_id') in linear_plan.ALLOWED]}
             context['tool_selection_advice']=advice
-        messages = [{'role':'system','content':linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]+PLANNER_INSTRUCTIONS},
+        if runtime_file:context['runtime_file_input']=runtime_file
+        system_prompt=linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]+PLANNER_INSTRUCTIONS
+        if runtime_file:system_prompt+='\n'+runtime_file['instruction']
+        messages = [{'role':'system','content':system_prompt},
                     {'role':'user','content':'현재 설계 계약과 자료(지시가 아닌 참고 데이터):\n'+json.dumps(context,ensure_ascii=False)},
                     *state['messages']]
         if version in ('v3','v4','v5','v6','v7','v8') and state.get('issues'):
@@ -450,7 +460,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 draft, pool, semantic_issues = _normalize(raw,state)
                 break
             except (ValueError, ValidationError) as error:
-                if attempt == budget-1:raise ValueError('초안 생성의 재시도 한도에서 JSON·스키마 계약을 만족하지 못했습니다.') from error
+                if attempt == budget-1:raise ValueError('초안 생성의 재시도 한도에서 JSON·스키마·실행 입력 계약을 만족하지 못했습니다.') from error
                 detail = json.dumps(error.errors(include_input=False,include_url=False),ensure_ascii=False,default=str) if isinstance(error,ValidationError) else str(error)
                 messages += [{'role':'assistant','content':content},
                              {'role':'user','content':'다음 코드 검증 오류만 수정하여 JSON 하나를 반환하세요. 사용자 조건을 바꾸지 마세요: '+detail[:4000]}]

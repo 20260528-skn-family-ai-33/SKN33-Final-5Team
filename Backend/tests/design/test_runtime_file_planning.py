@@ -218,3 +218,75 @@ def test_saved_document_workflow_accepts_file_only_at_execution(tmp_path):
     assert json.loads(result['artifact']['content'])[0]['value']=='테스트'
     assert store.agent(agent_id)['config']['document_ids']==[]
     store.close()
+
+
+def malformed_human_review():
+    return {'entry':'read','nodes':[node('read','read_document'),
+        node('extract','extract_information',[bind('documents','read','documents')],fields=['계약기간']),
+        node('human','ask_user',[bind('records','extract','records'),bind('documents','extract','documents'),
+                               bind('text','extract','text')],question='추출 내용을 확인했나요?')],
+        'edges':[edge('read','extract'),edge('extract','human')]}
+
+
+def test_connection_correction_offers_only_actual_typed_ports_and_keeps_valid_data():
+    from agent_builder.design.port_correction import correction_contract, correct_connections
+    workflow=malformed_human_review(); before=deepcopy(workflow)
+    contract=correction_contract(workflow)
+    pending=contract['nodes'][0]
+    assert list(pending['choices'].values())==[bind('records','extract','records')]
+    class Model:
+        def with_structured_output(self,schema,**kw):
+            assert schema['properties']['human']['items']['enum']==['b1']
+            return self
+        def invoke(self,messages):return {'human':['b1']}
+    result,changes=correct_connections(workflow,[],Model())
+    assert workflow==before
+    assert result['nodes'][-1]['bindings']==[bind('records','extract','records')]
+    assert result['edges']==before['edges']
+    assert all(a['settings']==b['settings'] for a,b in zip(result['nodes'],before['nodes']))
+    assert changes[0]['rule']=='model_selected_existing_typed_ports'
+
+
+@pytest.mark.parametrize('response',[{'human':[]},{'human':['invented']},{'human':['b1','b1']},{'wrong':['b1']}])
+def test_connection_correction_rejects_untrusted_model_changes(response):
+    from agent_builder.design.port_correction import correct_connections
+    class Model:
+        def with_structured_output(self,*a,**kw):return self
+        def invoke(self,*a):return response
+    workflow=malformed_human_review();before=deepcopy(workflow)
+    with pytest.raises(ValueError):correct_connections(workflow,[],Model())
+    assert workflow==before
+
+
+def test_connection_correction_does_not_guess_missing_nodes_or_branches():
+    from agent_builder.design.port_correction import correction_contract
+    w=malformed_human_review();w['nodes'][-1]['bindings'][-1]['node_id']='missing'
+    assert correction_contract(w) is None
+    w=malformed_human_review();w['edges'][-1]['branch']='yes'
+    assert correction_contract(w) is None
+
+
+def test_connection_correction_retains_full_workflow_validation():
+    from agent_builder.design.port_correction import correct_connections
+    w=malformed_human_review();w['nodes'][-1]['settings']['question']=None
+    class Model:
+        def with_structured_output(self,*a,**kw):return self
+        def invoke(self,*a):return {'human':['b1']}
+    with pytest.raises(ValueError):correct_connections(w,[],Model())
+
+
+def test_deepagent_corrects_bad_ports_without_regenerating_business_settings(monkeypatch):
+    model_calls=[]
+    class Agent:
+        def invoke(self,*a,**kw):return {'structured_response':draft(workflow=malformed_human_review())}
+    class Model:
+        def with_structured_output(self,*a,**kw):return self
+        def invoke(self,messages):model_calls.append(messages);return {'human':['b1']}
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_PLANNER_MODE','deepagent')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    s=deferred();result=make_conversation('','test',model_factory=Model)(s)
+    assert len(model_calls)==1
+    assert result['draft']['workflow']['nodes'][-1]['bindings']==[bind('records','extract','records')]
+    assert result['trace'][-1]['binding_repairs'][0]['rule']=='model_selected_existing_typed_ports'
+    assert validate_node({**s,**result})['issues']==[]

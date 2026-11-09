@@ -611,6 +611,22 @@ def make_conversation(api_key,model,model_factory=None):
         if raw['workflow']:
             final_validation=validate_workflow.invoke({'workflow_json':json.dumps(raw['workflow'],ensure_ascii=False),
                 'tool_ids':list(dict.fromkeys(n['tool'] for n in raw['workflow']['nodes']))})
+            if local_ollama and not final_validation['valid']:
+                from agent_builder.design.port_correction import correction_contract, correct_connections
+                if correction_contract(raw['workflow']):
+                    from agent_builder.design.graph import _timing_event
+                    try:
+                        corrected, changes = correct_connections(raw['workflow'], state['resources'], chat_model(seed+1,1024))
+                    except Exception as error:
+                        # Keep the failed candidate and its diagnostics. A model
+                        # correction is never permission to bypass validation.
+                        _timing_event({'event':'connection_correction','accepted':False,'error_type':type(error).__name__})
+                    else:
+                        raw['workflow']=corrected
+                        binding_changes.extend(changes)
+                        final_validation=validate_workflow.invoke({'workflow_json':json.dumps(corrected,ensure_ascii=False),
+                            'tool_ids':list(dict.fromkeys(n['tool'] for n in corrected['nodes']))})
+                        _timing_event({'event':'connection_correction','accepted':final_validation['valid'],'count':len(changes)})
         if raw.get('workflow'):raw['tool_ids']=list(dict.fromkeys(n['tool'] for n in raw['workflow']['nodes']))
         filter_nodes=[n for n in (raw.get('workflow') or {}).get('nodes',[]) if n['tool']=='filter_sort' and not n['settings'].get('operation')]
         for node in (raw.get('workflow') or {}).get('nodes',[]):

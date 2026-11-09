@@ -720,9 +720,13 @@ def test_first_step_decoder_cannot_drop_required_input_or_reference_future_table
     captured=run_capturing(monkeypatch,original,draft(questions=['결합 방식을 알려주세요']))
     definitions=captured['schema']['$defs']
     first=definitions['FirstBusinessStep']
-    assert not any(v['properties']['tool']['enum']==['calculate_columns'] for v in first['anyOf'])
-    assert not any(v['properties']['tool']['enum']==['filter_sort'] for v in first['anyOf'])
+    # Native transforms require predecessor inputs. Extension operations can
+    # start with an explicit constant table, but cannot omit that input.
+    assert not any(v['properties']['tool']['enum'] in (['calculate_columns'],['filter_sort'])
+                   and 'operation' not in v['properties']['settings']['properties'] for v in first['anyOf'])
     validator=Draft202012Validator({'$ref':'#/$defs/FirstBusinessStep','$defs':definitions})
+    for tool in ('calculate_columns','filter_sort'):
+        assert not validator.is_valid(dict(tool=tool,label='입력 누락',settings={}))
     constants={'keys':['id'],'how':'left','cardinality':'many_to_one','null_keys':'error','max_rows':100}
     join=dict(tool='join_tables',label='결합',settings={'operation':'join','output_port':None,
               'arguments_json':{**constants,'left':{'$binding':'left'},'right':{'$binding':'right'}}})
@@ -739,3 +743,32 @@ def test_first_step_decoder_cannot_drop_required_input_or_reference_future_table
                if v['properties']['tool']['enum']==['join_tables'] and v['properties']['settings']['properties']['operation']['enum']==['join'])
     assert any('$binding' in p.get('properties',{})
                for p in later['properties']['settings']['properties']['arguments_json']['properties']['left']['anyOf'])
+
+
+@pytest.mark.parametrize('selected,expected',[
+    (['aggregate_table'], {'read_table','calculate_columns','filter_sort','aggregate_table','write_result'}),
+    (['review_document'], {'read_document','extract_information','compose_answer'}),
+])
+def test_incomplete_capability_selection_does_not_remove_processing_family(monkeypatch,selected,expected):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    original=state([{'role':'user','content':'계산과 검토를 포함해 요청한 업무를 모두 구성해줘'}])
+    original['capability_assessment']={'decision':'existing_tools','tool_ids':selected}
+    captured=run_capturing(monkeypatch,original,draft(questions=['입력 조건을 알려주세요']))
+    contracts={t['id'] for t in captured['context']['selected_tool_contracts']}
+    variants=captured['schema']['$defs']['WorkflowNode']['anyOf']
+    enabled={t for v in variants for t in v['properties']['tool']['enum']}
+    assert expected<=contracts and expected<=enabled
+    assert not {'email.send','http.request'} & enabled
+    assert original['capability_assessment']['tool_ids']==selected
+
+
+def test_table_policies_have_contracts_without_ollama_tool_calls(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    original=state([{'role':'user','content':'결합 후 빈 합계는 0으로 채워줘'}])
+    original['capability_assessment']={'decision':'existing_tools','tool_ids':['join_tables']}
+    captured=run_capturing(monkeypatch,original,draft(questions=['표를 알려주세요']))
+    contracts=captured['context']['additional_operation_contracts']
+    assert any(t['id']=='filter_sort' and any(o['id']=='handle_missing' for o in t['operation_contracts']) for t in contracts)
+    variants=captured['schema']['$defs']['WorkflowNode']['anyOf']
+    assert any(v['properties']['tool']['enum']==['filter_sort'] and
+               v['properties']['settings']['properties'].get('operation',{}).get('enum')==['handle_missing'] for v in variants)

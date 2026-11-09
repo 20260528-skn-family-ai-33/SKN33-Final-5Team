@@ -182,12 +182,23 @@ def make_conversation(api_key,model,model_factory=None):
         if selected_contract_ids:
             if any(r.get('kind')=='table' for r in resources.values()):selected_contract_ids.add('read_table')
             if any(r.get('kind')=='document' for r in resources.values()):selected_contract_ids.add('read_document')
+        if local_ollama and not scoped and selected_contract_ids:
+            # The capability classifier suggests tools; it does not enumerate
+            # every executable step. Keep the complete native data-processing
+            # family available even when it omitted calculation or synthesis.
+            if selected_contract_ids & {'read_table','aggregate_table','calculate_columns','join_tables'}:
+                selected_contract_ids |= {'read_table','filter_sort','calculate_columns','aggregate_table','write_result'}
+            if selected_contract_ids & {'read_document','extract_information','review_document','compose_answer'}:
+                selected_contract_ids |= {'read_document','extract_information','compose_answer'}
         inline_contracts=bool(os.getenv('A4B_MAIN_PROVIDER')=='ollama' and selected_contract_ids)
         selected_contracts_read=inline_contracts
         # Capability selection identifies business tools, not execution controls.
         # A requested human review must remain expressible without another discovery call.
         active_operation_ids=(selected_contract_ids|{'finish','ask_user'}) if inline_contracts else None
-        inspected_operation_ids=set()
+        # Non-native table policies (fill missing values / project columns) are
+        # needed to complete ordinary table requests. Ollama may skip inspection
+        # tool calls, so include their registered contracts up front.
+        inspected_operation_ids=(selected_contract_ids & {'filter_sort','calculate_columns'}) if inline_contracts and not scoped else set()
         variable_names=set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{0,39})(?=\s*(?:[=+*/%]|값))',' '.join(m['content'] for m in state['messages'] if m['role']=='user')))
         variable_names.update(c for r in resources.values() for c in r.get('columns',[]))
         variable_names=set(sorted(variable_names)[:64])
@@ -345,7 +356,7 @@ def make_conversation(api_key,model,model_factory=None):
                 variants=[v for v in variants if v['properties']['tool']['enum'][0] in active_operation_ids]
             # Native-ready tools start with their service contract. Inspecting a
             # tool explicitly unlocks its alternative operation contracts.
-            operation_ids = (active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS
+            operation_ids = ((active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS) | inspected_operation_ids
             variants.extend(operation_variants(operation_node_schema,schema['$defs']['Binding'],operation_ids,variable_names))
         schema['$defs']['WorkflowNode']={'anyOf':variants}
         if not scoped:
@@ -466,6 +477,14 @@ def make_conversation(api_key,model,model_factory=None):
             context['supported_tools']=planner_catalog(catalog,discovery=True)
             context['tool_discovery_instruction']='supported_tools는 전체 도구 발견용 요약입니다. 선택한 도구의 실제 설정·포트는 selected_tool_contracts를 따르고, 다른 도구가 필요하면 inspect_tool로 상세 계약을 조회하세요.'
             context['selected_tool_contracts']=planner_catalog([t for t in catalog if t['id'] in selected_contract_ids],details=True,native_first=True)
+            context['additional_operation_contracts']=planner_catalog([t for t in catalog if t['id'] in inspected_operation_ids],details=True)
+            context['task_completeness_instruction']=(
+                '지원 판정의 tool_ids는 추천 목록이며 업무 단계 목록이 아닙니다. 사용자 원문의 각 동작을 실제 노드에 대응시키세요. '
+                '수량×단가 같은 계산을 합산 전에 요청하면 실제 calculate_columns 계산 단계를 먼저 구성해야 합니다. '
+                '집계는 fields와 sum 열만 반환합니다. 원하는 이름 변경, 결합 기준표의 방향, 빈값 채우기, 결과 열 선택도 각각 실제 동작이 필요합니다. '
+                '문서에서 항목 추출과 누락·모순 분석·수정 제안은 서로 다릅니다. 분석·제안 요청을 fields 추출만으로 대체하지 마세요. '
+                '원문 documents를 compose_answer에 연결하고 settings.instructions에 요청된 검토 기준과 제안 작성을 명시하세요. '
+                '사람 확인은 분석 결과 text를 ask_user에 전달합니다. 원문 사실과 아직 합의되지 않은 수정 제안을 구분하세요.')
             context['execution_control_contracts']=planner_catalog([t for t in catalog if t['id']=='ask_user'],details=True,native_first=True)
             for contract in context['selected_tool_contracts']:
                 if 'native_contract' in contract:

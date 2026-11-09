@@ -181,6 +181,22 @@ def test_human_review_control_remains_available_after_capability_selection(monke
     assert any(t['id']=='ask_user' for t in captured['context']['execution_control_contracts'])
 
 
+def test_repair_context_exposes_actual_prior_node_outputs(monkeypatch):
+    from tests.design.test_deep_agent_conversation import run_capturing
+    s=deferred()
+    workflow=contract_workflow()
+    workflow['nodes'][1]=node('review','extract_information',[bind('documents','read','documents')],fields=['계약기간'])
+    s['draft']=draft(workflow=workflow)
+    s['issues']=['extract_information에는 text 출력이 없습니다.']
+    captured=run_capturing(monkeypatch,s,draft(questions=['어떤 기준으로 검토할까요?']))
+    prior=captured['context']['current_draft_outputs']
+    assert prior[0]['outputs']=={'documents':'documents'}
+    assert prior[1]['node_id']=='review' and prior[1]['step']==2
+    assert 'records' in prior[1]['outputs']
+    assert 'text' not in prior[1]['outputs'] and 'documents' not in prior[1]['outputs']
+    assert s['draft']['workflow']==workflow
+
+
 def test_direct_repairs_repeated_file_request(monkeypatch):
     from tests.design.test_direct_conversation import Fake
     valid=draft(workflow=contract_workflow())

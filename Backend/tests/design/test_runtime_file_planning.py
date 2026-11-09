@@ -59,14 +59,14 @@ def test_attachment_precheck_remembers_deferral_across_followup_turns():
 def test_decoder_rejects_empty_instructions_and_sum_without_column():
     schema=constrain_draft_settings(native_decoder_schema(AgentDraft.model_json_schema(),[]))
     instructions=Draft202012Validator(schema['properties']['instructions'])
-    for blank in ('','   '):
-        with pytest.raises(ValidationError):instructions.validate(blank)
+    with pytest.raises(ValidationError):instructions.validate('')
     instructions.validate('금액을 합계합니다.')
     instructions.validate('금액을 합계합니다.\n결과를 저장합니다.')
-    # Ollama's grammar converter ignores unanchored patterns and \s/\S escapes.
-    pattern=schema['properties']['instructions']['pattern']
-    assert pattern.startswith('^') and pattern.endswith('$')
-    assert r'\s' not in pattern and r'\S' not in pattern
+    # Keep JSON string escaping in Ollama's native grammar. Whitespace-only
+    # values are rejected by application validation even if a provider accepts them.
+    from agent_builder.design.native_settings import draft_setting_issues
+    assert 'pattern' not in schema['properties']['instructions']
+    assert draft_setting_issues({'instructions':'   '})
     validator=Draft202012Validator({'$ref':'#/$defs/NativeNode_aggregate_table','$defs':schema['$defs']})
     candidate={'id':'total','tool':'aggregate_table','label':'금액 합계',
                'settings':{'fields':[],'aggregation':'sum','sum_field':None,'node_ref':None},

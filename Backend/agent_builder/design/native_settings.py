@@ -40,7 +40,7 @@ def constrain_draft_settings(schema):
     from copy import deepcopy
     result = deepcopy(schema)
     result['properties']['instructions'].update(
-        minLength=1, pattern=r'^[ \t\r\n]*[^ \t\r\n](.|\n)*$',
+        minLength=1,
         description='사용자가 요청한 전체 업무를 실행할 지시사항입니다. 빈 문자열을 쓰지 마세요. 노드별 settings.instructions와 별개인 초안 최상위 필드입니다.')
 
     def visit(value):
@@ -63,7 +63,7 @@ def constrain_draft_settings(schema):
                 if aggregation == 'sum':
                     column = variant['properties']['sum_field']
                     variant['properties']['sum_field'] = {
-                        'type':'string', 'minLength':1, 'pattern':r'^[ \t\r\n]*[^ \t\r\n](.|\n)*$',
+                        'type':'string', 'minLength':1,
                         **({'enum':column['enum']} if 'enum' in column else {})}
                 variants.append(variant)
             if variants: props['settings'] = {**settings, 'anyOf':variants}

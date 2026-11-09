@@ -34,13 +34,18 @@ def test_old_deployment_without_ollama_tests_skips_before_dependency_install(tmp
 
 @pytest.mark.parametrize('pytest_status', [0, 17])
 @pytest.mark.parametrize('migration_tests', [False, True])
-def test_new_deployment_runs_ollama_tests_and_propagates_failure(tmp_path, pytest_status, migration_tests):
+@pytest.mark.parametrize('runtime_file_tests', [False, True])
+def test_new_deployment_runs_ollama_tests_and_propagates_failure(tmp_path, pytest_status, migration_tests, runtime_file_tests):
     marker = tmp_path / MARKER
     marker.parent.mkdir(parents=True)
     marker.touch()
     migration = 'tests/infrastructure/test_model_migration.py'
     if migration_tests:
         (tmp_path / migration).touch()
+    runtime_file = 'tests/design/test_runtime_file_planning.py'
+    if runtime_file_tests:
+        (tmp_path / runtime_file).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / runtime_file).touch()
     python = tmp_path / '.venv-agent/bin/python'
     python.parent.mkdir(parents=True)
     python.write_text(f'#!{sys.executable}\n' + '''import json, os, sys
@@ -56,5 +61,5 @@ sys.exit(int(os.environ['A4B_CI_TEST_EXIT']) if sys.argv[1:3] == ['-m', 'pytest'
     assert calls == [
         ['-m', 'pip', 'install', '-r', 'requirements/local-integration.txt'],
         ['-m', 'pytest', '-q', MARKER, 'tests/design/test_ollama_planning.py',
-         'tests/design/test_deep_agent_conversation.py', 'tests/design/test_direct_conversation.py'] + ([migration] if migration_tests else []),
+         'tests/design/test_deep_agent_conversation.py', 'tests/design/test_direct_conversation.py'] + ([migration] if migration_tests else []) + ([runtime_file] if runtime_file_tests else []),
     ]

@@ -167,6 +167,9 @@ jobs:
           if [[ -f tests/infrastructure/test_model_migration.py ]]; then
             tests+=(tests/infrastructure/test_model_migration.py)
           fi
+          if [[ -f tests/design/test_runtime_file_planning.py ]]; then
+            tests+=(tests/design/test_runtime_file_planning.py)
+          fi
           .venv-agent/bin/python -m pytest -q "${tests[@]}"
       - name: Test receipt workflows and saved run results
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''

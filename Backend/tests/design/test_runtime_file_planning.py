@@ -326,3 +326,47 @@ def test_instruction_correction_cannot_accept_empty_or_replace_the_graph(respons
     raw=draft(workflow=contract_workflow());raw['instructions']='';before=deepcopy(raw)
     with pytest.raises(ValueError):correct_instructions(raw,deferred(),Model())
     assert raw==before
+
+
+def aggregate_source_case():
+    w={'entry':'read','nodes':[node('read','read_table',file_ids=['orders']),
+        node('total','aggregate_table',[bind('table','read','table')],fields=['고객코드'],aggregation='sum',sum_field='금액')],
+        'edges':[edge('read','total')]}
+    s={'messages':[{'role':'user','content':'주문금액을 고객코드별로 합계해줘'}],
+       'resources':[{'id':'orders','kind':'table','columns':['고객코드','주문금액']},
+                    {'id':'other','kind':'table','columns':['금액']}]}
+    return w,s
+
+
+def test_sum_correction_uses_only_the_explicit_source_columns():
+    from agent_builder.design.column_correction import column_contract, correct_sum_columns
+    from workflow_engine.workflow import workflow_errors
+    w,s=aggregate_source_case();before=deepcopy(w)
+    assert column_contract(w,s['resources'])[0]['source_columns']==['고객코드','주문금액']
+    class Model:
+        def with_structured_output(self,schema,**kw):
+            assert schema['properties']['total']['enum']==[None,'고객코드','주문금액'];return self
+        def invoke(self,*a):return {'total':'주문금액'}
+    result,changes=correct_sum_columns(w,s,Model())
+    assert result['nodes'][1]['settings']['sum_field']=='주문금액'
+    assert not workflow_errors(result,['read_table','aggregate_table'],s['resources'])
+    assert w==before and changes[0]['before']=='금액'
+
+
+@pytest.mark.parametrize('value',[None,'금액','invented','',123])
+def test_sum_correction_rejects_unknown_or_other_table_columns(value):
+    from agent_builder.design.column_correction import correct_sum_columns
+    class Model:
+        def with_structured_output(self,*a,**kw):return self
+        def invoke(self,*a):return {'total':value}
+    w,s=aggregate_source_case();before=deepcopy(w)
+    with pytest.raises(ValueError):correct_sum_columns(w,s,Model())
+    assert w==before
+
+
+def test_sum_correction_does_not_guess_an_ambiguous_source_or_computed_columns():
+    from agent_builder.design.column_correction import column_contract
+    w,s=aggregate_source_case();w['nodes'][0]['settings']['file_ids']=[]
+    assert column_contract(w,s['resources'])==[]
+    w,s=aggregate_source_case();w['nodes'][0]['tool']='calculate_columns'
+    assert column_contract(w,s['resources'])==[]

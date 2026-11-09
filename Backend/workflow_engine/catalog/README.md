@@ -35,8 +35,24 @@ Ollama에서는 `arguments_json`을 실제 JSON 객체로 생성한 뒤 저장�
 변환 쌍만 허용한다. 모델 동작에는 현재 실행 모델이 필요하고, 시각 QA에는 이미지
 입력을 지원하는 모델이 필요하다. 품질을 규칙 검증만으로 보장하지 않는다.
 
-Gmail/Google Calendar는 서버의 `A4B_GOOGLE_SENDER_EMAIL`, `A4B_GOOGLE_ACCESS_TOKEN`으로
-연결한다. 토큰을 노드 설정에 넣지 않는다. 미연결이면 계정 연결 필요로 실행을 중단한다.
+### Gmail 연결
+
+Google Cloud에서 Gmail API를 활성화하고 웹 애플리케이션 OAuth 클라이언트를 만든다.
+테스트 중인 외부 앱은 Google Auth Platform의 테스트 사용자에 팀원의 Google 계정을 추가한다.
+승인된 반환 주소는 `EASYFLOW_PUBLIC_URL`의 출처에 `/api/oauth/callback`을 붙인 값이다.
+기본 로컬 주소는 `http://127.0.0.1:3030/api/oauth/callback`이다.
+
+서버 비밀 설정에 `A4B_GMAIL_CLIENT_ID`와 `A4B_GMAIL_CLIENT_SECRET`을 설정하고 재시작한다.
+상단의 **Gmail → Google에서 연결**을 눌러 `gmail.readonly` 권한을 승인하고 **연결 확인**을 누른다.
+회원별로 Gmail 계정 하나를 연결할 수 있다. 실행기는 저장한 토큰을 서버에서 갱신해 사용한다.
+
+예를 들어 “Gmail 받은편지함에서 최근 메일 한 건을 읽고 요약과 답장 초안을 작성해 줘”라고 요청한다.
+`email.list`로 ID를 검색하고 `email.get`의 `documents` 출력을 `compose_answer`에 연결한다.
+답장 초안은 실행 결과에서 확인한다. Gmail 연결에서 제공하는 동작은 목록·본문·첨부파일 조회다.
+
+### 기타 외부 연결
+
+Google Calendar 도구는 실행 환경에서 공급자를 별도로 주입해야 한다.
 HTTP 링크 확인은 `A4B_LINK_ALLOWED_HOSTS`의 명시적 허용 호스트만 HEAD로 확인한다.
 카탈로그 조회·검증은 실제 메일 발송이나 일정 변경을 수행하지 않는다.
 

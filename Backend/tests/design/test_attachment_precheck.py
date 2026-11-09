@@ -20,6 +20,12 @@ def test_runtime_or_plain_requests_go_to_the_planner(text):
     assert not refers_to_attached_file(text)
 
 
+def test_gmail_attachment_is_distinct_from_an_a4b_upload():
+    assert not refers_to_attached_file('Gmail 메일의 본문과 첨부파일을 읽어줘.')
+    assert not refers_to_attached_file('Gmail 보낸 사람에게 답장 초안을 작성해줘. 파일 출력은 필요 없어.')
+    assert refers_to_attached_file('메일의 첨부파일을 읽고 올린 PDF와 비교해줘.')
+
+
 def state(text,resources=()):
     return {**initial(),'messages':[{'role':'user','content':text}],'resources':list(resources)}
 

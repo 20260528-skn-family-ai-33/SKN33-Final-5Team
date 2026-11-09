@@ -74,6 +74,15 @@ class Schedules:
         row=self.db.execute('SELECT json,next_at,active FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
         if not row:return None
         return {**json.loads(row[0]),'next_run_at':row[1],'active':bool(row[2])}
+    def advance_version(self,agent_id,previous_version,version):
+        """Move a schedule to a name-only revision without changing its next slot."""
+        row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
+        if row:
+            data=json.loads(row[0])
+            if data['agent_version']==previous_version:
+                data['agent_version']=version
+                self.db.execute('UPDATE builder_schedules SET json=? WHERE {ws} AND agent_id=?',
+                                (json.dumps(data,ensure_ascii=False),agent_id))
     def activate(self,agent_id,active):
         schedule=self.get(agent_id)
         if not schedule:raise ValueError('예약 설정이 없습니다. 대화로 시간을 정하고 저장하세요.')

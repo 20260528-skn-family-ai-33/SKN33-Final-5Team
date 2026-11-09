@@ -76,7 +76,13 @@ class Other(Strict):
     action: str = Field(min_length=1, max_length=300)
 
 
-Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other,
+class GmailSummary(Strict):
+    kind: Literal['gmail_summary']
+    max_results: int = Field(ge=1, le=10)
+    request: str = Field(min_length=1, max_length=2000)
+
+
+Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary,
                  Field(discriminator='kind')]
 
 

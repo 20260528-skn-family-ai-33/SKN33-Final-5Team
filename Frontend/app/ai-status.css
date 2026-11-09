@@ -1,0 +1,8 @@
+.ai-status-badge{display:inline-flex;align-items:center;gap:7px;min-height:32px;padding:5px 10px;border:1px solid var(--a4b-border);border-radius:20px;background:var(--a4b-surface);color:var(--a4b-muted);font:inherit;font-size:12px;line-height:20px;white-space:nowrap;cursor:pointer}
+.ai-status-badge:hover{background:var(--a4b-neutral-soft)}
+.ai-status-dot{width:7px;height:7px;flex:none;border-radius:50%;background:#9b8a69}
+.ai-status-badge[data-status=ready]{color:#27654a}.ai-status-badge[data-status=ready] .ai-status-dot{background:#3b8b65}
+.ai-status-badge[data-status=unavailable]{color:#976048}.ai-status-badge[data-status=unavailable] .ai-status-dot{background:#bc7854}
+.ai-status-details{box-sizing:border-box;max-width:calc(100vw - 32px);border-color:var(--a4b-border);background:var(--a4b-surface);color:var(--a4b-ink);font:13px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}
+.ai-status-details h2{margin:0;font-size:14px;font-weight:650}.ai-status-details p{margin:8px 0;color:var(--a4b-muted)}.ai-status-details small{display:block;margin:10px 0;color:var(--a4b-muted);font-size:11px}.ai-status-details .as-button{display:inline-flex;align-items:center;gap:6px;margin-top:4px}.ai-status-details button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:650px){.ai-status-badge{min-height:28px;padding:3px 7px;font-size:10px;gap:5px}.ai-status-dot{width:6px;height:6px}}

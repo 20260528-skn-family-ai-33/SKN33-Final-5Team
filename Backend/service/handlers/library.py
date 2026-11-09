@@ -18,6 +18,10 @@ def catalog(c):return {'tools':TOOLS,'business_tool_count':56,'control_compatibi
 
 def agents(c):return {'agents':c.storage.agents()}
 
+def rename_agent(c):
+    data=c.data
+    return {'agent':c.storage.rename_agent(data['id'],data['name'],data['base_version'])}
+
 def agent(c):
     data=c.data;storage=c.storage
     agent=storage.agent(data['id']);schedules=Schedules(storage)

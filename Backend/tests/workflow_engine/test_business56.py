@@ -186,6 +186,83 @@ def test_missing_google_account_fails_without_any_delivery(tmp_path,monkeypatch)
     finally:store.close()
 
 
+@pytest.mark.parametrize('external_body',[False,True])
+def test_gmail_service_reads_message_and_writes_a_grounded_reply_draft(tmp_path,monkeypatch,external_body):
+    from service.dispatch import handle
+    from workflow_engine import runner
+    from workflow_engine.executors import agent_factory
+    from workflow_engine.unified_tools.expansion.google_adapters import GoogleJsonTransport
+
+    body='점검은 다음 주 화요일입니다.'
+    payload={'mimeType':'text/html','headers':[{'name':'Subject','value':'점검 일정'}],
+             'body':{'data':base64.urlsafe_b64encode(f'<p>{body}</p><script>ignored</script>'.encode()).decode().rstrip('=')}}
+    body_data=payload['body']
+    if external_body:payload['body']={'attachmentId':'body-part','size':len(f'<p>{body}</p><script>ignored</script>'.encode())}
+    calls=[]
+
+    def request(transport,method,path,query=None,**kwargs):
+        assert transport.token_provider()=='member-token'
+        calls.append((method,path,query))
+        if path.endswith('/messages'):
+            return {'messages':[{'id':'test-message'}]}
+        if external_body and path.endswith('/messages/test-message/attachments/body-part'):
+            return body_data
+        assert path.endswith('/messages/test-message')
+        return {'id':'test-message','payload':payload}
+
+    expected={'text':'요약: 다음 주 화요일 점검. 답장 초안: 일정 안내 감사합니다.','citations':[{'evidence_id':'e2'}]}
+
+    class Model:
+        def with_structured_output(self,*args,**kwargs):return self
+        def invoke(self,*args,**kwargs):return expected
+
+    def grounded_agent(**options):
+        evidence=options['tools'][0].invoke({})[1]['quote']
+        assert body in evidence and 'ignored' not in evidence
+        return SimpleNamespace(invoke=lambda *args,**kwargs:{'structured_response':expected})
+
+    monkeypatch.setattr(GoogleJsonTransport,'request',request)
+    monkeypatch.setattr(runner,'create_chat_model',lambda **kwargs:Model())
+    monkeypatch.setattr(agent_factory,'create_deep_agent',grounded_agent)
+    nodes=[
+        node('search','email.list',operation='execute',arguments_json='{"query":"in:inbox","max_results":1}'),
+        node('first','json_transform',[bind('value','search','result')],operation='lookup',arguments_json='{"path":["messages",0,"id"]}'),
+        node('mail','email.get',[bind('message_id','first','result')],operation='execute'),
+        node('draft','compose_answer',[bind('documents','mail','documents')]),
+    ]
+    workflow={'entry':'search','nodes':nodes,'edges':[edge('search','first'),edge('first','mail'),edge('mail','draft')]}
+    store,agent_id,_=saved(tmp_path,workflow)
+    store.close()
+    result=handle({'action':'test','directory':str(tmp_path),'id':agent_id,'content':'메일 요약과 답장 초안을 작성해줘.','gmail_access_token':'member-token'})
+    assert result['status']=='succeeded',result.get('error')
+    assert result['outputs']['draft']['text']==expected['text']
+    expected_calls=[('GET','/gmail/v1/users/me/messages',{'q':'in:inbox','maxResults':1,'pageToken':None}),
+                    ('GET','/gmail/v1/users/me/messages/test-message',{'format':'full'})]
+    if external_body:expected_calls.append(('GET','/gmail/v1/users/me/messages/test-message/attachments/body-part',None))
+    assert calls==expected_calls
+    assert 'member-token' not in json.dumps(result)
+
+
+def test_gmail_service_read_connection_cannot_send(tmp_path,monkeypatch):
+    from service.dispatch import handle
+    from workflow_engine.unified_tools.expansion.google_adapters import GoogleJsonTransport
+
+    def request(*args,**kwargs):pytest.fail('Read-only Gmail connection tried to send a request')
+
+    monkeypatch.setattr(GoogleJsonTransport,'request',request)
+    step=node('mail','email.send',operation='execute',arguments_json='{"to":"to@example.com","subject":"Test","body":"Hello"}')
+    store,agent_id,_=saved(tmp_path,{'entry':'mail','nodes':[step],'edges':[]})
+    store.close()
+    result=handle({'action':'test','directory':str(tmp_path),'id':agent_id,'content':'메일 발송','gmail_access_token':'member-token'})
+    assert result['status']=='failed' and '읽기 권한' in result['error']
+
+
+def test_gmail_message_id_cannot_be_a_literal_binding_marker():
+    step=node('mail','email.get',operation='execute',arguments_json='{"message_id":"$binding"}')
+    workflow={'entry':'mail','nodes':[step],'edges':[]}
+    assert any('Gmail 메시지 ID' in error for error in workflow_errors(workflow,['email.get'],[]))
+
+
 def test_typed_native_table_can_feed_new_join_and_existing_writer(tmp_path):
     from tests.design.test_builder import initial,draft
     from infrastructure.persistence.ids import uid

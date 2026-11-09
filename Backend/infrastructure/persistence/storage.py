@@ -3,8 +3,9 @@ import os
 from pathlib import Path
 from documents.resources.document_resources import RemovedUpload, available_inputs
 from infrastructure.persistence.ids import uid, now
-from infrastructure.persistence.db import enable_wal, open_database, workspace_id
+from infrastructure.persistence.db import WORKSPACE, enable_wal, open_database, workspace_id
 from workflow_engine.catalog.registry import TOOLS
+from infrastructure.persistence.asset_library import LIBRARY_SCHEMA
 
 __all__=['Storage','enable_wal']
 
@@ -24,17 +25,17 @@ CREATE TABLE IF NOT EXISTS builder_schedule_jobs(id TEXT PRIMARY KEY,agent_id TE
 CREATE TABLE IF NOT EXISTS reply_review_decisions(run_id TEXT NOT NULL REFERENCES agent_tests(id),review_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(run_id,review_id));
 CREATE TABLE IF NOT EXISTS document_reviews(asset_id TEXT PRIMARY KEY REFERENCES builder_assets(id),revision INTEGER NOT NULL,json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS document_review_events(asset_id TEXT NOT NULL REFERENCES builder_assets(id),revision INTEGER NOT NULL,request_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(asset_id,revision),UNIQUE(asset_id,request_id));
-'''
+'''+LIBRARY_SCHEMA
 
 class Storage:
     def __init__(self,directory):
+        self.workspace_id=workspace_id(directory)
         Path(directory).mkdir(parents=True,exist_ok=True)
         self.path=str(Path(directory)/'agent-builder.sqlite')
-        self.workspace_id=workspace_id(directory)
         self.db=open_database(self.path,self.workspace_id)
         self.dialect=self.db.dialect
         self.business=None
-        if self.dialect=='postgres' and os.environ.get('A4B_BUSINESS_RECORDS')=='a4b' and self.workspace_id!='local':
+        if self.dialect=='postgres' and os.environ.get('A4B_BUSINESS_RECORDS')=='a4b' and WORKSPACE.fullmatch(self.workspace_id):
             from infrastructure.persistence.business_records import BusinessRecords
             self.business=BusinessRecords(self.db.connection,self.workspace_id)
         try:
@@ -140,6 +141,37 @@ class Storage:
         row=self.db.execute('SELECT json FROM agent_versions WHERE {ws} AND agent_id=? AND version=?',(id,version)).fetchone()
         if not row:raise ValueError('저장된 워크플로우 버전을 찾을 수 없습니다.')
         return json.loads(row[0])
+    def _insert_agent_version(self,agent):
+        self.db.execute('INSERT INTO agent_versions({wsc}agent_id,version,json) VALUES({wsv}?,?,?)',
+                        (agent['id'],agent['version'],json.dumps(agent,ensure_ascii=False)))
+        if self.business:self.business.save_version(agent)
+
+    def rename_agent(self,id,name,base_version):
+        if type(base_version) is not int or not 1<=base_version<=9007199254740991:
+            raise ValueError('워크플로우 버전을 확인해주세요.')
+        if not isinstance(name,str) or any(ord(char)<32 or char in '\x7f\x85\u2028\u2029' for char in name):
+            raise ValueError('워크플로우 이름은 한 줄로 입력해주세요.')
+        name=name.strip()
+        if not 1<=len(name)<=60:
+            raise ValueError('워크플로우 이름을 1~60자로 입력해주세요.')
+        from workflow_engine.scheduling.schedules import Schedules
+        schedules=Schedules(self)
+        self.begin_write()
+        try:
+            agent=self.agent(id)
+            if agent['config']['name']!=name:
+                if agent['version']!=base_version:
+                    raise ValueError('다른 곳에서 워크플로우가 수정됐어요. 목록을 새로고침하고 다시 시도해주세요.')
+                agent={**agent,'version':base_version+1,'updated_at':now(),
+                       'config':{**agent['config'],'name':name}}
+                self._insert_agent_version(agent)
+                schedules.advance_version(id,base_version,agent['version'])
+            self.db.commit()
+            return agent
+        except Exception:
+            self.db.rollback()
+            raise
+
     def save_agent(self,state):
         from agent_builder.capabilities.capability_gate import require_save_ready
         require_save_ready(state)
@@ -174,8 +206,7 @@ class Storage:
             a={'id':id,'version':version+1,'config':draft,'model':state['model'],'credential_id':state['credential_id'],'tool_versions':{id:1 for id in draft['tool_ids']},'session_id':session_id,'created_at':old['created_at'] if old else now(),'updated_at':now()}
             from workflow_engine.library.reusable_workflows import pin_dependencies
             a['workflow_dependencies']=pin_dependencies(self,draft,state['model'],state['credential_id'],id)
-            self.db.execute('INSERT INTO agent_versions({wsc}agent_id,version,json) VALUES({wsv}?,?,?)',(id,a['version'],json.dumps(a,ensure_ascii=False)))
-            if self.business:self.business.save_version(a)
+            self._insert_agent_version(a)
             if draft.get('schedule'):schedules.configure(id,commit=False)
             else:self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(id,))
             if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id)

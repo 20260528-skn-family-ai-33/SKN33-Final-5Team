@@ -3398,7 +3398,7 @@
       "id": "email.list",
       "name_ko": "메일 목록 검색",
       "category": "business",
-      "role_ko": "List Gmail message IDs, search query and pagination token.",
+      "role_ko": "Gmail 메일 목록 검색 및 최근 검색 결과 1~10개 본문 읽기. 실제 출처 documents를 요약에 연결합니다.",
       "operations": [
         {
           "id": "execute",
@@ -3408,6 +3408,17 @@
           "inputs": "query=None, max_results=20, page_token=None",
           "outputs": "Gmail/Calendar API JSON 응답",
           "requirements": "Context 및 gmail 연결",
+          "side_effect": false,
+          "code_implemented": true
+        },
+        {
+          "id": "read_messages",
+          "runtime_id": "email.list.read_messages",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "query=None, max_results=5 (integer 1..10)",
+          "outputs": "documents:Document[] messages:MessageMetadata[] requested_count:int returned_count:int",
+          "requirements": "Context 및 읽기 권한이 있는 gmail 연결. 본문 조회 실패 시 부분 요약 없이 중단.",
           "side_effect": false,
           "code_implemented": true
         }
@@ -3421,7 +3432,7 @@
       ],
       "status": "external_connection_required",
       "all_operations_ready": false,
-      "operation_count": 1
+      "operation_count": 2
     },
     {
       "id": "email.get",

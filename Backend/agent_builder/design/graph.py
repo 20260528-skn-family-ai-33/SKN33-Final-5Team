@@ -111,6 +111,9 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         from agent_builder.design.attachment_precheck import missing_attachment_reply
         quick=missing_attachment_reply(state)
         if quick:return quick
+        from agent_builder.design.gmail_summary import gmail_summary_reply
+        gmail=gmail_summary_reply(state)
+        if gmail:return gmail
         from agent_builder.design.document_rows_template import document_rows_reply
         fixed=document_rows_reply(state)
         if fixed:return fixed

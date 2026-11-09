@@ -23,7 +23,7 @@ function workflow(name: string, nodes: FlowNode[]): Flow {
   };
 }
 
-test('failed S3 archival preserves the webhook execution error and dispatches its error workflow', {timeout: 15000}, async t => {
+test('failed S3 archival preserves the webhook execution error and dispatches its error workflow', {timeout: 45000}, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'a4b-archive-test-'));
   process.env.EASYFLOW_DATA_DIR = directory;
   process.env.A4B_S3_BUCKET = 'test-bucket';

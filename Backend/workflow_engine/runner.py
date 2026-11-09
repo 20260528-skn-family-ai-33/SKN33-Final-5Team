@@ -160,8 +160,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         artifacts=[outputs[id]['artifact'] for id in artifact_output_ids(config['workflow'],outputs)]
         tools_by_id={n['id']:n['tool'] for n in config['workflow']['nodes']}
         transformed_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool'] in ('text_transform','base64_codec','text_hash','date_transform') and n['id'] in outputs for b in n['bindings'] if b['input']=='text' and b['output']=='text'}
+        gmail_collections={n['id'] for n in config['workflow']['nodes'] if n['tool']=='email.list' and n['settings'].get('operation')=='read_messages'}
+        summarized_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool']=='compose_answer' and n['id'] in outputs
+                            for b in n['bindings'] if b['input']=='documents' and b['output']=='documents' and b['node_id'] in gmail_collections}
         operation_nodes={n['id'] for n in config['workflow']['nodes'] if uses_operation(n)}
-        texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources and (tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform','base64_codec','text_hash','date_transform'] or id in operation_nodes)))
+        texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources|summarized_sources and (tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform','base64_codec','text_hash','date_transform'] or id in operation_nodes)))
         records=[v['records'] for v in outputs.values() if 'records' in v]
         tables=[v['table'] for v in outputs.values() if 'table' in v]
         result_rows=next((v['records'] if 'records' in v else v['table']['rows'] for v in reversed(list(outputs.values())) if 'records' in v or 'table' in v),[])

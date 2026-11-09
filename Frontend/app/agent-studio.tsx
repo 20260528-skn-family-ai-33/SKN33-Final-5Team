@@ -53,7 +53,7 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange}:{onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'intro'|'workflows'|'history'|'assets')=>void}={}){
+export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange}:{onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'intro'|'workflows'|'history'|'assets'|'connections')=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const [libraryVisited,setLibraryVisited]=useState(initialScreen==='nodes');
@@ -245,7 +245,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
 
  function canLeave(){if(inFlight.current||libraryBusy)return false;return !(text.trim()||testText.trim()||replyDraft.trim()||runFiles.length||chosenRefs.length||libraryDirty)||window.confirm('아직 보내지 않은 입력 또는 작업 선택이 있습니다. 이 화면을 나가면 입력이 사라집니다. 이동할까요?');}
  useEffect(()=>{onCanLeaveChange?.(canLeave);});
- function leave(next:'intro'|'workflows'|'history'|'assets'){if(canLeave())onNavigate?.(next);}
+ function leave(next:'intro'|'workflows'|'history'|'assets'|'connections'){if(canLeave())onNavigate?.(next);}
  useEffect(()=>{
   if(!(text.trim()||testText.trim()||replyDraft.trim()||runFiles.length||chosenRefs.length||libraryDirty))return;
   const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};

@@ -166,6 +166,7 @@ SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 일·�
 SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 일·주 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 제외·유지·오류와 중복 첫 행·마지막 행·유지·오류(중복이 있으면 실행 중단)는 filter_sort에 이미 정의된 정책입니다. 이 정책을 요청한 것은 기능 부족이 아닙니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 관리 표 연결 검사는 후속 단계에 맡깁니다.'
 SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 일·주 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 monthly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
 SYSTEM+='\n조건끼리 서로 모순되거나(예: 같은 대상에 두 가지 정책) 기준·값·단위가 미정인 것은 기능 부족이 아니라 사용자가 정할 조건이므로 clarify입니다. 모순 해결, 기준 선택, 값 명시, 정책 우선순위 결정을 missing_actions에 적지 않고 missing_conditions에 적습니다. 등록 도구가 지원하는 작업(상수 비교 선별, 빈 값 정책, 첫 행·마지막 행 중복 제거, 파일 저장)을 조건이 모순이라는 이유로 미지원이라 하지 않습니다.'
+SYSTEM+='\nGmail의 최근 메일 여러 건 요약은 email.list의 read_messages 동작으로 본문 documents를 읽고 compose_answer의 documents 입력에 연결합니다. 개별 ID·로컬 파일·read_document 단계가 필요하지 않습니다. 등록된 실제 동작 계약을 확인하며, Gmail 계정 연결 상태가 설계 입력에 없다는 이유로 기능을 missing_capability로 판정하지 않습니다. 연결은 실행 전 확인하며 사용자에게 모델이 연결 여부를 추측하거나 이미 연결됐다고 주장하지 않습니다. 메일 발송·다른 공급자·임의 자동 반복은 이 읽기 요약 조합에 포함되지 않습니다.'
 DEMOS=[
  {'request':'매월 말일 오전 10시 한국 시간에 표를 JSON 저장. 일간이나 주간으로 바꾸지 마.', 'output':{'decision':'missing_capability','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':['월간 예약'],'reason':'표 저장은 지원하나 앱 예약은 daily/weekly만 지원하므로 월간 주기는 미지원.','user_quotes':['매월 말일 오전 10시 한국 시간에 표를 JSON 저장. 일간이나 주간으로 바꾸지 마.']}},
  {'request':'한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.', 'output':{'decision':'existing_tools','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'앱 주간 예약과 등록 표 읽기·저장 도구로 지원. 관리 자료 연결과 활성화는 후속 검사.','user_quotes':['한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.']}},
@@ -323,6 +324,10 @@ def assess_capability(state,transport):
     state = {**state, 'messages': _assessment_messages(state)}
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user:raise ValueError('사용자 요청이 필요합니다.')
+    from agent_builder.design.gmail_summary import gmail_summary_assessment
+    registered=gmail_summary_assessment(state)
+    if registered:
+        return validate_assessment_result(registered,state,model_calls=0)
     schema=Assessment.model_json_schema()
     schema['properties']['tool_ids']['items']['enum']=[t['id'] for t in TOOLS]
     schema['properties']['user_quotes']['items']['enum']=user

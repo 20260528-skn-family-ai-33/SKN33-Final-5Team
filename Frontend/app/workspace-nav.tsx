@@ -1,7 +1,7 @@
 import type {ReactNode} from 'react';
-import {Workflow, History, Layers, FolderOpen} from 'lucide-react';
+import {Workflow, History, Layers, FolderOpen, Unplug} from 'lucide-react';
 
-export type WorkspaceDestination = 'workflows' | 'history' | 'nodes' | 'assets';
+export type WorkspaceDestination = 'workflows' | 'history' | 'nodes' | 'assets' | 'connections';
 
 /** The same destinations and labels are available throughout the work area. */
 export function WorkspaceNav({active, onNavigate, disabled = false}: {
@@ -14,7 +14,8 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
       ['workflows', '워크플로우', Workflow],
       ['history', '실행 기록', History],
       ['nodes', '작업 라이브러리', Layers],
-      ['assets', '내 자료', FolderOpen],
+      ['assets', '자료함', FolderOpen],
+      ['connections', '서비스 연결', Unplug],
     ] as const).map(([destination, label, Icon]) =>
       <button data-tour={'menu-'+destination} key={destination} type="button" disabled={disabled}
         aria-current={active === destination ? 'page' : undefined}

@@ -59,6 +59,12 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
+        if spec['kind']=='gmail_summary':
+            from .gmail_summary import gmail_summary_request
+            gmail=gmail_summary_request(state)
+            if (not gmail or spec['max_results']!=gmail['count']
+                    or task['quote']!=gmail['request'] or spec['request']!=gmail['request']):
+                raise ValueError('Gmail 조회 건수·요약 요구를 사용자 원문에서 확인할 수 없습니다.')
         if spec['kind'] in ('extract_fields','receipt_items') and (len(set(spec['fields']))!=len(spec['fields']) or
                 any(not field.strip() or field not in task['quote'] for field in spec['fields'])):
             raise ValueError('추출할 항목을 사용자 원문에서 확인할 수 없습니다.')
@@ -183,6 +189,15 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
 
     def check(state):
         target='template' if state.get('condition_route')=='template_plan' else 'plan'
+        from .gmail_summary import gmail_summary_plan
+        gmail_plan=gmail_summary_plan(state)
+        if gmail_plan:
+            plan=validate_plan(gmail_plan,state)
+            return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
+                        requirement_fingerprint=ledger_fingerprint(state),requirement_digest=plan_digest(plan),
+                        confirmed=False,saved_agent_id=None,
+                        trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
+                            detail='원문의 Gmail 조회 건수와 본문 요약을 등록 계약으로 기록했습니다.',model_calls=0)])
         if setting=='off' and not state.get('requirement_required'):
             return dict(requirement_route=target,requirement_required=False)
         fingerprint=ledger_fingerprint(state)

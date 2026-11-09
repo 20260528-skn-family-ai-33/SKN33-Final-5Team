@@ -63,6 +63,12 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         setting='enforce' if state.get('condition_required') or state.get('condition_enforced') else configured
         if setting == 'off':
             return {'condition_enforced': False, 'condition_route': 'conversation', 'condition_ledger': None, 'condition_template': False}
+        from agent_builder.design.gmail_summary import gmail_summary_request
+        if gmail_summary_request(state):
+            return {'condition_ledger':None, 'condition_enforced':False, 'condition_required':False,
+                    'condition_route':'conversation', 'condition_template':False, 'pending_questions':[],
+                    'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
+                        'detail':'outside_scope: 등록 Gmail 본문 조회·요약을 전체 설계기로 위임', 'mode':setting,'model_calls':0,'metrics':{}}]}
         user_requests=' '.join(m['content'] for m in state.get('messages',[]) if m['role']=='user')
         import re
         outside_table_scope=(re.search(r'비교|증감|증가율|감소율|변화율|반품|환불|정정|그 전주',user_requests) or

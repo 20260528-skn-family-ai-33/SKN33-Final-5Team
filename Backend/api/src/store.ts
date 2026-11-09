@@ -6,6 +6,7 @@ import {clone,validateFlow,type Flow,type Json,type Execution} from '../../../sh
 import type {CredentialInput,CredentialPublic,CredentialSecret,Provider} from './contracts';
 
 const providers=new Set<Provider>(['openai','slack','bearer','basic','header','jwt']);
+export const GMAIL_CONNECTION_ID='a4b-gmail';
 /** Own local SQLite database. Credentials are encrypted with a separate, private key. */
 export class Store {
  private db:DatabaseSync;
@@ -35,14 +36,22 @@ export class Store {
  saveFlow(value:Flow):Flow {const flow={...validateFlow(clone(value)),updatedAt:new Date().toISOString()};this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at').run(flow.id,JSON.stringify(flow),flow.updatedAt);return flow;}
  deleteFlow(id:string):boolean {return this.db.prepare('DELETE FROM flows WHERE id=?').run(id).changes>0;}
  private public(row:Record<string,any>):CredentialPublic {return {id:String(row.id),name:String(row.name),provider:row.provider as Provider,...(row.service?{service:String(row.service)}:{}),...(row.auth_type==='oauth2'?{authType:'oauth2' as const}:{}),createdAt:String(row.created_at),updatedAt:String(row.updated_at)};}
- listCredentials():CredentialPublic[] {return this.db.prepare('SELECT id,name,provider,service,auth_type,created_at,updated_at FROM credentials ORDER BY updated_at DESC').all().map(row=>this.public(row));}
+ listCredentials():CredentialPublic[] {return this.db.prepare('SELECT id,name,provider,service,auth_type,created_at,updated_at FROM credentials WHERE id<>? ORDER BY updated_at DESC').all(GMAIL_CONNECTION_ID).map(row=>this.public(row));}
  getCredential(id:string):CredentialSecret {
+  if(id===GMAIL_CONNECTION_ID)throw new Error('Gmail 계정은 Gmail 도구에서만 사용할 수 있어요.');
+  return this.readCredential(id);
+ }
+ private readCredential(id:string):CredentialSecret {
   const row=this.db.prepare('SELECT * FROM credentials WHERE id=?').get(id);
   if(!row)throw new Error('선택한 연결 정보를 찾을 수 없어요. 다시 연결해주세요.');
   try {const box=JSON.parse(String(row.encrypted));const decipher=createDecipheriv('aes-256-gcm',this.key,Buffer.from(box.iv,'base64'));decipher.setAuthTag(Buffer.from(box.tag,'base64'));const data=JSON.parse(Buffer.concat([decipher.update(Buffer.from(box.value,'base64')),decipher.final()]).toString('utf8'));return {...this.public(row),data};}
   catch {throw new Error('저장한 연결 정보를 열 수 없어요. 보호 키와 데이터 폴더를 확인해주세요.');}
  }
  saveCredential(input:CredentialInput):CredentialPublic {
+  if(input?.id===GMAIL_CONNECTION_ID)throw new Error('Gmail 설정에서 계정을 연결해주세요.');
+  return this.writeCredential(input);
+ }
+ private writeCredential(input:CredentialInput):CredentialPublic {
   if(!input||typeof input.name!=='string'||!input.name.trim()||!providers.has(input.provider)||!input.data||typeof input.data!=='object'||Array.isArray(input.data))throw new Error('연결 이름, 종류, 필요한 정보를 입력해주세요.');
   const id=input.id||randomUUID(),existing=this.db.prepare('SELECT created_at FROM credentials WHERE id=?').get(id),now=new Date().toISOString(),createdAt=existing?String(existing.created_at):now;
   const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',this.key,iv),value=Buffer.concat([cipher.update(JSON.stringify(input.data),'utf8'),cipher.final()]);
@@ -50,7 +59,21 @@ export class Store {
   this.db.prepare('INSERT INTO credentials(id,name,provider,created_at,updated_at,encrypted,service,auth_type) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,provider=excluded.provider,updated_at=excluded.updated_at,encrypted=excluded.encrypted,service=excluded.service,auth_type=excluded.auth_type').run(id,input.name.trim(),input.provider,createdAt,now,encrypted,typeof input.data.service==='string'?input.data.service:null,input.data.authType==='oauth2'?'oauth2':null);
   return {id,name:input.name.trim(),provider:input.provider,...(typeof input.data.service==='string'?{service:input.data.service}:{}),...(input.data.authType==='oauth2'?{authType:'oauth2' as const}:{}),createdAt,updatedAt:now};
  }
- deleteCredential(id:string):boolean {return this.db.prepare('DELETE FROM credentials WHERE id=?').run(id).changes>0;}
+ deleteCredential(id:string):boolean {return id!==GMAIL_CONNECTION_ID&&this.db.prepare('DELETE FROM credentials WHERE id=?').run(id).changes>0;}
+ gmailConnected():boolean {
+  return !!this.db.prepare("SELECT 1 FROM credentials WHERE id=? AND service='gmail' AND auth_type='oauth2'").get(GMAIL_CONNECTION_ID);
+ }
+ getGmailCredential():CredentialSecret {
+  if(!this.gmailConnected())throw new Error('Gmail 계정을 먼저 연결해주세요.');
+  return this.readCredential(GMAIL_CONNECTION_ID);
+ }
+ saveGmailCredential(input:CredentialInput):void {
+  if(input.id!==GMAIL_CONNECTION_ID||input.provider!=='bearer'||input.data.service!=='gmail'||input.data.authType!=='oauth2')throw new Error('Gmail 연결 정보를 확인해주세요.');
+  this.writeCredential(input);
+ }
+ disconnectGmail():void {
+  if(this.gmailConnected())this.db.prepare('DELETE FROM credentials WHERE id=?').run(GMAIL_CONNECTION_ID);
+ }
  listExecutions():Execution[] {return this.db.prepare('SELECT json FROM executions ORDER BY started_at DESC LIMIT 500').all().map(row=>JSON.parse(String(row.json)));}
  listPendingExecutions():Execution[] {return this.db.prepare("SELECT json FROM executions WHERE json_extract(json,'$.status') IN ('queued','running','waiting') ORDER BY started_at ASC").all().map(row=>JSON.parse(String(row.json)));}
  getExecution(id:string):Execution|undefined {const row=this.db.prepare('SELECT json FROM executions WHERE id=?').get(id);return row?JSON.parse(String(row.json)):undefined;}

@@ -109,6 +109,30 @@ test('startup refuses an unreachable business-data DB',async()=>{
  await assert.rejects(checkBuilderDatabase({kind:'postgres',databaseUrl:'postgresql://app@127.0.0.1:1/a4b'},pool),/접속하지 못했습니다/);
  await checkBuilderDatabase({kind:'sqlite'});
 });
+test('startup preflight checks every personal and team library table before accepting traffic',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'a4b-library-preflight-')),receipt=randomUUID();
+ const previousBusinessRecords=process.env.A4B_BUSINESS_RECORDS;delete process.env.A4B_BUSINESS_RECORDS;
+ let unavailable:string|undefined;
+ const pool:any={query:async(sql:string)=>{
+  if(sql.includes('FROM pg_roles'))return {rows:[{bypass:false,migrated:true,usage:true}]};
+  if(sql.includes('max(version)'))return {rows:[{v:REQUIRED_SCHEMA_VERSION}]};
+  if(sql.includes('bool_and'))return {rows:[{ok:!unavailable||!sql.includes("'"+unavailable+"'")}]};
+  if(sql.includes('sqlite_imports'))return {rowCount:1,rows:[]};
+  throw new Error('Unexpected preflight query');
+ }};
+ const check=()=>checkBuilderDatabase({kind:'postgres',databaseUrl:'postgresql://app@db.example.com/a4b'},pool,directory);
+ try{
+  await writeFile(join(directory,'.a4b-sqlite-import'),receipt);
+  assert.ok(REQUIRED_SCHEMA_VERSION>=6);await check();
+  for(const table of ['library_spaces','library_folders','library_asset_placements','teams','team_members','team_invitations']){
+   unavailable=table;
+   await assert.rejects(check(),/행 수준 보안과 앱 계정/,'missing RLS or permissions on '+table+' must block startup');
+  }
+ }finally{
+  if(previousBusinessRecords===undefined)delete process.env.A4B_BUSINESS_RECORDS;else process.env.A4B_BUSINESS_RECORDS=previousBusinessRecords;
+  await rm(directory,{recursive:true,force:true});
+ }
+});
 test('preflight exits non-zero before serving when the DB is unreachable',()=>{
  const child=spawnSync(process.execPath,['--import','tsx','src/index.ts','--preflight'],{cwd:API_ROOT,encoding:'utf8',timeout:60000,
   env:{...process.env,A4B_STORAGE:'postgres',A4B_DATABASE_URL:'postgresql://app@127.0.0.1:1/a4b',EASYFLOW_PUBLIC_URL:'',A4B_AUTH_MODE:'off'}});

@@ -5,7 +5,7 @@ LangGraph conversation first, exactly as the original single worker did.
 """
 from infrastructure.persistence.storage import Storage
 from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
-from service.handlers import design, generation, library, reviews, runs, schedules, uploads
+from service.handlers import asset_library, design, generation, library, reviews, runs, schedules, uploads
 
 
 class Context:
@@ -29,6 +29,13 @@ ACTIONS={
     'retry_run':runs.retry_run,
     'asset':reviews.asset,
     'assets':uploads.assets,
+    'library':asset_library.listing,
+    'validate_destination':asset_library.validate_destination,
+    'library_upload':asset_library.upload,
+    'folder_create':asset_library.create_folder,
+    'folder_update':asset_library.update_folder,
+    'folder_delete':asset_library.delete_folder,
+    'asset_move':asset_library.move_asset,
     'asset_preview':uploads.preview,
     'original_registered':uploads.original_registered,
     'prepare_asset_delete':uploads.prepare_delete,
@@ -36,6 +43,7 @@ ACTIONS={
     'document_review':reviews.document_review,
     'agents':library.agents,
     'agent':library.agent,
+    'rename_agent':library.rename_agent,
     'claim_due':schedules.claim_due,
     'schedule':schedules.schedule,
     'schedule_test':schedules.schedule_test,
@@ -54,6 +62,24 @@ ACTIONS={
 def handle(data,conversation=None):
     storage=Storage(data['directory'])
     try:
+        token=data.get('gmail_access_token')
+        if token and data['action'] in {'test','resume_run','retry_run','scheduled_run'}:
+            from workflow_engine.unified_tools.expansion.google_adapters import GmailAdapter, GoogleApiError, GoogleJsonTransport
+
+            transport=GoogleJsonTransport(lambda: token,'https://gmail.googleapis.com')
+            gmail=GmailAdapter(transport,'',data['directory'])
+
+            def read_gmail(operation,arguments):
+                if operation not in {'email.list','email.get','email.attachment.get'}:
+                    raise ValueError('이 Gmail 연결에는 읽기 권한이 있습니다. 발송 대신 답장 초안을 작성해주세요.')
+                try:
+                    return gmail(operation,arguments)
+                except GoogleApiError as error:
+                    if error.status in {401,403}:
+                        raise ValueError('Gmail에서 읽기 요청을 허용하지 않았습니다. 계정 연결과 읽기 권한을 다시 확인해주세요.') from None
+                    raise
+
+            storage.workflow_connectors={'gmail':read_gmail}
         context=Context(data,storage,RunLifecycle(storage),conversation)
         return ACTIONS.get(context.action,design.session_action)(context)
     finally:

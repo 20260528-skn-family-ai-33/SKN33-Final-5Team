@@ -155,6 +155,16 @@ def execute(node, state, storage, config, llm):
                                 model_providers={'*':model_provider(llm)})
     result = json.loads(json.dumps(result, ensure_ascii=False, allow_nan=False))
     outputs = {'result':result, 'text':json.dumps(result,ensure_ascii=False,indent=2)}
+    if node['tool']=='email.get':
+        from workflow_engine.unified_tools.expansion.google_adapters import gmail_body_reader, gmail_documents
+
+        outputs['documents']=gmail_documents(result,gmail_body_reader(
+            lambda operation,arguments: dispatcher.execute(operation,'execute',arguments,context=context)))
+        if outputs['documents']:
+            outputs['text']=outputs['documents'][0]['text']
+    if node['tool']=='email.list' and spec['id']=='read_messages':
+        outputs['documents']=result['documents']
+        outputs['text']='\n\n'.join(document['text'] for document in result['documents']) or '검색 조건에 맞는 메일이 없습니다.'
     selected=node['settings'].get('output_port')
     declared = ports(node['tool'], spec)[1]
     if 'table' in declared: outputs['table'] = result['table']

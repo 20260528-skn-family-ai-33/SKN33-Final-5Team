@@ -79,3 +79,18 @@ def test_ollama_preserves_explicit_planner_sampling_options(monkeypatch):
     monkeypatch.setattr('infrastructure.llm.ollama_chat_model.OllamaChatOpenAI',lambda **kw:kw)
     result=model_factory.create_chat_model('','qwen3.5:4b',temperature=0.2,presence_penalty=0)
     assert result['temperature']==0.2 and result['presence_penalty']==0
+
+
+def test_deployed_finetune_limits_override_local_sampling_only(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL','https://example.test/v1')
+    monkeypatch.setenv('A4B_OLLAMA_TEMPERATURE','0')
+    monkeypatch.setenv('A4B_OLLAMA_NUM_PREDICT','4096')
+    monkeypatch.setattr('infrastructure.llm.ollama_chat_model.OllamaChatOpenAI',lambda **kw:kw)
+    monkeypatch.setattr(model_factory,'ChatOpenAI',lambda **kw:kw)
+    local=model_factory.create_chat_model('','final664',temperature=0.2,max_tokens=9000)
+    assert local['temperature']==0 and local['max_tokens']==4096
+    assert local['reasoning_effort']=='none' and local['extra_body']['think'] is False
+    assert model_factory.create_chat_model('','final664',max_tokens=1000)['max_tokens']==1000
+    external=model_factory.create_chat_model('real-key','external',temperature=0.2,max_tokens=9000)
+    assert external['temperature']==0.2 and external['max_tokens']==9000

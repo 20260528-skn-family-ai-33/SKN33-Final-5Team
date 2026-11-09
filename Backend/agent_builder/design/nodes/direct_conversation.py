@@ -199,7 +199,8 @@ class OllamaPlanner:
         path = parts.path.rstrip('/')
         if path.endswith('/v1'):path = path[:-3]
         self.url = urlunsplit((parts.scheme, parts.netloc, path+'/api/chat', '', ''))
-        self.model = model
+        from infrastructure.llm.model_aliases import resolve_ollama_model
+        self.model = resolve_ollama_model(model)
         if not isinstance(thinking,bool):raise ValueError('thinking은 bool이어야 합니다.')
         self.thinking = thinking
         if isinstance(temperature,bool) or not isinstance(temperature,(int,float)) or not 0<=temperature<=2:

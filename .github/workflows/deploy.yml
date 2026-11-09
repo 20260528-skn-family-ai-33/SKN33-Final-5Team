@@ -163,7 +163,11 @@ jobs:
             exit 0
           fi
           .venv-agent/bin/python -m pip install -r requirements/local-integration.txt
-          .venv-agent/bin/python -m pytest -q tests/infrastructure/test_ollama_deployment.py tests/design/test_ollama_planning.py tests/design/test_deep_agent_conversation.py tests/design/test_direct_conversation.py
+          tests=(tests/infrastructure/test_ollama_deployment.py tests/design/test_ollama_planning.py tests/design/test_deep_agent_conversation.py tests/design/test_direct_conversation.py)
+          if [[ -f tests/infrastructure/test_model_migration.py ]]; then
+            tests+=(tests/infrastructure/test_model_migration.py)
+          fi
+          .venv-agent/bin/python -m pytest -q "${tests[@]}"
       - name: Test receipt workflows and saved run results
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
         working-directory: Backend

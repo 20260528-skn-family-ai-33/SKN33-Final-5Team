@@ -40,6 +40,8 @@ def create_chat_model(api_key, model, **limits):
             })
             return QwenChatOpenAI(**options)
         # /v1 uses reasoning_effort; think is retained for compatible Ollama versions.
+        from infrastructure.llm.model_aliases import resolve_ollama_model
+        options['model'] = resolve_ollama_model(model)
         from infrastructure.llm.ollama_settings import temperature_setting, output_limit, bounded_output_limit
         if os.getenv('A4B_OLLAMA_NUM_PREDICT', '').strip():
             options['max_tokens']=bounded_output_limit(options.get('max_tokens') or output_limit())

@@ -21,7 +21,7 @@ test('Compose forwards all model overrides and keeps omitted overrides empty',{
  const dir=mkdtempSync(join(tmpdir(),'a4b-model-env-'));
  try{
   const file=join(dir,'fixture.env');
-  const settings={A4B_MAIN_MODEL:'final664',A4B_CAPABILITY_MODEL:'previous105',A4B_OLLAMA_NUM_CTX:'32768',A4B_OLLAMA_NUM_PREDICT:'6000',A4B_OLLAMA_TEMPERATURE:'0'};
+  const settings={A4B_MAIN_MODEL:'final664',A4B_CAPABILITY_MODEL:'previous105',A4B_OLLAMA_MODEL_ALIASES:'{"old":"final664"}',A4B_OLLAMA_NUM_CTX:'32768',A4B_OLLAMA_NUM_PREDICT:'6000',A4B_OLLAMA_TEMPERATURE:'0'};
   const render=()=>renderCompose([file]);
   writeFileSync(file,Object.entries(settings).map(([key,value])=>`${key}=${value}`).join('\n'));
   const configured=render();for(const [key,value] of Object.entries(settings))assert.equal(configured[key],value,key);
@@ -44,6 +44,7 @@ test('default AWS settings match the baseline RunPod models; the 9B overlay is e
   assert.ok(registered);assert.ok(source);
   assert.equal(baseline.A4B_MAIN_MODEL,registered);
   assert.equal(baseline.A4B_CAPABILITY_MODEL,'');
+  assert.equal(baseline.A4B_OLLAMA_MODEL_ALIASES,'');
   assert.equal(baseline.A4B_VERIFIER_MODEL,source);
   assert.equal(baseline.A4B_OLLAMA_NUM_CTX,modelfile.match(/^PARAMETER num_ctx (\d+)/m)?.[1]);
   Object.assign(process.env,baseline);
@@ -53,15 +54,16 @@ test('default AWS settings match the baseline RunPod models; the 9B overlay is e
   const tuned=renderCompose([base,join(root,'infrastructure/env/.env.aws.qwen35-9b.example')]);
   assert.equal(tuned.A4B_MAIN_MODEL,'a4b-qwen35-9b-final664-pilot32k');
   assert.equal(tuned.A4B_CAPABILITY_MODEL,'a4b-qwen35-9b-previous-pilot32k');
+  assert.deepEqual(JSON.parse(tuned.A4B_OLLAMA_MODEL_ALIASES),{[registered]:tuned.A4B_MAIN_MODEL});
   assert.equal(tuned.A4B_OLLAMA_NUM_CTX,'32768');
   assert.equal(tuned.A4B_OLLAMA_NUM_PREDICT,'4096');assert.equal(tuned.A4B_OLLAMA_TEMPERATURE,'0');
   for(const [key,value] of Object.entries(baseline)){
-   if(!['A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL','A4B_OLLAMA_NUM_CTX','A4B_OLLAMA_NUM_PREDICT','A4B_OLLAMA_TEMPERATURE'].includes(key))assert.equal(tuned[key],value,key);
+   if(!['A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL','A4B_OLLAMA_MODEL_ALIASES','A4B_OLLAMA_NUM_CTX','A4B_OLLAMA_NUM_PREDICT','A4B_OLLAMA_TEMPERATURE'].includes(key))assert.equal(tuned[key],value,key);
   }
   Object.assign(process.env,tuned);
   const missing=await localModelHealth();assert.equal(missing.status,'unavailable');
   assert.match(missing.message,/설계 모델.*지원 판정 모델/);
-  ids=[...ids,tuned.A4B_MAIN_MODEL+':latest',tuned.A4B_CAPABILITY_MODEL+':latest'];
+  ids=[source,tuned.A4B_MAIN_MODEL+':latest',tuned.A4B_CAPABILITY_MODEL+':latest'];
   assert.equal((await localModelHealth()).status,'ready');
  }finally{globalThis.fetch=original;for(const key of Object.keys(process.env))if(!(key in old))delete process.env[key];Object.assign(process.env,old);}
 });

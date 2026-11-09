@@ -28,11 +28,18 @@ export default function EntryApp(){
  useEffect(()=>{if(new URLSearchParams(location.search).get('screen')==='models'){const legacy=new URL(location.href);legacy.searchParams.set('screen','workflows');window.history.replaceState(window.history.state,'',legacy);context.current=location.search;}window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',location.href);const pop=()=>{const next=routeFromLocation(),internal=(r:string)=>['nodes','workflow','run'].includes(r),before=new URLSearchParams(context.current),after=new URLSearchParams(location.search);
   const remount=!internal(routeRef.current)||!internal(next)||before.get('service')!==after.get('service')||before.get('run')!==after.get('run');
   const targetIndex=Number(window.history.state?.a4bIndex||0);
-  if(remount&&internal(routeRef.current)&&!guard.current()){const delta=historyIndex.current-targetIndex;if(delta)window.history.go(delta);return;}
-  if(remount)setNavigationKey(n=>n+1);historyIndex.current=targetIndex;
+  if(remount&&(internal(routeRef.current)||routeRef.current==='assets')&&!guard.current()){
+   const delta=historyIndex.current-targetIndex;
+   if(delta)window.history.go(delta);
+   else {const previous=new URL(location.href);previous.search=context.current;window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',previous);}
+   return;
+  }
+  if(remount){guard.current=()=>true;setNavigationKey(n=>n+1);}historyIndex.current=targetIndex;
   context.current=location.search;setRoute(next);
  };window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
  function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false){
+  if(routeRef.current==='assets'&&!guard.current())return;
+  guard.current=()=>true;
   if(fresh){localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');}
   const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('previewNode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);
   historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});
@@ -45,7 +52,7 @@ export default function EntryApp(){
  if(route==='intro')return <LandingPage onStart={()=>navigate('workflows')} onPreview={preview} onRoute={next=>navigate(next)}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>navigate('intro')} onNew={newFlow}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={navigate} onHome={()=>navigate('intro')}/>
-   <main className="entry-workspace-main">{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary/>:
+   <main className="entry-workspace-main">{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:
     <WorkspaceHome route={route as 'workflows'|'history'} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
    </main>
   </div>

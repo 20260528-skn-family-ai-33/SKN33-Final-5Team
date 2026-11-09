@@ -186,7 +186,8 @@ def test_missing_google_account_fails_without_any_delivery(tmp_path,monkeypatch)
     finally:store.close()
 
 
-def test_gmail_service_reads_message_and_writes_a_grounded_reply_draft(tmp_path,monkeypatch):
+@pytest.mark.parametrize('external_body',[False,True])
+def test_gmail_service_reads_message_and_writes_a_grounded_reply_draft(tmp_path,monkeypatch,external_body):
     from service.dispatch import handle
     from workflow_engine import runner
     from workflow_engine.executors import agent_factory
@@ -195,6 +196,8 @@ def test_gmail_service_reads_message_and_writes_a_grounded_reply_draft(tmp_path,
     body='점검은 다음 주 화요일입니다.'
     payload={'mimeType':'text/html','headers':[{'name':'Subject','value':'점검 일정'}],
              'body':{'data':base64.urlsafe_b64encode(f'<p>{body}</p><script>ignored</script>'.encode()).decode().rstrip('=')}}
+    body_data=payload['body']
+    if external_body:payload['body']={'attachmentId':'body-part','size':len(f'<p>{body}</p><script>ignored</script>'.encode())}
     calls=[]
 
     def request(transport,method,path,query=None,**kwargs):
@@ -202,6 +205,8 @@ def test_gmail_service_reads_message_and_writes_a_grounded_reply_draft(tmp_path,
         calls.append((method,path,query))
         if path.endswith('/messages'):
             return {'messages':[{'id':'test-message'}]}
+        if external_body and path.endswith('/messages/test-message/attachments/body-part'):
+            return body_data
         assert path.endswith('/messages/test-message')
         return {'id':'test-message','payload':payload}
 
@@ -231,8 +236,10 @@ def test_gmail_service_reads_message_and_writes_a_grounded_reply_draft(tmp_path,
     result=handle({'action':'test','directory':str(tmp_path),'id':agent_id,'content':'메일 요약과 답장 초안을 작성해줘.','gmail_access_token':'member-token'})
     assert result['status']=='succeeded',result.get('error')
     assert result['outputs']['draft']['text']==expected['text']
-    assert calls==[('GET','/gmail/v1/users/me/messages',{'q':'in:inbox','maxResults':1,'pageToken':None}),
-                   ('GET','/gmail/v1/users/me/messages/test-message',{'format':'full'})]
+    expected_calls=[('GET','/gmail/v1/users/me/messages',{'q':'in:inbox','maxResults':1,'pageToken':None}),
+                    ('GET','/gmail/v1/users/me/messages/test-message',{'format':'full'})]
+    if external_body:expected_calls.append(('GET','/gmail/v1/users/me/messages/test-message/attachments/body-part',None))
+    assert calls==expected_calls
     assert 'member-token' not in json.dumps(result)
 
 

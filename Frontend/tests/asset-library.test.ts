@@ -40,7 +40,8 @@ function deferred() {
   const promise = new Promise<any>(done => {resolve = done;});
   return {promise, resolve};
 }
-async function mount(handler: (url: URL, body: any, method: string) => any, component?: any, authenticated = false) {
+type TestMember = {id: string; email: string; name: string; role: 'member'};
+async function mount(handler: (url: URL, body: any, method: string) => any, component?: any, authenticated: boolean | (() => TestMember) = false) {
   dom.window.close(); installDom();
   const calls: {url: URL; body: any; method: string}[] = [];
   globalThis.fetch = (async (path: any, init: RequestInit = {}) => {
@@ -48,7 +49,7 @@ async function mount(handler: (url: URL, body: any, method: string) => any, comp
     const method = init.method || 'GET'; calls.push({url, body, method});
     assert.equal(init.credentials, 'same-origin');
     const result = authenticated && url.pathname === '/api/auth/me'
-      ? {enabled: true, authenticated: true, user: {id: 'me', email: 'me@example.com', name: '사용자', role: 'member'}}
+      ? {enabled: true, authenticated: true, user: typeof authenticated === 'function' ? authenticated() : {id: 'me', email: 'me@example.com', name: '사용자', role: 'member'}}
       : await handler(url, body, method);
     return result instanceof Response ? result : new Response(JSON.stringify(result), {headers: {'Content-Type': 'application/json'}});
   }) as typeof fetch;
@@ -171,6 +172,128 @@ test('multi-upload is sequential, fixes the folder destination, and retries only
     assert.deepEqual(attempts, ['first.txt', 'second.txt', 'third.txt', 'second.txt']);
     assert.equal(h.calls.filter(call => call.url.pathname.endsWith('/library_upload')).length, 4);
   } finally {await h.close();}
+});
+
+test('upload navigation guard protects all queued files immediately and releases after completion in StrictMode', async () => {
+  const pending = deferred(), attempts: string[] = [];
+  let canLeave = () => true;
+  const h = await mount(async (url, body) => {
+    if (url.pathname.endsWith('/library')) return page();
+    assert.equal(url.pathname, '/api/agent-builder/library_upload'); attempts.push(body.fileName);
+    if (attempts.length === 1) await pending.promise;
+    return {asset: asset(body.fileName)};
+  }, createElement(StrictMode, null, createElement(UploadLibrary, {onCanLeaveChange(value: () => boolean) {canLeave = value;}})));
+  try {
+    assert.equal(canLeave(), true);
+    const idleUnload = new dom.window.Event('beforeunload', {cancelable: true}); window.dispatchEvent(idleUnload);
+    assert.equal(idleUnload.defaultPrevented, false);
+    const picker = labelled('자료함에 올릴 파일');
+    Object.defineProperty(picker, 'files', {value: [new File(['1'], 'first.txt'), new File(['2'], 'second.txt'), new File(['3'], 'third.txt')], configurable: true});
+    await act(async () => {
+      picker.dispatchEvent(new dom.window.Event('change', {bubbles: true}));
+      assert.equal(canLeave(), false, 'enqueue blocks navigation before React publishes the uploading state');
+      await tick();
+    });
+    await waitFor(() => attempts.length === 1);
+    assert.match(document.body.textContent!, /모든 파일의 업로드가 끝난 뒤 이동/);
+    const activeUnload = new dom.window.Event('beforeunload', {cancelable: true}); window.dispatchEvent(activeUnload);
+    assert.equal(activeUnload.defaultPrevented, true);
+    await act(async () => {pending.resolve({}); await tick();});
+    await waitFor(() => !button('파일 올리기').disabled);
+    assert.deepEqual(attempts, ['first.txt', 'second.txt', 'third.txt']); assert.equal(canLeave(), true);
+    const finishedUnload = new dom.window.Event('beforeunload', {cancelable: true}); window.dispatchEvent(finishedUnload);
+    assert.equal(finishedUnload.defaultPrevented, false);
+  } finally {await h.close();}
+  assert.equal(canLeave(), true, 'unmount clears the parent guard');
+});
+
+test('completed uploads release navigation while the follow-up library read is still pending', async () => {
+  const refresh = deferred(); let reads = 0, canLeave = () => true;
+  const h = await mount((url, body) => {
+    if (url.pathname.endsWith('/library')) return ++reads === 1 ? page() : refresh.promise;
+    assert.equal(url.pathname, '/api/agent-builder/library_upload'); return {asset: asset(body.fileName)};
+  }, createElement(UploadLibrary, {onCanLeaveChange(value: () => boolean) {canLeave = value;}}));
+  try {
+    await chooseFiles([new File(['done'], 'complete.txt')]);
+    await waitFor(() => reads === 2 && document.querySelectorAll('.asset-upload-queue li[data-state=done]').length === 1);
+    assert.match(document.body.textContent!, /자료를 불러오는 중/);
+    assert.equal(canLeave(), true, 'a delayed GET must not keep the write guard locked');
+    const event = new dom.window.Event('beforeunload', {cancelable: true}); window.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, false);
+  } finally {
+    await h.close();
+    await act(async () => {refresh.resolve(page([asset('complete')])); await tick();});
+  }
+});
+
+test('team space changes cannot unmount an active upload queue even before a disabled control stops the event', async () => {
+  const pending = deferred(), attempts: string[] = [];
+  const h = await mount(async (url, body) => {
+    if (url.pathname === '/api/teams') return {teams: [{id: 'team', name: '운영팀', role: 'editor'}]};
+    if (url.pathname === '/api/team-invitations') return {invitations: []};
+    if (url.pathname.endsWith('/library')) return page();
+    assert.equal(url.pathname, '/api/agent-builder/library_upload'); attempts.push(body.fileName);
+    if (attempts.length === 1) await pending.promise;
+    return {asset: asset(body.fileName)};
+  }, undefined, true);
+  try {
+    await waitFor(() => !!document.querySelector('[aria-label="자료 공간 선택"]') && !button('팀 만들기').disabled);
+    await chooseFiles([new File(['1'], 'first.txt'), new File(['2'], 'second.txt'), new File(['3'], 'third.txt')]);
+    await waitFor(() => attempts.length === 1);
+    const space = labelled('자료 공간 선택') as HTMLSelectElement;
+    assert.equal(space.disabled, true);
+    await change(space, 'team');
+    assert.equal(h.calls.some(call => call.url.pathname === '/api/teams/team/library/library'), false);
+    assert.equal(document.querySelectorAll('.asset-upload-queue li').length, 3);
+    assert.match(document.body.textContent!, /모든 파일의 업로드가 끝난 뒤 이동/);
+    await act(async () => {pending.resolve({}); await tick();}); await waitFor(() => !button('파일 올리기').disabled);
+    assert.deepEqual(attempts, ['first.txt', 'second.txt', 'third.txt']);
+    await change(labelled('자료 공간 선택') as HTMLSelectElement, 'team');
+    assert.ok(h.calls.some(call => call.url.pathname === '/api/teams/team/library/library'));
+  } finally {await h.close();}
+});
+
+test('account changes never send pending files or a late file read into the next account', async () => {
+  for (const phase of ['request', 'file-read']) {
+    const pending = deferred(), attempts: {account: string; name: string}[] = [];
+    let account = 'first-account', reader: any;
+    const h = await mount(async (url, body) => {
+      if (url.pathname === '/api/teams') return {teams: []};
+      if (url.pathname === '/api/team-invitations') return {invitations: []};
+      if (url.pathname.endsWith('/library')) return page();
+      assert.equal(url.pathname, '/api/agent-builder/library_upload');
+      attempts.push({account, name: body.fileName});
+      if (account === 'first-account') await pending.promise;
+      return {asset: asset(body.fileName)};
+    }, undefined, () => ({id: account, email: account + '@example.com', name: account, role: 'member'}));
+    const originalFileReader = globalThis.FileReader;
+    try {
+      await waitFor(() => !!document.querySelector('[aria-label="자료 공간 선택"]') && !button('팀 만들기').disabled);
+      if (phase === 'file-read') globalThis.FileReader = class {
+        result: string | null = null;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        readAsDataURL() {reader = this;}
+      } as any;
+      await chooseFiles([new File(['1'], 'old-first.txt'), new File(['2'], 'old-second.txt'), new File(['3'], 'old-third.txt')]);
+      await waitFor(() => phase === 'request' ? attempts.length === 1 : !!reader);
+      account = 'next-account';
+      await act(async () => {window.dispatchEvent(new dom.window.Event('focus')); await tick();});
+      await waitFor(() => localStorage.getItem('a4b-auth-member') === 'next-account' && !button('파일 올리기').disabled);
+      globalThis.FileReader = originalFileReader;
+      await act(async () => {
+        if (phase === 'file-read') {reader.result = 'data:text/plain;base64,MQ=='; reader.onload();}
+        else pending.resolve({});
+        await tick();
+      });
+      assert.equal(document.querySelector('.asset-upload-queue'), null);
+      assert.deepEqual(attempts, phase === 'request' ? [{account: 'first-account', name: 'old-first.txt'}] : []);
+      await chooseFiles([new File(['new'], 'next-account.txt')]);
+      await waitFor(() => !button('파일 올리기').disabled);
+      assert.deepEqual(attempts.at(-1), {account: 'next-account', name: 'next-account.txt'});
+      assert.equal(attempts.some(attempt => attempt.account === 'next-account' && attempt.name.startsWith('old-')), false);
+    } finally {globalThis.FileReader = originalFileReader; await h.close();}
+  }
 });
 
 test('drag and drop validates each file and never sends invalid files', async () => {

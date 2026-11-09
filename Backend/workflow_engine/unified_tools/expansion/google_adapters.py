@@ -134,7 +134,54 @@ class GmailHtmlText(HTMLParser):
         if not self.hidden: self.parts.append(data)
 
 
-def gmail_documents(message):
+def gmail_body_reader(call):
+    """Resolve external text bodies within one account-scoped, bounded read batch.
+
+    MessagePartBody.data can be empty when its content is served separately:
+    https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages.attachments
+    These limits bound additional body reads; file attachments never reach this resolver.
+    """
+    requests=0;size=0;cache={}
+    max_requests=20;max_bytes=10_000_000
+
+    def read(message_id,body):
+        nonlocal requests,size
+        attachment_id=body.get('attachmentId')
+        if not isinstance(attachment_id,str) or not attachment_id:
+            raise ValueError('분리된 Gmail 본문의 ID를 확인하지 못했습니다.')
+        declared=body.get('size')
+        if declared is not None and (type(declared) is not int or declared<0):
+            raise ValueError('분리된 Gmail 본문의 크기를 확인하지 못했습니다.')
+        key=(message_id,attachment_id)
+        if key in cache:
+            decoded=cache[key]
+        else:
+            if requests>=max_requests or declared is not None and declared>max_bytes-size:
+                raise ValueError('분리된 Gmail 본문 조회 한도를 초과했습니다. 메일 수나 검색 범위를 줄여주세요.')
+            requests+=1
+            response=call('email.attachment.get',{'message_id':message_id,'attachment_id':attachment_id})
+            if not isinstance(response,dict) or not isinstance(response.get('data'),str):
+                raise ValueError('분리된 Gmail 본문 응답을 확인하지 못했습니다.')
+            encoded=response['data']
+            if len(encoded)>4*((max_bytes-size+2)//3):
+                raise ValueError('분리된 Gmail 본문 조회 크기 한도를 초과했습니다.')
+            try:decoded=base64.b64decode(encoded+'='*(-len(encoded)%4),altchars=b'-_',validate=True)
+            except (ValueError,UnicodeError):
+                raise ValueError('분리된 Gmail 본문 인코딩을 확인하지 못했습니다.') from None
+            reported=response.get('size')
+            if reported is not None and (type(reported) is not int or reported!=len(decoded)):
+                raise ValueError('분리된 Gmail 본문 응답의 크기가 일치하지 않습니다.')
+            if len(decoded)>max_bytes-size:
+                raise ValueError('분리된 Gmail 본문 조회 크기 한도를 초과했습니다.')
+            size+=len(decoded);cache[key]=decoded
+        if declared is not None and declared!=len(decoded):
+            raise ValueError('분리된 Gmail 본문의 크기가 일치하지 않습니다.')
+        return decoded
+
+    return read
+
+
+def gmail_documents(message,read_body=None):
     """Expose a bounded plain-text view while preserving the Gmail API result port."""
     if not isinstance(message,dict) or not message.get('id') or not isinstance(message.get('payload'),dict):
         return []
@@ -142,29 +189,44 @@ def gmail_documents(message):
     plain,html=[],[]
 
     def collect(part):
-        if part.get('filename'):
+        headers={h['name'].lower():h['value'] for h in part.get('headers',[])}
+        disposition=Message()
+        disposition['Content-Disposition']=headers.get('content-disposition','')
+        if part.get('filename') or disposition.get_content_disposition()=='attachment':
             return
         mime=part.get('mimeType')
-        encoded=part.get('body',{}).get('data')
-        if mime in {'text/plain','text/html'} and isinstance(encoded,str):
-            headers={h['name'].lower():h['value'] for h in part.get('headers',[])}
-            metadata=Message()
-            metadata['Content-Type']=headers.get('content-type',mime)
-            try:
-                body=base64.b64decode(encoded+'='*(-len(encoded)%4),altchars=b'-_',validate=True)
-                try: decoded=body.decode(metadata.get_content_charset() or 'utf-8',errors='replace')
-                except LookupError: decoded=body.decode('utf-8',errors='replace')
-            except ValueError:
-                decoded=''
-            (plain if mime=='text/plain' else html).append(decoded)
+        if mime in {'text/plain','text/html'}:
+            (plain if mime=='text/plain' else html).append((part.get('body',{}),headers,mime))
         for child in part.get('parts',[]):
             collect(child)
 
+    def decode(parts):
+        decoded_parts=[]
+        for body,headers,mime in parts:
+            if not isinstance(body,dict):
+                raise ValueError('Gmail 메일 본문 응답을 확인하지 못했습니다.')
+            encoded=body.get('data')
+            if not encoded and 'attachmentId' in body:
+                if read_body is None:
+                    raise ValueError('분리된 Gmail 본문을 읽을 연결이 필요합니다.')
+                content=read_body(message['id'],body)
+            elif isinstance(encoded,str):
+                try:content=base64.b64decode(encoded+'='*(-len(encoded)%4),altchars=b'-_',validate=True)
+                except (ValueError,UnicodeError):content=b''
+            else:
+                continue
+            metadata=Message()
+            metadata['Content-Type']=headers.get('content-type',mime)
+            try:decoded=content.decode(metadata.get_content_charset() or 'utf-8',errors='replace')
+            except LookupError:decoded=content.decode('utf-8',errors='replace')
+            decoded_parts.append(decoded)
+        return '\n'.join(decoded_parts).strip()
+
     collect(payload)
-    body='\n'.join(plain).strip()
+    body=decode(plain)
     if not body and html:
         parser=GmailHtmlText()
-        parser.feed('\n'.join(html))
+        parser.feed(decode(html))
         parser.close()
         body=''.join(parser.parts).strip()
     if not body:
@@ -199,15 +261,16 @@ def read_gmail_messages(call,query=None,max_results=5):
     documents=[];metadata=[];unavailable=[];truncated=[]
     # Keep every selected message in the native summarizer's bounded context.
     per_message=min(8000,40000//len(ids)) if ids else 8000
+    read_body=gmail_body_reader(call)
     for id in ids:
         try:
             message=call('email.get',{'message_id':id,'format':'full'})
+            if not isinstance(message,dict) or message.get('id')!=id or not isinstance(message.get('payload'),dict):
+                raise ValueError('Gmail 메일 본문 응답을 확인하지 못했습니다.')
+            chunks=gmail_documents(message,read_body)
         except Exception as error:
             if isinstance(error,GoogleApiError) and error.status in {401,403}:raise
             raise ValueError(f'Gmail 메일 {len(documents)+1}번째 읽기에 실패해 전체 요약을 중단했습니다. 연결 상태를 확인하고 다시 실행해주세요.') from None
-        if not isinstance(message,dict) or message.get('id')!=id or not isinstance(message.get('payload'),dict):
-            raise ValueError('Gmail 메일 본문 응답을 확인하지 못해 전체 요약을 중단했습니다.')
-        chunks=gmail_documents(message)
         if chunks:
             chunk=chunks[0]
         else:

@@ -190,12 +190,15 @@ async function fileBase64(file: File) {
   });
 }
 
-export function UploadLibrary() {
+export function UploadLibrary({onCanLeaveChange}: {onCanLeaveChange?: (canLeave: () => boolean) => void} = {}) {
   const [team, setTeam] = useState<TeamSummary | null>(null), [busy, setBusy] = useState(false);
-  return <><TeamLibraryControls selected={team} onSelect={setTeam} disabled={busy}/><LibraryContents key={team?.id || 'personal'} team={team} onBusyChange={setBusy}/></>;
+  const guard = useRef<() => boolean>(() => true);
+  const registerGuard = useCallback((canLeave: () => boolean) => {guard.current = canLeave; onCanLeaveChange?.(canLeave);}, [onCanLeaveChange]);
+  const selectTeam = useCallback((next: TeamSummary | null) => {if (guard.current()) setTeam(next);}, []);
+  return <><TeamLibraryControls selected={team} onSelect={selectTeam} disabled={busy}/><LibraryContents key={team?.id || 'personal'} team={team} onBusyChange={setBusy} onCanLeaveChange={registerGuard}/></>;
 }
 
-function LibraryContents({team, onBusyChange}: {team: TeamSummary | null; onBusyChange: (busy: boolean) => void}) {
+function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSummary | null; onBusyChange: (busy: boolean) => void; onCanLeaveChange: (canLeave: () => boolean) => void}) {
   const endpoint = teamLibraryBase(team?.id), rootName = team?.name || '내 자료', canEdit = !team || team.role !== 'viewer';
   const [folderId, setFolderId] = useState<string | null>(null);
   const [query, setQuery] = useState(''), [search, setSearch] = useState('');
@@ -215,6 +218,23 @@ function LibraryContents({team, onBusyChange}: {team: TeamSummary | null; onBusy
   const busy = loading || !!deleting || saving || uploading;
   const mutating = !!deleting || saving || uploading;
   useEffect(() => {onBusyChange(busy);}, [busy, onBusyChange]);
+  const canLeave = useCallback(() => {
+    if (!mounted.current) return true;
+    if (running.current || writing.current) {
+      setNotice(running.current ? '파일을 올리는 중입니다. 모든 파일의 업로드가 끝난 뒤 이동할 수 있습니다.' : '자료를 변경하는 중입니다. 작업이 끝난 뒤 이동할 수 있습니다.');
+      return false;
+    }
+    return true;
+  }, []);
+  useEffect(() => {
+    onCanLeaveChange(canLeave);
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!running.current && !writing.current) return;
+      event.preventDefault(); event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => {window.removeEventListener('beforeunload', beforeUnload); onCanLeaveChange(() => true);};
+  }, [canLeave, onCanLeaveChange]);
   const trail = folderTrail(folderId, folders);
   const children = folders.filter(folder => folder.parent_id === folderId && (!query || folder.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
 
@@ -232,7 +252,10 @@ function LibraryContents({team, onBusyChange}: {team: TeamSummary | null; onBusy
         if (!task) break;
         updateTasks(previous => previous.map(item => item.id === task.id ? {...item, state: 'uploading', error: undefined} : item));
         try {
-          await request(endpoint + 'library_upload', {fileName: task.file.name, data: await fileBase64(task.file), folder_id: task.folderId});
+          const data = await fileBase64(task.file);
+          // An account change can unmount this queue while the browser reads a file.
+          if (!mounted.current) break;
+          await request(endpoint + 'library_upload', {fileName: task.file.name, data, folder_id: task.folderId});
           successes++;
           updateTasks(previous => previous.map(item => item.id === task.id ? {...item, state: 'done'} : item));
         } catch (e) {
@@ -241,7 +264,7 @@ function LibraryContents({team, onBusyChange}: {team: TeamSummary | null; onBusy
       }
       if (successes && mounted.current) {
         setNotice(successes + '개 파일을 자료함에 올렸습니다.');
-        await reload.current();
+        void reload.current();
       }
     } finally {running.current = false; if (mounted.current) setUploading(false);}
   }
@@ -281,7 +304,7 @@ function LibraryContents({team, onBusyChange}: {team: TeamSummary | null; onBusy
       else await request(endpoint + 'folders?id=' + encodeURIComponent(action.folder.id), undefined, 'DELETE');
       setAction(null);
       setNotice(action.kind === 'create' ? '폴더를 만들었습니다.' : action.kind === 'rename' ? '폴더 이름을 변경했습니다.' : action.kind === 'delete' ? '빈 폴더를 삭제했습니다.' : '자료 위치를 변경했습니다.');
-      await reload.current();
+      void reload.current();
     } catch (e) {setActionError((e as Error).message);}
     finally {writing.current = false; setSaving(false);}
   }
@@ -296,7 +319,7 @@ function LibraryContents({team, onBusyChange}: {team: TeamSummary | null; onBusy
       await request(endpoint + 'assets?id=' + encodeURIComponent(asset.id), undefined, 'DELETE');
       setItems(previous => previous.filter(item => item.id !== asset.id));
       setNotice(asset.name + ' 자료를 삭제했습니다.');
-      await reload.current();
+      void reload.current();
     } catch (e) {
       if (e instanceof Error && (e.cause as {pending_delete?: boolean} | null)?.pending_delete) {
         setItems(previous => previous.map(item => item.id === asset.id ? {...item, pending_delete: true, usages: []} : item));

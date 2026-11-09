@@ -60,6 +60,49 @@ function field(label:string){const l=Array.from(document.querySelectorAll('label
 async function input(el:HTMLInputElement|HTMLTextAreaElement,value:string){await act(async()=>{const proto=el.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event('input',{bubbles:true}));el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});}
 async function submit(form:HTMLFormElement){await act(async()=>{form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));await tick();});}
 
+test('library: navigation keeps every queued file until all uploads finish',async()=>{
+ const first=deferred(),uploaded:string[]=[];
+ const h=await setup('?screen=workflows',{'a4b-builder-session':'keep'},(path,body)=>{
+  if(path==='/api/agent-builder/library_upload'){
+   uploaded.push(body.fileName);
+   return uploaded.length===1?first.promise:{asset:{id:body.fileName,name:body.fileName}};
+  }
+ },createElement(EntryApp));
+ const waitFor=async(predicate:()=>boolean)=>{
+  for(let i=0;i<100&&!predicate();i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,5));});
+  assert.ok(predicate(),'Expected upload/navigation to settle');
+ };
+ try{
+  await click(button('자료함'));
+  const picker=document.querySelector<HTMLInputElement>('input[aria-label="자료함에 올릴 파일"]')!;
+  Object.defineProperty(picker,'files',{configurable:true,value:['one.txt','two.txt','three.txt'].map(name=>new File(['내용'],name,{type:'text/plain'}))});
+  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await waitFor(()=>uploaded.length===1);
+  for(const target of [button('워크플로우'),document.querySelector('[aria-label="서비스 소개로 이동"]')!,button('새 워크플로우')]){
+   await click(target);
+   assert.equal(location.search,'?screen=assets');
+   assert.equal(document.querySelector('h1')?.textContent,'자료함');
+   assert.equal(localStorage.getItem('a4b-builder-session'),'keep');
+  }
+  await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,30));});
+  await waitFor(()=>location.search==='?screen=assets');
+  assert.equal(document.querySelector('h1')?.textContent,'자료함');
+  assert.deepEqual(uploaded,['one.txt']);
+  const unload=new dom.window.Event('beforeunload',{cancelable:true});
+  window.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
+  assert.match(document.body.textContent!,/모든 파일의 업로드가 끝난 뒤/);
+  await act(async()=>{first.resolve({asset:{id:'one.txt',name:'one.txt'}});await tick();});
+  await waitFor(()=>uploaded.length===3&&document.body.textContent!.includes('3개 파일을 자료함에 올렸습니다.'));
+  assert.deepEqual(uploaded,['one.txt','two.txt','three.txt']);
+  const finished=new dom.window.Event('beforeunload',{cancelable:true});
+  window.dispatchEvent(finished);assert.equal(finished.defaultPrevented,false);
+  await click(button('워크플로우'));
+  assert.equal(location.search,'?screen=workflows');
+  await click(button('서비스 연결'));
+  assert.equal(location.search,'?screen=connections');
+ }finally{first.resolve({asset:{id:'one.txt',name:'one.txt'}});await h.close();}
+});
+
 test('DOM: service link overrides old session and renders the requested execution screen',async()=>{
  const h=await setup('?service=A',{'a4b-builder-session':'old'});try{assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.ok(document.querySelector('.screen-run'));assert.equal(localStorage.getItem('a4b-builder-session'),null);assert.equal(h.calls.some(c=>c.path.includes('/session?')),false);}finally{await h.close();}
 });

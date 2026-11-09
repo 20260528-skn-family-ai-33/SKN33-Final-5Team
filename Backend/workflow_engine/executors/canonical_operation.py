@@ -156,9 +156,10 @@ def execute(node, state, storage, config, llm):
     result = json.loads(json.dumps(result, ensure_ascii=False, allow_nan=False))
     outputs = {'result':result, 'text':json.dumps(result,ensure_ascii=False,indent=2)}
     if node['tool']=='email.get':
-        from workflow_engine.unified_tools.expansion.google_adapters import gmail_documents
+        from workflow_engine.unified_tools.expansion.google_adapters import gmail_body_reader, gmail_documents
 
-        outputs['documents']=gmail_documents(result)
+        outputs['documents']=gmail_documents(result,gmail_body_reader(
+            lambda operation,arguments: dispatcher.execute(operation,'execute',arguments,context=context)))
         if outputs['documents']:
             outputs['text']=outputs['documents'][0]['text']
     if node['tool']=='email.list' and spec['id']=='read_messages':

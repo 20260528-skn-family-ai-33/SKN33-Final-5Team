@@ -215,7 +215,7 @@ class OllamaPlanner:
 
     def invoke(self, messages):
         payload = {'model': self.model, 'messages': messages, 'stream': False,
-                   'think': self.thinking, 'format': self.schema,
+                   'think': self.thinking, 'truncate': False, 'shift': False, 'format': self.schema,
                    'options': {'num_ctx': self.num_ctx, 'num_predict': self.num_predict,
                                'temperature': self.temperature, 'top_p': 0.8, 'seed': 42}}
         # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent; same header as the verifier client.
@@ -231,17 +231,19 @@ class OllamaPlanner:
         except (urllib.error.URLError, TimeoutError) as error:
             raise ValueError('로컬 모델 호출에 실패했습니다. '+str(error)[:300]) from error
         if raw.get('error'):raise ValueError('로컬 모델 오류: '+str(raw['error'])[:300])
+        if raw.get('done_reason') == 'length':
+            raise ValueError('로컬 모델 응답이 출력 길이 제한으로 중단되었습니다. 잘린 응답은 처리하지 않습니다.')
         return {'content': raw.get('message', {}).get('content', ''),
                 'metrics': {**{k: raw.get(k) for k in ('prompt_eval_count','eval_count','total_duration','load_duration','done_reason')},
                             'seconds': time.perf_counter()-started}}
 
 
 def _normalize(raw, state):
-    from agent_builder.design.native_settings import expand_node_settings, draft_setting_issues
+    from agent_builder.design.native_settings import expand_node_settings
     from agent_builder.design.runtime_inputs import runtime_file_question_issues
     draft = AgentDraft.model_validate(expand_node_settings(raw)).model_dump()
-    issues = draft_setting_issues(draft) + runtime_file_question_issues(draft, state)
-    if issues: raise ValueError(' / '.join(issues))
+    issues = runtime_file_question_issues(draft, state)
+    if issues:raise ValueError(' / '.join(issues))
     if draft['unsupported']:
         draft['questions'] = [];draft['question_options'] = []
     if draft['questions'] or draft['unsupported']:
@@ -400,8 +402,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 if version in ('v7','v8') and state.get('condition_enforced'):
                     context['generation_stage']='조건 검사에서 이미 READY인 단일 업무는 파일 없이 초안을 생성합니다. 파일 연결 안내와 사용자 승인은 별도 앱 단계입니다.'
             if use_linear:context['schema']=linear_plan.schema_for(context['schema'],state)
-            from agent_builder.design.native_settings import constrain_draft_settings
-            context['schema'] = constrain_runtime_readers(constrain_draft_settings(context['schema']), state)
+            context['schema']=constrain_runtime_readers(context['schema'],state)
             llm.schema = context['schema']
             if version in ('v6','v7','v8'):
                 context['output_contract']={
@@ -460,7 +461,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 draft, pool, semantic_issues = _normalize(raw,state)
                 break
             except (ValueError, ValidationError) as error:
-                if attempt == budget-1:raise ValueError('초안 생성의 재시도 한도에서 JSON·스키마·실행 입력 계약을 만족하지 못했습니다.') from error
+                if attempt == budget-1:raise ValueError('초안 생성의 재시도 한도에서 JSON·스키마 계약을 만족하지 못했습니다.') from error
                 detail = json.dumps(error.errors(include_input=False,include_url=False),ensure_ascii=False,default=str) if isinstance(error,ValidationError) else str(error)
                 messages += [{'role':'assistant','content':content},
                              {'role':'user','content':'다음 코드 검증 오류만 수정하여 JSON 하나를 반환하세요. 사용자 조건을 바꾸지 마세요: '+detail[:4000]}]

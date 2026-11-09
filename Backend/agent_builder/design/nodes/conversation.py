@@ -42,7 +42,7 @@ read_table/read_document는 file_ids 또는 실행 입력을 읽고 bindings=[]�
 문자열의 문자 그대로 바꾸기는 text_transform의 text_find와 text_replacement를 사용하고 앞 단계의 text를 연결합니다. 텍스트 개수는 text_statistics의 statistics_unit=characters/words로 처리하며, characters는 include_whitespace를 명시합니다. ISO 날짜 텍스트는 date_transform의 date_operation=adjust와 date_seconds 또는 format과 date_output_format으로 처리합니다. 시간 조정 시 입력에 UTC 오프셋이 필요합니다. 다른 문자열 연산이나 문서 파일 편집으로 확대하지 않습니다. Base64는 base64_codec의 codec_mode=encode/decode, SHA-256은 text_hash를 사용하며 모두 앞 단계 text를 연결합니다.
 원하는 파일 형식은 실제 출력 노드 settings.format에 지정합니다. 표 결과 CSV/JSON은 write_result, records/text 파일은 export_result로 저장합니다. 문서·이미지(영수증·스캔 등)에서 항목을 뽑아 표나 엑셀로 정리하는 요청은 read_document → extract_information(fields=요청 항목) → export_result(format=csv)로 구성합니다. read_document의 documents를 write_result에 연결하지 않습니다(write_result는 table 입력 전용). 실제 XLSX 요청은 create_spreadsheet의 계약을 사용하며 CSV로 바꾸지 않습니다. edges와 bindings에는 nodes에 실제로 있는 id만 쓰며, 끝을 표시하려고 없는 finish 노드를 연결하지 않습니다. 화면만 요청하면 저장 노드를 강제로 추가하지 않습니다. 파일 저장 위치는 A4B 서버 reports입니다.
 settings.node_ref는 node_library의 실제 ref만 사용하며 required_node_refs는 반드시 연결합니다. 재사용 설정이 업무와 다르면 새 처리 노드 node_ref=null을 구성합니다. saved_workflow는 실제 목록의 ID·버전·출력만 사용합니다. requirements는 최소 한 항목을 작성하고 available_evidence의 실제 evidence_id를 선택합니다. entry는 첫 실행 노드의 id이며 tool 이름이 아닙니다. 여러 자료를 읽어 연결할 때에도 edges는 read_left → read_right → join 순서의 한 경로로 연결합니다.
-reply_review는 실제 고객 문의·응대 초안 검수 요청에만 사용합니다. 후보 검수 보고서는 실제 발송이나 사람 승인 완료가 아닙니다. ask_user는 생성 조건 질문이 아니라 실행 중 사람 응답을 기다리는 도구입니다. ask_user의 입력은 선택 사항이며 앞 단계에 실제로 있는 출력 중 필요한 것만 연결합니다. records를 출력하는 단계에서 documents나 text가 나온다고 가정하지 마세요.
+reply_review는 실제 고객 문의·응대 초안 검수 요청에만 사용합니다. 후보 검수 보고서는 실제 발송이나 사람 승인 완료가 아닙니다. ask_user는 생성 조건 질문이 아니라 실행 중 사람 응답을 기다리는 도구입니다.
 예약 실행은 현재 지원되는 관리 표 자료로 daily/weekly를 설정합니다. 필요한 시각·시간대·요일이 미정이면 질문하고, 예약 없이 실행하면 schedule=null입니다. 예약에는 사용자 응답 대기 노드를 넣지 않습니다. report_destination=reports는 서버 보관함입니다.
 """
 
@@ -110,13 +110,9 @@ def validated_draft_response(result, evidence, state=None):
     except ValidationError as error:
         details = json.dumps(error.errors(include_input=False, include_url=False), ensure_ascii=False, default=str)
         raise DraftResponseError('invalid_draft', details[:1200]) from error
-    from agent_builder.design.native_settings import draft_setting_issues
     from agent_builder.design.runtime_inputs import runtime_file_question_issues
-    from agent_builder.design.explicit_processing import explicit_processing_issues
-    issues = (draft_setting_issues(candidate) + runtime_file_question_issues(candidate, state or {})
-              + explicit_processing_issues(state or {}, candidate))
-    if issues:
-        raise DraftResponseError('invalid_planning_contract', ' / '.join(issues))
+    issues = runtime_file_question_issues(candidate, state or {})
+    if issues:raise DraftResponseError('invalid_runtime_input', ' / '.join(issues))
     return raw
 
 def make_conversation(api_key,model,model_factory=None):
@@ -184,19 +180,9 @@ def make_conversation(api_key,model,model_factory=None):
         if selected_contract_ids:
             if any(r.get('kind')=='table' for r in resources.values()):selected_contract_ids.add('read_table')
             if any(r.get('kind')=='document' for r in resources.values()):selected_contract_ids.add('read_document')
-        if local_ollama and not scoped and selected_contract_ids:
-            # The capability classifier suggests tools; it does not enumerate
-            # every executable step. Keep the complete native data-processing
-            # family available even when it omitted calculation or synthesis.
-            if selected_contract_ids & {'read_table','aggregate_table','calculate_columns','join_tables'}:
-                selected_contract_ids |= {'read_table','filter_sort','calculate_columns','aggregate_table','write_result'}
-            if selected_contract_ids & {'read_document','extract_information','review_document','compose_answer'}:
-                selected_contract_ids |= {'read_document','extract_information','compose_answer'}
         inline_contracts=bool(os.getenv('A4B_MAIN_PROVIDER')=='ollama' and selected_contract_ids)
         selected_contracts_read=inline_contracts
-        # Capability selection identifies business tools, not execution controls.
-        # A requested human review must remain expressible without another discovery call.
-        active_operation_ids=(selected_contract_ids|{'finish','ask_user'}) if inline_contracts else None
+        active_operation_ids=(selected_contract_ids|{'finish'}) if inline_contracts else None
         inspected_operation_ids=set()
         variable_names=set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{0,39})(?=\s*(?:[=+*/%]|값))',' '.join(m['content'] for m in state['messages'] if m['role']=='user')))
         variable_names.update(c for r in resources.values() for c in r.get('columns',[]))
@@ -355,7 +341,7 @@ def make_conversation(api_key,model,model_factory=None):
                 variants=[v for v in variants if v['properties']['tool']['enum'][0] in active_operation_ids]
             # Native-ready tools start with their service contract. Inspecting a
             # tool explicitly unlocks its alternative operation contracts.
-            operation_ids = ((active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS) | inspected_operation_ids
+            operation_ids = (active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS
             variants.extend(operation_variants(operation_node_schema,schema['$defs']['Binding'],operation_ids,variable_names))
         schema['$defs']['WorkflowNode']={'anyOf':variants}
         if not scoped:
@@ -394,15 +380,9 @@ def make_conversation(api_key,model,model_factory=None):
             if ordered_encoding() and required_steps and requirement_generation_mode=='bounded':
                 bounded=constrain_ordered_steps(decoder_schema,state)
                 decoder_schema.clear();decoder_schema.update(bounded)
-            from agent_builder.design.native_settings import constrain_draft_settings
-            constrained = constrain_runtime_readers(constrain_draft_settings(decoder_schema), state)
-            if local_ollama:
-                # The fine-tuned model commonly emits an empty top-level
-                # instructions field. Forcing a character here can trap the
-                # decoder inside that string, repeating an escaped whole draft.
-                # Fill this field in a separate bounded call before validation.
-                constrained['properties']['instructions'].pop('minLength',None)
-            decoder_schema.clear();decoder_schema.update(constrained)
+            if runtime_file:
+                constrained = constrain_runtime_readers(decoder_schema, state)
+                decoder_schema.clear();decoder_schema.update(constrained)
             return ProviderStrategy(decoder_schema,strict=True)
         final_format=planner_format()
         @wrap_model_call
@@ -432,8 +412,7 @@ def make_conversation(api_key,model,model_factory=None):
         if ordered_encoding():
             from agent_builder.design.operation_steps import INSTRUCTIONS
             agent_options['system_prompt']+=INSTRUCTIONS
-        if runtime_file:
-            agent_options['system_prompt']+='\n'+runtime_file['instruction']
+        if runtime_file:agent_options['system_prompt']+='\n'+runtime_file['instruction']
         agent=create_deep_agent(**agent_options)
         context={'available_evidence':[{'evidence_id':id,**value} for id,value in evidence.items()],'current_draft':state.get('draft'),'validation_issues':state.get('issues',[]),'available_resources':[{k:v for k,v in r.items() if k not in ['text','evidence_text']} for r in resources.values()],'saved_workflows':state.get('saved_workflows',[]),'node_library':state.get('node_library',[]),'required_node_refs':state.get('required_node_refs',[]),'supported_tools':planner_catalog(catalog),'repair_instruction':'검증 오류는 원문 인용 및 설정을 바로 고쳐 해결하세요. file_ids는 노드 이름이 아니라 available_resources의 실제 id만 사용합니다. binding은 반드시 이전 노드의 실제 출력 포트를 가리켜야 합니다. 확정 조건과 이미 답한 내용은 유지합니다.'}
         ledger=state.get('requirement_ledger')
@@ -460,15 +439,6 @@ def make_conversation(api_key,model,model_factory=None):
                 context['current_draft']=None
         for n in ((context['current_draft'] or {}).get('workflow') or {}).get('nodes',[]):
             n['settings']=compact_settings(n['settings'])
-        # Give repair turns the instance-specific ports, not the union of all
-        # possible tool ports. These describe the prior candidate, not a new graph.
-        from workflow_engine.catalog.registry import node_ports
-        context['current_draft_outputs']=[]
-        for step,n in enumerate(((context['current_draft'] or {}).get('workflow') or {}).get('nodes',[]),1):
-            try:outputs=node_ports(n)[1]
-            except (KeyError,TypeError,ValueError):continue
-            context['current_draft_outputs'].append({'step':step,'node_id':n['id'],'tool':n['tool'],'outputs':outputs})
-        context['repair_instruction']+=' current_draft_outputs는 이전 초안 각 단계의 실제 출력입니다. 그 초안의 연결을 고칠 때 없는 출력은 참조하지 말고, 선택 입력을 모두 채우려고 가짜 연결을 만들지 마세요.'
         if inline_contracts:
             # Keep all IDs discoverable, but do not repeat every native contract
             # beside the selected detailed contracts. The previous two-table
@@ -476,14 +446,6 @@ def make_conversation(api_key,model,model_factory=None):
             context['supported_tools']=planner_catalog(catalog,discovery=True)
             context['tool_discovery_instruction']='supported_tools는 전체 도구 발견용 요약입니다. 선택한 도구의 실제 설정·포트는 selected_tool_contracts를 따르고, 다른 도구가 필요하면 inspect_tool로 상세 계약을 조회하세요.'
             context['selected_tool_contracts']=planner_catalog([t for t in catalog if t['id'] in selected_contract_ids],details=True,native_first=True)
-            context['task_completeness_instruction']=(
-                '지원 판정의 tool_ids는 추천 목록이며 업무 단계 목록이 아닙니다. 사용자 원문의 각 동작을 실제 노드에 대응시키세요. '
-                '수량×단가 같은 계산을 합산 전에 요청하면 실제 calculate_columns 계산 단계를 먼저 구성해야 합니다. '
-                '집계는 fields와 sum 열만 반환합니다. 원하는 이름 변경, 결합 기준표의 방향, 빈값 채우기, 결과 열 선택도 각각 실제 동작이 필요합니다. '
-                '문서에서 항목 추출과 누락·모순 분석·수정 제안은 서로 다릅니다. 분석·제안 요청을 fields 추출만으로 대체하지 마세요. '
-                '원문 documents를 compose_answer에 연결하고 settings.instructions에 요청된 검토 기준과 제안 작성을 명시하세요. '
-                '사람 확인은 분석 결과 text를 ask_user에 전달합니다. 원문 사실과 아직 합의되지 않은 수정 제안을 구분하세요.')
-            context['execution_control_contracts']=planner_catalog([t for t in catalog if t['id']=='ask_user'],details=True,native_first=True)
             for contract in context['selected_tool_contracts']:
                 if 'native_contract' in contract:
                     contract['native_contract']['settings_fields'] = list(NATIVE_SETTINGS[contract['id']])
@@ -563,21 +525,8 @@ def make_conversation(api_key,model,model_factory=None):
             result=invoke_agent(create_deep_agent(**agent_options,checkpointer=False),messages)
         content_fallback=result.get('structured_response') is None
         conversation_tool_calls=[call['name'] for message in result.get('messages',[]) for call in getattr(message,'tool_calls',[])]
-        instruction_corrections=0
-        def prepare_instructions(response):
-            nonlocal instruction_corrections
-            if not local_ollama:return response
-            try:candidate=draft_response(response)
-            except ValueError:return response
-            if isinstance(candidate.get('instructions'),str) and candidate['instructions'].strip():return response
-            from agent_builder.design.instruction_correction import correct_instructions
-            corrected=correct_instructions(candidate,state,chat_model(seed+1,1024))
-            instruction_corrections+=1
-            return {**response,'structured_response':corrected}
         parse_error=None
-        try:
-            result=prepare_instructions(result)
-            raw=validated_draft_response(result,evidence,state)
+        try:raw=validated_draft_response(result,evidence,state)
         except ValueError as error:
             from agent_builder.design.graph import _timing_event
             _timing_event({'event':'draft_parse_error','attempt':'initial','code':getattr(error,'code','other'),'detail':str(error)[:400]})
@@ -597,24 +546,14 @@ def make_conversation(api_key,model,model_factory=None):
                 '사용자의 기존 조건과 근거를 보존하고 도구 호출명이 아닌 업무 이름을 사용하세요.'+
                 (' 코드 진단: '+str(parse_error)[:400] if parse_error else ''))
             retry_agent=create_deep_agent(**agent_options,checkpointer=False)
-            # Repair the actual failed candidate, not a fresh guess from the same
-            # original context. Keep tool calls out of this final-answer transcript.
-            repair_messages=list(messages)
-            previous=result.get('structured_response')
-            if isinstance(previous,dict):
-                repair_messages.append({'role':'assistant','content':json.dumps(previous,ensure_ascii=False)})
-            retry=invoke_agent(retry_agent,[*repair_messages,{'role':'user','content':correction}])
+            retry=invoke_agent(retry_agent,[*messages,{'role':'user','content':correction}])
             content_fallback=content_fallback or retry.get('structured_response') is None
             conversation_tool_calls.extend(call['name'] for message in retry.get('messages',[]) for call in getattr(message,'tool_calls',[]))
             result=retry
-            try:
-                result=prepare_instructions(result)
-                raw=validated_draft_response(result,evidence,state)
+            try:raw=validated_draft_response(result,evidence,state)
             except ValueError as error:
                 from agent_builder.design.graph import _timing_event
                 _timing_event({'event':'draft_parse_error','attempt':'retry','code':getattr(error,'code','other'),'detail':str(error)[:400]})
-                if getattr(error,'code',None)=='invalid_planning_contract':
-                    raise ValueError('모델이 실행 입력·필수 설정을 한 번 다시 확인했지만 초안을 완성하지 못했습니다. 대화는 보존되며 실행·저장은 진행하지 않았습니다.') from error
                 raise ValueError('모델 응답을 읽을 수 없어 한 번 다시 생성했지만 완료하지 못했습니다. 요청을 확인한 뒤 다시 시도해주세요.') from error
             if not raw.get('workflow') and not raw.get('questions') and not raw.get('unsupported'):
                 raise ValueError('워크플로우 초안이 비어 있어 한 번 다시 생성했지만 완성하지 못했습니다. 대화는 보존되며 요청을 확인한 뒤 다시 시도할 수 있습니다.')
@@ -632,16 +571,6 @@ def make_conversation(api_key,model,model_factory=None):
             # the rest are the NodeSettings defaults, filled here rather than generated.
             for node in raw['workflow']['nodes']:node['settings']={**SETTINGS_DEFAULTS,**node['settings']}
         raw['workflow']=normalize_connections(raw.get('workflow'))
-        column_changes=[]
-        if local_ollama and raw['workflow']:
-            from agent_builder.design.column_correction import column_contract, correct_sum_columns
-            if column_contract(raw['workflow'],state['resources']):
-                from agent_builder.design.graph import _timing_event
-                try:raw['workflow'],column_changes=correct_sum_columns(raw['workflow'],state,chat_model(seed+1,512))
-                except Exception as error:
-                    _timing_event({'event':'column_correction','accepted':False,'error_type':type(error).__name__})
-                else:
-                    _timing_event({'event':'column_correction','accepted':True,'count':len(column_changes)})
         repair_mode=os.getenv('A4B_BINDING_REPAIR_MODE','off')
         if repair_mode not in ('off','safe'):
             raise ValueError('A4B_BINDING_REPAIR_MODE는 off/safe여야 합니다.')
@@ -659,22 +588,6 @@ def make_conversation(api_key,model,model_factory=None):
         if raw['workflow']:
             final_validation=validate_workflow.invoke({'workflow_json':json.dumps(raw['workflow'],ensure_ascii=False),
                 'tool_ids':list(dict.fromkeys(n['tool'] for n in raw['workflow']['nodes']))})
-            if local_ollama and not final_validation['valid']:
-                from agent_builder.design.port_correction import correction_contract, correct_connections
-                if correction_contract(raw['workflow']):
-                    from agent_builder.design.graph import _timing_event
-                    try:
-                        corrected, changes = correct_connections(raw['workflow'], state['resources'], chat_model(seed+1,1024))
-                    except Exception as error:
-                        # Keep the failed candidate and its diagnostics. A model
-                        # correction is never permission to bypass validation.
-                        _timing_event({'event':'connection_correction','accepted':False,'error_type':type(error).__name__})
-                    else:
-                        raw['workflow']=corrected
-                        binding_changes.extend(changes)
-                        final_validation=validate_workflow.invoke({'workflow_json':json.dumps(corrected,ensure_ascii=False),
-                            'tool_ids':list(dict.fromkeys(n['tool'] for n in corrected['nodes']))})
-                        _timing_event({'event':'connection_correction','accepted':final_validation['valid'],'count':len(changes)})
         if raw.get('workflow'):raw['tool_ids']=list(dict.fromkeys(n['tool'] for n in raw['workflow']['nodes']))
         filter_nodes=[n for n in (raw.get('workflow') or {}).get('nodes',[]) if n['tool']=='filter_sort' and not n['settings'].get('operation')]
         for node in (raw.get('workflow') or {}).get('nodes',[]):
@@ -705,5 +618,5 @@ def make_conversation(api_key,model,model_factory=None):
             draft['explanation']='업무 조건과 처리 순서를 확인해주세요.'
         reply=draft['explanation']+'\n'+('\n'.join('• '+q for q in draft['questions']))+('\n요청한 작업에 필요한 기능과 연결 상태를 추가로 확인해야 합니다.' if draft['unsupported'] else '')
         prior=state['messages'][:-1] if state.get('issues') and state['messages'] and state['messages'][-1]['role']=='assistant' else state['messages']
-        return {'node_library':pool,'semantic_issues':list(dict.fromkeys(final_validation['issues']+([ref_issue] if ref_issue else []))),'messages':prior+[{'role':'assistant','content':reply.strip()}],'draft':draft,'confirmed':False,'saved_agent_id':None,'repair_count':state.get('repair_count',0)+1,'trace':state.get('trace',[])+[{'node':'conversation','label':'대화로 설정 구성','status':'completed','detail':'Deep Agents가 대화를 검토하고 질문 또는 설정 초안을 구성했습니다.','tool_calls':conversation_tool_calls,'seed':seed,'user_turn':latest_turn,'json_content_fallback':content_fallback,'tool_selection_fallback':catalog_fallback,'response_relation_repairs':relation_repairs,'instruction_corrections':instruction_corrections,'binding_repairs':binding_changes,'column_corrections':column_changes,'final_code_validation':final_validation['valid'],'tool_advice_candidates':[{'tool_id':c['tool_id'],'source':c.get('source',os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy'))} for c in (advice or {}).get('ml_candidates',[])], 'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
+        return {'node_library':pool,'semantic_issues':list(dict.fromkeys(final_validation['issues']+([ref_issue] if ref_issue else []))),'messages':prior+[{'role':'assistant','content':reply.strip()}],'draft':draft,'confirmed':False,'saved_agent_id':None,'repair_count':state.get('repair_count',0)+1,'trace':state.get('trace',[])+[{'node':'conversation','label':'대화로 설정 구성','status':'completed','detail':'Deep Agents가 대화를 검토하고 질문 또는 설정 초안을 구성했습니다.','tool_calls':conversation_tool_calls,'seed':seed,'user_turn':latest_turn,'json_content_fallback':content_fallback,'tool_selection_fallback':catalog_fallback,'response_relation_repairs':relation_repairs,'binding_repairs':binding_changes,'final_code_validation':final_validation['valid'],'tool_advice_candidates':[{'tool_id':c['tool_id'],'source':c.get('source',os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy'))} for c in (advice or {}).get('ml_candidates',[])], 'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
     return conversation_node

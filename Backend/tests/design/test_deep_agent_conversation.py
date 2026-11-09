@@ -739,20 +739,3 @@ def test_first_step_decoder_cannot_drop_required_input_or_reference_future_table
                if v['properties']['tool']['enum']==['join_tables'] and v['properties']['settings']['properties']['operation']['enum']==['join'])
     assert any('$binding' in p.get('properties',{})
                for p in later['properties']['settings']['properties']['arguments_json']['properties']['left']['anyOf'])
-
-
-@pytest.mark.parametrize('selected,expected',[
-    (['aggregate_table'], {'read_table','calculate_columns','filter_sort','aggregate_table','write_result'}),
-    (['review_document'], {'read_document','extract_information','compose_answer'}),
-])
-def test_incomplete_capability_selection_does_not_remove_processing_family(monkeypatch,selected,expected):
-    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
-    original=state([{'role':'user','content':'계산과 검토를 포함해 요청한 업무를 모두 구성해줘'}])
-    original['capability_assessment']={'decision':'existing_tools','tool_ids':selected}
-    captured=run_capturing(monkeypatch,original,draft(questions=['입력 조건을 알려주세요']))
-    contracts={t['id'] for t in captured['context']['selected_tool_contracts']}
-    variants=captured['schema']['$defs']['WorkflowNode']['anyOf']
-    enabled={t for v in variants for t in v['properties']['tool']['enum']}
-    assert expected<=contracts and expected<=enabled
-    assert not {'email.send','http.request'} & enabled
-    assert original['capability_assessment']['tool_ids']==selected

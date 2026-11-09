@@ -313,8 +313,7 @@ def test_planner_accepts_operation_settings_and_preserves_exact_arguments(monkey
             class Agent:
                 def invoke(self,payload,*a,**kw):
                     context=json.loads(payload['messages'][0]['content'].split('\n',1)[1])
-                    selected=[t['id'] for t in context['selected_tool_contracts']]
-                    assert tool in selected and len(selected)==len(set(selected))
+                    assert [t['id'] for t in context['selected_tool_contracts']]==[tool]
                     return {'structured_response':deepcopy(raw)}
             return Agent()
         monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)

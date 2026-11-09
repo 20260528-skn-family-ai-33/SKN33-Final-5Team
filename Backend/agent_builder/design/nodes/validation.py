@@ -83,8 +83,6 @@ def validate_node(state):
         issues.append(delivery_issue)
     from agent_builder.design.processing_guard import processing_issues
     issues.extend(processing_issues(state, draft))
-    from agent_builder.design.explicit_processing import explicit_processing_issues
-    issues.extend(explicit_processing_issues(state, draft))
     from agent_builder.design.requirement_coverage import coverage_report
     coverage=(coverage_report(state,draft) if not draft['questions'] and not draft['unsupported']
               else dict(enabled=state.get('requirement_required',False),tasks=[],issues=[]))

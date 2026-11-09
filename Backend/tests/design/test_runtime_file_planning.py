@@ -290,3 +290,39 @@ def test_deepagent_corrects_bad_ports_without_regenerating_business_settings(mon
     assert result['draft']['workflow']['nodes'][-1]['bindings']==[bind('records','extract','records')]
     assert result['trace'][-1]['binding_repairs'][0]['rule']=='model_selected_existing_typed_ports'
     assert validate_node({**s,**result})['issues']==[]
+
+
+def test_ollama_fills_empty_instructions_in_one_small_call(monkeypatch):
+    captured=[];workflow=contract_workflow()
+    raw=draft(workflow=workflow);raw['instructions']=''
+    class Agent:
+        def invoke(self,*a,**kw):return {'structured_response':deepcopy(raw)}
+    class Model:
+        def with_structured_output(self,schema,**kw):
+            assert set(schema['properties'])=={'instructions'}
+            return self
+        def invoke(self,messages):
+            captured.append(messages)
+            return {'instructions':'실행 시 제공한 계약서를 검토하고 사람의 확인을 받습니다.'}
+    def factory(**options):
+        assert 'minLength' not in options['response_format'].schema_spec.json_schema['properties']['instructions']
+        return Agent()
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama');monkeypatch.setenv('A4B_PLANNER_MODE','deepagent')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    s=deferred();result=make_conversation('','test',model_factory=Model)(s)
+    assert len(captured)==1 and raw['instructions']==''
+    assert result['draft']['instructions'].startswith('실행 시 제공한 계약서')
+    assert result['draft']['workflow']['edges']==workflow['edges']
+    assert result['trace'][-1]['instruction_corrections']==1
+    assert validate_node({**s,**result})['issues']==[]
+
+
+@pytest.mark.parametrize('response',[{'instructions':''},{'instructions':' '},{'instructions':'ok','workflow':None}, {'instructions':None}])
+def test_instruction_correction_cannot_accept_empty_or_replace_the_graph(response):
+    from agent_builder.design.instruction_correction import correct_instructions
+    class Model:
+        def with_structured_output(self,*a,**kw):return self
+        def invoke(self,*a):return response
+    raw=draft(workflow=contract_workflow());raw['instructions']='';before=deepcopy(raw)
+    with pytest.raises(ValueError):correct_instructions(raw,deferred(),Model())
+    assert raw==before

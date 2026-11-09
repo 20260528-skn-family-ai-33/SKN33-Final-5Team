@@ -386,6 +386,12 @@ def make_conversation(api_key,model,model_factory=None):
                 decoder_schema.clear();decoder_schema.update(bounded)
             from agent_builder.design.native_settings import constrain_draft_settings
             constrained = constrain_runtime_readers(constrain_draft_settings(decoder_schema), state)
+            if local_ollama:
+                # The fine-tuned model commonly emits an empty top-level
+                # instructions field. Forcing a character here can trap the
+                # decoder inside that string, repeating an escaped whole draft.
+                # Fill this field in a separate bounded call before validation.
+                constrained['properties']['instructions'].pop('minLength',None)
             decoder_schema.clear();decoder_schema.update(constrained)
             return ProviderStrategy(decoder_schema,strict=True)
         final_format=planner_format()
@@ -540,8 +546,21 @@ def make_conversation(api_key,model,model_factory=None):
             result=invoke_agent(create_deep_agent(**agent_options,checkpointer=False),messages)
         content_fallback=result.get('structured_response') is None
         conversation_tool_calls=[call['name'] for message in result.get('messages',[]) for call in getattr(message,'tool_calls',[])]
+        instruction_corrections=0
+        def prepare_instructions(response):
+            nonlocal instruction_corrections
+            if not local_ollama:return response
+            try:candidate=draft_response(response)
+            except ValueError:return response
+            if isinstance(candidate.get('instructions'),str) and candidate['instructions'].strip():return response
+            from agent_builder.design.instruction_correction import correct_instructions
+            corrected=correct_instructions(candidate,state,chat_model(seed+1,1024))
+            instruction_corrections+=1
+            return {**response,'structured_response':corrected}
         parse_error=None
-        try:raw=validated_draft_response(result,evidence,state)
+        try:
+            result=prepare_instructions(result)
+            raw=validated_draft_response(result,evidence,state)
         except ValueError as error:
             from agent_builder.design.graph import _timing_event
             _timing_event({'event':'draft_parse_error','attempt':'initial','code':getattr(error,'code','other'),'detail':str(error)[:400]})
@@ -571,7 +590,9 @@ def make_conversation(api_key,model,model_factory=None):
             content_fallback=content_fallback or retry.get('structured_response') is None
             conversation_tool_calls.extend(call['name'] for message in retry.get('messages',[]) for call in getattr(message,'tool_calls',[]))
             result=retry
-            try:raw=validated_draft_response(result,evidence,state)
+            try:
+                result=prepare_instructions(result)
+                raw=validated_draft_response(result,evidence,state)
             except ValueError as error:
                 from agent_builder.design.graph import _timing_event
                 _timing_event({'event':'draft_parse_error','attempt':'retry','code':getattr(error,'code','other'),'detail':str(error)[:400]})
@@ -657,5 +678,5 @@ def make_conversation(api_key,model,model_factory=None):
             draft['explanation']='업무 조건과 처리 순서를 확인해주세요.'
         reply=draft['explanation']+'\n'+('\n'.join('• '+q for q in draft['questions']))+('\n요청한 작업에 필요한 기능과 연결 상태를 추가로 확인해야 합니다.' if draft['unsupported'] else '')
         prior=state['messages'][:-1] if state.get('issues') and state['messages'] and state['messages'][-1]['role']=='assistant' else state['messages']
-        return {'node_library':pool,'semantic_issues':list(dict.fromkeys(final_validation['issues']+([ref_issue] if ref_issue else []))),'messages':prior+[{'role':'assistant','content':reply.strip()}],'draft':draft,'confirmed':False,'saved_agent_id':None,'repair_count':state.get('repair_count',0)+1,'trace':state.get('trace',[])+[{'node':'conversation','label':'대화로 설정 구성','status':'completed','detail':'Deep Agents가 대화를 검토하고 질문 또는 설정 초안을 구성했습니다.','tool_calls':conversation_tool_calls,'seed':seed,'user_turn':latest_turn,'json_content_fallback':content_fallback,'tool_selection_fallback':catalog_fallback,'response_relation_repairs':relation_repairs,'binding_repairs':binding_changes,'final_code_validation':final_validation['valid'],'tool_advice_candidates':[{'tool_id':c['tool_id'],'source':c.get('source',os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy'))} for c in (advice or {}).get('ml_candidates',[])], 'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
+        return {'node_library':pool,'semantic_issues':list(dict.fromkeys(final_validation['issues']+([ref_issue] if ref_issue else []))),'messages':prior+[{'role':'assistant','content':reply.strip()}],'draft':draft,'confirmed':False,'saved_agent_id':None,'repair_count':state.get('repair_count',0)+1,'trace':state.get('trace',[])+[{'node':'conversation','label':'대화로 설정 구성','status':'completed','detail':'Deep Agents가 대화를 검토하고 질문 또는 설정 초안을 구성했습니다.','tool_calls':conversation_tool_calls,'seed':seed,'user_turn':latest_turn,'json_content_fallback':content_fallback,'tool_selection_fallback':catalog_fallback,'response_relation_repairs':relation_repairs,'instruction_corrections':instruction_corrections,'binding_repairs':binding_changes,'final_code_validation':final_validation['valid'],'tool_advice_candidates':[{'tool_id':c['tool_id'],'source':c.get('source',os.getenv('A4B_TOOL_ADVICE_BACKEND','legacy'))} for c in (advice or {}).get('ml_candidates',[])], 'tool_advice_status':(advice or {}).get('ml_status','available' if advice is not None else 'off')}]}
     return conversation_node

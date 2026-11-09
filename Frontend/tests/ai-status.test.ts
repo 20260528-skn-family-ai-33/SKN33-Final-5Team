@@ -54,6 +54,20 @@ async function mount(fetcher: typeof fetch, strict = false, configureWindow?: ()
 }
 async function click(value: HTMLElement) {await act(async () => {value.click(); await tick();});}
 
+test('AI status explains which model is missing and clears that detail after recovery',async()=>{
+  let calls=0;
+  const message='RunPod에서 지원 판정 모델 (previous105)을 찾지 못했습니다.';
+  const h=await mount((async()=>++calls===1
+    ? new Response(JSON.stringify({health:{status:'unavailable',target:'runpod',message}}))
+    : response('ready')) as typeof fetch);
+  try{
+    assert.equal(status(),'AI 일시 중단');await click(button('AI 일시 중단'));
+    assert.ok(document.body.textContent?.includes(message));
+    await click(button('다시 확인'));assert.equal(status(),'AI 사용 가능');
+    assert.ok(!document.body.textContent?.includes('previous105'));
+  }finally{await h.close();}
+});
+
 test('AI status shows a failure, retries without overlap, and recovers using the live connection endpoint', async () => {
   const calls: RequestInit[] = [];
   let resolveRetry!: (value: Response) => void;

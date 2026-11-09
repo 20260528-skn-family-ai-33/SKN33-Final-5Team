@@ -199,12 +199,16 @@ class OllamaPlanner:
         path = parts.path.rstrip('/')
         if path.endswith('/v1'):path = path[:-3]
         self.url = urlunsplit((parts.scheme, parts.netloc, path+'/api/chat', '', ''))
-        self.model = model
+        from infrastructure.llm.model_aliases import resolve_ollama_model
+        self.model = resolve_ollama_model(model)
         if not isinstance(thinking,bool):raise ValueError('thinking은 bool이어야 합니다.')
         self.thinking = thinking
         if isinstance(temperature,bool) or not isinstance(temperature,(int,float)) or not 0<=temperature<=2:
             raise ValueError('temperature는 0~2여야 합니다.')
-        self.temperature=temperature
+        from infrastructure.llm.ollama_settings import integer_setting, temperature_setting, output_limit
+        self.temperature=temperature_setting(temperature)
+        self.num_ctx=integer_setting('A4B_OLLAMA_NUM_CTX',16384,4096,131072)
+        self.num_predict=output_limit()
         self.timeout = float(os.getenv('A4B_MAIN_TIMEOUT_S', '180'))
         if not 1 <= self.timeout <= 600:raise ValueError('A4B_MAIN_TIMEOUT_S는 1~600초로 설정하세요.')
         self.schema = decoder_schema()
@@ -212,7 +216,7 @@ class OllamaPlanner:
     def invoke(self, messages):
         payload = {'model': self.model, 'messages': messages, 'stream': False,
                    'think': self.thinking, 'format': self.schema,
-                   'options': {'num_ctx': 16384, 'num_predict': 4096,
+                   'options': {'num_ctx': self.num_ctx, 'num_predict': self.num_predict,
                                'temperature': self.temperature, 'top_p': 0.8, 'seed': 42}}
         # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent; same header as the verifier client.
         headers = {'Content-Type': 'application/json', 'User-Agent': 'A4B/0.1'}

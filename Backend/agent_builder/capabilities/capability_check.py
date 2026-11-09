@@ -83,7 +83,7 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
             else:
                 if transport is None:
                     from agent_builder.design.nodes.direct_conversation import OllamaPlanner
-                    active=OllamaPlanner(model)
+                    active=OllamaPlanner(os.getenv('A4B_CAPABILITY_MODEL') or model)
                 else:active=transport
                 result=assess_capability(state,active)
         except Exception as error:

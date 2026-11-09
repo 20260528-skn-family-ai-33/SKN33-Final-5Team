@@ -1,7 +1,8 @@
 import json,re,os,time
 from typing import Literal
 from infrastructure.llm.deep_agents import create_deep_agent
-from infrastructure.llm.model_factory import create_chat_model
+from infrastructure.llm.model_factory import create_chat_model, LOCAL_MODEL_API_KEY
+from infrastructure.llm.ollama_settings import bounded_output_limit
 from langchain_core.tools import tool
 from langchain.agents.structured_output import ProviderStrategy
 from langchain.agents.middleware import wrap_model_call
@@ -117,6 +118,7 @@ def make_conversation(api_key,model,model_factory=None):
         from agent_builder.design.nodes.direct_conversation import make_direct_conversation
         return make_direct_conversation(api_key,model,model_factory)
     if mode!='deepagent':raise ValueError('A4B_PLANNER_MODE는 deepagent/direct여야 합니다.')
+    local_ollama=os.getenv('A4B_MAIN_PROVIDER')=='ollama' and api_key in (None,'',LOCAL_MODEL_API_KEY)
     # Seed = base + attempt number within the current user turn: the first attempt of a given
     # input is reproducible, and every retry samples differently instead of repeating the same
     # failure. Ollama uses low-variance structural decoding; other providers keep the shared setting.
@@ -161,6 +163,7 @@ def make_conversation(api_key,model,model_factory=None):
         requirement_specs,required_steps=generation_requirements(state)
         requirement_generation_mode=generation_mode()
         planner_token_budget=output_budget(required_steps,requirement_generation_mode)
+        if local_ollama:planner_token_budget=bounded_output_limit(planner_token_budget)
         selected_contract_ids|={REQUIREMENT_TOOLS[s['kind']] for s in requirement_specs if s['kind'] in REQUIREMENT_TOOLS} & {t['id'] for t in catalog}
         # Ollama may ignore forced tool_choice. Supply authoritative read-only
         # contracts directly instead of losing the final JSON decoding stage.
@@ -480,10 +483,14 @@ def make_conversation(api_key,model,model_factory=None):
                         # the seed repeats the same truncation. Expand once, with the
                         # same schema/messages and a hard cap. A second overflow fails.
                         if not length_retried:
-                            length_retried=True;seed+=1
                             old_budget=planner_token_budget
                             if os.getenv('A4B_MAIN_PROVIDER')=='ollama' and registry_read:
-                                planner_token_budget=min(8192,max(4096,planner_token_budget)*2)
+                                next_budget=min(8192,max(4096,planner_token_budget)*2)
+                                if local_ollama:next_budget=bounded_output_limit(next_budget)
+                                if local_ollama and next_budget<=old_budget:
+                                    raise ValueError('모델 응답이 길이 제한으로 중단되었습니다. 설정된 출력 상한에 도달해 재시도하지 않았습니다. 요청을 줄이거나 서버의 출력 상한을 확인해주세요.') from error
+                                planner_token_budget=next_budget
+                            length_retried=True;seed+=1
                             _timing_event({'event':'model_length_retry','seed':seed,
                                 'previous_local_max_tokens':old_budget,
                                 'local_max_tokens':planner_token_budget,

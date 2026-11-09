@@ -350,6 +350,64 @@ def test_local_output_overflow_expands_once_without_changing_request_or_schema(m
     assert not original.get('saved_agent_id')
 
 
+@pytest.mark.parametrize('ceiling,expected',[
+    (None,[4096,8192]),('',[4096,8192]),('2048',[2048]),('4096',[4096]),
+    ('6000',[4096,6000]),('8192',[4096,8192]),('12000',[4096,8192]),
+])
+def test_length_recovery_respects_the_actual_ollama_wire_budget(monkeypatch,ceiling,expected):
+    """Use the real model factory/serializer: a mock factory hid the ceiling regression."""
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL','https://example.test/v1')
+    monkeypatch.setenv('A4B_PLANNER_MODE','deepagent')
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','direct')
+    monkeypatch.setenv('A4B_REQUIREMENT_GENERATION_MODE','baseline')
+    if ceiling is None:monkeypatch.delenv('A4B_OLLAMA_NUM_PREDICT',raising=False)
+    else:monkeypatch.setenv('A4B_OLLAMA_NUM_PREDICT',ceiling)
+    wires=[];requests=[]
+    def factory(**kwargs):
+        class Agent:
+            def invoke(self,payload,config):
+                requests.append(deepcopy(payload))
+                wires.append(kwargs['model']._get_request_payload(payload['messages']))
+                if len(wires)==1:
+                    raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[],usage=None))
+                return {'structured_response':draft(questions=['기준은 얼마인가요?'])}
+        return Agent()
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    original=state([{'role':'user','content':'표를 계산하고 집계해서 저장해줘.'}])
+    if len(expected)==1:
+        with pytest.raises(ValueError,match='출력 상한'):
+            make_conversation(None,'final664')(original)
+    else:
+        assert make_conversation(None,'final664')(original)['draft']['questions']==['기준은 얼마인가요?']
+        assert requests[0]==requests[1]
+    assert [wire['max_tokens'] for wire in wires]==expected
+    assert all('max_completion_tokens' not in wire for wire in wires)
+    assert not original.get('saved_agent_id')
+
+
+def test_ollama_ceiling_does_not_change_selected_openai_account_recovery(monkeypatch):
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL','https://example.test/v1')
+    monkeypatch.setenv('A4B_OLLAMA_NUM_PREDICT','4096')
+    monkeypatch.setenv('A4B_TOOL_CATALOG_MODE','direct')
+    wires=[]
+    def factory(**kwargs):
+        class Agent:
+            def invoke(self,payload,config):
+                wires.append(kwargs['model']._get_request_payload(payload['messages']))
+                raise LengthFinishReasonError(completion=ChatCompletion.model_construct(choices=[],usage=None))
+        return Agent()
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',factory)
+    with pytest.raises(ValueError,match='길이 제한'):
+        make_conversation('test-real-openai-account','gpt-4.1-mini')(state([{'role':'user','content':'업무 요청'}]))
+    assert [wire['max_completion_tokens'] for wire in wires]==[4096,8192]
+
+
 def test_seed_counts_attempts_within_the_same_user_turn(monkeypatch):
     seeds=[]
     class Agent:

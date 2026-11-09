@@ -1,6 +1,7 @@
 """Pin saved graph versions; prohibit recursive calls and ambiguous output contracts."""
 from workflow_engine.catalog.registry import node_ports, uses_operation
 from documents.resources.document_resources import saved_input
+from infrastructure.llm.model_aliases import same_model_reference
 
 REVIEW_EXPORT_ERROR='검수 후보 응대를 최종 응대로 자동 내보내지 마세요. 검수 보고서는 review_summary→write_result로 저장하고 최종 응대는 승인하세요.'
 
@@ -33,7 +34,7 @@ def pin_dependencies(storage,draft,model,credential_id,parent_id=None):
     def inspect(agent,path):
         if agent['id'] in path:raise ValueError('저장된 워크플로우의 재귀 연결은 지원하지 않습니다.')
         if len(path)>=4:raise ValueError('저장된 워크플로우 연결은 최대 4단계까지 지원합니다.')
-        if agent['model']!=model or agent['credential_id']!=credential_id:raise ValueError('재사용할 워크플로우는 같은 모델·연결 계정을 사용해야 합니다.')
+        if agent['credential_id']!=credential_id or not same_model_reference(agent['model'],model,credential_id):raise ValueError('재사용할 워크플로우는 같은 모델·연결 계정을 사용해야 합니다.')
         if draft.get('schedule') and any(n['tool']=='ask_user' for n in agent['config']['workflow']['nodes']):raise ValueError('예약 실행에는 응답 대기가 있는 저장된 흐름을 연결할 수 없습니다.')
         for child in agent.get('workflow_dependencies',{}).values():inspect(child,path+[agent['id']])
         reject_review_export(agent['config'],agent.get('workflow_dependencies',{}))
@@ -51,7 +52,7 @@ def pin_dependencies(storage,draft,model,credential_id,parent_id=None):
 def catalog(storage,model,credential_id):
     results=[]
     for a in storage.agents():
-        if a['model']!=model or a['credential_id']!=credential_id:continue
+        if a['credential_id']!=credential_id or not same_model_reference(a['model'],model,credential_id):continue
         outputs=[];columns={}
         for n in (a['config'].get('workflow') or {}).get('nodes',[]):
             if uses_operation(n):

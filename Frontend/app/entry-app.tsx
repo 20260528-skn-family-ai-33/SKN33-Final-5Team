@@ -2,7 +2,7 @@ import {settleWithLimit} from '../lib/settle-with-limit';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,Workflow,History,Search,RefreshCw,AlertCircle,Pencil} from 'lucide-react';
 import AgentStudio from './agent-studio';
-import {WorkspaceSidebar} from './workspace-nav';
+import {TaskLibraryHeader,WorkspaceSidebar} from './workspace-nav';
 import {UploadLibrary} from './upload-library';
 import {WorkspaceHeader,WorkspaceHelp} from './workspace-header';
 import {ServiceConnections} from './service-connections';
@@ -47,13 +47,13 @@ export default function EntryApp(){
  }
  if(!['intro','preview'].includes(route)&&(auth.loading||auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
- if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('workflows')}/>;
+ if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('workflow',undefined,true)}/>;
  const newFlow=()=>navigate('workflow',undefined,true);
  if(['nodes','workflow','run'].includes(route))return <AgentStudio key={navigationKey} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('workflows')} onPreview={preview} onRoute={next=>navigate(next)}/>;
- return <div className="entry-app"><WorkspaceHeader onNew={newFlow}/>
-  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={navigate} help={<WorkspaceHelp onStart={newFlow}/>}/>
-   <main className="entry-workspace-main">{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onOpen={id=>navigate('run',id)} onCreate={newFlow}/>:
+ return <div className="entry-app"><WorkspaceHeader onHome={newFlow}/>
+  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next==='workflow')newFlow();else if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow}/>}/>
+   <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onOpen={id=>navigate('run',id)} onCreate={newFlow}/>:
     <WorkspaceHome route={route as 'workflows'|'history'} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
    </main>
   </div>
@@ -73,7 +73,10 @@ function WorkspaceHome({route,historyService,navigate,newFlow}:{route:'workflows
  useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;};},[route,historyService]);
  const historyAgent=historyService?agents.find(agent=>agent.id===historyService):undefined;
  const matches=agents.filter(a=>(a.config.name+' '+a.config.purpose).toLocaleLowerCase().includes(query.toLocaleLowerCase()));
- return <><div className="entry-page-heading"><div><h1>{route==='workflows'?'워크플로우':'실행 기록'}</h1><p>{route==='workflows'?'저장한 업무 흐름을 열어 수정하거나 실행하세요.':historyAgent?historyAgent.config.name+'의 이전 실행입니다.':'이전 실행의 완료 여부와 결과를 확인하세요.'}</p>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div><button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button></div>{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}
+ const refreshButton=<button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button>;
+ return <>{route==='workflows'
+  ? <TaskLibraryHeader active="workflows" onNavigate={next=>{if(next==='nodes')navigate(next);}} actions={refreshButton}/>
+  : <div className="entry-page-heading"><div><h1>실행 기록</h1><p>{historyAgent?historyAgent.config.name+'의 이전 실행입니다.':'이전 실행의 완료 여부와 결과를 확인하세요.'}</p>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div>{refreshButton}</div>}{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}
  {route==='workflows'&&<>
   {renameNotice&&<p className="entry-rename-notice" role="status">{renameNotice}</p>}
   <div className="entry-list-tools" aria-label="워크플로우 목록 도구"><label><Search size={18}/><input aria-label="워크플로우 검색" value={query} onChange={e=>setQuery(e.target.value)} placeholder="워크플로우 검색"/></label><span>{loading?'불러오는 중…':'전체 '+agents.length}</span></div>
@@ -89,7 +92,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow}:{route:'workflows
   }}/>}
   {!loading&&!error&&!matches.length&&<section className="entry-empty"><Workflow size={26}/><h2>{query?'검색 결과가 없습니다.':'첫 워크플로우를 만들어보세요.'}</h2><p>{query?'이름이나 설명을 바꿔 검색하세요.':'업무와 자료를 설명하면 흐름을 구성할 수 있습니다.'}</p>{!query&&<button className="as-button" onClick={newFlow}>새 워크플로우</button>}</section>}
  </>}
- {route==='history'&&<>{historyErrors.length>0&&<div className="as-error" role="alert">일부 기록을 불러오지 못했습니다: {historyErrors.join(', ')}. 새로고침하여 다시 확인하세요.</div>}<div className="entry-history-list">{runRows.map(({agent:a,run})=><article key={run.id}><div><h2>{a.config.name}</h2><p>설정 v{run.agent_version} · {date(run.started_at||run.created_at)}</p></div><span className={'entry-run-status '+run.status}>{({succeeded:'완료',failed:'실패',running:'실행 중',needs_input:'답변 대기'})[run.status]||run.status}</span><button className="as-button as-secondary" onClick={()=>navigate('run',a.id,run.id)}>실행 결과 보기</button>{run.error&&<p className="entry-history-error">{run.error}</p>}</article>)}</div>{!loading&&!error&&!runRows.length&&<section className="entry-empty"><History size={26}/><h2>아직 실행 기록이 없습니다.</h2><p>저장한 워크플로우를 실행하면 여기에 표시됩니다.</p><button className="as-button" onClick={()=>historyAgent?navigate('run',historyAgent.id):navigate('workflows')}>{historyAgent?'워크플로우 실행 화면':'워크플로우로 이동'}</button></section>}</>}
+ {route==='history'&&<>{historyErrors.length>0&&<div className="as-error" role="alert">일부 기록을 불러오지 못했습니다: {historyErrors.join(', ')}. 새로고침하여 다시 확인하세요.</div>}<div className="entry-history-list entry-run-history">{runRows.map(({agent:a,run})=><article key={run.id}><div><h2>{a.config.name}</h2><p>{run.started_at||run.created_at?date(run.started_at||run.created_at):'실행 시각 없음'}</p></div><span className={'entry-run-status '+run.status}>{({succeeded:'완료',failed:'실패',running:'실행 중',needs_input:'답변 대기'})[run.status]||run.status}</span><button className="as-button as-secondary" onClick={()=>navigate('run',a.id,run.id)}>결과 보기</button>{run.error&&<p className="entry-history-error">{run.error}</p>}</article>)}</div>{!loading&&!error&&!runRows.length&&<section className="entry-empty"><History size={26}/><h2>아직 실행 기록이 없습니다.</h2><p>저장한 워크플로우를 실행하면 여기에 표시됩니다.</p><button className="as-button" onClick={()=>historyAgent?navigate('run',historyAgent.id):navigate('workflows')}>{historyAgent?'워크플로우 실행 화면':'워크플로우로 이동'}</button></section>}</>}
 
 
  </>;

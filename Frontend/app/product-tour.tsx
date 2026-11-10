@@ -13,11 +13,10 @@ type Step = {
     panel?: TourPanel;
 };
 const common: Step[] = [
-    { target: 'menu-workflows', title: '저장한 워크플로우를 관리하세요', text: '만들어 둔 업무 흐름을 모아 보는 곳입니다. 목록에서 설계를 열거나 바로 실행할 수 있습니다.' },
+    { target: 'menu-workflows', title: '저장한 워크플로우를 관리하세요', text: '작업 라이브러리에서 저장한 워크플로우의 설계를 열거나 바로 실행할 수 있습니다. 재사용 작업도 같은 곳에 모여 있습니다.' },
     { target: 'menu-schedules', title: '예약된 실행을 한곳에서 확인하세요', text: '예약 워크플로우의 반복 주기, 활성 상태와 다음 실행 시각을 확인합니다. 예약 관리를 누르면 해당 워크플로우의 실행 화면이 열립니다.' },
     { target: 'menu-history', title: '이전에 실행한 결과를 확인하세요', text: '언제 실행했는지, 완료됐는지 확인합니다. 실행 결과 보기를 누르면 해당 실행의 결과와 처리 기록을 볼 수 있습니다.' },
-    { target: 'menu-nodes', title: '자주 쓰는 작업은 준비해 두세요', text: '문서 읽기나 집계처럼 반복해서 사용할 작업을 저장하는 곳입니다. 처음에는 작업을 따로 만들지 않고 업무 설명부터 시작해도 됩니다.' },
-    { target: 'create-workflow', title: '새 업무는 여기서 시작하세요', text: '새 워크플로우를 누르면 설계 화면이 열립니다. 어떤 자료를 어떻게 처리하고 싶은지 설명해 주세요.' },
+    { target: 'menu-workflow', title: '새 업무는 여기서 시작하세요', text: '왼쪽 메뉴의 워크플로우를 누르면 설계 화면이 열립니다. 어떤 자료를 어떻게 처리하고 싶은지 설명해 주세요.' },
 ];
 export function tourSteps(scope: string): Step[] {
     if (scope === 'preview') return [{target:'create-workflow',title:'내 작업 공간으로 이동하세요',text:'내 워크플로우 열기를 누르면 실제 작업 목록으로 이동합니다. 지금 보고 있는 화면은 동작을 살펴보는 샘플이며 저장되거나 실행되지 않습니다.'}];
@@ -25,7 +24,7 @@ export function tourSteps(scope: string): Step[] {
         return [
             { target: 'conversation', panel: 'conversation', title: '할 일과 원하는 결과를 설명하세요', text: '예: “매출 파일에서 팀별 합계를 구해 JSON으로 저장해 줘.” 필요한 조건을 질문받으면 같은 대화에서 답합니다.' },
             { target: 'attach', panel: 'conversation', title: '필요한 파일을 첨부하세요', text: '업무에 사용할 표나 참고 문서를 연결합니다. 파일의 내용과 대화에서 정한 조건을 바탕으로 설계합니다.' },
-            { target: 'canvas', panel: 'canvas', title: '어떤 순서로 처리하는지 확인하세요', text: '생성된 작업과 연결 순서가 표시됩니다. 작업을 누르면 입력 연결과 세부 설정을 확인할 수 있습니다. 흐름을 바꾸려면 대화로 요청하세요.' },
+            { target: 'canvas', panel: 'canvas', title: '어떤 순서로 처리하는지 확인하세요', text: '생성된 작업과 연결 순서가 표시됩니다. 작업을 누르면 입력과 설정을 확인할 수 있습니다. 이전에 저장한 작업은 작업 찾아보기에서 열 수 있습니다.' },
             { target: 'settings', panel: 'settings', title: '설정을 확인한 뒤 저장하세요', text: '이름, 지시사항, 사용할 도구와 자료를 확인합니다. 필요한 조건이 모두 정리되면 상단에서 초안 확인 · 저장을 누르세요.' },
             { target: 'run-tab', title: '저장한 워크플로우를 실행하세요', text: '실행 화면에서 요청과 자료를 넣습니다. 결과가 나오면 근거와 처리 단계도 함께 확인하세요.' },
         ];
@@ -70,7 +69,7 @@ export function availableSteps(scope: string) {
         ];
     }
     if (scope === 'run' && !document.querySelector('[data-tour="saved-workflows"] button')) {
-        steps = [{target:'create-workflow',title:'먼저 워크플로우를 만들어 주세요',text:'실행하려면 저장한 워크플로우가 필요합니다. 새 워크플로우에서 업무를 설명하고, 처리 순서와 조건을 확인한 뒤 저장하세요.'}];
+        steps = [{target:'create-workflow',title:'먼저 워크플로우를 만들어 주세요',text:'실행하려면 저장한 워크플로우가 필요합니다. 워크플로우 설계로 이동해 업무를 설명하고, 처리 순서와 조건을 확인한 뒤 저장하세요.'}];
     }
     return steps.filter(step => document.querySelector(selector(step.target)));
 }

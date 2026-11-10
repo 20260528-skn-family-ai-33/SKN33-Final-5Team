@@ -1,7 +1,7 @@
 import type {ReactNode} from 'react';
-import {Workflow, CalendarClock, History, Layers, FolderOpen, Unplug} from 'lucide-react';
+import {Workflow, CalendarClock, History, Layers, FolderOpen, Unplug, Check} from 'lucide-react';
 
-export type WorkspaceDestination = 'workflows' | 'schedules' | 'history' | 'nodes' | 'assets' | 'connections';
+export type WorkspaceDestination = 'workflow' | 'workflows' | 'schedules' | 'history' | 'assets' | 'connections';
 
 /** The same destinations and labels are available throughout the work area. */
 export function WorkspaceNav({active, onNavigate, disabled = false}: {
@@ -11,10 +11,10 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
 }) {
   return <nav className="workspace-nav" aria-label="작업 공간">
     {([
-      ['workflows', '워크플로우', Workflow],
+      ['workflow', '워크플로우', Workflow],
+      ['workflows', '작업 라이브러리', Layers],
       ['schedules', '예약 실행', CalendarClock],
       ['history', '실행 기록', History],
-      ['nodes', '작업 라이브러리', Layers],
       ['assets', '자료함', FolderOpen],
       ['connections', '서비스 연결', Unplug],
     ] as const).map(([destination, label, Icon]) =>
@@ -24,6 +24,36 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
         <Icon size={17} aria-hidden="true"/>{label}
       </button>)}
   </nav>;
+}
+
+export function TaskLibraryHeader({active, onNavigate, actions, disabled = false}: {
+  active: 'workflows' | 'nodes';
+  onNavigate: (destination: 'workflows' | 'nodes') => void;
+  actions?: ReactNode;
+  disabled?: boolean;
+}) {
+  return <div className="task-library-header">
+    <div className="task-library-title">
+      <div>
+        <h1>작업 라이브러리</h1>
+        <p>저장한 워크플로우를 열거나 자주 쓰는 작업을 다시 사용하세요.</p>
+      </div>
+      {actions}
+    </div>
+    <nav className="task-library-tabs" aria-label="라이브러리 보기">
+      {([
+        ['workflows', '저장한 워크플로우', Workflow],
+        ['nodes', '재사용 작업', Layers],
+      ] as const).map(([destination,label,Icon])=>
+        <button key={destination} type="button" aria-current={active===destination?'page':undefined}
+          disabled={disabled} onClick={()=>onNavigate(destination)}>
+          <Icon size={16} aria-hidden="true"/>
+          {label}
+          <Check className="task-library-selection" size={14} aria-hidden="true"/>
+        </button>
+      )}
+    </nav>
+  </div>;
 }
 
 export function WorkspaceSidebar({active, onNavigate, help, disabled = false, children}: {

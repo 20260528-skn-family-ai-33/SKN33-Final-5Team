@@ -1,5 +1,5 @@
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
-import {LogIn,LogOut,ShieldCheck,ArrowLeft} from 'lucide-react';
+import {LogIn,LogOut,ShieldCheck,ArrowLeft,UserRound,Monitor} from 'lucide-react';
 import './auth.css';
 
 export type Member={id:string;email:string;name:string;role:'admin'|'member'};
@@ -44,7 +44,7 @@ export function loginUrl(){
  target.searchParams.delete('auth_error');
  return '/auth/login?returnTo='+encodeURIComponent(target.pathname+target.search);
 }
-export function AccountMenu(){
+export function AccountMenu({showLocalStatus=false}:{showLocalStatus?:boolean}){
  const auth=useAuth(),[busy,setBusy]=useState(false),[error,setError]=useState('');
  async function logout(){
   if(busy)return;setBusy(true);setError('');
@@ -57,9 +57,10 @@ export function AccountMenu(){
    window.location.assign(value.logoutUrl);
   }catch(error){setError((error as Error).message);setBusy(false);}
  }
- if(auth.loading||!auth.enabled)return null;
+ if(auth.loading)return null;
+ if(!auth.enabled)return showLocalStatus?<span className="a4b-account-local" title="로컬 미리보기는 로그인 없이 실행됩니다."><Monitor size={15} aria-hidden="true"/>로그인 계정 없음</span>:null;
  if(!auth.user)return <a className="a4b-account-button" href={loginUrl()}><LogIn size={15} aria-hidden="true"/>로그인</a>;
- return <div className="a4b-account-menu"><span title={auth.user.email}>{auth.user.name}</span><button className="a4b-account-button" type="button" disabled={busy} onClick={()=>void logout()}><LogOut size={15} aria-hidden="true"/>{busy?'로그아웃 중…':'로그아웃'}</button>{error&&<span role="alert">{error}</span>}</div>;
+ return <div className="a4b-account-menu"><span className="a4b-account-identity" title={auth.user.email}><UserRound size={16} aria-hidden="true"/><span className="a4b-account-label">로그인 계정</span><span className="a4b-account-name">{auth.user.name}</span></span><button className="a4b-account-button" type="button" disabled={busy} onClick={()=>void logout()}><LogOut size={15} aria-hidden="true"/>{busy?'로그아웃 중…':'로그아웃'}</button>{error&&<span role="alert">{error}</span>}</div>;
 }
 export function SignIn({onHome}:{onHome:()=>void}){
  const auth=useAuth();const reason=new URLSearchParams(location.search).get('auth_error');

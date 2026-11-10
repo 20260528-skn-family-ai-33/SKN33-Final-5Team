@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useState, type ReactNode} from 'react';
 import {Plus, HelpCircle} from 'lucide-react';
 import {ProductTour, shouldStartTour, type TourPanel} from './product-tour';
 import './workspace-chrome.css';
@@ -13,39 +13,49 @@ export function WorkspaceBrandMark() {
 }
 
 type HeaderProps = {
-  onHome: () => void;
   onNew: () => void;
   disabled?: boolean;
   actionLabel?: string;
-  onTourPanelChange?: (panel: TourPanel) => void;
-  currentTourPanel?: TourPanel;
+  actions?: ReactNode;
 };
 
-export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = '새 워크플로우', onTourPanelChange, currentTourPanel}: HeaderProps) {
-  const [help, setHelp] = useState(false);
+export function WorkspaceHeader({onNew, disabled = false, actionLabel = '새 워크플로우', actions}: HeaderProps) {
+  const preview = new URLSearchParams(location.search).get('screen') === 'preview';
+
+  return <header className="workspace-header">
+    <div className="workspace-brand">
+      <WorkspaceBrandMark/><strong>A4B</strong>
+    </div>
+    <div className="workspace-header-actions">
+      <AccountMenu showLocalStatus={!preview}/>
+      {!preview && <AiStatus/>}
+      {actions}
+      <button data-tour="create-workflow" className="as-button as-primary" onClick={onNew} disabled={disabled}>
+        <Plus size={16} aria-hidden="true"/>{actionLabel}
+      </button>
+    </div>
+  </header>;
+}
+
+export function WorkspaceHelp({onStart, deferAutoStart = false, onTourPanelChange, currentTourPanel}: {
+  onStart?: () => void;
+  deferAutoStart?: boolean;
+  onTourPanelChange?: (panel: TourPanel) => void;
+  currentTourPanel?: TourPanel;
+}) {
+  const [open, setOpen] = useState(false);
   const scope = new URLSearchParams(location.search).get('screen') || 'workflows';
 
   useEffect(() => {
-    if (!disabled && shouldStartTour(scope)) setHelp(true);
-  }, [scope, disabled]);
+    if (!deferAutoStart && shouldStartTour(scope)) setOpen(true);
+  }, [scope, deferAutoStart]);
 
   return <>
-    <header className="workspace-header">
-      <button className="workspace-brand" onClick={onHome} disabled={disabled} aria-label="서비스 소개로 이동">
-        <WorkspaceBrandMark/><strong>A4B</strong>
-      </button>
-      <div className="workspace-header-actions">
-        <AccountMenu/>
-        {scope !== 'preview' && <AiStatus/>}
-        <button data-tour="help" className="as-text-button" onClick={() => setHelp(true)}>
-          <HelpCircle size={16} aria-hidden="true"/>사용 안내
-        </button>
-        <button data-tour="create-workflow" className="as-button as-primary" onClick={onNew} disabled={disabled}>
-          <Plus size={16} aria-hidden="true"/>{actionLabel}
-        </button>
-      </div>
-    </header>
-    <ProductTour scope={scope} open={help} onClose={() => setHelp(false)}
-      onStart={scope === 'workflows' ? onNew : undefined} onPanelChange={onTourPanelChange} currentPanel={currentTourPanel}/>
+    <button type="button" data-tour="help" className="as-button as-secondary" onClick={() => setOpen(true)}>
+      <HelpCircle size={16} aria-hidden="true"/>사용 안내
+    </button>
+    <ProductTour scope={scope} open={open} onClose={() => setOpen(false)}
+      onStart={scope === 'workflows' ? onStart : undefined}
+      onPanelChange={onTourPanelChange} currentPanel={currentTourPanel}/>
   </>;
 }

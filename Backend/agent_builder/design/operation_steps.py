@@ -103,5 +103,14 @@ def compile_workflow(workflow):
             bindings.append({'input':binding['input'],'node_id':f'step_{previous}','output':binding['output']})
         nodes.append({'id':f'step_{index}','tool':step['tool'],'label':step['label'],
                       'settings':deepcopy(step['settings']),'bindings':bindings})
+        # Decoder enums only know possible port names, not which predecessor
+        # actually owns them. Reject impossible links before the bounded retry;
+        # never rename ports or replace the model's selected producer.
+        from workflow_engine.catalog.registry import node_ports
+        for binding in bindings:
+            source=nodes[int(binding['node_id'].split('_')[1])-1]
+            outputs=node_ports(source)[1]
+            if binding['output'] not in outputs:
+                raise ValueError(f"{index}단계는 {binding['node_id']}({source['tool']})의 없는 출력 {binding['output']}을 참조했습니다. 실제 출력: {', '.join(outputs)}. 연결 대상·도구를 실제 계약에 맞춰 설계하세요.")
     return {'entry':'step_1','nodes':nodes,
             'edges':[{'source':a['id'],'target':b['id'],'branch':'next'} for a,b in zip(nodes,nodes[1:])]}

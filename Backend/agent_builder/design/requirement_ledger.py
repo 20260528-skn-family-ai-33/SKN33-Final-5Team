@@ -13,6 +13,7 @@ from .requirement_contracts import RequirementPlan
 
 SYSTEM = '''사용자의 최종 업무 요구사항을 추출해 JSON으로 반환한다. 각 task는 실제 요청된 업무 한 가지다.
 description은 짧은 업무명이다. 같은 업무를 반복하지 않는다. 출력 규격에 대한 설명이나 생각을 업무로 기록하지 않는다.
+"원래 요청대로 생성", "다시 검토", "실행할 때 파일 제공", 자료 ID에 대한 질문은 설계 대화의 지시다. 이를 별도 실행 업무로 만들지 않고 원래 업무와 변경 조건을 반영한다.
 source_message는 user_messages의 0-based index다. 원문 인용·ID·선행 연결은 앱이 부여한다.
 사용자 원문과 후속 변경만 근거로 처리 순서대로 tasks를 작성한다. 자료 이름·열은 참고 데이터다.
 compute=새 열의 계산식과 이름. filter=행 선별 비교조건. sort=정렬 열·방향·자료형. 정렬 요청만으로 filter를 만들지 않는다.
@@ -20,18 +21,23 @@ parse_dates=기존 날짜 문자열 열의 변환. fields=대상 열 목록, inp
 날짜 변환을 read 또는 compute로 대체하거나 parse_date 같은 함수 호출 수식으로 쓰지 않는다. 값이 미정이면 unresolved에 기록한다.
 상수 비교는 value에 기준값, compare_field=null. 열 비교는 value=null, compare_field에 상대 열.
 aggregate=그룹 열·count/sum·합계 원본 열. 집계 출력 열은 count/sum.
+집계 결과에 요청한 이름이 따로 있으면 sum/count를 그 이름으로 바꾸는 rename(source,target)을 별도 기록한다.
+fill_missing=지정 열의 빈값을 사용자가 명시한 값으로 채움(fields,value). select_fields=최종 출력 열 목록(fields). 계산·집계·결합·빈값 채움·이름 변경·출력 열 선택을 서로 대신하지 않는다.
 join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 유일은 many_to_one.
+왼쪽 결합의 left_sources는 모든 행을 유지하라고 한 기준 자료다. 집계된 자료를 오른쪽에 붙일 때도 이 방향을 바꾸지 않는다. 명시하지 않은 최대 행 수는 100000이다.
 policy=일반 표의 빈값/중복 행 처리. 결합의 키 유일성·null 키·최대 행 수는 join의 필드값이다.
 export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자료 ID는 실제 목록에서 선택한다.
 후속 답변에서 바꾸지 않은 조건도 유지한다. 필요한 값이 미정이면 unresolved에 적고 추측하지 않는다.
-요약·개인정보 제거·검수·분기·예약·기타 표현할 수 없는 업무나 추가 조건은 other로 남긴다.
+document_analysis=문서 원문을 읽고 요약·누락·모순 분석·근거와 수정 제안 같은 서술형 결과를 작성하는 업무. 원래 분석 요청 전체가 실행 지침으로 전달된다. 필드만 추출하는 extract_fields와 구분한다.
+human_review=생성한 결과를 사람이 실제 실행 중 확인하도록 대기하는 업무. 설계 대화에서 재검토하라는 말은 human_review가 아니다.
+개인정보 제거·분기·예약·기타 위 종류로 표현할 수 없는 업무나 추가 조건은 other로 남긴다. 여러 분석 관점은 같은 document_analysis 한 건에 유지한다.
 모든 사용자 요구를 기록한 뒤 tasks를 끝내고 unresolved를 작성한다. JSON 이외에는 출력하지 않는다.'''
 
 
 def ledger_fingerprint(state):
     from agent_builder.capabilities.capability_gate import input_fingerprint
     # Version seals the interpretation contract as well as the input/catalog.
-    return hashlib.sha256(('a4b.requirements.v2.explicit-table:' + input_fingerprint(state)).encode()).hexdigest()
+    return hashlib.sha256(('a4b.requirements.v3.document-table:' + input_fingerprint(state)).encode()).hexdigest()
 
 
 def plan_digest(plan):
@@ -61,6 +67,10 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
+        if spec['kind']=='document_analysis' and spec['request']!=task['quote']:
+            raise ValueError('문서 분석 지침은 해당 사용자 발화 전체를 보존해야 합니다.')
+        if spec['kind']=='fill_missing' and isinstance(spec['value'],(int,float)) and not isinstance(spec['value'],bool):
+            if Decimal(str(spec['value'])) not in numbers:raise ValueError('빈값 대체 숫자가 사용자 원문에서 확인되지 않습니다.')
         if spec['kind']=='parse_dates':
             from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
             if len(set(spec['fields']))!=len(spec['fields']):raise ValueError('날짜 변환 대상 열이 중복됩니다.')
@@ -117,6 +127,10 @@ def validate_plan(raw, state):
 
 def extraction_schema(user_count=None,asset_ids=None):
     schema=RequirementPlan.model_json_schema()
+    # The extractor chooses the action and source turn. The application copies
+    # that complete request rather than asking a second model to paraphrase it.
+    analysis=schema['$defs']['DocumentAnalysis']
+    analysis['properties'].pop('request');analysis['required'].remove('request')
     task=schema['$defs']['RequiredTask']
     for field in ('id','depends_on','quote'):
         task['properties'].pop(field)
@@ -172,6 +186,9 @@ def extract_plan(raw,state):
         if type(source) is not int or not 0<=source<len(users):
             raise ValueError('요구사항의 사용자 발화를 확인하지 못했습니다.')
         kind=(item.get('spec') or {}).get('kind')
+        if kind=='document_analysis':
+            if 'request' in item['spec']:raise ValueError('문서 분석 원문은 앱이 부여합니다.')
+            item={**item,'spec':{**item['spec'],'request':users[source]}}
         dependency=[previous] if previous and kind not in ('read','policy') else []
         task={**item,'id':'r'+str(index),'depends_on':dependency,'quote':users[source]}
         tasks.append(task)

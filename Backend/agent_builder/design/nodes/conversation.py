@@ -37,6 +37,7 @@ SYSTEM="""당신은 A4B의 사용자 대화와 워크플로우 설계를 총괄�
 read_table/read_document는 file_ids 또는 실행 입력을 읽고 bindings=[]입니다. 연결된 파일은 실제 ID만 사용합니다. 자료가 없어도 실행 시 입력받는 설계를 만들 수 있습니다.
 각 filter_sort.settings.execution_plan에 그 단계의 조건·정렬·결측·중복 정책을 지정합니다. 글로벌 execution_plan은 호환용 기본값이며 여러 단계의 조건을 합치지 않습니다. filter_sort가 없는 설계는 글로벌 filters=[], sort=[], missing_policy=keep, duplicate_policy=keep, duplicate_field=null로 둡니다. 사용자 요청 없이 빈 값을 제외하거나 중복을 제거하지 않습니다. 빈 값 제외를 명시적으로 요청받았다면 실제 filter_sort 단계와 그 단계의 execution_plan을 함께 구성합니다. 합계 계산의 숫자 검증은 aggregate_table 실행 코드가 수행하며, 빈 값 제외 정책으로 대신하지 않습니다. aggregation=count/sum, fields=그룹 열, sum_field=합계 원본 열은 aggregate_table에만 지정합니다. 집계 결과는 그룹 열과 count/sum 열입니다. 숫자 변환·검증은 실행 코드가 하며 실패한 값을 임의로 0으로 바꾸지 않습니다.
 문서 추출 항목은 실제 사용자 요청을 반영합니다. evidence는 값의 근거 메타데이터입니다. 검색이 필요 없으면 강제로 넣지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다. agent_node는 실제 실행 요청과 연결 입력을 조회하여 text를 반환합니다. 실행 요청용 가짜 binding은 필요 없습니다.
+문서의 누락·모순 분석과 수정 제안은 원문 documents를 compose_answer에 연결하고 document_analysis.request 전체를 settings.instructions에 보존합니다. extract_information은 필드 추출이며 분석 답변을 대신하지 않습니다. 사람이 분석 결과를 확인하면 compose_answer.text를 ask_user.text에 연결하고 question을 작성하며 instructions=null로 실제 응답을 기다립니다. ask_user는 reviews를 출력하지 않습니다.
 표 열 계산은 calculate_columns 노드의 table_operation=compute, calculation_formula(열 이름과 숫자, + - * / % 괄호만), output_column으로 지정하고 앞 표의 table을 연결합니다. 열 이름 변경은 table_operation=rename, rename_from, rename_to를 사용합니다. 식·새 열 이름이 불명확하면 묻고 임의로 정하지 않습니다. 존재하는 열 덮어쓰기는 지원하지 않습니다.
 날짜 문자열 열의 변환은 같은 도구에서 table_operation=parse_dates, fields=대상 열, date_input_format=입력 형식, date_timezone=IANA 시간대를 명시합니다. 불명확한 날짜 형식이나 시간대는 추정하지 않습니다.
 문자열의 문자 그대로 바꾸기는 text_transform의 text_find와 text_replacement를 사용하고 앞 단계의 text를 연결합니다. 텍스트 개수는 text_statistics의 statistics_unit=characters/words로 처리하며, characters는 include_whitespace를 명시합니다. ISO 날짜 텍스트는 date_transform의 date_operation=adjust와 date_seconds 또는 format과 date_output_format으로 처리합니다. 시간 조정 시 입력에 UTC 오프셋이 필요합니다. 다른 문자열 연산이나 문서 파일 편집으로 확대하지 않습니다. Base64는 base64_codec의 codec_mode=encode/decode, SHA-256은 text_hash를 사용하며 모두 앞 단계 text를 연결합니다.
@@ -375,9 +376,10 @@ def make_conversation(api_key,model,model_factory=None):
         decoder_schema={};wire_schema={}
         def planner_format():
             from agent_builder.design.operation_steps import schema_for
-            from agent_builder.design.requirement_generation import constrain_uploaded_join_inputs
+            from agent_builder.design.requirement_generation import constrain_uploaded_join_inputs, constrain_request_settings
             decoder_schema.clear()
             source_constrained=constrain_uploaded_join_inputs(schema,state)
+            source_constrained=constrain_request_settings(source_constrained,state)
             constrained=constrain_generation(source_constrained,state) if requirement_generation_mode=='bounded' else source_constrained
             decoder_schema.update(schema_for(constrained) if ordered_encoding() else constrained)
             if ordered_encoding() and required_steps and requirement_generation_mode=='bounded':
@@ -433,6 +435,9 @@ def make_conversation(api_key,model,model_factory=None):
         if required_steps:
             context['required_processing_steps']={'tools_in_data_order':required_steps,
                 'note':'요청을 수행하는 데 필요한 단계입니다. 결합의 left/right 표는 bindings로만 전달하고 같은 인자를 상수에 중복하지 않습니다.'}
+        if requirement_specs:
+            context['required_execution_contracts']={'specs':requirement_specs,
+                'note':'각 명시된 계산식·열·방향·파일 형식은 실제 단계의 설정에 반영해야 합니다. 원래 초안이 빠뜨린 단계도 보존하지 말고 새 설계에 포함하세요. document_analysis.request 전체를 compose_answer.instructions에 전달하고 human_review는 ask_user에서 실제 text 결과를 확인합니다.'}
         # Saved snapshots retain full compatibility defaults. They need not be
         # repeated in every model prompt; never modify the persisted originals.
         def compact_settings(settings):

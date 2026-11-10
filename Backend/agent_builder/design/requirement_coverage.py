@@ -49,6 +49,23 @@ def _arguments(node):
 def _matches(spec,node,draft,sources):
     tool=node['tool'];settings=node['settings'];operation=settings.get('operation')
     args=_arguments(node);kind=spec['kind']
+    if kind=='document_analysis':
+        if tool!='compose_answer' or operation or spec['request'] not in (settings.get('instructions') or ''):return False
+        return any(b['input']=='documents' and b['output']=='documents' for b in node['bindings'])
+    if kind=='human_review':
+        # An explicit execution-time review must really pause, not let an LLM
+        # treat the earlier design request as an already supplied confirmation.
+        return (tool=='ask_user' and not operation and bool((settings.get('question') or '').strip())
+                and not settings.get('instructions') and any(b['input']=='text' and b['output']=='text' for b in node['bindings']))
+    if kind=='rename':
+        return (tool=='calculate_columns' and (
+            not operation and settings.get('table_operation')=='rename' and settings.get('rename_from')==spec['source'] and settings.get('rename_to')==spec['target']
+            or operation=='rename_columns' and args.get('mapping')=={spec['source']:spec['target']}))
+    if kind=='fill_missing':
+        return (tool=='filter_sort' and operation=='handle_missing' and args.get('action')=='fill'
+                and args.get('columns')==spec['fields'] and args.get('fill_value')==spec['value'])
+    if kind=='select_fields':
+        return tool=='filter_sort' and operation=='select_columns' and args.get('columns')==spec['fields']
     if kind=='gmail_summary':
         if tool!='compose_answer' or operation or settings.get('instructions')!=spec['request']:return False
         documents=[binding for binding in node['bindings'] if binding['input']=='documents']
@@ -178,6 +195,11 @@ def coverage_report(state,draft):
     from .content_lineage import content_ancestors
     from .reader_sources import reader_sources
     upstream={id:content_ancestors(nodes,id) for id in nodes}
+    for id,n in nodes.items():
+        if n['tool']=='ask_user':
+            # A terminal human check consumes its preview even when no later
+            # output port is requested. Export lineage remains port-specific.
+            upstream[id]=set().union(*(upstream.get(b['node_id'],set())|{b['node_id']} for b in n['bindings']))
     def sources(id):
         result=set()
         for parent in upstream.get(id,set()) | {id}:

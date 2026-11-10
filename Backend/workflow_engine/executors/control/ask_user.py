@@ -16,7 +16,10 @@ def execute(node,state,storage,config,llm):
         if assessment.valid:
             return {**inputs, 'answer': user_inputs[-1], '_already_answered': True}
     while True:
-        answer = interrupt({'kind': 'workflow_question', 'node_id': node['id'], 'question': question, 'preview': inputs.get('records', [])[:10]})
+        preview = inputs.get('records', [])[:10]
+        if not preview and inputs.get('text'):
+            preview = [{'text': inputs['text']}]
+        answer = interrupt({'kind': 'workflow_question', 'node_id': node['id'], 'question': question, 'preview': preview})
         if not isinstance(answer, str) or not answer.strip():
             raise ValueError('확인 답변을 입력하세요.')
         if not settings['instructions']:

@@ -41,6 +41,8 @@ services:
       A4B_WORKER_MAX_CONCURRENCY: ${A4B_WORKER_MAX_CONCURRENCY:-12}
       A4B_WORKER_CONTROL_CONCURRENCY: ${A4B_WORKER_CONTROL_CONCURRENCY:-4}
       A4B_MAIN_PROVIDER: ${A4B_MAIN_PROVIDER:-ollama}
+      # EC2-hosted Ollama is a shared server only when explicitly selected.
+      A4B_SHARED_MODEL_TARGET: ${A4B_SHARED_MODEL_TARGET:-runpod}
       A4B_MAIN_BASE_URL: ${A4B_MAIN_BASE_URL:-${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}/v1}
       A4B_MAIN_API_KEY: ${A4B_MAIN_API_KEY:-}
       A4B_MAIN_MODEL: ${A4B_MAIN_MODEL:-${A4B_LLM_MODEL:-a4b-qwen35-4b-16k}}

@@ -119,7 +119,7 @@ test('AI status ignores a stale request after StrictMode restarts the effect and
   assert.equal(signal.aborted, true);
 });
 
-test('AI status only turns green for a ready RunPod target', async () => {
+test('AI status only turns green for an explicitly shared server target', async () => {
   for (const value of [{}, {health: {status: 'unconfigured'}}, {health: {status: 'ready'}},
     {health: {status: 'ready', target: 'local'}}, {health: {status: 'ready', target: 'remote'}},
     {health: {status: 'ready', target: 'unconfigured'}}, {health: {status: 'unavailable', target: 'runpod'}},
@@ -128,6 +128,20 @@ test('AI status only turns green for a ready RunPod target', async () => {
     try {assert.equal(status(), 'AI 일시 중단');}
     finally {await h.close();}
   }
+});
+
+test('AI status accepts the explicit EC2 target without labelling it as RunPod',async()=>{
+ let available=false;
+ const h=await mount((async()=>response(available?'ready':'unavailable','ec2')) as typeof fetch);
+ try{
+  assert.equal(status(),'AI 일시 중단');await click(button('AI 일시 중단'));
+  assert.match(document.body.textContent||'',/공용 EC2 AI 서버에 연결하지 못했어요/);
+  available=true;await click(button('다시 확인'));
+  assert.equal(status(),'AI 사용 가능');
+  assert.match(document.body.textContent||'',/공용 EC2 AI 서버에 연결되어 AI 작업을 실행할 수 있어요/);
+  assert.doesNotMatch(document.body.textContent||'',/RunPod/);
+  assert.match(document.querySelector('.ai-status-badge')!.getAttribute('aria-label')!,/EC2/);
+ }finally{await h.close();}
 });
 
 test('AI status rechecks on visible return and focus without overlapping requests', async () => {

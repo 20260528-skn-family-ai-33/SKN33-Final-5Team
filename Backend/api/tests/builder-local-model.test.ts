@@ -67,6 +67,62 @@ test('local model config is explicit, accepts served model names and exposes no 
  }finally{for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];Object.assign(process.env,old);}
 });
 
+test('explicit shared EC2 configuration checks both 9B roles on the configured server',async()=>{
+ const old={...process.env},original=globalThis.fetch;let calls=0;
+ try{
+  Object.assign(process.env,{A4B_MAIN_PROVIDER:'ollama',A4B_SHARED_MODEL_TARGET:'ec2',
+   A4B_MAIN_MODEL:'a4b-qwen35-9b-final664-pilot32k',A4B_CAPABILITY_MODE:'enforce',
+   A4B_CAPABILITY_MODEL:'a4b-qwen35-9b-previous-pilot32k',
+   A4B_OLLAMA_MODEL_ALIASES:'{"a4b-qwen35-4b-16k":"a4b-qwen35-9b-final664-pilot32k"}',
+   A4B_MAIN_API_KEY:'must-stay-on-the-server'});
+  let ids=[process.env.A4B_MAIN_MODEL+':latest',process.env.A4B_CAPABILITY_MODEL+':latest'];
+  globalThis.fetch=(async(url:any,options:RequestInit)=>{
+   calls++;
+   assert.equal(url,process.env.A4B_MAIN_BASE_URL+'/models');
+   assert.equal(options.redirect,'error');assert.equal(options.cache,'no-store');
+   assert.equal((options.headers as Record<string,string>).Authorization,'Bearer must-stay-on-the-server');
+   return new Response(JSON.stringify({data:ids.map(id=>({id}))}));
+  }) as typeof fetch;
+  const {localModelHealth}=await import('../src/builder-local-model');
+  for(const base of ['http://127.0.0.1:11434/v1','http://host.docker.internal:11434/v1',
+   'http://10.0.1.25:11434/v1','https://models.example.com/v1']){
+   process.env.A4B_MAIN_BASE_URL=base;
+   const ready=await localModelHealth();assert.equal(ready.status,'ready');assert.equal(ready.target,'ec2');
+   assert.match(ready.message,/EC2/);assert.ok(!JSON.stringify(ready).includes('must-stay-on-the-server'));
+  }
+  assert.equal(calls,4);
+  ids=[process.env.A4B_MAIN_MODEL+':latest'];
+  const missing=await localModelHealth();assert.equal(missing.status,'unavailable');assert.match(missing.message,/EC2.*지원 판정 모델/);
+  ids=[process.env.A4B_CAPABILITY_MODEL+':latest'];
+  assert.match((await localModelHealth()).message,/설계 모델/);
+  globalThis.fetch=(async()=>new Response('{}',{status:401})) as typeof fetch;
+  assert.equal((await localModelHealth()).status,'unavailable','a configured EC2 label cannot bypass authentication');
+  globalThis.fetch=(async()=>{throw Error('must-stay-on-the-server');}) as typeof fetch;
+  const failed=await localModelHealth();assert.equal(failed.status,'unavailable');assert.equal(failed.target,'ec2');
+  assert.ok(!JSON.stringify(failed).includes('must-stay-on-the-server'));
+ }finally{globalThis.fetch=original;for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];Object.assign(process.env,old);}
+});
+
+test('invalid shared server selection and invalid EC2 URLs fail before any request',async()=>{
+ const old={...process.env},original=globalThis.fetch;let calls=0;
+ try{
+  Object.assign(process.env,{A4B_MAIN_PROVIDER:'ollama',A4B_MAIN_MODEL:'final664',
+   A4B_MAIN_BASE_URL:'http://127.0.0.1:11434/v1',A4B_CAPABILITY_MODE:'off',A4B_OLLAMA_MODEL_ALIASES:''});
+  globalThis.fetch=(async()=>{calls++;return new Response('{}');}) as typeof fetch;
+  const {localModelHealth}=await import('../src/builder-local-model');
+  for(const target of ['local','remote','EC2','other']){
+   process.env.A4B_SHARED_MODEL_TARGET=target;
+   const invalid=await localModelHealth();assert.equal(invalid.status,'unconfigured');
+   assert.match(invalid.message,/A4B_SHARED_MODEL_TARGET/);
+  }
+  process.env.A4B_SHARED_MODEL_TARGET='ec2';
+  for(const url of ['file:///models','http://user:secret@localhost:11434/v1','http://localhost/v1?token=secret','http://localhost/v1#fragment']){
+   process.env.A4B_MAIN_BASE_URL=url;assert.equal((await localModelHealth()).status,'unconfigured');
+  }
+  assert.equal(calls,0);
+ }finally{globalThis.fetch=original;for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];Object.assign(process.env,old);}
+});
+
 test('only the shared HTTPS RunPod endpoint can make model health ready',async()=>{
  const old={...process.env},original=globalThis.fetch;let calls=0;
  try{

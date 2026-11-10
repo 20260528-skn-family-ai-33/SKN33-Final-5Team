@@ -21,6 +21,59 @@ GitHub에 `production` 환경을 만들고 워크플로우 실행 브랜치를 `
 
 새 이미지가 시작된 뒤 EC2의 앱 화면과 공개 `/api/health`를 확인하고, 실패하면 이전 컨테이너를 다시 시작합니다. ECR에서 새 이미지를 받으면서 이전 버전도 보관할 디스크 공간을 확인한 뒤 첫 배포를 실행합니다.
 
+### EC2에서 구동하는 파인튜닝 9B 연결
+
+앱만 EC2에 있고 모델은 RunPod에서 구동한다면 아래의 기존 RunPod 설정을 사용합니다.
+**모델도 EC2에서 직접 구동**한다면
+[EC2 9B 추가 설정](../infrastructure/env/.env.ec2.qwen35-9b.example)을 사용합니다.
+모델 크기와 제공 호스트는 별개입니다. 9B를 사용한다는 이유로 EC2 설정을 선택하지 않습니다.
+
+기존 상태 검사는 RunPod HTTPS 주소만 공용 모델로 인정했습니다. EC2 모델 서버는
+`A4B_SHARED_MODEL_TARGET=ec2`를 명시해야 상태 검사와 화면에서 공용 EC2 서버로 표시됩니다.
+이 값은 관리자가 정하는 연결 분류이며 AWS 서버의 실체를 자동으로 인증하는 기능은 아닙니다.
+미설정 시에는 기존 RunPod 검사를 유지하며, 임의 로컬 주소가 자동으로 공용 연결로 바뀌지 않습니다.
+
+1. 앱에서 접근할 수 있는 Ollama `/v1` 주소를 기존 `A4B_MAIN_BASE_URL`에 지정합니다.
+   호스트 Ollama에 Docker 컨테이너에서 접속한다면 `http://host.docker.internal:11434/v1`처럼
+   컨테이너에서 도달할 주소가 필요합니다. `localhost`는 컨테이너 자신이므로 서버 구성에 맞춰야 합니다.
+2. 인계 모델이 실제로 등록돼 있는지 확인합니다. 이 예시는 설계에
+   `a4b-qwen35-9b-final664-pilot32k`, 지원 판단에 `a4b-qwen35-9b-previous-pilot32k`를 사용합니다.
+   모델 이름만 바꾸어 원본 9B를 파인튜닝 모델로 취급하지 않습니다.
+   지원 판단도 최종 모델로 운영하기로 결정했다면 `A4B_CAPABILITY_MODEL`을 그 등록 이름으로
+   명시하고 해당 구성의 품질은 별도 검증합니다.
+3. EC2 추가 설정을 `.env.ec2.qwen35-9b`로 복사하고 기존 설정 뒤에 적용합니다.
+
+   ```bash
+   docker compose --env-file .env.aws --env-file .env.ec2.qwen35-9b config --quiet
+   docker compose --env-file .env.aws --env-file .env.ec2.qwen35-9b up -d --build
+   ```
+
+   이 파일은 모델 연결과 생성 한도만 덮어씁니다. 주소·인증·DB 설정,
+   DeepAgent/direct 선택, 프롬프트·요구 검증·보조 검토 설정을 교체하지 않습니다.
+   4B 보조 검토를 사용하지 않기로 한 배포는 기존 설정에서 `A4B_VERIFIER_MODE=off`를
+   별도로 지정합니다. 이 예시가 보조 4B 모델을 설치하거나 대신 호출하지는 않습니다.
+4. **기존 Actions 배포는 위 예시를 자동으로 읽지 않습니다.** 이미 생성된 컨테이너의
+   환경변수를 재사용하므로 PR 병합과 코드 배포만으로 저장된 4B 설정이 9B로 바뀌지 않습니다.
+   배포 담당자가 `/var/lib/a4b-deploy/env-overrides`의 다른 항목을 보존하면서 아래 모델 설정을
+   반영해야 합니다. root 소유·권한 600을 유지하며 JSON 바깥 작은따옴표를 넣지 않습니다.
+
+   ```text
+   A4B_SHARED_MODEL_TARGET=ec2
+   A4B_MAIN_PROVIDER=ollama
+   A4B_MAIN_MODEL=a4b-qwen35-9b-final664-pilot32k
+   A4B_LLM_MODEL=a4b-qwen35-9b-final664-pilot32k
+   A4B_CAPABILITY_MODE=enforce
+   A4B_CAPABILITY_MODEL=a4b-qwen35-9b-previous-pilot32k
+   A4B_OLLAMA_MODEL_ALIASES={"a4b-qwen35-4b-16k":"a4b-qwen35-9b-final664-pilot32k"}
+   A4B_OLLAMA_NUM_CTX=32768
+   A4B_OLLAMA_NUM_PREDICT=4096
+   A4B_OLLAMA_TEMPERATURE=0
+   ```
+
+   `A4B_MAIN_BASE_URL`과 인증 값도 실제 등록 서버에 맞춰 보존하거나 배포 담당자가 변경합니다.
+   프런트 상태 표시 변경도 포함하므로 `target=all`로 함께 배포한 뒤 새 대화와 기존 대화의
+   실제 호출 모델명·결과를 확인합니다. 상태 검사는 모델 목록 확인이며 추론 품질 검증은 아닙니다.
+
 ### RunPod 모델 설정 선택
 
 기본 [AWS 환경변수 예시](../infrastructure/env/.env.aws.example)는

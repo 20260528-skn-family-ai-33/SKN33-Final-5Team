@@ -67,3 +67,32 @@ test('default AWS settings match the baseline RunPod models; the 9B overlay is e
   assert.equal((await localModelHealth()).status,'ready');
  }finally{globalThis.fetch=original;for(const key of Object.keys(process.env))if(!(key in old))delete process.env[key];Object.assign(process.env,old);}
 });
+
+test('EC2 9B overlay selects the tuned models and preserves the design path and endpoint',{
+ skip:compose.status!==0?'Docker Compose is required to render the deployment configuration':false,
+},async()=>{
+ const old={...process.env},original=globalThis.fetch;
+ const dir=mkdtempSync(join(tmpdir(),'a4b-ec2-9b-'));
+ try{
+  const file=join(dir,'server.env');
+  writeFileSync(file,'A4B_MAIN_BASE_URL=http://host.docker.internal:11434/v1\nA4B_MAIN_API_KEY=fixture-only\nA4B_PLANNER_MODE=deepagent\nA4B_PLANNER_PROMPT=v8\nA4B_REQUIREMENT_MODE=enforce\nA4B_REQUIREMENT_GENERATION_MODE=baseline\nA4B_MAIN_MODEL=a4b-qwen35-4b-16k\n');
+  const baseline=renderCompose([file]);
+  assert.equal(baseline.A4B_SHARED_MODEL_TARGET,'runpod');
+  const overlay=join(root,'infrastructure/env/.env.ec2.qwen35-9b.example');
+  const configured=renderCompose([file,overlay]);
+  assert.equal(configured.A4B_SHARED_MODEL_TARGET,'ec2');
+  assert.equal(configured.A4B_MAIN_MODEL,'a4b-qwen35-9b-final664-pilot32k');
+  assert.equal(configured.A4B_CAPABILITY_MODEL,'a4b-qwen35-9b-previous-pilot32k');
+  assert.equal(configured.A4B_OLLAMA_NUM_CTX,'32768');
+  assert.equal(configured.A4B_OLLAMA_NUM_PREDICT,'4096');
+  assert.equal(configured.A4B_OLLAMA_TEMPERATURE,'0');
+  assert.deepEqual(JSON.parse(configured.A4B_OLLAMA_MODEL_ALIASES),{'a4b-qwen35-4b-16k':configured.A4B_MAIN_MODEL});
+  for(const key of ['A4B_MAIN_BASE_URL','A4B_MAIN_API_KEY','A4B_PLANNER_MODE','A4B_PLANNER_PROMPT',
+   'A4B_REQUIREMENT_MODE','A4B_REQUIREMENT_GENERATION_MODE','A4B_VERIFIER_MODE','A4B_VERIFIER_MODEL']){
+   assert.equal(configured[key],baseline[key],key);
+  }
+  Object.assign(process.env,configured);
+  globalThis.fetch=(async()=>new Response(JSON.stringify({data:[configured.A4B_MAIN_MODEL,configured.A4B_CAPABILITY_MODEL].map(id=>({id:id+':latest'}))}))) as typeof fetch;
+  const ready=await localModelHealth();assert.equal(ready.status,'ready');assert.equal(ready.target,'ec2');
+ }finally{rmSync(dir,{recursive:true,force:true});globalThis.fetch=original;for(const key of Object.keys(process.env))if(!(key in old))delete process.env[key];Object.assign(process.env,old);}
+});

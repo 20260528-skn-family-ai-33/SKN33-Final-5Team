@@ -11,10 +11,11 @@ const labels: Record<Status, string> = {
   unavailable: 'AI 일시 중단',
 };
 
-/** Show shared RunPod availability independently of a member's local model setup. */
+/** Show the configured shared server independently of a member's local model setup. */
 export function AiStatus() {
   const [status, setStatus] = useState<Status>('checking');
   const [healthMessage, setHealthMessage] = useState('');
+  const [server, setServer] = useState('RunPod');
   const [lastChecked, setLastChecked] = useState<Date>();
   const check = useRef<() => void>(() => {});
 
@@ -39,7 +40,9 @@ export function AiStatus() {
         if (!response.ok) throw new Error('Connection unavailable');
         const value = await response.json() as Connection;
         if (active && !controller.signal.aborted) {
-          setStatus(value.health?.status === 'ready' && value.health.target === 'runpod' ? 'ready' : 'unavailable');
+          const target = value.health?.target;
+          setServer(target === 'ec2' ? 'EC2' : 'RunPod');
+          setStatus(value.health?.status === 'ready' && (target === 'runpod' || target === 'ec2') ? 'ready' : 'unavailable');
           setHealthMessage(typeof value.health?.message === 'string' ? value.health.message : '');
         }
       } catch {
@@ -74,16 +77,16 @@ export function AiStatus() {
 
   return <Popover>
     <PopoverTrigger asChild>
-      <button type="button" className="ai-status-badge" data-status={status} aria-label={'공용 RunPod AI 서버 상태: ' + labels[status]}>
+      <button type="button" className="ai-status-badge" data-status={status} aria-label={'공용 '+server+' AI 서버 상태: ' + labels[status]}>
         <span className="ai-status-dot" aria-hidden="true"/>
         <span role="status" aria-live="polite">{labels[status]}</span>
       </button>
     </PopoverTrigger>
-    <PopoverContent className="ai-status-details" align="end" sideOffset={10} aria-label="공용 RunPod AI 서버 상태">
-      <h2>공용 RunPod AI 서버 상태</h2>
-      <p>{status === 'ready' ? '공용 RunPod AI 서버에 연결되어 AI 작업을 실행할 수 있어요.'
-        : status === 'checking' ? '공용 RunPod AI 서버가 응답하는지 확인하고 있어요.'
-        : healthMessage || '공용 RunPod AI 서버에 연결하지 못했어요. 잠시 후 다시 확인해주세요.'}</p>
+    <PopoverContent className="ai-status-details" align="end" sideOffset={10} aria-label={'공용 '+server+' AI 서버 상태'}>
+      <h2>공용 {server} AI 서버 상태</h2>
+      <p>{status === 'ready' ? '공용 '+server+' AI 서버에 연결되어 AI 작업을 실행할 수 있어요.'
+        : status === 'checking' ? '공용 '+server+' AI 서버가 응답하는지 확인하고 있어요.'
+        : healthMessage || '공용 '+server+' AI 서버에 연결하지 못했어요. 잠시 후 다시 확인해주세요.'}</p>
       {lastChecked && <small>마지막 확인 {lastChecked.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'})}</small>}
       <button type="button" className="as-button" disabled={status === 'checking'} onClick={() => check.current()}>
         <RefreshCw size={14} aria-hidden="true"/>다시 확인

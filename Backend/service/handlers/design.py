@@ -16,9 +16,27 @@ from langgraph.types import Command
 STATE_ONLY={'session','upload','attach_asset','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'}
 
 
+def _resource_versions(resources):
+    return [(r['id'], str(r.get('version') or r.get('hash') or '1')) for r in resources]
+
+
+def _completed_review_update(snapshot, resources):
+    """Project an ended review failure without modifying its checkpoint on reads."""
+    state = snapshot.values or {}
+    if (snapshot.next or snapshot.tasks or state.get('status') != 'validation_failed'
+            or _resource_versions(state.get('resources', [])) != _resource_versions(resources)):
+        return {}
+    from verification.policy import disabled_review_update
+    update = disabled_review_update(state=state)
+    # A status is returned only when a persisted review flag/error caused native
+    # revalidation. Unrelated failures and already-saved workflows stay untouched.
+    return {**update, 'confirmed': False} if 'status' in update else {}
+
+
 def public_state(storage,s,graph):
     snapshot=graph.get_state({'configurable':{'thread_id':s['id']}})
-    state=snapshot.values or {}
+    resources=[storage.asset(id) for id in s['file_ids']]
+    state={**(snapshot.values or {}), **_completed_review_update(snapshot, resources)}
     if not state and s.get('agent_id'):
         base=storage.agent(s['agent_id']);old=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {})
         state={'draft':base['config'],'messages':old.get('messages',[]),'status':'editing'}
@@ -31,7 +49,6 @@ def public_state(storage,s,graph):
         state = {**state, 'draft':legacy['draft'], 'pending_questions':legacy['pending_questions']}
     from agent_builder.capabilities.capability_gate import blocking_issue, capability_enforced
     issue=blocking_issue(state) if state.get('status')=='ready' else None
-    resources=[storage.asset(id) for id in s['file_ids']]
     inspections=[inspect_file(asset) for asset in resources]
     return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
             'file_inspection':inspections,
@@ -83,8 +100,7 @@ def _session_action(c):
         if action in {'message','confirm'}:
             snapshot=graph.get_state({'configurable':{'thread_id':s['id']}})
             fresh=[storage.asset(id) for id in s['file_ids']]
-            versions=lambda resources:[(r['id'],str(r.get('version') or r.get('hash') or '1')) for r in resources]
-            if snapshot.values and versions(snapshot.values.get('resources',[]))!=versions(fresh):
+            if snapshot.values and _resource_versions(snapshot.values.get('resources',[]))!=_resource_versions(fresh):
                 if action=='confirm':raise ValueError('자료 검토 결과가 변경됐습니다. 업무 설명을 다시 보내 설정과 근거를 확인하세요.')
                 graph.update_state({'configurable':{'thread_id':s['id']}},{'resources':fresh,'confirmed':False,'verification':None,'verification_last_candidate':None})
         if action=='session':return public_state(storage,s,graph)
@@ -144,6 +160,18 @@ def _session_action(c):
         if action=='confirm':
             if state.get('status')=='saved':return public_state(storage,s,graph)
             from agent_builder.capabilities.capability_gate import require_ready
+            recovered = _completed_review_update(before, fresh)
+            candidate = {**state, **recovered}
+            require_ready(candidate)
+            if recovered and candidate.get('status') == 'ready' and not candidate.get('issues'):
+                # Re-enter only supervisor -> approval after native validation.
+                # This explicit confirmation request consumes the usual interrupt;
+                # no planner/verifier or automatic save runs on a session read.
+                graph.update_state(config, recovered, as_node='verification')
+                graph.invoke(None, config)
+                before = graph.get_state(config)
+                state = before.values
+                has_interrupt = any(task.interrupts for task in before.tasks)
             require_ready(state)
             if not has_interrupt or state.get('status')!='ready':raise ValueError('필수 조건과 근거 검증을 완료한 뒤 저장할 수 있습니다.')
             graph.invoke(Command(resume={'type':'confirm'}),config)

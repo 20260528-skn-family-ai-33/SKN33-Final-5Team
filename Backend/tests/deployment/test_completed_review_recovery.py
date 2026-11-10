@@ -2,6 +2,8 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -20,6 +22,8 @@ from workflow_engine.runner import run_workflow
 
 @pytest.fixture
 def completed(tmp_path, monkeypatch):
+    monkeypatch.setenv('A4B_STORAGE', 'sqlite')
+    monkeypatch.setenv('EASYFLOW_PUBLIC_URL', '')
     for mode in ('CAPABILITY', 'CONDITION', 'REQUIREMENT', 'VERIFIER'):
         monkeypatch.setenv('A4B_' + mode + '_MODE', 'off')
     store = Storage(tmp_path)
@@ -172,4 +176,183 @@ def test_unrelated_terminal_failure_is_not_reopened(completed):
     assert call('session')['status'] == 'validation_failed'
     with pytest.raises(ValueError):
         call('confirm')
+    assert len(store.agents()) == 1
+
+
+class WorkerStopped(RuntimeError):
+    pass
+
+
+def stop_confirmation(completed, monkeypatch, point):
+    """Persist real graph/DB work, then simulate losing that worker at a boundary."""
+    store, graph, config, session, failed, call = completed
+    factory = design.build_graph
+    with monkeypatch.context() as patch:
+        def interrupted_graph(*args, **kwargs):
+            current, connection = factory(*args, **kwargs)
+            invoke, update = current.invoke, current.update_state
+
+            def interrupted_update(*a, **kw):
+                result = update(*a, **kw)
+                if point == 'recovery_checkpoint':
+                    raise WorkerStopped(point)
+                return result
+
+            def interrupted_invoke(value, *a, **kw):
+                if value is None and point == 'before_approval':
+                    invoke(value, *a, **kw, interrupt_before=['await_approval'])
+                    raise WorkerStopped(point)
+                if value is not None and point == 'before_save':
+                    invoke(value, *a, **kw, interrupt_before=['save'])
+                    raise WorkerStopped(point)
+                result = invoke(value, *a, **kw)
+                if (value is None and point == 'approval_interrupt'
+                        or value is not None and point == 'saved_checkpoint'):
+                    raise WorkerStopped(point)
+                return result
+
+            current.update_state, current.invoke = interrupted_update, interrupted_invoke
+            return current, connection
+
+        patch.setattr(design, 'build_graph', interrupted_graph)
+        if point == 'workflow_commit':
+            save = Storage.save_agent
+
+            def interrupted_save(self, state):
+                save(self, state)
+                raise WorkerStopped(point)
+
+            patch.setattr(Storage, 'save_agent', interrupted_save)
+        with pytest.raises(WorkerStopped, match=point):
+            call('confirm')
+    return graph.get_state(config)
+
+
+@pytest.mark.parametrize('point', ['recovery_checkpoint', 'before_approval', 'approval_interrupt',
+                                   'before_save', 'workflow_commit', 'saved_checkpoint'])
+def test_confirmation_retry_after_worker_stop_saves_exactly_once(completed, monkeypatch, point):
+    store, graph, config, session, failed, call = completed
+    interrupted = stop_confirmation(completed, monkeypatch, point)
+    public = call('session')
+    assert public['revision'] == session['revision']
+    assert public['status'] == ('saved' if point == 'saved_checkpoint' else 'ready')
+    assert graph.get_state(config).config == interrupted.config, 'Reading must not advance recovery'
+    assert public['messages'] == failed['messages'] and public['verification'] == failed['verification']
+    count = store.db.execute('SELECT count(*) FROM agent_versions').fetchone()[0]
+    assert count == (2 if point in ('workflow_commit', 'saved_checkpoint') else 1)
+    saved = call('confirm')  # Same revision; a new graph/worker context is constructed.
+    assert saved['status'] == 'saved' and saved['revision'] == session['revision'] + 1
+    assert saved['agent_id'] == saved['saved_agent_id']
+    assert saved['base_version'] == 1
+    assert saved['messages'] == failed['messages'] and saved['verification'] == failed['verification']
+    versions = store.db.execute('SELECT * FROM agent_versions').fetchall()
+    assert len(versions) == 2 and len(store.agents()) == 2
+    with pytest.raises(ValueError, match='대화가 변경'):
+        call('confirm')  # Replaying an already-consumed revision cannot save twice.
+    repeated = handle(dict(directory=str(Path(store.path).parent), action='confirm',
+                           id=session['id'], revision=saved['revision']))
+    assert repeated['revision'] == saved['revision'] and repeated['saved_agent_id'] == saved['saved_agent_id']
+    assert store.db.execute('SELECT * FROM agent_versions').fetchall() == versions
+    run = run_workflow(store, saved['saved_agent_id'], '저장한 조건으로 실행', api_key='')
+    assert run['status'] == 'succeeded' and [r['번호'] for r in run['rows']] == ['B', 'C']
+
+
+@pytest.mark.parametrize('fault', ['binding', 'semantic', 'requirement', 'capability', 'question',
+                                   'resource_version', 'session_revision', 'verifier_mode'])
+def test_interrupted_recovery_still_checks_current_guards(completed, monkeypatch, fault):
+    store, graph, config, session, failed, call = completed
+    interrupted = stop_confirmation(completed, monkeypatch, 'recovery_checkpoint')
+    state = deepcopy(interrupted.values)
+    if fault == 'binding':
+        state['draft']['workflow']['nodes'][1]['bindings'][0]['node_id'] = 'missing-source'
+    elif fault == 'semantic':
+        state['semantic_issues'] = ['기본 조건 검증 실패']
+    elif fault == 'requirement':
+        state['requirement_ledger'] = None
+    elif fault == 'capability':
+        state.update(capability_enforced=True, capability_assessment={'decision': 'manual_review'})
+    elif fault == 'question':
+        state['draft']['questions'] = ['추가 조건을 확인해주세요.']
+    elif fault == 'resource_version':
+        state['resources'][0]['version'] = 'changed'
+    elif fault == 'session_revision':
+        store.update_session(session, session['revision'])
+    else:
+        monkeypatch.setenv('A4B_VERIFIER_MODE', 'enforce')
+    graph.update_state(config, state, as_node='verification')
+    before = graph.get_state(config)
+    if fault in ('binding', 'semantic', 'requirement', 'capability', 'question'):
+        assert call('session')['status'] != 'ready'
+    with pytest.raises(ValueError):
+        call('confirm')
+    after = graph.get_state(config)
+    assert after.config == before.config and after.values == before.values
+    assert len(store.agents()) == 1
+
+
+@pytest.mark.parametrize('point', ['recovery_checkpoint', 'workflow_commit'])
+def test_retry_after_actual_worker_process_exit(completed, point):
+    store, graph, config, session, failed, call = completed
+    # Exit without exception handlers/finally blocks; the retry uses the data
+    # durably written by another process, not an in-memory exception snapshot.
+    script = '''
+import json,os,sys
+from service.handlers import design
+from service.dispatch import handle
+from infrastructure.persistence.storage import Storage
+def forbidden(*args, **kwargs):
+    raise AssertionError('Model invocation forbidden')
+factory=design.build_graph
+def interrupted_graph(*args, **kwargs):
+    graph,connection=factory(*args, **{**kwargs,'conversation':forbidden},verifier=forbidden)
+    update=graph.update_state
+    def interrupted_update(*a, **kw):
+        result=update(*a, **kw)
+        if sys.argv[2]=='recovery_checkpoint':os._exit(91)
+        return result
+    graph.update_state=interrupted_update
+    return graph,connection
+design.build_graph=interrupted_graph
+save=Storage.save_agent
+def interrupted_save(self,state):
+    result=save(self,state)
+    if sys.argv[2]=='workflow_commit':os._exit(91)
+    return result
+Storage.save_agent=interrupted_save
+handle(json.loads(sys.argv[1]),conversation=forbidden)
+'''
+    data = dict(directory=str(Path(store.path).parent), action='confirm',
+                id=session['id'], revision=session['revision'])
+    process = subprocess.run([sys.executable, '-c', script, json.dumps(data), point],
+                             cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=20)
+    assert process.returncode == 91, process.stderr
+    assert call('session')['revision'] == session['revision']
+    assert store.db.execute('SELECT count(*) FROM agent_versions').fetchone()[0] == (
+        2 if point == 'workflow_commit' else 1)
+    saved = call('confirm')
+    assert saved['status'] == 'saved' and saved['revision'] == session['revision'] + 1
+    assert saved['messages'] == failed['messages'] and saved['verification'] == failed['verification']
+    assert len(store.agents()) == 2
+    assert store.db.execute('SELECT count(*) FROM agent_versions').fetchone()[0] == 2
+    with pytest.raises(ValueError, match='대화가 변경'):
+        call('confirm')
+    assert store.db.execute('SELECT count(*) FROM agent_versions').fetchone()[0] == 2
+
+
+@pytest.mark.parametrize('case', ['no_review_history', 'planner_pending'])
+def test_retry_does_not_resume_unrelated_nodes(completed, monkeypatch, case):
+    store, graph, config, session, failed, call = completed
+    interrupted = stop_confirmation(completed, monkeypatch, 'recovery_checkpoint')
+    state = deepcopy(interrupted.values)
+    predecessor = 'verification'
+    if case == 'no_review_history':
+        state['verification'] = None
+    else:
+        predecessor = 'requirements'
+        state['requirement_route'] = 'plan'
+    graph.update_state(config, state, as_node=predecessor)
+    before = graph.get_state(config)
+    with pytest.raises(ValueError):
+        call('confirm')
+    assert graph.get_state(config).config == before.config
     assert len(store.agents()) == 1

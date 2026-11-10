@@ -20,23 +20,39 @@ def _resource_versions(resources):
     return [(r['id'], str(r.get('version') or r.get('hash') or '1')) for r in resources]
 
 
-def _completed_review_update(snapshot, resources):
-    """Project an ended review failure without modifying its checkpoint on reads."""
+def _review_recovery_update(snapshot, resources):
+    """Revalidate ended reviews and interrupted approval-only recovery steps."""
     state = snapshot.values or {}
-    if (snapshot.next or snapshot.tasks or state.get('status') != 'validation_failed'
-            or _resource_versions(state.get('resources', [])) != _resource_versions(resources)):
+    if _resource_versions(state.get('resources', [])) != _resource_versions(resources):
         return {}
-    from verification.policy import disabled_review_update
-    update = disabled_review_update(state=state)
-    # A status is returned only when a persisted review flag/error caused native
-    # revalidation. Unrelated failures and already-saved workflows stay untouched.
+    from verification.policy import disabled_review_update, verifier_mode
+    if not snapshot.next and not snapshot.tasks and state.get('status') == 'validation_failed':
+        update = disabled_review_update(state=state)
+    elif (verifier_mode() == 'off' and state.get('draft') and state.get('status') == 'ready'
+            and snapshot.next in (('supervisor',), ('await_approval',), ('save',))
+            and not any(task.interrupts for task in snapshot.tasks)
+            and (snapshot.next != ('save',) or state.get('confirmed'))
+            and not state.get('verification_required') and not state.get('verification_enforced')
+            and state.get('verification_route') is None
+            and (state.get('verification') or {}).get('route') in
+                ('manual_review', 'unsupported', 'repair_plan', 'ask_user')):
+        # A killed worker may have cleared the review flags but not yet reached
+        # the approval interrupt (or persisted save's result). Never resume a
+        # planner/input node here, and revalidate before allowing another confirm.
+        from agent_builder.design.nodes.validation import validate_node
+        update = disabled_review_update()
+        update.update(validate_node({**state, **update}))
+    else:
+        return {}
+    # Reads only project this state. An explicit confirm installs the approval
+    # path; historical verdicts/messages and already-saved workflows stay intact.
     return {**update, 'confirmed': False} if 'status' in update else {}
 
 
 def public_state(storage,s,graph):
     snapshot=graph.get_state({'configurable':{'thread_id':s['id']}})
     resources=[storage.asset(id) for id in s['file_ids']]
-    state={**(snapshot.values or {}), **_completed_review_update(snapshot, resources)}
+    state={**(snapshot.values or {}), **_review_recovery_update(snapshot, resources)}
     if not state and s.get('agent_id'):
         base=storage.agent(s['agent_id']);old=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {})
         state={'draft':base['config'],'messages':old.get('messages',[]),'status':'editing'}
@@ -158,9 +174,18 @@ def _session_action(c):
         config={'configurable':{'thread_id':s['id']},'recursion_limit':30}
         before=graph.get_state(config);state=before.values or {};has_interrupt=any(task.interrupts for task in before.tasks)
         if action=='confirm':
-            if state.get('status')=='saved':return public_state(storage,s,graph)
+            if state.get('status')=='saved':
+                # Save's checkpoint can commit before the worker updates session
+                # metadata. Finish that write on retry without saving another version.
+                saved_id = state.get('saved_agent_id')
+                if saved_id:
+                    version = storage.agent(saved_id)['version']
+                    if s.get('agent_id') != saved_id or s['base_version'] != version:
+                        s = storage.update_session({**s, 'agent_id': saved_id, 'base_version': version},
+                                                   data['revision'], state)
+                return public_state(storage,s,graph)
             from agent_builder.capabilities.capability_gate import require_ready
-            recovered = _completed_review_update(before, fresh)
+            recovered = _review_recovery_update(before, fresh)
             candidate = {**state, **recovered}
             require_ready(candidate)
             if recovered and candidate.get('status') == 'ready' and not candidate.get('issues'):

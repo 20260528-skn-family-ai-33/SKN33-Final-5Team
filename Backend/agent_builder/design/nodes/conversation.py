@@ -372,7 +372,7 @@ def make_conversation(api_key,model,model_factory=None):
         else:schema['properties']['document_ids']['maxItems']=0
         def ordered_encoding():
             return bool(inline_contracts and not scoped and 'condition' not in active_operation_ids)
-        decoder_schema={}
+        decoder_schema={};wire_schema={}
         def planner_format():
             from agent_builder.design.operation_steps import schema_for
             from agent_builder.design.requirement_generation import constrain_uploaded_join_inputs
@@ -387,7 +387,10 @@ def make_conversation(api_key,model,model_factory=None):
                 constrained = constrain_runtime_readers(decoder_schema, state)
                 decoder_schema.clear();decoder_schema.update(constrained)
             from contracts.draft_outcome import outcome_schema
-            wire_schema=outcome_schema(decoder_schema) if local_ollama else decoder_schema
+            # Tool inspection expands contracts during the same agent call.
+            # Keep the dictionary held by the existing ProviderStrategy current.
+            wire_schema.clear()
+            wire_schema.update(outcome_schema(decoder_schema) if local_ollama else decoder_schema)
             return ProviderStrategy(wire_schema,strict=True)
         final_format=planner_format()
         @wrap_model_call

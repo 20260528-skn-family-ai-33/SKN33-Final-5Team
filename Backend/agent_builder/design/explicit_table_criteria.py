@@ -83,6 +83,10 @@ def explicit_draft_issues(state,draft):
         criteria=explicit_criteria(state)
         if criteria is None or not draft.get('workflow'):return []
         specs=expected_specs(criteria)
+        if (specs or 'selection' in criteria) and any(e.get('branch') in ('yes','no') for e in draft['workflow']['edges']):
+            # Static execution stops at an unresolved condition. An earlier
+            # artifact cannot prove what every later branch will finally save.
+            return ['명시 조건 검증: 분기별 최종 출력 경로의 조건을 확인하지 못했습니다.']
         from .requirement_coverage import _matches
         from .content_lineage import content_ancestors
         from .reader_sources import reader_sources
@@ -93,6 +97,13 @@ def explicit_draft_issues(state,draft):
         if not path:raise ValueError('실행 가능한 시작 단계를 확인하지 못했습니다.')
         end=artifact_origin(draft['workflow'],outputs[-1]) if outputs else path[-1]['id']
         active=content_ancestors(nodes,end)|{end}
+        if not outputs and nodes[end]['tool']=='ask_user' and not nodes[end]['settings'].get('operation'):
+            # A terminal review consumes its preview even without an exported
+            # output port. Do not confuse an answer or mixed previews with data.
+            previews=[b for b in nodes[end]['bindings'] if b['input'] in ('records','text')]
+            if len(previews)==1:
+                parent=previews[0]['node_id']
+                active |= content_ancestors(nodes,parent)|{parent}
         def sources(id):
             result=set()
             for key in content_ancestors(nodes,id)|{id}:
@@ -115,6 +126,14 @@ def explicit_draft_issues(state,draft):
                 issues.append('명시 조건 검증: 최종 출력 경로의 선별 조건이 누락되거나 요청하지 않은 조건이 추가됐습니다.')
         for spec in specs:
             if spec['kind']=='policy':
+                from .final_table_criteria import policy_path_conflicts
+                from .requirement_generation import generation_requirements
+                confirmed_specs=specs+generation_requirements(state)[0]
+                requested_transform=lambda n:any(_matches(s,n,draft,sources) for s in confirmed_specs
+                                                 if s['kind'] in ('aggregate','join','export','fill_missing'))
+                if not active <= {n['id'] for n in path}:
+                    issues.append('명시 조건 검증: 최종 정책 적용의 실행 순서를 확인하지 못했습니다.')
+                issues.extend('명시 조건 검증: '+issue for issue in policy_path_conflicts(spec,[n for n in path if n['id'] in active],requested_transform,draft,confirmed_specs))
                 policy_nodes=[n for id,n in nodes.items() if id in active and n['tool']=='filter_sort' and not n['settings'].get('operation')]
                 if not policy_nodes:
                     policies=[spec[k] for k in ('missing_policy','duplicate_policy')]
@@ -131,11 +150,11 @@ def explicit_draft_issues(state,draft):
                     unchanged=unchanged or bool(output_proof and output_proof.preserves_rows)
                     if not (keep_only and unchanged):
                         issues.append('명시 조건 검증: 요청한 빈값·중복 정책을 적용하는 실행 단계를 확인하지 못했습니다.')
-                for key,value in spec.items():
-                    if key=='kind' or value is None:continue
-                    for n in policy_nodes:
-                        effective=n['settings'].get('execution_plan') or draft['execution_plan']
-                        if effective.get(key)!=value:issues.append('명시 조건 검증: '+n['id']+'의 '+key+' 설정이 사용자 요청과 다릅니다.')
+                continue
+            if spec['kind']=='sort':
+                from .final_table_criteria import final_sort_matches
+                if not final_sort_matches(spec['sort'],draft,path,active):
+                    issues.append('명시 조건 검증: 최종 출력의 정렬 순서가 사용자 요청과 일치하는지 확인하지 못했습니다.')
                 continue
             if not any(_matches(spec,n,draft,sources) for id,n in nodes.items() if id in active):
                 issues.append('명시 조건 검증: '+spec['kind']+'의 실제 설정·최종 출력 경로가 사용자 요청과 다릅니다: '+json.dumps(spec,ensure_ascii=False))

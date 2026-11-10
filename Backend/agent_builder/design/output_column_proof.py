@@ -119,6 +119,11 @@ def final_output_proof(draft, resources):
                             result = Proof('records', columns, source.preserves_rows)
                     elif operation in ('filter', 'sort'):
                         result = Proof('records', source.columns, False)
+            elif tool == 'filter_sort' and port == 'table' and operation in ('handle_missing', 'deduplicate'):
+                source = argument(node, args, 'table')
+                if source and source.kind == 'table':
+                    preserves = operation == 'handle_missing' and args.get('action') == 'keep'
+                    result = Proof('table', source.columns, source.preserves_rows and preserves)
             elif tool == 'calculate_columns' and operation == 'calculate_records' and port in ('records', 'result'):
                 source = argument(node, args, 'rows')
                 output = args.get('output_column')

@@ -55,8 +55,16 @@ def _matches(spec,node,draft,sources):
     if kind=='human_review':
         # An explicit execution-time review must really pause, not let an LLM
         # treat the earlier design request as an already supplied confirmation.
-        return (tool=='ask_user' and not operation and bool((settings.get('question') or '').strip())
-                and not settings.get('instructions') and any(b['input']=='text' and b['output']=='text' for b in node['bindings']))
+        if (tool!='ask_user' or operation or not (settings.get('question') or '').strip()
+                or settings.get('instructions')):return False
+        # The executor previews records, falling back to text only for empty
+        # records. With both inputs, the requested result could be hidden.
+        previews=[b for b in node['bindings'] if b['input'] in ('records','text')]
+        if len(previews)!=1:return False
+        binding=previews[0]
+        source=next((n for n in draft['workflow']['nodes'] if n['id']==binding['node_id']),None)
+        from workflow_engine.catalog.registry import node_ports
+        return bool(source and node_ports(source)[1].get(binding['output'])==binding['input'])
     if kind=='rename':
         return (tool=='calculate_columns' and (
             not operation and settings.get('table_operation')=='rename' and settings.get('rename_from')==spec['source'] and settings.get('rename_to')==spec['target']

@@ -164,7 +164,7 @@ def test_explicit_policy_checks_effective_node_settings_not_overridden_defaults(
     from agent_builder.design.explicit_table_criteria import explicit_draft_issues
     from workflow_engine.executors.table.filter_sort import execute
     s=seed();d=s['draft'];n=d['workflow']['nodes'][2]
-    s['messages'][-1]['content']='제공하는 실행 조건: {"missing_policy":"error"}'
+    s['messages'][-1]['content']='제공하는 실행 조건: '+json.dumps(dict(missing_policy='error',selection=d['execution_plan']['filters'],sort=d['execution_plan']['sort']))
     d['execution_plan']['missing_policy']='keep'
     assert n['settings']['execution_plan']['missing_policy']=='error'
     assert not explicit_draft_issues(s,d)

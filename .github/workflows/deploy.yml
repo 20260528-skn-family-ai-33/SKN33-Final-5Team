@@ -176,7 +176,8 @@ jobs:
           for path in tests/design/test_request_execution_contracts.py tests/verification/test_context_payload.py \
                       tests/design/test_fill_missing_value_types.py tests/design/test_runtime_file_questions.py \
                       tests/design/test_explicit_keep_policy.py tests/design/test_explicit_output_columns.py \
-                      tests/design/test_deferred_reader_schema.py; do
+                      tests/design/test_deferred_reader_schema.py tests/design/test_final_table_criteria.py \
+                      tests/design/test_human_review_records.py tests/design/test_bounded_output_columns.py; do
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"

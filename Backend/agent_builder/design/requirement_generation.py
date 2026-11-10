@@ -45,6 +45,11 @@ def generation_requirements(state):
     # An unsupported requirement still blocks approval, but must not hide the
     # known calculation/document contracts from the model's tool selection.
     if not complete:return specs,[]
+    # select_columns consumes/returns records, while the native table chain
+    # reads/writes Table values. A task-to-tool list cannot reserve its required
+    # adapters or records exporter. Keep the ordinary generation grammar for
+    # these requests; all sealed specs still reach the coverage/save gate.
+    if any(s['kind']=='select_fields' for s in specs):return specs,[]
     assets={a['id']:a for a in state.get('resources',[])}
     files=[]
     for s in specs:

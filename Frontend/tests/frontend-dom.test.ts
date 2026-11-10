@@ -900,12 +900,14 @@ test('DOM integration: new document review UI survives merging with workflow res
 });
 
 
-test('entry: service introduction is the default, then opens the actual workflow list',async()=>{
+test('entry: service introduction is the default, then opens home and the workflow library',async()=>{
  const t=await setup('',{},undefined,createElement(EntryApp));
  try{
   assert.match(document.body.textContent||'',/업무를 말하세요/);
   assert.equal(t.calls.length,0,'landing must not require a backend or model');
   await click(button('A4B 시작하기'));await t.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'home');
+  await click(document.querySelector('[data-tour="menu-workflows"]')!);await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
   assert.ok(document.body.textContent?.includes('서비스 A'));
   assert.ok(document.body.textContent?.includes('서비스 B'));
@@ -914,7 +916,7 @@ test('entry: service introduction is the default, then opens the actual workflow
  }finally{await t.close();}
 });
 test('entry: scrolling intro keeps every link on the existing routes without API calls',async()=>{
- const cases:[string,string,string|null][]=[['워크플로우 열기','workflows',null],['제품 살펴보기','preview',null],['작업 라이브러리','nodes',null],['워크플로우 목록','workflows',null],['실행 기록','history',null],['워크플로우 시작하기','workflows',null]];
+ const cases:[string,string,string|null][]=[['워크플로우 열기','home',null],['제품 살펴보기','preview',null],['작업 라이브러리','nodes',null],['워크플로우 목록','workflows',null],['실행 기록','history',null],['워크플로우 시작하기','home',null]];
  for(const [label,screen,node] of cases){
   const t=await setup('?screen=intro',{'a4b-builder-session':'kept'},undefined,createElement(EntryApp));
   try{
@@ -1009,15 +1011,15 @@ test('entry: user help has no infrastructure controls and unsent input is guarde
   await input(document.querySelector('textarea[aria-label="업무 설명"]')!,'아직 보내지 않은 요청');
   let prompts=0;window.confirm=()=>{prompts++;return false;};
   await click(button('작업 찾아보기'));
-  const home=document.querySelector('[aria-label="A4B 워크플로우 홈"]')!;
+  const home=document.querySelector('[aria-label="A4B 홈"]')!;
   await click(home);assert.equal(prompts,1);
   assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
   await click(button('설계로 돌아가기'));
   assert.equal(document.querySelector<HTMLTextAreaElement>('.as-composer textarea')?.value,'아직 보내지 않은 요청');
   await click(button('작업 찾아보기'));
   window.confirm=()=>true;await click(home);await n.flush();
-  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
-  assert.equal(document.querySelector<HTMLTextAreaElement>('.as-composer textarea')?.value,'');
+  assert.equal(new URL(location.href).searchParams.get('screen'),'home');
+  assert.equal(document.querySelector('main h1')?.textContent,'홈');
  }finally{await n.close();}
 });
 
@@ -1071,7 +1073,7 @@ test('navigation: cancelling browser back from a dirty editor restores the URL a
 test('redesign: infrastructure controls and model fields are absent from all product menus',async()=>{
  for(const screen of ['workflows','schedules','workflow','nodes','history']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['워크플로우','작업 라이브러리','예약 실행','실행 기록','자료함','서비스 연결']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
+  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['홈','워크플로우','작업 라이브러리','예약 실행','실행 기록','자료함','서비스 연결']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
  }
 });
 test('redesign: changing a saved workflow can be cancelled without losing an unsent request',async()=>{
@@ -1089,7 +1091,7 @@ test('redesign: library hides manual creation and preserves saved-node edits',as
 
 test('workspace shell: shared chrome stays consistent and only the design page shows the header create action',async()=>{
  let header='';
- for(const screen of ['workflows','schedules','history','nodes','workflow','run','assets','connections']){
+ for(const screen of ['home','workflows','schedules','history','nodes','workflow','run','assets','connections']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
   try{const chrome=document.querySelector('.workspace-header')!.cloneNode(true) as HTMLElement;chrome.querySelector('[data-tour="create-workflow"]')?.remove();const current=chrome.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(document.querySelector('.workspace-brand')?.tagName,'BUTTON');assert.equal(document.querySelector('.workspace-header [data-tour="help"]'),null);assert.ok(document.querySelector('.workspace-sidebar-footer [data-tour="help"]'));assert.doesNotMatch(document.querySelector('.workspace-sidebar-footer')!.textContent!,/서비스 소개/);assert.equal(document.querySelectorAll('.workspace-header [data-tour="create-workflow"]').length,screen==='workflow'?1:0);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
  }
@@ -1616,5 +1618,47 @@ test('schedule source: skipped new-file runs remain empty after polling instead 
   await act(async()=>{t.mock.timers.tick(5000);await tick();});
   assert.doesNotMatch(document.querySelector('.as-test-result')?.textContent||'',/과거 파일의 성공 결과/);
   assert.match(document.body.textContent!,/새로 처리할 파일이 없습니다/);
+ }finally{await h.close();}
+});
+
+
+test('home: first-login example opens a fresh design with the example in the composer',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const example=Array.from(document.querySelectorAll('.overview-examples button')).find(item=>item.textContent?.includes('엑셀 정리하기'));
+  assert.ok(example);
+  await click(example);
+  assert.equal(location.search,'?screen=workflow');
+  assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,/재고표에서/);
+  assert.ok(!h.calls.some(call=>call.body));
+ }finally{await h.close();}
+});
+
+test('home: all sidebar destinations return to home and recent entries retain their IDs',async()=>{
+ const run={id:'stored-run',status:'succeeded',agent_version:1,steps:[],rows:[],created_at:'2026-11-10T01:00:00Z'};
+ const h=await setup('?screen=home',{},path=>path.includes('/agent?id=A')?snapshot(A,[run]):undefined,createElement(EntryApp));
+ const nav=(id:string)=>document.querySelector('.workspace-nav [data-tour="menu-'+id+'"]')!;
+ const goHome=()=>click(document.querySelector('.workspace-brand')!);
+ try{
+  const workflow=document.querySelector('#home-workflows')!.closest('section')!.querySelector('.overview-row')!;
+  await click(workflow);
+  assert.equal(location.search,'?screen=workflow&service=A');
+  await goHome();
+  await click(document.querySelector('#home-runs')!.closest('section')!.querySelector('.overview-row')!);
+  assert.equal(location.search,'?screen=run&run=stored-run&service=A');
+  await goHome();
+  for (const page of ['workflow','workflows','schedules','history','assets','connections']){
+   await click(nav(page));
+   assert.equal(location.search,'?screen='+page);
+   assert.equal(nav(page).getAttribute('aria-current'),'page');
+   if (page==='workflows'){
+    await click(button('재사용 작업'));
+    assert.equal(location.search,'?screen=nodes');
+    assert.equal(nav(page).getAttribute('aria-current'),'page');
+   }
+   await goHome();
+   assert.equal(location.search,'?screen=home');
+   assert.equal(nav('home').getAttribute('aria-current'),'page');
+  }
  }finally{await h.close();}
 });

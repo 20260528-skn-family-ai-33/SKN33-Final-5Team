@@ -1,0 +1,97 @@
+.workspace-overview .entry-page-heading {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.workspace-overview .overview-create {
+  flex: none;
+  width: auto;
+  min-height: 38px;
+  padding: 8px 13px;
+  white-space: nowrap;
+}
+.overview-create > svg {
+  flex: none;
+}
+.overview-columns, .overview-examples {
+  display: grid;
+  gap: 16px;
+}
+.overview-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.overview-examples {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+.workspace-overview h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.overview-description, .overview-empty {
+  color: var(--a4b-muted);
+  font-size: 13px;
+}
+.overview-panel, .overview-examples button {
+  border: 1px solid var(--a4b-border);
+  border-radius: 8px;
+  background: var(--a4b-surface);
+}
+.overview-panel-heading, .overview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+}
+.overview-panel-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  min-height: 52px;
+  border-bottom: 1px solid var(--a4b-border);
+}
+.overview-panel ul { margin: 0; padding: 0; list-style: none; }
+.overview-panel li + li { border-top: 1px solid var(--a4b-border); }
+.overview-row {
+  width: 100%;
+  text-align: left;
+  min-height: 64px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.overview-row:hover, .overview-examples button:hover { background: var(--a4b-neutral-soft); }
+.overview-row:focus-visible, .overview-examples button:focus-visible {
+  outline: 2px solid var(--a4b-action);
+  outline-offset: -3px;
+}
+.overview-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--a4b-neutral-soft);
+  color: var(--a4b-action);
+}
+.overview-item { display: grid; flex: 1; min-width: 0; }
+.overview-item strong { overflow-wrap: anywhere; font-weight: 650; }
+.overview-item small { color: var(--a4b-muted); }
+.overview-row > svg, .overview-more { color: var(--a4b-action); flex: none; }
+.overview-empty { padding: 15px; }
+.overview-examples button {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 8px;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.overview-more { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+@media (max-width: 940px) {
+  .overview-columns { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .overview-examples { grid-template-columns: 1fr; }
+}

@@ -61,7 +61,7 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange}:{onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'workflows'|'schedules'|'history'|'assets'|'connections')=>void}={}){
+export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange,initialPrompt}:{initialPrompt?:string;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const [libraryVisited,setLibraryVisited]=useState(initialScreen==='nodes');
@@ -75,7 +75,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  async function refreshLibrary(){const result=await request('/api/agent-builder/nodes');setLibrary(result.nodes);setPresets(result.defaults);}
 
  const [agents,setAgents]=useState<Agent[]>([]),[credentialId,setCredentialId]=useState(''),[model,setModel]=useState('');
- const [session,setSession]=useState<Session|null>(null),[selected,setSelected]=useState<Agent|null>(null),[agentResources,setAgentResources]=useState<Resource[]>([]),[text,setText]=useState(''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+ const [session,setSession]=useState<Session|null>(null),[selected,setSelected]=useState<Agent|null>(null),[agentResources,setAgentResources]=useState<Resource[]>([]),[text,setText]=useState(initialPrompt ?? ''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  const [pendingMessage,setPendingMessage]=useState('');
  const [initialLoadFailed,setInitialLoadFailed]=useState(false);
  const [libraryBusy,setLibraryBusy]=useState(false),[libraryDirty,setLibraryDirty]=useState(false);
@@ -322,7 +322,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   if(screen==='workflow'&&!selected)return;
   if(canLeave())reset();
  }
- function leave(next:'workflows'|'schedules'|'history'|'assets'|'connections'){if(canLeave())onNavigate?.(next);}
+ function leave(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'){if(canLeave())onNavigate?.(next);}
  useEffect(()=>{
   if(!(text.trim()||testText.trim()||replyDraft.trim()||runFiles.length||chosenRefs.length||libraryDirty||scheduleSourceDirty))return;
   const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};
@@ -358,9 +358,9 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
     connected={resources.map(r=>r.id)} formats={receiptQuestion ? receiptFileTypes : undefined}
     onLibrary={()=>setAttachMode('library')} onNew={()=>{setAttachMode(null);fileInput.current?.click();}}
     onSelect={id=>{setAttachMode(null);void attachResource(id);}}/>}
-  <WorkspaceHeader onHome={openDesignHome} onNew={screen==='workflow'?()=>{if(canLeave())reset();}:undefined} disabled={loading||!!busy||libraryBusy}/>
+  <WorkspaceHeader onHome={()=>leave('home')} onNew={screen==='workflow'?()=>{if(canLeave())reset();}:undefined} disabled={loading||!!busy||libraryBusy}/>
   {error&&<div className="as-error as-global-error" role="alert"><AlertCircle size={17}/><span>{error}</span><button onClick={()=>setError('')} aria-label="오류 안내 닫기"><X size={16}/></button></div>}
-  <div className="as-shell"><WorkspaceSidebar active={screen==='nodes'?'workflows':'workflow'} disabled={!!busy||libraryBusy} help={<WorkspaceHelp currentTourPanel={editorPanel} onTourPanelChange={setEditorPanel} deferAutoStart={loading||!!busy||libraryBusy}/>} onNavigate={next=>{if(next==='workflow')openDesignHome();else if(next!=='workflows'||screen!=='nodes')leave(next);}}>{screen!=='nodes'&&<><div className="as-sidebar-label">내 워크플로우 <span>{loading?'…':agents.length}</span></div><nav data-tour="saved-workflows" aria-label="저장한 워크플로우">{agents.map(a=><button key={a.id} disabled={!!busy||libraryBusy} onClick={()=>{if(canLeave())void openAgent(a);}} className={'as-agent-link '+(selected?.id===a.id?'active':'')}><span className="as-small-icon"><Workflow size={16}/></span><span><strong>{a.config.name}</strong><small>버전 {a.version} · {a.config.tool_ids.length}개 도구</small></span></button>)}</nav>{!agents.length&&!loading&&<p className="as-sidebar-empty">업무를 설명하면 첫 워크플로우를 만들 수 있습니다.</p>}</>}</WorkspaceSidebar>
+  <div className="as-shell"><WorkspaceSidebar active={screen==='nodes'?'workflows':'workflow'} disabled={!!busy||libraryBusy} help={<WorkspaceHelp currentTourPanel={editorPanel} onTourPanelChange={setEditorPanel} deferAutoStart={loading||!!busy||libraryBusy}/>} onNavigate={next=>{if(next==='workflow')openDesignHome();else leave(next);}}>{screen!=='nodes'&&<><div className="as-sidebar-label">내 워크플로우 <span>{loading?'…':agents.length}</span></div><nav data-tour="saved-workflows" aria-label="저장한 워크플로우">{agents.map(a=><button key={a.id} disabled={!!busy||libraryBusy} onClick={()=>{if(canLeave())void openAgent(a);}} className={'as-agent-link '+(selected?.id===a.id?'active':'')}><span className="as-small-icon"><Workflow size={16}/></span><span><strong>{a.config.name}</strong><small>버전 {a.version} · {a.config.tool_ids.length}개 도구</small></span></button>)}</nav>{!agents.length&&!loading&&<p className="as-sidebar-empty">업무를 설명하면 첫 워크플로우를 만들 수 있습니다.</p>}</>}</WorkspaceSidebar>
   <div style={{display:screen==='nodes'?'contents':'none'}}>{libraryVisited&&<NodeLibrary loading={loading} unavailable={initialLoadFailed} header={<TaskLibraryHeader active="nodes" disabled={!!busy||libraryBusy} onNavigate={next=>{if(next==='workflows')leave(next);}} actions={window.history.state?.returnToDesign&&<button type="button" className="as-text-button" disabled={!!busy||libraryBusy} onClick={()=>go('workflow',true)}><ArrowLeft size={15}/>설계로 돌아가기</button>}/>} onDirtyChange={setLibraryDirty} onBusyChange={setLibraryBusy} nodes={library} defaults={presets} catalog={catalog} onSaved={refreshLibrary} onUse={n=>{if(!canLeave())return;reset();setChosenRefs([n.ref]);setChosenSnapshots([n]);go('workflow');}} onToolUse={t=>{if(!canLeave())return;reset();setText(t.name+' 기능을 사용하는 워크플로우를 만들어줘. ');go('workflow');}}/>}</div>{screen!=='nodes'&&<main className="as-main">{pageNavigation}<div className="as-page-title"><div><h1>{selected?selected.config.name:session?.base_version?'워크플로우 수정':screen==='run'?'실행할 워크플로우를 선택하세요.':'워크플로우 설계'}</h1><p>{selected?.config.schedule?'저장한 작업·처리 규칙을 서버에서 실행하는 자동화입니다.':selected?'저장한 처리 순서와 설정을 확인하세요.':screen==='run'?'저장한 워크플로우를 선택하고 실제 요청·파일로 실행합니다.':'업무를 설명하고, 처리 순서와 조건을 확인한 뒤 저장하세요.'}</p></div>{selected&&<button data-tour="edit-workflow" className="as-button as-secondary" onClick={edit} disabled={!!busy||libraryBusy}><Settings2 size={16}/>설정 수정</button>}{screen==='workflow'&&!saved&&<div className="as-design-actions">
      <button type="button" className="as-button as-secondary" onClick={()=>go('nodes',true)} disabled={loading||!!busy||libraryBusy}>작업 찾아보기</button>
      <button className="as-button as-primary" onClick={save} disabled={!ready||!!busy||libraryBusy}><Check size={17}/>{session?.base_version?'새 버전 저장':draft?.schedule?'자동화 저장':'초안 확인 · 저장'}</button>

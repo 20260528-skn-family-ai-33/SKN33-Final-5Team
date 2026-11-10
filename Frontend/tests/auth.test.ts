@@ -33,7 +33,7 @@ test('frontend authentication gates private screens and clears state when identi
   });
   await t.test('sign-in preserves a private route and sends intro visitors to the workspace',()=>{
    assert.match(decodeURIComponent(loginUrl()),/returnTo=\/\?screen=workflow/);
-   window.history.replaceState(null,'','/?screen=intro');assert.match(decodeURIComponent(loginUrl()),/screen=workflows/);window.history.replaceState(null,'','/?screen=workflow');
+   window.history.replaceState(null,'','/?screen=intro');assert.match(decodeURIComponent(loginUrl()),/screen=home/);window.history.replaceState(null,'','/?screen=workflow');
   });
   current={enabled:true,authenticated:true,user:alice};await focus();
   await t.test('verified member sees their name and the private workspace',()=>{

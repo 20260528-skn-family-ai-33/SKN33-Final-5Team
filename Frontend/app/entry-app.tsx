@@ -10,13 +10,14 @@ import {ScheduledWorkflows} from './scheduled-workflows';
 import {WorkflowRenameDialog} from './workflow-rename-dialog';
 import {request} from '../components/flow/connection-panel';
 import './entry-app.css';
+import {WorkspaceOverview} from './workspace-overview';
 import LandingPage from './landing-page';
 import {IntroDemo} from './intro-demo';
 import {useAuth,SignIn} from './auth';
-export type EntryRoute='intro'|'preview'|'workflows'|'schedules'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
+export type EntryRoute='intro'|'preview'|'home'|'workflows'|'schedules'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
 type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
-function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','workflows','schedules','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
+function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','home','workflows','schedules','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
 export default function EntryApp(){
  const auth=useAuth();
@@ -38,28 +39,29 @@ export default function EntryApp(){
   if(remount){guard.current=()=>true;setNavigationKey(n=>n+1);}historyIndex.current=targetIndex;
   context.current=location.search;setRoute(next);
  };window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
- function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false){
+ function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false,initialPrompt?:string){
   if(routeRef.current==='assets'&&!guard.current())return;
   guard.current=()=>true;
   if(fresh){localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');}
   const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('previewNode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);
-  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});
+  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current,initialPrompt},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});
  }
  if(!['intro','preview'].includes(route)&&(auth.loading||auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
- if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('workflow',undefined,true)}/>;
+ if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('home')}/>;
  const newFlow=()=>navigate('workflow',undefined,true);
- if(['nodes','workflow','run'].includes(route))return <AgentStudio key={navigationKey} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
- if(route==='intro')return <LandingPage onStart={()=>navigate('workflows')} onPreview={preview} onRoute={next=>navigate(next)}/>;
- return <div className="entry-app"><WorkspaceHeader onHome={newFlow}/>
-  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next==='workflow')newFlow();else if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow}/>}/>
+ const startExample=(prompt:string)=>navigate('workflow',undefined,true,undefined,false,prompt);
+ if(['nodes','workflow','run'].includes(route))return <AgentStudio key={navigationKey} initialPrompt={window.history.state?.initialPrompt} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
+ if(route==='intro')return <LandingPage onStart={()=>navigate('home')} onPreview={preview} onRoute={next=>navigate(next)}/>;
+ return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
+  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next==='workflow')newFlow();else if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
    <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onOpen={id=>navigate('run',id)} onCreate={newFlow}/>:
-    <WorkspaceHome route={route as 'workflows'|'history'} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
+    <WorkspaceHome route={route as 'home'|'workflows'|'history'} startExample={startExample} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
    </main>
   </div>
  </div>;
 }
-function WorkspaceHome({route,historyService,navigate,newFlow}:{route:'workflows'|'history';historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string)=>void;newFlow:()=>void}){
+function WorkspaceHome({route,historyService,navigate,newFlow,startExample}:{route:'home'|'workflows'|'history';startExample:(prompt:string)=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string)=>void;newFlow:()=>void}){
  const [agents,setAgents]=useState<AgentSummary[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[query,setQuery]=useState('');
  const [runRows,setRunRows]=useState<{agent:AgentSummary;run:RunSummary}[]>([]),[historyErrors,setHistoryErrors]=useState<string[]>([]);
  const [renaming,setRenaming]=useState<AgentSummary|null>(null);
@@ -68,12 +70,16 @@ function WorkspaceHome({route,historyService,navigate,newFlow}:{route:'workflows
  async function load(){const token=++generation.current;setLoading(true);setError('');setHistoryErrors([]);setRunRows([]);try{
 
   const {agents:listed=[]}=await request<{agents?:AgentSummary[]}>('/api/agent-builder/agents');if(token!==generation.current)return;setAgents(listed);
-  if(route==='history'){const historyAgents=listed.filter(agent=>!historyService||agent.id===historyService);const rows=await settleWithLimit(historyAgents,4,async(agent:AgentSummary)=>{const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(agent.id));return {agent,runs:result.tests||[]};},()=>token===generation.current);if(token!==generation.current)return;setRunRows(rows.flatMap(r=>r.status==='fulfilled'?r.value.runs.map((run:RunSummary)=>({agent:r.value.agent,run})):[]).sort((a,b)=>(Date.parse(b.run.started_at||b.run.created_at||'')||0)-(Date.parse(a.run.started_at||a.run.created_at||'')||0)));setHistoryErrors(rows.flatMap((r,i)=>r.status==='rejected'?[historyAgents[i].config.name]:[]));}
+  if(route!=='workflows'){const historyAgents=listed.filter(agent=>!historyService||agent.id===historyService);const rows=await settleWithLimit(historyAgents,4,async(agent:AgentSummary)=>{const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(agent.id));return {agent,runs:result.tests||[]};},()=>token===generation.current);if(token!==generation.current)return;setRunRows(rows.flatMap(r=>r.status==='fulfilled'?r.value.runs.map((run:RunSummary)=>({agent:r.value.agent,run})):[]).sort((a,b)=>(Date.parse(b.run.started_at||b.run.created_at||'')||0)-(Date.parse(a.run.started_at||a.run.created_at||'')||0)));setHistoryErrors(rows.flatMap((r,i)=>r.status==='rejected'?[historyAgents[i].config.name]:[]));}
  }catch(e){if(token===generation.current)setError((e as Error).message);}finally{if(token===generation.current)setLoading(false);}}
  useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;};},[route,historyService]);
  const historyAgent=historyService?agents.find(agent=>agent.id===historyService):undefined;
  const matches=agents.filter(a=>(a.config.name+' '+a.config.purpose).toLocaleLowerCase().includes(query.toLocaleLowerCase()));
  const refreshButton=<button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button>;
+ if(route==='home')return <WorkspaceOverview
+  workflows={agents.slice().sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)).slice(0,3)}
+  runs={runRows.slice(0,3)} loading={loading} error={error} historyPartial={historyErrors.length>0}
+  onRetry={()=>void load()} onCreate={newFlow} onExample={startExample} onNavigate={navigate}/>;
  return <>{route==='workflows'
   ? <TaskLibraryHeader active="workflows" onNavigate={next=>{if(next==='nodes')navigate(next);}} actions={refreshButton}/>
   : <div className="entry-page-heading"><div><h1>실행 기록</h1><p>{historyAgent?historyAgent.config.name+'의 이전 실행입니다.':'이전 실행의 완료 여부와 결과를 확인하세요.'}</p>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div>{refreshButton}</div>}{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}

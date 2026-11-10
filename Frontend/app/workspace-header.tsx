@@ -24,7 +24,7 @@ export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = 
   const preview = new URLSearchParams(location.search).get('screen') === 'preview';
 
   return <header className="workspace-header">
-    <button type="button" className="workspace-brand" aria-label="A4B 워크플로우 홈" onClick={onHome} disabled={disabled}>
+    <button type="button" className="workspace-brand" aria-label="A4B 홈" onClick={onHome} disabled={disabled}>
       <WorkspaceBrandMark/><strong>A4B</strong>
     </button>
     <div className="workspace-header-actions">

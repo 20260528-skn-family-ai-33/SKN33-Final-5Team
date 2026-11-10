@@ -19,7 +19,11 @@ const common: Step[] = [
     { target: 'menu-workflow', title: '새 업무는 여기서 시작하세요', text: '왼쪽 메뉴의 워크플로우를 누르면 설계 화면이 열립니다. 어떤 자료를 어떻게 처리하고 싶은지 설명해 주세요.' },
 ];
 export function tourSteps(scope: string): Step[] {
-    if (scope === 'preview') return [{target:'create-workflow',title:'내 작업 공간으로 이동하세요',text:'내 워크플로우 열기를 누르면 실제 작업 목록으로 이동합니다. 지금 보고 있는 화면은 동작을 살펴보는 샘플이며 저장되거나 실행되지 않습니다.'}];
+    if (scope === 'home') return [
+        {target:'home-create',title:'새 워크플로우를 시작하세요',text:'어떤 자료를 어떻게 처리할지 설계 화면에서 설명할 수 있어요.'},
+        ...common.slice(0,3),
+    ];
+    if (scope === 'preview') return [{target:'create-workflow',title:'내 작업 공간으로 이동하세요',text:'작업 공간 열기를 누르면 홈으로 이동합니다. 지금 보고 있는 화면은 동작을 살펴보는 샘플이며 저장되거나 실행되지 않습니다.'}];
     if (scope === 'workflow')
         return [
             { target: 'conversation', panel: 'conversation', title: '할 일과 원하는 결과를 설명하세요', text: '예: “매출 파일에서 팀별 합계를 구해 JSON으로 저장해 줘.” 필요한 조건을 질문받으면 같은 대화에서 답합니다.' },

@@ -22,24 +22,41 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
   const [attempt, setAttempt] = useState<GmailAttempt>();
   const popup = useRef<Window | null>(null);
   const statusRequest = useRef(0);
+  const statusPending = useRef<{request:number;promise:Promise<void>} | null>(null);
+  const mutation = useRef(false);
 
   async function refresh() {
+    if (mutation.current) return;
+    if (statusPending.current?.request === statusRequest.current) return statusPending.current.promise;
     const request = ++statusRequest.current;
-    try {
-      const current = await gmailRequest<GmailStatus>();
-      if (request === statusRequest.current) { setStatus(current); setError(''); }
-    } catch (err) { if (request === statusRequest.current) setError((err as Error).message); }
+    const promise = (async () => {
+      try {
+        const current = await gmailRequest<GmailStatus>();
+        if (request === statusRequest.current) { setStatus(current); setError(''); setVerified(false); }
+      } catch (err) { if (request === statusRequest.current) setError((err as Error).message); }
+    })().finally(() => { if (statusPending.current?.request === request) statusPending.current = null; });
+    statusPending.current = {request,promise};
+    return promise;
   }
 
-  useEffect(() => { if (variant === 'card') void refresh(); }, [variant]);
+  useEffect(() => {
+    if (variant !== 'card') return;
+    void refresh();
+    const resume = () => { if (document.visibilityState !== 'hidden') void refresh(); };
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => { window.removeEventListener('focus', resume); document.removeEventListener('visibilitychange', resume); };
+  }, [variant]);
   useEffect(() => () => { statusRequest.current++; }, []);
-  useEffect(() => { onStatusChange?.(!error && status?.connected === true); }, [error, status?.connected, onStatusChange]);
+  useEffect(() => { onStatusChange?.(!error && !status?.accountError && status?.connected === true); }, [error, status?.connected, status?.accountError, onStatusChange]);
 
   useEffect(() => {
     if (!open) return;
     void refresh();
     let active = true;
     function finish() {
+      if (mutation.current) return;
+      statusRequest.current++;
       popup.current?.close();
       popup.current = null;
       try { sessionStorage.removeItem('a4b-gmail-return'); } catch {}
@@ -51,6 +68,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
       if (event.origin !== location.origin || !popup.current || event.source !== popup.current || event.data?.type !== 'easyflow-oauth') return;
       if (event.data.ok) finish();
       else {
+        statusRequest.current++;
         popup.current.close();
         popup.current = null;
         setAttempt(undefined);
@@ -77,6 +95,10 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
   }, [open, attempt]);
 
   async function connect() {
+    if (disabled || mutation.current) return;
+    mutation.current = true;
+    statusRequest.current++;
+    setOpen(true);
     setError('');
     setVerified(false);
     setAttempt(undefined);
@@ -93,10 +115,17 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
       login?.close();
       popup.current = null;
       setError((err as Error).message);
-    } finally { setBusy(false); }
+    } finally { mutation.current = false; setBusy(false); }
   }
 
   async function manage(action: 'test' | 'disconnect') {
+    if (disabled || mutation.current) return;
+    mutation.current = true;
+    if (action === 'disconnect') {
+      popup.current?.close();
+      popup.current = null;
+      try { sessionStorage.removeItem('a4b-gmail-return'); } catch {}
+    }
     const request = ++statusRequest.current;
     setBusy(true);
     setError('');
@@ -114,7 +143,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
         if (request === statusRequest.current) setStatus(current => current && {...current, connected: false, email: null, accountError: undefined});
       }
     } catch (err) { setError((err as Error).message); }
-    finally { setBusy(false); }
+    finally { mutation.current = false; setBusy(false); }
   }
 
   return <Dialog open={open} onOpenChange={value => {
@@ -125,8 +154,8 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
     {variant === 'card' ? <article className="service-connection-card" aria-label="Gmail 서비스">
       <div className="service-connection-card-heading">
         <span className="service-connection-logo"><Mail size={22} aria-hidden="true"/></span><h3>Gmail</h3>
-        <span className={'service-connection-state' + (status?.connected ? ' connected' : '')} role="status">
-          {error ? '상태 확인 필요' : !status ? '확인 중' : status.connected ? '연결됨' : status.configured ? '연결 안 됨' : '설정 대기'}
+        <span className={'service-connection-state' + (error || status?.accountError ? ' attention' : status?.connected ? ' connected' : '')} role="status">
+          {error ? '상태 확인 필요' : !status ? '확인 중' : status.accountError ? '연결 확인 필요' : status.connected ? '연결됨' : status.configured ? '연결 안 됨' : '설정 대기'}
         </span>
       </div>
       {status?.connected && <div className="service-connection-account">
@@ -135,7 +164,19 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
       <p>메일과 첨부파일을 읽어 내용을 요약하고 답장 초안을 작성하세요.</p>
       <span className="service-connection-permissions">읽기 전용</span>
       {error && !open && <p role="alert">{error}</p>}
-      <DialogTrigger asChild><button type="button" className="as-button" disabled={disabled} aria-label="Gmail 연결 관리">연결 관리</button></DialogTrigger>
+      {!open && status?.accountError && <p className="gmail-account-notice" role="status">{status.accountError}</p>}
+      {!open && verified && status?.connected && <p className="gmail-account-notice" role="status">Gmail 읽기 권한을 확인했어요.</p>}
+      {status && !status.configured && !status.connected && <p className="gmail-account-notice">서버의 Gmail 연결 설정이 필요합니다. 설정 후 Google 계정을 연결할 수 있어요.</p>}
+      <div className="service-connection-actions">
+        <button type="button" className="as-button as-primary" disabled={disabled || busy || !status?.configured} onClick={() => void connect()} aria-label={status?.connected ? 'Gmail 계정 다시 연결' : 'Gmail 계정 연결'}>
+          {status?.connected ? '계정 다시 연결' : 'Google에서 연결'}
+        </button>
+        {status?.connected && <>
+          <button type="button" className="as-button" disabled={disabled || busy} onClick={() => void manage('test')} aria-label="Gmail 연결 확인">연결 확인</button>
+          <button type="button" className="as-text-button service-connection-disconnect" disabled={disabled || busy} onClick={() => void manage('disconnect')} aria-label="Gmail 연결 해제">연결 해제</button>
+        </>}
+        <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled || busy} aria-label="Gmail 연결 관리">연결 관리</button></DialogTrigger>
+      </div>
     </article> : <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled}>
       <Mail size={16} aria-hidden="true"/>Gmail
     </button></DialogTrigger>}
@@ -154,14 +195,14 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
       {error && <p role="alert">{error}</p>}
       {attempt && <a href={attempt.authorizationUrl} className="as-text-button" referrerPolicy="no-referrer">팝업이 보이지 않으면 이 탭에서 Google 승인 계속</a>}
       <div className="flex flex-wrap gap-2">
-        {status?.configured && <button type="button" className="as-button as-primary" disabled={busy} onClick={() => void connect()}>
+        {status?.configured && <button type="button" className="as-button as-primary" disabled={disabled || busy} onClick={() => void connect()}>
           {status.connected ? '계정 다시 연결' : 'Google에서 연결'}
         </button>}
         {status?.connected && <>
-          <button type="button" className="as-button" disabled={busy} onClick={() => void manage('test')}>연결 확인</button>
-          <button type="button" className="as-button" disabled={busy} onClick={() => void manage('disconnect')}>A4B 연결 해제</button>
+          <button type="button" className="as-button" disabled={disabled || busy} onClick={() => void manage('test')}>연결 확인</button>
+          <button type="button" className="as-button" disabled={disabled || busy} onClick={() => void manage('disconnect')}>A4B 연결 해제</button>
         </>}
-        <button type="button" className="as-text-button" disabled={busy} onClick={() => void refresh()}>상태 새로고침</button>
+        <button type="button" className="as-text-button" disabled={disabled || busy} onClick={() => void refresh()}>상태 새로고침</button>
       </div>
     </DialogContent>
   </Dialog>;

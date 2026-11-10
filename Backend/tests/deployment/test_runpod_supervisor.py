@@ -127,7 +127,7 @@ server.serve_forever()
 
     def test_term_during_warmup_stops_all_children_promptly(self):
         process = self.start()
-        eventually(lambda: (self.root/'warm.pid').exists())
+        eventually(lambda: all((self.root/(name+'.pid')).exists() for name in ('ollama', 'parser', 'warm')))
         pids = [int((self.root/(name+'.pid')).read_text()) for name in ('ollama', 'parser', 'warm')]
         started = time.monotonic(); process.terminate(); process.wait(timeout=2)
         self.assertLess(time.monotonic()-started, 2)
@@ -135,6 +135,31 @@ server.serve_forever()
             eventually(lambda pid=pid: not Path('/proc', str(pid)).exists())
         self.assertFalse((self.root/'gateway.pid').exists())
         self.assertFalse((self.run/'ready').exists())
+
+    def assert_service_exit_during_warmup_restarts(self, service, exit_signal):
+        process = self.start()
+        eventually(lambda: all((self.root/(name+'.pid')).exists() for name in ('ollama', 'parser', 'warm')))
+        original = {name: int((self.root/(name+'.pid')).read_text()) for name in ('ollama', 'parser', 'warm')}
+        os.kill(original[service], exit_signal)
+        # Warmup stays blocked indefinitely, so restart cannot depend on it finishing.
+        eventually(lambda: int((self.root/'warm.pid').read_text()) != original['warm'], timeout=3)
+        for pid in original.values():
+            eventually(lambda pid=pid: not Path('/proc', str(pid)).exists())
+        self.assertIsNone(process.poll())
+        self.assertFalse((self.root/'warm-release').exists())
+        self.assertFalse((self.root/'gateway.pid').exists())
+        self.assertFalse((self.run/'ready').exists())
+        # The replacement services can finish warming and publish authenticated readiness.
+        for name in ('warm-release', 'gateway-listen', 'gateway-release'):
+            (self.root/name).touch()
+        eventually(lambda: (self.run/'ready').exists())
+        self.assertEqual((self.root/'authenticated-request').read_text(), 'True')
+
+    def test_parser_exit_during_warmup_restarts_all_services(self):
+        self.assert_service_exit_during_warmup_restarts('parser', signal.SIGTERM)
+
+    def test_ollama_crash_during_warmup_restarts_all_services(self):
+        self.assert_service_exit_during_warmup_restarts('ollama', signal.SIGKILL)
 
     def test_ready_requires_authenticated_gateway_and_duplicate_start_preserves_it(self):
         (self.root/'warm-release').touch()

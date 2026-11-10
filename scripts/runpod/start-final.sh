@@ -62,6 +62,13 @@ export MINERU_MODEL_VLM_ENGINE=vllm
 export PYTHONUNBUFFERED=1
 
 pids=()
+all_alive() {
+  # `kill -0 pid1 pid2` succeeds if either PID exists; require every service.
+  local pid
+  for pid in "$@"; do
+    kill -0 "$pid" 2>/dev/null || return 1
+  done
+}
 cleanup() {
   rm -f /run/a4b-final/ready
   if ((${#pids[@]})); then
@@ -79,27 +86,32 @@ while true; do
   pids+=("$!")
   ready=0
   for ((attempt=0; attempt<180; attempt++)); do
-    if ! kill -0 "${pids[0]}" "${pids[1]}" 2>/dev/null; then break; fi
+    if ! all_alive "${pids[@]}"; then break; fi
     if python3 "$base/app/scripts/runpod/check-final-ready.py"; then ready=1; break; fi
     sleep 2
   done
   if ((ready)); then
-    # Bash can run traps immediately while waiting on a tracked background child.
-    # A foreground Python request could otherwise defer TERM for up to 900s.
+    # Track warmup in its own process group so cleanup can cancel model requests
+    # along with required services instead of waiting for their 900s timeout.
     setsid python3 "$base/app/scripts/runpod/warm-final.py" 9>&- &
     warm_pid=$!
     pids+=("$warm_pid")
-    if wait "$warm_pid"; then
+    # Watch required services during warmup too. A bounded poll also handles
+    # children that exit before waiting starts; wait below collects warmup status.
+    while all_alive "${pids[@]}"; do
+      sleep .2
+    done
+    if all_alive "${pids[0]}" "${pids[1]}" && wait "$warm_pid"; then
       pids=("${pids[@]:0:2}")
       setsid python3 "$base/app/scripts/runpod/runpod-ollama-proxy.py" 9>&- >>"$base/logs/gateway.log" 2>&1 &
       pids+=("$!")
       gateway_ready=0
       for ((attempt=0; attempt<60; attempt++)); do
-        if ! kill -0 "${pids[@]}" 2>/dev/null; then break; fi
+        if ! all_alive "${pids[@]}"; then break; fi
         if python3 "$base/app/scripts/runpod/check-gateway-ready.py"; then gateway_ready=1; break; fi
         sleep 2
       done
-      if ((gateway_ready)) && kill -0 "${pids[@]}" 2>/dev/null; then
+      if ((gateway_ready)) && all_alive "${pids[@]}"; then
         date -u +%FT%TZ > /run/a4b-final/ready
         echo "$(date -u +%FT%TZ) authenticated model gateway and GPU parser ready"
         wait -n "${pids[@]}" || true

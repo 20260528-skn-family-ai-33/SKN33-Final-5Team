@@ -14,11 +14,17 @@
 응답과 두 모델의 식별값을 확인한 뒤에만 `/run/a4b-final/ready`를 기록한다.
 워밍업도 감독 프로세스가 추적하는 별도 프로세스 그룹에서 실행해, TERM 수신 시
 모델 응답의 900초 제한을 기다리지 않고 다른 서비스와 함께 종료한다.
+워밍업 중에는 0.2초 간격으로 워밍업·Ollama·파서를 각각 감시한다. 필수 서비스가
+먼저 종료되면 워밍업도 정리하고 전체 서비스를 다시 시작한다. 여러 PID 중 하나만
+살아 있어도 성공하는 일괄 생존 검사는 사용하지 않는다.
 `final_model_profile.py`가 두 필수 모델을 지정한다. 기존 `models-registered.json`에
 4B 기록이 남아 있어도 준비 검사·워밍업 대상에는 포함하지 않는다. 필수 9B의
 등록 식별값이 없거나 다르면 시작에 실패한다. 로딩 이후에도 식별값과 GPU 적재를 검사한다.
 
 ## 기존 서버에 적용
+
+운영 적용은 리뷰와 main 병합이 끝난 뒤 배포가 요청된 경우에만 진행한다.
+미병합 PR 검증에는 로컬 임시 DB와 네트워크를 차단한 Linux 컨테이너를 사용한다.
 
 1. AWS의 기존 `/var/lib/a4b-deploy/env-overrides`를 백업하고
    `A4B_PLANNER_MODE=deepagent`, `A4B_VERIFIER_MODE=off` 두 값을 반영한다.
@@ -43,6 +49,13 @@
 과거 메시지·검토 결과·저장 워크플로우와 버전은 삭제하지 않으며 DB 일괄 수정도 필요 없다.
 기본 설정 검증, 업무 조건 검증, 사용자 확인은 계속 적용한다.
 
+보조 검토 실패로 그래프가 이미 종료된 대화도 조회 시 현재 off 정책으로 기본 검증
+결과를 계산한다. 조회는 저장된 체크포인트·대화 버전·이력을 수정하지 않는다.
+사용자가 확인을 요청하면 자료·대화 버전과 기본 검증을 확인한 뒤 기존 초안을 승인
+단계로 복구하고 정상 확인·저장 경로를 수행한다. 이 복구에는 모델 호출이 없으며,
+실제 오류·미해결 질문·지원 판단 문제는 계속 저장을 차단한다. 이미 저장한 대화는
+다시 복구하거나 저장하지 않는다.
+
 대기 검토 실행기도 `off`에서는 기존 대기 기록을 처리하지 않고 그대로 보존한다.
 검토를 다시 켜려면 서버 설정을 `shadow`, `defer`, `enforce` 중 하나로 명시적으로 변경해야 한다.
 4B 모델 파일과 범용 모델 API는 유지하므로 외부에서 직접 보내는 4B 요청까지 차단하지는 않는다.
@@ -55,12 +68,14 @@ final664 9B로 해석된다. 이 별칭은 유지한다.
 ## 자동 검사
 
 ```sh
-python -m pytest Backend/tests/deployment/test_runpod_final_models.py Backend/tests/deployment/test_runpod_supervisor.py Backend/tests/deployment/test_legacy_reviewer_off.py -q
+python -m pytest Backend/tests/deployment/test_runpod_final_models.py Backend/tests/deployment/test_runpod_supervisor.py Backend/tests/deployment/test_legacy_reviewer_off.py Backend/tests/deployment/test_completed_review_recovery.py -q
 bash -n scripts/runpod/start-final.sh
 ```
 
 세 모델 영수증에서 두 모델만 선택하는지, 4B 요청이 생기지 않는지, 누락·잘못된 식별값과
 예상 밖 GPU 모델을 거부하는지, 파서가 준비되지 않으면 시작을 차단하는지 검사한다.
-Linux 감독 프로세스 검사는 임시 경로와 모의 서비스로 실제 시작 스크립트를 실행한다.
-기존 대화 검사는 실패한 검토 결과를 저장한 뒤 재개하며, 이력 보존·재생성 방지·명시적 확인과
-실행 결과를 확인한다.
+Linux 감독 프로세스 검사는 임시 경로와 모의 서비스로 실제 시작 스크립트를 실행하며,
+워밍업 중 파서 종료와 Ollama 강제 종료 후 새 서비스의 인증된 준비 상태까지 확인한다.
+기존 대화 검사는 실패한 검토 결과를 저장한 뒤 대기 중인 단계와 완전히 종료된 상태를
+각각 검사한다. 서비스 API에서 조회·명시적 확인·저장·실행을 수행하고, 조회 시 DB 불변,
+이력·기존 워크플로우 보존, 모델 재호출 방지와 실제 검증 오류의 차단을 확인한다.

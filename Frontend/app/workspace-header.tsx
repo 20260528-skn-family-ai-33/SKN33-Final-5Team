@@ -33,8 +33,8 @@ export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = 
         <Plus size={16} aria-hidden="true"/>{actionLabel}
       </button>}
       <div className="workspace-header-status">
-        <AccountMenu showLocalStatus={!preview}/>
         {!preview && <AiStatus/>}
+        <AccountMenu showLocalStatus={!preview}/>
       </div>
     </div>
   </header>;

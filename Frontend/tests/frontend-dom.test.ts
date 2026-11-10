@@ -1019,7 +1019,7 @@ test('entry: user help has no infrastructure controls and unsent input is guarde
   await click(button('작업 찾아보기'));
   window.confirm=()=>true;await click(home);await n.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'home');
-  assert.equal(document.querySelector('main h1')?.textContent,'홈');
+  assert.equal(document.querySelector('main h1')?.textContent,'어떤 업무를 자동화할까요?');
  }finally{await n.close();}
 });
 
@@ -1627,7 +1627,13 @@ test('home: first-login example opens a fresh design with the example in the com
  try{
   const example=Array.from(document.querySelectorAll('.overview-examples button')).find(item=>item.textContent?.includes('엑셀 정리하기'));
   assert.ok(example);
+  const arrow=document.querySelector<HTMLButtonElement>('.overview-composer button[type=submit]')!;
+  assert.ok(arrow.disabled);
   await click(example);
+  assert.equal(location.search,'?screen=home');
+  assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="자동화할 업무"]')!.value,/재고표에서/);
+  assert.ok(!arrow.disabled);
+  await click(arrow);
   assert.equal(location.search,'?screen=workflow');
   assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,/재고표에서/);
   assert.ok(!h.calls.some(call=>call.body));
@@ -1644,21 +1650,108 @@ test('home: all sidebar destinations return to home and recent entries retain th
   await click(workflow);
   assert.equal(location.search,'?screen=workflow&service=A');
   await goHome();
-  await click(document.querySelector('#home-runs')!.closest('section')!.querySelector('.overview-row')!);
-  assert.equal(location.search,'?screen=run&run=stored-run&service=A');
+  assert.ok(!document.querySelector('#home-runs'));
+  const library=document.querySelector('#home-library')!.closest('section')!;
+  await click(library.querySelectorAll('.overview-row')[1]);
+  assert.equal(location.search,'?screen=nodes');
   await goHome();
-  for (const page of ['workflow','workflows','schedules','history','assets','connections']){
+  const pages = {
+   workflow:'워크플로우 설계',workflows:'작업 라이브러리',schedules:'예약 실행',
+   history:'실행 기록',assets:'자료함',connections:'서비스 연결',
+  };
+  for (const [page,title] of Object.entries(pages)){
    await click(nav(page));
    assert.equal(location.search,'?screen='+page);
+   assert.equal(document.querySelector('main h1')?.textContent,title);
    assert.equal(nav(page).getAttribute('aria-current'),'page');
+   const status=document.querySelector('.workspace-header-status')!;
+   assert.ok(status.firstElementChild?.matches('.ai-status-badge'));
+   await click(nav('home'));
+   assert.equal(location.search,'?screen=home');
+   assert.equal(nav('home').getAttribute('aria-current'),'page');
+   await click(nav(page));
    if (page==='workflows'){
     await click(button('재사용 작업'));
     assert.equal(location.search,'?screen=nodes');
     assert.equal(nav(page).getAttribute('aria-current'),'page');
+    await click(button('저장한 워크플로우'));
+    assert.equal(location.search,'?screen=workflows');
+   }
+   if (page==='history'){
+    await click(button('결과 보기'));
+    const url=new URL(location.href);
+    assert.equal(url.searchParams.get('screen'),'run');
+    assert.equal(url.searchParams.get('service'),'A');
+    assert.equal(url.searchParams.get('run'),'stored-run');
    }
    await goHome();
    assert.equal(location.search,'?screen=home');
    assert.equal(nav('home').getAttribute('aria-current'),'page');
   }
+  await click(nav('assets'));
+  await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,35));});
+  assert.equal(nav('home').getAttribute('aria-current'),'page');
+  await act(async()=>{window.history.forward();await new Promise(resolve=>setTimeout(resolve,35));});
+  assert.equal(nav('assets').getAttribute('aria-current'),'page');
+ }finally{await h.close();}
+});
+
+test('home: linked detail pages keep the selected workflow and return to home',async()=>{
+ const scheduled=agent('A','일일 보고서',dailySchedule);
+ const old={id:'older-run',status:'succeeded',agent_version:1,steps:[],rows:[],answer:'선택한 실행 결과',created_at:'2026-11-10T01:00:00Z'};
+ const latest={...old,id:'latest-run',answer:'다른 실행 결과',created_at:'2026-11-10T02:00:00Z'};
+ const asset={id:'preview-file',name:'영수증.jpg',format:'jpg',size_bytes:2048,has_original:true};
+ const methods:string[]=[];
+ const h=await setup('?screen=home',{},(path,_body,method)=>{
+  methods.push(method);
+  if(path.endsWith('/agents'))return {agents:[scheduled,B]};
+  if(path.endsWith('/schedules'))return {workflows:scheduleFixtures()};
+  if(path.includes('/agent?id=A'))return snapshot(scheduled,[latest,old]);
+  if(path.endsWith('/library'))return {space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[asset],next:null};
+  if(path.includes('/asset_preview?'))return {text:'영수증 미리보기 내용',columns:[],rows:[]};
+  if(path.endsWith('/gmail'))return {configured:true,connected:true,connectionVersion:1,email:'team@example.com'};
+ },createElement(EntryApp));
+ const route=(screen:string,service:string|null=null,run:string|null=null)=>{
+  const params=new URLSearchParams(location.search);
+  assert.equal(params.get('screen'),screen);
+  assert.equal(params.get('service'),service);
+  assert.equal(params.get('run'),run);
+ };
+ const backHome=async()=>{await click(document.querySelector('.workspace-brand')!);route('home');};
+ const closeDialog=async()=>{await click(document.querySelector('[role=dialog] [data-slot=dialog-close]')!);assert.equal(document.querySelector('[role=dialog]'),null);};
+ try{
+  await click(button('예약 실행'));
+  await click(scheduleRow('A').querySelector('button')!);
+  route('run','A');
+  assert.ok(document.querySelector('.as-schedule-card'));
+  await click(button('설계'));
+  route('workflow','A');
+  assert.equal(document.querySelector('main h1')?.textContent,'일일 보고서');
+  await click(button('목록으로'));
+  route('workflows');
+  await click(document.querySelector('[aria-label="일일 보고서 실행 기록"]')!);
+  route('history','A');
+  const records=document.querySelectorAll('.entry-history-list article');
+  assert.equal(records.length,2);
+  await click(records[1].querySelector('button')!);
+  route('run','A','older-run');
+  assert.match(document.querySelector('.as-test-result')!.textContent!,/선택한 실행 결과/);
+  assert.doesNotMatch(document.querySelector('.as-test-result')!.textContent!,/다른 실행 결과/);
+  await backHome();
+
+  await click(button('자료함'));
+  await click(button('내용 보기'));
+  assert.match(document.querySelector('[role=dialog]')!.textContent!,/영수증 미리보기 내용/);
+  await closeDialog();
+  route('assets');
+  await backHome();
+
+  await click(button('서비스 연결'));
+  await click(button('연결 관리'));
+  assert.match(document.querySelector('[role=dialog]')!.textContent!,/team@example.com/);
+  await closeDialog();
+  route('connections');
+  await backHome();
+  assert.ok(methods.every(method=>method==='GET'));
  }finally{await h.close();}
 });

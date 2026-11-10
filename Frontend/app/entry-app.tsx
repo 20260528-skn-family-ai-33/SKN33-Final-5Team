@@ -56,12 +56,12 @@ export default function EntryApp(){
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next==='workflow')newFlow();else if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
    <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onOpen={id=>navigate('run',id)} onCreate={newFlow}/>:
-    <WorkspaceHome route={route as 'home'|'workflows'|'history'} startExample={startExample} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
+    <WorkspaceHome route={route as 'home'|'workflows'|'history'} startExample={startExample} memberName={auth.user?.name?.trim()} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
    </main>
   </div>
  </div>;
 }
-function WorkspaceHome({route,historyService,navigate,newFlow,startExample}:{route:'home'|'workflows'|'history';startExample:(prompt:string)=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string)=>void;newFlow:()=>void}){
+function WorkspaceHome({route,historyService,navigate,newFlow,startExample,memberName}:{memberName?:string;route:'home'|'workflows'|'history';startExample:(prompt:string)=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string)=>void;newFlow:()=>void}){
  const [agents,setAgents]=useState<AgentSummary[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[query,setQuery]=useState('');
  const [runRows,setRunRows]=useState<{agent:AgentSummary;run:RunSummary}[]>([]),[historyErrors,setHistoryErrors]=useState<string[]>([]);
  const [renaming,setRenaming]=useState<AgentSummary|null>(null);
@@ -70,7 +70,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample}:{rou
  async function load(){const token=++generation.current;setLoading(true);setError('');setHistoryErrors([]);setRunRows([]);try{
 
   const {agents:listed=[]}=await request<{agents?:AgentSummary[]}>('/api/agent-builder/agents');if(token!==generation.current)return;setAgents(listed);
-  if(route!=='workflows'){const historyAgents=listed.filter(agent=>!historyService||agent.id===historyService);const rows=await settleWithLimit(historyAgents,4,async(agent:AgentSummary)=>{const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(agent.id));return {agent,runs:result.tests||[]};},()=>token===generation.current);if(token!==generation.current)return;setRunRows(rows.flatMap(r=>r.status==='fulfilled'?r.value.runs.map((run:RunSummary)=>({agent:r.value.agent,run})):[]).sort((a,b)=>(Date.parse(b.run.started_at||b.run.created_at||'')||0)-(Date.parse(a.run.started_at||a.run.created_at||'')||0)));setHistoryErrors(rows.flatMap((r,i)=>r.status==='rejected'?[historyAgents[i].config.name]:[]));}
+  if(route==='history'){const historyAgents=listed.filter(agent=>!historyService||agent.id===historyService);const rows=await settleWithLimit(historyAgents,4,async(agent:AgentSummary)=>{const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(agent.id));return {agent,runs:result.tests||[]};},()=>token===generation.current);if(token!==generation.current)return;setRunRows(rows.flatMap(r=>r.status==='fulfilled'?r.value.runs.map((run:RunSummary)=>({agent:r.value.agent,run})):[]).sort((a,b)=>(Date.parse(b.run.started_at||b.run.created_at||'')||0)-(Date.parse(a.run.started_at||a.run.created_at||'')||0)));setHistoryErrors(rows.flatMap((r,i)=>r.status==='rejected'?[historyAgents[i].config.name]:[]));}
  }catch(e){if(token===generation.current)setError((e as Error).message);}finally{if(token===generation.current)setLoading(false);}}
  useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;};},[route,historyService]);
  const historyAgent=historyService?agents.find(agent=>agent.id===historyService):undefined;
@@ -78,8 +78,8 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample}:{rou
  const refreshButton=<button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button>;
  if(route==='home')return <WorkspaceOverview
   workflows={agents.slice().sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)).slice(0,3)}
-  runs={runRows.slice(0,3)} loading={loading} error={error} historyPartial={historyErrors.length>0}
-  onRetry={()=>void load()} onCreate={newFlow} onExample={startExample} onNavigate={navigate}/>;
+  memberName={memberName} loading={loading} error={error}
+  onRetry={()=>void load()} onStart={startExample} onNavigate={navigate}/>;
  return <>{route==='workflows'
   ? <TaskLibraryHeader active="workflows" onNavigate={next=>{if(next==='nodes')navigate(next);}} actions={refreshButton}/>
   : <div className="entry-page-heading"><div><h1>실행 기록</h1><p>{historyAgent?historyAgent.config.name+'의 이전 실행입니다.':'이전 실행의 완료 여부와 결과를 확인하세요.'}</p>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div>{refreshButton}</div>}{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}

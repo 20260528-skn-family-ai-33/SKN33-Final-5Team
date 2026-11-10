@@ -17,6 +17,7 @@ from agent_builder.design.condition_templates import template_node
 from agent_builder.tool_gap.gap import tool_gap_node
 from agent_builder.capabilities.capability_check import make_capability_check, await_capability_node
 from agent_builder.capabilities.capability_gate import generation_gate, require_ready
+from verification.policy import disabled_review_update
 
 def _timing_event(event):
     path = os.getenv('A4B_TIMING_LOG')
@@ -59,6 +60,10 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         if audit:audit.error(error)
     def add(name,fn):
         def observed(state):
+            # Old checkpoints may resume at approval/save/supervisor without ever
+            # visiting verification. Apply today's off policy before every node.
+            disabled_review = disabled_review_update(verifier_mode)
+            state = {**state, **disabled_review}
             # Server-selected connection metadata is refreshed on every request,
             # including resumed interrupts. Never retain OAuth tokens in graph state.
             connected=getattr(storage,'gmail_connected',None)
@@ -67,6 +72,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
             if audit:audit.enter(name)
             try:
                 result=fn(state)
+                if isinstance(result, dict):
+                    result = {**result, **disabled_review}
             except GraphBubbleUp:
                 # LangGraph interrupts request user input/approval; they are control flow.
                 raise

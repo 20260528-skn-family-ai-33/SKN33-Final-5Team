@@ -390,7 +390,7 @@ def test_condition_enforcement_cannot_silently_downgrade(configured):
     assert result['condition_route']=='supervisor' and result['status']=='needs_clarification'
 
 
-@pytest.mark.parametrize('configured',['off','shadow'])
+@pytest.mark.parametrize('configured',['shadow','defer'])
 def test_verifier_enforcement_cannot_silently_downgrade(tmp_path,configured):
     from agent_builder.design.nodes.verification import make_verification_node
     from tests.verification.test_verifier_bridge import seed, fixture_verifier

@@ -102,7 +102,8 @@ def test_no_model_output_or_transport_error_cannot_become_success(tmp_path):
     finally:store.close()
 
 
-def test_deferred_recheck_uses_the_recorded_snapshot_and_matches_shadow(tmp_path):
+def test_deferred_recheck_uses_the_recorded_snapshot_and_matches_shadow(tmp_path,monkeypatch):
+    monkeypatch.setenv('A4B_VERIFIER_MODE','defer')
     from verification.deferred import run_pending
     store=Storage(tmp_path)
     try:

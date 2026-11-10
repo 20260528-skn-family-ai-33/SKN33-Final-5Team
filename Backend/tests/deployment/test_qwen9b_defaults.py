@@ -123,13 +123,22 @@ def test_reviewer_off_does_not_allow_an_invalid_workflow_to_be_saved(tmp_path, p
         store.close()
 
 
-def test_reviewer_off_does_not_silently_clear_previously_required_review(tmp_path, profile):
+@pytest.mark.parametrize('flag', ['verification_required', 'verification_enforced'])
+def test_reviewer_off_overrides_legacy_flags_and_preserves_history(tmp_path, profile, flag):
     store = Storage(tmp_path)
     try:
         original, raw = checked_seed(store)
-        original.update(draft=raw, verification_required=True)
-        result = make_verification_node(store, verifier=fixture_verifier)(original)
-        assert result['verification_required']
-        assert result['verification_enforced']
+        original.update(draft=raw, **{flag: True})
+        history = make_verification_node(store, verifier=fixture_verifier, mode='enforce')(original)
+        original.update(history)
+        before = deepcopy(original)
+        records = store.db.execute('SELECT * FROM builder_verifications').fetchall()
+        result = make_verification_node(store, verifier=lambda _: pytest.fail('No 4B reviewer call'))(original)
+        assert not result['verification_required']
+        assert not result['verification_enforced']
+        assert result['verification_route'] is None
+        assert original == before
+        assert {**original, **result}['verification'] == history['verification']
+        assert store.db.execute('SELECT * FROM builder_verifications').fetchall() == records
     finally:
         store.close()

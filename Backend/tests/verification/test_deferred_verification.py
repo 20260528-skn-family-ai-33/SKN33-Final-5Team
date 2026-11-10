@@ -24,7 +24,8 @@ def test_defer_records_input_without_calling_the_model(tmp_path):
     store.close()
 
 
-def test_batch_run_matches_shadow_verdict_and_skips_finished_records(tmp_path):
+def test_batch_run_matches_shadow_verdict_and_skips_finished_records(tmp_path,monkeypatch):
+    monkeypatch.setenv('A4B_VERIFIER_MODE','defer')
     store=Storage(tmp_path);state,raw=seed(store);state['draft']=raw
     shadow=make_verification_node(store,verifier=fixture_verifier,mode='shadow')(state)
     make_verification_node(store,mode='defer')(state)
@@ -39,6 +40,18 @@ def test_batch_run_matches_shadow_verdict_and_skips_finished_records(tmp_path):
     assert all(r['route']!='pending' for r in results)
     store.close()
     assert run_pending(tmp_path,verifier=lambda d:pytest.fail('finished records are not re-verified'))==[]
+
+
+def test_off_preserves_pending_records_without_model_calls(tmp_path,monkeypatch):
+    store=Storage(tmp_path);state,raw=seed(store);state['draft']=raw
+    make_verification_node(store,mode='defer')(state)
+    before=rows(store)
+    store.close()
+    monkeypatch.setenv('A4B_VERIFIER_MODE','off')
+    assert run_pending(tmp_path,verifier=lambda d:pytest.fail('off must pause queued reviews'))==[]
+    store=Storage(tmp_path)
+    assert rows(store)==before
+    store.close()
 
 
 def test_defer_does_not_change_the_design_route(tmp_path):

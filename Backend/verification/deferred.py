@@ -5,6 +5,7 @@ from pathlib import Path
 
 from infrastructure.persistence.db import WORKSPACE, storage_kind
 from verification.workflow import VerificationInput, verify
+from verification.policy import verifier_mode
 
 
 def workspace_directories(data_dir):
@@ -25,6 +26,9 @@ def pending_ids(db):
 
 def run_pending(directory, verifier=None, limit=None):
     """Verify stored inputs in place. Returns per-record routes; never touches session state."""
+    # Turning the reviewer off also pauses old queued work, without deleting it.
+    if verifier_mode() == 'off':
+        return []
     path = Path(directory) / 'agent-builder.sqlite'
     if storage_kind() == 'sqlite' and not path.exists():
         raise FileNotFoundError('설계 DB를 찾지 못했습니다: ' + str(path))

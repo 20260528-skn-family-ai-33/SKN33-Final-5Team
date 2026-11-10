@@ -2,7 +2,6 @@
 from copy import deepcopy
 import hashlib
 import json
-import os
 import uuid
 
 from verification.workflow import VerificationInput, verify
@@ -154,12 +153,11 @@ def request_text_evidence(messages):
 
 def make_verification_node(storage, verifier=None, mode=None):
     def verification_node(state):
-        setting = mode or os.getenv('A4B_VERIFIER_MODE', 'off')
-        if setting not in ('off', 'shadow', 'defer', 'enforce'):
-            raise ValueError('A4B_VERIFIER_MODE는 off/shadow/defer/enforce이어야 합니다.')
-        if state.get('verification_required') or state.get('verification_enforced'):setting='enforce'
+        from verification.policy import verifier_mode, disabled_review_update
+        setting = verifier_mode(mode)
         if setting == 'off':
-            return {'verification_route': None, 'verification_enforced': False}
+            return disabled_review_update(mode)
+        if state.get('verification_required') or state.get('verification_enforced'):setting='enforce'
         messages = [dict(id=f'm{i}', role=m['role'], content=m['content'])
                     for i, m in enumerate(state['messages']) if m['role'] in ('user', 'assistant')]
         users = [m for m in messages if m['role'] == 'user']

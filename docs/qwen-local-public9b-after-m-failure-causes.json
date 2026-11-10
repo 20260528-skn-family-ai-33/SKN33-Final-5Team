@@ -1,0 +1,112 @@
+{
+  "phase": "after",
+  "source_run": "docs/qwen-local-public9b-after.json",
+  "source_review": "docs/qwen-local-public9b-after-review-multiturn.json",
+  "source_review_file_sha256": "d197cfc7da0130a23dda78ce673ac401ba6806f7e815349a7b6b5675f2fdec5a",
+  "classification_scope": "Exclusive primary stage is the earliest confirmed causal error; direct stage is the final observed block. Rejected raw/intermediate proposals are distinguished from executed workflow actions.",
+  "cases": {
+    "M02": {
+      "primary_stage": "requirement",
+      "primary_failure_cause": "requirement_adds_unneeded_empty_error_scenario_question_after_correct_duplicate_answer",
+      "direct_failure_stage": "requirement",
+      "answer_policy_limitation": false,
+      "source_case_sha256": "ace28a386c6e571ac93f7fab562a94902acd4130958c8950156bc454b68ca6d8",
+      "evidence": [
+        "New after first ledger marks duplicate.policy missing and records rejection of the model's unsupported retention value. Unlike baseline it does not accept first and displays an appropriate duplicate-policy question.",
+        "Actual answer '중복은 마지막 행만 남겨줘.' uses question323c6708d438ab44ecca3ee2. Final typed condition ledger correctly preserves customer_id, last, missing.policy=error and JSON, and becomes ready.",
+        "Requirement stage kind=other then asks what an empty-value error should do, offering excluding empty rows or an error-containing JSON despite user's explicit error policy. This unnecessary extra requirement blocks generation; no workflow exists.",
+        "The second displayed question restates the answered last policy but actually asks an unneeded empty-error scenario, so resolved-question repeated=false. Frozen matcher sees 마지막/남긴다 and stops as repeated_question. This is downstream of an unnecessary system question, not baseline M02's valid-question lexical limitation."
+      ]
+    },
+    "M03": {
+      "primary_stage": "condition",
+      "primary_failure_cause": "condition_adds_filter_to_deduplicate_and_repeats_unrequested_filter_questions",
+      "direct_failure_stage": "condition",
+      "answer_policy_limitation": false,
+      "source_case_sha256": "3348bf771bbae3c3966377a562248213bd011adee92c42d7dfe4c8bbc07f4586",
+      "evidence": [
+        "Holdout, evaluated afresh. Initial typed first/JSON/error are grounded but filter is added beside deduplicate. The generic first field question can elicit the required duplicate column despite its filter.field key; comparator is unnecessary.",
+        "Actual customer_id answer uses prior question3e160fdbd95085e7d8ccecb9 and is accepted as duplicate.field. Existing first/JSON/error remain, but invented filter.field/operator/value stay missing.",
+        "Final state repeats field and comparator questions and remains CLARIFY. Field is already answered, hence repeated=true; comparator was never answered and is irrelevant, hence unnecessary=true/repeated=false. The answer harness's repeated_question stop is downstream of the wrong operation."
+      ]
+    },
+    "M04": {
+      "primary_stage": "capability",
+      "primary_failure_cause": "capability_includes_unrequested_filter_sort_and_validator_rejects_correct_read_export_draft",
+      "direct_failure_stage": "workflow",
+      "answer_policy_limitation": false,
+      "source_case_sha256": "e3ef49b1de58761ff5f5dfe097516991138f9d873f636eb3017d5409a22769cf",
+      "evidence": [
+        "After first condition ledger rejects ungrounded minute0, retains both minute/hour unresolved, and displays a single combined time question. Extraneous model-proposed missing.policy remains missing internally but is no longer an unresolved requirement or displayed question.",
+        "Actual '매일 오전 9시 정각으로 해줘.' under questionf1e34c6fc92787a52d4218ac yields grounded hour9/minute0 and preserves daily/Asia-Seoul/JSON; condition decision becomes ready.",
+        "Both capability assessments nevertheless list read_table/filter_sort/write_result for a plain scheduled export. Final correct daily09:00 schedule and read_table→write_result(JSON) draft are rejected for missing that unrequested filter_sort, yielding SYSTEM_ERROR after two returned SDK planner candidates.",
+        "read_table has empty settings but draft.document_ids=[synthetic-sales] supplies the established source fallback; output binding is correct. Task coverage is true while whole-request success is false. Requirement duplicates the same schedule as a follow-up task, but final draft has one schedule and no added workflow action. No execution."
+      ]
+    },
+    "M05": {
+      "primary_stage": "requirement",
+      "primary_failure_cause": "requirement_outputs_weekday1_for_Monday_twice_despite_correct_condition_weekday0",
+      "direct_failure_stage": "requirement",
+      "answer_policy_limitation": false,
+      "source_case_sha256": "0bb5fbf96c7737f9350b9e293a28a5f029ef08d1e0b22a8d3dfef0ca54bca768",
+      "evidence": [
+        "After initial weekly09:00/Asia-Seoul/JSON ledger preserves original values and no longer asks the irrelevant model-proposed duplicate.policy; only weekday is unresolved/displayed.",
+        "Actual Monday answer uses question2f0dd04e3ea8d65922cb7d19. Literal reconciliation accepts weekday0 and preserves earlier time/timezone/JSON despite malformed numeric proposals; condition decision is ready.",
+        "Both subsequent requirement raw responses describe Monday but encode weekday1. Python rejects the contradictory schedule and the second response is validation_failed/SYSTEM_ERROR; no requirement ledger or workflow is accepted. Final_observed_slots refer to the correct condition ledger, not a successful final schedule draft.",
+        "Capability still overlists filter_sort, but it did not cause the observed stop: requirement validation failed before planning. No external or local execution.",
+        "Scorer denominator caveat: failed final response has pending_questions=[] and only an error assistant message, but retained draft.questions still contains the already answered weekday prompt. Existing scorer falls back to this stale draft question; its extra label is unnecessary/repeated. Actual new pending-question or browser display was not observed."
+      ]
+    },
+    "M09": {
+      "primary_stage": "requirement",
+      "primary_failure_cause": "requirement_turns_column_answer_into_separate_compute_task_then_coverage_rejects_correct_aggregate_draft",
+      "direct_failure_stage": "workflow",
+      "answer_policy_limitation": false,
+      "source_case_sha256": "14f2320ebb2043993bbca18a346590a97a3ff9d9de11b074d293cd5a9f00376e",
+      "evidence": [
+        "Holdout evaluated afresh. Initial capability now asks only the required amount-column name and explicitly treats empty-error policy as supported; prose/default JSON are not typed initial slots.",
+        "Actual amount answer uses question83e82c9a34e6ba1e64c36de9. Final workflow reads synthetic-sales, aggregate_table(sum, sum_field=amount, fields=[region]), then writes JSON with correct table bindings. The draft missing_policy=error is used by aggregate executor for grouping fields; sum-field empty/non-number values also raise errors natively.",
+        "Final typed workflow fields satisfy gold and requested source/dependencies. No extra transformation appears in the workflow, but requirement r2 invents a separate amount-to-amount compute task from the clarification answer.",
+        "Coverage validation rejects the draft for lacking that spurious r2, yielding SYSTEM_ERROR after two returned planner responses. Correct task coverage does not imply whole success; no execution was performed."
+      ]
+    },
+    "M10": {
+      "primary_stage": "meaning",
+      "primary_failure_cause": "meaning_reviewer_rejects_correct_send_only_literal_candidate_then_capability_asks_invented_checking_criteria",
+      "direct_failure_stage": "capability",
+      "answer_policy_limitation": false,
+      "source_case_sha256": "3aa330b9e66a85529508ecaad3ce81528fb9a8f62abcaa4e58353449c9dd88dd",
+      "evidence": [
+        "After raw extraction improves: both candidates contain actions=[send], order=unspecified, period=all, filters=[], other_requirements=['제목: 점검','본문: 완료']. They do not add an existing-mail read/search. These are rejected candidates, not accepted typed subject/body slots.",
+        "Both model review responses say faithful=false with internally contradictory explanations: they acknowledge literal preservation yet demand those literals be filters and treat an empty selection as sending all mail. Python does not override false review, so trusted request_meaning remains null.",
+        "Fallback capability wrongly asks title-check and body-completion rules. It lists recipient only third, beyond the two displayed questions, and additionally calls body content missing. Thus no necessary recipient question is actually exposed in the recorded backend response.",
+        "Frozen answer policy cannot answer these unrelated prompts (two unmatched_question reasons); unlike baseline M02 this is a system question error, not a valid-question vocabulary limitation. There is one saved turn and no follow-up attempt or workflow. No email is sent."
+      ]
+    },
+    "M12": {
+      "primary_stage": "meaning",
+      "primary_failure_cause": "meaning_accepts_relative_yesterday_as_date_range_with_duplicate_other_requirement_then_general_plan_adds_unrequested_steps",
+      "direct_failure_stage": "workflow",
+      "answer_policy_limitation": false,
+      "source_case_sha256": "19b9f6b2488ea96325aa5cf1df175264c5a018f2f435b60d4826d964f9d5fc21",
+      "evidence": [
+        "Holdout evaluated afresh. First raw meaning encodes period=date_range with evidence 어제 and copies the entire request into other_requirements; model review says faithful=true. This accepted contract bypasses the supported relative-day summary compiler.",
+        "General requirement adds human_review; final rejected draft adds a global date-descending sort and an email.list max_results500 query 'after:2026-11-09 before:2026-11-10'. This date-only query does not supply the verified Asia/Seoul epoch boundaries of the gold/previous successful initial draft; correct anchored gmail.date is not credited.",
+        "Validation rejects missing filter_sort for the global sort and uncovered human_review. First and final route are SYSTEM_ERROR with one persisted response. Unlike baseline, no next-day '최대 5개만' turn occurs; neither final limit5 nor cross-day date preservation is measured. No model answer or final slots are invented for the missing turn.",
+        "Target read/summary final coverage is false because the requested revised maximum5 and anchored day are not represented. No Gmail or added action is executed."
+      ]
+    }
+  },
+  "primary_stage_case_counts": {
+    "requirement": 3,
+    "condition": 1,
+    "capability": 1,
+    "meaning": 2
+  },
+  "direct_failure_stage_case_counts": {
+    "requirement": 2,
+    "condition": 1,
+    "workflow": 3,
+    "capability": 1
+  }
+}

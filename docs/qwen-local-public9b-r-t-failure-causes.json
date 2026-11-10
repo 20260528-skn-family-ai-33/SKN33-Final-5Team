@@ -1,0 +1,98 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "scope": "Only baseline-v2 R01-R10/T01-T08 whole-request failures; successes are excluded from this exclusive cause count. After failures are recorded in their separate after review labels.",
+  "exclusive_primary_rule": "Count each failed case once at the earliest confirmed accepted error that remains material to the final failure path. Rejected and repaired intermediate guesses do not by themselves choose primary_stage. direct_failure_stage names the later effective block or wrong final behavior; it is not added to the exclusive primary count. An accepted redundant other_requirements value that diverts the standard semantic compiler is a meaning-stage error even when high-level intent/period remain correct.",
+  "source_review_sha256": {
+    "docs/qwen-local-public9b-baseline-v2-review-ready.json": "844d42d6f6e9d4c85fde4fb105dede4b7bd752e72233a7f5c1c78da9bc4c9c31",
+    "docs/qwen-local-public9b-baseline-v2-review-temporal.json": "16686b25cf9a2e00f4596c88a6853811e011c8e8042868942ab5f3a73f897c08"
+  },
+  "primary_stage_counts": {
+    "condition": 2,
+    "requirement": 3,
+    "workflow": 1,
+    "meaning": 4
+  },
+  "cases": {
+    "R03": {
+      "primary_stage": "condition",
+      "direct_failure_stage": "condition",
+      "cause": "정렬을 filter로 분류하고 지원되지 않는 sort.policy=desc를 출력하여 불필요한 정렬/필터 질문으로 종료.",
+      "source_case_sha256": "f7aa37785837228045d20c833f91ff0394e66c4d05056a4d2ffa7e13ddd8af2a",
+      "whole_request_success": false,
+      "split": "holdout"
+    },
+    "R04": {
+      "primary_stage": "condition",
+      "direct_failure_stage": "condition",
+      "cause": "중복 필드·first·JSON은 맞지만 filter 작업도 수용해 원문에 없는 필터 조건을 요구.",
+      "source_case_sha256": "199813de20ece56df618dc2510bfbe4209e123378e2936f7672de25c75ca1fc6",
+      "whole_request_success": false,
+      "split": "development"
+    },
+    "R06": {
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "cause": "집계 description을 kind=other로만 표현하고 이미 연결된 자료와 명시된 출력 형식을 다시 질문.",
+      "source_case_sha256": "5fc067080a02ddf05a4b9d359237e59aa719c24a09effaf0eb4fd63441c3f208",
+      "whole_request_success": false,
+      "split": "holdout"
+    },
+    "R07": {
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "cause": "rename source를 자료 ID로 잘못 추출한 뒤 rename을 compute formula로 바꾸어 두 requirement 후보 모두 거절.",
+      "source_case_sha256": "407739fe57c3d084485b9ececf54e88f7187e5a0290f0a78ea3cac281b7fdd06",
+      "whole_request_success": false,
+      "split": "development"
+    },
+    "R09": {
+      "primary_stage": "workflow",
+      "direct_failure_stage": "workflow",
+      "cause": "encode_string 의도 수용 후 두 planner가 finish를 첫 단계로 두고 그 출력을 Base64 입력에 연결하여 ValueError.",
+      "source_case_sha256": "a1e4843b495dc37893b01835fd6577d64e0f4fb0950e6d899904d4d057131476",
+      "whole_request_success": false,
+      "split": "holdout"
+    },
+    "R10": {
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "cause": "정확한 scalar workflow와 달리 requirement가 표 compute와 임의 result 열을 요구하여 의미 검증 거절.",
+      "source_case_sha256": "0b84a17cde82c34ce76fc1b72f9fa4f01e50e9e817091d41e8f54c04ddbf783c",
+      "whole_request_success": false,
+      "split": "development"
+    },
+    "T02": {
+      "primary_stage": "meaning",
+      "direct_failure_stage": "meaning",
+      "cause": "요청하지 않은 unread를 수용하고 self-review도 승인하여 최종 Gmail query가 읽은 메일을 임의 제외.",
+      "source_case_sha256": "18803b978363ff3aa4406edc632d88df77aa3f1869b30018d9e1d252eea0455d",
+      "whole_request_success": false,
+      "split": "development"
+    },
+    "T03": {
+      "primary_stage": "meaning",
+      "direct_failure_stage": "requirement",
+      "cause": "yesterday는 맞지만 other_requirements에 이미 표현한 Gmail 요청을 반복해 compiler 경로를 벗어남. 이후 requirement가 read/file_ids=[]와 불필요한 계정·자료 ID 질문을 생성.",
+      "source_case_sha256": "c7ea604bf226b6cb2197ec443813dc4d562f35ee118640fd63cfa320e19b5990",
+      "whole_request_success": false,
+      "split": "holdout"
+    },
+    "T05": {
+      "primary_stage": "meaning",
+      "direct_failure_stage": "requirement",
+      "cause": "초기 unread는 거절되었으나 self-review의 잘못된 상대 날짜 비판 후 yesterday가 date_range로 바뀌어 수용. 이후 인증/API키 질문으로 종료.",
+      "source_case_sha256": "cca776719d07dfb69c3fbae0d46513704c16fff9748679d5d954aa7d24d48061",
+      "whole_request_success": false,
+      "split": "development"
+    },
+    "T06": {
+      "primary_stage": "meaning",
+      "direct_failure_stage": "workflow",
+      "cause": "yesterday는 맞지만 중복 other_requirements로 compiler 경로를 벗어나 document_analysis로 축소. 최종 Gmail query가 빈 문자열이므로 DST 종료일 25시간 범위를 상실.",
+      "source_case_sha256": "314c257d8230c69cc135ce261794dceb66cb70a33d3ee2107e8d9f81c8b3f9ac",
+      "whole_request_success": false,
+      "split": "holdout"
+    }
+  }
+}

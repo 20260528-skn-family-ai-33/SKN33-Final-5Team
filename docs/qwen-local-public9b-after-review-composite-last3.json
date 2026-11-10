@@ -1,0 +1,84 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-after-complete.json",
+  "reviewer": "Codex direct trace and workflow review; not Qwen self-rating or independent human gold",
+  "status": "completed",
+  "slot_scope": "First-turn accepted typed condition/requirement/workflow arguments, with contradictory accepted unsupported values scored separately; rejected proposals and mere prose excluded.",
+  "cases": {
+    "X05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "first",
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 15
+      },
+      "extra_unsupported_slots": [
+        "requirement.duplicate_policy=keep (contradicts explicit first and accepted condition)"
+      ],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "requirement_policy_contradicts_user_and_condition",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "evidence": "Fresh after X05: condition ledger preserves customer_id/first/amount/gte/15, missing=error and JSON. The raw requirement response explicitly emits duplicate_policy=keep despite its own description saying first; this is accepted in r2 and counted as an unsupported contradictory typed value. Two planner responses and the final stored draft have the correct read_table(synthetic-sales) -> filter_sort(first by customer_id, amount>=15, missing=error) -> write_result(json) bindings. The native filter_sort implementation deduplicates before applying filters, so the combined node preserves the requested order and all four task coverage labels are true. Nevertheless the validator rejects the correct draft because it does not match the wrong keep-policy requirement, giving SYSTEM_ERROR/schema_valid=false. No question or local/external execution occurred. The previous unnecessary confirmation disappeared but whole-request success did not improve."
+    },
+    "X06": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "requirement_model_response_timeout_180_seconds",
+      "primary_stage": "transport",
+      "direct_failure_stage": "transport",
+      "secondary_observations": [
+        "meaning_reviewer_rejects_newest_first_limit_as_missing_recent_period",
+        "meaning_candidates_not_accepted",
+        "capability_connection_support_improved"
+      ],
+      "evidence": "Fresh after X06 holdout: capability correctly recognizes Gmail read/summary/send and treats account connection as an execution precondition, improving the previous unsupported decision. Both request_meaning candidates are rejected: self-review wrongly treats newest_first+limit3+periodall as losing recent, and gives contradictory feedback about the already included summary body. No accepted meaning or requirement ledger exists, so candidate limit/recipient/subject and capability prose are not counted as typed slots. The subsequent requirements native request fails with TimeoutError after 181.2883 seconds (configured timeout180); no raw model response is available for that call. Worker returns SYSTEM_ERROR with no questions or workflow. All three final tasks are uncovered and no connector ran. Primary final run failure is the observed transport/model-response timeout; earlier rejected meaning candidates are secondary, not proof of what a completed requirement response would have done. Server log separately confirms generation then cancellation and all slots idle. X06 failure is retained, not retried or replaced by a favorable sample."
+    },
+    "X07": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "invalid_requirement_filter_instead_of_required_threshold_and_operator_questions",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "evidence": "Fresh X07 in the disjoint after-part2 shard: capability recognizes filter -> region amount aggregation -> JSON. Both requirement raw candidates invent an ungrounded gt operator and self-comparison compare_field=amount with value=null. They also contain correct aggregate/export fields, but both are rejected and no requirement ledger is accepted, so rejected candidate fields receive no typed-slot credit. The first candidate contains a threshold question which is never exposed; the repair removes unresolved questions. The actual worker response has no pending or draft questions, so necessary threshold/operator recall is 0/2, no workflow exists, and final route is SYSTEM_ERROR instead of CLARIFY. No transport failure occurred in this case and no local/external execution occurred. Gold and application/model settings match the first after shard; X06 timeout was not rerun."
+    }
+  },
+  "source_case_sha256": {
+    "X05": "b93d9e2deef00fcf9915116ec1fba0e657d6d1edb8d18563c2f994cacfc7a030",
+    "X06": "f3a2c5fb18a40103a6c0425cd372b0a39a998510574de722cdce1a91f471330d",
+    "X07": "5003b58100540bbc09ae21d5df815d335a4f37017d91569792bbfdd524289bc5"
+  },
+  "source_shards": [
+    "docs/qwen-local-public9b-after.json",
+    "docs/qwen-local-public9b-after-part2.json"
+  ]
+}

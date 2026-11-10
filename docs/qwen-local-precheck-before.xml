@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="9" skipped="0" tests="25" time="2.190" timestamp="2026-11-10T21:18:30.335098+09:00" hostname="DESKTOP-DCSUQO3"><testcase classname="tests.design.test_qwen_live_evaluation" name="test_frozen_corpus_contains_valid_catalog_and_ten_actual_clarification_loops" time="0.009" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_zero_live_results_are_null_not_perfect_scores" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_live_failure_counts_as_routing_false_negative" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_secrets_and_real_addresses_are_removed_but_synthetic_gold_preserved" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_answer_policy_depends_on_actual_question_and_does_not_repeat" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_external_and_nested_execution_is_never_allowlisted[email.send]" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_external_and_nested_execution_is_never_allowlisted[email.list]" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_external_and_nested_execution_is_never_allowlisted[agent_node]" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_external_and_nested_execution_is_never_allowlisted[saved_workflow]" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_external_and_nested_execution_is_never_allowlisted[calendar.create_event]" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_operation_paths_cannot_escape_local_execution_policy" time="0.001" /><testcase classname="tests.design.test_qwen_live_evaluation" name="test_adjudication_does_not_count_wrong_ready_as_clarification_completion" time="0.009" /><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_deduplicate_without_retention_does_not_confirm_model_default[first]" time="0.014"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">guessed = 'first'
+
+    @pytest.mark.parametrize('guessed',['first','last'])
+    def test_c05_deduplicate_without_retention_does_not_confirm_model_default(guessed):
+        current=state('연결한 표에서 중복을 제거하고 JSON으로 저장해줘. 빈 값은 오류로 처리해.')
+        raw=proposal(current,{'duplicate.field':None,'duplicate.policy':guessed,'missing.policy':'error','output.format':'json'},['deduplicate'])
+        result=checked(current,raw)
+&gt;       assert result['slots']['duplicate.policy']['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:15: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_deduplicate_without_retention_does_not_confirm_model_default[last]" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">guessed = 'last'
+
+    @pytest.mark.parametrize('guessed',['first','last'])
+    def test_c05_deduplicate_without_retention_does_not_confirm_model_default(guessed):
+        current=state('연결한 표에서 중복을 제거하고 JSON으로 저장해줘. 빈 값은 오류로 처리해.')
+        raw=proposal(current,{'duplicate.field':None,'duplicate.policy':guessed,'missing.policy':'error','output.format':'json'},['deduplicate'])
+        result=checked(current,raw)
+&gt;       assert result['slots']['duplicate.policy']['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:15: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_unknown_retention_remains_unknown_after_restart_then_answer_replaces_it" time="0.007"><failure message="AssertionError: assert 'ready' == 'clarify'&#10;  &#10;  - clarify&#10;  + ready">def test_c05_unknown_retention_remains_unknown_after_restart_then_answer_replaces_it():
+        current=state('customer_id 중복을 제거해서 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['customer_id']}]
+        raw=proposal(current,{'duplicate.field':'customer_id','duplicate.policy':'first','output.format':'json'},['deduplicate'])
+        first=checked(current,raw)
+&gt;       assert first['decision']=='clarify'
+E       AssertionError: assert 'ready' == 'clarify'
+E         
+E         - clarify
+E         + ready
+
+tests\design\test_qwen_live_failures.py:24: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c01_validated_request_timezone_can_ground_explicit_schedule" time="0.001"><failure message="ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.">def test_c01_validated_request_timezone_can_ground_explicit_schedule():
+        current=state('매일 오전 9시에 매출 보고서를 이메일로 보내줘.')
+        current['user_timezone']='Asia/Seoul'
+&gt;       result=grounded_schedule(current)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\design\test_qwen_live_failures.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+state = {'session_id': 'd151c0a9-fd14-48d5-bb56-36f6f3d0a5ef', 'messages': [{'role': 'user', 'content': '매일 오전 9시에 매출 보고서를 이메일로 보내줘.'}], 'resources': [], 'draft': None, ...}
+
+    def grounded_schedule(state):
+        from contracts.models import ScheduleSpec
+        from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+        from workflow_engine.scheduling.recurrence import schedule_errors
+        written = explicit_policies(state, source_catalog(state)[0])
+        slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
+                 if key.startswith('schedule.') and item.get('status') == 'specified'}
+        spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
+                    hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
+                    monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
+        if spec['frequency'] == 'hourly':spec['hour'] = None
+        if spec['frequency'] != 'weekly':spec['weekday'] = None
+        if spec['frequency'] != 'monthly':spec.update(monthday=None, month_end=False)
+        elif spec['month_end']:spec['monthday'] = None
+&gt;       if schedule_errors(spec):raise ValueError('예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.')
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.
+
+agent_builder\design\requirement_ledger.py:89: ValueError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_schedule_never_guesses_invalid_request_timezone[None]" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_schedule_never_guesses_invalid_request_timezone[not-a-zone]" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_explicit_schedule_timezone_wins_over_browser_timezone" time="0.008" /><testcase classname="tests.design.test_qwen_live_failures" name="test_c02_resource_identifier_question_uses_resource_connection_ui[\ubd84\uc11d\ud560 \uc790\ub8cc ID\ub97c \uc54c\ub824\uc8fc\uc138\uc694.]" time="0.001"><failure message="AssertionError: assert 'ID' not in '분석할 자료 ID를 알려주세요.'&#10;  &#10;  'ID' is contained here:&#10;    분석할 자료 ID를 알려주세요.&#10;  ?        ++">question = '분석할 자료 ID를 알려주세요.'
+
+    @pytest.mark.parametrize('question',['분석할 자료 ID를 알려주세요.','사용할 파일 ID는 무엇인가요?'])
+    def test_c02_resource_identifier_question_uses_resource_connection_ui(question):
+        result=_question_text(question)
+&gt;       assert 'ID' not in result
+E       AssertionError: assert 'ID' not in '분석할 자료 ID를 알려주세요.'
+E         
+E         'ID' is contained here:
+E           분석할 자료 ID를 알려주세요.
+E         ?        ++
+
+tests\design\test_qwen_live_failures.py:58: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c02_resource_identifier_question_uses_resource_connection_ui[\uc0ac\uc6a9\ud560 \ud30c\uc77c ID\ub294 \ubb34\uc5c7\uc778\uac00\uc694?]" time="0.001"><failure message="AssertionError: assert 'ID' not in '사용할 파일 ID는 무엇인가요?'&#10;  &#10;  'ID' is contained here:&#10;    사용할 파일 ID는 무엇인가요?&#10;  ?        ++">question = '사용할 파일 ID는 무엇인가요?'
+
+    @pytest.mark.parametrize('question',['분석할 자료 ID를 알려주세요.','사용할 파일 ID는 무엇인가요?'])
+    def test_c02_resource_identifier_question_uses_resource_connection_ui(question):
+        result=_question_text(question)
+&gt;       assert 'ID' not in result
+E       AssertionError: assert 'ID' not in '사용할 파일 ID는 무엇인가요?'
+E         
+E         'ID' is contained here:
+E           사용할 파일 ID는 무엇인가요?
+E         ?        ++
+
+tests\design\test_qwen_live_failures.py:58: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_business_column_id_is_not_a_resource_identifier" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_c07_time_parts_share_one_question_leaving_room_for_weekday" time="0.006"><failure message="AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']&#10;  &#10;  At index 0 diff: 'schedule.minute' != 'schedule.hour'&#10;  Use -v to get more diff">def test_c07_time_parts_share_one_question_leaving_room_for_weekday():
+        current=state('한국 시간으로 매주 표를 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['amount']}]
+        raw=proposal(current,{'schedule.frequency':'weekly','schedule.timezone':'Asia/Seoul','output.format':'json'},['schedule'])
+        result=checked(current,raw)
+        assert {'schedule.hour','schedule.minute','schedule.weekday'}&lt;=set(result['unresolved'])
+&gt;       assert [q['key'] for q in result['questions']]==['schedule.hour','schedule.weekday']
+E       AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']
+E         
+E         At index 0 diff: 'schedule.minute' != 'schedule.hour'
+E         Use -v to get more diff
+
+tests\design\test_qwen_live_failures.py:72: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c08_unwritten_time_is_not_a_confirmed_model_default[schedule.minute-0]" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">key = 'schedule.minute', value = '0'
+
+    @pytest.mark.parametrize('key,value',[('schedule.minute','0'),('schedule.hour','9')])
+    def test_c08_unwritten_time_is_not_a_confirmed_model_default(key,value):
+        current=state('한국 시간으로 매일 표를 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['amount']}]
+        raw=proposal(current,{'schedule.frequency':'daily','schedule.timezone':'Asia/Seoul',key:value,'output.format':'json'},['schedule'])
+        result=checked(current,raw)
+&gt;       assert result['slots'][key]['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:82: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c08_unwritten_time_is_not_a_confirmed_model_default[schedule.hour-9]" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">key = 'schedule.hour', value = '9'
+
+    @pytest.mark.parametrize('key,value',[('schedule.minute','0'),('schedule.hour','9')])
+    def test_c08_unwritten_time_is_not_a_confirmed_model_default(key,value):
+        current=state('한국 시간으로 매일 표를 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['amount']}]
+        raw=proposal(current,{'schedule.frequency':'daily','schedule.timezone':'Asia/Seoul',key:value,'output.format':'json'},['schedule'])
+        result=checked(current,raw)
+&gt;       assert result['slots'][key]['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:82: AssertionError</failure></testcase></testsuite></testsuites>

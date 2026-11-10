@@ -1,7 +1,7 @@
 from langgraph.types import interrupt
 
 def await_input_node(state):
-    pending=[q for q in state.get('pending_questions',[]) if state.get('condition_enforced') or q.get('source')=='receipt']
+    pending=[q for q in state.get('pending_questions',[]) if state.get('condition_enforced') or q.get('source') in ('receipt', 'requirement')]
     payload={'kind':'clarification','questions':state['draft']['questions']+state['issues']}
     if pending:payload['question_records']=pending
     while True:

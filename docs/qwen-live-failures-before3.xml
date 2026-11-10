@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="9" skipped="0" tests="13" time="1.118" timestamp="2026-11-10T17:35:03.391839+09:00" hostname="mk"><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_deduplicate_without_retention_does_not_confirm_model_default[first]" time="0.014"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">E   AssertionError: assert 'specified' == 'missing'
+      
+      - missing
+      + specified</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_deduplicate_without_retention_does_not_confirm_model_default[last]" time="0.003"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">E   AssertionError: assert 'specified' == 'missing'
+      
+      - missing
+      + specified</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_unknown_retention_remains_unknown_after_restart_then_answer_replaces_it" time="0.011"><failure message="AssertionError: assert 'ready' == 'clarify'&#10;  &#10;  - clarify&#10;  + ready">E   AssertionError: assert 'ready' == 'clarify'
+      
+      - clarify
+      + ready</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c01_validated_request_timezone_can_ground_explicit_schedule" time="0.002"><failure message="ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.">E   ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_schedule_never_guesses_invalid_request_timezone[None]" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_schedule_never_guesses_invalid_request_timezone[not-a-zone]" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_explicit_schedule_timezone_wins_over_browser_timezone" time="0.011" /><testcase classname="tests.design.test_qwen_live_failures" name="test_c02_resource_identifier_question_uses_resource_connection_ui[\ubd84\uc11d\ud560 \uc790\ub8cc ID\ub97c \uc54c\ub824\uc8fc\uc138\uc694.]" time="0.001"><failure message="AssertionError: assert 'ID' not in '분석할 자료 ID를 알려주세요.'&#10;  &#10;  'ID' is contained here:&#10;    분석할 자료 ID를 알려주세요.&#10;  ?        ++">E   AssertionError: assert 'ID' not in '분석할 자료 ID를 알려주세요.'
+      
+      'ID' is contained here:
+        분석할 자료 ID를 알려주세요.
+      ?        ++</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c02_resource_identifier_question_uses_resource_connection_ui[\uc0ac\uc6a9\ud560 \ud30c\uc77c ID\ub294 \ubb34\uc5c7\uc778\uac00\uc694?]" time="0.001"><failure message="AssertionError: assert 'ID' not in '사용할 파일 ID는 무엇인가요?'&#10;  &#10;  'ID' is contained here:&#10;    사용할 파일 ID는 무엇인가요?&#10;  ?        ++">E   AssertionError: assert 'ID' not in '사용할 파일 ID는 무엇인가요?'
+      
+      'ID' is contained here:
+        사용할 파일 ID는 무엇인가요?
+      ?        ++</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_business_column_id_is_not_a_resource_identifier" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_c07_time_parts_share_one_question_leaving_room_for_weekday" time="0.008"><failure message="AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']&#10;  &#10;  At index 0 diff: 'schedule.minute' != 'schedule.hour'&#10;  Use -v to get more diff">E   AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']
+      
+      At index 0 diff: 'schedule.minute' != 'schedule.hour'
+      Use -v to get more diff</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c08_unwritten_time_is_not_a_confirmed_model_default[schedule.minute-0]" time="0.002"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">E   AssertionError: assert 'specified' == 'missing'
+      
+      - missing
+      + specified</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c08_unwritten_time_is_not_a_confirmed_model_default[schedule.hour-9]" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">E   AssertionError: assert 'specified' == 'missing'
+      
+      - missing
+      + specified</failure></testcase></testsuite></testsuites>

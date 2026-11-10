@@ -1,0 +1,155 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "reviewer": "Codex trace/JSON review by python_environment subagent; not an independent human gold review",
+  "review_status": "completed",
+  "assigned_case_ids": [
+    "U01",
+    "U02",
+    "U03",
+    "U04",
+    "U05"
+  ],
+  "pending_case_ids": [],
+  "case_hash_method": "SHA256 of the complete source case record serialized with json.dumps(ensure_ascii=False, sort_keys=True), matching qwen_live_support.digest",
+  "review_policy": {
+    "previous_labels_reused": false,
+    "observed_slots": "Only accepted structured semantic state or workflow settings; capability prose/missing-action labels alone are not typed slot extraction evidence. This is the same structural-slot scope applied to the C review.",
+    "intent": "Judge the requested work and unsupported action from accepted interpretation and preserved conversation separately from the slot representation.",
+    "questions": "One label per actual pending/draft clarification question. Tool-gap recovery choices are not missing-condition questions and do not imply action execution.",
+    "whole_request_success": "Requires correct UNSUPPORTED routing and catalogue-based reason, preserved requested meaning, no unsupported assumptions, no unrequested replacement work. Does not imply external execution.",
+    "holdout": "U03 is evaluation only; no repair instruction is inferred from its wording."
+  },
+  "cases": {
+    "U01": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "unsupported_actions_correct": true,
+      "evidence": "Fresh v2 U01 review: both raw capability responses and the accepted capability state identify Slack channel delivery as the requested missing action. The accepted reason correctly distinguishes absent Slack messaging capability from registered Gmail/calendar operations; it does not invent a Slack implementation or ask for a token/channel before acknowledging the unsupported action. Final route is UNSUPPORTED, pending clarification questions are empty, and workflow is null. No external action is executed. The tool-gap choice offers create/redesign/defer options but does not automatically create/register a tool or replace the requested destination. The frozen gold contains no slot extraction opportunities. Whole-request handling succeeds because the unsupported action and its catalogue-based reason are correct.",
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions",
+        "turns[0].response.tool_gap_choice",
+        "workflow"
+      ],
+      "case_sha256": "b9d018de99dee3dc43d459738e822d06f2041b34fde395a63b04b167da264ab5",
+      "development_findings": [
+        "The accepted unsupported classification matches the missing registered functionality; no repair failure is demonstrated by this case."
+      ]
+    },
+    "U02": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "unsupported_actions_correct": true,
+      "evidence": "Fresh v2 U02 review: the previous sales-analysis/email request and source question remain in the conversation, followed by the explicit connected-PostgreSQL answer. Both raw capability candidates and the accepted state correctly identify direct PostgreSQL access as absent from the registered catalogue, distinguish file-based table reading, and stop at that missing prerequisite without asking the already answered source again. Final route is UNSUPPORTED, no clarification questions or workflow are present, and no customer database or email operation runs. The accepted capability prose preserves the provided source, but no structured source slot/meaning/condition/requirement field exists, so connected_postgresql is not credited under the same structural-slot scope used for C cases (0/1). This representation limit is separate from successful unsupported handling: the missing action and reason are correct, earlier intent is retained, and no substitute action is adopted.",
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions",
+        "turns[0].response.tool_gap_choice",
+        "workflow"
+      ],
+      "case_sha256": "0e99cf70d1d6f200ca140ebf60354e49d44fcc5cb7e2b70bc479734cccfec725",
+      "development_findings": [
+        "The accepted unsupported classification matches the missing registered functionality; no repair failure is demonstrated by this case."
+      ]
+    },
+    "U03": {
+      "split": "holdout",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "unsupported_actions_correct": true,
+      "evidence": "Fresh v2 U03 holdout review: both capability candidates and the accepted state identify yearly scheduling as the unsupported requirement, correctly citing the registered hourly/daily/weekly/monthly recurrence scope. The table read/write tools are retained as supported components, but generation and execution remain blocked for the requested yearly recurrence. No different recurrence is substituted, no frequency question is asked, and the final route is UNSUPPORTED with workflow=null and external execution NOT_RUN. The accepted missing-action label/prose correctly describes yearly scheduling, but no structured schedule.frequency/meaning/condition/requirement field exists; yearly is therefore not credited under the declared structural-slot scope (0/1). Whole-request unsupported handling succeeds independently of this structured-slot representation limit. This holdout observation is not used as a repair instruction.",
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions",
+        "turns[0].response.tool_gap_choice",
+        "workflow"
+      ],
+      "case_sha256": "34bc5a54f04b630c9178b62c1fcadc613bc995f3e8e45e0c25ac6f168d011a29",
+      "holdout_observations": [
+        "Correct unsupported action and reason; no replacement recurrence, workflow or external action."
+      ]
+    },
+    "U04": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "unsupported_actions_correct": true,
+      "evidence": "Fresh v2 U04 review: both raw capability responses and the accepted state identify Microsoft Teams channel delivery as the unsupported action. The accepted reason correctly says registered email operations are Gmail-specific and no Teams messaging tool exists. It does not map the request to email, generate a replacement delivery workflow, or ask irrelevant connection questions. Final route is UNSUPPORTED with no pending clarification questions or workflow; no message is sent. Tool-gap options require a later choice and are not an executed extra action. Gold contains no slot extraction opportunities; intent, unsupported action and reason satisfy the whole request.",
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions",
+        "turns[0].response.tool_gap_choice",
+        "workflow"
+      ],
+      "case_sha256": "eb5107d6f0dd30ea4738e8c1fb71480b956af5af1c288181d423c224f56377ba",
+      "development_findings": [
+        "The accepted unsupported classification matches the missing registered functionality; no repair failure is demonstrated by this case."
+      ]
+    },
+    "U05": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "unsupported_actions_correct": true,
+      "evidence": "Fresh v2 U05 review: both raw capability responses and the accepted state identify WhatsApp customer notification delivery as absent from the registered catalogue. Gmail/calendar availability is correctly kept separate from WhatsApp support. Final route is UNSUPPORTED, the accepted missing action is the requested WhatsApp notification, and no missing-condition question or workflow is produced. No external action executes and no alternative destination/action is adopted. Gold contains no slot extraction opportunities. The catalogue-based refusal is correct, so whole-request handling succeeds.",
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions",
+        "turns[0].response.tool_gap_choice",
+        "workflow"
+      ],
+      "case_sha256": "648d76bc80f805af906a32b0239975afbbcf55c9e083549ec63a39ab896a0208",
+      "development_findings": [
+        "The accepted unsupported classification matches the missing registered functionality; no repair failure is demonstrated by this case."
+      ]
+    }
+  },
+  "validation": {
+    "adjudicator_score_contract": "passed for all 5 cases without writing scored run",
+    "source_case_hashes_verified": 5,
+    "raw_source_modified": false
+  }
+}

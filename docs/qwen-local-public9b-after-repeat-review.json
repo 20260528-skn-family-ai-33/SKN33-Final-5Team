@@ -1,0 +1,165 @@
+{
+  "status": "completed",
+  "source_run": "docs\\qwen-local-public9b-after-repeat.json",
+  "source_run_bytes_sha256": "172b61021bc488c20af60bd7565fc5f30aa465695f49344625b2c360551bfe49",
+  "review_parts": {
+    "docs\\qwen-local-public9b-after-repeat-review-c05.json": "17461cd61333d55a81abe847de3940b270e33251dfcbebdafae0ba9199e501e7",
+    "docs\\qwen-local-public9b-after-repeat-review-m01.json": "50a9a0a8b614afbb753289eeee5dec796cecd4f3663d42565bfb9f71472b04d1",
+    "docs\\qwen-local-public9b-after-repeat-review-r04.json": "2ce072722ceb17a754dd884b5469dc88ccdce9a9028298736b6b2aa0857bf661"
+  },
+  "source_case_sha256": {
+    "R04": "aa02fe8e45d4a83df04733f5a89d71d7354ae429c2f2b07c2b60d856f6fba8c7",
+    "C05": "7d3075740270dfc48c9b7e694ffa27b97ce1166046e5e79935d916f60e756f91",
+    "M01": "9c49692e230aa1b22f216f73b5584f72046e098a033e669c9c5c95870820d5f9"
+  },
+  "cases": {
+    "C05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "output.format": "json"
+      },
+      "final_observed_slots": {
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "duplicate_policy"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "First displayed question asks first/last/keep/error duplicate handling; the request did not specify retention policy."
+        },
+        {
+          "necessary_slots": [
+            "duplicate_field"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "Second displayed question asks the column whose equal values identify duplicates."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null,
+      "evidence": [
+        "Fresh repeat has two actual returned native responses. Raw condition incorrectly assigns duplicate.policy=error from the empty-value error clause. Accepted subject-scoped validation rejects it as lacking explicit policy evidence, resets the duplicate policy to missing/null, preserves duplicate.field missing, and accepts output.format=json and missing.policy=error. The rejected error guess is not an accepted slot FP.",
+        "Actual pending questions, in order, ask duplicate retention policy and identifying column. Both frozen missing slots are covered, no unnecessary question is displayed, final route is the expected CLARIFY, and no workflow or execution occurs. For this frozen single-turn CLARIFY case, whole-request handling succeeds.",
+        "Unlike main, the new raw condition also proposes seven missing schedule slots (frequency/hour/minute/timezone/weekday/monthday/month_end), and accepted unresolved retains them despite operations=[deduplicate]. These are null unresolved slots, not accepted invented values, and do not receive slot FP credit or penalty. The two-question cap leaves them undisplayed in this observed turn. This is a real intermediate-state variation and a possible future-turn question risk, not an observed future failure.",
+        "Main and repeat capability raw is identical; condition raw and parsed payloads differ. The final route and two displayed question texts/options match. No result is selected over the other, and repeat remains outside the main evaluation denominator."
+      ]
+    },
+    "M01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "filter.field": "amount",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "operator"
+          ],
+          "unnecessary": false
+        },
+        {
+          "necessary_slots": [
+            "threshold"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": null,
+      "evidence": [
+        "Independently inspected repeat trace: initial condition ledger rejects an ungrounded operator, preserves amount/JSON/error/keep, and displays operator question7b6449ab35de34cfb005f7ea plus value question7836655210105d664aac2d1f.",
+        "Actual '20 이상으로 해줘.' under the prior operator question resolves both required slots. Same checkpoint session and growing conversation are verified in checkpoint_evidence.",
+        "Final READY workflow reads synthetic-sales, filters amount gte20 with missing_policy=error and duplicate_policy=keep, then writes JSON with correct table bindings. Requirement extraction still only lists export; final planner supplies all requested steps. No extra action.",
+        "Allowed native local execution succeeds with exactly the expected synthetic rows id2(amount30) and id3(amount20). This repeat preserves the main M01 result; it does not establish broader stochastic reliability or replace any main-run failure."
+      ],
+      "source_case_sha256": "9c49692e230aa1b22f216f73b5584f72046e098a033e669c9c5c95870820d5f9",
+      "checkpoint_evidence": {
+        "session_id": "a669def7-43ad-4dad-8ec4-2fe41d5ad0de",
+        "thread_id": "a669def7-43ad-4dad-8ec4-2fe41d5ad0de",
+        "response_ids": [
+          "a669def7-43ad-4dad-8ec4-2fe41d5ad0de",
+          "a669def7-43ad-4dad-8ec4-2fe41d5ad0de"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_id": "7b6449ab35de34cfb005f7ea",
+        "question_id_matches_previous_pending": true,
+        "same_session_thread_response_ids": true,
+        "prior_message_prefix_preserved": true
+      }
+    },
+    "R04": {
+      "intent_correct": true,
+      "observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "first",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "requirement_reasks_explicit_duplicate_and_missing_policy",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "evidence": [
+        "This new repeat has three returned actual model responses (capability, condition, requirement) and no planner call. Capability correctly identifies read_table/filter_sort/write_result. The raw condition says operation=filter while only dedup/output/missing slots are supplied; accepted condition normalization correctly yields operations=[deduplicate], ready, customer_id/first/json and missing_policy=error. All three frozen typed slots are grounded and preserved.",
+        "The actual requirement response again reduces the tasks to kind=other/action=deduplicate_and_export and asks whether first-row retention and empty-value error handling really apply, even though both are explicit and already accepted in the condition ledger. Both visible pending questions are unnecessary and no gold required slot is missing. This first-turn reasking is not a repeated-followup-question metric event.",
+        "Final CLARIFY/needs_clarification has no workflow and no local/external execution. Three required workflow tasks therefore have zero coverage, schema_valid=null is generation-not-reached, and whole-request success is false. The failure is downstream requirement extraction/readiness, not failure of the condition normalization fix.",
+        "Fresh raw/state review reproduces the main R04 semantic outcome. The three parsed response objects are identical; only whitespace in the condition raw JSON differs. This repeat remains a separate observation and cannot replace the main R04 result."
+      ]
+    }
+  },
+  "included_in_main_metrics": false,
+  "observations": [
+    "All three final route/whole-request outcomes match main: R04 fails, C05/M01 pass.",
+    "C05 has seven additional unresolved schedule slots. Current two displayed questions are appropriate; later-turn effect is NOT_RUN.",
+    "M01 allowed synthetic execution matches expected rows.",
+    "Three selected development cases measured once more do not establish general stability."
+  ]
+}

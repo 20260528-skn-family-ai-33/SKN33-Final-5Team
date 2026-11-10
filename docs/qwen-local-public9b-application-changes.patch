@@ -1,0 +1,539 @@
+--- a/Backend/agent_builder/capabilities/capability_check.py
++++ b/Backend/agent_builder/capabilities/capability_check.py
+@@ -9,9 +9,24 @@
+ 
+ 
+ def _question_text(text):
+-    import re
+     text=text.strip()
+-    if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
++    # Resource identifiers belong to the attachment UI. Business columns with
++    # names such as "파일 ID" remain valid user-selected fields.
++    def business_column(match):
++        return bool(re.match(r'''\s*["'`’”]?\s*(?:라는|란)?\s*(?:열|컬럼|칼럼|필드|column|field)''',
++                             text[match.end():],re.I))
++    resource=re.search(r'(?:파일|자료|문서|표)(?:\s*의)?\s*(?:(?:구체적인|고유한|실제)\s*)?'
++                       r'(?:ID|아이디|식별자)|file[_ ]?id',text,re.I)
++    if resource and not business_column(resource):
++        guidance='처리할 파일을 자료 연결에서 업로드해 주세요.'
++        # A combined question can also contain a genuinely missing recipient or
++        # business choice. Do not discard that second question when rendering UI guidance.
++        remaining=re.match(r'\s*(?:와|과|및|또는|나)\s*(.+)',text[resource.end():])
++        return guidance+(' '+_question_text(remaining[1]) if remaining else '')
++    credential=re.search(r'인증\s*정보|API\s*키|access[_ ]?token|비밀번호',text,re.I)
++    if (credential and not business_column(credential) and re.search(r'Gmail|지메일',text,re.I)
++            and re.search(r'알려|입력|제공|필요|보내',text[credential.end():])):
++        return 'Gmail 연결에서 계정 연결 상태를 확인해 주세요.'
+     if text.endswith(('?', '？')):return text
+     stem=text.rstrip('.').rstrip()
+     if stem.endswith('해야 합니다'):
+--- a/Backend/agent_builder/capabilities/capability_judgement.py
++++ b/Backend/agent_builder/capabilities/capability_judgement.py
+@@ -170,6 +170,7 @@
+ SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 시·일·주·월 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 yearly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
+ SYSTEM+='\n조건끼리 서로 모순되거나(예: 같은 대상에 두 가지 정책) 기준·값·단위가 미정인 것은 기능 부족이 아니라 사용자가 정할 조건이므로 clarify입니다. 모순 해결, 기준 선택, 값 명시, 정책 우선순위 결정을 missing_actions에 적지 않고 missing_conditions에 적습니다. 등록 도구가 지원하는 작업(상수 비교 선별, 빈 값 정책, 첫 행·마지막 행 중복 제거, 파일 저장)을 조건이 모순이라는 이유로 미지원이라 하지 않습니다.'
+ SYSTEM+='\nGmail의 최근 메일 여러 건 요약은 email.list의 read_messages 동작으로 본문 documents를 읽고 compose_answer의 documents 입력에 연결합니다. 개별 ID·로컬 파일·read_document 단계가 필요하지 않습니다. 한국 시간 매일 오전 9시 전날 메일 요약은 등록된 gmail_previous_day_daily_summary.v1 조합으로 지원하며 query={{gmail.previous_day}}와 daily/Asia/Seoul/09:00 예약을 보존합니다. 전날 기간은 실행 시 계산하고 기본 조회 한도는 100건, 지정 가능한 최대치는 500건입니다. 제한을 넘는 메일은 포함되지 않을 수 있음을 안내합니다. 등록된 실제 동작 계약을 확인하며, Gmail 계정 연결 상태가 설계 입력에 없다는 이유로 기능을 missing_capability로 판정하지 않습니다. 연결은 실행 전 확인하며 사용자에게 모델이 연결 여부를 추측하거나 이미 연결됐다고 주장하지 않습니다. 메일 발송·다른 공급자·등록 범위 밖의 임의 자동 반복은 이 읽기 요약 조합에 포함되지 않습니다.'
++SYSTEM+='\n제목·본문·열 이름·치환 문자열처럼 사용자가 지정한 입력값은 도구의 인자입니다. 그 값에 들어 있는 단어를 별도의 검토·완성·분석 업무로 만들지 않습니다. 제목과 본문을 지정한 메일 발송은 email.send의 등록된 발송 동작과 대조합니다. 기존 메일을 읽거나 검색하라는 요청이 있을 때만 email.list가 필요하며, Gmail 공급자를 명시한 것만으로 조회 업무를 추가하지 않습니다. 입력값이 아직 없으면 필요한 값만 질문하고, 계정 인증정보나 API 키는 채팅으로 요청하지 않습니다. 계정 연결은 앱의 연결 화면에서 확인하는 실행 전제입니다.'
+ DEMOS=[
+  {'request':'매년 12월 31일 오전 10시 한국 시간에 표를 JSON 저장. 다른 주기로 바꾸지 마.', 'output':{'decision':'missing_capability','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':['연간 예약'],'reason':'표 저장은 지원하나 앱 예약은 hourly/daily/weekly/monthly만 지원하므로 연간 주기는 미지원.','user_quotes':['매년 12월 31일 오전 10시 한국 시간에 표를 JSON 저장. 다른 주기로 바꾸지 마.']}},
+  {'request':'한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.', 'output':{'decision':'existing_tools','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'앱 주간 예약과 등록 표 읽기·저장 도구로 지원. 관리 자료 연결과 활성화는 후속 검사.','user_quotes':['한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.']}},
+--- a/Backend/agent_builder/conditions/condition_readiness.py
++++ b/Backend/agent_builder/conditions/condition_readiness.py
+@@ -497,7 +497,7 @@
+             if re.search(_DUP_VAGUE, segment):
+                 out.append((key, 'conflict', segment.strip())); continue
+             found, negated = _acts(segment, _DUP_ORDER)
+-            retention = re.search(r'남(?:겨|기|김)|유지|보존', segment)
++            retention = re.search(r'남(?:겨|기|김)|유지|보존|행(?:만|을)?\s*(?:CSV|JSON)?\s*(?:으로|로)?\s*저장(?!\s*(?:하지|안|못))', segment, re.I)
+             if found and not retention:
+                 if not re.search(r'삭제|제외|지우|지워|제거|빼', segment):
+                     continue  # An incomplete/other verb is left to the model, not guessed.
+@@ -661,6 +661,13 @@
+         stored=(ledger.get('slots') or {}).get(key)
+         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
+             issues.append(f'{key}: 저장된 조건이 사용자 원문과 달라 재판정이 필요합니다.')
++    for key, stored in (ledger.get('slots') or {}).items():
++        literal = literals.get(key, {})
++        if (stored.get('status') == 'specified'
++                and not (literal.get('status') == 'specified' and literal.get('value') == stored.get('value'))
++                and not _grounded_enum(key, stored.get('value'),
++                    '\n'.join(e['quote'] for e in stored.get('evidence', [])), state, stored.get('evidence', []))):
++            issues.append(f'{key}: 저장된 확정 값의 명시적 근거를 다시 확인해야 합니다.')
+     return issues
+ 
+ 
+@@ -749,6 +756,11 @@
+             continue  # 08:00 or 20:00 is the user's decision
+         add('schedule.hour', hour, m.group(0))
+         add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
++    for m in ([] if frequency == 'hourly' else re.finditer(r'(?<![\d:])(\d{2}):([0-5]\d)(?![\d:])', text)):
++        if int(m[1]) <= 23:
++            negated = bool(_SCHEDULE_NEGATED.match(text[m.end():m.end() + 12]))
++            add('schedule.hour', 'conflict' if negated else int(m[1]), m.group(0))
++            add('schedule.minute', 'conflict' if negated else int(m[2]), m.group(0))
+     for pattern, zone in _TIMEZONES:
+         m = re.search(pattern, text, re.I)
+         if m:
+@@ -941,7 +953,44 @@
+     return list(dict.fromkeys(issue for _, _, issue in _draft_comparison_mismatches(state, draft)))
+ 
+ 
+-def _grounded_enum(key, value, quote):
++def _scoped_answer(key, value, state, evidence):
++    """Short replies need an actual question/answer event, also after reopening."""
++    messages = state.get('messages', [])
++    for ref in evidence:
++        turn = ref.get('turn', -1)
++        if ref.get('source_id') != 'user' or not 0 <= turn < len(messages):
++            continue
++        text = messages[turn]['content'].strip().rstrip('.!?。')
++        if messages[turn]['role'] != 'user' or ref.get('quote', '') not in messages[turn]['content']:
++            continue
++        event = next((event for event in state.get('condition_answers', [])
++                      if event.get('turn') == turn and event.get('answer') == messages[turn]['content']
++                      and event.get('question_ids') and key in event.get('candidate_keys', [])), None)
++        pending = [q for q in state.get('pending_questions', []) if q.get('key') == key]
++        # Older callers do not record events; a current pending question still
++        # supplies context, but only for a new user turn after that ledger.
++        current = (turn == len(messages) - 1 and pending
++                   and turn > (state.get('condition_ledger') or {}).get('validated_user_turn', -1)
++                   and not any(e.get('turn') == turn for e in state.get('condition_answers', [])))
++        if not event and not current:
++            continue
++        if key == 'duplicate.policy':
++            labels = CHOICES[key]
++            if labels.get(text) == value:
++                return True
++            match = re.fullmatch(r'(첫|마지막)\s*행(?:만)?\s*(?:(?:으로|로)\s*)?(?:남겨(?:줘)?|남김|남기기|해줘)?', text)
++            if match and value == ('first' if match[1] == '첫' else 'last'):
++                return True
++        if key == 'schedule.minute':
++            match = re.fullmatch(r'(\d{1,2})\s*분(?:으로|에|요)?', text)
++            if match and int(match[1]) == value and 0 <= value <= 59:
++                return True
++            if text in ('정각', '정시') and value == 0:
++                return True
++    return False
++
++
++def _grounded_enum(key, value, quote, state=None, evidence=()):
+     """Check narrow literal meanings, not just the existence of an evidence ID.
+ 
+     Unknown paraphrases remain unresolved. The model may ask rather than turn
+@@ -952,6 +1001,17 @@
+     if key == 'missing.policy':
+         policy={'exclude':r'제외|빼|삭제','keep':r'유지|포함|그대로','error':r'오류|에러|중단'}[value]
+         return bool(re.search(r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?).{0,20}(?:'+policy+r')',quote))
++    if key == 'duplicate.policy':
++        columns = {col for resource in (state or {}).get('resources', [])
++                   for col in resource.get('columns', []) if isinstance(col, str)}
++        # A named duplicate key may be supplied before a table is connected.
++        columns.update(re.findall(r'([\w]+?)(?:이|가)\s*(?:같(?:은|으면)|겹치)', quote))
++        written = [policy for slot, policy, _ in policy_clauses(quote, columns) if slot == key]
++        return (bool(written) and all(policy == value for policy in written)
++                or bool(state and _scoped_answer(key, value, state, evidence)))
++    if key in ('schedule.hour', 'schedule.minute'):
++        return (any(slot == key and written == value for slot, written, _ in schedule_literals(quote, follow_up=True))
++                or bool(state and _scoped_answer(key, value, state, evidence)))
+     if key == 'schedule.frequency':
+         # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
+         # match; a monthly/yearly one never grounds daily or weekly.
+@@ -967,6 +1027,35 @@
+             return False
+         return bool(matches)
+     return True
++
++
++def _duplicate_only_request(state, slots):
++    """Prove a narrow duplicate-only request; unexplained text keeps filter.
++
++    This repairs a mislabeled operation, not a missing semantic extraction.
++    Removing only bounded, understood instruction fragments leaves any other
++    selection clause visible, even when the model omitted every filter slot.
++    """
++    users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
++    field = slots.get('duplicate.field', {}).get('value')
++    policy = slots.get('duplicate.policy', {}).get('value')
++    if len(users) != 1 or not field or policy not in ('first', 'last'):
++        return False
++    order = '첫' if policy == 'first' else '마지막'
++    duplicate = (re.escape(field) + r'\s*(?:열\s*)?(?:이|가|은|는|의)?\s*중복\s*'
++                 r'(?:인\s*행\s*)?(?:이면|이라면|인\s*경우|이\s*있으면|은|을)?\s*' + order +
++                 r'\s*행\s*(?:만|을)?\s*(?:남겨|남기|유지)')
++    remainder, count = re.subn(duplicate, ' ', users[0])
++    if count != 1:
++        return False
++    fragments = [
++        r'(?:연결(?:한|된)|첨부(?:한|된))?\s*(?:표|자료|파일)\s*(?:에서|의|을|를)?',
++        r'(?:CSV|JSON)\s*(?:파일\s*)?(?:으로|로)\s*저장',
++        r'빈\s*(?:값|칸|셀|행)\s*(?:은|는|이|가|도)?\s*(?:오류|에러|유지|제외)\s*(?:으로|로)?\s*(?:처리)?',
++    ]
++    for pattern in fragments:
++        remainder = re.sub(pattern, ' ', remainder, flags=re.I)
++    return bool(re.fullmatch(r'(?:[\s.,;!?]|해주세요|해줘|해|줘|요|하고|해서|고|서)*', remainder))
+ 
+ 
+ def validate_conditions(raw, state, catalog):
+@@ -1001,7 +1090,7 @@
+     by_id = {e['id']: e for e in catalog}
+     previous = deepcopy(state.get('condition_ledger') or {})
+     for key, old in previous.get('slots', {}).items():
+-        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
++        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', [])), state, old.get('evidence', [])):
+             old.update(status='missing', value=None, evidence_ids=[], evidence=[])
+             invalid.append(f'{key}: 이전 확정 값의 원문 근거를 재검증')
+     latest = max((i for i, m in enumerate(state.get('messages', [])) if m['role'] == 'user'), default=-1)
+@@ -1020,7 +1109,7 @@
+             try:
+                 value = _value(key, condition['value'])
+                 quote = '\n'.join(e['quote'] for e in evidence)
+-                if not _grounded_enum(key, value, quote):
++                if not _grounded_enum(key, value, quote, state, evidence):
+                     raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
+                 if key.endswith('.field') and value not in quote:
+                     raise ValueError('원문에 없는 열 이름입니다.')
+@@ -1094,6 +1183,16 @@
+         slots['filter.value'].update(status='missing', value=None)
+         invalid.append(issue)
+     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
++    user_text = '\n'.join(m['content'] for m in state.get('messages', []) if m['role'] == 'user')
++    if ('filter' in operations and not any(key.startswith('filter.') for key in slots)
++            and 'duplicate.policy' in literals
++            and literals['duplicate.policy'].get('value') in ('first', 'last', 'error')
++            and _duplicate_only_request(state, slots)):
++        # A duplicate-only proposal can be mislabeled filter. Never remove a
++        # real, even incomplete filter or any filter retained in a checkpoint.
++        operations.remove('filter')
++        if 'deduplicate' not in operations:
++            operations.append('deduplicate')
+     # A follow-up may focus on deduplication and omit the earlier filter from
+     # the model's single-operation label. Preserve it whenever its three
+     # individually grounded slots still exist; do not synthesize missing values.
+@@ -1154,7 +1253,11 @@
+     if slots.get('duplicate.policy',{}).get('value')=='keep':
+         slots.pop('duplicate.field',None)
+         operations=[op for op in operations if op!='deduplicate']
+-    unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified']
++    policy_subjects = {'missing.policy': r'빈\s*(?:값|칸|셀|행)|빈\s+\S+|비어\s*있|결측|누락|값이\s*없',
++                       'duplicate.policy': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치'}
++    unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified'
++                  and not (slot['status'] == 'missing' and key in policy_subjects and key not in required
++                           and not re.search(policy_subjects[key], user_text))]
+     needs_table = 'schedule' in operations and not any(r.get('kind') == 'table' for r in state.get('resources', []))
+     if needs_table:
+         unresolved.append('input.table')
+@@ -1171,9 +1274,13 @@
+                            'versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}, sort_keys=True, ensure_ascii=False)
+     questions = []
+     if decision in ('clarify', 'deferred'):
+-        for key in unresolved[:2]:
++        grouped_time = {'schedule.hour', 'schedule.minute'} <= set(unresolved)
++        question_keys = list(dict.fromkeys('schedule.hour' if grouped_time and key == 'schedule.minute' else key
++                                          for key in unresolved))
++        for key in question_keys[:2]:
+             text = ('예약에는 지금 관리 표 파일이 필요합니다. 자료 연결로 업로드해주세요.' if key == 'input.table' else
+-                    ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') + QUESTIONS[key])
++                    ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') +
++                    ('몇 시 몇 분에 실행할까요? 오전·오후도 함께 알려주세요.' if grouped_time and key == 'schedule.hour' else QUESTIONS[key]))
+             if key == 'filter.value' and amount and amount.get('issue'):
+                 text = amount['issue']
+             is_resolution = resolution and key in resolution['keys']
+--- a/Backend/agent_builder/design/request_meaning.py
++++ b/Backend/agent_builder/design/request_meaning.py
+@@ -59,6 +59,10 @@
+ SYSTEM = '''사용자의 현재 업무 요구를 작은 의미 구조 RequestMeaning JSON 하나로 추출합니다.
+ 표현·어순·조사·존댓말·소유 표현(내/제)은 의미가 같으면 같은 값으로 정규화합니다.
+ source는 source_catalog의 id이며 다른 서비스는 원래 이름을 보존합니다.
++source_catalog의 tool/operation은 조회 어댑터 설명이지 그 서비스에서 반드시 조회하라는 지시가 아닙니다.
++Gmail 등 서비스를 이용해 새 메일을 보내는 요청만 있으면 actions=[send]입니다. 기존 메일 조회가 명시된 경우에만 read를 추가합니다.
++발송할 제목·본문·수신자 등 입력값은 other_requirements에 원문 문자열 그대로 보존합니다. 입력값 안의 동사는 실행 동작이 아니며 제목·본문 값은 기존 메일의 검색 조건이 아닙니다.
++조회가 없는 발송 업무의 selection은 order=unspecified, limit/근거=null, period=all/근거=null, filters=[]입니다.
+ 조회한 자료를 요약하는 요청은 actions=[read,summarize]입니다. '요약 정리'는 요약 한 동작입니다.
+ 메일/자료 발송·파일 저장·삭제·변환은 각각 send/save/delete/transform을 반드시 추가합니다.
+ 별도 자료·업무는 tasks에 따로 기록하고, 표현할 수 없는 조건은 other_requirements에 원문으로 남깁니다.
+@@ -69,6 +73,7 @@
+ selection.period는 all/today/yesterday/date_range/other이고, period_source_message는 기간 표현이 나온 user_messages의 index입니다. 기간 조건이 없으면 all과 null입니다.
+ period_evidence는 기간의 정확한 원문 표현(예: 어제, 오늘, 전날)이며 기간 조건이 없으면 null입니다.
+ 안 읽은/미읽음은 filters=[unread], 읽은 메일은 [read]입니다. 그 밖의 발신자·제목·기간 등의 조건은 filters에 원문을 빠짐없이 남깁니다.
++읽음 상태는 원문이 요구할 때만 설정합니다. 단순히 오늘/어제 받은 메일이라는 표현에는 unread 조건이 없습니다. 읽음 여부 무관·미읽음 제외/취소 등 최신 변경도 적용합니다.
+ 필터가 없으면 []입니다. '내 Gmail'은 계정 연결의 표현이지 추가 필터가 아닙니다.
+ 특별한 요약 관점·형식은 summary_focus에 보존하고 일반 핵심 요약/정리는 []입니다.
+ 반복 실행을 명시한 경우만 schedule을 설정하고 실제 frequency/timezone/hour/minute/weekday/monthday/month_end를 사용합니다.
+@@ -79,6 +84,9 @@
+ 
+ REVIEW_SYSTEM = '''사용자 원문과 미검증 의미 후보를 독립적으로 대조하는 검토자입니다.
+ 후보가 유효한 JSON이라는 이유로 승인하지 않습니다. 후보를 작성한 모델의 판단·설명은 근거가 아닙니다.
++source_catalog의 조회 어댑터는 기능 제한이나 read 동작 요구가 아닙니다. 새 메일 발송만 요청했다면 actions=[send]이며, 명시하지 않은 기존 메일 검색/read를 더하면 false입니다.
++발송 제목·본문·수신자는 원문 입력값으로 other_requirements에 보존해야 합니다. 값에 포함된 동사를 업무로 바꾸거나 제목·본문을 조회 필터로 바꾸면 false입니다.
++조회 없는 발송의 selection(order=unspecified, period=all, limit=null, filters=[])은 조회 조건 부재를 나타냅니다. period=all 자체를 '모든 메일 조회'라는 추가 동작으로 해석하지 않습니다.
+ user_messages 전체를 먼저 읽고 최신 변경·취소를 적용한 실제 요구를 정리한 뒤 candidate와 비교합니다.
+ 모든 출처와 동작(read/summarize/send/save/delete/transform/other), 수량과 근거 발화, 순서, 기간과 근거 발화,
+ 읽음 상태·발신자·제목 등 필터, 예약 주기·시각·시간대, 요약 관점·형식, 추가 업무와 unresolved가 보존되어야 합니다.
+@@ -118,6 +126,51 @@
+     numbers = {'한': 1, '하나': 1, '두': 2, '둘': 2, '세': 3, '셋': 3, '네': 4, '넷': 4,
+                '다섯': 5, '여섯': 6, '일곱': 7, '여덟': 8, '아홉': 9, '열': 10}
+     return numbers.get(re.sub(r'(?:개|건|통)(?:의)?$', '', compact))
++
++
++_UNREAD = re.compile(r'안\s*읽은|읽지\s*않은|미읽음|\bunread\b', re.I)
++_READ_STATUS_RESET = re.compile(
++    r'읽음\s*(?:여부|상태).{0,24}(?:관계\s*없|상관\s*없|무관)|'
++    r'(?<!\w)읽은\s*(?:이?메일)', re.I)
++_UNREAD_CANCEL = re.compile(
++    r'(?:필터|조건|제한).{0,12}(?:(?:취소|해제|제거)(?!\s*하지)|없애(?!지)|빼(?:고|줘|주세요))|'
++    r'제외(?:$|해|하(?:고|자|도록)|시켜)|'
++    r'^\s*(?:(?:이?메일|것|항목|필터|조건)\s*)?(?:만|은|는|을|를)?\s*(?:아니|말고|필요\s*없)|'
++    r'(?:필터|조건|제한).{0,12}없이|'
++    r'(?:고르|조회하|검색하|선별하|선택하|적용하|제한하)지(?:는)?\s*(?:마|말|않)|'
++    r'빼(?:고|줘|주세요)|\b(?:excluded?|removed?|disabled?|cancelled?|canceled?)\b', re.I)
++
++
++def _unread_grounded(users):
++    """Check the compiler's one canonical filter against explicit read-state clauses.
++
++    This is a narrow evidence guard, not an alternative meaning extractor. Unknown
++    paraphrases cannot authorize is:unread; they remain for normal model/planner review.
++    Quantity-only follow-ups leave an earlier explicit read-state choice intact.
++    """
++    selected = False
++    for text in users:
++        for clause in re.split(r'[.!?\n,;]', text):
++            events = []
++            # Blank aliases before finding positive '읽은 메일' so the negative
++            # phrase '안 읽은 메일' does not accidentally count as a reset.
++            plain = _UNREAD.sub(lambda match: ' ' * len(match.group()), clause)
++            events.extend((match.start(), False) for match in _READ_STATUS_RESET.finditer(plain))
++            if not _UNREAD.search(clause):
++                events.extend((match.start(), False) for match in re.finditer(r'(?:모든|전체)\s*(?:이?메일)', clause))
++            for match in _UNREAD.finditer(clause):
++                # A literal title/body value is not a read-state selection.
++                prefix = clause[:match.start()]
++                if re.search(r'(?:제목|본문|subject|body)\s*(?:은|는|이|가|에|:|=)?\s*[\"\'“‘]?\s*$', prefix, re.I):
++                    continue
++                tail = clause[match.end():]
++                # "빼지 말고 유지" preserves a selection; it is not "빼고".
++                tail = re.sub(r'(?:빼|제외하|취소하|해제하|없애)지\s*(?:말고|말아|마)', '', tail)
++                negated = re.search(r'\b(?:not|without|except|exclude|remove|disable|cancel)\s+(?:the\s+)?$', prefix, re.I)
++                events.append((match.start(), not bool(negated or _UNREAD_CANCEL.search(tail))))
++            if events:
++                selected = sorted(events)[-1][1]
++    return selected
+ 
+ 
+ def validate_meaning(raw, state):
+@@ -147,6 +200,8 @@
+             raise ValueError('기간 조건과 원문 근거가 일치하지 않습니다.')
+         task['actions'] = sorted(set(task['actions']))
+         selection['filters'] = sorted(set(selection['filters']))
++        if task['source'] == 'gmail' and 'unread' in selection['filters'] and not _unread_grounded(users):
++            raise ValueError('미읽음 필터의 명시적 사용자 근거가 없거나 이후에 취소되었습니다.')
+     return result
+ 
+ 
+@@ -161,7 +216,12 @@
+             or review.get('issues') != [] or review.get('meaning_digest') != digest
+             or review.get('request_fingerprint') != fingerprint):
+         return None
+-    return validate_meaning(value, state)
++    try:
++        return validate_meaning(value, state)
++    except (ValueError, TypeError, KeyError):
++        # A persisted successful model review does not override current Python
++        # grounding rules. Reject old guesses and let the worker re-extract.
++        return None
+ 
+ 
+ def source_candidate(state):
+--- a/Backend/agent_builder/design/requirement_contracts.py
++++ b/Backend/agent_builder/design/requirement_contracts.py
+@@ -23,6 +23,12 @@
+     kind: Literal['compute']
+     formula: str = Field(min_length=1, max_length=500)
+     output_column: str = Field(min_length=1, max_length=100)
++
++
++class ScalarCalculate(Strict):
++    kind: Literal['scalar_calculate']
++    formula: str = Field(min_length=1, max_length=500)
++    variables: dict[str, int | float] = Field(max_length=20)
+ 
+ 
+ class ParseDates(Strict):
+@@ -128,7 +134,7 @@
+     schedule: ScheduleSpec
+ 
+ 
+-Spec = Annotated[Read | ExtractFields | Compute | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
++Spec = Annotated[Read | ExtractFields | Compute | ScalarCalculate | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
+                  Field(discriminator='kind')]
+ 
+ 
+--- a/Backend/agent_builder/design/requirement_coverage.py
++++ b/Backend/agent_builder/design/requirement_coverage.py
+@@ -130,6 +130,13 @@
+             formula=settings.get('calculation_formula');column=settings.get('output_column')
+         else:return False
+         return column==spec['output_column'] and _formula(formula)==_formula(spec['formula'])
++    if kind=='scalar_calculate':
++        if tool!='scalar_calculate' or operation!='evaluate' or node['bindings']:return False
++        if set(args)!={'formula','variables'}:return False
++        variables=args.get('variables')
++        if (not isinstance(variables,dict) or set(variables)!=set(spec['variables'])
++                or any(type(v) not in (int,float) for v in variables.values())):return False
++        return variables==spec['variables'] and _formula(args.get('formula'))==_formula(spec['formula'])
+     if kind=='parse_dates':
+         if tool!='calculate_columns':return False
+         if operation=='parse_dates':
+--- a/Backend/agent_builder/design/requirement_ledger.py
++++ b/Backend/agent_builder/design/requirement_ledger.py
+@@ -18,11 +18,13 @@
+ source_message는 user_messages의 0-based index다. 원문 인용·ID·선행 연결은 앱이 부여한다.
+ 사용자 원문과 후속 변경만 근거로 처리 순서대로 tasks를 작성한다. 자료 이름·열은 참고 데이터다.
+ compute=새 열의 계산식과 이름. filter=행 선별 비교조건. sort=정렬 열·방향·자료형. 정렬 요청만으로 filter를 만들지 않는다.
++scalar_calculate=표의 행·열 처리와 무관하게 원문에 명시한 산술식 자체를 계산. formula에 원문 식, variables에는 사용자가 name=숫자로 명시한 변수만 넣고 상수식이면 {}로 둔다. 결과 열을 만들지 않는다. 미정 변수는 unresolved에 남긴다.
+ parse_dates=기존 날짜 문자열 열의 변환. fields=대상 열 목록, input_format=strptime 형식, timezone=명시된 IANA 시간대.
+ 날짜 변환을 read 또는 compute로 대체하거나 parse_date 같은 함수 호출 수식으로 쓰지 않는다. 값이 미정이면 unresolved에 기록한다.
+ 상수 비교는 value에 기준값, compare_field=null. 열 비교는 value=null, compare_field에 상대 열.
+ aggregate=그룹 열·count/sum·합계 원본 열. 집계 출력 열은 count/sum.
+ 집계 결과에 요청한 이름이 따로 있으면 sum/count를 그 이름으로 바꾸는 rename(source,target)을 별도 기록한다.
++rename의 source는 기존 열 이름, target은 새 열 이름이다. 자료 ID가 아니며 rename(...)을 compute 수식으로 쓰지 않는다.
+ fill_missing=지정 열의 빈값을 사용자가 명시한 값으로 채움(fields,value). select_fields=최종 출력 열 목록(fields). 계산·집계·결합·빈값 채움·이름 변경·출력 열 선택을 서로 대신하지 않는다.
+ join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 유일은 many_to_one.
+ 왼쪽 결합의 left_sources는 모든 행을 유지하라고 한 기준 자료다. 집계된 자료를 오른쪽에 붙일 때도 이 방향을 바꾸지 않는다. 최대 행 수가 미정이면 unresolved에 적는다.
+@@ -37,6 +39,7 @@
+ SYSTEM += '''\nconversation의 직전 질문과 pending_questions를 이용해 짧은 답변의 대상을 해석한다.
+ previous_requirements는 이전 후보이며 사용자 원문보다 우선하지 않는다. 새 답변이 바꾸지 않은 조건은 유지하고 최신 변경은 반영한다.
+ unresolved에는 사용자가 결정해야 하는 누락 조건만 구체적인 한국어 질문으로 적는다. 내부 오류·분류·스키마 설명은 넣지 않는다.
++필수 값이 모두 명시됐으면 unresolved=[]로 둔다. 이대로 진행·저장할지 같은 요청 재확인·승인은 생성 후 앱 검토 단계의 역할이며 누락 조건으로 넣지 않는다.
+ 명시된 값이나 temporal_context에서 계산된 날짜를 다시 묻지 않는다. 답변이 불명확하면 추측해 확정하지 않는다.'''
+ 
+ 
+@@ -65,7 +68,7 @@
+     from agent_builder.capabilities.capability_gate import input_fingerprint
+     # Version seals the interpretation contract as well as the input/catalog.
+     meaning = state.get('request_meaning_digest') or ''
+-    return hashlib.sha256(('a4b.requirements.v5.semantic-selection:' + input_fingerprint(state) + meaning).encode()).hexdigest()
++    return hashlib.sha256(('a4b.requirements.v6.grounded-scalar-schedule:' + input_fingerprint(state) + meaning).encode()).hexdigest()
+ 
+ 
+ def plan_digest(plan):
+@@ -76,9 +79,22 @@
+     from contracts.models import ScheduleSpec
+     from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+     from workflow_engine.scheduling.recurrence import schedule_errors
++    from .temporal_context import validate_user_timezone
+     written = explicit_policies(state, source_catalog(state)[0])
++    zone = written.get('schedule.timezone')
++    if zone and zone.get('status') != 'specified':
++        raise ValueError('명시한 예약 시간대가 충돌하거나 미정입니다.')
++    zone_turn = max((e.get('turn', -1) for e in (zone or {}).get('evidence', [])), default=-1)
++    # An invalid explicit IANA request must not silently retain the prior or
++    # browser timezone merely because the narrow literal parser skipped it.
++    for turn, message in enumerate(state.get('messages', [])):
++        if message.get('role') != 'user' or turn < zone_turn:continue
++        for value in re.findall(r'((?:[A-Za-z_]+/)+[A-Za-z0-9_+-]+)\s*(?:시간대|시간|기준)', message['content']):
++            validate_user_timezone(value)
+     slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
+              if key.startswith('schedule.') and item.get('status') == 'specified'}
++    if 'timezone' not in slots and state.get('user_timezone') is not None:
++        slots['timezone'] = validate_user_timezone(state['user_timezone'])
+     spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
+                 hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
+                 monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
+@@ -147,6 +163,9 @@
+             constants=[n.value for n in ast.walk(ast.parse(spec['formula'],mode='eval')) if isinstance(n,ast.Constant)]
+             if any(abs(Decimal(str(v))) not in {abs(n) for n in numbers} for v in constants):
+                 raise ValueError('계산식의 숫자가 사용자 원문에서 확인되지 않습니다.')
++        if spec['kind']=='scalar_calculate':
++            from .scalar_requirement import validate_scalar_requirement
++            validate_scalar_requirement(spec, task['quote'], users)
+         for field in ('file_ids','left_sources','right_sources'):
+             if not set(spec.get(field,[]))<=assets:
+                 raise ValueError('요구사항에 실제 연결 자료가 아닌 ID가 있습니다.')
+--- /dev/null
++++ b/Backend/agent_builder/design/scalar_requirement.py
+@@ -0,0 +1,84 @@
++"""Ground literal scalar arithmetic; do not infer table or variable semantics.
++
++This deliberately supports written arithmetic and explicit ``name=number``
++assignments only. Broader prose/variable bindings need clarification; the
++registered scalar operation and its execution validator remain unchanged.
++"""
++import ast
++import re
++from decimal import Decimal
++
++from workflow_engine.table_formula import formula_columns
++
++
++NUMBER = r'(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?'
++TOKEN = re.compile(NUMBER + r'|[A-Za-z_][A-Za-z_0-9]*|[()+*/%\-]')
++TABLE_SCOPE = re.compile(
++    r'\b(?:table|column|row|dataframe)s?\b|'
++    r'(?<![가-힣A-Za-z_])(?:표|행|열|컬럼)(?=$|[\s은는이가을를의에별마다])|'
++    r'(?:출력|계산|결과|새로운|새)\s*(?:열|컬럼)', re.I)
++UNCERTAIN_CONTEXT = re.compile(
++    r'말고|아니라|대신|취소|제외|미정|모르|하지\s*마|하지\s*않|계산하지|'
++    r'\b(?:not|instead|cancel|ignore|unknown|unspecified)\b', re.I)
++
++
++def _written_expression(formula, text):
++    tokens = TOKEN.findall(formula)
++    if ''.join(tokens) != re.sub(r'\s+', '', formula):
++        return False
++    body = ast.parse(formula, mode='eval').body
++    while isinstance(body, ast.UnaryOp):body = body.operand
++    atomic = isinstance(body, (ast.Constant, ast.Name))
++    pattern = r'(?<![A-Za-z_0-9.])' + r'\s*'.join(map(re.escape, tokens)) + r'(?![A-Za-z_0-9.])'
++    for match in re.finditer(pattern, text):
++        before = text[:match.start()].rstrip()
++        after = text[match.end():].lstrip()
++        # A valid substring of a larger expression is not the whole request.
++        if before[-1:] and before[-1] in '+-*/%()=':continue
++        if after[:1] and after[0] in '+-*/%()=':continue
++        # A number/name in an assignment or explanation is not itself a
++        # requested calculation. Keep explicit single-constant requests.
++        if atomic and not (
++            re.match(r'^(?:을|를)?\s*(?:계산|평가|구해)', after)
++            or re.match(r'^의\s*(?:값|결과)(?:을|를)?\s*(?:계산|보여|알려)', after)
++            or re.search(r'\b(?:calculate|evaluate)\s*$', before, re.I)
++        ):continue
++        return True
++    return False
++
++
++def validate_scalar_requirement(spec, quote, user_messages):
++    formula = spec['formula']
++    names = formula_columns(formula)
++    if TABLE_SCOPE.search(quote):
++        raise ValueError('표의 행·열 계산을 독립 스칼라 계산으로 바꿀 수 없습니다.')
++    if UNCERTAIN_CONTEXT.search(quote):
++        raise ValueError('변경·부정된 계산식을 추측하지 않고 명확한 식을 확인해야 합니다.')
++    if not _written_expression(formula, quote):
++        raise ValueError('스칼라 계산식 전체를 사용자 원문에서 확인할 수 없습니다.')
++    variables = spec['variables']
++    if set(variables) != names or any(type(v) not in (int, float) for v in variables.values()):
++        raise ValueError('스칼라 수식의 변수와 명시된 숫자 값이 일치하지 않습니다.')
++    for name, value in variables.items():
++        assignments = []
++        pattern = r'(?<![\w.])' + re.escape(name) + r'\s*=\s*([+-]?' + NUMBER + r')(?![A-Za-z_0-9.])'
++        for message in user_messages:
++            matches = list(re.finditer(pattern, message))
++            mentions = re.search(r'(?<![A-Za-z_0-9])' + re.escape(name) + r'(?![A-Za-z_0-9])', message)
++            if mentions and (TABLE_SCOPE.search(message) or UNCERTAIN_CONTEXT.search(message)):
++                assignments = []
++                continue
++            for match in matches:
++                tail = message[match.end():].lstrip()
++                # x=2+3 is not an explicit assignment of the number 2.
++                if tail[:1] and tail[0] in '+-*/%()':
++                    assignments = []
++                else:
++                    assignments.append(match.group(1))
++        if not assignments or Decimal(assignments[-1]) != Decimal(str(value)):
++            raise ValueError('스칼라 변수의 숫자 값을 사용자 원문에서 확인할 수 없습니다: ' + name)
++    from workflow_engine.unified_tools.expansion.runtime import expression
++    try:
++        expression(formula, variables)
++    except (ArithmeticError, ValueError, TypeError) as error:
++        raise ValueError('스칼라 계산의 숫자 조건을 확인하세요.') from error

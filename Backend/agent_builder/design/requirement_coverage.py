@@ -93,7 +93,7 @@ def _matches(spec,node,draft,sources):
             if draft.get('schedule')!=spec['schedule'] or draft.get('report_destination')!='reports':return False
             query=spec['query']
         else:
-            query=None
+            query=spec.get('query')
         return (not source['bindings'] and read_args.get('max_results')==spec['max_results']
                 and read_args.get('query')==query and set(read_args)<={'query','max_results'})
     if kind=='read':
@@ -130,6 +130,13 @@ def _matches(spec,node,draft,sources):
             formula=settings.get('calculation_formula');column=settings.get('output_column')
         else:return False
         return column==spec['output_column'] and _formula(formula)==_formula(spec['formula'])
+    if kind=='scalar_calculate':
+        if tool!='scalar_calculate' or operation!='evaluate' or node['bindings']:return False
+        if set(args)!={'formula','variables'}:return False
+        variables=args.get('variables')
+        if (not isinstance(variables,dict) or set(variables)!=set(spec['variables'])
+                or any(type(v) not in (int,float) for v in variables.values())):return False
+        return variables==spec['variables'] and _formula(args.get('formula'))==_formula(spec['formula'])
     if kind=='parse_dates':
         if tool!='calculate_columns':return False
         if operation=='parse_dates':

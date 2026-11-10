@@ -1,0 +1,69 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-after-repeat.json",
+  "reviewer": "Codex independent review of new raw response/state/question evidence; not Qwen self-rating or independent human gold",
+  "status": "completed",
+  "review_scope": "C05 only; separate repetition, never substituted for or merged into the main 52-case after measurement",
+  "case_hash_algorithm": "SHA256 UTF-8 json.dumps(case, ensure_ascii=False, sort_keys=True), default JSON separators",
+  "source_case_sha256": {
+    "C05": "7d3075740270dfc48c9b7e694ffa27b97ce1166046e5e79935d916f60e756f91"
+  },
+  "comparison_to_main": {
+    "source_run": "docs/qwen-local-public9b-after.json",
+    "same_gold": true,
+    "same_application_source": true,
+    "same_harness": true,
+    "same_evaluation_environment": true,
+    "same_effective_settings": true,
+    "main_route": "CLARIFY",
+    "repeat_route": "CLARIFY",
+    "displayed_questions_same": true,
+    "raw_text_identical": false,
+    "parsed_payloads_identical": false,
+    "accepted_state_identical": false,
+    "variation": "Capability payload is identical. Repeat condition adds explicit json/error slots plus seven unrequested missing schedule slots, whereas main raw has only duplicate.policy=error and duplicate.field=missing. Both reject guessed duplicate.policy=error and show the same two necessary questions. The repeat retains schedule.* in unresolved; no answer/future question was evaluated.",
+    "sample_limit": "One repeated single-turn case; matching final route/questions is not proof of identical intermediate state, general determinism or successful future turns."
+  },
+  "cases": {
+    "C05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "output.format": "json"
+      },
+      "final_observed_slots": {
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "duplicate_policy"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "First displayed question asks first/last/keep/error duplicate handling; the request did not specify retention policy."
+        },
+        {
+          "necessary_slots": [
+            "duplicate_field"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "Second displayed question asks the column whose equal values identify duplicates."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null,
+      "evidence": [
+        "Fresh repeat has two actual returned native responses. Raw condition incorrectly assigns duplicate.policy=error from the empty-value error clause. Accepted subject-scoped validation rejects it as lacking explicit policy evidence, resets the duplicate policy to missing/null, preserves duplicate.field missing, and accepts output.format=json and missing.policy=error. The rejected error guess is not an accepted slot FP.",
+        "Actual pending questions, in order, ask duplicate retention policy and identifying column. Both frozen missing slots are covered, no unnecessary question is displayed, final route is the expected CLARIFY, and no workflow or execution occurs. For this frozen single-turn CLARIFY case, whole-request handling succeeds.",
+        "Unlike main, the new raw condition also proposes seven missing schedule slots (frequency/hour/minute/timezone/weekday/monthday/month_end), and accepted unresolved retains them despite operations=[deduplicate]. These are null unresolved slots, not accepted invented values, and do not receive slot FP credit or penalty. The two-question cap leaves them undisplayed in this observed turn. This is a real intermediate-state variation and a possible future-turn question risk, not an observed future failure.",
+        "Main and repeat capability raw is identical; condition raw and parsed payloads differ. The final route and two displayed question texts/options match. No result is selected over the other, and repeat remains outside the main evaluation denominator."
+      ]
+    }
+  }
+}

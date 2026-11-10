@@ -1,0 +1,643 @@
+{
+  "version": 1,
+  "kind": "interrupted_local_baseline_instrumentation_audit_not_quality_evaluation",
+  "audited_at_utc": "2026-11-10T13:05:34.804029+00:00",
+  "audit_model_calls_performed": 0,
+  "audit_writes": [
+    "docs/qwen-local-public9b-instrumentation-audit.json"
+  ],
+  "source": {
+    "path": "docs/qwen-local-public9b-baseline-instrumentation-interrupted-raw.json",
+    "file_bytes_sha256": "8333bbc85ce13ea59827c4b9706e7724e25121b8dd5cc5b5af241199affec501",
+    "size_bytes": 2166948,
+    "header_status": "running",
+    "header_phase": "baseline",
+    "header_inference_calls": 95,
+    "header_status_is_interruption_snapshot_not_completion": true,
+    "raw_modified": false
+  },
+  "run_disposition": {
+    "status": "excluded_from_final_quality_evaluation_instrumentation_contamination",
+    "restart": "separate full 52-case baseline-v2 after harness repair",
+    "merge_old_or_contaminated_cases_into_restart": false,
+    "label_reuse_for_final_quality": "not authorized; retained labels are diagnostic only",
+    "model_failure_attribution_for_T07": "withheld"
+  },
+  "case_inventory": {
+    "requested_count": 52,
+    "persisted_records": 29,
+    "persisted_status_counts": {
+      "completed": 28,
+      "failed": 1
+    },
+    "persisted_case_ids": [
+      "R01",
+      "R02",
+      "R03",
+      "R04",
+      "R05",
+      "R06",
+      "R07",
+      "R08",
+      "R09",
+      "R10",
+      "C01",
+      "C02",
+      "C03",
+      "C04",
+      "C05",
+      "C06",
+      "C07",
+      "C08",
+      "C09",
+      "C10",
+      "T01",
+      "T02",
+      "T03",
+      "T04",
+      "T05",
+      "T06",
+      "T07",
+      "T08",
+      "M01"
+    ],
+    "active_incomplete_case_id": "M02",
+    "remaining_without_persisted_case_count": 23,
+    "remaining_without_persisted_case_ids": [
+      "M02",
+      "M03",
+      "M04",
+      "M05",
+      "M06",
+      "M07",
+      "M08",
+      "M09",
+      "M10",
+      "M11",
+      "M12",
+      "U01",
+      "U02",
+      "U03",
+      "U04",
+      "U05",
+      "X01",
+      "X02",
+      "X03",
+      "X04",
+      "X05",
+      "X06",
+      "X07"
+    ],
+    "code_only_case_ids": [
+      "R01",
+      "T08"
+    ]
+  },
+  "call_accounting": {
+    "unit": "retained logical trace entries; SDK assembled responses are not independent HTTP wire-call counts",
+    "persisted_case_trace_entries": 93,
+    "persisted_case_returned_response_entries": 92,
+    "persisted_case_unfinished_entries": 1,
+    "probe_trace_entries": 1,
+    "probe_returned_response_entries": 1,
+    "active_case_trace_entries": 1,
+    "active_case_unfinished_entries": 1,
+    "all_retained_trace_entries": 95,
+    "confirmed_response_bearing_logical_calls": 93,
+    "unfinished_entries": 2,
+    "failed_trace_entries": 0,
+    "native_returned_response_entries": 82,
+    "sdk_assembled_returned_response_entries": 11,
+    "suspected_pre_http_callback_failure_entries": 1,
+    "suspected_pre_http_entry": "T07 model_calls[1]",
+    "active_call_dispatch_unknown_entries": 1,
+    "active_call_dispatch_unknown_entry": "M02 active_case_calls[0]",
+    "returned_entries_with_settings_model_elapsed_and_raw_output": 93,
+    "actual_total_model_requests": null,
+    "actual_total_inference_usage_or_cost": null,
+    "limitations": [
+      "Header inference_calls=95 counts appended trace objects, including two unfinished entries, and is not a proven inference total.",
+      "T07 shows three returned model responses, not four proven model invocations.",
+      "M02 may have reached transport after the persisted start callback; absence of settings in the last snapshot cannot prove non-dispatch.",
+      "No per-call wire log or originating persistence exception is retained; do not impute missing calls, latency, tokens, or model failures."
+    ]
+  },
+  "per_persisted_case": [
+    {
+      "id": "R01",
+      "status": "completed",
+      "source_case_canonical_sha256": "070d52bc14fe37e98ae1a40bf1060633c77f3ff3ac7fa70c1486ce321dc7faf8",
+      "header_live_model_calls": 0,
+      "retained_trace_entries": 0,
+      "trace_status_counts": {},
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R02",
+      "status": "completed",
+      "source_case_canonical_sha256": "19b09b0b34be10fdd1a40718b6bf49edccefa804c06257a5fef29761147cbee2",
+      "header_live_model_calls": 4,
+      "retained_trace_entries": 4,
+      "trace_status_counts": {
+        "returned": 4
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R03",
+      "status": "completed",
+      "source_case_canonical_sha256": "e8f941ad7f81d99e2ae443967447de55e6754349ba5d2b1cd40bf9e28794ea50",
+      "header_live_model_calls": 3,
+      "retained_trace_entries": 3,
+      "trace_status_counts": {
+        "returned": 3
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R04",
+      "status": "completed",
+      "source_case_canonical_sha256": "fa1d5a410f24ad6460f07e5cc7db49908c6f0d295a6ea723d74c42753d68cf3d",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R05",
+      "status": "completed",
+      "source_case_canonical_sha256": "d5db070daf6cfb66ed234e7422e1a317574895c77074ad75656f8916ea188fae",
+      "header_live_model_calls": 3,
+      "retained_trace_entries": 3,
+      "trace_status_counts": {
+        "returned": 3
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R06",
+      "status": "completed",
+      "source_case_canonical_sha256": "3ff3f3de7f11394568ef9d2e2abe6cf3892b4174fb1ae5a6126eda2b88f978a3",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R07",
+      "status": "completed",
+      "source_case_canonical_sha256": "d26dfb8bdaa280a01f0c7964b9d00e8b331f218d1da25ea9c4f31d95122a64e1",
+      "header_live_model_calls": 3,
+      "retained_trace_entries": 3,
+      "trace_status_counts": {
+        "returned": 3
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R08",
+      "status": "completed",
+      "source_case_canonical_sha256": "deadbbe9faec80df32e9cfc48b5808e32070588727bff27d64a6de487a7a57e9",
+      "header_live_model_calls": 3,
+      "retained_trace_entries": 3,
+      "trace_status_counts": {
+        "returned": 3
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R09",
+      "status": "failed",
+      "source_case_canonical_sha256": "5863d185655f46861ffaf2e16f72c7c59aaca5b8eb6171e3ab6faec82bda7375",
+      "header_live_model_calls": 5,
+      "retained_trace_entries": 5,
+      "trace_status_counts": {
+        "returned": 5
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "R10",
+      "status": "completed",
+      "source_case_canonical_sha256": "9904299c9f4075e6ee4e93c6a853251e857043a4f0bed7840d2d487136a5ba45",
+      "header_live_model_calls": 4,
+      "retained_trace_entries": 4,
+      "trace_status_counts": {
+        "returned": 4
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C01",
+      "status": "completed",
+      "source_case_canonical_sha256": "12c277021a268ad63901a174938d0fa3252523f38b395cd559ac469a3c5d6819",
+      "header_live_model_calls": 3,
+      "retained_trace_entries": 3,
+      "trace_status_counts": {
+        "returned": 3
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C02",
+      "status": "completed",
+      "source_case_canonical_sha256": "653712b09e18dc798b64bc40b165f823a737f5046f1c12bc0bd6aa8231f155f0",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C03",
+      "status": "completed",
+      "source_case_canonical_sha256": "c937abb7d6c8ecca0c6e4797172ceb507e6207b34a1aa20a3da8fade03ec46f9",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C04",
+      "status": "completed",
+      "source_case_canonical_sha256": "4bab16cc8f802203a612cdccf85174db7c63319300e314cf93e4d1e39adc44e9",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C05",
+      "status": "completed",
+      "source_case_canonical_sha256": "881b0c9292838d588fce162075020422c412e9425a23fac32cf1bf8e756642c1",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C06",
+      "status": "completed",
+      "source_case_canonical_sha256": "535a9eb0e44657975f3cd03e3dea246a14f7d8b3f6761947767e9bbcc0a98eac",
+      "header_live_model_calls": 6,
+      "retained_trace_entries": 6,
+      "trace_status_counts": {
+        "returned": 6
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C07",
+      "status": "completed",
+      "source_case_canonical_sha256": "5946207daebcbec9e11ed98e1e9d317f1fba026684444a3f4937a5e4bf51dc0e",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C08",
+      "status": "completed",
+      "source_case_canonical_sha256": "19bee0ccfbbb2f21d2bcb704e45381da676c8f8ab75f9aea0134a3d9806e9db5",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C09",
+      "status": "completed",
+      "source_case_canonical_sha256": "529a9a1c67131809c9adf1b7dd901177c2ece71cbbe593ffa56a47bc6b1a3f0f",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "C10",
+      "status": "completed",
+      "source_case_canonical_sha256": "f821bb29da3fedeb31a26c7b06f0a93d5e813984a902e7ad7b1194aec750de53",
+      "header_live_model_calls": 6,
+      "retained_trace_entries": 6,
+      "trace_status_counts": {
+        "returned": 6
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "T01",
+      "status": "completed",
+      "source_case_canonical_sha256": "7d4d969b2934cc7d6daf3c7916b949813af23ff12710606ec5446940acc11042",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "T02",
+      "status": "completed",
+      "source_case_canonical_sha256": "08ea709643f893935b6453e8dd35d66ee8fc7c2feefbf233c51a0b3d992fafef",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "T03",
+      "status": "completed",
+      "source_case_canonical_sha256": "996d74293aa2b16ab45bd9223f1440e145ed34fd5b1c76a2b291874b34ca2908",
+      "header_live_model_calls": 6,
+      "retained_trace_entries": 6,
+      "trace_status_counts": {
+        "returned": 6
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "T04",
+      "status": "completed",
+      "source_case_canonical_sha256": "ab940b03f6b305f6865900a89ede314f02308927450736b07c69a19e2fda8165",
+      "header_live_model_calls": 2,
+      "retained_trace_entries": 2,
+      "trace_status_counts": {
+        "returned": 2
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "T05",
+      "status": "completed",
+      "source_case_canonical_sha256": "d98d5a9377386e423041fa55dceb297a70a382652b6ded53090bc008918a08ad",
+      "header_live_model_calls": 6,
+      "retained_trace_entries": 6,
+      "trace_status_counts": {
+        "returned": 6
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "T06",
+      "status": "completed",
+      "source_case_canonical_sha256": "7d21ddd87dfafe6d36f0ed68e56bbac2746efe049e880ee62cd8d5a918cb280f",
+      "header_live_model_calls": 7,
+      "retained_trace_entries": 7,
+      "trace_status_counts": {
+        "returned": 7
+      },
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "T07",
+      "status": "completed",
+      "source_case_canonical_sha256": "27a1578073289ecb7bef9ec71aa5c863a8d2bd52301968f900c4126381ce29ca",
+      "header_live_model_calls": 4,
+      "retained_trace_entries": 4,
+      "trace_status_counts": {
+        "returned": 3,
+        "started": 1
+      },
+      "anomaly_call_indices_1_based": [
+        2
+      ]
+    },
+    {
+      "id": "T08",
+      "status": "completed",
+      "source_case_canonical_sha256": "4f3680fe81a72b615acfcf91f4eb8093a81fa3162659f86770527a0b568989ce",
+      "header_live_model_calls": 0,
+      "retained_trace_entries": 0,
+      "trace_status_counts": {},
+      "anomaly_call_indices_1_based": []
+    },
+    {
+      "id": "M01",
+      "status": "completed",
+      "source_case_canonical_sha256": "e83b2d524c18080c77d14326af41fbaf7b56dc3000db59c961cd22971024543f",
+      "header_live_model_calls": 6,
+      "retained_trace_entries": 6,
+      "trace_status_counts": {
+        "returned": 6
+      },
+      "anomaly_call_indices_1_based": []
+    }
+  ],
+  "anomalies": [
+    {
+      "scope": "persisted_case",
+      "case_id": "T07",
+      "call_index_1_based": 2,
+      "flags": [
+        "status_started",
+        "request_settings_missing",
+        "actual_model_missing",
+        "elapsed_seconds_missing",
+        "raw_output_missing"
+      ],
+      "persisted_trace": {
+        "stage": "request_meaning",
+        "transport": "ollama_native",
+        "requested_model": "a4b-public-qwen35-9b-32k",
+        "actual_model": null,
+        "kind": "live",
+        "status": "started",
+        "started_monotonic": 106398.4602477
+      },
+      "interpretation": "suspected_pre_transport_callback_failure_after_later_records_persisted"
+    },
+    {
+      "scope": "active_incomplete_case",
+      "case_id": "M02",
+      "call_index_1_based": 1,
+      "flags": [
+        "status_started",
+        "request_settings_missing",
+        "actual_model_missing",
+        "elapsed_seconds_missing",
+        "raw_output_missing"
+      ],
+      "persisted_trace": {
+        "stage": "capability_check",
+        "transport": "ollama_native",
+        "requested_model": "a4b-public-qwen35-9b-32k",
+        "actual_model": null,
+        "kind": "live",
+        "status": "started",
+        "started_monotonic": 106517.3421642
+      },
+      "interpretation": "incomplete_start_snapshot_transport_dispatch_unknown"
+    }
+  ],
+  "T07_evidence": {
+    "case_status": "completed",
+    "actual_route": "CLARIFY",
+    "final_route": "CLARIFY",
+    "first_response_elapsed_seconds": 19.3641,
+    "request_meaning_stage_elapsed_seconds": 19.8110849000077,
+    "stage_elapsed_minus_first_response_seconds": 0.446985,
+    "first_response_selection": {
+      "order": "newest_first",
+      "limit": 5,
+      "limit_evidence": "다섯 통",
+      "limit_source_message": 0,
+      "period": "all",
+      "period_source_message": null,
+      "period_evidence": null,
+      "filters": []
+    },
+    "accepted_request_meaning": null,
+    "fallback_error_types": [
+      "MeaningExtractionError"
+    ],
+    "fallback_reported_model_calls": [
+      2
+    ],
+    "later_returned_stages": [
+      "capability_check",
+      "requirements"
+    ],
+    "later_persisted_case_ids": [
+      "T08",
+      "M01"
+    ],
+    "confirmed_facts": [
+      "The second request_meaning entry remained status=started with no settings, model metadata, raw output, elapsed time, or error type.",
+      "The same persisted run subsequently records capability_check and requirements responses, T08, and M01.",
+      "The request_meaning stage used a generic MeaningExtractionError fallback after reporting two model-call attempts.",
+      "The first returned semantic response correctly extracted limit=5 from the Korean five-message request; there is no second response to judge."
+    ],
+    "interpretation": "The missing request_settings on an entry preserved by later saves strongly indicates Trace.start did not return normally before transport setup. This is not an observed second model response or a proven model failure."
+  },
+  "causality": {
+    "confirmed_code_mechanism_inspected_before_repair": [
+      {
+        "path": "scripts/verify/qwen_live_trace.py",
+        "fact": "Legacy Trace.start appended a started item, called on_change synchronously, then returned. The native wrapper assigned request_settings only after start returned, before original_urlopen."
+      },
+      {
+        "path": "scripts/verify/qwen_live_trace.py",
+        "fact": "Legacy start was outside the transport try/except, so a save callback exception could leave a started-only item and propagate into application fallback without a failed trace item."
+      },
+      {
+        "path": "scripts/verify/verify-qwen-live-evaluation.py",
+        "fact": "Legacy on_change invoked save_progress, which rewrote the report through a temporary file and os.replace with no retry."
+      }
+    ],
+    "likely_location": "Trace.start/on_change before request_settings assignment for T07 second semantic call",
+    "windows_atomic_replace_read_handle_contention": "plausible hypothesis, not proven by this retained snapshot",
+    "original_os_error_type_or_message": null,
+    "specific_competing_reader": null,
+    "not_established": [
+      "The exact exception originating in persistence.",
+      "Whether Windows replacement contention, another filesystem error, or another callback failure caused this event.",
+      "Whether active M02 dispatched or completed a server request after its last saved started entry."
+    ],
+    "required_repair_validation": "Harness owner is adding bounded atomic-replace retry and fatal callback failure propagation; synthetic tests are separate evidence and do not retroactively validate this run."
+  },
+  "integrity": {
+    "git_head": "525f66325a14f8d3995ad0cb57277e5a6f4f23ed",
+    "branch": "qwen-evaluation-resume",
+    "application_source": {
+      "baseline_source_sha256": "6550b20928227b74c6a2c33cded04e62d359a6550c034dce935cad5230e01be5",
+      "current_source_sha256": "6550b20928227b74c6a2c33cded04e62d359a6550c034dce935cad5230e01be5",
+      "original_manifest_file_count": 242,
+      "current_manifest_file_count": 242,
+      "byte_identical_file_count": 242,
+      "changed_or_missing_manifest_paths": [],
+      "new_paths_within_manifest_scope": [],
+      "all_242_original_manifest_files_unchanged": true,
+      "scope_note": "Original application manifest only; harness, tests, dependencies, weights and some API files are outside it."
+    },
+    "gold": {
+      "path": "docs/qwen-live-evaluation-cases.json",
+      "claimed_canonical_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+      "computed_canonical_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+      "file_bytes_sha256": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de",
+      "matches_prior_canonical_and_file_hash": true,
+      "canonical_algorithm": "SHA256 UTF-8 json.dumps(corpus excluding gold_sha256, ensure_ascii=False, sort_keys=True), default JSON separators"
+    },
+    "original_runpod_artifacts": [
+      {
+        "role": "baseline",
+        "path": "docs/qwen-live-baseline.json",
+        "file_bytes_sha256": "9a370221821cbac6599d09004afb7294f605084f6cf415f68939c1dd806390d8",
+        "expected_file_bytes_sha256": "9a370221821cbac6599d09004afb7294f605084f6cf415f68939c1dd806390d8",
+        "unchanged": true
+      },
+      {
+        "role": "interrupted_raw",
+        "path": "docs/qwen-live-baseline-interrupted-raw.json",
+        "file_bytes_sha256": "099f79acfaa1d43655dea8d0ac99e8da126bdb04f0377f60677f3daa11f62794",
+        "expected_file_bytes_sha256": "099f79acfaa1d43655dea8d0ac99e8da126bdb04f0377f60677f3daa11f62794",
+        "unchanged": true
+      },
+      {
+        "role": "review_labels",
+        "path": "docs/qwen-live-baseline-review.json",
+        "file_bytes_sha256": "327500bb91306f06af6335f181bae4b037b38325918b0ae4e86228dfd71f7c5a",
+        "expected_file_bytes_sha256": "327500bb91306f06af6335f181bae4b037b38325918b0ae4e86228dfd71f7c5a",
+        "unchanged": true
+      }
+    ],
+    "preserved_local_diagnostic_labels": [
+      {
+        "path": "docs/qwen-local-public9b-baseline-review-ready.json",
+        "file_bytes_sha256": "4684dc0aef0b8a1c3575463e053378a6e6181031dd813e49336a59966aa7910d",
+        "labelled_case_ids": [
+          "R01",
+          "R02",
+          "R03",
+          "R04",
+          "R05",
+          "R06",
+          "R07",
+          "R08",
+          "R09",
+          "R10"
+        ],
+        "use": "diagnostic_reference_only_not_final_quality_metrics",
+        "file_modified_by_this_audit": false
+      },
+      {
+        "path": "docs/qwen-local-public9b-baseline-review-temporal.json",
+        "file_bytes_sha256": "85e033dd43ddc90ea85314d822a024f9142b712164bf7379c3b07db63717be63",
+        "labelled_case_ids": [
+          "T01",
+          "T02",
+          "T03",
+          "T04",
+          "T05",
+          "T06",
+          "T08"
+        ],
+        "use": "diagnostic_reference_only_not_final_quality_metrics",
+        "file_modified_by_this_audit": false
+      }
+    ]
+  },
+  "final_quality_exclusions": [
+    "This interrupted local run and its labels are diagnostic evidence only.",
+    "No model quality metric, model failure rate, or full-baseline comparison is finalized from this run.",
+    "No results are merged with original RunPod custom-model results or the forthcoming local baseline-v2."
+  ]
+}

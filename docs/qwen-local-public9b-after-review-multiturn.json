@@ -1,0 +1,746 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-after.json",
+  "reviewer": "Codex independent after raw/stage/workflow review; not model self-scoring",
+  "slot_scope": "Typed accepted condition/meaning/requirement/workflow fields only. Copied user quotes, capability prose, kind=other descriptions and generic draft defaults are not credited as extracted slots.",
+  "cases": {
+    "M01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "filter.field": "amount",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "operator"
+          ],
+          "unnecessary": false
+        },
+        {
+          "necessary_slots": [
+            "threshold"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": null,
+      "evidence": [
+        "New after trace: first ledger rejects an ungrounded operator and leaves operator/value unresolved while preserving amount, JSON, explicit empty-error and duplicate-keep.",
+        "Actual operator question ID560766d94b9b05dd7ff9f433 receives '20 이상으로 해줘.', satisfying both displayed required questions. Final ledger has gte20. Session/history continuity is recorded in checkpoint_evidence.",
+        "READY workflow binds read_table(synthetic-sales)→filter_sort(amount>=20, missing_policy=error, duplicate_policy=keep)→write_result(JSON). The requirement stage extracts only export; planner restores the complete read/filter/export chain.",
+        "Allowed local synthetic execution succeeds with exactly id2(amount30) and id3(amount20), matching gold. No additional action."
+      ],
+      "source_case_sha256": "eeeb9b1ea4519d922adeeac26ecf6c5f7306b44b7ccc66597cd8eae733f03037",
+      "checkpoint_evidence": {
+        "session_id": "d071eaaf-a63c-4314-bb38-855d1a6be61e",
+        "thread_id": "d071eaaf-a63c-4314-bb38-855d1a6be61e",
+        "response_ids": [
+          "d071eaaf-a63c-4314-bb38-855d1a6be61e",
+          "d071eaaf-a63c-4314-bb38-855d1a6be61e"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "560766d94b9b05dd7ff9f433"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M02": {
+      "intent_correct": true,
+      "observed_slots": {
+        "duplicate.field": "customer_id",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "duplicate_policy"
+          ],
+          "unnecessary": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "final_observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "last",
+        "output.format": "json"
+      },
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": "requirement_adds_unneeded_empty_error_scenario_question_after_correct_duplicate_answer",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "evidence": [
+        "New after first ledger marks duplicate.policy missing and records rejection of the model's unsupported retention value. Unlike baseline it does not accept first and displays an appropriate duplicate-policy question.",
+        "Actual answer '중복은 마지막 행만 남겨줘.' uses question323c6708d438ab44ecca3ee2. Final typed condition ledger correctly preserves customer_id, last, missing.policy=error and JSON, and becomes ready.",
+        "Requirement stage kind=other then asks what an empty-value error should do, offering excluding empty rows or an error-containing JSON despite user's explicit error policy. This unnecessary extra requirement blocks generation; no workflow exists.",
+        "The second displayed question restates the answered last policy but actually asks an unneeded empty-error scenario, so resolved-question repeated=false. Frozen matcher sees 마지막/남긴다 and stops as repeated_question. This is downstream of an unnecessary system question, not baseline M02's valid-question lexical limitation."
+      ],
+      "source_case_sha256": "ace28a386c6e571ac93f7fab562a94902acd4130958c8950156bc454b68ca6d8",
+      "checkpoint_evidence": {
+        "session_id": "68270a6b-d2b4-4379-a781-bc1804dc6f2a",
+        "thread_id": "68270a6b-d2b4-4379-a781-bc1804dc6f2a",
+        "response_ids": [
+          "68270a6b-d2b4-4379-a781-bc1804dc6f2a",
+          "68270a6b-d2b4-4379-a781-bc1804dc6f2a"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "323c6708d438ab44ecca3ee2"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M03": {
+      "intent_correct": false,
+      "observed_slots": {
+        "duplicate.policy": "first",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "duplicate_field"
+          ],
+          "unnecessary": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": true
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "final_observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "first",
+        "output.format": "json"
+      },
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "node_id": null,
+          "action": "unrequested_filter_requirement",
+          "evidence": "Accepted ledgers still add filter to deduplicate, demanding field/operator/value absent from the request. No workflow is generated."
+        }
+      ],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": "condition_adds_filter_to_deduplicate_and_repeats_unrequested_filter_questions",
+      "primary_stage": "condition",
+      "direct_failure_stage": "condition",
+      "evidence": [
+        "Holdout, evaluated afresh. Initial typed first/JSON/error are grounded but filter is added beside deduplicate. The generic first field question can elicit the required duplicate column despite its filter.field key; comparator is unnecessary.",
+        "Actual customer_id answer uses prior question3e160fdbd95085e7d8ccecb9 and is accepted as duplicate.field. Existing first/JSON/error remain, but invented filter.field/operator/value stay missing.",
+        "Final state repeats field and comparator questions and remains CLARIFY. Field is already answered, hence repeated=true; comparator was never answered and is irrelevant, hence unnecessary=true/repeated=false. The answer harness's repeated_question stop is downstream of the wrong operation."
+      ],
+      "source_case_sha256": "3348bf771bbae3c3966377a562248213bd011adee92c42d7dfe4c8bbc07f4586",
+      "checkpoint_evidence": {
+        "session_id": "d85688ea-9d59-4457-bc4d-c14c6020df58",
+        "thread_id": "d85688ea-9d59-4457-bc4d-c14c6020df58",
+        "response_ids": [
+          "d85688ea-9d59-4457-bc4d-c14c6020df58",
+          "d85688ea-9d59-4457-bc4d-c14c6020df58"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "3e160fdbd95085e7d8ccecb9"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M04": {
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "daily",
+        "schedule.timezone": "Asia/Seoul",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "hour"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "schedule.frequency": "daily",
+        "schedule.hour": 9,
+        "schedule.minute": 0,
+        "schedule.timezone": "Asia/Seoul",
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": "capability_includes_unrequested_filter_sort_and_validator_rejects_correct_read_export_draft",
+      "primary_stage": "capability",
+      "direct_failure_stage": "workflow",
+      "evidence": [
+        "After first condition ledger rejects ungrounded minute0, retains both minute/hour unresolved, and displays a single combined time question. Extraneous model-proposed missing.policy remains missing internally but is no longer an unresolved requirement or displayed question.",
+        "Actual '매일 오전 9시 정각으로 해줘.' under questionf1e34c6fc92787a52d4218ac yields grounded hour9/minute0 and preserves daily/Asia-Seoul/JSON; condition decision becomes ready.",
+        "Both capability assessments nevertheless list read_table/filter_sort/write_result for a plain scheduled export. Final correct daily09:00 schedule and read_table→write_result(JSON) draft are rejected for missing that unrequested filter_sort, yielding SYSTEM_ERROR after two returned SDK planner candidates.",
+        "read_table has empty settings but draft.document_ids=[synthetic-sales] supplies the established source fallback; output binding is correct. Task coverage is true while whole-request success is false. Requirement duplicates the same schedule as a follow-up task, but final draft has one schedule and no added workflow action. No execution."
+      ],
+      "source_case_sha256": "e3ef49b1de58761ff5f5dfe097516991138f9d873f636eb3017d5409a22769cf",
+      "checkpoint_evidence": {
+        "session_id": "fe104163-04b0-4d91-a026-34a5c355baa6",
+        "thread_id": "fe104163-04b0-4d91-a026-34a5c355baa6",
+        "response_ids": [
+          "fe104163-04b0-4d91-a026-34a5c355baa6",
+          "fe104163-04b0-4d91-a026-34a5c355baa6"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "f1e34c6fc92787a52d4218ac"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "weekly",
+        "schedule.hour": 9,
+        "schedule.timezone": "Asia/Seoul",
+        "schedule.minute": 0,
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "weekday"
+          ],
+          "unnecessary": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": true,
+          "source": "stale_draft_question_fallback"
+        }
+      ],
+      "final_observed_slots": {
+        "schedule.frequency": "weekly",
+        "schedule.hour": 9,
+        "schedule.timezone": "Asia/Seoul",
+        "schedule.minute": 0,
+        "schedule.weekday": 0,
+        "output.format": "json"
+      },
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": "requirement_outputs_weekday1_for_Monday_twice_despite_correct_condition_weekday0",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "evidence": [
+        "After initial weekly09:00/Asia-Seoul/JSON ledger preserves original values and no longer asks the irrelevant model-proposed duplicate.policy; only weekday is unresolved/displayed.",
+        "Actual Monday answer uses question2f0dd04e3ea8d65922cb7d19. Literal reconciliation accepts weekday0 and preserves earlier time/timezone/JSON despite malformed numeric proposals; condition decision is ready.",
+        "Both subsequent requirement raw responses describe Monday but encode weekday1. Python rejects the contradictory schedule and the second response is validation_failed/SYSTEM_ERROR; no requirement ledger or workflow is accepted. Final_observed_slots refer to the correct condition ledger, not a successful final schedule draft.",
+        "Capability still overlists filter_sort, but it did not cause the observed stop: requirement validation failed before planning. No external or local execution.",
+        "Scorer denominator caveat: failed final response has pending_questions=[] and only an error assistant message, but retained draft.questions still contains the already answered weekday prompt. Existing scorer falls back to this stale draft question; its extra label is unnecessary/repeated. Actual new pending-question or browser display was not observed."
+      ],
+      "source_case_sha256": "0bb5fbf96c7737f9350b9e293a28a5f029ef08d1e0b22a8d3dfef0ca54bca768",
+      "checkpoint_evidence": {
+        "session_id": "880bd888-b0b4-4b0c-9ffb-480256c73c4e",
+        "thread_id": "880bd888-b0b4-4b0c-9ffb-480256c73c4e",
+        "response_ids": [
+          "880bd888-b0b4-4b0c-9ffb-480256c73c4e",
+          "880bd888-b0b4-4b0c-9ffb-480256c73c4e"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "2f0dd04e3ea8d65922cb7d19"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M06": {
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "monthly",
+        "schedule.hour": 9,
+        "schedule.timezone": "Asia/Seoul",
+        "schedule.minute": 0,
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "monthday"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "schedule.frequency": "monthly",
+        "schedule.hour": 9,
+        "schedule.timezone": "Asia/Seoul",
+        "schedule.minute": 0,
+        "schedule.monthday": 15,
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "redundant_identity_nodes": [
+        "step_2:filter_sort"
+      ],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": null,
+      "evidence": [
+        "Holdout evaluated afresh. One required monthday question89f9c60af33e118567f88038 gets '매월 15일로 해줘.'; typed condition and final draft preserve monthly09:00/Asia-Seoul and incorporate monthday15.",
+        "READY read_table→filter_sort→write_result(JSON) has valid table bindings and uses draft.document_ids synthetic-sales as read source fallback. The intermediate filter_sort has filters=[], sort=[], missing_policy=keep, duplicate_policy=keep: it passes the table unchanged, so it is a redundant identity node, not an extra semantic operation.",
+        "Whole requested schedule/export is represented with no added selection, sorting, deletion or deduplication. The unnecessary capability tool listing remains visible, but this planner satisfies it with the identity node and validation succeeds. No actual scheduler or external/local execution was performed."
+      ],
+      "source_case_sha256": "8b75ee9d8472a5a552f2b7846323bc688369b8f63b11b97d30792fbf11a1ae2e",
+      "checkpoint_evidence": {
+        "session_id": "b3a295d5-c5e0-40c2-9b7f-ee9ceb7aec7d",
+        "thread_id": "b3a295d5-c5e0-40c2-9b7f-ee9ceb7aec7d",
+        "response_ids": [
+          "b3a295d5-c5e0-40c2-9b7f-ee9ceb7aec7d",
+          "b3a295d5-c5e0-40c2-9b7f-ee9ceb7aec7d"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "89f9c60af33e118567f88038"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M07": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "factor"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "compute.formula": "qty * 2",
+        "compute.output_column": "scaled",
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": null,
+      "evidence": [
+        "Initial capability prose correctly recognizes scaled/JSON and asks only the multiplier, but these prose/default values are not credited as typed initial slots.",
+        "Actual qty*2 answer uses the prior capability question279fbe5fba45a08465452d89. Final typed compute spec and workflow preserve scaled and JSON and incorporate formula qty * 2.",
+        "READY workflow has one compute node between read_table(synthetic-sales) and write_result(JSON), with correct table bindings. Requirement mistakenly lists the same compute as two dependent tasks, but final workflow performs it once and adds no semantic work. No local execution was requested/performed for this case."
+      ],
+      "source_case_sha256": "39a773504162eaab4387e00fb3006682e9e0ef0677e7556d9d67b5fa9b76bd5b",
+      "checkpoint_evidence": {
+        "session_id": "ace0f4ce-5eeb-4910-9022-8ac8cd172459",
+        "thread_id": "ace0f4ce-5eeb-4910-9022-8ac8cd172459",
+        "response_ids": [
+          "ace0f4ce-5eeb-4910-9022-8ac8cd172459",
+          "ace0f4ce-5eeb-4910-9022-8ac8cd172459"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "279fbe5fba45a08465452d89"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M08": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "column"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "compute.formula": "qty * 2",
+        "compute.output_column": "doubled",
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": null,
+      "evidence": [
+        "Initial capability asks the needed new-column name and describes qty*2/JSON, but it has no typed compute/output slots; observed_slots remains empty under the same strict baseline scope.",
+        "Actual answer doubled uses question766084a45332fdeb155b3953. Final typed requirement/workflow retains qty * 2, uses output_column=doubled, and exports JSON.",
+        "READY read_table(synthetic-sales)→calculate_columns(compute)→write_result(JSON) has correct bindings, no extra action and no accidental source-column overwrite. Requirement itself omits read/export, which final planner restores. No local execution."
+      ],
+      "source_case_sha256": "8b9acc3032493f7ba7a7151606431d3d8387f36e3c465b14b56d2f8fb3d56e12",
+      "checkpoint_evidence": {
+        "session_id": "6cb56bd2-16f4-480d-a067-abc275b17882",
+        "thread_id": "6cb56bd2-16f4-480d-a067-abc275b17882",
+        "response_ids": [
+          "6cb56bd2-16f4-480d-a067-abc275b17882",
+          "6cb56bd2-16f4-480d-a067-abc275b17882"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "766084a45332fdeb155b3953"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M09": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "sum_field"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "aggregate.group_by": [
+          "region"
+        ],
+        "aggregate.sum_field": "amount",
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "node_id": "requirement:r2",
+          "action": "unrequested_compute_amount_to_amount",
+          "evidence": "Accepted requirement interprets the column-name clarification as compute(formula=amount, output_column=amount). Final workflow does not execute this spurious task and is rejected by coverage validation."
+        }
+      ],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": "requirement_turns_column_answer_into_separate_compute_task_then_coverage_rejects_correct_aggregate_draft",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "workflow",
+      "evidence": [
+        "Holdout evaluated afresh. Initial capability now asks only the required amount-column name and explicitly treats empty-error policy as supported; prose/default JSON are not typed initial slots.",
+        "Actual amount answer uses question83e82c9a34e6ba1e64c36de9. Final workflow reads synthetic-sales, aggregate_table(sum, sum_field=amount, fields=[region]), then writes JSON with correct table bindings. The draft missing_policy=error is used by aggregate executor for grouping fields; sum-field empty/non-number values also raise errors natively.",
+        "Final typed workflow fields satisfy gold and requested source/dependencies. No extra transformation appears in the workflow, but requirement r2 invents a separate amount-to-amount compute task from the clarification answer.",
+        "Coverage validation rejects the draft for lacking that spurious r2, yielding SYSTEM_ERROR after two returned planner responses. Correct task coverage does not imply whole success; no execution was performed."
+      ],
+      "source_case_sha256": "14f2320ebb2043993bbca18a346590a97a3ff9d9de11b074d293cd5a9f00376e",
+      "checkpoint_evidence": {
+        "session_id": "e911f33a-8d2b-42e9-8377-c44c1a59fc17",
+        "thread_id": "e911f33a-8d2b-42e9-8377-c44c1a59fc17",
+        "response_ids": [
+          "e911f33a-8d2b-42e9-8377-c44c1a59fc17",
+          "e911f33a-8d2b-42e9-8377-c44c1a59fc17"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          "83e82c9a34e6ba1e64c36de9"
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M10": {
+      "intent_correct": false,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        }
+      ],
+      "task_coverage": [
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "node_id": "capability:missing_conditions",
+          "action": "invented_subject_and_body_checking_rules",
+          "evidence": "The accepted capability asks for title-check and body-completion criteria rather than treating 점검/완료 as outgoing literals. No workflow is generated."
+        }
+      ],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": "meaning_reviewer_rejects_correct_send_only_literal_candidate_then_capability_asks_invented_checking_criteria",
+      "primary_stage": "meaning",
+      "primary_substage": "semantic_review",
+      "direct_failure_stage": "capability",
+      "evidence": [
+        "After raw extraction improves: both candidates contain actions=[send], order=unspecified, period=all, filters=[], other_requirements=['제목: 점검','본문: 완료']. They do not add an existing-mail read/search. These are rejected candidates, not accepted typed subject/body slots.",
+        "Both model review responses say faithful=false with internally contradictory explanations: they acknowledge literal preservation yet demand those literals be filters and treat an empty selection as sending all mail. Python does not override false review, so trusted request_meaning remains null.",
+        "Fallback capability wrongly asks title-check and body-completion rules. It lists recipient only third, beyond the two displayed questions, and additionally calls body content missing. Thus no necessary recipient question is actually exposed in the recorded backend response.",
+        "Frozen answer policy cannot answer these unrelated prompts (two unmatched_question reasons); unlike baseline M02 this is a system question error, not a valid-question vocabulary limitation. There is one saved turn and no follow-up attempt or workflow. No email is sent."
+      ],
+      "source_case_sha256": "3aa330b9e66a85529508ecaad3ce81528fb9a8f62abcaa4e58353449c9dd88dd",
+      "checkpoint_evidence": {
+        "session_id": "39229739-2144-410a-8a03-ba5449759917",
+        "thread_id": "39229739-2144-410a-8a03-ba5449759917",
+        "response_ids": [
+          "39229739-2144-410a-8a03-ba5449759917"
+        ],
+        "revisions": [
+          1
+        ],
+        "message_counts": [
+          2
+        ],
+        "submitted_question_ids": [
+          null
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M11": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.limit": 5
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "final_observed_slots": {
+        "gmail.limit": 10
+      },
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": null,
+      "evidence": [
+        "Initial recent5 request uses the registered zero-model-call recipe with typed max_results5. Actual subsequent '아니, 10개로 바꿔줘.' causes two request_meaning responses; this is a mixed recipe/live follow-up case.",
+        "New after trace ends READY with requirement max_results10, email.list read_messages arguments max_results10, and summary instructions maximum10. Prior recent-mail summarization intent and documents→documents binding are preserved.",
+        "No extra query/action or clarification is added. Checkpoint/session/history evidence is recorded below. Real Gmail and summarization execution were not performed."
+      ],
+      "source_case_sha256": "57469ad382a3314938ce7f1f7aa9e18570065fe1c2cdc372521ccbf96df39a3c",
+      "checkpoint_evidence": {
+        "session_id": "bb2d2a05-4c25-41b9-879c-204b8d2508fb",
+        "thread_id": "bb2d2a05-4c25-41b9-879c-204b8d2508fb",
+        "response_ids": [
+          "bb2d2a05-4c25-41b9-879c-204b8d2508fb",
+          "bb2d2a05-4c25-41b9-879c-204b8d2508fb"
+        ],
+        "revisions": [
+          1,
+          2
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_ids": [
+          null,
+          null
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    },
+    "M12": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.period": "date_range"
+      },
+      "extra_unsupported_slots": [
+        "sort.field=date"
+      ],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "node_id": "requirement:r2",
+          "action": "unrequested_human_review",
+          "evidence": "Requirement adds a dependent human_review task to a plain email-summary request."
+        },
+        {
+          "node_id": "draft:execution_plan.sort",
+          "action": "unrequested_table_date_sort",
+          "evidence": "Final rejected email workflow has a global date-descending table sort and fails because no filter_sort implements it. No sorting or review is executed."
+        }
+      ],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": "meaning_accepts_relative_yesterday_as_date_range_with_duplicate_other_requirement_then_general_plan_adds_unrequested_steps",
+      "primary_stage": "meaning",
+      "direct_failure_stage": "workflow",
+      "followup_measurement": "NOT_RUN: first turn never reached READY, so the fixed next-day revision was not submitted",
+      "evidence": [
+        "Holdout evaluated afresh. First raw meaning encodes period=date_range with evidence 어제 and copies the entire request into other_requirements; model review says faithful=true. This accepted contract bypasses the supported relative-day summary compiler.",
+        "General requirement adds human_review; final rejected draft adds a global date-descending sort and an email.list max_results500 query 'after:2026-11-09 before:2026-11-10'. This date-only query does not supply the verified Asia/Seoul epoch boundaries of the gold/previous successful initial draft; correct anchored gmail.date is not credited.",
+        "Validation rejects missing filter_sort for the global sort and uncovered human_review. First and final route are SYSTEM_ERROR with one persisted response. Unlike baseline, no next-day '최대 5개만' turn occurs; neither final limit5 nor cross-day date preservation is measured. No model answer or final slots are invented for the missing turn.",
+        "Target read/summary final coverage is false because the requested revised maximum5 and anchored day are not represented. No Gmail or added action is executed."
+      ],
+      "source_case_sha256": "19b9f6b2488ea96325aa5cf1df175264c5a018f2f435b60d4826d964f9d5fc21",
+      "checkpoint_evidence": {
+        "session_id": "5e4a6aac-8c0e-4cc7-8fbd-a7d741322d55",
+        "thread_id": "5e4a6aac-8c0e-4cc7-8fbd-a7d741322d55",
+        "response_ids": [
+          "5e4a6aac-8c0e-4cc7-8fbd-a7d741322d55"
+        ],
+        "revisions": [
+          1
+        ],
+        "message_counts": [
+          2
+        ],
+        "submitted_question_ids": [
+          null
+        ],
+        "followup_question_ids_match_previous_pending": true
+      }
+    }
+  }
+}

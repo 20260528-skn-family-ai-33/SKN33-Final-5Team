@@ -1,0 +1,3217 @@
+{
+  "source_run": "docs\\qwen-local-public9b-after-complete.json",
+  "source_run_sha256": "5b52161ed161eea2db2878eb591f98a422631f47dd7c347dc5a8d1c91ba2bc64",
+  "labels_sha256": "7a2074a286278b22ab365c0c31edacd3628d7847192bbfc61a29f71ef381857b",
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "reviewer": "Codex trace/JSON review; not an independent human gold review",
+  "slot_scope": "Frozen gold slot keys plus explicitly reviewed unsupported invented values; missing=FN, wrong=FP+FN. Defaults outside this scope excluded.",
+  "reviewed_cases": 52,
+  "live_metrics": {
+    "intent_accuracy": {
+      "value": 0.94,
+      "numerator": 47,
+      "denominator": 50,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "slot_extraction_f1": {
+      "value": 0.7638190954773869,
+      "numerator": 152,
+      "denominator": 199,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "routing_macro_f1": {
+      "value": 0.834733893557423,
+      "denominator": 50,
+      "unit": "case",
+      "per_class": {
+        "READY": 0.6470588235294118,
+        "CLARIFY": 0.8571428571428571,
+        "UNSUPPORTED": 1.0
+      },
+      "status": "measured",
+      "system_errors_count_as_expected_class_false_negative": true
+    },
+    "necessary_question_recall": {
+      "value": 0.71875,
+      "numerator": 23,
+      "denominator": 32,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "unnecessary_question_rate": {
+      "value": 0.37142857142857144,
+      "numerator": 13,
+      "denominator": 35,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "repeated_question_rate": {
+      "value": 0.5,
+      "numerator": 2,
+      "denominator": 4,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "answer_incorporation_accuracy": {
+      "value": 1.0,
+      "numerator": 12,
+      "denominator": 12,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "clarification_completion_rate": {
+      "value": 0.4,
+      "numerator": 4,
+      "denominator": 10,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_schema_validity": {
+      "value": 0.6,
+      "numerator": 15,
+      "denominator": 25,
+      "unit": "case",
+      "status": "measured"
+    },
+    "tool_operation_accuracy": {
+      "value": 0.7380952380952381,
+      "numerator": 62,
+      "denominator": 84,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "requirement_coverage": {
+      "value": 0.6190476190476191,
+      "numerator": 52,
+      "denominator": 84,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_execution_success": {
+      "value": 1.0,
+      "numerator": 4,
+      "denominator": 4,
+      "unit": "case",
+      "status": "measured"
+    },
+    "latency_p50_seconds": {
+      "value": 64.71703315000195,
+      "denominator": 50,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    },
+    "latency_p95_seconds": {
+      "value": 143.36386949999724,
+      "denominator": 50,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    }
+  },
+  "all_backend_metrics_including_code_recipes": {
+    "intent_accuracy": {
+      "value": 0.9423076923076923,
+      "numerator": 49,
+      "denominator": 52,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "slot_extraction_f1": {
+      "value": 0.7793427230046949,
+      "numerator": 166,
+      "denominator": 213,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "routing_macro_f1": {
+      "value": 0.8471177944862155,
+      "denominator": 52,
+      "unit": "case",
+      "per_class": {
+        "READY": 0.6842105263157895,
+        "CLARIFY": 0.8571428571428571,
+        "UNSUPPORTED": 1.0
+      },
+      "status": "measured",
+      "system_errors_count_as_expected_class_false_negative": true
+    },
+    "necessary_question_recall": {
+      "value": 0.71875,
+      "numerator": 23,
+      "denominator": 32,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "unnecessary_question_rate": {
+      "value": 0.37142857142857144,
+      "numerator": 13,
+      "denominator": 35,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "repeated_question_rate": {
+      "value": 0.5,
+      "numerator": 2,
+      "denominator": 4,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "answer_incorporation_accuracy": {
+      "value": 1.0,
+      "numerator": 12,
+      "denominator": 12,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "clarification_completion_rate": {
+      "value": 0.4,
+      "numerator": 4,
+      "denominator": 10,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_schema_validity": {
+      "value": 0.6296296296296297,
+      "numerator": 17,
+      "denominator": 27,
+      "unit": "case",
+      "status": "measured"
+    },
+    "tool_operation_accuracy": {
+      "value": 0.75,
+      "numerator": 66,
+      "denominator": 88,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "requirement_coverage": {
+      "value": 0.6363636363636364,
+      "numerator": 56,
+      "denominator": 88,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_execution_success": {
+      "value": 1.0,
+      "numerator": 4,
+      "denominator": 4,
+      "unit": "case",
+      "status": "measured"
+    },
+    "latency_p50_seconds": {
+      "value": 63.43330594999861,
+      "denominator": 52,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    },
+    "latency_p95_seconds": {
+      "value": 143.36386949999724,
+      "denominator": 52,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    }
+  },
+  "split_metrics": {
+    "development": {
+      "intent_accuracy": {
+        "value": 0.9714285714285714,
+        "numerator": 34,
+        "denominator": 35,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "slot_extraction_f1": {
+        "value": 0.8226950354609929,
+        "numerator": 116,
+        "denominator": 141,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "routing_macro_f1": {
+        "value": 0.9111111111111111,
+        "denominator": 35,
+        "unit": "case",
+        "per_class": {
+          "READY": 0.8,
+          "CLARIFY": 0.9333333333333333,
+          "UNSUPPORTED": 1.0
+        },
+        "status": "measured",
+        "system_errors_count_as_expected_class_false_negative": true
+      },
+      "necessary_question_recall": {
+        "value": 0.8260869565217391,
+        "numerator": 19,
+        "denominator": 23,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "unnecessary_question_rate": {
+        "value": 0.28,
+        "numerator": 7,
+        "denominator": 25,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "repeated_question_rate": {
+        "value": 0.5,
+        "numerator": 1,
+        "denominator": 2,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "answer_incorporation_accuracy": {
+        "value": 1.0,
+        "numerator": 9,
+        "denominator": 9,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "clarification_completion_rate": {
+        "value": 0.42857142857142855,
+        "numerator": 3,
+        "denominator": 7,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_schema_validity": {
+        "value": 0.7222222222222222,
+        "numerator": 13,
+        "denominator": 18,
+        "unit": "case",
+        "status": "measured"
+      },
+      "tool_operation_accuracy": {
+        "value": 0.8392857142857143,
+        "numerator": 47,
+        "denominator": 56,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "requirement_coverage": {
+        "value": 0.7321428571428571,
+        "numerator": 41,
+        "denominator": 56,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_execution_success": {
+        "value": 1.0,
+        "numerator": 4,
+        "denominator": 4,
+        "unit": "case",
+        "status": "measured"
+      },
+      "latency_p50_seconds": {
+        "value": 65.83387859999493,
+        "denominator": 35,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      },
+      "latency_p95_seconds": {
+        "value": 127.83427989999473,
+        "denominator": 35,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      }
+    },
+    "holdout": {
+      "intent_accuracy": {
+        "value": 0.8666666666666667,
+        "numerator": 13,
+        "denominator": 15,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "slot_extraction_f1": {
+        "value": 0.6206896551724138,
+        "numerator": 36,
+        "denominator": 58,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "routing_macro_f1": {
+        "value": 0.6296296296296297,
+        "denominator": 15,
+        "unit": "case",
+        "per_class": {
+          "READY": 0.2222222222222222,
+          "CLARIFY": 0.6666666666666666,
+          "UNSUPPORTED": 1.0
+        },
+        "status": "measured",
+        "system_errors_count_as_expected_class_false_negative": true
+      },
+      "necessary_question_recall": {
+        "value": 0.4444444444444444,
+        "numerator": 4,
+        "denominator": 9,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "unnecessary_question_rate": {
+        "value": 0.6,
+        "numerator": 6,
+        "denominator": 10,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "repeated_question_rate": {
+        "value": 0.5,
+        "numerator": 1,
+        "denominator": 2,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "answer_incorporation_accuracy": {
+        "value": 1.0,
+        "numerator": 3,
+        "denominator": 3,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "clarification_completion_rate": {
+        "value": 0.3333333333333333,
+        "numerator": 1,
+        "denominator": 3,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_schema_validity": {
+        "value": 0.2857142857142857,
+        "numerator": 2,
+        "denominator": 7,
+        "unit": "case",
+        "status": "measured"
+      },
+      "tool_operation_accuracy": {
+        "value": 0.5357142857142857,
+        "numerator": 15,
+        "denominator": 28,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "requirement_coverage": {
+        "value": 0.39285714285714285,
+        "numerator": 11,
+        "denominator": 28,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_execution_success": {
+        "value": null,
+        "numerator": 0,
+        "denominator": 0,
+        "unit": "case",
+        "status": "not_measured"
+      },
+      "latency_p50_seconds": {
+        "value": 63.222563200004515,
+        "denominator": 15,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      },
+      "latency_p95_seconds": {
+        "value": 243.65840800000296,
+        "denominator": 15,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      }
+    }
+  },
+  "case_reviews": [
+    {
+      "id": "R01",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "After R01 uses the exact registered gmail_recent_summary.v1 recipe, with zero model_calls. The requirement gmail_summary max_results=5 and Gmail provider are explicit accepted typed state.",
+        "The READY, schema-valid workflow email.list(read_messages,max_results5)→compose_answer binds mail.documents to summary.documents and explicitly summarizes the returned mails; no extra filter or action is introduced. No clarification question is shown.",
+        "External Gmail reading and AI summary execution were not performed; synthetic connection metadata support design only. This is code-recipe success, not measured Qwen quality."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R02",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 8,
+          "denominator": 8
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": [
+        "The new after condition response and accepted ledger preserve amount/gte/20/JSON plus explicitly requested missing=error and duplicate=keep. Four returned model trace entries cover capability, conditions, requirements and SDK planning.",
+        "Accepted requirements now include typed export, filter(amount>=20), policy(error/keep), and read(synthetic-sales) tasks. Their extracted list puts export first and read last with no explicit dependencies; the final workflow correctly supplies read→filter→export dependencies, so intermediate ordering completeness is not inferred from final success.",
+        "The READY schema-valid read_table(synthetic-sales)→filter_sort(amount gte20,missing error,duplicate keep)→write_result(JSON) has correct table bindings and no extra action. Native local synthetic execution succeeded with exactly gold rows id2(amount30), id3(amount20). No question was shown."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "read_table_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "filter_sort_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "write_result_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R03",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout evaluation only. New capability recognizes sorting, but the first condition response duplicates sort.policy (desc and none) and requires contract repair; second response still supplies invalid sort.policy=desc under operation=filter.",
+        "Python rejects desc because this condition enum only represents none; accepted sort.policy remains missing. Accepted typed JSON is correct, but sort.field/direction are absent. Rejected desc is not scored as an accepted invented slot.",
+        "Final CLARIFY asks whether to sort at all and which field to filter, both unnecessary given amount numeric descending. No requirement/planner workflow or local execution occurs."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "sort",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R04",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": [
+        "New raw condition still labels the request filter while providing only duplicate/output/missing-policy slots. The repaired Python scope normalizer accepts deduplicate only, and the ledger correctly confirms customer_id/first/JSON and empty-value error with no unresolved condition.",
+        "The later actual requirement response uses kind=other/action=deduplicate_and_export and nevertheless asks whether to keep the first row or use another criterion, plus how to handle empty values. Both policies are already explicit, so both displayed questions are unnecessary.",
+        "Final route remains CLARIFY and no workflow executes. This is evidence that the condition normalization works but a downstream requirement re-questioning failure remains; it is not a complete successful R04 repair. Capability mentions annual scheduling in its prose without accepting any extra schedule, so that prose is not an extra action."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R05",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": [
+        "New requirement response and accepted typed compute/export specs correctly preserve qty*unit_price, total and JSON; export depends on compute. Read source is supplied by final workflow rather than an explicit requirement read task.",
+        "READY schema-valid workflow read_table(synthetic-sales)→calculate_columns(compute,qty*unit_price,total)→write_result(JSON) preserves table bindings, missing=error/duplicate=keep in the draft execution plan, with no extra action or question.",
+        "Actual native synthetic execution succeeded and exactly matches all three gold rows with total10/30/20. This execution covers the provided synthetic rows; it does not independently measure behavior on absent values not present in those rows."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R06",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 7
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": [
+        "New typed requirement specs correctly retain aggregate.fields=[region], aggregation=sum, sum_field=amount and export.format=json, so these accepted first-turn slots receive credit; capability prose alone is not the basis.",
+        "The same accepted ledger invents fill_missing(amount,ERROR), depending on aggregate, although the user requested an error on missing amounts. ERROR is an unsupported invented typed value and filling is extra accepted work.",
+        "The SDK planner returns no workflow and one draft question asking ERROR string versus numeric0. pending_questions is empty but the displayed draft question counts in the scorer fallback denominator. It is unnecessary because the error policy is explicit. Final CLARIFY, no execution and no task coverage."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "aggregate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R07",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": [
+        "The new requirement response has valid typed rename(source amount,target revenue) and export(JSON) specs; no invented compute formula appears. Typed initial slots are correct. The extracted requirement list still places export before rename without explicit dependencies, so final success does not establish complete intermediate ordering.",
+        "READY schema-valid read_table(synthetic-sales)→calculate_columns(table_operation rename,rename_from amount,rename_to revenue)→write_result(JSON) uses the correct table bindings. No additional work or questions.",
+        "No local execution was scheduled for this case; success describes generated design and validation only."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "rename",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R08",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "The new accepted document_analysis request retains the refund-summary intent, and final typed read_document.file_ids explicitly selects synthetic-policy; compose_answer instructions explicitly ask for its refund policy summary.",
+        "READY schema-valid read_document→compose_answer binds documents correctly, followed by allowed optional finish using the summary text. No extra workflow action or question is present. Capability prose mentions consultation hours, but final summary instructions are refund-only; that prose is not counted as extra accepted work.",
+        "The document/summary workflow was not executed in this case, and no browser screen was observed; design correctness is separate from actual summary quality."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R09",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout evaluation only. Capability identifies base64_codec for hello encoding, so high-level intent is correct. New first requirement response expresses base64_encode(hello) as table compute with invented encoded_value; the repair expresses the same unsupported function as scalar_calculate.",
+        "Both requirement candidates are rejected; accepted requirement ledger/workflow are absent. Thus hello/encode are not scored as typed accepted slots and rejected encoded_value is not an accepted extra slot/action.",
+        "Final response is validation_failed/SYSTEM_ERROR before planner generation, with no questions and no execution. schema_valid=null means no final workflow was available; it does not measure the validity of every raw requirement candidate."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "encode",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "requirement_coverage": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "The new actual requirement response is accepted as kind=scalar_calculate with literal formula (12+8)*3 and empty variables. It no longer invents a table-compute output column.",
+        "The SDK planner produces a single scalar_calculate node, operation evaluate, arguments_json formula (12 + 8) * 3 and variables={}. READY/schema-valid result has no irrelevant table/finish dependency, extra action or question.",
+        "No scalar execution was scheduled; this is correct generated design and validation, not a measured execution result of60."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "calculate",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "C01",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C01 review: capability accepts scheduled sales reporting/email delivery. The accepted requirements stage preserves schedule daily/09:00/Asia-Seoul and adds an other/clarify_data_source placeholder. Its single unresolved question is displayed and covers report scope plus data source (2/3 required conditions), but recipient remains unasked. All three frozen schedule slots are structurally retained and no time value is asked again. The placeholder describes the same design clarification, not additional generated/executed business work. Final CLARIFY is correct, with no workflow or external execution, but whole-request success remains false because required recipient clarification is missing."
+    },
+    {
+      "id": "C02",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C02 review: the first capability candidate misclassifies missing data and reporting choices as missing functionality, but the second accepted candidate is clarify with no missing_actions. Exactly two visible questions cover source and analysis goal (2/2). Report format is a third internal missing_conditions entry that is not displayed and is not counted as a question. No unspecified analysis criterion is confirmed. Final CLARIFY, correct intent and complete frozen missing-condition questions satisfy whole-request handling. There is no workflow or external execution and no frozen slot opportunities."
+    },
+    {
+      "id": "C03",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 3
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C03 holdout review: capability initially lists account/source connection as missing functionality, then accepts existing_tools with no missing_actions. Its accepted explanatory prose still contradictorily says missing_capability, but the actual route proceeds to requirements and CLARIFY. The accepted ledger contains only other/email_delivery_with_analysis plus the recipient question. Source and analysis-goal questions are absent (1/3 required), and no accepted typed date interval is retained (0/2 slots). Quoted last-week wording alone is not structured date evidence. No workflow or external operation exists. The route improves but whole-request handling remains incomplete."
+    },
+    {
+      "id": "C04",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C04 review: accepted condition operations are filter, with amount/json and explicit missing=error/duplicate=keep preserved. The raw model gt operator is rejected for lacking source grounding and remains missing together with the threshold. Two visible questions cover exactly operator and threshold (2/2), without re-asking the provided field/format or accepting the rejected gt as a slot. Capability prose mentions sorting/top rows, but no such operation or workflow is adopted. CLARIFY is correct, whole-request handling succeeds, and no external execution occurs."
+    },
+    {
+      "id": "C05",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C05 review: raw condition output again guesses duplicate.policy=error from a request whose error policy concerns missing values. Accepted condition validation rejects that unsupported duplicate policy, keeps duplicate.field missing, and separately preserves output.format=json and missing.policy=error. The displayed retention-policy and key-column questions cover both required conditions (2/2). The rejected error guess is not counted as an accepted invented slot. Final CLARIFY is correct, no extra business work or workflow exists, and whole-request handling succeeds without external execution."
+    },
+    {
+      "id": "C06",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C06 holdout review: accepted request_meaning at stages[1] retains source=gmail/actions read+summarize but also fixes selection.filters=[important] with unresolved=[]; its model self-review says faithful=true, which is not independent gold. Capability and requirement stages proceed without an importance-criterion question. The candidate workflow reads is:important mail and summarizes it, while unrelated table execution filters remain in the draft. Python rejects the draft for missing filter_sort application, giving SYSTEM_ERROR/schema_valid=false. The ungrounded importance criterion is counted from accepted meaning, not the rejected planner candidate. No actual question, workflow execution or external mail access occurs. The requested provider is retained but missing-criterion clarification and whole-request handling fail."
+    },
+    {
+      "id": "C07",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C07 review: accepted condition state preserves weekly/Asia-Seoul/json, retains all hour/minute/weekday unresolved keys, and displays a single combined time question followed by a weekday question. Both frozen required conditions are covered (2/2) without guessing time or day, losing supplied slots, or adding business work. The raw extra missing monthday is not adopted into applicable unresolved conditions. Final CLARIFY and whole-request handling are correct. No workflow or external execution exists."
+    },
+    {
+      "id": "C08",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C08 review: raw condition output again proposes hour=8 and minute=0 without user time evidence. Python rejects both; accepted hour/minute remain missing and the combined time question is displayed (1/1). Daily/Asia-Seoul/json remain specified. An unrelated missing duplicate.policy entry is present but is excluded from applicable unresolved conditions and does not produce a question or action. Rejected raw time guesses are not accepted-slot false positives. Final CLARIFY is correct, whole-request handling succeeds, and no workflow/external execution occurs."
+    },
+    {
+      "id": "C09",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C09 holdout review: capability understands new table-column calculation and JSON output but says no condition question is needed. Requirement candidate 1 invents qty*unit_price and total_amount with double-brace formula syntax plus a confirmation question; candidate 2 retains that invented arithmetic/name with single-brace syntax, adds JSON export and asks for an already connected table ID. Both fail requirement validation; stages[4].parsed_state.requirement_ledger is null. Neither candidate question is displayed, no formula/column question reaches the user (0/2), and no typed JSON slot is accepted (0/1). Rejected guesses are not counted as confirmed unsupported slots. Final SYSTEM_ERROR has no workflow or external execution, so whole-request handling fails."
+    },
+    {
+      "id": "C10",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after C10 review: raw meaning candidates at model_calls[0] and [2] correctly preserve send plus literal subject/body in other_requirements, but reviews at [1] and [3] reject them; stages[1].parsed_state.request_meaning is null. Capability raw [4] incorrectly puts connection/recipient prerequisites in missing_actions, then raw [5] and accepted stages[2] correctly route to clarify with email.prepare/send. Accepted capability now understands sending the specified literal content rather than inventing title-review/body-completion work, so intent is correct and no extra business action is counted. Its two visible capability questions ask recipient (necessary, 1/1) and extra content/description (unnecessary because subject/body are supplied). No accepted typed subject/body fields remain (0/2); rejected raw candidates and quoted question text are not credited. CLARIFY improves routing, but unnecessary re-questioning and lost structured literals keep whole-request success false. No workflow or external email execution occurs."
+    },
+    {
+      "id": "T01",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "After meaning raw chooses period=date_range with evidence 어제 and repeats the whole request inside other_requirements; self-review accepts faithful=true. filters=[] throughout, so this is not an unread-grounding rejection. The accepted period is wrong for frozen yesterday and the standard Gmail semantic compiler is bypassed.",
+        "Requirements accept document_analysis plus unrequested human_review. Both SDK planner responses produce email.list→compose_answer without human_review, and final validator reports the missing r2 review step. This is the direct SYSTEM_ERROR trigger after an earlier meaning error.",
+        "The workflow uses date-string query after:2026-11-09 before:2026-11-10, not the expected Asia/Seoul epoch boundaries 1794150000–1794236400 computed from the frozen clock with zoneinfo. The printed dates are recorded but are not credited as a verified resolved local-day query; no Gmail execution validates the boundary.",
+        "Final-case schema_valid=false is the harness validator metric, including semantic requirement rejection; it is not a claim that the raw JSON itself cannot parse. Baseline T01 success has regressed in this after run."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T02",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "New actual meaning response correctly extracts today with original evidence 오늘 and filters=[]; the faithful review accepts it. No unread was proposed in this run, so correct output does not by itself demonstrate that the new guard rejected an invented unread candidate.",
+        "Accepted gmail_summary spec and READY schema-valid email.list read_messages query are after:1794200400 before:1794286800 -in:sent -in:drafts, exactly America/New_York 2026-11-09 midnight-to-midnight (24h) computed with zoneinfo at the frozen reference clock. No is:unread filter is present.",
+        "email.list documents bind to compose_answer documents with grounded per-mail summary instructions. No extra action or question. Gmail was not queried; this is live-model interpretation plus correct local compilation/validation only."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T03",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout evaluation only. New meaning raw incorrectly classifies 어제 as date_range and puts the request in other_requirements; self-review accepts it. filters=[] so no unread rejection occurs. Accepted typed period is wrong, while no resolved local-day epoch query is established.",
+        "Requirements accept document_analysis and unrequested human_review. Two SDK candidates bind email.list documents→compose_answer, but the final draft is rejected because the invented review step is missing. No user question or external execution occurs.",
+        "Final query mixes after:2026-11-08 with an ISO timestamp before:2026-11-09T00:00:00+09:00, rather than the independently zoneinfo-computed Seoul boundaries1794063600–1794150000. The written dates are not credited as verified Gmail query semantics.",
+        "Final SYSTEM_ERROR/schema_valid=false includes semantic requirement failure; this is not a raw-JSON parse-rate result."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T04",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "New meaning response extracts date_range rather than yesterday and repeats the original request in other_requirements. Its self-review is faithful=true, with filters=[]; unread guard does not reject the candidate.",
+        "Capability prose recognizes year-boundary date2026-12-31, but accepted requirement is document_analysis plus an unrequested human_review. Both SDK drafts omit the invented review, causing final requirement validation failure/SYSTEM_ERROR.",
+        "The actual email.list query contains date strings2026-12-31/2027-01-01, so textual year rollover is visible. It does not establish the expected Seoul epoch bounds1798642800–1798729200 computed with zoneinfo; a typed, verified resolved-day slot is not credited. Summary binds the same unverified read range.",
+        "No question or external execution occurs. This after result regresses from baseline T04 whole-request success; final-case schema_valid=false describes validator failure, not raw JSON syntax."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T05",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "New meaning chooses date_range with evidence 어제 and redundant other_requirements; faithful self-review accepts it. Unlike the earlier baseline trace, this run never proposes unread, so its failure must not be attributed to a guard rejection or copied baseline critique.",
+        "The accepted requirement becomes document_analysis plus human_review. Both SDK candidates create email.list→compose_answer only, and final validator blocks the omitted unrequested review. No question is displayed and no Gmail execution occurs.",
+        "The workflow prints date-string after:2026-03-08 before:2026-03-09. Independent zoneinfo computation gives New York DST-start bounds1772946000–1773028800, a23-hour day. The actual query does not encode verified epoch bounds, so date/window slots and the read/summary semantic coverage are not credited."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T06",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout evaluation only. New actual meaning response has yesterday with original evidence 어제, filters=[], other_requirements=[] and faithful=true. It enters the standard source_summary.semantic.v1 compiler without a generic planner detour.",
+        "Accepted gmail_summary and READY schema-valid email.list query after:1793505600 before:1793595600 -in:sent -in:drafts match independently computed New York2026-11-01 midnight-04 to Nov2 midnight-05, exactly25hours. The prior empty-query baseline result is not reused.",
+        "email.list documents→compose_answer documents binding and grounded summary instructions are correct, with no extra action or question. Actual Gmail reading/summary execution did not run; model interpretation and local date compilation were observed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T07",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "New actual meaning extracts limit=5 from exact Korean evidence 다섯 통 at source_message0; accepted meaning retains it and faithful review accepts it. Unlike baseline, redundant other_requirements sends this run through capability/requirement/SDK planning, giving five returned trace entries rather than only semantic compilation.",
+        "Accepted requirement is document_analysis with the original request. Final READY schema-valid email.list read_messages arguments are max_results5/query=null and its documents output correctly binds to compose_answer instructions requesting the latest five mails. No extra filter, action or question appears.",
+        "The generated final arguments preserve the Korean quantity despite the generic planning detour. Actual Gmail reading and summary execution did not run; this is not a measured summary-quality result."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T08",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 10,
+          "denominator": 10
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "After T08 uses registered gmail_previous_day_daily_summary.v1 with zero model_calls. Accepted gmail_scheduled_summary spec and final draft retain daily Asia/Seoul09:00 and query {{gmail.previous_day}}.",
+        "READY schema-valid email.list read_messages(max_results100,previous-day placeholder)→compose_answer has correct documents binding, no extra action and no clarification. The query placeholder intentionally resolves at scheduled runtime rather than freezing a date now.",
+        "This is code-recipe design success, excluded from live-model quality denominators. No scheduled trigger, real Gmail access, or summary execution was performed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M01",
+      "actual_route": "CLARIFY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "New after trace: first ledger rejects an ungrounded operator and leaves operator/value unresolved while preserving amount, JSON, explicit empty-error and duplicate-keep.",
+        "Actual operator question ID560766d94b9b05dd7ff9f433 receives '20 이상으로 해줘.', satisfying both displayed required questions. Final ledger has gte20. Session/history continuity is recorded in checkpoint_evidence.",
+        "READY workflow binds read_table(synthetic-sales)→filter_sort(amount>=20, missing_policy=error, duplicate_policy=keep)→write_result(JSON). The requirement stage extracts only export; planner restores the complete read/filter/export chain.",
+        "Allowed local synthetic execution succeeds with exactly id2(amount30) and id3(amount20), matching gold. No additional action."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "read_table_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "filter_sort_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "write_result_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M02",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "New after first ledger marks duplicate.policy missing and records rejection of the model's unsupported retention value. Unlike baseline it does not accept first and displays an appropriate duplicate-policy question.",
+        "Actual answer '중복은 마지막 행만 남겨줘.' uses question323c6708d438ab44ecca3ee2. Final typed condition ledger correctly preserves customer_id, last, missing.policy=error and JSON, and becomes ready.",
+        "Requirement stage kind=other then asks what an empty-value error should do, offering excluding empty rows or an error-containing JSON despite user's explicit error policy. This unnecessary extra requirement blocks generation; no workflow exists.",
+        "The second displayed question restates the answered last policy but actually asks an unneeded empty-error scenario, so resolved-question repeated=false. Frozen matcher sees 마지막/남긴다 and stops as repeated_question. This is downstream of an unnecessary system question, not baseline M02's valid-question lexical limitation."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M03",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 3,
+          "denominator": 4
+        },
+        "repeated_question_rate": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout, evaluated afresh. Initial typed first/JSON/error are grounded but filter is added beside deduplicate. The generic first field question can elicit the required duplicate column despite its filter.field key; comparator is unnecessary.",
+        "Actual customer_id answer uses prior question3e160fdbd95085e7d8ccecb9 and is accepted as duplicate.field. Existing first/JSON/error remain, but invented filter.field/operator/value stay missing.",
+        "Final state repeats field and comparator questions and remains CLARIFY. Field is already answered, hence repeated=true; comparator was never answered and is irrelevant, hence unnecessary=true/repeated=false. The answer harness's repeated_question stop is downstream of the wrong operation."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M04",
+      "actual_route": "CLARIFY",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "After first condition ledger rejects ungrounded minute0, retains both minute/hour unresolved, and displays a single combined time question. Extraneous model-proposed missing.policy remains missing internally but is no longer an unresolved requirement or displayed question.",
+        "Actual '매일 오전 9시 정각으로 해줘.' under questionf1e34c6fc92787a52d4218ac yields grounded hour9/minute0 and preserves daily/Asia-Seoul/JSON; condition decision becomes ready.",
+        "Both capability assessments nevertheless list read_table/filter_sort/write_result for a plain scheduled export. Final correct daily09:00 schedule and read_table→write_result(JSON) draft are rejected for missing that unrequested filter_sort, yielding SYSTEM_ERROR after two returned SDK planner candidates.",
+        "read_table has empty settings but draft.document_ids=[synthetic-sales] supplies the established source fallback; output binding is correct. Task coverage is true while whole-request success is false. Requirement duplicates the same schedule as a follow-up task, but final draft has one schedule and no added workflow action. No execution."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M05",
+      "actual_route": "CLARIFY",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "After initial weekly09:00/Asia-Seoul/JSON ledger preserves original values and no longer asks the irrelevant model-proposed duplicate.policy; only weekday is unresolved/displayed.",
+        "Actual Monday answer uses question2f0dd04e3ea8d65922cb7d19. Literal reconciliation accepts weekday0 and preserves earlier time/timezone/JSON despite malformed numeric proposals; condition decision is ready.",
+        "Both subsequent requirement raw responses describe Monday but encode weekday1. Python rejects the contradictory schedule and the second response is validation_failed/SYSTEM_ERROR; no requirement ledger or workflow is accepted. Final_observed_slots refer to the correct condition ledger, not a successful final schedule draft.",
+        "Capability still overlists filter_sort, but it did not cause the observed stop: requirement validation failed before planning. No external or local execution.",
+        "Scorer denominator caveat: failed final response has pending_questions=[] and only an error assistant message, but retained draft.questions still contains the already answered weekday prompt. Existing scorer falls back to this stale draft question; its extra label is unnecessary/repeated. Actual new pending-question or browser display was not observed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M06",
+      "actual_route": "CLARIFY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "clarification_completion_rate": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout evaluated afresh. One required monthday question89f9c60af33e118567f88038 gets '매월 15일로 해줘.'; typed condition and final draft preserve monthly09:00/Asia-Seoul and incorporate monthday15.",
+        "READY read_table→filter_sort→write_result(JSON) has valid table bindings and uses draft.document_ids synthetic-sales as read source fallback. The intermediate filter_sort has filters=[], sort=[], missing_policy=keep, duplicate_policy=keep: it passes the table unchanged, so it is a redundant identity node, not an extra semantic operation.",
+        "Whole requested schedule/export is represented with no added selection, sorting, deletion or deduplication. The unnecessary capability tool listing remains visible, but this planner satisfies it with the identity node and validation succeeds. No actual scheduler or external/local execution was performed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M07",
+      "actual_route": "CLARIFY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial capability prose correctly recognizes scaled/JSON and asks only the multiplier, but these prose/default values are not credited as typed initial slots.",
+        "Actual qty*2 answer uses the prior capability question279fbe5fba45a08465452d89. Final typed compute spec and workflow preserve scaled and JSON and incorporate formula qty * 2.",
+        "READY workflow has one compute node between read_table(synthetic-sales) and write_result(JSON), with correct table bindings. Requirement mistakenly lists the same compute as two dependent tasks, but final workflow performs it once and adds no semantic work. No local execution was requested/performed for this case."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M08",
+      "actual_route": "CLARIFY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial capability asks the needed new-column name and describes qty*2/JSON, but it has no typed compute/output slots; observed_slots remains empty under the same strict baseline scope.",
+        "Actual answer doubled uses question766084a45332fdeb155b3953. Final typed requirement/workflow retains qty * 2, uses output_column=doubled, and exports JSON.",
+        "READY read_table(synthetic-sales)→calculate_columns(compute)→write_result(JSON) has correct bindings, no extra action and no accidental source-column overwrite. Requirement itself omits read/export, which final planner restores. No local execution."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M09",
+      "actual_route": "CLARIFY",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout evaluated afresh. Initial capability now asks only the required amount-column name and explicitly treats empty-error policy as supported; prose/default JSON are not typed initial slots.",
+        "Actual amount answer uses question83e82c9a34e6ba1e64c36de9. Final workflow reads synthetic-sales, aggregate_table(sum, sum_field=amount, fields=[region]), then writes JSON with correct table bindings. The draft missing_policy=error is used by aggregate executor for grouping fields; sum-field empty/non-number values also raise errors natively.",
+        "Final typed workflow fields satisfy gold and requested source/dependencies. No extra transformation appears in the workflow, but requirement r2 invents a separate amount-to-amount compute task from the clarification answer.",
+        "Coverage validation rejects the draft for lacking that spurious r2, yielding SYSTEM_ERROR after two returned planner responses. Correct task coverage does not imply whole success; no execution was performed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "aggregate",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "After raw extraction improves: both candidates contain actions=[send], order=unspecified, period=all, filters=[], other_requirements=['제목: 점검','본문: 완료']. They do not add an existing-mail read/search. These are rejected candidates, not accepted typed subject/body slots.",
+        "Both model review responses say faithful=false with internally contradictory explanations: they acknowledge literal preservation yet demand those literals be filters and treat an empty selection as sending all mail. Python does not override false review, so trusted request_meaning remains null.",
+        "Fallback capability wrongly asks title-check and body-completion rules. It lists recipient only third, beyond the two displayed questions, and additionally calls body content missing. Thus no necessary recipient question is actually exposed in the recorded backend response.",
+        "Frozen answer policy cannot answer these unrelated prompts (two unmatched_question reasons); unlike baseline M02 this is a system question error, not a valid-question vocabulary limitation. There is one saved turn and no follow-up attempt or workflow. No email is sent."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "send",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "Initial recent5 request uses the registered zero-model-call recipe with typed max_results5. Actual subsequent '아니, 10개로 바꿔줘.' causes two request_meaning responses; this is a mixed recipe/live follow-up case.",
+        "New after trace ends READY with requirement max_results10, email.list read_messages arguments max_results10, and summary instructions maximum10. Prior recent-mail summarization intent and documents→documents binding are preserved.",
+        "No extra query/action or clarification is added. Checkpoint/session/history evidence is recorded below. Real Gmail and summarization execution were not performed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout evaluated afresh. First raw meaning encodes period=date_range with evidence 어제 and copies the entire request into other_requirements; model review says faithful=true. This accepted contract bypasses the supported relative-day summary compiler.",
+        "General requirement adds human_review; final rejected draft adds a global date-descending sort and an email.list max_results500 query 'after:2026-11-09 before:2026-11-10'. This date-only query does not supply the verified Asia/Seoul epoch boundaries of the gold/previous successful initial draft; correct anchored gmail.date is not credited.",
+        "Validation rejects missing filter_sort for the global sort and uncovered human_review. First and final route are SYSTEM_ERROR with one persisted response. Unlike baseline, no next-day '최대 5개만' turn occurs; neither final limit5 nor cross-day date preservation is measured. No model answer or final slots are invented for the missing turn.",
+        "Target read/summary final coverage is false because the requested revised maximum5 and anchored day are not represented. No Gmail or added action is executed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "U01",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after U01 review: both actual capability responses and accepted stages[2] name Slack delivery as the missing action. The accepted reason correctly separates absent Slack messaging from available email/calendar services. No missing-condition question is displayed and no alternative destination is adopted. Final route is UNSUPPORTED, workflow is null and external_execution is NOT_RUN. The tool-gap choice waits for the user with automatic registration/execution disabled. The gold has no typed-slot opportunities. Correct catalogue-based unsupported handling satisfies the whole request."
+    },
+    {
+      "id": "U02",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after U02 review: the original sales-analysis/email request, source question and PostgreSQL answer are preserved in the response conversation. Both raw capability responses and accepted stages[2] identify PostgreSQL connection/direct reading as absent from the registered tools and distinguish that from supported CSV/Excel/JSON file reading. The already supplied source is not asked again. Final route is UNSUPPORTED with no workflow or external database/email access. The accepted explanation identifies the provided source, but request_meaning/condition/requirement state is null and no typed source field exists, so connected_postgresql is not credited under the declared structural-slot scope (0/1). This representation limit is separate from correct unsupported intent/reason and successful whole-request handling."
+    },
+    {
+      "id": "U03",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after U03 holdout review: the two raw capability responses and accepted state identify yearly recurrence as unsupported, explicitly contrasting the requested annual date with registered hourly/daily/weekly/monthly recurrence capabilities. Supported read_table/write_result components remain identified, but generation and execution are blocked. No replacement recurrence or frequency question appears. Final UNSUPPORTED has no workflow or external execution, and the tool-gap choice awaits the user without automatic registration. The yearly fact remains in missing-action text/explanation rather than a typed schedule field, so structural-slot evidence is 0/1 under the same policy. The unsupported reason and preserved constraint satisfy whole-request handling. This is an evaluation observation only."
+    },
+    {
+      "id": "U04",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after U04 review: both actual capability responses and accepted stages[2] identify Microsoft Teams delivery as absent from the catalogue, with Gmail-only email operations correctly distinguished. No recipient/connection question or replacement email workflow is generated. Final UNSUPPORTED has no workflow or external message sending. Tool-gap recovery remains a user choice and cannot automatically execute/register a replacement. Gold contains no typed-slot opportunities. Intent and unsupported reason are correct, giving whole-request success."
+    },
+    {
+      "id": "U05",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh after U05 review: actual raw responses and accepted stages[2] correctly identify WhatsApp customer notification delivery as unsupported, separating it from registered email.send/calendar operations. No missing-condition question, substituted destination, workflow or external action occurs. Final route is UNSUPPORTED and tool-gap recovery waits for a user choice. Gold contains no typed-slot opportunities. The request is correctly understood and the catalogue-based unsupported reason is accurate, so whole-request handling succeeds."
+    },
+    {
+      "id": "X01",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 7
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": [
+        "New first meaning candidate omits summarize; self-review rejects it. The repaired accepted meaning includes Gmail read/summarize, Notion requirement, daily18:00, which gives the three typed gold slots credit.",
+        "The repair also accepts sender:customer although no concrete sender address or customer mapping is supplied. This unsupported invented selector is a separate slot FP; unlike the baseline trace, no unread selector is present.",
+        "Both capability responses correctly identify missing Notion integration and preserve supported Gmail reading/summary. Final UNSUPPORTED has missing_actions Notion 에 정리하기, with generation/execution disabled, no workflow and no question. Under the fixed UNSUPPORTED criterion this is whole-request success despite the separately penalized intermediate slot error.",
+        "create_document appears only as a catalog-supported alternative requiring user decision; it is not an accepted/generated/executed replacement workflow. No extra executed action or external Gmail/Notion access is claimed."
+      ]
+    },
+    {
+      "id": "X02",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 14,
+          "denominator": 14
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 5,
+          "denominator": 5
+        },
+        "requirement_coverage": {
+          "numerator": 5,
+          "denominator": 5
+        }
+      },
+      "adjudication_evidence": [
+        "New accepted typed requirement specs preserve compute(qty*unit_price,total), filter(total gte20), numeric descending sort(total), and JSON export, with explicit compute→filter→sort→export dependencies. Read source is supplied in the final workflow. All seven frozen slots are grounded typed values.",
+        "READY/schema-valid workflow reads synthetic-sales, calculates total, then uses one allowed shared filter_sort node with numeric total>=20 and descending total sort, missing_policy=error/duplicate_policy=keep, followed by JSON write. Every table binding follows the required dependency order; no extra action or question.",
+        "Actual native synthetic execution succeeded. Output rows are exactly gold in order: id2 qty3/unit_price10/amount30/부산/B/2026-11-05/total30, then id3 qty2/unit_price10/amount20/서울/A/2026-11-08/total20. All row fields and ordering were compared, not only row count."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "sort",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_4"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X03",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 10,
+          "denominator": 10
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "requirement_coverage": {
+          "numerator": 4,
+          "denominator": 4
+        }
+      },
+      "adjudication_evidence": [
+        "The new accepted requirement ledger contains typed aggregate(fields=[region],aggregation=sum,sum_field=amount), filter(sum gte25), policy(error,keep), and two JSON export tasks. The five frozen slots are present in accepted typed specs; no rejected/free-text value is credited.",
+        "Both actual planner candidates have read_table(synthetic-sales)→aggregate_table(region,sum amount)→filter_sort(sum>=25,missing error,duplicate keep)→write_result(json)→optional finish. The final retained candidate has correct table/artifact bindings and preserves all four gold tasks, so task coverage is 4/4. This partial workflow coverage is not READY or execution success.",
+        "The accepted ledger redundantly treats the same requested JSON output as r1 and r5. Both validator passes report 복수 결과 파일의 저장 위치·개별 출력은 추가 검토가 필요합니다, despite all five ledger rows being individually matched. Final route SYSTEM_ERROR/schema_valid=false/validation_failed prevents execution and whole-request success. The duplicate export requirement is the first confirmed causal error; no actual second file was generated.",
+        "No pending or draft questions are present. This holdout case is judged only; no case-specific fix is proposed."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "aggregate",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_4"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X04",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": [
+        "New capability correctly selects read_document/compose_answer/export_result for connected synthetic-policy. Accepted requirement spec remains a generic document_analysis request and does not separately type the export; final planner supplies the requested summary and export from the original request. This final success does not prove complete intermediate requirement extraction.",
+        "The actual READY/schema-valid workflow reads synthetic-policy, passes documents to compose_answer with the original policy-summary request, then passes text to export_result(format=markdown). Bindings and dependencies satisfy all three required tasks; no extra action or question.",
+        "Observed output.format is canonicalized to md from the accepted executable format=markdown. Backend/workflow_engine/executors/output/export_result.py text_artifact maps markdown to 답변.md with text/markdown content type, so this is the same requested artifact format. The top-level table-plan default output_format=json is not an executed output in this document workflow and is not credited or penalized as a second output.",
+        "This case was validated but not locally or externally executed; generated summary quality and artifact contents are therefore not measured."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X05",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 10,
+          "denominator": 11
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "requirement_coverage": {
+          "numerator": 4,
+          "denominator": 4
+        }
+      },
+      "adjudication_evidence": "Fresh after X05: condition ledger preserves customer_id/first/amount/gte/15, missing=error and JSON. The raw requirement response explicitly emits duplicate_policy=keep despite its own description saying first; this is accepted in r2 and counted as an unsupported contradictory typed value. Two planner responses and the final stored draft have the correct read_table(synthetic-sales) -> filter_sort(first by customer_id, amount>=15, missing=error) -> write_result(json) bindings. The native filter_sort implementation deduplicates before applying filters, so the combined node preserves the requested order and all four task coverage labels are true. Nevertheless the validator rejects the correct draft because it does not match the wrong keep-policy requirement, giving SYSTEM_ERROR/schema_valid=false. No question or local/external execution occurred. The previous unnecessary confirmation disappeared but whole-request success did not improve.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "read_table_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "filter_sort_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "filter_sort_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "write_result_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X06",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "Fresh after X06 holdout: capability correctly recognizes Gmail read/summary/send and treats account connection as an execution precondition, improving the previous unsupported decision. Both request_meaning candidates are rejected: self-review wrongly treats newest_first+limit3+periodall as losing recent, and gives contradictory feedback about the already included summary body. No accepted meaning or requirement ledger exists, so candidate limit/recipient/subject and capability prose are not counted as typed slots. The subsequent requirements native request fails with TimeoutError after 181.2883 seconds (configured timeout180); no raw model response is available for that call. Worker returns SYSTEM_ERROR with no questions or workflow. All three final tasks are uncovered and no connector ran. Primary final run failure is the observed transport/model-response timeout; earlier rejected meaning candidates are secondary, not proof of what a completed requirement response would have done. Server log separately confirms generation then cancellation and all slots idle. X06 failure is retained, not retried or replaced by a favorable sample.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "send",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X07",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh X07 in the disjoint after-part2 shard: capability recognizes filter -> region amount aggregation -> JSON. Both requirement raw candidates invent an ungrounded gt operator and self-comparison compare_field=amount with value=null. They also contain correct aggregate/export fields, but both are rejected and no requirement ledger is accepted, so rejected candidate fields receive no typed-slot credit. The first candidate contains a threshold question which is never exposed; the repair removes unresolved questions. The actual worker response has no pending or draft questions, so necessary threshold/operator recall is 0/2, no workflow exists, and final route is SYSTEM_ERROR instead of CLARIFY. No transport failure occurred in this case and no local/external execution occurred. Gold and application/model settings match the first after shard; X06 timeout was not rerun."
+    }
+  ]
+}

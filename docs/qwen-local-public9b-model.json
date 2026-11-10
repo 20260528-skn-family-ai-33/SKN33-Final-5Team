@@ -1,0 +1,185 @@
+{
+  "kind": "local_public_model_provenance_and_loading",
+  "checked_at": "2026-11-10T12:35:47.8542439+00:00",
+  "upstream": "qwen3.5:9b",
+  "registered_name": "a4b-public-qwen35-9b-32k",
+  "server_version": "0.40.15",
+  "models": [
+    {
+      "name": "a4b-public-qwen35-9b-32k:latest",
+      "model": "a4b-public-qwen35-9b-32k:latest",
+      "modified_at": "2026-11-10T21:34:09.2235854+09:00",
+      "size": 6550825594,
+      "digest": "dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df",
+      "details": {
+        "parent_model": "qwen3.5:9b",
+        "format": "gguf",
+        "family": "qwen35",
+        "families": [
+          "qwen35"
+        ],
+        "parameter_size": "9.0B",
+        "quantization_level": "Q4_K_M",
+        "context_length": 262144,
+        "embedding_length": 4096,
+        "runner": "llamacpp"
+      },
+      "capabilities": [
+        "completion",
+        "vision",
+        "tools",
+        "thinking"
+      ]
+    },
+    {
+      "name": "qwen3.5:9b",
+      "model": "qwen3.5:9b",
+      "modified_at": "2026-11-10T21:33:23.8458951+09:00",
+      "size": 6550825550,
+      "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+      "details": {
+        "parent_model": "model.gguf",
+        "format": "gguf",
+        "family": "qwen35",
+        "families": [
+          "qwen35"
+        ],
+        "parameter_size": "9.0B",
+        "quantization_level": "Q4_K_M",
+        "context_length": 262144,
+        "embedding_length": 4096,
+        "runner": "llamacpp"
+      },
+      "capabilities": [
+        "completion",
+        "vision",
+        "tools",
+        "thinking"
+      ]
+    }
+  ],
+  "details": {
+    "parent_model": "qwen3.5:9b",
+    "format": "gguf",
+    "family": "qwen35",
+    "families": [
+      "qwen35"
+    ],
+    "parameter_size": "9.0B",
+    "quantization_level": "Q4_K_M",
+    "runner": "llamacpp"
+  },
+  "parameters": "num_predict                    4096\npresence_penalty               1.5\nseed                           42\ntemperature                    0\ntop_k                          20\ntop_p                          0.8\nnum_ctx                        32768",
+  "model_info": {
+    "general.architecture": "qwen35",
+    "general.base_model.0.name": "Qwen3.5 9B Base",
+    "general.base_model.0.organization": "Qwen",
+    "general.base_model.0.repo_url": "https://huggingface.co/Qwen/Qwen3.5-9B-Base",
+    "general.base_model.count": 1,
+    "general.file_type": 15,
+    "general.license": "apache-2.0",
+    "general.license.link": "https://huggingface.co/Qwen/Qwen3.5-9B/blob/main/LICENSE",
+    "general.parameter_count": 8953803264,
+    "general.quantization_version": 2,
+    "general.size_label": "9.0B",
+    "general.tags": [
+      "image-text-to-text"
+    ],
+    "general.type": "model",
+    "qwen35.attention.head_count": 16,
+    "qwen35.attention.head_count_kv": 4,
+    "qwen35.attention.key_length": 256,
+    "qwen35.attention.layer_norm_rms_epsilon": 1E-06,
+    "qwen35.attention.recurrent_layers": [
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ],
+    "qwen35.attention.value_length": 256,
+    "qwen35.block_count": 32,
+    "qwen35.context_length": 262144,
+    "qwen35.embedding_length": 4096,
+    "qwen35.feed_forward_length": 12288,
+    "qwen35.full_attention_interval": 4,
+    "qwen35.rope.dimension_count": 64,
+    "qwen35.rope.dimension_sections": [
+      11,
+      11,
+      10,
+      0
+    ],
+    "qwen35.rope.freq_base": 10000000,
+    "qwen35.ssm.conv_kernel": 4,
+    "qwen35.ssm.group_count": 16,
+    "qwen35.ssm.inner_size": 4096,
+    "qwen35.ssm.state_size": 128,
+    "qwen35.ssm.time_step_rank": 32,
+    "tokenizer.ggml.add_bos_token": false,
+    "tokenizer.ggml.eos_token_id": 248046,
+    "tokenizer.ggml.merges": [],
+    "tokenizer.ggml.model": "gpt2",
+    "tokenizer.ggml.padding_token_id": 248044,
+    "tokenizer.ggml.pre": "qwen35",
+    "tokenizer.ggml.token_type": [],
+    "tokenizer.ggml.tokens": []
+  },
+  "capabilities": [
+    "completion",
+    "vision",
+    "tools",
+    "thinking"
+  ],
+  "loaded_models": [
+    {
+      "name": "a4b-public-qwen35-9b-32k:latest",
+      "model": "a4b-public-qwen35-9b-32k:latest",
+      "size": 6914677142,
+      "digest": "dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df",
+      "details": {
+        "parent_model": "",
+        "format": "gguf",
+        "family": "qwen35",
+        "families": [
+          "qwen35"
+        ],
+        "parameter_size": "9.0B",
+        "quantization_level": "Q4_K_M"
+      },
+      "expires_at": "2319-02-20T21:22:50.796534607+09:00",
+      "size_vram": 5604082973,
+      "context_length": 32768,
+      "runner": "llamacpp"
+    }
+  ],
+  "inference_calls_from_this_probe": 0,
+  "note": "Public upstream weights; not the previous private final664/previous fine-tunes. Loading snapshot taken while separate smoke evaluation runs."
+}

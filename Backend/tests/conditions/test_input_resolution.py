@@ -156,7 +156,7 @@ def test_execution_file_absence_does_not_block_filter_design():
 
 
 def test_schedule_file_is_needed_during_design():
-    s = state('한국 시간 매일 8시 0분에 실행해줘.')
+    s = state('한국 시간 매일 오전 8시 0분에 실행해줘.')
     raw = proposal(s, {'schedule.frequency': 'daily', 'schedule.hour': '8', 'schedule.minute': '0', 'schedule.timezone': 'Asia/Seoul'}, ['schedule'])
     s['condition_ledger'] = checked(s, raw)
     assert s['condition_ledger']['decision'] == 'clarify'

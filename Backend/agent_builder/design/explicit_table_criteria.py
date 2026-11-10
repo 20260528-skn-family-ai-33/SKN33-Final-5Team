@@ -47,6 +47,11 @@ def expected_specs(criteria):
     if fields:specs.append(dict(kind='parse_dates',fields=fields,input_format=criteria['date_input_format'],timezone=criteria['date_timezone']))
     if criteria.get('join'):
         join=criteria['join'];specs.append(dict(kind='join',**{k:join[k] for k in ('keys','how','cardinality','null_keys','max_rows')},left_sources=join.get('left_sources',[]),right_sources=join.get('right_sources',[])))
+    if 'output_columns' in criteria:
+        from .output_column_proof import valid_columns
+        if not valid_columns(criteria['output_columns']):
+            raise ValueError('output_columns는 중복·빈 이름 없는 문자열 열 목록(1~40개)이어야 합니다.')
+        specs.append(dict(kind='select_fields',fields=criteria['output_columns']))
     if criteria.get('output_format'):specs.append(dict(kind='export',format=criteria['output_format']))
     if any(k in criteria for k in ('missing_policy','duplicate_policy')):
         specs.append(dict(kind='policy',**{k:criteria.get(k) for k in ('missing_policy','duplicate_policy','duplicate_field')}))
@@ -95,6 +100,10 @@ def explicit_draft_issues(state,draft):
                 if n['tool']=='read_table':result.update(reader_sources(n,state.get('resources',[]),draft.get('document_ids',[])))
             return result
         issues=[]
+        from .output_column_proof import final_output_proof
+        output_proof=final_output_proof(draft,state.get('resources',[])) if 'output_columns' in criteria else None
+        if 'output_columns' in criteria and (output_proof is None or output_proof.columns!=tuple(criteria['output_columns'])):
+            issues.append('명시 조건 검증: 최종 출력 열과 순서가 output_columns와 일치하는지 확인하지 못했습니다.')
         if 'selection' in criteria:
             from .requirement_coverage import _condition
             actual_filters=[]
@@ -117,6 +126,9 @@ def explicit_draft_issues(state,draft):
                                and any(nodes[id]['tool']=='read_table' for id in active)
                                and all(nodes[id]['tool'] in ('read_table','write_result')
                                        and not nodes[id]['settings'].get('operation') for id in active))
+                    # A proved read -> rows -> projection -> export chain keeps
+                    # every row and selected null value, including duplicates.
+                    unchanged=unchanged or bool(output_proof and output_proof.preserves_rows)
                     if not (keep_only and unchanged):
                         issues.append('명시 조건 검증: 요청한 빈값·중복 정책을 적용하는 실행 단계를 확인하지 못했습니다.')
                 for key,value in spec.items():

@@ -1,11 +1,11 @@
 """Carry an explicit deferred file choice into planning without inventing an asset."""
 import re
 
-_FILE = re.compile(r'파일|자료|문서|계약서|영수증|첨부|PDF|CSV|엑셀', re.I)
+_FILE = re.compile(r'파일|자료|문서|계약서|영수증|첨부|PDF|DOCX|CSV|XLSX|Excel|엑셀', re.I)
 _DEFER = re.compile(r'(?:실행\s*(?:할\s*때|시)|나중에).{0,45}(?:넣을|넣겠|올릴|올리겠|첨부할|첨부하겠|업로드할|업로드하겠|입력할|제공할|받을|받도록|입력받)')
 _NOW = re.compile(r'(?:지금|먼저|설계\s*(?:할\s*때|시)).{0,30}(?:넣을|올릴|첨부할|업로드할|제공할)')
 _NEGATIVE = re.compile(r'(?:넣|올리|첨부하|업로드하|제공하|입력하)지\s*않|(?:안|못)\s*(?:넣|올|첨부|업로드|제공|입력)')
-_FILE_TARGET = r'(?:파일|자료|문서|계약서|영수증|첨부|PDF|CSV|엑셀)(?:\s*(?:파일|문서|PDF))?(?:\s*(?:의\s*)?(?:자체|이름|명|경로|ID|아이디))?'
+_FILE_TARGET = r'(?:파일|자료|문서|계약서|영수증|첨부|PDF|DOCX|CSV|XLSX|Excel|엑셀)(?:\s*(?:파일|문서|PDF|DOCX|CSV|XLSX|Excel|엑셀))?(?:\s*(?:의\s*)?(?:자체|이름|명|경로|ID|아이디))?'
 # Require a complete verbal question: "파일 처리 규칙" is a noun phrase
 # about business criteria, while "파일을 처리할까요?" asks for the file.
 _FILE_QUESTION_PREDICATE = (
@@ -23,6 +23,18 @@ _UPLOAD_QUESTION = re.compile(
     _FILE_TARGET + r'(?:을|를|은|는|이|가|도)?\s*(?:(?:다시|먼저|지금)\s*)?'
     r'(?:(?:올려|첨부해|업로드해|제공해|연결해|선택해|알려).{0,12}(?:주세요|주실|주시|줄)|무엇|어디|있나요|있습니까)'
     r'|(?:어떤|어느)\s*' + _FILE_TARGET + r'(?:을|를)?\s*' + _FILE_ACTION_QUESTION, re.I)
+
+_INPUT_KINDS = {
+    'read_document': re.compile(r'(?<![a-z])(?:PDF|DOCX)(?![a-z])|문서|계약서|영수증', re.I),
+    'read_table': re.compile(r'(?<![a-z])(?:CSV|XLSX|Excel)(?![a-z])|엑셀', re.I),
+}
+_OUTPUT_FORMAT = re.compile(
+    r'\s*(?:(?:파일|문서|표|형식)\s*)?(?:으?로)\s*'
+    r'(?:저장|내보|출력|변환|정리|만들|생성|작성)')
+_TABLE_REQUIREMENTS = frozenset({
+    'read', 'compute', 'parse_dates', 'filter', 'sort', 'policy', 'aggregate',
+    'join', 'rename', 'fill_missing', 'select_fields',
+})
 
 
 def runtime_file_context(state):
@@ -57,6 +69,31 @@ def runtime_file_question_issues(draft, state):
     if any(_UPLOAD_QUESTION.search(q) for q in draft.get('questions', [])):
         return ['파일은 실행할 때 받기로 이미 답변했습니다. 파일 업로드를 다시 묻지 말고 실행 입력으로 설계하세요. 미정 업무 조건만 질문할 수 있습니다.']
     return []
+
+
+def runtime_reader_ids(state, requirement_specs=()):
+    """Readers justified by deferred user input or already sealed requirements.
+
+    A generic file, a suggested tool, or an output format does not establish an
+    input type. Callers pass only specs accepted by generation_requirements.
+    Existing attached resources keep their ordinary reader-selection path.
+    """
+    if runtime_file_context(state) is None:
+        return set()
+    readers = set()
+    for message in state.get('messages', []):
+        if message.get('role') != 'user':
+            continue
+        text = message.get('content', '')
+        for reader, pattern in _INPUT_KINDS.items():
+            if any(not _OUTPUT_FORMAT.match(text[match.end():]) for match in pattern.finditer(text)):
+                readers.add(reader)
+    kinds = {spec['kind'] for spec in requirement_specs}
+    if 'document_analysis' in kinds:
+        readers.add('read_document')
+    if kinds & _TABLE_REQUIREMENTS:
+        readers.add('read_table')
+    return readers
 
 
 def constrain_runtime_readers(schema, state):

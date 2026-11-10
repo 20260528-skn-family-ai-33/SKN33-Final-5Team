@@ -139,7 +139,7 @@ def make_conversation(api_key,model,model_factory=None):
         options={'temperature':0.2,'presence_penalty':0} if local else {}
         return model_factory() if model_factory else create_chat_model(model=model,api_key=api_key,timeout=70,max_retries=1,max_tokens=token_budget if local else 9000,seed=seed,**options)
     def conversation_node(state):
-        from agent_builder.design.runtime_inputs import runtime_file_context, constrain_runtime_readers
+        from agent_builder.design.runtime_inputs import runtime_file_context, runtime_reader_ids, constrain_runtime_readers
         runtime_file = runtime_file_context(state)
         latest_turn=max((i for i,m in enumerate(state['messages']) if m['role']=='user'),default=-1)
         used_seeds=[t['seed'] for t in state.get('trace',[]) if t.get('node')=='conversation' and t.get('user_turn')==latest_turn and 'seed' in t]
@@ -184,6 +184,10 @@ def make_conversation(api_key,model,model_factory=None):
         if selected_contract_ids:
             if any(r.get('kind')=='table' for r in resources.values()):selected_contract_ids.add('read_table')
             if any(r.get('kind')=='document' for r in resources.values()):selected_contract_ids.add('read_document')
+            # Deferred files have no asset IDs yet, but their known source kind
+            # must be available before native/ordered decoder variants are built.
+            # Do not turn an unrestricted catalog into a reader-only selection.
+            selected_contract_ids |= runtime_reader_ids(state, requirement_specs) & {t['id'] for t in catalog}
         inline_contracts=bool(os.getenv('A4B_MAIN_PROVIDER')=='ollama' and selected_contract_ids)
         selected_contracts_read=inline_contracts
         active_operation_ids=(selected_contract_ids|{'finish'}) if inline_contracts else None

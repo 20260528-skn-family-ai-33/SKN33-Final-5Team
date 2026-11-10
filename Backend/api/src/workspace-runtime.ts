@@ -19,6 +19,7 @@ import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWit
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
+import {withScheduleSourceContext,type ScheduleSourceContext} from './schedule-source';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
 // Enforce isolation at the HTTP boundary for every MIME, including SVG/XHTML.
@@ -29,7 +30,8 @@ const webhookSecurityHeaders=Object.freeze({
 });
 
 /** Each member has independent stores, credentials, execution queues and OAuth state. */
-export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string){
+export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string,sourceAuthorization?:Pick<ScheduleSourceContext,'authorizeOwner'|'authorizeTeam'>){
+const sourceContext:ScheduleSourceContext={directory:dataDirectory(),ownerId,...sourceAuthorization};
 const store=new Store(dataDirectory());
 const scheduleState=createBuilderScheduleState();
 const storage=storageConfig();
@@ -83,7 +85,7 @@ async function gmailEmail(force=false):Promise<string>{
  try{return await pending.request;}
  finally{if(gmailIdentityPending===pending)gmailIdentityPending=undefined;}
 }
-const stopScheduler=startBuilderScheduler(store,scheduleState,gmailAccessToken);
+const stopScheduler=withScheduleSourceContext(sourceContext,()=>startBuilderScheduler(store,scheduleState,gmailAccessToken));
 const controllers=new Map<string,AbortController>();
 const inFlight=new Set<string>();
 type PendingWebhook={res:ServerResponse;node:FlowNode;mode:'lastNode'|'responseNode';timer?:ReturnType<typeof setTimeout>;responseError?:string};
@@ -362,7 +364,7 @@ if(${gmail}){
   }else json(res,400,{error:(error as Error).message});}
 };
 if(process.env.A4B_FOCUSED_DEMO!=='1')void pump();
-return {handle,async close(){
+return {handle:(req:IncomingMessage,res:ServerResponse)=>withScheduleSourceContext(sourceContext,()=>handle(req,res)),async close(){
  if(closing)return;closing=true;clearInterval(timer);stopScheduler();
  for(const id of pendingWebhooks.keys())completeWebhook(id,{statusCode:503,headers:{},body:{error:'프로그램이 종료되어 응답을 마치지 못했어요. 실행 기록에서 결과를 확인해주세요.'}});
  for(const c of controllers.values())c.abort();

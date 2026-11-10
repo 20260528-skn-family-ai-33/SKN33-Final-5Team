@@ -22,7 +22,8 @@ join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 
 policy=일반 표의 빈값/중복 행 처리. 결합의 키 유일성·null 키·최대 행 수는 join의 필드값이다.
 export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자료 ID는 실제 목록에서 선택한다.
 후속 답변에서 바꾸지 않은 조건도 유지한다. 필요한 값이 미정이면 unresolved에 적고 추측하지 않는다.
-요약·개인정보 제거·검수·분기·예약·기타 표현할 수 없는 업무나 추가 조건은 other로 남긴다.
+schedule=hourly/daily/weekly/monthly 실행 메타데이터. schedule에 실제 주기·시간대·분을 넣고 daily/weekly/monthly에는 시, weekly에는 요일, monthly에는 일자 또는 말일을 기록한다. 미정이면 unresolved에 남긴다.
+요약·개인정보 제거·검수·분기·기타 표현할 수 없는 업무나 추가 조건은 other로 남긴다.
 모든 사용자 요구를 기록한 뒤 tasks를 끝내고 unresolved를 작성한다. JSON 이외에는 출력하지 않는다.'''
 
 
@@ -34,6 +35,24 @@ def ledger_fingerprint(state):
 
 def plan_digest(plan):
     return hashlib.sha256(json.dumps(plan,ensure_ascii=False,sort_keys=True,allow_nan=False).encode()).hexdigest()
+
+
+def grounded_schedule(state):
+    from contracts.models import ScheduleSpec
+    from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+    from workflow_engine.scheduling.recurrence import schedule_errors
+    written = explicit_policies(state, source_catalog(state)[0])
+    slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
+             if key.startswith('schedule.') and item.get('status') == 'specified'}
+    spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
+                hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
+                monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
+    if spec['frequency'] == 'hourly':spec['hour'] = None
+    if spec['frequency'] != 'weekly':spec['weekday'] = None
+    if spec['frequency'] != 'monthly':spec.update(monthday=None, month_end=False)
+    elif spec['month_end']:spec['monthday'] = None
+    if schedule_errors(spec):raise ValueError('예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.')
+    return ScheduleSpec.model_validate(spec).model_dump()
 
 
 def validate_plan(raw, state):
@@ -59,12 +78,20 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
-        if spec['kind']=='gmail_summary':
+        if spec['kind']=='schedule' and spec['schedule']!=grounded_schedule(state):
+            raise ValueError('예약 요구사항이 사용자가 명시한 주기·시각·일자와 다릅니다.')
+        if spec['kind'] in ('gmail_summary', 'gmail_scheduled_summary'):
             from .gmail_summary import gmail_summary_request
             gmail=gmail_summary_request(state)
             if (not gmail or spec['max_results']!=gmail['count']
-                    or task['quote']!=gmail['request'] or spec['request']!=gmail['request']):
+                    or task['quote']!=gmail['request'] or spec['request']!=gmail['request']
+                    or spec.get('summary_instructions')!=gmail.get('summary_instructions')):
                 raise ValueError('Gmail 조회 건수·요약 요구를 사용자 원문에서 확인할 수 없습니다.')
+            if spec['kind']=='gmail_scheduled_summary':
+                if spec['schedule']!=gmail.get('schedule') or spec['query']!=gmail.get('query'):
+                    raise ValueError('Gmail 예약 시각·전날 조회 기간이 사용자 요청과 다릅니다.')
+            elif gmail.get('schedule'):
+                raise ValueError('Gmail 예약 요구사항의 실행 시각과 조회 기간이 빠졌습니다.')
         if spec['kind'] in ('extract_fields','receipt_items') and (len(set(spec['fields']))!=len(spec['fields']) or
                 any(not field.strip() or field not in task['quote'] for field in spec['fields'])):
             raise ValueError('추출할 항목을 사용자 원문에서 확인할 수 없습니다.')

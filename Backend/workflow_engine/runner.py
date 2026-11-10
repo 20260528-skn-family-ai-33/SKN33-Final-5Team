@@ -135,7 +135,8 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
                 if existing['status'] in ['succeeded','failed']:return existing
                 run=existing;config=run['config_snapshot'];model=run['model'];file_ids=run['file_ids']
             except ValueError:pass
-    config={**config,'_saved_workflows':run.get('workflow_dependencies',{}),'_runtime_file_ids':run.get('file_ids',[])}
+    config={**config,'_saved_workflows':run.get('workflow_dependencies',{}),'_runtime_file_ids':run.get('file_ids',[]),
+            '_execution_time':run.get('scheduled_for') or run['created_at']}
     from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
     lifecycle=RunLifecycle(storage);execution_token=execution_token or uid()
     lifecycle.start(run,execution_token)
@@ -171,6 +172,8 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         evidence=[e for v in outputs.values() for e in v.get('evidence',[])]+[r['evidence'] for r in (records[-1] if records else []) if r.get('evidence')]
         run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=artifacts[-1] if artifacts else None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
         run['answer'] = public_run_answer(run['answer'], outputs)
+        from workflow_engine.executors.document.gmail_summary_batches import append_collection_notices
+        run['answer']=append_collection_notices(run['answer'],[outputs.get(node_id,{}).get('result',{}) for node_id in gmail_collections])
     except Exception as error:
         from infrastructure.llm.errors import public_error
         state=(graph.get_state(cfg).values or {}) if graph else {}

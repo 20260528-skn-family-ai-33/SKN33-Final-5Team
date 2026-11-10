@@ -1,7 +1,7 @@
 import type {ReactNode} from 'react';
-import {Workflow, History, Layers, FolderOpen, Unplug} from 'lucide-react';
+import {Workflow, CalendarClock, History, Layers, FolderOpen, Unplug} from 'lucide-react';
 
-export type WorkspaceDestination = 'workflows' | 'history' | 'nodes' | 'assets' | 'connections';
+export type WorkspaceDestination = 'workflows' | 'schedules' | 'history' | 'nodes' | 'assets' | 'connections';
 
 /** The same destinations and labels are available throughout the work area. */
 export function WorkspaceNav({active, onNavigate, disabled = false}: {
@@ -12,6 +12,7 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
   return <nav className="workspace-nav" aria-label="작업 공간">
     {([
       ['workflows', '워크플로우', Workflow],
+      ['schedules', '예약 실행', CalendarClock],
       ['history', '실행 기록', History],
       ['nodes', '작업 라이브러리', Layers],
       ['assets', '자료함', FolderOpen],

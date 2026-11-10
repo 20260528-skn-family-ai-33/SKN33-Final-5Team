@@ -18,10 +18,12 @@ function harness(search='',stored:Record<string,string>={}){
  const storage=new Map(Object.entries(stored)),requests:{path:string;body:any}[]=[];let cleanup:(()=>void)|undefined;
  let load:(p:string,b:any)=>Promise<any>=async()=>snapshot('A');
  const c:any={URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
- for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
+ c.queuedSourceRuns=[];
+ c.setScheduleSourceDirty=(value:boolean)=>{c.scheduleSourceDirty=value;};
+ for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
  Object.defineProperty(c,'canStartRun',{get:()=>!!c.testText.trim()||!!c.selected?.config?.schedule});
  c.request=(path:string,body:any)=>{requests.push({path,body});return load(path,body);};createContext(c);
- runInContext(compile(['applyRunInputs','clearRunInputs','remember','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun'].map(handler).join('\n')),c);
+ runInContext(compile(['applyRunInputs','clearRunInputs','remember','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
  return {c,storage,requests,load:(f:typeof load)=>{load=f;},mount:()=>runInContext(compile(restoreText),c),stop:()=>cleanup?.()};
 }
 test('explicit service overrides old conversation; persist selection only after successful load',async()=>{
@@ -132,4 +134,20 @@ test('unpinning history or starting a mutation ignores pending detail errors',as
 
 test('starting a new workflow restores the page top without scrolling to the focused composer',()=>{
  const h=harness('?screen=workflow');let focusOptions:any;h.c.input.current={focus:(options:any)=>{focusOptions=options;}};h.c.requestAnimationFrame=(f:()=>void)=>f();h.c.reset();assert.equal(h.c.scrollTarget.top,0);assert.equal(focusOptions.preventScroll,true);assert.equal(h.c.editorPanel,'conversation');
+});
+
+test('new-file expansion queues its own jobs and cannot reuse an older successful result',async()=>{
+ const h=harness();h.c.selected={id:'A',config:{schedule:{frequency:'hourly'}}};h.c.testText='';h.c.testRun={id:'old',status:'succeeded',answer:'예전 완료'};
+ h.load(async path=>path.endsWith('/test')?{status:'expanded',enqueued_count:2,job_ids:['new-1','new-2']}:snapshot('A'));
+ await h.c.runTest();
+ assert.deepEqual(Array.from(h.c.queuedSourceRuns),['new-1','new-2']);assert.equal(h.c.testRun,null);
+ assert.match(h.c.scheduleNotice,/새 파일 2개.*대기열/);assert.equal(h.c.inFlight.current,false);
+ assert.equal(h.requests.filter(item=>item.path.endsWith('/test')).length,1);
+});
+
+test('a skipped new-file request shows the skip reason without treating old results as a new success',async()=>{
+ const h=harness();h.c.selected={id:'A',config:{schedule:{frequency:'monthly'}}};h.c.testText='';h.c.testRun={id:'old',status:'succeeded'};
+ h.load(async path=>path.endsWith('/test')?{status:'skipped',message:'새로 처리할 파일이 없습니다.'}:snapshot('A'));
+ await h.c.runTest();assert.equal(h.c.testRun,null);assert.equal(h.c.queuedSourceRuns.length,0);
+ assert.equal(h.c.scheduleNotice,'새로 처리할 파일이 없습니다.');
 });

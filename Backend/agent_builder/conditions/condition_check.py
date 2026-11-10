@@ -69,6 +69,15 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
                     'condition_route':'conversation', 'condition_template':False, 'pending_questions':[],
                     'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
                         'detail':'outside_scope: 등록 Gmail 본문 조회·요약을 전체 설계기로 위임', 'mode':setting,'model_calls':0,'metrics':{}}]}
+        assessment = state.get('capability_assessment') or {}
+        tools = set(assessment.get('tool_ids', []))
+        table_tools = {'read_table', 'filter_sort', 'write_result', 'aggregate_table', 'calculate_columns'}
+        if (assessment.get('decision') == 'existing_tools' and tools and not tools & table_tools
+                and not any(r.get('kind') == 'table' for r in state.get('resources', []))):
+            return {'condition_ledger':None, 'condition_enforced':False, 'condition_required':False,
+                    'condition_route':'conversation', 'condition_template':False, 'pending_questions':[],
+                    'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
+                        'detail':'outside_scope: 비표 작업의 입력과 예약은 워크플로우 설계·검증기로 위임', 'mode':setting,'model_calls':0,'metrics':{}}]}
         user_requests=' '.join(m['content'] for m in state.get('messages',[]) if m['role']=='user')
         import re
         outside_table_scope=(re.search(r'비교|증감|증가율|감소율|변화율|반품|환불|정정|그 전주',user_requests) or

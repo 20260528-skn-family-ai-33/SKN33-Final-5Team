@@ -36,7 +36,7 @@ def test_written_schedule_values_are_read(text, expected):
     assert {k: v for k, v, _ in schedule_literals(text)} == expected
 
 
-@pytest.mark.parametrize('text', ['매월 1일 오전 9시에', '매달 말일 저장', '정렬과 예약은 필요 없어', '매일 말고 한 번만 실행해줘',
+@pytest.mark.parametrize('text', ['매년 1월 1일 오전 9시에', 'cron으로 실행', '정렬과 예약은 필요 없어', '매일 말고 한 번만 실행해줘',
                                   '3시간마다 비용 확인', '비용이 100만원 초과인 행만 저장해줘'])
 def test_no_schedule_is_invented(text):
     assert schedule_literals(text) == []
@@ -67,11 +67,13 @@ def test_ready_draft_without_the_schedule_is_rejected():
     assert any('예약' in p for p in plan_issues(result, draft))
 
 
-def test_monthly_request_is_unsupported_and_never_weekly():
+def test_monthly_request_is_supported_and_never_rewritten_as_weekly():
     sched = {'schedule.frequency': 'weekly', 'schedule.hour': '9', 'schedule.minute': '0', 'schedule.weekday': None, 'schedule.timezone': None}
     result = ledger('매월 1일 오전 9시에' + TAIL, {**FILTER, **sched}, ('schedule',))
-    assert result['decision'] == 'unsupported' and '월간 예약' in result['unsupported_actions']
-    assert result['slots']['schedule.frequency']['status'] != 'specified'
+    assert result['decision'] == 'clarify' and not result['unsupported_actions']
+    assert result['slots']['schedule.frequency']['value'] == 'monthly'
+    assert result['slots']['schedule.monthday']['value'] == 1
+    assert 'schedule.timezone' in result['unresolved']
     assert not _grounded_enum('schedule.frequency', 'weekly', '매월 1일 오전 9시에')
 
 

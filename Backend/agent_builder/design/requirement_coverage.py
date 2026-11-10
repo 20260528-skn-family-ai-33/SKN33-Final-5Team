@@ -47,15 +47,25 @@ def _arguments(node):
 def _matches(spec,node,draft,sources):
     tool=node['tool'];settings=node['settings'];operation=settings.get('operation')
     args=_arguments(node);kind=spec['kind']
-    if kind=='gmail_summary':
-        if tool!='compose_answer' or operation or settings.get('instructions')!=spec['request']:return False
+    if kind=='schedule':
+        from contracts.models import ScheduleSpec
+        return (bool(draft.get('schedule')) and
+                ScheduleSpec.model_validate(draft['schedule']).model_dump()==spec['schedule'] and
+                draft.get('report_destination')=='reports')
+    if kind in ('gmail_summary', 'gmail_scheduled_summary'):
+        if tool!='compose_answer' or operation or settings.get('instructions')!=(spec.get('summary_instructions') or spec['request']):return False
         documents=[binding for binding in node['bindings'] if binding['input']=='documents']
         if len(documents)!=1 or documents[0]['output']!='documents':return False
         source=next((n for n in draft['workflow']['nodes'] if n['id']==documents[0]['node_id']),None)
         if not source or source['tool']!='email.list' or source['settings'].get('operation')!='read_messages':return False
         read_args=_arguments(source)
+        if kind=='gmail_scheduled_summary':
+            if draft.get('schedule')!=spec['schedule'] or draft.get('report_destination')!='reports':return False
+            query=spec['query']
+        else:
+            query=None
         return (not source['bindings'] and read_args.get('max_results')==spec['max_results']
-                and read_args.get('query') is None and set(read_args)<={'query','max_results'})
+                and read_args.get('query')==query and set(read_args)<={'query','max_results'})
     if kind=='read':
         return tool in ('read_table','read_document') and set(spec['file_ids'])<=sources(node['id'])
     if kind in ('extract_fields', 'receipt_items'):

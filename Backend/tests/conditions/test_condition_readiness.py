@@ -318,7 +318,7 @@ def test_template_schedule_uses_confirmed_timezone_and_weekday():
     s['resources']=[{'id':'a','kind':'table','columns':['값'],'text':''}]
     raw=proposal(s,{'schedule.frequency':'weekly','schedule.hour':'15','schedule.minute':'0','schedule.timezone':'Asia/Seoul','schedule.weekday':'4'},['schedule'])
     s['condition_ledger']=checked(s,raw);compiled=compile_conditions(s)['draft']
-    assert compiled['schedule']=={'frequency':'weekly','hour':15,'minute':0,'weekday':4,'timezone':'Asia/Seoul'}
+    assert compiled['schedule']=={'frequency':'weekly','hour':15,'minute':0,'weekday':4,'timezone':'Asia/Seoul','monthday':None,'month_end':False}
     assert plan_issues(s['condition_ledger'],compiled)==[]
 
 

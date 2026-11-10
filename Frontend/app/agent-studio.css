@@ -102,3 +102,7 @@
 .as-run-file-bar>div:first-child{min-width:0;display:grid;gap:3px;overflow-wrap:anywhere}
 .as-run-file-bar small{font-size:12px;color:var(--as-muted)}
 .as-run-file-bar strong{font-size:15px}
+
+.as-schedule-gmail{margin:16px 0}.as-schedule-gmail>.as-small-muted{margin-bottom:12px}.as-schedule-gmail .service-connection-card{max-width:460px}
+
+.as-source-version{display:block;font-size:10px;color:var(--a4b-muted);overflow-wrap:anywhere}

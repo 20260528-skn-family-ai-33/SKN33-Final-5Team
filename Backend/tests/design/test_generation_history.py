@@ -124,6 +124,22 @@ def test_validation_exhausted_after_repairs_is_blocked(tmp_path):
     assert blocked['reason']
 
 
+@pytest.mark.parametrize('new_turn',[False,True])
+def test_pending_failed_repair_keeps_budget_only_for_the_same_input(tmp_path,new_turn):
+    s=session(tmp_path);seen=[]
+    def interrupted(state):
+        count=state.get('repair_count',0)
+        if count:raise TimeoutError('interrupted repair')
+        return {'draft':{**draft(),'tool_ids':[]},'repair_count':count+1}
+    with pytest.raises(TimeoutError):
+        call(tmp_path,'message',id=s['id'],revision=0,content=PROMPT,conversation=interrupted)
+    def resumed(state):
+        seen.append(state.get('repair_count',0))
+        return complete(state)
+    call(tmp_path,'message',id=s['id'],revision=0,content=PROMPT+' 새 요청입니다.' if new_turn else PROMPT,conversation=resumed)
+    assert seen==[0 if new_turn else 1]
+
+
 @pytest.mark.parametrize('mode,expected', [('shadow', 'waiting_confirmation'), ('enforce', 'failed')])
 def test_verifier_errors_only_block_when_enforced(tmp_path, monkeypatch, mode, expected):
     from verification.workflow.contracts import VerificationResult

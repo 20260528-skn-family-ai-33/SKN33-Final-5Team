@@ -75,9 +75,15 @@ def health(config):
         'model_digest':model.get('digest') if model else None,'auto_download':False}
 
 
-def grounded_output_schema(data):
+def grounded_output_schema(data, *, compact=False):
     """Constrain quoted evidence on the wire; original output checks remain authoritative."""
     schema=VerificationOutput.model_json_schema();variants=[]
+    if compact:
+        # The complete sources remain in the input. Do not repeat them in the
+        # decoder grammar when they exhaust the context. Runtime validation
+        # still requires an exact substring of the selected evidence source.
+        schema['$defs']['EvidenceRef']['properties']['evidence_id']['enum']=list(evidence_bank(data))
+        return schema
     for identifier,text in evidence_bank(data).items():
         # Every source remains present. Long sources are covered by overlapping
         # exact spans, within the supplied quote contract's 1000-character limit.
@@ -91,11 +97,22 @@ def grounded_output_schema(data):
     return schema
 
 def call_qwen(data:VerificationInput,config:OllamaConfig):
-    payload={'input':data.model_dump(mode='json'),'evidence_bank':evidence_bank(data)}
+    wire=data.model_dump(mode='json')
+    used={n.tool for draft in (data.previous_draft,data.candidate_draft) if draft for n in draft.workflow.nodes}
+    # Discovery-only tools already have empty contracts in the bridge. Omit
+    # only these empty values on the wire; keep every tool identity/status and
+    # all contracts used by either draft. The recorded input is unchanged.
+    wire['tools']=[{k:v for k,v in t.items() if v not in ({},[])} if t['id'] not in used else t for t in wire['tools']]
+    payload={'input':wire,'evidence_bank':evidence_bank(data)}
     content=json.dumps(payload,ensure_ascii=False,allow_nan=False,separators=(',',':'))
     schema=grounded_output_schema(data)
     # Conservative byte bound + reserved template room. No silent document truncation.
-    budget=len((SYSTEM+content+json.dumps(schema,ensure_ascii=False)).encode('utf-8'))+4096+config.num_predict
+    def size(schema):
+        return len((SYSTEM+content+json.dumps(schema,ensure_ascii=False,separators=(',',':'))).encode('utf-8'))+4096+config.num_predict
+    budget=size(schema)
+    if budget>config.num_ctx:
+        schema=grounded_output_schema(data,compact=True)
+        budget=size(schema)
     if budget>config.num_ctx:raise RuntimeError('context_budget_exceeded')
     started=time.perf_counter()
     if config.provider=='vllm':
@@ -108,7 +125,7 @@ def call_qwen(data:VerificationInput,config:OllamaConfig):
         result=VerificationOutput.model_validate_json(choices[0]['message'].get('content',''))
         return result,{'latency_ms':(time.perf_counter()-started)*1000,'reported_model':raw.get('model'),'usage':raw.get('usage')}
     raw=http_json(config,'/api/chat',{'model':config.model,'messages':[{'role':'system','content':SYSTEM},{'role':'user','content':content}],
-        'format':schema,'think':False,'stream':False,'keep_alive':'5m',
+        'format':schema,'think':False,'truncate':False,'shift':False,'stream':False,'keep_alive':'5m',
         'options':{'temperature':0,'seed':42,'num_ctx':config.num_ctx,'num_predict':config.num_predict}})
     if not raw.get('done') or raw.get('done_reason')!='stop':raise RuntimeError('incomplete_generation')
     if raw.get('message',{}).get('thinking','').strip():raise RuntimeError('unexpected_thinking_mode')

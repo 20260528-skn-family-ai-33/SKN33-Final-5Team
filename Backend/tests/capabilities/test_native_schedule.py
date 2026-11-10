@@ -18,7 +18,7 @@ def test_time_of_day_words_belong_to_the_schedule_label(label):
     assert _native_schedule_label(label)
 
 
-@pytest.mark.parametrize('label', ['매주 오전 8시 Slack 전송', '월간 예약', '매일 오전 이메일 발송', '예약 활성화'])
+@pytest.mark.parametrize('label', ['매주 오전 8시 Slack 전송', '연간 예약', '매일 오전 이메일 발송', '예약 활성화'])
 def test_other_gaps_are_never_schedule_labels(label):
     assert not _native_schedule_label(label)
 
@@ -43,7 +43,7 @@ def test_reconciled_schedule_forces_the_condition_checker():
 
 
 @pytest.mark.parametrize('text,actions', [
-    ('매월 1일 오전 9시에 표를 JSON으로 저장해줘.', ['월간 예약']),
+    ('매년 1월 1일 오전 9시에 표를 JSON으로 저장해줘.', ['연간 예약']),
     ('매주 월요일 오전 8시에 표를 저장하고 슬랙으로 보내줘.', ['매주 월요일 오전 8 시 예약', '외부 슬랙 전송']),
 ])
 def test_real_gaps_stay_refused(text, actions):

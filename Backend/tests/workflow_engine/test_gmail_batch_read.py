@@ -5,8 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from service.dispatch import handle
-from tests.workflow_engine.test_workflow import bind, edge, node, saved
 from workflow_engine.catalog.canonical import operation_spec, ports
 from workflow_engine.unified_tools import dispatcher
 from workflow_engine.unified_tools.expansion.google_adapters import GoogleApiError, GoogleJsonTransport, read_gmail_messages
@@ -30,7 +28,7 @@ def test_read_messages_preserves_real_ids_and_order_without_adding_a_business_to
         assert operation=='email.get' and args['format']=='full'
         return message(args['message_id'],'본문 '+args['message_id'])
 
-    result=read_gmail_messages(call)
+    result=read_gmail_messages(call,max_results=5)
     assert calls[0]==('email.list',{'query':None,'max_results':5})
     assert [args['message_id'] for _,args in calls[1:]]==ids
     assert [d['source_id'] for d in result['documents']]==['gmail:'+id for id in ids]
@@ -58,11 +56,12 @@ def test_read_messages_handles_fewer_or_zero_matching_messages(count):
     assert result['complete']
 
 
-@pytest.mark.parametrize('limit',[0,11,-1,True,'5',1.5])
+@pytest.mark.parametrize('limit',[0,501,-1,True,'5',1.5])
 def test_read_messages_rejects_out_of_bound_counts_before_any_provider_call(limit):
     def call(*args):pytest.fail('Invalid batch made an external call')
-    with pytest.raises(ValueError,match='1~10'):read_gmail_messages(call,max_results=limit)
-    step=node('mail','email.list',operation='read_messages',arguments_json=json.dumps({'max_results':limit}))
+    with pytest.raises(ValueError,match='1~500'):read_gmail_messages(call,max_results=limit)
+    step={'id':'mail','tool':'email.list','label':'mail','bindings':[],
+          'settings':{'operation':'read_messages','arguments_json':json.dumps({'max_results':limit})}}
     assert workflow_errors({'entry':'mail','nodes':[step],'edges':[]},['email.list'],[])
 
 
@@ -92,11 +91,13 @@ def test_read_messages_marks_unreadable_and_truncated_bodies_and_bounds_total_co
     assert result['documents'][0]['body_unavailable'] is True
     assert '텍스트 본문이 없습니다' in result['documents'][0]['text']
     assert result['truncated_message_ids']==[str(i) for i in range(1,10)]
-    assert sum(len(d['text']) for d in result['documents'])<=40000
+    assert all(len(d['text'])<=8000 for d in result['documents'])
     assert all(d['text'].endswith('[이후 본문 생략]') for d in result['documents'][1:])
 
 
 def test_service_executes_latest_five_summary_with_only_read_requests_and_real_evidence(tmp_path,monkeypatch):
+    from service.dispatch import handle
+    from tests.workflow_engine.test_workflow import bind, edge, node, saved
     from workflow_engine import runner
     from workflow_engine.executors import agent_factory
 

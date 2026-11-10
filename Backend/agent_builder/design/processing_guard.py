@@ -5,6 +5,18 @@ processing node implements every requested operation, condition or output.
 """
 
 IO_ONLY = frozenset({'read_table', 'read_document', 'write_result', 'export_result', 'finish'})
+# These registered operations only retrieve mail. An operation-bearing source is
+# still a source, and cannot stand in for the requested summary/answer processing.
+GMAIL_READ_OPERATIONS = {'email.list': frozenset({'execute', 'read_messages'}),
+                         'email.get': frozenset({'execute'})}
+
+
+def _io_only(node):
+    tool = node['tool']
+    operation = node.get('settings', {}).get('operation')
+    if tool in GMAIL_READ_OPERATIONS:
+        return operation in GMAIL_READ_OPERATIONS[tool]
+    return tool in IO_ONLY and not operation
 
 
 def processing_issues(state, draft):
@@ -17,13 +29,20 @@ def processing_issues(state, draft):
     if not capability_enforced(state) or blocking_issue(state):
         return []
     assessment = state.get('capability_assessment') or {}
-    processing = set(assessment.get('tool_ids', [])) - IO_ONLY
+    processing = set(assessment.get('tool_ids', [])) - IO_ONLY - GMAIL_READ_OPERATIONS.keys()
     nodes = workflow.get('nodes', [])
     if not processing or not nodes:
         return []
+    # The registered Gmail read -> grounded-answer contract has a distinct
+    # processing stage. Another unrelated processor does not cover its absence.
+    if ('compose_answer' in processing and
+            any(n['tool'] in GMAIL_READ_OPERATIONS for n in nodes) and
+            not any(n['tool']=='compose_answer' for n in nodes)):
+        return ['지원 판단에 Gmail 요약·근거 답변이 포함됐지만 초안에 실제 요약 단계가 없습니다. '
+                '메일 조회만으로 요청을 완료하거나 저장할 수 없습니다. 요청한 처리 단계를 복원하세요.']
     # An operation may have a different contract from the native tool sharing
     # its ID. Leave those nodes to operation validation and semantic review.
-    if any(n['tool'] not in IO_ONLY or n.get('settings', {}).get('operation') for n in nodes):
+    if any(not _io_only(n) for n in nodes):
         return []
     names = {t['id']: t['name'] for t in TOOLS}
     expected = '·'.join(names.get(t, t) for t in sorted(processing))

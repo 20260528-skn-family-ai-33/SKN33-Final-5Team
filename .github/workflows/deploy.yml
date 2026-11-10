@@ -167,7 +167,49 @@ jobs:
           if [[ -f tests/infrastructure/test_model_migration.py ]]; then
             tests+=(tests/infrastructure/test_model_migration.py)
           fi
+          if [[ -f tests/design/test_runtime_file_planning.py ]]; then
+            tests+=(tests/design/test_runtime_file_planning.py)
+          fi
+          if [[ -f tests/design/test_qwen35_handoff.py ]]; then
+            tests+=(tests/design/test_qwen35_handoff.py)
+          fi
+          for path in tests/design/test_request_execution_contracts.py tests/verification/test_context_payload.py \
+                      tests/design/test_fill_missing_value_types.py tests/design/test_runtime_file_questions.py \
+                      tests/design/test_explicit_keep_policy.py tests/design/test_explicit_output_columns.py \
+                      tests/design/test_deferred_reader_schema.py tests/design/test_final_table_criteria.py \
+                      tests/design/test_human_review_records.py tests/design/test_bounded_output_columns.py \
+                      tests/design/test_pending_preview_contract.py; do
+            if [[ -f "$path" ]]; then tests+=("$path"); fi
+          done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"
+      - name: Test recurring schedules, Gmail summaries and library sources
+        if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/workflow_engine/test_library_schedule_sources.py') != ''
+        working-directory: Backend
+        run: |
+          .venv-agent/bin/python -m pytest -q \
+            tests/workflow_engine/test_library_schedule_sources.py \
+            tests/workflow_engine/test_recurrence.py \
+            tests/workflow_engine/test_gmail_scheduling.py \
+            tests/workflow_engine/test_schedule_listing.py \
+            tests/workflow_engine/test_gmail_batch_read.py \
+            tests/workflow_engine/test_gmail_external_bodies.py \
+            tests/workflow_engine/test_public_gmail_runs.py \
+            tests/workflow_engine/test_gmail_summary_batches.py \
+            tests/capabilities/test_gmail_schedule_design.py \
+            tests/capabilities/test_gmail_hourly_unread_design.py \
+            tests/capabilities/test_gmail_summary.py \
+            tests/capabilities/test_native_schedule.py \
+            tests/conditions/test_schedule_literals.py \
+            tests/conditions/test_extended_schedule_literals.py \
+            tests/conditions/test_condition_readiness.py \
+            tests/conditions/test_pr28_review.py \
+            tests/design/test_attachment_precheck.py \
+            tests/design/test_attachment_deferral.py \
+            tests/design/test_node_completeness.py \
+            tests/design/test_service_connection_context.py \
+            tests/design/test_completion.py \
+            tests/infrastructure/test_asset_library.py \
+            tests/infrastructure/test_team_asset_library.py
       - name: Test receipt workflows and saved run results
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
         working-directory: Backend

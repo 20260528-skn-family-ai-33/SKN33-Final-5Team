@@ -77,6 +77,7 @@ def session_action(c):
 
 def _session_action(c):
     storage=c.storage;data=c.data;action=c.action;api_key=c.api_key;conversation=c.conversation;connection=None
+    storage.gmail_connected=data.get('gmail_connected') if type(data.get('gmail_connected')) is bool else None
     try:
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in STATE_ONLY else None)
         if action in {'message','confirm'}:
@@ -175,7 +176,7 @@ def _session_action(c):
                 if same and not blocking_issue(state):graph.invoke(None,config)
                 else:
                     graph.update_state(config,{'messages':state.get('messages',[]) if same else state.get('messages',[])+[{'role':'user','content':content}],
-                                               'confirmed':False},as_node='resources')
+                                               'confirmed':False,**({'repair_count':0} if not same else {})},as_node='resources')
                     graph.invoke(None,config)
             else:
                 base=storage.agent(s['agent_id']) if s.get('agent_id') else None

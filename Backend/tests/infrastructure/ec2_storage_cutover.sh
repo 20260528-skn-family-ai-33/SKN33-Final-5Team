@@ -64,7 +64,7 @@ absent -E '^(run |stop |start )' "$fixture"/running-sqlite
 check exited sqlite none postgres ok offline-cutover
 grep -q -- '--sqlite-stopped-at=2026-' "$fixture"/offline-cutover
 grep -q -- "^start $mock_new_id" "$fixture"/offline-cutover
-absent -q -- "^stop $mock_old_id" "$fixture"/offline-cutover
+absent -q -- "^stop .*${mock_old_id}$" "$fixture"/offline-cutover
 check exited sqlite preflight postgres blocked bad-receipt
 check exited sqlite none postgres ok fresh-cutover a4b-fresh-test
 grep -q '^run .*--volume a4b-fresh-test:/app/data .*--sqlite-stopped-at=' "$fixture"/fresh-cutover
@@ -76,7 +76,8 @@ absent -q -- "^start $mock_old_id" "$fixture"/failed-cutover
 grep -q -- "^rename $mock_old_id a4b-jhd-aws$" "$fixture"/failed-cutover
 check exited postgres none postgres blocked unrelated-stopped
 check running postgres none postgres ok normal-deploy
-grep -q -- "^stop $mock_old_id" "$fixture"/normal-deploy
+grep -q -- "^stop --time 60 $mock_old_id$" "$fixture"/normal-deploy
+grep -q -- '^create .*--stop-timeout 60 ' "$fixture"/normal-deploy
 absent -q -- '--sqlite-stopped-at' "$fixture"/normal-deploy
 grep -q -- '^run .*--network none .*--workdir /app/Backend .*ml.svm56.bundle_cli check --probe' "$fixture"/normal-deploy
 check running postgres svm postgres blocked bad-svm

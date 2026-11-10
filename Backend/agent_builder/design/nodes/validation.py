@@ -8,6 +8,8 @@ def validate_node(state):
     from agent_builder.conditions.condition_readiness import literal_condition_issues, written_comparison_issues
     issues.extend(literal_condition_issues(state))
     issues.extend(written_comparison_issues(state, draft))
+    from agent_builder.design.explicit_table_criteria import explicit_draft_issues
+    issues.extend(explicit_draft_issues(state,draft))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']
     if not draft['name'].strip(): issues.append('에이전트 이름이 필요합니다.')
     from agent_builder.design.name_policy import invalid_workflow_name
@@ -68,11 +70,24 @@ def validate_node(state):
             if not f['compare_field'] and f['operator'] not in ['is_empty','not_empty'] and f['value'] is None:issues.append('조건 비교에 필요한 기준 값이 없습니다.')
     if draft.get('schedule'):
         from workflow_engine.scheduling.schedules import schedule_errors
+        from agent_builder.conditions.input_requirements import execution_requirements, execution_request_required
         if not questions:issues+=schedule_errors(draft['schedule'])
-        if not tables:issues.append('예약 실행할 표 데이터 소스가 없습니다.')
+        class DesignResources:
+            def asset(self, identifier):
+                if identifier not in resources:raise ValueError('예약 실행에 사용할 자료를 연결하세요.')
+                return resources[identifier]
+        dependencies = state.get('workflow_dependencies') or {}
+        for required in execution_requirements(draft, DesignResources(), dependencies=dependencies):
+            if required['required_before_start'] and not required['ready']:
+                issues += required['issues']
+        # Pinned children are resolved at save/activation. A design catalogue alone
+        # cannot establish their request inputs, so their final runtime gate owns it.
+        has_unresolved_child = any(n['tool']=='saved_workflow' and n['id'] not in dependencies
+                                   for n in (draft.get('workflow') or {}).get('nodes',[]))
+        if not has_unresolved_child and execution_request_required(draft, dependencies):
+            issues.append('예약 실행에 매번 입력해야 하는 사용자 요청이 필요합니다. 저장된 입력이나 앞 단계 결과를 연결하세요.')
         if draft.get('report_destination')!='reports':issues.append('예약 결과의 저장 위치가 미정입니다.')
         if draft.get('workflow') and any(n['tool']=='ask_user' for n in draft['workflow']['nodes']):issues.append('예약 실행에는 사용자 응답 대기 노드를 연결할 수 없습니다.')
-        if not set(draft['tool_ids']) & {'write_result','export_result','reply_review'}:issues.append('예약 보고서를 저장할 출력 도구가 필요합니다.')
     draft['questions']=list(dict.fromkeys(questions))[:3]
     from agent_builder.capabilities.capability_gate import capability_enforced, blocking_issue, draft_delivery_issue
     support_conflict=bool(draft['unsupported'] and capability_enforced(state) and blocking_issue(state) is None)
@@ -98,3 +113,4 @@ def validate_node(state):
             'detail':f"{len(coverage['tasks'])}개 요구사항의 실행 설정·데이터 연결을 대조했습니다.",
             'tasks':coverage['tasks']})
     return {'draft':draft,'requirement_coverage':coverage,'issues':list(dict.fromkeys(issues)),'status':status,'trace':trace}
+

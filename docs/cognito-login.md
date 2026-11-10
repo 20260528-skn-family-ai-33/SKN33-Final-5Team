@@ -2,7 +2,15 @@
 
 React → Node 세션 → Cognito User Pool → RDS `a4b.users` 구조다. Cognito Managed login에서 회원가입·이메일 인증·로그인·비밀번호 재설정을 처리한다. 인증 코드는 PKCE S256, 브라우저별 state, ID 토큰 nonce로 검증한다. Node는 `aws-jwt-verify`로 서명·발급자·클라이언트·만료·토큰 종류를 검사한다.
 
-브라우저에는 HttpOnly·SameSite=Lax 세션 쿠키만 전달한다. HTTPS에서는 Secure 및 `__Host-` 접두사를 적용한다. Access/ID/Refresh Token은 브라우저 저장소로 전달하지 않는다. 서버 메모리 세션이므로 서버 재시작 시 다시 로그인해야 하며, 현재 구성은 Node 프로세스 한 개를 전제로 한다.
+브라우저에는 HttpOnly·SameSite=Lax 세션 쿠키만 전달한다. HTTPS에서는 Secure 및 `__Host-` 접두사를 적용한다. Access/ID/Refresh Token은 브라우저 저장소로 전달하지 않는다. 로그인 세션과 Cognito 로그인 대기 정보는 `EASYFLOW_DATA_DIR/auth-sessions.sqlite`에 AES-256-GCM으로 암호화해 저장하므로 같은 영속 볼륨을 사용하는 서버 재시작·배포 후에도 유지된다. 쿠키 원문은 저장하지 않으며, 별도 `auth-session.key`가 필요하다. 세션의 원래 만료 시각과 로그아웃·비활성 계정 차단은 재시작 후에도 적용된다.
+
+기존 메모리 세션은 이 저장소로 이전할 수 없어 이 변경을 처음 배포할 때 한 번 다시 로그인해야 한다. DB와 키를 함께 백업·복원하고 키의 접근 권한 0600을 유지한다. DB가 있는데 키가 없으면 새 키로 덮어쓰지 않고 시작을 거부한다. 다른 호스트에서 볼륨을 공유하지 않는 다중 인스턴스 구성에는 별도 공유 세션 저장소가 필요하다. Gmail 연결 토큰은 기존 사용자별 `easyflow.sqlite`와 `credential.key`에 별도로 보관한다.
+
+종료 시 새 인증 요청을 차단하고 이미 시작한 토큰 갱신·로그인 콜백을 저장한 후 DB를 닫는다. EC2 배포와 Compose는 이 처리가 끝나도록 종료 유예를 60초로 설정한다.
+
+Gmail도 이미 시작한 OAuth 콜백·토큰 갱신·계정 확인을 마친 뒤 사용자 저장소를 닫는다. 완료된 연결은 같은 사용자 ID·데이터 볼륨·보호 키를 사용하는 재시작에서 유지된다. Google 승인 화면에서 아직 돌아오지 않은 연결 요청의 대기 정보는 메모리이므로 재시작 후 다시 시작해야 한다. 기존에 완료된 연결을 이 실패 때문에 삭제하지 않는다.
+
+사용자별 `easyflow.sqlite`의 `gmail_connection_events`에는 최근 500개의 연결 시작·저장·갱신·실패·명시적 해제·프로세스 시작 시각과 연결 존재 여부를 남긴다. 연결 저장·해제와 해당 이력은 같은 트랜잭션으로 처리한다. 토큰·키·이메일·공급자 응답 원문은 기록하지 않는다. 공용 OAuth 콜백의 서비스를 식별하지 못한 실패는 `oauth_callback_unattributed`로 구분하며 Gmail 실패로 단정하지 않는다. 이 이력은 적용 이전 사건을 소급 복구하지 않는다.
 
 ## 1. AWS 계정 확인과 Cognito 생성
 
@@ -114,14 +122,14 @@ Google Sheets 등 외부 서비스의 OAuth 콜백은 `EASYFLOW_PUBLIC_URL/api/o
 ```bash
 npm run check
 npm run build
-node --import tsx --test Backend/api/tests/cognito-auth.test.ts Backend/api/tests/oauth.test.ts Backend/api/tests/workspace-oauth.test.ts Backend/api/tests/agent-builder-locks.test.ts Backend/api/tests/webhook-response.test.ts Backend/api/tests/webhook-api.test.ts Frontend/tests/auth.test.ts Frontend/tests/frontend-dom.test.ts
+node --import tsx --test Backend/api/tests/cognito-auth.test.ts Backend/api/tests/auth-session-persistence.test.ts Backend/api/tests/oauth.test.ts Backend/api/tests/workspace-oauth.test.ts Backend/api/tests/agent-builder-locks.test.ts Backend/api/tests/webhook-response.test.ts Backend/api/tests/webhook-api.test.ts Frontend/tests/auth.test.ts Frontend/tests/frontend-dom.test.ts
 ```
 
 두 사용자 간 워크플로우·연결 계정·실행/다운로드 접근 차단, 요청 출처 검사, 잘못된 토큰 거부, 콜백 재사용 방지, 동시 갱신, 로그아웃, 비활성 계정 접근 차단을 확인한다.
 
 운영 배포 전에 다음 항목을 팀에서 결정한다.
 
-- 메모리 세션·로그인 대기 상태는 Node 프로세스 한 개에서 사용한다. 재시작 시 재로그인이 필요하며 다중 인스턴스·프로세스 운영에는 공유 세션 저장소가 필요하다.
+- 로그인 세션 DB와 보호 키를 앱 데이터 영속 볼륨에 함께 유지한다. 다중 호스트 운영에는 모든 호스트가 사용할 공유 세션 저장소가 필요하다.
 - `/auth/login`의 전역 대기 500개 제한만으로는 반복 요청을 막을 수 없다. 공개 배포 전에 WAF 또는 앱의 요청 제한을 적용한다. 앱에서 프록시 IP 헤더를 사용할 경우 신뢰하는 프록시에서 전달한 값만 사용한다.
 - 현재 이메일 인증을 통한 공개 회원가입이 가능하다. 시연용 제한 가입과 공개 가입 중 운영 정책을 정하고, 허용 목록·관리자 계정 생성 또는 사용량 제한을 준비한다.
 - 기본 Compose 포트는 127.0.0.1에 바인딩된다. ALB가 직접 연결하면 운영용 포트 설정과 보안 그룹을 준비하거나, EC2의 역방향 프록시를 통해 연결한다. 사용자별 SQLite·파일 볼륨은 EBS 등 영속 저장소에 두고 백업·복구 절차를 정한다.

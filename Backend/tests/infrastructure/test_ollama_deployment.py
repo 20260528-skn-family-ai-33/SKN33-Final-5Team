@@ -1,7 +1,17 @@
 import json
 import pytest
+from pathlib import Path
 from agent_builder.design.nodes.direct_conversation import OllamaPlanner
 from agent_builder.capabilities.capability_check import make_capability_check
+
+
+def test_model_only_example_does_not_change_planning_policy():
+    path=Path(__file__).resolve().parents[3]/'infrastructure/env/.env.aws.qwen35-9b.example'
+    keys={line.split('=',1)[0] for line in path.read_text().splitlines()
+          if line.strip() and not line.lstrip().startswith('#') and '=' in line}
+    assert not keys & {'A4B_PLANNER_MODE','A4B_PLANNER_PROMPT','A4B_REQUIREMENT_MODE',
+                       'A4B_REQUIREMENT_GENERATION_MODE','A4B_VERIFIER_MODE'}
+    assert {'A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL'} <= keys
 
 
 def test_finetune_native_wire_and_separate_capability_model(monkeypatch):
@@ -30,9 +40,26 @@ def test_finetune_native_wire_and_separate_capability_model(monkeypatch):
     assert seen[-1]['model']=='final664'
     for p in seen:
         assert p['think'] is False
+        assert p['truncate'] is False and p['shift'] is False
         assert p['options']['num_ctx']==32768
         assert p['options']['num_predict']==4096
         assert p['options']['temperature']==0
+
+
+def test_native_length_limit_rejects_even_parseable_partial_content(monkeypatch):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL','https://example.test/v1')
+    calls=[]
+    class Response:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def read(self):return json.dumps({'message':{'content':'{}'},'done':True,'done_reason':'length'}).encode()
+    def open_request(request,timeout):
+        calls.append(request);return Response()
+    monkeypatch.setattr('urllib.request.urlopen',open_request)
+    with pytest.raises(ValueError,match='출력 길이 제한'):
+        OllamaPlanner('final664').invoke([{'role':'user','content':'test'}])
+    assert len(calls)==1
 
 
 @pytest.mark.parametrize('key,value',[

@@ -19,6 +19,7 @@ import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWit
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
+import {withScheduleSourceContext,type ScheduleSourceContext} from './schedule-source';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
 // Enforce isolation at the HTTP boundary for every MIME, including SVG/XHTML.
@@ -29,8 +30,14 @@ const webhookSecurityHeaders=Object.freeze({
 });
 
 /** Each member has independent stores, credentials, execution queues and OAuth state. */
-export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string){
+export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string,sourceAuthorization?:Pick<ScheduleSourceContext,'authorizeOwner'|'authorizeTeam'>){
+const sourceContext:ScheduleSourceContext={directory:dataDirectory(),ownerId,...sourceAuthorization};
 const store=new Store(dataDirectory());
+function recordGmailEvent(event:Parameters<Store['recordGmailEvent']>[0]){
+ // Diagnostic-only events must never replace the operation's original outcome.
+ try{store.recordGmailEvent(event);}catch{}
+}
+recordGmailEvent('runtime_opened');
 const scheduleState=createBuilderScheduleState();
 const storage=storageConfig();
 const agentCheckpointer=storage.kind==='postgres'?new PostgresCheckpointSaver(builderDatabase(storage),ownerId||'local'):new SqliteCheckpointSaver(dataDirectory('agent-checkpoints.sqlite'));
@@ -45,22 +52,34 @@ let gmailConnectionCompleted=0;
 let gmailIdentityRevision=0;
 let gmailIdentity:{revision:number;email:string}|undefined;
 let gmailIdentityPending:{revision:number;request:Promise<string>}|undefined;
+const credentialInFlight=new Set<Promise<unknown>>();
 const gmailAccountError='연결된 Gmail 주소를 확인하지 못했어요. 상태를 새로고침하거나 계정을 다시 연결해주세요.';
 function resetGmailIdentity(){
  gmailIdentityRevision++;
  gmailIdentity=undefined;
  gmailIdentityPending=undefined;
 }
-async function gmailAccessToken():Promise<string|undefined>{
- if(!store.gmailConnected())return undefined;
- const saved=store.getGmailCredential();
- const current=await getUsableCredential(saved,updated=>{
-  const latest=store.getGmailCredential();
-  if(latest.data.accessToken!==saved.data.accessToken||latest.data.refreshToken!==saved.data.refreshToken)throw new Error('Gmail 연결이 바뀌었습니다.');
-  store.saveGmailCredential(updated);
+function credentialOperation<T>(work:()=>Promise<T>):Promise<T>{
+ if(closing)return Promise.reject(new Error('프로그램이 종료 중입니다. 잠시 후 다시 시도해주세요.'));
+ const operation=work();credentialInFlight.add(operation);
+ return operation.finally(()=>{credentialInFlight.delete(operation);});
+}
+function gmailAccessToken():Promise<string|undefined>{
+ // The scheduler and interactive requests share this path. A rotating token must
+ // finish its compare-and-save before shutdown closes the workspace database.
+ return credentialOperation(async()=>{
+  try{
+   if(!store.gmailConnected())return undefined;
+   const saved=store.getGmailCredential();
+   const current=await getUsableCredential(saved,updated=>{
+    const latest=store.getGmailCredential();
+    if(latest.data.accessToken!==saved.data.accessToken||latest.data.refreshToken!==saved.data.refreshToken)throw new Error('Gmail 연결이 바뀌었습니다.');
+    store.saveGmailCredential(updated,'refreshed');
+   });
+   if(current.data.scope!==GMAIL_OAUTH.scope||typeof current.data.accessToken!=='string'||!current.data.accessToken)throw new Error('Gmail 읽기 권한으로 계정을 다시 연결해주세요.');
+   return current.data.accessToken;
+  }catch(error){recordGmailEvent('token_refresh_failed');throw error;}
  });
- if(current.data.scope!==GMAIL_OAUTH.scope||typeof current.data.accessToken!=='string'||!current.data.accessToken)throw new Error('Gmail 읽기 권한으로 계정을 다시 연결해주세요.');
- return current.data.accessToken;
 }
 async function gmailEmail(force=false):Promise<string>{
  if(!store.gmailConnected())throw new Error('Gmail 계정을 먼저 연결해주세요.');
@@ -83,7 +102,7 @@ async function gmailEmail(force=false):Promise<string>{
  try{return await pending.request;}
  finally{if(gmailIdentityPending===pending)gmailIdentityPending=undefined;}
 }
-const stopScheduler=startBuilderScheduler(store,scheduleState,gmailAccessToken);
+const stopScheduler=withScheduleSourceContext(sourceContext,()=>startBuilderScheduler(store,scheduleState,gmailAccessToken));
 const controllers=new Map<string,AbortController>();
 const inFlight=new Set<string>();
 type PendingWebhook={res:ServerResponse;node:FlowNode;mode:'lastNode'|'responseNode';timer?:ReturnType<typeof setTimeout>;responseError?:string};
@@ -91,6 +110,7 @@ const pendingWebhooks=new Map<string,PendingWebhook>();
 const responseTimeout=Number(process.env.EASYFLOW_WEBHOOK_RESPONSE_TIMEOUT_MS??60000);
 if(!Number.isInteger(responseTimeout)||responseTimeout<0||responseTimeout>2147483647)throw new Error('Webhook 응답 제한 시간은 0부터 2147483647 사이의 밀리초로 설정해주세요.');
 let closing=false;
+let closePromise:Promise<void>|undefined;
 if(!store.listFlows().length)store.saveFlow(makeFlow());
 // Completed node checkpoints are durable. An interrupted external request may
 // already have taken effect, so restart it only after the user explicitly retries.
@@ -215,7 +235,9 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
      oauth.cancel(GMAIL_CONNECTION_ID);
      gmailConnectionRevision++;
      resetGmailIdentity();
-     return json(res,200,{...oauth.begin({id:GMAIL_CONNECTION_ID,name:'Gmail',service:'gmail',clientId:gmailClientId,clientSecret:gmailClientSecret},authority),connectionVersion:gmailConnectionCompleted});
+     const pending=oauth.begin({id:GMAIL_CONNECTION_ID,name:'Gmail',service:'gmail',clientId:gmailClientId,clientSecret:gmailClientSecret},authority);
+     recordGmailEvent('oauth_started');
+     return json(res,200,{...pending,connectionVersion:gmailConnectionCompleted});
     }
     if(method==='DELETE'){
      oauth.cancel(GMAIL_CONNECTION_ID);
@@ -261,6 +283,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    }
    if(path==='/api/oauth/callback'&&method==='GET'){
     const gmailRevision=gmailConnectionRevision;
+    const callbackService=oauth.pendingService(url.searchParams.get('state')||undefined);
     let ok=false,gmail=false;let message='';try{
      const credential=await oauth.complete({state:url.searchParams.get('state')||undefined,code:url.searchParams.get('code')||undefined,error:url.searchParams.get('error')||undefined},authority);
      if(credential.id===GMAIL_CONNECTION_ID){
@@ -271,7 +294,11 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
       gmail=true;
      }else store.saveCredential(credential);
      ok=true;message='계정 연결을 마쳤어요. 이 창을 닫고 Easyflow로 돌아가세요.';
-    }catch{message='계정을 연결하지 못했어요. Easyflow에서 로그인 정보를 확인하고 다시 연결해주세요.';}
+    }catch{
+     if(callbackService==='gmail')recordGmailEvent('oauth_callback_failed');
+     else if(callbackService===undefined)recordGmailEvent('oauth_callback_unattributed');
+     message='계정을 연결하지 못했어요. Easyflow에서 로그인 정보를 확인하고 다시 연결해주세요.';
+    }
     res.writeHead(ok?200:400,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'"});res.end(`<!doctype html><html lang="ko"><meta charset="utf-8"><title>A4B 계정 연결</title><style>body{background:#201c28;color:#f2eafa;font:16px system-ui;padding:72px;line-height:1.8}h1{font-size:26px;color:#ff917d}a{color:#f2eafa}</style><h1>${ok?'연결 완료':'연결 확인이 필요해요'}</h1><p>${message}</p><a href="/?screen=workflows">A4B로 돌아가기</a><script>
 const opener=window.opener;
 if(opener)opener.postMessage({type:'easyflow-oauth',ok:${ok}},location.origin);
@@ -362,11 +389,18 @@ if(${gmail}){
   }else json(res,400,{error:(error as Error).message});}
 };
 if(process.env.A4B_FOCUSED_DEMO!=='1')void pump();
-return {handle,async close(){
- if(closing)return;closing=true;clearInterval(timer);stopScheduler();
+const credentialRequest=/^\/api\/(?:agent-builder\/gmail(?:\/test)?|oauth\/callback|credentials\/test)$/;
+return {handle:(req:IncomingMessage,res:ServerResponse)=>withScheduleSourceContext(sourceContext,()=>{
+ if(closing)return Promise.resolve(json(res,503,{error:'프로그램이 종료 중입니다. 잠시 후 다시 시도해주세요.'}));
+ // Keep the complete HTTP operation alive, including profile reads and their
+ // final connection checks after the token refresh has finished.
+ return credentialRequest.test((req.url||'/').split('?')[0])?credentialOperation(()=>handle(req,res)):handle(req,res);
+}),close(){return closePromise??=(async()=>{
+ closing=true;clearInterval(timer);stopScheduler();
  for(const id of pendingWebhooks.keys())completeWebhook(id,{statusCode:503,headers:{},body:{error:'프로그램이 종료되어 응답을 마치지 못했어요. 실행 기록에서 결과를 확인해주세요.'}});
  for(const c of controllers.values())c.abort();
+ await Promise.allSettled([...credentialInFlight]);
  while(inFlight.size)await new Promise(resolve=>setTimeout(resolve,20));
  await agentCheckpointer.close();store.close();
-}};
+})();}};
 }

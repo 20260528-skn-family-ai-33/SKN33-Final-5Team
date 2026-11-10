@@ -48,7 +48,8 @@ def compile_conditions(state):
             if not any(r['source_id']==source['source_id'] and r['quote']==source['quote'] for r in requirements):requirements.append(source)
     schedule=None
     if operation=='schedule':
-        schedule=ScheduleSpec(**{key:slots.get('schedule.'+key) for key in ['frequency','timezone','hour','minute','weekday']}).model_dump()
+        schedule=ScheduleSpec(**{key:slots.get('schedule.'+key) for key in ['frequency','timezone','hour','minute','weekday','monthday']},
+                              month_end=slots.get('schedule.month_end', False)).model_dump()
     draft=AgentDraft(name='확정 조건의 표 업무',purpose='검증한 조건을 등록 도구에 적용',
         instructions='확정된 조건과 정책을 적용합니다. '+str(slots),tool_ids=[n['tool'] for n in nodes],
         document_ids=[r['id'] for r in state.get('resources',[])],requirements=requirements,

@@ -13,9 +13,9 @@ assert.ok(component?.body);
 const refreshState=component.body.statements.find(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(declaration=>declaration.name.getText(source)==='refreshRuns'));
 const refreshEffect=component.body.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(source)==='useEffect'&&node.getText(source).includes('/api/agent-builder/agent?id=')&&(node.getText(source).includes('setInterval')||node.getText(source).includes('startAgentRunRefresh')));
 assert.ok(refreshEffect,'AgentStudio must retain an effect that refreshes run results');
-const script=ts.transpileModule(`(()=>{${refreshState?.getText(source)||''}\n${refreshEffect.getText(source)}})()`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+const script=ts.transpileModule(`(()=>{const queuedSourceRuns=(globalThis as any).queuedSourceRuns;${refreshState?.getText(source)||''}\n${refreshEffect.getText(source)}})()`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
 
-type Run={id:string;status:string;answer?:string};
+type Run={id:string;status:string;answer?:string;public_projection?:{history_preview?:boolean}};
 const run=(status:string,id='manual-run'):Run=>({id,status});
 const completed=run('succeeded');
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
@@ -32,11 +32,12 @@ function harness({scheduled=false,current=run('running'),history=[current],pinne
   testRun:current,history,busy:'',inFlight:{current:false},generation:{current:0},pinnedRun:{current:pinned},
   shouldRefreshAgentRuns,refreshedAgentRun,startAgentRunRefresh,encodeURIComponent,setInterval,clearInterval,
   applyRunInputs:()=>{},setSchedule:()=>{},setSource:()=>{},setJobs:()=>{},
+  queuedSourceRuns:[],
  };
  const snapshot=(tests:Run[],id=context.selected.id)=>({agent:{...context.selected,id},tests,resources:[],schedule:null,source:null,jobs:[]});
- let load:(path:string)=>Promise<ReturnType<typeof snapshot>>=async()=>snapshot([completed]);
+ let load:(path:string)=>Promise<ReturnType<typeof snapshot>|{run:Run}>=async()=>snapshot([completed]);
  context.request=(path:string)=>{requests.push(path);return load(path);};
- for(const [setter,key] of [['setSelected','selected'],['setTestRun','testRun'],['setHistory','history']])context[setter]=(value:any)=>{context[key]=typeof value==='function'?value(context[key]):value;};
+ for(const [setter,key] of [['setSelected','selected'],['setTestRun','testRun'],['setHistory','history'],['setQueuedSourceRuns','queuedSourceRuns']])context[setter]=(value:any)=>{context[key]=typeof value==='function'?value(context[key]):value;};
  context.useEffect=(effect:()=>void|(()=>void),next:unknown[])=>{
   if(deps&&deps.length===next.length&&deps.every((value,index)=>Object.is(value,next[index])))return;
   cleanup?.();deps=[...next];cleanup=effect()||undefined;
@@ -125,4 +126,39 @@ test('a temporary refresh failure preserves the running result and retries',asyn
  t.mock.timers.tick(5000);await flush();assert.equal(h.context.testRun.status,'running');
  h.load(async()=>h.snapshot([completed]));t.mock.timers.tick(5000);await flush();h.render();
  assert.equal(h.requests.length,2);assert.equal(h.context.testRun.status,'succeeded');
+});
+
+test('new-file polling waits for its queued job instead of selecting an unrelated old success',async t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ const older=run('succeeded','old-run');
+ const h=harness({scheduled:true,current:null as any,history:[older]});t.after(h.stop);
+ h.context.queuedSourceRuns=['file-job'];h.load(async()=>h.snapshot([older]));h.render();
+ t.mock.timers.tick(5000);await flush();h.render();
+ assert.equal(h.context.testRun,null);assert.deepEqual(h.context.queuedSourceRuns,['file-job']);
+ const actual=run('running','file-job');h.load(async()=>h.snapshot([older,actual]));
+ t.mock.timers.tick(5000);await flush();h.render();
+ assert.equal(h.context.testRun.id,'file-job');assert.equal(h.context.testRun.status,'running');
+ assert.equal(h.context.queuedSourceRuns.length,0);
+});
+
+test('pinned history previews hydrate before polling replaces the answer and late details cannot overwrite another workflow',async t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ const older={...run('succeeded','older-run'),answer:'전체 과거 요약 본문과 마지막 항목'};
+ const preview={...older,answer:'축약된 과거 요약',public_projection:{history_preview:true}};
+ const newer=run('succeeded','newest-run'),pending=deferred<{run:Run}>();let details=0;
+ const h=harness({scheduled:true,current:older,history:[newer,older],pinned:true});t.after(h.stop);
+ h.load(async path=>{
+  if(path==='/api/agent-builder/run?id=older-run')return ++details===1?{run:older}:pending.promise;
+  return h.snapshot([newer,preview]);
+ });
+ h.render();t.mock.timers.tick(5000);await flush();h.render();
+ assert.deepEqual(h.requests,['/api/agent-builder/agent?id=manual-agent','/api/agent-builder/run?id=older-run']);
+ assert.equal(h.context.testRun.id,'older-run');assert.equal(h.context.testRun.answer,older.answer);
+ assert.equal(h.context.history.find((item:Run)=>item.id==='older-run').answer,older.answer);
+ t.mock.timers.tick(5000);await flush();assert.equal(details,2);
+ h.context.generation.current++;h.context.selected={...h.context.selected,id:'other-agent'};
+ h.context.testRun={...run('succeeded','other-run'),answer:'현재 워크플로우의 결과'};h.context.history=[h.context.testRun];h.render();
+ pending.resolve({run:{...older,answer:'늦게 도착한 과거 상세'}});await flush();
+ assert.equal(h.context.selected.id,'other-agent');assert.equal(h.context.testRun.id,'other-run');
+ assert.equal(h.context.testRun.answer,'현재 워크플로우의 결과');assert.equal(h.context.history[0].id,'other-run');
 });

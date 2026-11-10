@@ -35,7 +35,9 @@ def _condition(value):
 
 
 def _same_filters(actual, expected, actual_match, expected_match):
-    return (actual_match==expected_match and
+    same_match=(actual_match==expected_match or
+                len(actual)==len(expected)==1 and actual_match in ('all','any') and expected_match in ('all','any'))
+    return (same_match and
             sorted(map(_condition,actual))==sorted(map(_condition,expected)))
 
 
@@ -47,15 +49,53 @@ def _arguments(node):
 def _matches(spec,node,draft,sources):
     tool=node['tool'];settings=node['settings'];operation=settings.get('operation')
     args=_arguments(node);kind=spec['kind']
-    if kind=='gmail_summary':
-        if tool!='compose_answer' or operation or settings.get('instructions')!=spec['request']:return False
+    if kind=='document_analysis':
+        if tool!='compose_answer' or operation or spec['request'] not in (settings.get('instructions') or ''):return False
+        return any(b['input']=='documents' and b['output']=='documents' for b in node['bindings'])
+    if kind=='human_review':
+        # An explicit execution-time review must really pause, not let an LLM
+        # treat the earlier design request as an already supplied confirmation.
+        if (tool!='ask_user' or operation or not (settings.get('question') or '').strip()
+                or settings.get('instructions')):return False
+        # The executor previews records, falling back to text only for empty
+        # records. With both inputs, the requested result could be hidden.
+        previews=[b for b in node['bindings'] if b['input'] in ('records','text')]
+        if len(previews)!=1:return False
+        binding=previews[0]
+        source=next((n for n in draft['workflow']['nodes'] if n['id']==binding['node_id']),None)
+        from workflow_engine.catalog.registry import node_ports
+        return bool(source and node_ports(source)[1].get(binding['output'])==binding['input'])
+    if kind=='rename':
+        return (tool=='calculate_columns' and (
+            not operation and settings.get('table_operation')=='rename' and settings.get('rename_from')==spec['source'] and settings.get('rename_to')==spec['target']
+            or operation=='rename_columns' and args.get('mapping')=={spec['source']:spec['target']}))
+    if kind=='fill_missing':
+        # JSON booleans are not numbers, even though Python equates False/0 and True/1.
+        return (tool=='filter_sort' and operation=='handle_missing' and args.get('action')=='fill'
+                and args.get('columns')==spec['fields']
+                and isinstance(args.get('fill_value'),bool)==isinstance(spec['value'],bool)
+                and args.get('fill_value')==spec['value'])
+    if kind=='select_fields':
+        return tool=='filter_sort' and operation=='select_columns' and args.get('columns')==spec['fields']
+    if kind=='schedule':
+        from contracts.models import ScheduleSpec
+        return (bool(draft.get('schedule')) and
+                ScheduleSpec.model_validate(draft['schedule']).model_dump()==spec['schedule'] and
+                draft.get('report_destination')=='reports')
+    if kind in ('gmail_summary', 'gmail_scheduled_summary'):
+        if tool!='compose_answer' or operation or settings.get('instructions')!=(spec.get('summary_instructions') or spec['request']):return False
         documents=[binding for binding in node['bindings'] if binding['input']=='documents']
         if len(documents)!=1 or documents[0]['output']!='documents':return False
         source=next((n for n in draft['workflow']['nodes'] if n['id']==documents[0]['node_id']),None)
         if not source or source['tool']!='email.list' or source['settings'].get('operation')!='read_messages':return False
         read_args=_arguments(source)
+        if kind=='gmail_scheduled_summary':
+            if draft.get('schedule')!=spec['schedule'] or draft.get('report_destination')!='reports':return False
+            query=spec['query']
+        else:
+            query=None
         return (not source['bindings'] and read_args.get('max_results')==spec['max_results']
-                and read_args.get('query') is None and set(read_args)<={'query','max_results'})
+                and read_args.get('query')==query and set(read_args)<={'query','max_results'})
     if kind=='read':
         return tool in ('read_table','read_document') and set(spec['file_ids'])<=sources(node['id'])
     if kind in ('extract_fields', 'receipt_items'):
@@ -90,6 +130,15 @@ def _matches(spec,node,draft,sources):
             formula=settings.get('calculation_formula');column=settings.get('output_column')
         else:return False
         return column==spec['output_column'] and _formula(formula)==_formula(spec['formula'])
+    if kind=='parse_dates':
+        if tool!='calculate_columns':return False
+        if operation=='parse_dates':
+            fields=args.get('columns');fmt=args.get('input_format');zone=args.get('timezone')
+        elif not operation and settings.get('table_operation')=='parse_dates':
+            fields=settings.get('fields');fmt=settings.get('date_input_format');zone=settings.get('date_timezone')
+        else:return False
+        return (isinstance(fields,list) and set(fields)==set(spec['fields'])
+                and fmt==spec['input_format'] and zone==spec['timezone'])
     if kind=='filter':
         if tool!='filter_sort' or operation:return False
         plan=settings.get('execution_plan') or draft['execution_plan']
@@ -167,6 +216,11 @@ def coverage_report(state,draft):
     from .content_lineage import content_ancestors
     from .reader_sources import reader_sources
     upstream={id:content_ancestors(nodes,id) for id in nodes}
+    for id,n in nodes.items():
+        if n['tool']=='ask_user':
+            # A terminal human check consumes its preview even when no later
+            # output port is requested. Export lineage remains port-specific.
+            upstream[id]=set().union(*(upstream.get(b['node_id'],set())|{b['node_id']} for b in n['bindings']))
     def sources(id):
         result=set()
         for parent in upstream.get(id,set()) | {id}:
@@ -227,7 +281,9 @@ def coverage_report(state,draft):
 
 
 def requirement_issues(state,draft):
-    if not state.get('requirement_required') and os.getenv('A4B_REQUIREMENT_MODE','off')!='enforce':return []
+    # Pending graphs may be shown as a design preview, never persisted as an
+    # executable configuration, even when semantic ledger checking is disabled.
     if draft.get('questions') or draft.get('unsupported'):
         return ['요구사항 검증: 질문·미지원이 남은 초안은 승인하거나 저장할 수 없습니다.']
+    if not state.get('requirement_required') and os.getenv('A4B_REQUIREMENT_MODE','off')!='enforce':return []
     return coverage_report(state,draft)['issues']

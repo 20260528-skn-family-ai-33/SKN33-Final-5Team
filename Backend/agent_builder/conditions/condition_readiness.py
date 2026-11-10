@@ -36,11 +36,13 @@ QUESTIONS = {
     'filter.value': '선별할 기준 값은 얼마인가요?',
     'duplicate.field': '어느 열의 값이 같으면 중복으로 볼까요?',
     'duplicate.policy': '중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?',
-    'schedule.frequency': '매일 또는 매주 중 어떤 주기로 실행할까요?',
+    'schedule.frequency': '매시간·매일·매주·매월 중 어떤 주기로 실행할까요?',
     'schedule.hour': '몇 시에 실행할까요?',
     'schedule.minute': '몇 분에 실행할까요?',
     'schedule.timezone': '예약 시각은 어느 시간대를 기준으로 할까요?',
     'schedule.weekday': '매주 무슨 요일에 실행할까요?',
+    'schedule.monthday': '매월 며칠에 실행할까요? 1~31일 또는 말일로 알려주세요.',
+    'schedule.month_end': '매월 말일에 실행할까요?',
     'missing.policy': '빈 값은 유지·제외·오류 중 어떻게 처리할까요?',
     'output.format': '결과 파일은 CSV 또는 JSON 중 무엇으로 저장할까요?',
     'sort.policy': '입력 순서를 유지할까요, 정렬할까요?',
@@ -49,7 +51,7 @@ ENUMS = {
     'filter.operator': {'gt', 'gte', 'lt', 'lte', 'eq', 'ne', 'contains'},
     'duplicate.policy': {'first', 'last', 'keep', 'error'},
     'missing.policy': {'exclude', 'keep', 'error'},
-    'schedule.frequency': {'daily', 'weekly'},
+    'schedule.frequency': {'hourly', 'daily', 'weekly', 'monthly'},
     'output.format': {'csv', 'json'},
     'sort.policy': {'none'},
 }
@@ -61,7 +63,7 @@ CHOICES = {
     'missing.policy': {'빈 값 제외': 'exclude', '빈 값 유지': 'keep', '빈 값이면 오류': 'error'},
     'duplicate.policy': {'첫 행만 남김': 'first', '마지막 행만 남김': 'last', '모두 유지': 'keep', '중복이면 오류': 'error'},
     'output.format': {'CSV': 'csv', 'JSON': 'json'},
-    'schedule.frequency': {'매일': 'daily', '매주': 'weekly'},
+    'schedule.frequency': {'매시간': 'hourly', '매일': 'daily', '매주': 'weekly', '매월': 'monthly'},
 }
 
 
@@ -82,7 +84,7 @@ SUPPORTED_OPERATION_NAMES ={'filter', 'deduplicate', 'schedule', 'output', 'sort
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
     'deduplicate': ['duplicate.policy'],
-    'schedule': ['schedule.frequency', 'schedule.hour', 'schedule.minute', 'schedule.timezone'],
+    'schedule': ['schedule.frequency', 'schedule.minute', 'schedule.timezone'],
 }
 
 
@@ -110,12 +112,14 @@ class SingleWorkProposal(BaseModel):
 
 SYSTEM = """한국어 업무의 조건만 추출합니다. 설계·저장·실행은 하지 않습니다.
 출력은 operations, conditions, unsupported_actions JSON 객체 하나입니다.
-지원 범위: 한 단계의 상수 값 선별(filter), 중복 제거(deduplicate), daily/weekly 예약(schedule).
+지원 범위: 한 단계의 상수 값 선별(filter), 중복 제거(deduplicate), hourly/daily/weekly/monthly 예약(schedule).
 중복을 유지하라는 부가 조건만으로 deduplicate 작업을 추가하지 않습니다.
 조건 key는 제공된 계약의 키만 사용하고, value는 정규화한 문자열입니다.
 filter.operator: gt/gte/lt/lte/eq/ne/contains. 금액의 만·천 단위를 숫자로 변환합니다.
 duplicate.policy: first/last/keep/error. missing.policy: exclude/keep/error.
-schedule: frequency=daily/weekly, hour=0~23, minute=0~59, weekday=월요일0~일요일6,
+schedule: frequency=hourly/daily/weekly/monthly, hour=0~23, minute=0~59, weekday=월요일0~일요일6,
+hourly는 hour 없이 minute만 필요합니다. monthly는 monthday=1~31 또는 month_end=true를 명시합니다.
+monthday가 없는 달은 건너뛰고 month_end는 실제 달의 마지막 날입니다. 두 방식을 동시에 넣지 않습니다.
 timezone=IANA 이름(한국 시간은 Asia/Seoul). 오전 8시는 hour=8, minute=0입니다.
 output.format=csv/json. 관련 없는 항목은 만들지 않습니다.
 각 조건은 specified(확정), missing(미정), conflict(충돌) 중 하나입니다.
@@ -173,7 +177,7 @@ DEMOS = [
 CAPABILITIES = {
     'filter': '등록 filter_sort로 상수 비교 선별. 필요한 경우만 선택.',
     'deduplicate': '등록 filter_sort로 중복 제거. 중복 유지는 부가 정책이며 별도 제거 작업이 아님.',
-    'schedule': '앱 scheduling.py의 daily/weekly 예약 기능. 별도 Tool ID가 없어도 지원됨. 관리 표와 결과 저장을 사용.',
+    'schedule': '앱 scheduling.py의 hourly/daily/weekly/monthly 예약 기능. 별도 Tool ID가 없어도 지원됨. 실제 필수 입력을 갖춘 워크플로우를 실행하고 결과를 보관하며, 파일은 읽기 단계가 있을 때만 필요.',
     'output': '등록 read_table, write_result, export_result로 표 읽기 및 서버 CSV/JSON 결과 파일 생성 지원.',
     'not_supported': '외부 이메일 발송·Slack 게시 등 실제 등록되지 않은 외부 전송. 미정 수치는 여기에 해당하지 않음.',
 }
@@ -409,11 +413,15 @@ def _value(key, value):
             return float(number)
         except InvalidOperation:
             return value
-    if key in ('schedule.hour', 'schedule.minute', 'schedule.weekday'):
+    if key == 'schedule.month_end':
+        if value not in ('true', 'false'):
+            raise ValueError('말일 조건 값은 true 또는 false여야 합니다.')
+        return value == 'true'
+    if key in ('schedule.hour', 'schedule.minute', 'schedule.weekday', 'schedule.monthday'):
         if not re.fullmatch(r'\d+', value):
             raise ValueError('정수 조건 값이 필요합니다.')
         number = int(value)
-        if not 0 <= number <= {'schedule.hour': 23, 'schedule.minute': 59, 'schedule.weekday': 6}[key]:
+        if not (1 if key=='schedule.monthday' else 0) <= number <= {'schedule.hour': 23, 'schedule.minute': 59, 'schedule.weekday': 6, 'schedule.monthday': 31}[key]:
             raise ValueError('예약 조건 값의 범위를 벗어났습니다.')
         return number
     if key == 'schedule.timezone':
@@ -664,13 +672,17 @@ _RANGE_CLAUSE_END = re.compile(r'[.!?,\n]|남기|남겨|남긴|골라|고르|뽑
 _RANGE_EXCLUSION = re.compile(r'빼|제외|말고|지우|지워|삭제|버리|버려|없애|걸러')
 
 
-_MONTHLY_SCHEDULE = re.compile(r'매월|매달|매년|월간\s*(?:예약|실행|반복)|cron|크론', re.I)
+_MONTHLY_SCHEDULE = re.compile(r'매월|매달|월마다|월간\s*(?:예약|실행|반복)|monthly', re.I)
+_UNSUPPORTED_SCHEDULE = re.compile(r'매년|연간\s*(?:예약|실행|반복)|cron|크론', re.I)
 _MONTHLY_NEGATED = re.compile(r'\s*(?:은|는|이|가|도)?\s*(?:필요\s*없|말고|빼고|빼|하지\s*마|하지\s*말|안\s*해|아니)')
 
 
 def monthly_requested(text):
-    """A monthly/yearly recurrence the user asks for; "매월은 필요 없어", "매달 말고" do not count (PR #28 review)."""
+    """Only a requested monthly recurrence; negated mentions do not count."""
     return any(not _MONTHLY_NEGATED.match(text[m.end():m.end() + 10]) for m in _MONTHLY_SCHEDULE.finditer(text))
+def unsupported_schedule_requested(text):
+    return any(not _MONTHLY_NEGATED.match(text[m.end():m.end() + 10]) for m in _UNSUPPORTED_SCHEDULE.finditer(text))
+_HOURLY = re.compile(r'매\s*정시(?:\s*마다)?|정시\s*마다|매\s*시간|매\s*시(?![가-힣])|(?<!\d)(?:한|1)\s*시간마다|(?<!\d)시간마다|hourly', re.I)
 _DAILY = re.compile(r'매일|날마다|하루\s*한\s*번|daily', re.I)
 _WEEKLY = re.compile(r'매주|주마다|[월화수목금토일]요일\s*마다|매\s*[월화수목금토일]요일|weekly', re.I)
 _SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
@@ -684,13 +696,13 @@ def last_user_request(state):
 
 
 def schedule_literals(text, follow_up=False):
-    """Code-read daily/weekly schedule values with the span that proves each one.
+    """Read explicit recurrence slots while preserving ambiguous times as questions.
 
     Only written values are returned: "오전 8시" is 8, "오후 6시" is 18, but a bare "8시" could be
     08:00 or 20:00 and is left for a question. Two different values for one key are a conflict.
-    A monthly/yearly recurrence yields nothing here; validate_conditions records it as unsupported.
+    Yearly and cron requests remain outside the native recurrence contract.
     """
-    if monthly_requested(text):
+    if unsupported_schedule_requested(text):
         return []
     found = {}
     def add(key, value, span):
@@ -698,17 +710,31 @@ def schedule_literals(text, follow_up=False):
             found[key] = ('conflict', found[key][1])
         else:
             found.setdefault(key, (value, span))
-    for pattern, value in ((_DAILY, 'daily'), (_WEEKLY, 'weekly')):
+    for pattern, value in ((_HOURLY, 'hourly'), (_DAILY, 'daily'), (_WEEKLY, 'weekly'), (_MONTHLY_SCHEDULE, 'monthly')):
         for m in pattern.finditer(text):
             if not _SCHEDULE_NEGATED.match(text[m.end():m.end() + 8]):
                 add('schedule.frequency', value, m.group(0))
     if 'schedule.frequency' not in found and not follow_up:
         return []
+    frequency = found.get('schedule.frequency', (None,))[0]
+    if frequency == 'hourly':
+        minute = re.search(r'(?<!\d)(\d{1,2})\s*분', text)
+        if minute and int(minute[1]) <= 59:
+            add('schedule.minute', int(minute[1]), minute.group(0))
+        else:
+            exact_hour = re.search(r'정각|정시', text)
+            if exact_hour:add('schedule.minute', 0, exact_hour.group(0))
+    if frequency == 'monthly' or follow_up:
+        for m in re.finditer(r'(?<!\d)([1-9]|[12]\d|3[01])\s*일(?!\d)', text):
+            add('schedule.monthday', int(m[1]), m.group(0))
+            add('schedule.month_end', False, m.group(0))
+        for m in re.finditer(r'말일|마지막\s*날', text):
+            add('schedule.month_end', True, m.group(0))
     # "오후 6시로 바꿔줘" after "매일 오전 9시" changes only the time (PR #28 review P1).
     if found.get('schedule.frequency', ('weekly',))[0] == 'weekly':
         for m in re.finditer(r'([월화수목금토일])요일', text):
             add('schedule.weekday', _WEEKDAY_NAMES.index(m.group(1)), m.group(0))
-    for m in _TIME.finditer(text):
+    for m in ([] if frequency == 'hourly' else _TIME.finditer(text)):
         period, hour, minute, half = m.group(1), int(m.group(2)), m.group(3), m.group(4)
         if hour > 23 or (minute and int(minute) > 59):
             continue
@@ -727,6 +753,10 @@ def schedule_literals(text, follow_up=False):
         m = re.search(pattern, text, re.I)
         if m:
             add('schedule.timezone', zone, m.group(0))
+    for m in re.finditer(r'(?<![A-Za-z_])(?:[A-Za-z_]+/)+[A-Za-z0-9_+-]+(?![A-Za-z_])', text):
+        try:ZoneInfo(m.group(0))
+        except (ZoneInfoNotFoundError, ValueError):continue
+        add('schedule.timezone', m.group(0), m.group(0))
     return [(key, value, span) for key, (value, span) in found.items()]
 
 
@@ -925,9 +955,9 @@ def _grounded_enum(key, value, quote):
     if key == 'schedule.frequency':
         # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
         # match; a monthly/yearly one never grounds daily or weekly.
-        if monthly_requested(quote):
-            return False
-        return bool((_DAILY if value == 'daily' else _WEEKLY).search(quote))
+        return any(key=='schedule.frequency' and written==value for key,written,_ in schedule_literals(quote))
+    if key == 'schedule.month_end':
+        return any(key=='schedule.month_end' and written==value for key,written,_ in schedule_literals(quote, follow_up=True))
     if key == 'filter.operator':
         aliases = {'gt': r'초과|보다\s*큰', 'gte': r'이상', 'lt': r'미만|보다\s*작은',
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
@@ -1074,19 +1104,31 @@ def validate_conditions(raw, state, catalog):
     if 'duplicate.policy' in literals and slots['duplicate.policy'].get('value') in ('first', 'last'):
         if 'deduplicate' not in operations:
             operations.append('deduplicate')
-    # A written daily/weekly schedule must not disappear because the single-operation proposal
+    # A written hourly/daily/weekly/monthly schedule must not disappear because the single-operation proposal
     # labelled the request "filter": live 2026-11-03, 17 of 17 READY schedule requests were
     # confirmed without their schedule. The literal values above are its evidence; anything not
     # written is asked. A monthly/yearly recurrence is a known unsupported schedule.
     if 'schedule.frequency' in literals and 'schedule' not in operations:
         operations.append('schedule')
-    if monthly_requested(last_user_request(state)) and '월간 예약' not in proposal['unsupported_actions']:
-        proposal['unsupported_actions'].append('월간 예약')
+    if unsupported_schedule_requested(last_user_request(state)) and '연간·cron 예약' not in proposal['unsupported_actions']:
+        proposal['unsupported_actions'].append('연간·cron 예약')
     if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
         # Do not lose a requested filter simply because the model labelled the
         # request as deduplication; ask for absent conditions rather than guess.
         if 'filter' not in operations:operations.insert(0,'filter')
     required = list(dict.fromkeys(key for operation in operations for key in REQUIRED[operation]))
+    frequency = slots.get('schedule.frequency', {}).get('value')
+    if 'schedule' in operations:
+        if frequency != 'hourly':
+            required.append('schedule.hour')
+        unused = (['schedule.hour'] if frequency == 'hourly' else [])
+        if frequency != 'weekly':unused.append('schedule.weekday')
+        if frequency != 'monthly':unused += ['schedule.monthday', 'schedule.month_end']
+        elif slots.get('schedule.month_end', {}).get('value') is True:
+            unused.append('schedule.monthday')
+        elif slots.get('schedule.monthday', {}).get('status') != 'specified':
+            required.append('schedule.monthday')
+        for key in unused:slots.pop(key, None)
     filter_field=slots.get('filter.field',{}).get('value')
     if 'filter' in operations and filter_field and any(
         r.get('kind')=='table' and (r.get('profile',{}).get(filter_field,{}) or {}).get('missing',0)>0

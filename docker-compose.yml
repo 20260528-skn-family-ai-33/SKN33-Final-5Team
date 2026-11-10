@@ -88,6 +88,7 @@ services:
         target: /app/ml-bundle
         read_only: true
     restart: unless-stopped
+    stop_grace_period: 60s
 
   # Optional disposable PostgreSQL for storage tests only. Not started by `docker compose up`:
   #   docker compose --profile test-db up -d postgres-test

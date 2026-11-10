@@ -10,8 +10,8 @@ def register_google_tools(tool,invoke_connector,registry):
     @tool("email.list","List Gmail message IDs, search query and pagination token.")
     def email_list(context,query=None,max_results=20,page_token=None):
         return invoke_connector("gmail","email.list",{"query":query,"max_results":max_results,"page_token":page_token},context)
-    @tool("email.list.read_messages","Search Gmail and read the first 1..10 matching message bodies in provider order; no send. Defaults to 5 messages. All reads must succeed. Returns real-source documents, including explicit notices for unreadable bodies.")
-    def email_read_messages(context,query=None,max_results=5):
+    @tool("email.list.read_messages","Search Gmail and read 1..500 matching message bodies across pages in provider order; no send. Defaults to 100 messages. All selected reads must succeed. Returns source documents and explicit limit, unreadable-body and truncation metadata.")
+    def email_read_messages(context,query=None,max_results=100):
         return read_gmail_messages(lambda operation,arguments:invoke_connector("gmail",operation,arguments,context),query,max_results)
     @tool("email.get","Read a specified Gmail message.")
     def email_get(message_id,context,format="full"):

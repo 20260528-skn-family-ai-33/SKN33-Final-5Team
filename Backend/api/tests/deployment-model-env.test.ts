@@ -60,6 +60,10 @@ test('default AWS settings match the baseline RunPod models; the 9B overlay is e
   assert.equal(tuned.A4B_OLLAMA_NUM_CTX,'32768');
   assert.equal(tuned.A4B_OLLAMA_NUM_PREDICT,'4096');assert.equal(tuned.A4B_OLLAMA_TEMPERATURE,'0');
   assert.equal(tuned.A4B_PLANNER_MODE,'deepagent');assert.equal(tuned.A4B_VERIFIER_MODE,'off');
+  const deepagent=renderCompose([base,join(root,'infrastructure/env/.env.aws.qwen35-9b.example'),join(root,'infrastructure/env/.env.aws.qwen35-9b-deepagent.example')]);
+  const profile={A4B_PLANNER_MODE:'deepagent',A4B_REQUIREMENT_MODE:'enforce',A4B_REQUIREMENT_GENERATION_MODE:'baseline',A4B_TOOL_CATALOG_MODE:'model',A4B_VERIFIER_MODE:'off'};
+  for(const [key,value] of Object.entries(profile))assert.equal(deepagent[key],value,key);
+  for(const key of ['A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL','A4B_MAIN_BASE_URL','A4B_MAIN_API_KEY','A4B_OLLAMA_NUM_CTX','A4B_OLLAMA_NUM_PREDICT'])assert.equal(deepagent[key],tuned[key],key);
   for(const [key,value] of Object.entries(baseline)){
    if(!['A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL','A4B_OLLAMA_MODEL_ALIASES','A4B_OLLAMA_NUM_CTX','A4B_OLLAMA_NUM_PREDICT','A4B_OLLAMA_TEMPERATURE'].includes(key))assert.equal(tuned[key],value,key);
   }
@@ -119,17 +123,25 @@ test('configured launcher defaults to DeepAgent with no reviewer and preserves e
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
 
-test('both 9B overlays replace inherited direct/shadow even without a 4B model',{
+test('model-only overlay preserves policy; explicit DeepAgent profiles replace inherited direct/shadow',{
  skip:compose.status!==0?'Docker Compose is required to render the deployment configuration':false,
 },()=>{
  const dir=mkdtempSync(join(tmpdir(),'a4b-9b-no-reviewer-'));
  try{
   const file=join(dir,'fixture.env');
   writeFileSync(file,'A4B_PLANNER_MODE=direct\nA4B_VERIFIER_MODE=shadow\n');
-  for(const name of ['.env.aws.qwen35-9b.example','.env.ec2.qwen35-9b.example']){
-   const configured=renderCompose([file,join(root,'infrastructure/env',name)]);
-   assert.equal(configured.A4B_PLANNER_MODE,'deepagent',name);
-   assert.equal(configured.A4B_VERIFIER_MODE,'off',name);
+  const model=join(root,'infrastructure/env/.env.aws.qwen35-9b.example');
+  const modelOnly=renderCompose([file,model]);
+  assert.equal(modelOnly.A4B_PLANNER_MODE,'direct');
+  assert.equal(modelOnly.A4B_VERIFIER_MODE,'shadow');
+  const profiles=[
+   [model,join(root,'infrastructure/env/.env.aws.qwen35-9b-deepagent.example')],
+   [join(root,'infrastructure/env/.env.ec2.qwen35-9b.example')],
+  ];
+  for(const profile of profiles){
+   const configured=renderCompose([file,...profile]);
+   assert.equal(configured.A4B_PLANNER_MODE,'deepagent');
+   assert.equal(configured.A4B_VERIFIER_MODE,'off');
   }
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

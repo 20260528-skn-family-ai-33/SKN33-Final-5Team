@@ -7,7 +7,8 @@ DIRECTORY=Path(__file__).resolve().parents[3]/'infrastructure'/'db'/'migrations'
 # version, file, step that must run first (LangGraph creates its own checkpoint tables).
 MIGRATIONS=[(1,'001_builder_storage.sql',None),(2,'002_langgraph_checkpoints.sql','langgraph_setup'),
             (3,'003_sqlite_imports.sql',None),(4,'004_generation_requests.sql',None),
-            (5,'005_personal_asset_library.sql',None),(6,'006_team_sharing.sql',None)]
+            (5,'005_personal_asset_library.sql',None),(6,'006_team_sharing.sql',None),
+            (7,'007_schedule_library_sources.sql',None)]
 assert MIGRATIONS[-1][0]==REQUIRED_SCHEMA_VERSION
 
 

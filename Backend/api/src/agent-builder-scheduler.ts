@@ -20,7 +20,9 @@ export function createBuilderScheduleRunner(store:Store,worker:Worker=builderWor
      const config=job.agent_snapshot.config;
      const needsModel=builderNeedsModel(config,job.agent_snapshot.workflow_dependencies);
      let apiKey='';if(needsModel){const local=localModelConnection();const credential=job.agent_snapshot.credential_id===LOCAL_MODEL_ID&&local?{data:{apiKey:'local-not-a-secret',token:''}}:store.getCredential(job.agent_snapshot.credential_id);apiKey=String(credential.data.apiKey||credential.data.token||'');}
-     const gmailToken=builderNeedsGmail(config,job.agent_snapshot.workflow_dependencies)?await gmailAccessToken?.():undefined;
+     const needsGmail=builderNeedsGmail(config,job.agent_snapshot.workflow_dependencies);
+     const gmailToken=needsGmail?await gmailAccessToken?.():undefined;
+     if(needsGmail&&!gmailToken)throw new Error('Gmail 계정을 먼저 연결해주세요.');
      await worker({action:'scheduled_run',id:job.id,lease_token:job.lease_token,api_key:apiKey,...(gmailToken?{gmail_access_token:gmailToken}:{})});
     }catch(error){
      // Busy means the run never started: its lease expires and claim_due offers the job again.

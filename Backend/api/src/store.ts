@@ -7,6 +7,9 @@ import type {CredentialInput,CredentialPublic,CredentialSecret,Provider} from '.
 
 const providers=new Set<Provider>(['openai','slack','bearer','basic','header','jwt']);
 export const GMAIL_CONNECTION_ID='a4b-gmail';
+const gmailEvents=['runtime_opened','oauth_started','connected','refreshed','disconnected','oauth_callback_failed','oauth_callback_unattributed','token_refresh_failed'] as const;
+type GmailEvent=typeof gmailEvents[number];
+const connectionProcessId=randomUUID();
 /** Own local SQLite database. Credentials are encrypted with a separate, private key. */
 export class Store {
  private db:DatabaseSync;
@@ -22,6 +25,7 @@ export class Store {
    CREATE TABLE IF NOT EXISTS assistant_sessions(id TEXT PRIMARY KEY,json TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS flows(id TEXT PRIMARY KEY,json TEXT NOT NULL,updated_at TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS credentials(id TEXT PRIMARY KEY,name TEXT NOT NULL,provider TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,encrypted TEXT NOT NULL,service TEXT);
+   CREATE TABLE IF NOT EXISTS gmail_connection_events(seq INTEGER PRIMARY KEY,event TEXT NOT NULL,connection_present INTEGER NOT NULL,created_at TEXT NOT NULL,process_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS executions(id TEXT PRIMARY KEY,workflow_id TEXT NOT NULL,json TEXT NOT NULL,flow TEXT NOT NULL,input TEXT NOT NULL,dedupe_key TEXT UNIQUE,started_at TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS webhook_responses(execution_id TEXT PRIMARY KEY,body BLOB NOT NULL,mime TEXT NOT NULL,file_name TEXT NOT NULL,FOREIGN KEY(execution_id) REFERENCES executions(id) ON DELETE CASCADE);
    CREATE INDEX IF NOT EXISTS execution_workflow ON executions(workflow_id,started_at);`);
@@ -67,12 +71,25 @@ export class Store {
   if(!this.gmailConnected())throw new Error('Gmail 계정을 먼저 연결해주세요.');
   return this.readCredential(GMAIL_CONNECTION_ID);
  }
- saveGmailCredential(input:CredentialInput):void {
+ recordGmailEvent(event:GmailEvent):void {
+  if(!gmailEvents.includes(event))throw new Error('연결 이력 종류를 확인해주세요.');
+  // Only fixed event codes, existence and time; never tokens, addresses or provider responses.
+  this.db.prepare('INSERT INTO gmail_connection_events(event,connection_present,created_at,process_id) VALUES(?,?,?,?)').run(event,Number(this.gmailConnected()),new Date().toISOString(),connectionProcessId);
+  this.db.exec('DELETE FROM gmail_connection_events WHERE seq IN (SELECT seq FROM gmail_connection_events ORDER BY seq DESC LIMIT -1 OFFSET 500)');
+ }
+ saveGmailCredential(input:CredentialInput,event:'connected'|'refreshed'='connected'):void {
   if(input.id!==GMAIL_CONNECTION_ID||input.provider!=='bearer'||input.data.service!=='gmail'||input.data.authType!=='oauth2')throw new Error('Gmail 연결 정보를 확인해주세요.');
-  this.writeCredential(input);
+  if(event!=='connected'&&event!=='refreshed')throw new Error('연결 이력 종류를 확인해주세요.');
+  this.db.exec('BEGIN IMMEDIATE');
+  try{this.writeCredential(input);this.recordGmailEvent(event);this.db.exec('COMMIT');}
+  catch(error){this.db.exec('ROLLBACK');throw error;}
  }
  disconnectGmail():void {
-  if(this.gmailConnected())this.db.prepare('DELETE FROM credentials WHERE id=?').run(GMAIL_CONNECTION_ID);
+  this.db.exec('BEGIN IMMEDIATE');
+  try{
+   if(this.gmailConnected())this.db.prepare('DELETE FROM credentials WHERE id=?').run(GMAIL_CONNECTION_ID);
+   this.recordGmailEvent('disconnected');this.db.exec('COMMIT');
+  }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
  listExecutions():Execution[] {return this.db.prepare('SELECT json FROM executions ORDER BY started_at DESC LIMIT 500').all().map(row=>JSON.parse(String(row.json)));}
  listPendingExecutions():Execution[] {return this.db.prepare("SELECT json FROM executions WHERE json_extract(json,'$.status') IN ('queued','running','waiting') ORDER BY started_at ASC").all().map(row=>JSON.parse(String(row.json)));}

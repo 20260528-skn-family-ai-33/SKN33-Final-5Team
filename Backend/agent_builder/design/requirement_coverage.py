@@ -62,8 +62,11 @@ def _matches(spec,node,draft,sources):
             not operation and settings.get('table_operation')=='rename' and settings.get('rename_from')==spec['source'] and settings.get('rename_to')==spec['target']
             or operation=='rename_columns' and args.get('mapping')=={spec['source']:spec['target']}))
     if kind=='fill_missing':
+        # JSON booleans are not numbers, even though Python equates False/0 and True/1.
         return (tool=='filter_sort' and operation=='handle_missing' and args.get('action')=='fill'
-                and args.get('columns')==spec['fields'] and args.get('fill_value')==spec['value'])
+                and args.get('columns')==spec['fields']
+                and isinstance(args.get('fill_value'),bool)==isinstance(spec['value'],bool)
+                and args.get('fill_value')==spec['value'])
     if kind=='select_fields':
         return tool=='filter_sort' and operation=='select_columns' and args.get('columns')==spec['fields']
     if kind=='gmail_summary':

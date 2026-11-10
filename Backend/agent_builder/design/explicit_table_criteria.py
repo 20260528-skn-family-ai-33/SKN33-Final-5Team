@@ -108,7 +108,17 @@ def explicit_draft_issues(state,draft):
             if spec['kind']=='policy':
                 policy_nodes=[n for id,n in nodes.items() if id in active and n['tool']=='filter_sort' and not n['settings'].get('operation')]
                 if not policy_nodes:
-                    issues.append('명시 조건 검증: 요청한 빈값·중복 정책을 적용하는 실행 단계를 확인하지 못했습니다.')
+                    policies=[spec[k] for k in ('missing_policy','duplicate_policy')]
+                    keep_only='keep' in policies and all(value in (None,'keep') for value in policies)
+                    # Native table reads/writes preserve nulls and repeated rows
+                    # without a filter. Do not infer this for transformations or
+                    # operations merely sharing those tool names.
+                    unchanged=(active <= {n['id'] for n in path}
+                               and any(nodes[id]['tool']=='read_table' for id in active)
+                               and all(nodes[id]['tool'] in ('read_table','write_result')
+                                       and not nodes[id]['settings'].get('operation') for id in active))
+                    if not (keep_only and unchanged):
+                        issues.append('명시 조건 검증: 요청한 빈값·중복 정책을 적용하는 실행 단계를 확인하지 못했습니다.')
                 for key,value in spec.items():
                     if key=='kind' or value is None:continue
                     for n in policy_nodes:

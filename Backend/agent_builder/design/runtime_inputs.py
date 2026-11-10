@@ -6,12 +6,23 @@ _DEFER = re.compile(r'(?:실행\s*(?:할\s*때|시)|나중에).{0,45}(?:넣을|�
 _NOW = re.compile(r'(?:지금|먼저|설계\s*(?:할\s*때|시)).{0,30}(?:넣을|올릴|첨부할|업로드할|제공할)')
 _NEGATIVE = re.compile(r'(?:넣|올리|첨부하|업로드하|제공하|입력하)지\s*않|(?:안|못)\s*(?:넣|올|첨부|업로드|제공|입력)')
 _FILE_TARGET = r'(?:파일|자료|문서|계약서|영수증|첨부|PDF|CSV|엑셀)(?:\s*(?:파일|문서|PDF))?(?:\s*(?:의\s*)?(?:자체|이름|명|경로|ID|아이디))?'
+# Require a complete verbal question: "파일 처리 규칙" is a noun phrase
+# about business criteria, while "파일을 처리할까요?" asks for the file.
+_FILE_QUESTION_PREDICATE = (
+    r'(?:(?:하(?:시)?|되)(?:나요|죠|겠(?:습니까|어요))|하십니까|해요|'
+    r'(?:할|하실)(?:까요|래요)|될까요)')
+_FILE_ACTION_QUESTION = (
+    r'(?:사용|처리|선택|연결)(?:' + _FILE_QUESTION_PREDICATE +
+    r'|하(?:시)?면\s*' + _FILE_QUESTION_PREDICATE +
+    r'|해야\s*' + _FILE_QUESTION_PREDICATE +
+    r'|(?:할|하실)\s*(?:건가요|것인가요|예정인가요|계획인가요)'
+    r'|할지\s*알려\s*주세요)(?=\s*(?:[?？.!]|$))')
 # Match what the question asks for, not two unrelated words anywhere in it.
 # "CSV 파일에서 집계할 열을 선택" asks for a column, not for the file.
 _UPLOAD_QUESTION = re.compile(
     _FILE_TARGET + r'(?:을|를|은|는|이|가|도)?\s*(?:(?:다시|먼저|지금)\s*)?'
     r'(?:(?:올려|첨부해|업로드해|제공해|연결해|선택해|알려).{0,12}(?:주세요|주실|주시|줄)|무엇|어디|있나요|있습니까)'
-    r'|(?:어떤|어느)\s*' + _FILE_TARGET + r'(?:을|를)?\s*(?:사용|처리|선택|연결)', re.I)
+    r'|(?:어떤|어느)\s*' + _FILE_TARGET + r'(?:을|를)?\s*' + _FILE_ACTION_QUESTION, re.I)
 
 
 def runtime_file_context(state):

@@ -59,6 +59,10 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         if audit:audit.error(error)
     def add(name,fn):
         def observed(state):
+            # Server-selected connection metadata is refreshed on every request,
+            # including resumed interrupts. Never retain OAuth tokens in graph state.
+            connected=getattr(storage,'gmail_connected',None)
+            if hasattr(storage,'gmail_connected'):state={**state,'gmail_connected':connected if type(connected) is bool else None}
             audit=getattr(storage,'generation_audit',None)
             if audit:audit.enter(name)
             try:

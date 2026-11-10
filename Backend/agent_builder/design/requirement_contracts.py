@@ -86,7 +86,7 @@ class GmailSummary(Strict):
 class GmailScheduledSummary(GmailSummary):
     kind: Literal['gmail_scheduled_summary']
     schedule: ScheduleSpec
-    query: Literal['{{gmail.previous_day}}']
+    query: Literal['{{gmail.previous_day}}', 'is:unread -in:sent -in:drafts']
 
 
 class ScheduledExecution(Strict):

@@ -97,15 +97,17 @@ def test_code_validation_returns_unresolved_policy_to_agent_without_canned_quest
     assert supervisor_node({**original,**checked})['route']=='repair'
 
 
-def test_clarification_does_not_expose_executable_partial_workflow(monkeypatch):
+def test_clarification_preserves_graph_preview_but_never_approves_it(monkeypatch):
     workflow={'entry':'read','nodes':[node('read','read_table')],'edges':[]}
     class Agent:
         def invoke(self,payload,config):return {'structured_response':draft(questions=['기준은 얼마인가요?'],workflow=workflow)}
     monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',lambda **kwargs:Agent())
-    result=make_conversation(None,'test',model_factory=lambda:object())(state([{'role':'user','content':'큰 값만 남겨줘'}]))
+    original=state([{'role':'user','content':'큰 값만 남겨줘'}])
+    result=make_conversation(None,'test',model_factory=lambda:object())(original)
     assert result['draft']['questions']==['기준은 얼마인가요?']
-    assert result['draft']['workflow'] is None
-    assert result['draft']['tool_ids']==[]
+    assert result['draft']['workflow']['entry']=='read'
+    assert result['draft']['tool_ids']==['read_table']
+    assert validate_node({**original,**result})['status']=='needs_clarification'
 
 
 @pytest.mark.parametrize('failures',[1,3])

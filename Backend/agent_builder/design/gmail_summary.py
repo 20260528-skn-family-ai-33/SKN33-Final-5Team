@@ -1,7 +1,7 @@
 """A closed, read-only Gmail summary recipe grounded in registered operation contracts.
 
 This recognizes complete bounded requests, not a Gmail keyword. The registered
-daily-09:00 previous-day recipe is explicit; other recurrence, filters, delivery,
+daily-09:00 previous-day and hourly unread recipes are explicit; other filters, delivery,
 other channels, attachments and additional tasks stay with the planner.
 Account authorization remains an execution prerequisite and is never inferred here.
 """
@@ -17,7 +17,10 @@ _REQUEST = re.compile(
     r'요약(?:해서정리|하고정리|정리)?해(?:줘|주세요|주라)', re.I)
 RECIPE = 'gmail_recent_summary.v1'
 SCHEDULED_RECIPE = 'gmail_previous_day_daily_summary.v1'
+HOURLY_UNREAD_RECIPE = 'gmail_hourly_unread_summary.v1'
+SAVED_SCHEDULE_RECIPE = 'gmail_saved_schedule_count_update.v1'
 PREVIOUS_DAY_QUERY = '{{gmail.previous_day}}'
+UNREAD_QUERY = 'is:unread -in:sent -in:drafts'
 SCHEDULED_MAX_RESULTS = 100
 MAX_RESULTS = 500
 _KOREAN_TIME = r'(?:(?:한국시간|KST|Asia/Seoul)(?:기준)?(?:으로)?)?'
@@ -28,6 +31,19 @@ _DAILY_REQUEST = re.compile(
     r'(?:' + _PREVIOUS_DAY + _GMAIL + r'(?:메일|이메일)|' +
     _GMAIL + _PREVIOUS_DAY + r'(?:메일|이메일))'
     r'(?:들)?(?:의|을|를)?(?:(?:중|가운데)?(?:최대)?(?P<limit>[1-9]\d{0,3})(?:개|건)(?:의|만|을|를)?)?'
+    r'(?:내용|본문)?(?:을|를)?'
+    r'요약(?:해서정리|하고정리|정리)?(?:해(?:줘|주세요|주라))?', re.I)
+_HOURLY_UNREAD_REQUEST = re.compile(
+    _KOREAN_TIME + r'(?:매(?:시간|시)(?:마다)?(?:정각|정시)|매정시(?:마다)?|정시마다)(?:에)?' + _KOREAN_TIME +
+    r'(?:지메일|gmail)(?:에서|의|에)?'
+    r'(?:'
+    r'(?:안읽은|읽지않은)(?:메일|이메일)(?:들)?(?:만)?(?:의|을|를)?|'
+    r'(?:온|받은|수신한|도착한)?(?:메일|이메일)(?:들)?(?:을|를)?확인하고'
+    r'(?:안읽은|읽지않은)(?:(?:메일|이메일)(?:들)?|것들?|것만)(?:만)?(?:의|을|를)?|'
+    r'(?:온|받은|수신한|도착한)?(?:메일|이메일)(?:들)?(?:중|가운데)'
+    r'(?:안읽은|읽지않은)(?:(?:메일|이메일)(?:들)?|것들?|것만)(?:만)?(?:의|을|를)?'
+    r')'
+    r'(?:(?:최대)?(?P<limit>[1-9]\d{0,3})(?:개|건)(?:의|만|을|를)?)?'
     r'(?:내용|본문)?(?:을|를)?'
     r'요약(?:해서정리|하고정리|정리)?(?:해(?:줘|주세요|주라))?', re.I)
 _COUNT_CHANGE = re.compile(r'(?:(?:조회|요약)(?:할)?(?:메일)?(?:수|건수|한도)(?:를|는|을)?|메일(?:조회)?(?:한도|건수)(?:를|는|을)?)?'
@@ -42,26 +58,37 @@ def requested_count(text):
     return int(match[1]) if match and int(match[1]) <= MAX_RESULTS else None
 
 
-def requested_schedule(text):
+def _scheduled_settings(text):
     if not isinstance(text, str) or len(text) > 2000:
         return None
     compact = re.sub(r'\s+', '', text.strip().rstrip('.!~'))
-    match = _DAILY_REQUEST.fullmatch(compact)
-    if not match or match['limit'] and int(match['limit']) > MAX_RESULTS:
-        return None
-    return ScheduleSpec(frequency='daily', timezone='Asia/Seoul', hour=9, minute=0, weekday=None).model_dump()
+    for pattern, frequency, hour, query in (
+        (_DAILY_REQUEST, 'daily', 9, PREVIOUS_DAY_QUERY),
+        (_HOURLY_UNREAD_REQUEST, 'hourly', None, UNREAD_QUERY),
+    ):
+        match = pattern.fullmatch(compact)
+        if match and (not match['limit'] or int(match['limit']) <= MAX_RESULTS):
+            return dict(count=int(match['limit']) if match['limit'] else SCHEDULED_MAX_RESULTS,
+                        schedule=ScheduleSpec(frequency=frequency, timezone='Asia/Seoul', hour=hour,
+                                              minute=0, weekday=None).model_dump(), query=query)
+    return None
+
+
+def requested_schedule(text):
+    settings = _scheduled_settings(text)
+    return settings['schedule'] if settings else None
 
 
 def _request_settings(text):
     count = requested_count(text)
     if count is not None:
         return dict(count=count)
-    schedule = requested_schedule(text)
-    if schedule:
-        match = _DAILY_REQUEST.fullmatch(re.sub(r'\s+', '', text.strip().rstrip('.!~')))
-        return dict(count=int(match['limit']) if match['limit'] else SCHEDULED_MAX_RESULTS,
-                    schedule=schedule, query=PREVIOUS_DAY_QUERY)
-    return None
+    return _scheduled_settings(text)
+
+
+def _count_summary_instructions(count):
+    return (f'조회한 Gmail 메일 최대 {count}건의 제목·보낸 사람·본문을 근거로 '
+            '메일별 핵심 내용을 요약하세요. 메일이 없으면 없다고 안내하세요.')
 
 
 def _base_summary(state):
@@ -87,12 +114,21 @@ def _base_summary(state):
             or type(arguments.get('max_results')) is not int or not 1 <= arguments['max_results'] <= MAX_RESULTS):
         return None
     query = arguments.get('query')
-    if query not in (None, PREVIOUS_DAY_QUERY) or bool(draft.get('schedule')) != (query == PREVIOUS_DAY_QUERY):
+    if query not in (None, PREVIOUS_DAY_QUERY, UNREAD_QUERY) or bool(draft.get('schedule')) != (query is not None):
         return None
+    instructions = summary['settings'].get('instructions')
+    source = _request_settings(instructions)
+    if not (source and source['count'] == arguments['max_results'] and source.get('query') == query):
+        if instructions != _count_summary_instructions(arguments['max_results']):
+            # Preserve custom summary work by letting the planner edit it.
+            return None
     result = dict(count=arguments['max_results'])
-    if query == PREVIOUS_DAY_QUERY:
+    if query is not None:
         from workflow_engine.scheduling.recurrence import schedule_errors
-        schedule = ScheduleSpec.model_validate(draft['schedule']).model_dump()
+        try:
+            schedule = ScheduleSpec.model_validate(draft['schedule']).model_dump()
+        except ValueError:
+            return None
         if schedule_errors(schedule):return None
         result.update(schedule=schedule, query=query)
     return result
@@ -115,8 +151,7 @@ def _edited_request(state, users):
         settings = {**settings, 'count': int(match[1])}
         changed = True
     if changed:
-        settings['summary_instructions'] = (f"조회한 Gmail 메일 최대 {settings['count']}건의 제목·보낸 사람·본문을 근거로 "
-                                            '메일별 핵심 내용을 요약하세요. 메일이 없으면 없다고 안내하세요.')
+        settings['summary_instructions'] = _count_summary_instructions(settings['count'])
     return settings
 
 
@@ -146,6 +181,21 @@ def gmail_summary_request(state):
     return dict(request=users[-1], source_message=len(users)-1, **settings)
 
 
+def _recipe(request):
+    schedule = request.get('schedule')
+    if not schedule:
+        return RECIPE
+    daily = ScheduleSpec(frequency='daily', timezone='Asia/Seoul', hour=9, minute=0, weekday=None).model_dump()
+    hourly = ScheduleSpec(frequency='hourly', timezone='Asia/Seoul', hour=None, minute=0, weekday=None).model_dump()
+    if request['query'] == PREVIOUS_DAY_QUERY and schedule == daily:
+        return SCHEDULED_RECIPE
+    if request['query'] == UNREAD_QUERY and schedule == hourly:
+        return HOURLY_UNREAD_RECIPE
+    # Only editing an existing bounded graph can supply another saved schedule.
+    # Do not audit that preservation as a newly requested daily/hourly recipe.
+    return SAVED_SCHEDULE_RECIPE
+
+
 def gmail_summary_assessment(state):
     request = gmail_summary_request(state)
     if not request:
@@ -154,7 +204,7 @@ def gmail_summary_assessment(state):
                 missing_conditions=[], missing_actions=[], user_quotes=[request['request']],
                 reason='등록된 Gmail 본문 묶음 읽기의 documents 출력과 근거 요약 입력을 연결할 수 있습니다. '
                        '계정 읽기 권한과 모델 연결은 실행 전에 확인하며 설계 시 기능 부재로 취급하지 않습니다.',
-                registered_workflow=SCHEDULED_RECIPE if request.get('schedule') else RECIPE,
+                registered_workflow=_recipe(request),
                 model_calls=0, allows_execution=False, allows_generation=False,
                 runtime_prerequisites=['Gmail 읽기 권한 연결', '요약 모델 연결'],
                 scope='catalog assessment only; not condition READY')
@@ -163,7 +213,7 @@ def gmail_summary_assessment(state):
 def _schedule_description(spec):
     zone = '한국 시간' if spec['timezone'] == 'Asia/Seoul' else spec['timezone'] + ' 기준'
     if spec['frequency'] == 'hourly':
-        return f"{zone} 매시간 {spec['minute']}분"
+        return f"{zone} 매시간 정각" if spec['minute'] == 0 else f"{zone} 매시간 {spec['minute']}분"
     clock = f"{spec['hour']:02d}:{spec['minute']:02d}"
     if spec['frequency'] == 'daily':
         return f'{zone} 매일 {clock}'
@@ -185,7 +235,8 @@ def gmail_summary_plan(state):
         spec['summary_instructions'] = request['summary_instructions']
     if scheduled:
         spec.update(schedule=scheduled, query=request['query'])
-    description = (f"{_schedule_description(scheduled)} 전날 수신 메일 최대 {request['count']}건 읽기와 원문 요약"
+    scope = '안 읽은 수신 메일' if request.get('query') == UNREAD_QUERY else '전날 수신 메일'
+    description = (f"{_schedule_description(scheduled)} {scope} 최대 {request['count']}건 읽기와 원문 요약"
                    if scheduled else f"최근 메일 최대 {request['count']}건 읽기와 원문 요약")
     return dict(tasks=[dict(id='r1', source_message=request['source_message'], quote=request['request'],
                            description=description, depends_on=[], spec=spec)],
@@ -203,7 +254,14 @@ def gmail_summary_reply(state):
     from agent_builder.design.requirement_ledger import validate_plan, ledger_fingerprint, plan_digest
     count, quote = request['count'], request['request']
     scheduled = request.get('schedule')
-    explanation = ((f'{_schedule_description(scheduled)}에 전날 00:00부터 당일 00:00 직전까지 받은 메일 중 최대 {count}건을 읽습니다. '
+    unread = request.get('query') == UNREAD_QUERY
+    recipe = _recipe(request)
+    explanation = ((f'{_schedule_description(scheduled)}에 안 읽은 수신 메일을 최대 {count}건 읽습니다. '
+                    '보낸 메일과 임시보관함은 제외합니다. 읽음 상태를 바꾸지 않아 계속 안 읽은 메일은 다음 실행에도 포함될 수 있습니다. '
+                    '조회 한도를 넘으면 일부 메일은 포함되지 않을 수 있습니다. '
+                    '요약은 앱의 실행 기록에 저장하며 예약은 저장 후 별도로 켭니다. ')
+                   if unread else
+                   (f'{_schedule_description(scheduled)}에 전날 00:00부터 당일 00:00 직전까지 받은 메일 중 최대 {count}건을 읽습니다. '
                     '조회 기간은 매번 예약 실행일을 기준으로 계산합니다. 조회 한도를 넘으면 일부 메일은 포함되지 않을 수 있습니다. '
                     '요약은 앱의 실행 기록에 저장하며 예약은 저장 후 별도로 켭니다. ')
                    if scheduled else f'최근 메일을 최대 {count}건 읽고 ')
@@ -216,16 +274,20 @@ def gmail_summary_reply(state):
     if scheduled:
         arguments['query'] = request['query']
     nodes = [
-        dict(id='mail', tool='email.list', label=f'전날 메일 최대 {count}건 읽기' if scheduled else f'최근 메일 {count}건 읽기', bindings=[],
+        dict(id='mail', tool='email.list', label=f'안 읽은 메일 최대 {count}건 읽기' if unread else f'전날 메일 최대 {count}건 읽기' if scheduled else f'최근 메일 {count}건 읽기', bindings=[],
              settings={**defaults, 'operation':'read_messages', 'arguments_json':json.dumps(arguments)}),
         dict(id='summary', tool='compose_answer', label='메일 내용 요약',
              bindings=[dict(input='documents', node_id='mail', output='documents')],
              settings={**defaults, 'instructions':request.get('summary_instructions') or quote}),
     ]
     name = ((state.get('draft') or {}).get('name') if state.get('base_agent_id') else None)
-    draft = AgentDraft(name=name or ('매일 오전 9시 전날 메일 요약' if scheduled else f'최근 메일 {count}건 요약'), purpose=quote, instructions=explanation,
+    default_name = ('매시간 정각 안 읽은 메일 요약' if recipe == HOURLY_UNREAD_RECIPE else
+                    '매일 오전 9시 전날 메일 요약' if recipe == SCHEDULED_RECIPE else
+                    f"{_schedule_description(scheduled)} {'안 읽은' if unread else '전날'} 메일 요약" if scheduled else
+                    f'최근 메일 {count}건 요약')
+    draft = AgentDraft(name=name or default_name, purpose=quote, instructions=explanation,
                        tool_ids=['email.list', 'compose_answer'], document_ids=[],
-                       requirements=[dict(description='전날 메일 예약 조회와 요약' if scheduled else '최근 메일 본문 조회와 요약', source_id='user', quote=quote)],
+                       requirements=[dict(description='안 읽은 메일 예약 조회와 요약' if unread else '전날 메일 예약 조회와 요약' if scheduled else '최근 메일 본문 조회와 요약', source_id='user', quote=quote)],
                        questions=[], unsupported=[], explanation=explanation,
                        execution_plan=dict(filters=[], sort=[], match='all', missing_policy='keep',
                                            duplicate_policy='keep', duplicate_field=None, output_format='json'),
@@ -242,4 +304,5 @@ def gmail_summary_reply(state):
                 requirement_digest=plan_digest(plan), gap_condition_review=None,
                 messages=state['messages']+[dict(role='assistant', content=explanation)],
                 trace=state.get('trace', [])+[dict(node='gmail_summary', label='메일 요약 설계', status='completed',
-                    detail='요청 전체·조회 건수·등록 문서 입출력을 확인해 읽기와 요약을 연결했습니다.', model_calls=0)])
+                    detail=plan['tasks'][0]['description'] + ' · 등록 문서 입출력 연결 확인',
+                    registered_workflow=recipe, model_calls=0)])

@@ -202,8 +202,21 @@ class Schedules:
         row=self.db.execute('SELECT json,state,lease_token FROM builder_schedule_jobs WHERE {ws} AND id=?',(id,)).fetchone()
         if not row or row[1]!='running' or row[2]!=token:raise ValueError('실행 작업의 소유권을 확인하지 못했습니다.')
         return json.loads(row[0])
-    def finish(self,id,token,status,run_id=None,error=None):
-        job=self.job(id,token);job.update(run_id=run_id,error=error,finished_at=now())
-        self.db.execute('UPDATE builder_schedule_jobs SET state=?,json=?,lease_until=NULL WHERE {ws} AND id=? AND lease_token=?',(status,json.dumps(job,ensure_ascii=False),id,token));self.db.commit()
+    def finish(self,id,token,status,run_id=None,error=None,source_run=None):
+        # Claim/reclaim and completion share the workspace write lock. Source
+        # cursors must not commit before this owner's lease has been checked.
+        self.storage.begin_write()
+        try:
+            job=self.job(id,token)
+            if source_run is not None and (source_run['id']!=id or source_run['status']!=status):
+                raise ValueError('예약 작업과 자료 처리 결과가 일치하지 않습니다.')
+            job.update(run_id=run_id,error=error,finished_at=now())
+            changed=self.db.execute("UPDATE builder_schedule_jobs SET state=?,json=?,lease_until=NULL WHERE {ws} AND id=? AND state='running' AND lease_token=?",(status,json.dumps(job,ensure_ascii=False),id,token))
+            if not changed.rowcount:raise ValueError('예약 작업의 실행 소유권이 만료되었습니다.')
+            manager=LibrarySources(self.storage)
+            if source_run is not None:manager.complete(source_run,commit=False)
+            if status=='failed':manager.failed_job(id,commit=False)
+            self.db.commit()
+        except Exception:self.db.rollback();raise
     def jobs(self,agent_id):
         return [{**json.loads(body),'status':state} for body,state in self.db.execute('SELECT json,state FROM builder_schedule_jobs WHERE {ws} AND agent_id=? ORDER BY {seq} DESC LIMIT 20',(agent_id,))]

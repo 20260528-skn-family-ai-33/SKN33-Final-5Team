@@ -250,6 +250,10 @@ class LibrarySources:
                     self.db.execute("UPDATE builder_schedule_jobs SET state='cancelled',json=?,lease_until=NULL WHERE {ws} AND id=?",(encoded(parent),id))
                     self.db.commit();return {'status':'skipped','enqueued_count':0,'message':parent['message']}
             else:
+                # The plan/candidate export precedes this write transaction. A
+                # concurrent settings save may have replaced or removed it.
+                # Check again while holding the same workspace lock as save().
+                if self.get(id)!=selection:raise ValueError('자료함 설정이 변경됐습니다. 다시 실행하세요.')
                 agent=self.storage.agent(id);due=now();parent_id=uid()
                 parent={'id':parent_id,'agent_id':id,'agent_snapshot':agent,'kind':'manual','due_at':due,'created_at':due}
             jobs=[]
@@ -318,7 +322,7 @@ class LibrarySources:
         else:agent=self.storage.agent(id);run_id=data.get('run_id') if action=='test' else None
         if action=='test' and not run_id:raise ValueError('자료함 실행의 고정 실행 ID가 필요합니다.')
         return self.stage(run_id,agent,payload)
-    def complete(self,run):
+    def complete(self,run,commit=True):
         meta=run.get('library_source')
         if not meta:return
         state='succeeded' if run['status']=='succeeded' else 'failed' if run['status']=='failed' else 'pending'
@@ -327,11 +331,11 @@ class LibrarySources:
         selection=meta['selection']
         self.db.execute('UPDATE builder_source_processed SET state=?,updated_at=? WHERE {ws} AND agent_id=? AND revision=? AND source_key=? AND job_id=?'+terminal_guard,
                         (state,now(),run['agent_id'],selection['revision'],meta['source_key'],run['id']))
-        self.db.commit()
-    def failed_job(self,id):
+        if commit:self.db.commit()
+    def failed_job(self,id,commit=True):
         self.db.execute("UPDATE builder_source_processed SET state='failed',updated_at=? WHERE {ws} AND job_id=? AND state='pending'",(now(),id))
         self.db.execute("UPDATE builder_source_snapshots SET state='failed',updated_at=? WHERE {ws} AND run_id=? AND state='pending'",(now(),id))
-        self.db.commit()
+        if commit:self.db.commit()
 
 
 def source_metadata(storage):

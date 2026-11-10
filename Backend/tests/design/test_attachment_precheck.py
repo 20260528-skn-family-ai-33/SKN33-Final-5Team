@@ -58,3 +58,24 @@ def test_answer_for_a_later_run_continues_to_the_planner(tmp_path):
     graph.invoke(Command(resume={'type':'message','content':'실행할 때 넣을게요'}),cfg)
     assert calls==['실행할 때 넣을게요']
     connection.close();store.close()
+
+
+def test_later_run_choice_is_preserved_when_the_user_adds_a_contract_condition(tmp_path):
+    store=Storage(tmp_path)
+    s=state('첨부한 계약서 PDF를 검토해줘')
+    cfg={'configurable':{'thread_id':s['session_id']}}
+    calls=[]
+    def planner(st):
+        calls.append(st['messages'][-1]['content'])
+        return {'draft':draft(['검토 결과는 어떤 형식으로 정리할까요?']),
+                'confirmed':False,'saved_agent_id':None}
+    graph,connection=build_graph(store,conversation=planner)
+    try:
+        graph.invoke(s,cfg)
+        graph.invoke(Command(resume={'type':'message','content':'실행할 때 넣을게요'}),cfg)
+        result=graph.invoke(Command(resume={'type':'message','content':'첨부한 계약서 PDF의 해지 조건도 검토해줘'}),cfg)
+        assert calls==['실행할 때 넣을게요','첨부한 계약서 PDF의 해지 조건도 검토해줘']
+        assert QUESTION not in result['draft']['questions']
+        assert not store.agents()
+    finally:
+        connection.close();store.close()

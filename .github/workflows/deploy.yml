@@ -182,11 +182,17 @@ jobs:
             tests/workflow_engine/test_public_gmail_runs.py \
             tests/workflow_engine/test_gmail_summary_batches.py \
             tests/capabilities/test_gmail_schedule_design.py \
+            tests/capabilities/test_gmail_hourly_unread_design.py \
             tests/capabilities/test_gmail_summary.py \
             tests/capabilities/test_native_schedule.py \
             tests/conditions/test_schedule_literals.py \
             tests/conditions/test_extended_schedule_literals.py \
+            tests/conditions/test_condition_readiness.py \
             tests/conditions/test_pr28_review.py \
+            tests/design/test_attachment_precheck.py \
+            tests/design/test_attachment_deferral.py \
+            tests/design/test_node_completeness.py \
+            tests/design/test_service_connection_context.py \
             tests/design/test_completion.py \
             tests/infrastructure/test_asset_library.py \
             tests/infrastructure/test_team_asset_library.py

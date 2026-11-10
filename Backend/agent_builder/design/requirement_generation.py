@@ -5,9 +5,22 @@ import os
 from .requirement_ledger import ledger_fingerprint, plan_digest
 
 
-TOOLS={'compute':'calculate_columns','filter':'filter_sort','sort':'filter_sort',
+TOOLS={'compute':'calculate_columns','parse_dates':'calculate_columns','filter':'filter_sort','sort':'filter_sort',
        'policy':'filter_sort','aggregate':'aggregate_table','join':'join_tables',
-       'export':'write_result','read':'read_table'}
+       'export':'write_result','read':'read_table','rename':'calculate_columns',
+       'fill_missing':'filter_sort','select_fields':'filter_sort',
+       'document_analysis':'compose_answer','human_review':'ask_user'}
+
+
+def required_operation_variants(specs,node_schema,binding_schema,variable_names,available=()):
+    """Expose required registered operations absent from a tool's native settings."""
+    from workflow_engine.catalog.canonical import operation_variants
+    operations={s['kind'] for s in specs} & {'fill_missing','select_fields'}
+    if not operations or 'filter_sort' in available:return []
+    names={'fill_missing':'handle_missing','select_fields':'select_columns'}
+    wanted={names[k] for k in operations}
+    return [v for v in operation_variants(node_schema,binding_schema,{'filter_sort'},variable_names)
+            if v['properties']['settings']['properties']['operation'].get('enum',[None])[0] in wanted]
 
 
 def generation_mode():
@@ -28,8 +41,15 @@ def generation_requirements(state):
             or state.get('requirement_digest')!=plan_digest(ledger)):
         return [],[]
     specs=[t['spec'] for t in ledger['tasks']]
-    if any(s['kind'] not in TOOLS or s['kind']=='export' and s['format'] not in ('csv','json') for s in specs):
-        return [],[]
+    complete=not any(s['kind'] not in TOOLS or s['kind']=='export' and s['format'] not in ('csv','json') for s in specs)
+    # An unsupported requirement still blocks approval, but must not hide the
+    # known calculation/document contracts from the model's tool selection.
+    if not complete:return specs,[]
+    # select_columns consumes/returns records, while the native table chain
+    # reads/writes Table values. A task-to-tool list cannot reserve its required
+    # adapters or records exporter. Keep the ordinary generation grammar for
+    # these requests; all sealed specs still reach the coverage/save gate.
+    if any(s['kind']=='select_fields' for s in specs):return specs,[]
     assets={a['id']:a for a in state.get('resources',[])}
     files=[]
     for s in specs:
@@ -40,11 +60,13 @@ def generation_requirements(state):
     if (not files or any(id not in assets or assets[id].get('kind')!='table' for id in files)
             or state.get('required_node_refs')):return specs,[]
     order=['read_table']*len(files)
+    previous_kind='read'
     for s in specs:
         if s['kind'] in ('read','policy'):continue
         tool=TOOLS[s['kind']]
-        if tool=='filter_sort' and order[-1:]==['filter_sort']:continue
+        if s['kind'] in ('filter','sort') and order[-1:]==['filter_sort'] and previous_kind in ('filter','sort'):continue
         order.append(tool)
+        previous_kind=s['kind']
     if any(s['kind']=='policy' for s in specs) and 'filter_sort' not in order:
         return specs,[]  # no invented policy placement
     return specs,order if 1<=len(order)<=15 else []
@@ -63,6 +85,26 @@ def _literal(value):
     return {'type':kind,'enum':[value]}
 
 
+def constrain_request_settings(schema,state):
+    """Carry sealed criteria to matching native settings, never create nodes."""
+    result=deepcopy(schema);specs,order=generation_requirements(state)
+    if not specs:return result
+    analyses=list(dict.fromkeys(s['request'] for s in specs if s['kind']=='document_analysis'))
+    human=any(s['kind']=='human_review' for s in specs)
+    for variant in result['$defs']['WorkflowNode']['anyOf']:
+        tool=variant['properties']['tool'].get('enum',[None])[0]
+        settings=variant['properties']['settings']['properties']
+        if settings.get('operation',{}).get('enum'):continue
+        if tool=='compose_answer' and analyses:settings['instructions']=_literal('\n'.join(analyses))
+        if tool=='ask_user' and human:
+            settings['instructions']={'type':'null'}
+            variant['properties']['bindings'].update(minItems=1)
+    if order:
+        nodes=result['$defs']['WorkflowDefinition']['properties'].get('nodes')
+        if nodes is not None:nodes['minItems']=max(nodes.get('minItems',1),len(order))
+    return result
+
+
 def constrain_uploaded_join_inputs(schema,state):
     """Uploaded Tables must use graph inputs, not duplicate constant Table values.
 
@@ -70,7 +112,7 @@ def constrain_uploaded_join_inputs(schema,state):
     every node, source reader, policy value and connection. Unsealed/ambiguous
     sources and explicit literal-table calculations keep the general grammar.
     """
-    result=deepcopy(schema);specs,_=generation_requirements(state)
+    result=deepcopy(schema);specs,order=generation_requirements(state)
     joins=[s for s in specs if s['kind']=='join']
     if len(joins)!=1 or (state.get('requirement_ledger') or {}).get('unresolved'):return result
     join=joins[0];left=join.get('left_sources',[]);right=join.get('right_sources',[])
@@ -90,11 +132,20 @@ def constrain_uploaded_join_inputs(schema,state):
         arguments=settings['arguments_json']
         if arguments.get('type')!='object':continue
         for name in ('left','right'):arguments['properties'].pop(name,None)
-        arguments['required']=[name for name in arguments.get('required',[]) if name not in ('left','right')]
+        from workflow_engine.catalog.canonical import arguments_spec, operation_spec
+        required=arguments_spec('join_tables',operation_spec('join_tables','join'))
+        arguments['required']=list(dict.fromkeys(
+            [name for name in arguments.get('required',[]) if name not in ('left','right')]
+            +[name for name,needed in required.items() if needed and name not in ('left','right')]))
         binding=variant['properties']['bindings']
         binding.update(minItems=2,maxItems=2)
         binding['items']['properties']['input']={'type':'string','enum':['left','right']}
     result['$defs']['WorkflowNode']['anyOf']=compatible
+    roles=[s['kind'] for s in specs]
+    minimum=(len(order) if order else 2+sum(k in ('compute','parse_dates','aggregate','join','export') for k in roles)
+             +int(any(k in ('filter','sort','policy') for k in roles)))
+    nodes=result['$defs'].get('WorkflowDefinition',{}).get('properties',{}).get('nodes')
+    if nodes is not None:nodes['minItems']=max(nodes.get('minItems',1),minimum)
     return result
 
 
@@ -121,6 +172,7 @@ def constrain_generation(schema,state):
         if 'nodes' in workflow:workflow['nodes']['minItems']=max(workflow['nodes'].get('minItems',1),len(order))
         if 'next_steps' in workflow:workflow['next_steps']['minItems']=max(workflow['next_steps'].get('minItems',0),len(order)-1)
         computes=[s for s in specs if s['kind']=='compute']
+        dates=[s for s in specs if s['kind']=='parse_dates']
         aggregates=[s for s in specs if s['kind']=='aggregate']
         filters=[s for s in specs if s['kind']=='filter'];sorts=[s for s in specs if s['kind']=='sort']
         exports=[s for s in specs if s['kind']=='export']
@@ -129,10 +181,14 @@ def constrain_generation(schema,state):
             properties=variant['properties']['settings']['properties']
             if properties.get('operation',{}).get('enum'):continue
             values={}
-            if tool=='calculate_columns' and len(computes)==1:
+            if tool=='calculate_columns' and len(computes)==1 and not dates:
                 values=dict(table_operation='compute',calculation_formula=computes[0]['formula'],output_column=computes[0]['output_column'])
                 values.update({k:None for k in ('rename_from','rename_to','date_input_format','date_timezone') if k in properties})
                 if 'fields' in properties:values['fields']=[]
+            if tool=='calculate_columns' and len(dates)==1 and not computes:
+                values=dict(table_operation='parse_dates',fields=dates[0]['fields'],
+                            date_input_format=dates[0]['input_format'],date_timezone=dates[0]['timezone'])
+                values.update({k:None for k in ('calculation_formula','output_column','rename_from','rename_to') if k in properties})
             if tool=='aggregate_table' and len(aggregates)==1:
                 values={k:aggregates[0][k] for k in ('fields','aggregation','sum_field')}
             if tool=='filter_sort' and order.count('filter_sort')==1 and len(filters)<=1 and len(sorts)<=1:

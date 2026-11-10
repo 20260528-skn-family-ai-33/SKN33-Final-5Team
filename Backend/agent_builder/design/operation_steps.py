@@ -13,13 +13,16 @@ bindings는 input=실제 인자/입력 포트명, step=참조할 앞 단계의 1
 예: 두 읽기 단계 다음 join의 bindings=[{"input":"left","step":1,"output":"table"},{"input":"right","step":2,"output":"table"}].
 상수 인자는 settings.arguments_json에만 쓰며 같은 인자를 binding에도 중복 작성하지 않습니다.
 명시한 단계만 실행합니다. 필요한 도구를 빠뜨리지 말고 화면 표시용 중복 계산·파싱 단계를 추가하지 않습니다.
-finish는 필요할 때 마지막에 한 번만 둡니다. 질문·미지원이면 workflow=null입니다.
+finish는 필요할 때 마지막에 한 번만 둡니다. 질문이 남으면 확인된 단계만 미완료 workflow로 보존하고, 구성할 단계가 없을 때만 workflow=null로 대기합니다. 미지원이면 workflow=null입니다.
 condition을 조회해 분기가 필요해지면 이후 생성 스키마는 기존 entry/nodes/edges 그래프로 전환됩니다.
 '''
 
 
 def schema_for(schema):
     result=deepcopy(schema)
+    node_limits=result['$defs']['WorkflowDefinition']['properties'].get('nodes',{})
+    minimum=max(0,node_limits.get('minItems',1)-1)
+    maximum=min(14,node_limits.get('maxItems',15)-1)
     def convert(value):
         if isinstance(value,dict):
             properties=value.get('properties',{})
@@ -62,7 +65,7 @@ def schema_for(schema):
     result['$defs']['FirstBusinessStep']={'anyOf':first}
     result['$defs']['WorkflowDefinition']={'type':'object','additionalProperties':False,
         'properties':{'first_step':{'$ref':'#/$defs/FirstBusinessStep'},
-                      'next_steps':{'type':'array','maxItems':14,'items':{'$ref':'#/$defs/WorkflowNode'}}},
+                      'next_steps':{'type':'array','minItems':minimum,'maxItems':maximum,'items':{'$ref':'#/$defs/WorkflowNode'}}},
         'required':['first_step','next_steps']}
     return result
 
@@ -100,5 +103,14 @@ def compile_workflow(workflow):
             bindings.append({'input':binding['input'],'node_id':f'step_{previous}','output':binding['output']})
         nodes.append({'id':f'step_{index}','tool':step['tool'],'label':step['label'],
                       'settings':deepcopy(step['settings']),'bindings':bindings})
+        # Decoder enums only know possible port names, not which predecessor
+        # actually owns them. Reject impossible links before the bounded retry;
+        # never rename ports or replace the model's selected producer.
+        from workflow_engine.catalog.registry import node_ports
+        for binding in bindings:
+            source=nodes[int(binding['node_id'].split('_')[1])-1]
+            outputs=node_ports(source)[1]
+            if binding['output'] not in outputs:
+                raise ValueError(f"{index}단계는 {binding['node_id']}({source['tool']})의 없는 출력 {binding['output']}을 참조했습니다. 실제 출력: {', '.join(outputs)}. 연결 대상·도구를 실제 계약에 맞춰 설계하세요.")
     return {'entry':'step_1','nodes':nodes,
             'edges':[{'source':a['id'],'target':b['id'],'branch':'next'} for a,b in zip(nodes,nodes[1:])]}

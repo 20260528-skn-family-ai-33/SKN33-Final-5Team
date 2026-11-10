@@ -25,6 +25,13 @@ class Compute(Strict):
     output_column: str = Field(min_length=1, max_length=100)
 
 
+class ParseDates(Strict):
+    kind: Literal['parse_dates']
+    fields: list[str] = Field(min_length=1, max_length=20)
+    input_format: str = Field(min_length=1, max_length=100)
+    timezone: str = Field(min_length=1, max_length=100)
+
+
 class Filter(Strict):
     kind: Literal['filter']
     filters: list[FilterCondition] = Field(min_length=1, max_length=20)
@@ -76,6 +83,32 @@ class Other(Strict):
     action: str = Field(min_length=1, max_length=300)
 
 
+class DocumentAnalysis(Strict):
+    kind: Literal['document_analysis']
+    request: str = Field(min_length=1, max_length=20000)
+
+
+class HumanReview(Strict):
+    kind: Literal['human_review']
+
+
+class Rename(Strict):
+    kind: Literal['rename']
+    source: str = Field(min_length=1, max_length=100)
+    target: str = Field(min_length=1, max_length=100)
+
+
+class FillMissing(Strict):
+    kind: Literal['fill_missing']
+    fields: list[str] = Field(min_length=1, max_length=20)
+    value: str | int | float | bool
+
+
+class SelectFields(Strict):
+    kind: Literal['select_fields']
+    fields: list[str] = Field(min_length=1, max_length=40)
+
+
 class GmailSummary(Strict):
     kind: Literal['gmail_summary']
     max_results: int = Field(ge=1, le=500)
@@ -94,7 +127,7 @@ class ScheduledExecution(Strict):
     schedule: ScheduleSpec
 
 
-Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | GmailScheduledSummary | ScheduledExecution,
+Spec = Annotated[Read | ExtractFields | Compute | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
                  Field(discriminator='kind')]
 
 

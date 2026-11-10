@@ -371,6 +371,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    payload={action:workerAction,model:credential.id===LOCAL_MODEL_ID?local!.model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs};
   }
   if(['upload','attach_asset','message','confirm'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
+  if(['message','confirm'].includes(workerAction)&&typeof store.gmailConnected==='function')payload.gmail_connected=store.gmailConnected();
   if(workerAction==='attach_asset'){
    if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
    payload.asset_id=data.assetId;

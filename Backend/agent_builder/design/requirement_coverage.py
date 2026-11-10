@@ -237,7 +237,9 @@ def coverage_report(state,draft):
 
 
 def requirement_issues(state,draft):
-    if not state.get('requirement_required') and os.getenv('A4B_REQUIREMENT_MODE','off')!='enforce':return []
+    # Pending graphs may be shown as a design preview, never persisted as an
+    # executable configuration, even when semantic ledger checking is disabled.
     if draft.get('questions') or draft.get('unsupported'):
         return ['요구사항 검증: 질문·미지원이 남은 초안은 승인하거나 저장할 수 없습니다.']
+    if not state.get('requirement_required') and os.getenv('A4B_REQUIREMENT_MODE','off')!='enforce':return []
     return coverage_report(state,draft)['issues']

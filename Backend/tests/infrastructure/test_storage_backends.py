@@ -463,6 +463,49 @@ def test_run_lease_rejects_a_second_owner(backend, tmp_path):
         store.close()
 
 
+def test_manual_library_enqueue_rechecks_the_current_binding(backend,tmp_path,monkeypatch):
+    from workflow_engine.scheduling.library_sources import LibrarySources,library_export
+    from tests.workflow_engine.test_library_schedule_sources import workflow,upload,spec
+    folder=workspace(tmp_path);store=Storage(folder)
+    try:
+        upload(store,'old.csv');replacement=upload(store,'replacement.csv',amount=2)
+        agent_id=workflow(store);manager=LibrarySources(store)
+        selection=manager.save(agent_id,spec('new'),0)
+        refs=library_export(store,selection,'table')['candidates'];expand=manager.expand
+        def changed_after_plan(action,id,planned,chosen,token):
+            other=Storage(folder)
+            try:LibrarySources(other).save(agent_id,spec(asset_ids=[replacement['id']]),1)
+            finally:other.close()
+            return expand(action,id,planned,chosen,token)
+        monkeypatch.setattr(manager,'expand',changed_after_plan)
+        with pytest.raises(ValueError,match='자료함 설정이 변경'):
+            manager.resolve('test',agent_id,refs,expected_selection=selection)
+        assert store.db.execute('SELECT count(*) FROM builder_schedule_jobs WHERE {ws}').fetchone()[0]==0
+        assert store.db.execute('SELECT count(*) FROM builder_source_processed WHERE {ws}').fetchone()[0]==0
+    finally:store.close()
+
+
+def test_replaced_schedule_owner_cannot_change_library_states(backend,tmp_path):
+    from types import SimpleNamespace
+    from service.handlers.schedules import fail_job
+    from tests.workflow_engine.test_library_schedule_sources import leased_source_job
+    store=Storage(workspace(tmp_path))
+    try:
+        previous,current,_=leased_source_job(store)
+        [replacement]=Schedules(store).claim_due(current+timedelta(minutes=6))
+        context=SimpleNamespace(storage=store,data={'id':previous['id'],'lease_token':previous['lease_token']})
+        with pytest.raises(ValueError,match='소유권'):fail_job(context)
+        assert store.db.execute('SELECT state,lease_token FROM builder_schedule_jobs WHERE {ws} AND id=?',(previous['id'],)).fetchone()==('running',replacement['lease_token'])
+        for table,key in [('builder_source_snapshots','run_id'),('builder_source_processed','job_id')]:
+            assert store.db.execute(f'SELECT state FROM {table} WHERE {{ws}} AND {key}=?',(previous['id'],)).fetchone()==('pending',)
+        context.data['lease_token']=replacement['lease_token']
+        assert fail_job(context)=={'status':'failed'}
+        assert store.db.execute('SELECT state FROM builder_schedule_jobs WHERE {ws} AND id=?',(previous['id'],)).fetchone()==('failed',)
+        for table,key in [('builder_source_snapshots','run_id'),('builder_source_processed','job_id')]:
+            assert store.db.execute(f'SELECT state FROM {table} WHERE {{ws}} AND {key}=?',(previous['id'],)).fetchone()==('failed',)
+    finally:store.close()
+
+
 def test_two_workspaces_cannot_see_or_change_each_other(backend, tmp_path):
     folder_a, folder_b = workspace(tmp_path), workspace(tmp_path)
     a, asset, agent_id = seed(folder_a)

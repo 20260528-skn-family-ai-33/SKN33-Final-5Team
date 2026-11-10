@@ -77,6 +77,7 @@ def session_action(c):
 
 def _session_action(c):
     storage=c.storage;data=c.data;action=c.action;api_key=c.api_key;conversation=c.conversation;connection=None
+    storage.gmail_connected=data.get('gmail_connected') if type(data.get('gmail_connected')) is bool else None
     try:
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in STATE_ONLY else None)
         if action in {'message','confirm'}:

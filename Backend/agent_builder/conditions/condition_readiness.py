@@ -682,7 +682,7 @@ def monthly_requested(text):
     return any(not _MONTHLY_NEGATED.match(text[m.end():m.end() + 10]) for m in _MONTHLY_SCHEDULE.finditer(text))
 def unsupported_schedule_requested(text):
     return any(not _MONTHLY_NEGATED.match(text[m.end():m.end() + 10]) for m in _UNSUPPORTED_SCHEDULE.finditer(text))
-_HOURLY = re.compile(r'매\s*시간|매\s*시(?![가-힣])|(?<!\d)(?:한|1)\s*시간마다|(?<!\d)시간마다|hourly', re.I)
+_HOURLY = re.compile(r'매\s*정시(?:\s*마다)?|정시\s*마다|매\s*시간|매\s*시(?![가-힣])|(?<!\d)(?:한|1)\s*시간마다|(?<!\d)시간마다|hourly', re.I)
 _DAILY = re.compile(r'매일|날마다|하루\s*한\s*번|daily', re.I)
 _WEEKLY = re.compile(r'매주|주마다|[월화수목금토일]요일\s*마다|매\s*[월화수목금토일]요일|weekly', re.I)
 _SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
@@ -721,8 +721,9 @@ def schedule_literals(text, follow_up=False):
         minute = re.search(r'(?<!\d)(\d{1,2})\s*분', text)
         if minute and int(minute[1]) <= 59:
             add('schedule.minute', int(minute[1]), minute.group(0))
-        elif '정각' in text:
-            add('schedule.minute', 0, '정각')
+        else:
+            exact_hour = re.search(r'정각|정시', text)
+            if exact_hour:add('schedule.minute', 0, exact_hour.group(0))
     if frequency == 'monthly' or follow_up:
         for m in re.finditer(r'(?<!\d)([1-9]|[12]\d|3[01])\s*일(?!\d)', text):
             add('schedule.monthday', int(m[1]), m.group(0))

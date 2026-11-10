@@ -153,6 +153,8 @@ class BuilderState(TypedDict, total=False):
     base_version: int
     model: str
     credential_id: str
+    # Server-supplied credential metadata only; never an access/refresh token.
+    gmail_connected: bool | None
     saved_workflows: list[dict]
     node_library: list[dict]
     required_node_refs: list[str]

@@ -89,7 +89,7 @@ def validate_plan(raw, state):
                 raise ValueError('Gmail 조회 건수·요약 요구를 사용자 원문에서 확인할 수 없습니다.')
             if spec['kind']=='gmail_scheduled_summary':
                 if spec['schedule']!=gmail.get('schedule') or spec['query']!=gmail.get('query'):
-                    raise ValueError('Gmail 예약 시각·전날 조회 기간이 사용자 요청과 다릅니다.')
+                    raise ValueError('Gmail 예약 시각·조회 조건이 사용자 요청과 다릅니다.')
             elif gmail.get('schedule'):
                 raise ValueError('Gmail 예약 요구사항의 실행 시각과 조회 기간이 빠졌습니다.')
         if spec['kind'] in ('extract_fields','receipt_items') and (len(set(spec['fields']))!=len(spec['fields']) or

@@ -43,7 +43,7 @@ cleanup() {
         if [[ -n "$new_id" ]]; then
             if [[ -n "$restore_name" ]]; then
                 if (( cutover )); then
-                    docker stop "$new_id" >/dev/null || result=1
+                    docker stop --time 60 "$new_id" >/dev/null || result=1
                     docker rename "$new_id" "$restore_name" || result=1
                 fi
             else
@@ -201,7 +201,7 @@ print("\n".join(key + "=" + value for key, value in settings.items()))
         echo 'SVM preflight failed before container replacement.' >&2
         exit 1
     fi
-    new_id=$(docker create --network host --restart unless-stopped --env-file "$env_file" "${mount_args[@]}" "$image")
+    new_id=$(docker create --network host --restart unless-stopped --stop-timeout 60 --env-file "$env_file" "${mount_args[@]}" "$image")
     if [[ "$image" == *:backend-* ]]; then
         docker cp -L "$old_id:/app/Frontend/dist-app/." - | docker cp - "$new_id:/app/Frontend/dist-app/"
     fi
@@ -212,7 +212,8 @@ print("\n".join(key + "=" + value for key, value in settings.items()))
     fi
 fi
 cutover=1
-if [[ "$old_status" == running ]]; then docker stop "$old_id" >/dev/null; fi
+# Allow in-flight authentication exchanges to persist rotated tokens before SIGKILL.
+if [[ "$old_status" == running ]]; then docker stop --time 60 "$old_id" >/dev/null; fi
 docker rename "$old_id" "$app-previous-${old_id:0:12}"
 docker rename "$new_id" "$app"
 docker start "$new_id" >/dev/null

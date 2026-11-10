@@ -5,6 +5,7 @@ import {resolve,sep,extname} from 'node:path';
 import {authConfig,type AuthConfig} from './auth-config';
 import {PostgresAuthUsers,SqliteAuthUsers,type AuthUsers} from './auth-users';
 import {CognitoAuth,AuthError,authJson} from './cognito-auth';
+import {SqliteAuthSessionStore} from './auth-session-store';
 import {baseDataDirectory,frontendPath,withDataDirectory} from './paths';
 import {createWorkspaceRuntime} from './workspace-runtime';
 import {validateWorkspaceFiles} from './workspace-files';
@@ -53,7 +54,7 @@ async function frontend(req:IncomingMessage,res:ServerResponse,path:string){
 }
 export function createApplication(options:{port:number;config?:AuthConfig;auth?:CognitoAuth;users?:AuthUsers;teams?:TeamService;restore?:boolean}){
  const config=options.config||options.auth?.config,users=options.users||options.auth?.users||(config?(config.userStore==='postgres'?new PostgresAuthUsers(config):new SqliteAuthUsers(baseDataDirectory())):undefined);
- const auth=options.auth||(config&&users?new CognitoAuth(config,users):undefined);
+ const auth=options.auth||(config&&users?new CognitoAuth(config,users,{store:new SqliteAuthSessionStore(baseDataDirectory())}):undefined);
  const teams=auth&&users?(options.teams||new TeamService(baseDataDirectory(),users,config)):undefined;
  const registry=new WorkspaceRegistry(options.port,!!auth,config?.origin,ownerId=>{
   const owner=async()=>{const user=await users?.get(ownerId);if(!user||user.status!=='active')throw new AuthError(403,'자료를 사용할 회원 권한을 확인하세요.');return user;};
@@ -116,6 +117,10 @@ export function createApplication(options:{port:number;config?:AuthConfig;auth?:
    else authJson(res,500,{error:'요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.'});
   }
  });
- return {server,registry,teams,async close(){auth?.close();await registry.close();await teams?.close();await users?.close();}};
+ let closePromise:Promise<void>|undefined;
+ return {server,registry,teams,close(){return closePromise??=(async()=>{
+  const authentication=auth?.close();
+  await registry.close();await authentication;await teams?.close();await users?.close();
+ })();}};
 }
 export {authConfig};

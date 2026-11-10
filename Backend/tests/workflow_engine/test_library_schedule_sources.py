@@ -1,7 +1,9 @@
 """Real SQLite fixtures for scoped selection, immutable inputs and atomic cursors."""
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from datetime import datetime,timedelta,timezone
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -256,3 +258,87 @@ def test_concurrent_binding_changes_reject_the_stale_revision(tmp_path):
         finally:scoped.close()
     with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(change,['latest','new']))
     assert sorted(map(str,results))==['2','stale']
+
+
+@pytest.mark.parametrize('replacement',['fixed','removed'])
+def test_manual_new_expansion_rechecks_the_binding_inside_the_enqueue_transaction(tmp_path,monkeypatch,replacement):
+    store=Storage(tmp_path)
+    try:
+        old_file=upload(store,'old.csv',amount=1);new_file=upload(store,'new.csv',amount=2)
+        id=workflow(store);manager=LibrarySources(store);selection=manager.save(id,spec('new'),0)
+        refs=library_export(store,selection,'table')['candidates']
+        expand=manager.expand
+        def changed_after_plan(action,agent_id,planned,chosen,token):
+            other=Storage(tmp_path)
+            try:LibrarySources(other).save(id,spec(asset_ids=[new_file['id']]) if replacement=='fixed' else None,1)
+            finally:other.close()
+            return expand(action,agent_id,planned,chosen,token)
+        monkeypatch.setattr(manager,'expand',changed_after_plan)
+        with pytest.raises(ValueError,match='자료함 설정이 변경'):
+            manager.resolve('test',id,refs,expected_selection=selection)
+        current=manager.get(id)
+        assert (current is None) if replacement=='removed' else current['asset_ids']==[new_file['id']]
+        assert store.db.execute('SELECT count(*) FROM builder_schedule_jobs WHERE {ws}').fetchone()[0]==0
+        assert store.db.execute('SELECT count(*) FROM builder_source_processed WHERE {ws}').fetchone()[0]==0
+        assert store.db.execute('SELECT count(*) FROM builder_source_snapshots WHERE {ws}').fetchone()[0]==0
+        assert old_file['id']!=new_file['id']
+    finally:store.close()
+
+
+def leased_source_job(store):
+    upload(store);id=workflow(store);manager=LibrarySources(store)
+    selection=manager.save(id,spec('new'),0);refs=library_export(store,selection,'table')['candidates']
+    [job_id]=manager.resolve('test',id,refs)['job_ids']
+    view=manager.stage(job_id,store.agent(id),snapshot(store,selection,refs))
+    current=datetime.now(timezone.utc)+timedelta(seconds=1)
+    [job]=Schedules(store).claim_due(current)
+    run={'id':job_id,'agent_id':id,'status':'succeeded','outputs':{},'library_source':source_metadata(view)}
+    return job,current,run
+
+
+@pytest.mark.parametrize('recorded_success',[False,True])
+def test_fail_job_rejects_a_replaced_owner_without_changing_source_state(tmp_path,recorded_success):
+    from service.handlers.schedules import fail_job
+    store=Storage(tmp_path)
+    try:
+        previous,current,run=leased_source_job(store)
+        if recorded_success:store.save_test(run)
+        [replacement]=Schedules(store).claim_due(current+timedelta(minutes=6))
+        assert previous['lease_token']!=replacement['lease_token']
+        context=SimpleNamespace(storage=store,data={'id':previous['id'],'lease_token':previous['lease_token']})
+        with pytest.raises(ValueError,match='소유권'):fail_job(context)
+        assert store.db.execute('SELECT state,lease_token FROM builder_schedule_jobs WHERE {ws} AND id=?',(previous['id'],)).fetchone()==('running',replacement['lease_token'])
+        assert store.db.execute('SELECT state FROM builder_source_snapshots WHERE {ws} AND run_id=?',(previous['id'],)).fetchone()==('pending',)
+        assert store.db.execute('SELECT state FROM builder_source_processed WHERE {ws} AND job_id=?',(previous['id'],)).fetchone()==('pending',)
+    finally:store.close()
+
+
+@pytest.mark.parametrize('status',['succeeded','failed'])
+def test_schedule_finish_rolls_back_job_and_source_updates_together(tmp_path,monkeypatch,status):
+    store=Storage(tmp_path)
+    try:
+        job,_,run=leased_source_job(store)
+        operation='complete' if status=='succeeded' else 'failed_job'
+        update=getattr(LibrarySources,operation)
+        def interrupted(manager,value,commit=True):
+            update(manager,value,commit=False)
+            raise RuntimeError('simulated source update interruption')
+        monkeypatch.setattr(LibrarySources,operation,interrupted)
+        with pytest.raises(RuntimeError,match='simulated'):
+            Schedules(store).finish(job['id'],job['lease_token'],status,run_id=job['id'],source_run=run if status=='succeeded' else None)
+        assert store.db.execute('SELECT state,lease_token FROM builder_schedule_jobs WHERE {ws} AND id=?',(job['id'],)).fetchone()==('running',job['lease_token'])
+        assert store.db.execute('SELECT state FROM builder_source_snapshots WHERE {ws} AND run_id=?',(job['id'],)).fetchone()==('pending',)
+        assert store.db.execute('SELECT state FROM builder_source_processed WHERE {ws} AND job_id=?',(job['id'],)).fetchone()==('pending',)
+    finally:store.close()
+
+
+@pytest.mark.parametrize('status',['succeeded','failed'])
+def test_current_owner_finishes_job_and_source_state_in_one_transaction(tmp_path,status):
+    store=Storage(tmp_path)
+    try:
+        job,_,run=leased_source_job(store)
+        Schedules(store).finish(job['id'],job['lease_token'],status,run_id=job['id'],source_run=run if status=='succeeded' else None)
+        assert store.db.execute('SELECT state FROM builder_schedule_jobs WHERE {ws} AND id=?',(job['id'],)).fetchone()==(status,)
+        assert store.db.execute('SELECT state FROM builder_source_snapshots WHERE {ws} AND run_id=?',(job['id'],)).fetchone()==(status,)
+        assert store.db.execute('SELECT state FROM builder_source_processed WHERE {ws} AND job_id=?',(job['id'],)).fetchone()==(status,)
+    finally:store.close()

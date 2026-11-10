@@ -48,10 +48,11 @@ GitHub에 `production` 환경을 만들고 워크플로우 실행 브랜치를 `
    docker compose --env-file .env.aws --env-file .env.ec2.qwen35-9b up -d --build
    ```
 
-   이 파일은 모델 연결과 생성 한도만 덮어씁니다. 주소·인증·DB 설정,
-   DeepAgent/direct 선택, 프롬프트·요구 검증·보조 검토 설정을 교체하지 않습니다.
-   4B 보조 검토를 사용하지 않기로 한 배포는 기존 설정에서 `A4B_VERIFIER_MODE=off`를
-   별도로 지정합니다. 이 예시가 보조 4B 모델을 설치하거나 대신 호출하지는 않습니다.
+   이 파일은 모델 연결·생성 한도와 함께 `A4B_PLANNER_MODE=deepagent`,
+   `A4B_VERIFIER_MODE=off`를 명시해 이전 direct/shadow 설정을 대체합니다.
+   주소·인증·DB·요구 검증 설정은 보존합니다. 노드·입력·요구사항 검사와 사용자 확인은
+   계속 수행하며, 보조 4B 호출이나 나중에 처리할 defer 검토는 새로 만들지 않습니다.
+   `A4B_PLANNER_PROMPT`는 direct 전용이므로 남아 있어도 DeepAgent 프롬프트를 선택하지 않습니다.
 4. **기존 Actions 배포는 위 예시를 자동으로 읽지 않습니다.** 이미 생성된 컨테이너의
    환경변수를 재사용하므로 PR 병합과 코드 배포만으로 저장된 4B 설정이 9B로 바뀌지 않습니다.
    배포 담당자가 `/var/lib/a4b-deploy/env-overrides`의 다른 항목을 보존하면서 아래 모델 설정을
@@ -60,6 +61,8 @@ GitHub에 `production` 환경을 만들고 워크플로우 실행 브랜치를 `
    ```text
    A4B_SHARED_MODEL_TARGET=ec2
    A4B_MAIN_PROVIDER=ollama
+   A4B_PLANNER_MODE=deepagent
+   A4B_VERIFIER_MODE=off
    A4B_MAIN_MODEL=a4b-qwen35-9b-final664-pilot32k
    A4B_LLM_MODEL=a4b-qwen35-9b-final664-pilot32k
    A4B_CAPABILITY_MODE=enforce
@@ -92,7 +95,8 @@ native 문맥은 16,384이고 `/v1` 모델의 Modelfile에도 같은 문맥이 �
    해당 패키지의 `README_KO.md`에 따라 고정 원본·어댑터 병합, GGUF 변환·검증·등록을 완료합니다.
    원본 9B나 4B의 이름만 바꾸어 파인튜닝 모델로 사용하지 않습니다.
 2. 사용할 Ollama 서버에 `a4b-qwen35-9b-final664-pilot32k`,
-   `a4b-qwen35-9b-previous-pilot32k`, `qwen3.5:4b`가 등록되어 있어야 합니다.
+   `a4b-qwen35-9b-previous-pilot32k`가 등록되어 있어야 합니다.
+   9B 추가 설정은 DeepAgent를 사용하고 보조 검토를 끄므로 `qwen3.5:4b`는 필수가 아닙니다.
    기존 데이터가 있다면 아래 **기존 4B 대화·워크플로우 전환**도 적용해야 합니다.
    두 9B 모델의 Modelfile에서 `PARAMETER num_ctx 32768`을 확인합니다.
    `A4B_OLLAMA_NUM_CTX=32768`은 native 요청 설정이며, `/v1` 모델의 등록 설정을 변경하지 않습니다.
@@ -107,6 +111,12 @@ native 문맥은 16,384이고 `/v1` 모델의 Modelfile에도 같은 문맥이 �
    ```
 
 두 번째 파일은 모델 설정만 덮어쓰므로 첫 번째 파일의 Cognito·RDS·S3·접속 주소와 인증 값을 유지합니다.
+두 9B 예시는 모두 `A4B_PLANNER_MODE=deepagent`, `A4B_VERIFIER_MODE=off`를 명시합니다.
+기본 Compose·Ollama 예시·설정 실행기의 기본값도 DeepAgent/검토 off입니다.
+명시적으로 설정한 실험용 direct 또는 별도 검토 모드는 계속 선택할 수 있습니다.
+이미 저장된 `verification_required`/`verification_enforced` 상태는 이 설정만으로 해제하지 않습니다.
+이런 기존 세션은 검토 상태를 별도로 확인해야 하며 운영 DB를 자동으로 수정하지 않습니다.
+기존 defer 대기 기록도 자동 삭제하거나 실행하지 않습니다.
 GitHub Actions의 기존 EC2 배포는 이 예시 파일을 자동으로 읽지 않고 현재 컨테이너 설정을 재사용합니다.
 따라서 이미 운영 중인 9B 서버를 기본 4B 예시로 다시 설정할 필요가 없습니다.
 모델 연결 화면까지 바뀐 버전을 반영할 때는 `target=all`로 프런트엔드와 백엔드를 함께 배포한 뒤,
@@ -116,7 +126,7 @@ EC2에서 모델 호출·파서 연결을 다시 확인합니다.
 
 `A4B_MAIN_MODEL`은 새 대화의 기본 모델입니다. 기존 대화, 저장 워크플로우 버전,
 예약 작업의 고정본, 중단·실패한 실행은 저장 당시 모델명을 유지합니다.
-따라서 위의 모델 3개만 준비하고 주소와 기본 모델을 바꾸면 상태 화면은 정상이어도
+따라서 위의 9B 모델 2개만 준비하고 주소와 기본 모델을 바꾸면 상태 화면은 정상이어도
 기존 `a4b-qwen35-4b-16k` 요청은 404로 실패할 수 있습니다.
 `qwen3.5:4b`는 별도 이름이며 이 요청을 대신 받지 않습니다.
 

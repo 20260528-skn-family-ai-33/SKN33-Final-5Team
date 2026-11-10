@@ -1,5 +1,6 @@
 from dataclasses import asdict
 import json
+import shutil
 from pathlib import Path
 import subprocess
 from unittest.mock import patch
@@ -57,9 +58,16 @@ def test_bearer_key_is_only_sent_as_header(monkeypatch):
         assert 'test-secret' not in request.full_url
 
 
+def node_binary():
+    node=shutil.which('node')
+    if node:return node
+    bundled=Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
+    if bundled.exists():return str(bundled)
+    pytest.skip('Node unavailable')
+
+
 def test_env_file_is_loaded_before_defaults_without_shell_execution(tmp_path,monkeypatch):
-    node=Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
-    if not node.exists():pytest.skip('bundled Node unavailable')
+    node=node_binary()
     import os
     env={k:v for k,v in os.environ.items() if not k.startswith('A4B_')}
     config=tmp_path/'runpod.env'
@@ -69,6 +77,7 @@ def test_env_file_is_loaded_before_defaults_without_shell_execution(tmp_path,mon
     actual=json.loads(result.stdout)
     assert actual['mainProvider']=='vllm' and actual['port']=='3099'
     assert actual['mainModel']=='Qwen/Qwen3-8B' and 'do-not-print' not in result.stdout
+    assert actual['plannerMode']=='deepagent' and actual['verifierMode']=='off'
     env['PORT']='3100'
     result=subprocess.run([str(node),str(ROOT/'scripts/run-configured.mjs')],env=env,text=True,capture_output=True,check=True)
     assert json.loads(result.stdout)['port']=='3100'
@@ -76,8 +85,7 @@ def test_env_file_is_loaded_before_defaults_without_shell_execution(tmp_path,mon
 
 def test_lens_style_shared_ollama_url(tmp_path,monkeypatch):
     import os
-    node=Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
-    if not node.exists():pytest.skip('bundled Node unavailable')
+    node=node_binary()
     config=tmp_path/'simple.env'
     config.write_text('A4B_LLM_BASE_URL=https://example-pod-11434.proxy.runpod.net/v1\nA4B_LLM_MODEL=qwen3:8b-q4_K_M\nA4B_VERIFIER_MODEL=qwen3.5:4b\n')
     env={k:v for k,v in os.environ.items() if not k.startswith('A4B_')}
@@ -86,6 +94,7 @@ def test_lens_style_shared_ollama_url(tmp_path,monkeypatch):
     actual=json.loads(result.stdout)
     assert actual['mainProvider']==actual['verifierProvider']=='ollama'
     assert actual['sharedOllamaEndpoint'] is True
+    assert actual['plannerMode']=='deepagent' and actual['verifierMode']=='off'
     for k in ['A4B_VERIFIER_BASE_URL','A4B_OLLAMA_BASE_URL','A4B_VERIFIER_PROVIDER']:
         monkeypatch.delenv(k,raising=False)
     monkeypatch.setenv('A4B_LLM_BASE_URL','https://example-pod-11434.proxy.runpod.net/v1')

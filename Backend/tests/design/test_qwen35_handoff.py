@@ -41,6 +41,29 @@ def test_incomplete_or_ambiguous_generated_results_are_not_silently_repaired():
     assert AgentDraft.model_validate(raw).instructions==''
 
 
+def test_outcome_alternatives_survive_real_deepagent_model_binding():
+    import httpx
+    from deepagents import create_deep_agent
+    from langchain.agents.structured_output import ProviderStrategy
+    from infrastructure.llm.ollama_chat_model import OllamaChatOpenAI
+    calls=[];answer=draft(questions=['어떤 조건인가요?']);answer['requirements']=[]
+    def response(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200,json={'id':'chat-test','object':'chat.completion','created':0,
+            'model':'final664','choices':[{'index':0,'message':{'role':'assistant',
+                'content':json.dumps(answer)},'finish_reason':'stop'}]})
+    with httpx.Client(transport=httpx.MockTransport(response)) as client:
+        model=OllamaChatOpenAI(model='final664',base_url='http://example.test/v1',api_key='test',http_client=client)
+        agent=create_deep_agent(model=model,tools=[],response_format=ProviderStrategy(
+            outcome_schema(AgentDraft.model_json_schema()),strict=True))
+        result=agent.invoke({'messages':[{'role':'user','content':'확인 질문을 작성해줘'}]})
+    assert result['structured_response']==answer and len(calls)==1
+    wire=calls[0]['response_format']['json_schema']['schema']
+    assert len(wire['anyOf'])==3
+    Draft202012Validator(wire).validate(answer)
+    assert not Draft202012Validator(wire).is_valid(draft())
+
+
 def test_ollama_retries_blank_instructions_with_original_request(monkeypatch):
     monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
     monkeypatch.setenv('A4B_PLANNER_MODE','deepagent')

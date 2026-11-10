@@ -101,6 +101,9 @@ def outcome_schema(schema):
             p[mode]['items']['minLength']=max(1,p[mode]['items'].get('minLength',0))
         branches.append(branch)
     if not branches:raise ValueError('AgentDraft constraints permit no outcome')
-    result=branches[0] if len(branches)==1 else {'anyOf':branches}
+    # LangChain's model binding requires a named object with root properties.
+    # A bare anyOf works for a local JSON validator but fails before HTTP.
+    # Keep the common contract at the root and narrow outcomes in the branches.
+    result=branches[0] if len(branches)==1 else {**deepcopy(base),'anyOf':branches}
     if definitions is not None:result['$defs']=definitions
     return result

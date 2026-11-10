@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import runpy
 import sys
+import urllib.error
 from unittest.mock import patch
 
 import pytest
@@ -90,3 +91,31 @@ def test_ready_does_not_require_4b_but_requires_parser(monkeypatch):
     with pytest.raises(SystemExit) as error:
         runpy.run_path(str(SCRIPTS / 'check-final-ready.py'), run_name='__main__')
     assert error.value.code == 1
+
+
+@pytest.mark.parametrize('failure', [None, 'auth', 'digest', 'missing'])
+def test_gateway_readiness_authenticates_and_checks_pinned_models(monkeypatch, failure):
+    expected = {k: v for k, v in receipt().items() if k in SERVING_MODELS}
+    monkeypatch.setattr('final_model_profile.required_models', lambda: expected)
+    monkeypatch.setenv('A4B_GATEWAY_TOKEN', 'local-test-token')
+
+    def urlopen(request, **kwargs):
+        assert request.full_url == 'http://127.0.0.1:11434/api/tags'
+        assert request.get_header('Authorization') == 'Bearer local-test-token'
+        assert kwargs['timeout'] == 2
+        if failure == 'auth':
+            raise urllib.error.HTTPError(request.full_url, 401, 'unauthorized', {}, None)
+        models = [dict(name=k+':latest', digest=v) for k, v in expected.items()]
+        if failure == 'digest':
+            models[0]['digest'] = '0'*64
+        if failure == 'missing':
+            models.pop()
+        return io.BytesIO(json.dumps(dict(models=models)).encode())
+
+    monkeypatch.setattr('urllib.request.urlopen', urlopen)
+    if failure:
+        with pytest.raises(SystemExit) as error:
+            runpy.run_path(str(SCRIPTS / 'check-gateway-ready.py'), run_name='__main__')
+        assert error.value.code == 1
+    else:
+        runpy.run_path(str(SCRIPTS / 'check-gateway-ready.py'), run_name='__main__')

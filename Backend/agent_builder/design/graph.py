@@ -62,7 +62,7 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         def observed(state):
             # Old checkpoints may resume at approval/save/supervisor without ever
             # visiting verification. Apply today's off policy before every node.
-            disabled_review = disabled_review_update(verifier_mode)
+            disabled_review = disabled_review_update(verifier_mode, state)
             state = {**state, **disabled_review}
             # Server-selected connection metadata is refreshed on every request,
             # including resumed interrupts. Never retain OAuth tokens in graph state.
@@ -73,7 +73,9 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
             try:
                 result=fn(state)
                 if isinstance(result, dict):
-                    result = {**result, **disabled_review}
+                    # Carry the refreshed validation through nodes that do not
+                    # write it, but never overwrite a new planner/node result.
+                    result = {**disabled_review, **result, **disabled_review_update(verifier_mode)}
             except GraphBubbleUp:
                 # LangGraph interrupts request user input/approval; they are control flow.
                 raise

@@ -156,7 +156,7 @@ def make_verification_node(storage, verifier=None, mode=None):
         from verification.policy import verifier_mode, disabled_review_update
         setting = verifier_mode(mode)
         if setting == 'off':
-            return disabled_review_update(mode)
+            return disabled_review_update(mode, state)
         if state.get('verification_required') or state.get('verification_enforced'):setting='enforce'
         messages = [dict(id=f'm{i}', role=m['role'], content=m['content'])
                     for i, m in enumerate(state['messages']) if m['role'] in ('user', 'assistant')]

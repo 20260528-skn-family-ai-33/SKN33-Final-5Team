@@ -1,21 +1,27 @@
 /* One product shell for lists, history, the library, design and execution. */
-.workspace-header{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:68px;padding:8px 24px;border-bottom:1px solid var(--a4b-border);background:var(--a4b-surface);font:14px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}
+.workspace-header{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:68px;padding:8px clamp(20px, 2.5vw, 36px);border-bottom:1px solid var(--a4b-border);background:var(--a4b-surface);font:14px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}
 .workspace-header .workspace-brand{display:inline-flex;align-items:center;gap:10px;flex:none;padding:0;border:0;background:none;color:var(--a4b-ink);font:inherit}
 .workspace-header .workspace-brand:not(:disabled){cursor:pointer}
 .workspace-header .workspace-brand:focus-visible{outline:2px solid var(--a4b-action);outline-offset:4px;border-radius:6px}
-.workspace-brandmark img{display:block;width:100%;height:100%}.workspace-brand strong{font-size:22px;font-weight:750;line-height:1;letter-spacing:-.8px}.workspace-brandmark{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:6px;background:var(--a4b-action);color:white}.workspace-header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px}.workspace-header :is(button,a):focus-visible{outline:2px solid var(--a4b-action);outline-offset:3px}.workspace-header button:disabled{opacity:.5;cursor:not-allowed}.workspace-header .as-button{line-height:18px;min-height:38px;white-space:nowrap}
-.workspace-header-status{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
-.workspace-header-status:empty{display:none}
+.workspace-brandmark img{display:block;width:100%;height:100%}.workspace-brand strong{font-size:20px;font-weight:750;line-height:1;letter-spacing:-.8px}.workspace-brandmark{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:6px;background:var(--a4b-action);color:white}.workspace-header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px}.workspace-header :is(button,a):focus-visible{outline:2px solid var(--a4b-action);outline-offset:3px}.workspace-header button:disabled{opacity:.5;cursor:not-allowed}.workspace-header .as-button{line-height:18px;min-height:38px;white-space:nowrap}
 .workspace-sidebar{box-sizing:border-box;width:208px;flex:none;display:flex;flex-direction:column;gap:8px;padding:18px 12px;border-right:1px solid var(--a4b-border);background:var(--a4b-surface);font:14px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}.workspace-sidebar>.workspace-nav{margin-bottom:14px;padding-bottom:18px;border-bottom:1px solid var(--a4b-border)}
 .workspace-nav{display:grid;gap:3px}.workspace-sidebar .workspace-nav button{display:flex;align-items:center;gap:10px;min-height:40px;padding:9px 12px;border:0;border-radius:5px;background:none;text-align:left;font:inherit;font-size:13px;line-height:20px;color:var(--a4b-muted);white-space:nowrap;cursor:pointer}.workspace-nav button:hover{color:var(--a4b-action);text-decoration:underline;text-underline-offset:4px}.workspace-nav button[aria-current=page]{background:var(--a4b-neutral-soft);color:var(--a4b-action);font-weight:650;box-shadow:inset 2px 0 var(--a4b-action);text-decoration:none}.workspace-nav button:disabled{opacity:.5;cursor:not-allowed}.workspace-nav button:focus-visible{outline:2px solid var(--a4b-action);outline-offset:2px}
 .workspace-sidebar-footer{margin-top:auto;padding:12px 0 0;background:var(--a4b-surface)}.workspace-sidebar-footer .as-button.as-secondary{justify-content:flex-start;padding-inline:12px;border:0;background:transparent;color:var(--a4b-muted);box-shadow:none}
 .workspace-sidebar-footer .as-button.as-secondary:hover{background:transparent;text-decoration:underline;text-underline-offset:4px}
+.workspace-sidebar-account{margin-top:4px;padding:8px 4px 0;border-top:1px solid var(--a4b-border)}
+.workspace-sidebar-account:empty{display:none}
+.workspace-sidebar-account .a4b-account-menu{gap:4px;justify-content:space-between;flex-wrap:wrap}
+.workspace-sidebar-account :is(.a4b-account-identity,.a4b-account-local){min-width:0;padding:6px 8px;border:0;background:transparent;color:var(--a4b-muted)}
+.workspace-sidebar-account .a4b-account-identity{flex:1}
+.workspace-sidebar-account .a4b-account-label{display:none}
+.workspace-sidebar-account .a4b-account-name{max-width:none}
+.workspace-sidebar-account .a4b-account-button{padding:4px 6px}
 .workspace-context{display:flex;align-items:center;gap:24px;min-height:36px;margin:0 0 22px}.workspace-context .studio-tabs{align-self:stretch}.workspace-context .studio-tabs button{padding:6px 0}.workspace-loading{padding:24px 0;color:var(--a4b-muted);font-size:13px}
 .as-app .as-main,.entry-app .entry-workspace-main{padding:28px;min-width:0}
 @media(max-width:1100px){.workspace-sidebar{width:180px}.as-app .as-main,.entry-app .entry-workspace-main{padding:24px 20px}}
 @media(max-width:900px){.workspace-sidebar{width:168px;padding:14px 8px}.workspace-sidebar .workspace-nav button{padding:9px 8px;font-size:12px}.as-app .as-main,.entry-app .entry-workspace-main{padding:24px 18px}}
 @media(max-width:650px){.workspace-header{flex-wrap:wrap}.workspace-header-actions{min-width:0;max-width:100%;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}}
-@media(max-width:650px){.workspace-header{padding:8px 16px;gap:12px}.workspace-brand strong{font-size:21px}.workspace-brandmark{width:28px;height:28px}.workspace-header-actions{gap:8px}.workspace-header .as-text-button{font-size:11px!important;gap:4px}.workspace-header .as-button{min-height:36px;padding:8px 10px;font-size:11px!important}.workspace-sidebar{width:100%;border-right:0;border-bottom:1px solid var(--a4b-border);padding:8px 16px;display:block}.workspace-sidebar>.workspace-nav{display:flex;gap:12px;overflow:auto;border:0;margin:0;padding:0}.workspace-sidebar .workspace-nav button{flex:none;min-height:36px;padding:6px 4px;font-size:11px;gap:5px}.workspace-nav button[aria-current=page]{box-shadow:inset 0 -2px var(--a4b-action);background:none}.workspace-sidebar .as-sidebar-label,.workspace-sidebar .as-sidebar-empty{display:none}.workspace-sidebar>nav:not(.workspace-nav){display:flex;gap:6px;overflow:auto}.workspace-sidebar>nav:not(.workspace-nav):empty{display:none}.as-app .as-main,.entry-app .entry-workspace-main{padding:22px 16px 32px}.workspace-context{gap:20px;margin-bottom:18px;min-height:36px}}
+@media(max-width:650px){.workspace-header{padding:8px 16px;gap:12px}.workspace-brand strong{font-size:19px}.workspace-brandmark{width:28px;height:28px}.workspace-header-actions{gap:8px}.workspace-header .as-text-button{font-size:11px!important;gap:4px}.workspace-header .as-button{min-height:36px;padding:8px 10px;font-size:11px!important}.workspace-sidebar{width:100%;border-right:0;border-bottom:1px solid var(--a4b-border);padding:8px 16px;display:block}.workspace-sidebar>.workspace-nav{display:flex;gap:12px;overflow:auto;border:0;margin:0;padding:0}.workspace-sidebar .workspace-nav button{flex:none;min-height:36px;padding:6px 4px;font-size:11px;gap:5px}.workspace-nav button[aria-current=page]{box-shadow:inset 0 -2px var(--a4b-action);background:none}.workspace-sidebar .as-sidebar-label,.workspace-sidebar .as-sidebar-empty{display:none}.workspace-sidebar>nav:not(.workspace-nav){display:flex;gap:6px;overflow:auto}.workspace-sidebar>nav:not(.workspace-nav):empty{display:none}.as-app .as-main,.entry-app .entry-workspace-main{padding:22px 16px 32px}.workspace-context{gap:20px;margin-bottom:18px;min-height:36px}}
 
 .as-app .as-secondary,.entry-app .as-secondary{border-color:var(--a4b-blue);background:var(--a4b-blue-soft);color:var(--a4b-action)}
 .as-app .as-secondary:hover,.entry-app .as-secondary:hover{border-color:var(--a4b-action);background:var(--a4b-blue)}
@@ -29,11 +35,10 @@
 .task-library-header{margin-bottom:20px}
 .task-library-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
 .task-library-title h1{margin:0;font-size:25px;font-weight:650;letter-spacing:-.8px;line-height:1.4}
-.task-library-header .task-library-title p{margin:8px 0 0;color:var(--a4b-muted);font-size:13px;line-height:1.6}
 .task-library-title>.as-button{width:36px;min-height:36px;padding:8px}
 .task-library-title>.as-text-button{flex:none}
-.task-library-tabs{display:flex;flex-wrap:wrap;gap:8px}
-.task-library-header .task-library-tabs button{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:7px 11px;border:1px solid var(--a4b-input-border);border-radius:6px;background:var(--a4b-surface);color:var(--a4b-ink);cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;line-height:1.5}
+.task-library-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:fit-content;max-width:100%;gap:8px}
+.task-library-header .task-library-tabs button{display:grid;grid-template-columns:16px auto 16px;justify-content:center}
 .task-library-tabs button[aria-current=page]{border-color:var(--a4b-action);box-shadow:inset 0 0 0 1px var(--a4b-action)}
 .task-library-tabs button:focus-visible{outline:2px solid var(--a4b-action);outline-offset:3px}
 .task-library-tabs button:disabled{opacity:.5;cursor:not-allowed}
@@ -43,3 +48,16 @@
  :is(.as-app,.entry-app) .task-library-main{padding:24px 16px 36px}
  .task-library-title h1{font-size:23px}
 }
+
+/* Warm emphasis is reserved for the action that opens schedule management. */
+:is(.as-app,.entry-app) .as-accent {
+  background: #ffa675;
+  border-color: #ffa675;
+  color: #542809;
+}
+:is(.as-app,.entry-app) .as-accent:hover {
+  background: #ff945c;
+  border-color: #ff945c;
+}
+
+.entry-workflow-card footer .as-button, .schedule-table .as-button { white-space: nowrap; }

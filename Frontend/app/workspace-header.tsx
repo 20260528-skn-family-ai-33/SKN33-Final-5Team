@@ -32,10 +32,7 @@ export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = 
       {onNew && <button data-tour="create-workflow" className="as-button as-primary" onClick={onNew} disabled={disabled}>
         <Plus size={16} aria-hidden="true"/>{actionLabel}
       </button>}
-      <div className="workspace-header-status">
-        {!preview && <AiStatus/>}
-        <AccountMenu showLocalStatus={!preview}/>
-      </div>
+      {preview ? <AccountMenu/> : <AiStatus/>}
     </div>
   </header>;
 }

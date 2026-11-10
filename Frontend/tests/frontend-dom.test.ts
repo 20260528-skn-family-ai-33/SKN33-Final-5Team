@@ -640,7 +640,7 @@ test('DOM: historical and saved references can be deleted, live inputs stay prot
  },createElement(EntryApp));
  try{
   assert.match(document.querySelector('[aria-label="자료 사용처"]')?.textContent||'',/월말 정산.*저장된 워크플로우/);
-  assert.ok(button('실행 완료 후 삭제').disabled && button('예약 소스 교체 후 삭제').disabled);
+  assert.ok(button('실행 완료 후 삭제').disabled && button('예약 파일 교체 후 삭제').disabled);
   assert.equal((document.querySelector('[aria-label="실행.jpg 삭제"]') as HTMLButtonElement).disabled,false);
   window.confirm=message=>{assert.match(String(message),/기존 실행 결과는 보관/);return true;};
   await click(document.querySelector('[aria-label="사본.jpg 삭제"]')!);assert.ok(button('삭제 재시도'));
@@ -1089,11 +1089,11 @@ test('redesign: library hides manual creation and preserves saved-node edits',as
  try{assert.equal(document.querySelector('form'),null);assert.ok(!document.body.textContent?.includes('지원 기능'));await click(button('설정 수정'));await input(field('작업 이름'),'보존할 이름');window.confirm=()=>false;await click(button('설정 수정'));assert.equal(field('작업 이름').value,'보존할 이름');assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('역할과 목적')));assert.equal(document.querySelector('[aria-label="작업 종류"]'),null);}finally{await h.close();}
 });
 
-test('workspace shell: shared chrome stays consistent and only the design page shows the header create action',async()=>{
+test('workspace shell: shared chrome stays consistent and workspace pages hide the header create action',async()=>{
  let header='';
  for(const screen of ['home','workflows','schedules','history','nodes','workflow','run','assets','connections']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{const chrome=document.querySelector('.workspace-header')!.cloneNode(true) as HTMLElement;chrome.querySelector('[data-tour="create-workflow"]')?.remove();const current=chrome.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(document.querySelector('.workspace-brand')?.tagName,'BUTTON');assert.equal(document.querySelector('.workspace-header [data-tour="help"]'),null);assert.ok(document.querySelector('.workspace-sidebar-footer [data-tour="help"]'));assert.doesNotMatch(document.querySelector('.workspace-sidebar-footer')!.textContent!,/서비스 소개/);assert.equal(document.querySelectorAll('.workspace-header [data-tour="create-workflow"]').length,screen==='workflow'?1:0);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
+  try{const chrome=document.querySelector('.workspace-header')!.cloneNode(true) as HTMLElement;const current=chrome.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(document.querySelector('.workspace-brand')?.tagName,'BUTTON');assert.equal(document.querySelector('.workspace-header [data-tour="help"]'),null);assert.ok(document.querySelector('.workspace-sidebar-footer [data-tour="help"]'));assert.doesNotMatch(document.querySelector('.workspace-sidebar-footer')!.textContent!,/서비스 소개/);assert.equal(document.querySelectorAll('.workspace-header [data-tour="create-workflow"]').length,0);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
  }
 });
 test('workspace library: pending startup does not show zero counts or an editable empty form',async()=>{
@@ -1232,9 +1232,9 @@ test('schedules: shared navigation shows actual statuses and timezone-aware next
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,4);
   assert.match(scheduleRow('A').textContent!,/활성/);assert.match(scheduleRow('A').textContent!,/매일/);
   assert.match(scheduleRow('A').textContent!,/09:00/);assert.match(scheduleRow('A').textContent!,/Asia\/Seoul/);
-  assert.match(scheduleRow('A').querySelector('[data-label="다음 실행"]')!.textContent!,/11월 11일.*09:00/);
+  assert.match(scheduleRow('A').querySelector('[data-label="실행 예정 시각"]')!.textContent!,/11월 11일.*09:00/);
   assert.match(scheduleRow('W').textContent!,/America\/Los_Angeles/);
-  assert.match(scheduleRow('W').querySelector('[data-label="다음 실행"]')!.textContent!,/11월 10일.*17:00/);
+  assert.match(scheduleRow('W').querySelector('[data-label="실행 예정 시각"]')!.textContent!,/11월 10일.*17:00/);
   assert.match(scheduleRow('B').textContent!,/중지/);assert.doesNotMatch(scheduleRow('B').textContent!,/2099/);
   assert.match(scheduleRow('C').textContent!,/설정 확인 필요/);
   assert.equal(methods.every(method=>method==='GET'),true);
@@ -1277,7 +1277,7 @@ test('schedules: a schedule tied to an older workflow version requires review in
  const h=await setup('?screen=schedules',{},path=>path.endsWith('/schedules')?{workflows:[{...row,schedule:{...row.schedule!,agent_version:0}}]}:undefined,createElement(EntryApp));
  try{
   assert.match(scheduleRow('A').querySelector('[data-label="상태"]')!.textContent!,/설정 확인 필요/);
-  assert.doesNotMatch(scheduleRow('A').querySelector('[data-label="다음 실행"]')!.textContent!,/11월 11일/);
+  assert.doesNotMatch(scheduleRow('A').querySelector('[data-label="실행 예정 시각"]')!.textContent!,/11월 11일/);
   await chooseScheduleStatus('active');assert.equal(document.querySelectorAll('[data-schedule-id]').length,0);
   await chooseScheduleStatus('unconfigured');assert.ok(scheduleRow('A'));
  }finally{await h.close();}
@@ -1394,7 +1394,7 @@ for(const required of [true,undefined])test(`Gmail schedules: file schedules kee
  try{
   assert.ok(button('파일 연결'));assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);
   assert.equal(button('지금 실행').disabled,true);
-  assert.match(document.querySelector('.as-schedule-card')!.textContent!,/관리 데이터 소스/);
+  assert.match(document.querySelector('.as-schedule-card')!.textContent!,/예약에 사용할 파일/);
   assert.equal(h.calls.some(call=>call.body),false);
  }finally{await h.close();}
 });
@@ -1664,8 +1664,9 @@ test('home: all sidebar destinations return to home and recent entries retain th
    assert.equal(location.search,'?screen='+page);
    assert.equal(document.querySelector('main h1')?.textContent,title);
    assert.equal(nav(page).getAttribute('aria-current'),'page');
-   const status=document.querySelector('.workspace-header-status')!;
-   assert.ok(status.firstElementChild?.matches('.ai-status-badge'));
+   assert.ok(document.querySelector('.workspace-header .ai-status-badge'));
+   assert.equal(document.querySelector('.workspace-header .a4b-account-local'),null);
+   assert.ok(document.querySelector('.workspace-sidebar-footer [data-tour="help"] + .workspace-sidebar-account .a4b-account-local'));
    await click(nav('home'));
    assert.equal(location.search,'?screen=home');
    assert.equal(nav('home').getAttribute('aria-current'),'page');

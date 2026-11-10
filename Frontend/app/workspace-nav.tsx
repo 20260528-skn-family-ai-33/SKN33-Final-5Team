@@ -1,4 +1,5 @@
 import type {ReactNode} from 'react';
+import {AccountMenu} from './auth';
 import {House, Workflow, CalendarClock, History, Layers, FolderOpen, Unplug, Check} from 'lucide-react';
 
 export type WorkspaceDestination = 'home' | 'workflow' | 'workflows' | 'schedules' | 'history' | 'assets' | 'connections';
@@ -37,7 +38,6 @@ export function TaskLibraryHeader({active, onNavigate, actions, disabled = false
     <div className="task-library-title">
       <div>
         <h1>작업 라이브러리</h1>
-        <p>저장한 워크플로우를 열거나 자주 쓰는 작업을 다시 사용하세요.</p>
       </div>
       {actions}
     </div>
@@ -46,10 +46,10 @@ export function TaskLibraryHeader({active, onNavigate, actions, disabled = false
         ['workflows', '저장한 워크플로우', Workflow],
         ['nodes', '재사용 작업', Layers],
       ] as const).map(([destination,label,Icon])=>
-        <button key={destination} type="button" aria-current={active===destination?'page':undefined}
+        <button className="as-button" key={destination} type="button" aria-current={active===destination?'page':undefined}
           disabled={disabled} onClick={()=>onNavigate(destination)}>
           <Icon size={16} aria-hidden="true"/>
-          {label}
+          <span>{label}</span>
           <Check className="task-library-selection" size={14} aria-hidden="true"/>
         </button>
       )}
@@ -67,6 +67,9 @@ export function WorkspaceSidebar({active, onNavigate, help, disabled = false, ch
   return <aside className="workspace-sidebar">
     <WorkspaceNav active={active} onNavigate={onNavigate} disabled={disabled}/>
     {children}
-    <div className="workspace-sidebar-footer">{help}</div>
+    <div className="workspace-sidebar-footer">
+      {help}
+      <div className="workspace-sidebar-account"><AccountMenu showLocalStatus/></div>
+    </div>
   </aside>;
 }

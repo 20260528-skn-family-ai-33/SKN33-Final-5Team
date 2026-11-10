@@ -47,34 +47,37 @@ def validate_assessment_result(result,state,*,model_calls=0):
 # Native app capabilities are not tool IDs and do not grant runtime permission.
 APP_CAPABILITIES=[{
     'id':'workflow_schedule','implementation_status':'implemented and verified on this server; not a simulation',
-    'supported_frequencies':['daily','weekly'],
-    'required_fields':['frequency','hour','minute','timezone'],
+    'supported_frequencies':['hourly','daily','weekly','monthly'],
+    'required_fields':['frequency','minute','timezone'],
+    'hour_required_frequencies':['daily','weekly','monthly'],
     'weekly_required_fields':['weekday'],
-    'source_requirement':'managed table before activation',
+    'monthly_required_fields':'monthday (1..31) or month_end=true; missing dates are skipped',
+    'source_requirement':'all actual required inputs ready before activation; a file is required only for a file-reading step',
     'activation':'validated saved workflow plus separate explicit activation',
     'defaults':{'start':'next future occurrence after activation','end':'continues until stopped; no end date required'},
-    'limitations':['server must be running','stored managed source reused; no automatic external refresh',
-                   'no monthly, cron or arbitrary external trigger in AgentBuilder']
+    'limitations':['server must be running','external requests require registered operation contracts and connected credentials',
+                   'no yearly, cron or arbitrary external trigger in AgentBuilder']
 }]
 
 def _native_schedule_label(action):
     """Recognize only standalone native recurrence labels, never arbitrary tasks.
 
-    Unknown wording is retained for review. External delivery, monthly/cron,
+    Unknown wording is retained for review. External delivery, yearly/cron,
     data refresh and other side effects cannot match this closed vocabulary.
     """
     text=re.sub(r'[\s()·:,.]', '', action).casefold()
-    text=re.sub(r'[월화수목금토일]요일|\d+(?:시|분)', '', text)
+    text=text.replace('한시간마다', 'hourly').replace('1시간마다', 'hourly')
+    text=re.sub(r'[월화수목금토일]요일|\d+(?:시|분|일)', '', text)
     # Time-of-day words are part of the recurrence label ("매주 월요일 오전 8 시 예약", live 2026-11-03).
-    return bool(re.search(r'매주|매일|주간|일간|weekly|daily',text)
-        and re.fullmatch(r'(?:매주|매일|주간|일간|weekly|daily|예약|schedule|스케줄링|스케줄'
+    return bool(re.search(r'매시간|매시|시간마다|매월|매달|월간|monthly|hourly|매주|매일|주간|일간|weekly|daily',text)
+        and re.fullmatch(r'(?:매시간|매시|시간마다|매월|매달|월간|monthly|hourly|말일|마지막날|정각|매주|매일|주간|일간|weekly|daily|예약|schedule|스케줄링|스케줄'
                          r'|오전|오후|아침|저녁|정오|자정|마다|에|한국시간|kst|시각)+',text))
 
-_NATIVE_SCHEDULE_REQUEST=re.compile(r'매일|매주|[월화수목금토일]요일\s*마다|daily|weekly',re.I)
-_NOT_NATIVE_SCHEDULE=re.compile(r'매월|매달|월간|매년|cron|크론',re.I)
+_NATIVE_SCHEDULE_REQUEST=re.compile(r'매시간|매시|시간마다|매월|매달|월간|monthly|hourly|매일|매주|[월화수목금토일]요일\s*마다|daily|weekly',re.I)
+_NOT_NATIVE_SCHEDULE=re.compile(r'매년|yearly|cron|크론',re.I)
 
 def reconcile_native_schedule(result,state):
-    """A refusal whose only gap was the app's own daily/weekly schedule goes to the condition checker.
+    """A refusal whose only gap was the app's own hourly/daily/weekly/monthly schedule goes to the condition checker.
 
     Live 2026-11-03 (B-8): "매주 월요일 오전 8시마다 … 저장해줘" was refused twice (initial and review)
     with only "주간 예약"/"매주 월요일 오전 8 시 예약" as the gap, although the app implements it.
@@ -88,7 +91,7 @@ def reconcile_native_schedule(result,state):
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user or not _NATIVE_SCHEDULE_REQUEST.search(user[-1]) or _NOT_NATIVE_SCHEDULE.search(user[-1]):return result
     return {**result,'decision':'existing_tools','native_schedule_reconciled':True,
-        'reason':result['reason']+' 부족 항목이 앱의 일·주 예약뿐이라 예약 조건 검사로 넘깁니다.'}
+        'reason':result['reason']+' 부족 항목이 앱의 시·일·주·월 예약뿐이라 예약 조건 검사로 넘깁니다.'}
 
 def normalize_native_claims(result):
     """Code checks explicit app facts; never turn a model refusal into READY."""
@@ -99,7 +102,7 @@ def normalize_native_claims(result):
     return {**result,'decision':'missing_capability' if remaining else 'manual_review',
         'model_missing_actions':list(result['missing_actions']),
         'native_app_claims_removed':removed,'missing_actions':remaining,
-        'reason':result['reason']+' 일·주 예약 자체는 앱의 지원 기능이므로 코드 대조 후 부족 목록에서 제외했습니다.'}
+        'reason':result['reason']+' 시·일·주·월 예약 자체는 앱의 지원 기능이므로 코드 대조 후 부족 목록에서 제외했습니다.'}
 
 # Unsupported channels remain gaps; registered Gmail operations are checked separately.
 # A channel followed closely by a send verb is a request for external delivery; a negation
@@ -162,13 +165,13 @@ def external_delivery_claims(result,state):
         'reason':result['reason']+' 등록 도구에는 외부 전송 기능이 없어 코드 대조 후 외부 전송을 부족 기능으로 기록했습니다.'}
 
 SYSTEM='현재 작업은 실행 전의 도구 지원 검토입니다. tools에 등록된 실행 동작·입출력·범위를 확인합니다. 계정 연결이 필요한 도구는 등록된 기능이지만 실행 전 연결이 필요합니다.\n파일이 아직 없더라도 실행 때 연결할 수 있습니다. 파일·자료 부재는 도구 부재가 아닙니다.\nexisting_tools: 현재 등록 도구 한 개 또는 조합으로 요청한 기능을 지원. tool_ids를 선택하고 missing_conditions/actions는 빈 배열.\nclarify: 지원되는 작업이지만 사용자가 정해야 하는 기준이 빠짐. missing_conditions만 질문하며 missing_actions는 빈 배열.\nmissing_capability: 실제 요청된 동작이 등록 도구/조합에 없음. missing_actions만 적고 missing_conditions는 빈 배열.\nmanual_review: 불확실성·범위 검토가 필요. 지원된 작업을 없는 도구로 바꾸지 않음.\nread_table→filter_sort→write_result로 상수 선별/중복제거/JSON·CSV 파일 생성이 가능합니다. 파일 저장은 외부 전송과 다릅니다.\nread_table→aggregate_table→write_result로 그룹 건수·합계가 가능합니다.\nread_document→search_document→compose_answer로 문서 근거 답변이 가능합니다.\ncalculate_columns는 명시된 열과 숫자의 사칙연산·나머지로 새 열을 만들거나 열 하나의 이름을 바꾸고, 입력 형식·시간대가 명시된 날짜 열을 변환합니다. text_transform은 앞 단계 텍스트에서 지정된 문자열을 그대로 바꿉니다. base64_codec은 텍스트 Base64 인코딩·디코딩, text_hash는 UTF-8 텍스트 SHA-256을 지원합니다. 추가 문자열·문서 편집은 해당 등록 도구의 operation_contracts 범위에서 지원합니다. 식이나 결과 열이 빠지면 확인합니다. 다른 임의 셀 변환과 수식 함수는 지원한다고 가정하지 않습니다. 두 표 join은 join_tables, 이메일은 email.* 등록 도구를 사용합니다. 메일·캘린더 실행에는 계정 연결이 필요합니다. Slack 전송은 지원하지 않습니다. agent_node의 일반 텍스트 응답을 검증된 표 변환 도구와 같다고 취급하지 않습니다.\n금지된 동작은 요청된 동작이 아닙니다. 숫자가 미정이면 질문하고 임의 기준을 넣지 않습니다.\n설명과 사용자 원문 근거를 반환하되 user_quotes는 목록의 원문을 그대로 선택합니다. 실행·설계·코드생성·저장 허가는 주지 않습니다.'
-SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 일·주 단위 예약은 Tool ID 없이 서버가 지원합니다. 예약 자체를 부족 도구로 판정하거나 가짜 예약 Tool ID를 만들지 않습니다. 실제 처리에 필요한 등록 tool_ids를 선택합니다. 시각·요일·시간대가 미정이면 clarify이며, 파일 미첨부는 도구 부재가 아닙니다. 활성화 전 관리 자료 연결은 후속 조건 검사에서 확인합니다. 월간·cron·외부 이벤트 트리거는 일·주 예약으로 임의 대체하지 않습니다. 예약 자체가 계정 연결 권한을 제공하지는 않습니다. 이메일은 등록 Gmail 도구와 연결 계정을, 캘린더는 Google Calendar 계정을 사용합니다. Slack·자동 원격 자료 수집은 별도 등록 도구 없이는 지원하지 않습니다.'
-SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 일·주 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 제외·유지·오류와 중복 첫 행·마지막 행·유지·오류(중복이 있으면 실행 중단)는 filter_sort에 이미 정의된 정책입니다. 이 정책을 요청한 것은 기능 부족이 아닙니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 관리 표 연결 검사는 후속 단계에 맡깁니다.'
-SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 일·주 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 monthly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
+SYSTEM+='\n앱 기능 app_capabilities도 지원 여부 근거입니다. 시·일·주·월 단위 예약은 Tool ID 없이 서버가 지원합니다. 예약 자체를 부족 도구로 판정하거나 가짜 예약 Tool ID를 만들지 않습니다. 실제 처리에 필요한 등록 tool_ids를 선택합니다. 시각·요일·시간대가 미정이면 clarify이며, 파일 미첨부는 도구 부재가 아닙니다. 활성화 전 실제 필수 입력 준비는 후속 검사에서 확인하며 파일이 필요한 작업에만 자료를 연결합니다. 연간·cron·외부 이벤트 트리거는 시·일·주·월 예약으로 임의 대체하지 않습니다. 예약 자체가 계정 연결 권한을 제공하지는 않습니다. 이메일은 등록 Gmail 도구와 연결 계정을, 캘린더는 Google Calendar 계정을 사용합니다. Slack·자동 원격 자료 수집은 별도 등록 도구 없이는 지원하지 않습니다.'
+SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서버 예약이라는 이유만으로 manual_review로 넘기지 않습니다. 시·일·주·월 예약은 별도 시작일·종료일을 필수로 요구하지 않으며 활성화 후 다음 시각부터 중지할 때까지 적용됩니다. 빈 값 제외·유지·오류와 중복 첫 행·마지막 행·유지·오류(중복이 있으면 실행 중단)는 filter_sort에 이미 정의된 정책입니다. 이 정책을 요청한 것은 기능 부족이 아닙니다. 사용자가 자료를 나중에 연결한다고 한 경우 파일 ID를 기능 판단 질문으로 반복하지 않습니다. 실행 전 필수 입력 검사는 후속 단계에 맡기며 비파일 업무에 표를 요구하지 않습니다.'
+SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 시·일·주·월 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 yearly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
 SYSTEM+='\n조건끼리 서로 모순되거나(예: 같은 대상에 두 가지 정책) 기준·값·단위가 미정인 것은 기능 부족이 아니라 사용자가 정할 조건이므로 clarify입니다. 모순 해결, 기준 선택, 값 명시, 정책 우선순위 결정을 missing_actions에 적지 않고 missing_conditions에 적습니다. 등록 도구가 지원하는 작업(상수 비교 선별, 빈 값 정책, 첫 행·마지막 행 중복 제거, 파일 저장)을 조건이 모순이라는 이유로 미지원이라 하지 않습니다.'
-SYSTEM+='\nGmail의 최근 메일 여러 건 요약은 email.list의 read_messages 동작으로 본문 documents를 읽고 compose_answer의 documents 입력에 연결합니다. 개별 ID·로컬 파일·read_document 단계가 필요하지 않습니다. 등록된 실제 동작 계약을 확인하며, Gmail 계정 연결 상태가 설계 입력에 없다는 이유로 기능을 missing_capability로 판정하지 않습니다. 연결은 실행 전 확인하며 사용자에게 모델이 연결 여부를 추측하거나 이미 연결됐다고 주장하지 않습니다. 메일 발송·다른 공급자·임의 자동 반복은 이 읽기 요약 조합에 포함되지 않습니다.'
+SYSTEM+='\nGmail의 최근 메일 여러 건 요약은 email.list의 read_messages 동작으로 본문 documents를 읽고 compose_answer의 documents 입력에 연결합니다. 개별 ID·로컬 파일·read_document 단계가 필요하지 않습니다. 한국 시간 매일 오전 9시 전날 메일 요약은 등록된 gmail_previous_day_daily_summary.v1 조합으로 지원하며 query={{gmail.previous_day}}와 daily/Asia/Seoul/09:00 예약을 보존합니다. 전날 기간은 실행 시 계산하고 기본 조회 한도는 100건, 지정 가능한 최대치는 500건입니다. 제한을 넘는 메일은 포함되지 않을 수 있음을 안내합니다. 등록된 실제 동작 계약을 확인하며, Gmail 계정 연결 상태가 설계 입력에 없다는 이유로 기능을 missing_capability로 판정하지 않습니다. 연결은 실행 전 확인하며 사용자에게 모델이 연결 여부를 추측하거나 이미 연결됐다고 주장하지 않습니다. 메일 발송·다른 공급자·등록 범위 밖의 임의 자동 반복은 이 읽기 요약 조합에 포함되지 않습니다.'
 DEMOS=[
- {'request':'매월 말일 오전 10시 한국 시간에 표를 JSON 저장. 일간이나 주간으로 바꾸지 마.', 'output':{'decision':'missing_capability','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':['월간 예약'],'reason':'표 저장은 지원하나 앱 예약은 daily/weekly만 지원하므로 월간 주기는 미지원.','user_quotes':['매월 말일 오전 10시 한국 시간에 표를 JSON 저장. 일간이나 주간으로 바꾸지 마.']}},
+ {'request':'매년 12월 31일 오전 10시 한국 시간에 표를 JSON 저장. 다른 주기로 바꾸지 마.', 'output':{'decision':'missing_capability','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':['연간 예약'],'reason':'표 저장은 지원하나 앱 예약은 hourly/daily/weekly/monthly만 지원하므로 연간 주기는 미지원.','user_quotes':['매년 12월 31일 오전 10시 한국 시간에 표를 JSON 저장. 다른 주기로 바꾸지 마.']}},
  {'request':'한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.', 'output':{'decision':'existing_tools','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'앱 주간 예약과 등록 표 읽기·저장 도구로 지원. 관리 자료 연결과 활성화는 후속 검사.','user_quotes':['한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.']}},
  {'request':'한국 시간 매일 11시에 수량이 12개 초과인 행만 JSON으로 저장. 빈 값 오류, 중복 유지. 파일은 나중에 연결.', 'output':{'decision':'existing_tools','tool_ids':['read_table','filter_sort','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'앱 일간 예약과 선별·저장 조합. 이미 정한 정책과 실행 전 파일 연결을 다시 묻지 않음.','user_quotes':['한국 시간 매일 11시에 수량이 12개 초과인 행만 JSON으로 저장. 빈 값 오류, 중복 유지. 파일은 나중에 연결.']}},
  {'request':'자료는 나중에 올릴게. 판매액이 27000원 이상인 행만 JSON 저장.','output':{'decision':'existing_tools','tool_ids':['read_table','filter_sort','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'자료는 실행 전에 받고 등록 도구로 선별·파일 생성','user_quotes':['자료는 나중에 올릴게. 판매액이 27000원 이상인 행만 JSON 저장.']}},
@@ -356,9 +359,9 @@ def assess_capability(state,transport):
     calls=1
     if result['decision']=='missing_capability':
         review_prompt='''이전 지원 판단은 미검증 후보입니다. 요청과 실제 tools 및 app_capabilities를 모두 다시 대조하여 최종 Assessment JSON 하나를 반환합니다.
-가장 먼저 missing_actions 각 항목을 검토합니다. 앱의 daily/weekly 예약은 이미 구현된 지원 기능이므로 '주간 예약', '매주 ... 시각', '예약 활성화'를 부족 기능으로 적었다면 해당 항목을 제거합니다.
+가장 먼저 missing_actions 각 항목을 검토합니다. 앱의 hourly/daily/weekly/monthly 예약은 이미 구현된 지원 기능이므로 '주간 예약', '매주 ... 시각', '예약 활성화'를 부족 기능으로 적었다면 해당 항목을 제거합니다.
 이 시점은 새 워크플로우 설계 전입니다. 특정 사용자의 활성화 설정이 아직 없다는 것은 당연하며 기능 부재가 아닙니다. 기존 활성화된 예약이 있어야 지원한다고 판단하지 않습니다.
-요청에 미지원 외부 전송이 함께 있으면 외부 전송만 missing_actions에 남깁니다. 월간/cron은 실제 미지원으로 유지합니다.
+요청에 미지원 외부 전송이 함께 있으면 외부 전송만 missing_actions에 남깁니다. 연간/cron은 실제 미지원으로 유지합니다.
 누락된 입력 파일이나 실행 전 자료 연결은 기능 부족이 아닙니다. 도구 설명에 이미 있는 기능을 없다고 하지 마세요.
 조건 사이의 모순, 미정 기준·값·단위, 정책 선택은 기능이 아니라 사용자 결정입니다. missing_actions에 이런 항목만 남는다면 clarify로 바꾸고 그 항목을 missing_conditions로 옮깁니다.
 특히 reason에서 등록 도구 조합으로 가능하다고 설명하면서 decision을 missing_capability로 반환하면 모순입니다.

@@ -13,7 +13,7 @@ async function gmailRequest<T>(path = endpoint, method = 'GET'): Promise<T> {
   return value as T;
 }
 
-export function GmailConnection({disabled, variant = 'button'}: {disabled: boolean; variant?: 'button' | 'card'}) {
+export function GmailConnection({disabled, variant = 'button', onStatusChange}: {disabled: boolean; variant?: 'button' | 'card'; onStatusChange?:(connected:boolean)=>void}) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<GmailStatus>();
   const [busy, setBusy] = useState(false);
@@ -33,6 +33,7 @@ export function GmailConnection({disabled, variant = 'button'}: {disabled: boole
 
   useEffect(() => { if (variant === 'card') void refresh(); }, [variant]);
   useEffect(() => () => { statusRequest.current++; }, []);
+  useEffect(() => { onStatusChange?.(!error && status?.connected === true); }, [error, status?.connected, onStatusChange]);
 
   useEffect(() => {
     if (!open) return;

@@ -144,6 +144,14 @@ def execute(node, state, storage, config, llm):
     nested_inputs = binding_names(args)
     args=substitute(args,bound)
     args.update({k:v for k,v in bound.items() if k not in args and k not in nested_inputs})
+    gmail_period=None
+    if node['tool']=='email.list' and spec['id']=='read_messages':
+        from workflow_engine.scheduling.gmail_schedule import resolve_gmail_query
+        from workflow_engine.scheduling.gmail_schedule import PREVIOUS_DAY_QUERY,previous_day_window
+        if args.get('query')==PREVIOUS_DAY_QUERY:
+            start,end=previous_day_window(config)
+            gmail_period={'start':start.isoformat(),'end':end.isoformat(),'timezone':config['schedule']['timezone']}
+        args['query']=resolve_gmail_query(args.get('query'),config)
     context = execution_context(storage)
     args = resolve_assets(args, storage, context, ids)
     if spec.get('runtime_id') in ('file.read_text','file.read_csv') and isinstance(args.get('path'),dict):
@@ -154,6 +162,7 @@ def execute(node, state, storage, config, llm):
     result = dispatcher.execute(node['tool'], spec['id'], args, context=context,
                                 model_providers={'*':model_provider(llm)})
     result = json.loads(json.dumps(result, ensure_ascii=False, allow_nan=False))
+    if gmail_period is not None:result['date_range']=gmail_period
     outputs = {'result':result, 'text':json.dumps(result,ensure_ascii=False,indent=2)}
     if node['tool']=='email.get':
         from workflow_engine.unified_tools.expansion.google_adapters import gmail_body_reader, gmail_documents

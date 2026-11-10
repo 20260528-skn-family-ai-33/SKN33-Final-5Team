@@ -110,11 +110,13 @@ class WorkflowDefinition(BaseModel):
 
 class ScheduleSpec(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    frequency: Literal['daily','weekly']
+    frequency: Literal['hourly','daily','weekly','monthly']
     timezone: str | None
     hour: int | None = Field(ge=0,le=23)
     minute: int | None = Field(ge=0,le=59)
-    weekday: int | None = Field(ge=0,le=6,description='월요일=0, 일요일=6. daily이면 null.')
+    weekday: int | None = Field(ge=0,le=6,description='월요일=0, 일요일=6. weekly 외에는 null.')
+    monthday: int | None = Field(default=None,ge=1,le=31,description='monthly의 일자. 없는 일자는 해당 달을 건너뜁니다. month_end이면 null.')
+    month_end: bool = Field(default=False,description='monthly에서 매달 마지막 날. monthday와 동시에 지정하지 않습니다.')
 
 class AgentDraft(BaseModel):
     model_config = ConfigDict(extra='forbid')

@@ -1,31 +1,52 @@
 """Durable local-server schedules, managed sources and leased jobs."""
 import json
-from datetime import datetime,timedelta,time,timezone
-from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
+from datetime import datetime,timedelta,timezone
 from infrastructure.persistence.ids import uid, now
 from documents.resources.document_resources import available_inputs
+from workflow_engine.scheduling.recurrence import next_occurrence,schedule_errors
+from workflow_engine.scheduling.library_sources import LibrarySources
 
-def next_occurrence(spec,current=None):
-    current=current or datetime.now(timezone.utc);zone=ZoneInfo(spec['timezone']);local=current.astimezone(zone)
-    date=local.date()
-    if spec['frequency']=='weekly':date+=timedelta(days=(spec['weekday']-date.weekday())%7)
-    candidate=datetime.combine(date,time(spec['hour'],spec['minute']),zone)
-    # Shift nonexistent DST wall time forward; choose first fold on an ambiguous day.
-    candidate=candidate.astimezone(timezone.utc).astimezone(zone)
-    if candidate.astimezone(timezone.utc)<=current.astimezone(timezone.utc):
-        candidate=datetime.combine(date+timedelta(days=7 if spec['frequency']=='weekly' else 1),time(spec['hour'],spec['minute']),zone)
-        candidate=candidate.astimezone(timezone.utc).astimezone(zone)
-    return candidate.astimezone(timezone.utc).isoformat()
 
-def schedule_errors(spec):
-    issues=[]
-    if spec['timezone'] is None:issues.append('예약 시간대를 알려주세요.')
-    else:
-        try:ZoneInfo(spec['timezone'])
-        except (ZoneInfoNotFoundError,ValueError):issues.append('유효한 IANA 시간대가 필요합니다.')
-    if spec['hour'] is None or spec['minute'] is None:issues.append('예약 실행 시간을 알려주세요.')
-    if spec['frequency']=='weekly' and spec['weekday'] is None:issues.append('매주 실행할 요일을 알려주세요.')
-    return issues
+def required_connections(config,dependencies=None):
+    providers=set()
+    for node in (config.get('workflow') or {}).get('nodes',[]):
+        if node['tool'].startswith('email.'):
+            providers.add('gmail')
+        elif node['tool'].startswith('calendar.'):
+            providers.add('google_calendar')
+        elif node['tool']=='saved_workflow':
+            child=(dependencies or {}).get(node['id'])
+            if child:providers.update(required_connections(child['config'],child.get('workflow_dependencies')))
+    return sorted(providers)
+
+
+def source_required(config,storage,file_ids=None,dependencies=None):
+    """Whether execution is waiting for a file, using the runner's input contracts."""
+    from agent_builder.conditions.input_requirements import execution_requirements
+    return any(r['required_before_start'] and not r['ready']
+               for r in execution_requirements(config,storage,file_ids,dependencies))
+
+
+def preflight_schedule(storage,agent,file_ids=None):
+    from agent_builder.conditions.input_requirements import preflight_execution,execution_request_required
+    def inspect(config,dependencies):
+        if any(n['tool']=='ask_user' for n in (config.get('workflow') or {}).get('nodes',[])):
+            raise ValueError('예약 실행에는 사용자 응답 대기 노드를 연결할 수 없습니다.')
+        for child in (dependencies or {}).values():
+            inspect(child['config'],child.get('workflow_dependencies'))
+    config=agent['config'];dependencies=agent.get('workflow_dependencies')
+    inspect(config,dependencies)
+    if execution_request_required(config,dependencies):
+        raise ValueError('예약 실행에 필요한 사용자 입력을 고정 설정이나 앞 단계 출력으로 연결하세요.')
+    binding=LibrarySources(storage).get(agent['id'])
+    if binding and not getattr(storage,'library_target_id',None):raise ValueError('자료함 권한과 실행 파일을 서버에서 다시 확인해야 합니다.')
+    if binding and not getattr(storage,'snapshot',{}).get('assets') and binding['mode']=='new':
+        from agent_builder.conditions.input_requirements import execution_requirements
+        requirements=execution_requirements(config,storage,file_ids,dependencies)
+        issues=[issue for item in requirements if item['node_id']!=binding['target_node_id'] and item['required_before_start'] for issue in item['issues']]
+        if issues:raise ValueError('실행 전 자료 확인: '+' / '.join(issues))
+        return requirements
+    return preflight_execution(config,storage,file_ids,dependencies)
 
 class Schedules:
     def __init__(self,storage):
@@ -39,19 +60,33 @@ class Schedules:
         row=self.db.execute('SELECT id,asset_id,version,updated_at FROM builder_data_sources WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
         if not row:return None
         return {'id':row[0],'asset_id':row[1],'version':row[2],'updated_at':row[3],'asset':self.storage.asset(row[1])}
+    def execution_source(self,agent):
+        if hasattr(self.storage,'bound') or LibrarySources(self.storage).get(agent['id']):return None
+        from agent_builder.conditions.input_requirements import execution_requirements
+        requirements=execution_requirements(agent['config'],self.storage,None,agent.get('workflow_dependencies'))
+        if not requirements:return None
+        source=self.source(agent['id'])
+        if not source:return None
+        slots=[r for r in requirements if r['kind']==source['asset']['kind']]
+        # One managed file may replace one reader slot, never a set of saved
+        # documents or several independent inputs of the same type.
+        return source if len(slots)==1 and len(slots[0].get('file_ids',[]))<=1 else None
     def replace_source(self,agent_id,asset_id,commit=True):
         agent=self.storage.agent(agent_id);asset=self.storage.asset(asset_id)
-        if asset['kind']!='table':raise ValueError('관리 데이터 소스는 표 파일을 연결하세요.')
+        if asset['kind'] not in ('table','document'):raise ValueError('관리 데이터 소스는 표 파일이나 문서를 연결하세요.')
         from contracts.models import AgentDraft
         from agent_builder.design.nodes.validation import validate_node
         config=AgentDraft.model_validate(agent['config']).model_dump()
         # Check the incoming source against the saved conditions, not the old sample.
-        document_ids=[a['id'] for a in available_inputs(self.storage,config['document_ids']) if a['kind']=='document']
-        config['document_ids']=[asset_id]+document_ids
+        retained=[a['id'] for a in available_inputs(self.storage,config['document_ids']) if a['kind']!=asset['kind']]
+        same_kind=[a['id'] for a in available_inputs(self.storage,config['document_ids']) if a['kind']==asset['kind']]
+        if asset['kind']=='document' and len(same_kind)>1:
+            raise ValueError('여러 문서는 워크플로우의 자료 설정에서 각각 연결하세요. 저장한 문서들로 예약 실행할 수 있습니다.')
+        config['document_ids']=[asset_id]+retained
         if config.get('workflow'):
             for n in config['workflow']['nodes']:
-                if n['tool']=='read_table':n['settings']['file_ids']=[asset_id]
-        result=validate_node({'draft':config,'resources':[asset]+[self.storage.asset(id) for id in document_ids],'messages':[{'role':'user','content':r['quote']} for r in config['requirements'] if r['source_id']=='user']})
+                if n['tool']==('read_table' if asset['kind']=='table' else 'read_document'):n['settings']['file_ids']=[asset_id]
+        result=validate_node({'draft':config,'resources':[asset]+[self.storage.asset(id) for id in retained],'messages':[{'role':'user','content':r['quote']} for r in config['requirements'] if r['source_id']=='user']})
         # Source replacement doesn't revalidate old document citations against a new file.
         relevant=[issue for issue in result['issues'] if not issue.startswith('업무 조건의 인용 원문')]
         if relevant:raise ValueError('새 데이터 소스의 구조를 확인하세요: '+' / '.join(relevant))
@@ -59,15 +94,33 @@ class Schedules:
         self.db.execute('INSERT INTO builder_data_sources({wsc}agent_id,id,asset_id,version,updated_at) VALUES({wsv}?,?,?,?,?) ON CONFLICT({wsc}agent_id) DO UPDATE SET asset_id=excluded.asset_id,version=excluded.version,updated_at=excluded.updated_at',(agent_id,id,asset_id,version,now()));
         if commit:self.db.commit()
         return self.source(agent_id)
-    def configure(self,agent_id,commit=True):
+    def configure(self,agent_id,commit=True,previous_config=None):
         agent=self.storage.agent(agent_id);spec=agent['config'].get('schedule')
         if not spec:return None
         if schedule_errors(spec):raise ValueError('예약 필수 설정이 비어 있습니다.')
+        from agent_builder.conditions.input_requirements import execution_requirements
+        requirements=execution_requirements(agent['config'],self.storage,None,agent.get('workflow_dependencies'))
+        old_source=self.source(agent_id)
+        source=self.execution_source(agent)
+        changed_slot=False
+        if source and previous_config is not None:
+            kind=source['asset']['kind']
+            previous=execution_requirements(previous_config,self.storage,None,agent.get('workflow_dependencies'))
+            slots=lambda items:[(r['node_id'],r['kind'],r.get('file_ids',[])) for r in items if r['kind']==kind]
+            changed_slot=slots(previous)!=slots(requirements)
+        if old_source and (not source or changed_slot):
+            # Configuration changes detach obsolete mappings only. An uploaded
+            # replacement's ID may differ from its original slot and is valid
+            # while that saved slot remains unchanged.
+            self.db.execute('DELETE FROM builder_data_sources WHERE {ws} AND agent_id=?',(agent_id,))
         data={'agent_id':agent_id,'agent_version':agent['version'],'spec':spec,'updated_at':now()}
         self.db.execute('INSERT INTO builder_schedules({wsc}agent_id,json,next_at,active) VALUES({wsv}?,?,?,0) ON CONFLICT({wsc}agent_id) DO UPDATE SET json=excluded.json,next_at=excluded.next_at,active=0',(agent_id,json.dumps(data,ensure_ascii=False),next_occurrence(spec)))
-        if not self.source(agent_id):
+        if requirements and not self.source(agent_id):
             tables=[id for id in agent['config']['document_ids'] if self.storage.asset(id)['kind']=='table']
             if len(tables)==1:self.replace_source(agent_id,tables[0],commit=False)
+            elif not tables:
+                documents=[id for id in agent['config']['document_ids'] if self.storage.asset(id)['kind']=='document']
+                if len(documents)==1:self.replace_source(agent_id,documents[0],commit=False)
         if commit:self.db.commit()
         return self.get(agent_id)
     def get(self,agent_id):
@@ -86,12 +139,20 @@ class Schedules:
     def activate(self,agent_id,active):
         schedule=self.get(agent_id)
         if not schedule:raise ValueError('예약 설정이 없습니다. 대화로 시간을 정하고 저장하세요.')
-        if active and not self.source(agent_id):raise ValueError('예약 실행할 관리 데이터 소스를 먼저 연결하세요.')
+        if active:
+            agent=self.storage.agent(agent_id);source=self.execution_source(agent)
+            preflight_schedule(self.storage,agent,[source['asset_id']] if source else [])
         self.db.execute('UPDATE builder_schedules SET active=?,next_at=? WHERE {ws} AND agent_id=?',(int(active),next_occurrence(schedule['spec']),agent_id));self.db.commit();return self.get(agent_id)
     def enqueue_test(self,agent_id,delay_seconds=15):
-        if not self.get(agent_id) or not self.source(agent_id):raise ValueError('예약 설정과 데이터 소스가 필요합니다.')
-        agent=self.storage.agent(agent_id);id=uid();due=(datetime.now(timezone.utc)+timedelta(seconds=delay_seconds)).isoformat()
+        agent=self.storage.agent(agent_id)
+        if not self.get(agent_id):raise ValueError('예약 설정이 필요합니다.')
+        source=self.execution_source(agent)
+        preflight_schedule(self.storage,agent,[source['asset_id']] if source else [])
+        if hasattr(self.storage,'bound'):agent=self.storage.storage.agent(agent_id)
+        id=uid();due=(datetime.now(timezone.utc)+timedelta(seconds=delay_seconds)).isoformat()
         job={'id':id,'agent_id':agent_id,'agent_snapshot':agent,'kind':'schedule_test','due_at':due,'created_at':now()}
+        binding=LibrarySources(self.storage).get(agent_id)
+        if binding:job['library_source']={'selection':binding}
         self.db.execute('INSERT INTO builder_schedule_jobs({wsc}id,agent_id,slot_key,state,lease_until,lease_token,json) VALUES({wsv}?,?,?,\'queued\',NULL,NULL,?)',(id,agent_id,'test:'+id,json.dumps(job,ensure_ascii=False)));self.db.commit();return job
     def cancel_test(self,agent_id,job_id):
         # Same write lock as claim_due: a claim that already read this job finishes first.
@@ -107,6 +168,7 @@ class Schedules:
         job["finished_at"]=now()
         changed=self.db.execute("UPDATE builder_schedule_jobs SET state='cancelled',json=? WHERE {ws} AND id=? AND agent_id=? AND state='queued'",(json.dumps(job,ensure_ascii=False),job_id,agent_id))
         if not changed.rowcount:raise ValueError("이미 실행 중이거나 종료된 예약은 취소할 수 없습니다.")
+        self.db.execute("UPDATE builder_source_processed SET state='failed',updated_at=? WHERE {ws} AND job_id=? AND state='pending'",(now(),job_id))
         self.db.commit();return {**job,"status":"cancelled"}
     def claim_due(self,current=None):
         current=current or datetime.now(timezone.utc);stamp=current.isoformat();jobs=[]
@@ -116,6 +178,8 @@ class Schedules:
                 schedule=json.loads(body);agent=self.storage.agent(agent_id)
                 if agent['version']!=schedule['agent_version']:continue
                 id=uid();job={'id':id,'agent_id':agent_id,'agent_snapshot':agent,'kind':'scheduled','due_at':due,'created_at':stamp}
+                binding=LibrarySources(self.storage).get(agent_id)
+                if binding:job['library_source']={'selection':binding}
                 self.db.execute('INSERT INTO builder_schedule_jobs({wsc}id,agent_id,slot_key,state,lease_until,lease_token,json) VALUES({wsv}?,?,?,\'queued\',NULL,NULL,?) ON CONFLICT DO NOTHING',(id,agent_id,due,json.dumps(job,ensure_ascii=False)))
                 self.db.execute('UPDATE builder_schedules SET next_at=? WHERE {ws} AND agent_id=?',(next_occurrence(schedule['spec'],current),agent_id))
             rows=self.db.execute("SELECT id,json FROM builder_schedule_jobs WHERE {ws} AND (state='queued' OR (state='running' AND lease_until<=?)) AND "+self.storage.json_text('json','due_at')+"<=? ORDER BY {seq} LIMIT 1",(stamp,stamp)).fetchall()

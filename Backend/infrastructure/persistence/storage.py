@@ -6,6 +6,7 @@ from infrastructure.persistence.ids import uid, now
 from infrastructure.persistence.db import WORKSPACE, enable_wal, open_database, workspace_id
 from workflow_engine.catalog.registry import TOOLS
 from infrastructure.persistence.asset_library import LIBRARY_SCHEMA
+from workflow_engine.scheduling.library_sources import SOURCE_SCHEMA
 
 __all__=['Storage','enable_wal']
 
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS builder_schedule_jobs(id TEXT PRIMARY KEY,agent_id TE
 CREATE TABLE IF NOT EXISTS reply_review_decisions(run_id TEXT NOT NULL REFERENCES agent_tests(id),review_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(run_id,review_id));
 CREATE TABLE IF NOT EXISTS document_reviews(asset_id TEXT PRIMARY KEY REFERENCES builder_assets(id),revision INTEGER NOT NULL,json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS document_review_events(asset_id TEXT NOT NULL REFERENCES builder_assets(id),revision INTEGER NOT NULL,request_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(asset_id,revision),UNIQUE(asset_id,request_id));
-'''+LIBRARY_SCHEMA
+'''+LIBRARY_SCHEMA+SOURCE_SCHEMA
 
 class Storage:
     def __init__(self,directory):
@@ -191,7 +192,7 @@ class Storage:
             for old in self.agents():
                 if old['session_id']==session_id and {k:v for k,v in old['config'].items() if k!='node_snapshots'}==draft:
                     # Repair old partial saves on idempotent replays without pausing a healthy schedule.
-                    if draft.get('schedule') and (not schedules.get(old['id']) or not schedules.source(old['id'])):
+                    if draft.get('schedule') and not schedules.get(old['id']):
                         schedules.configure(old['id'],commit=False)
                     if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'])
                     self.db.commit();return old['id']
@@ -207,7 +208,7 @@ class Storage:
             from workflow_engine.library.reusable_workflows import pin_dependencies
             a['workflow_dependencies']=pin_dependencies(self,draft,state['model'],state['credential_id'],id)
             self._insert_agent_version(a)
-            if draft.get('schedule'):schedules.configure(id,commit=False)
+            if draft.get('schedule'):schedules.configure(id,commit=False,previous_config=old['config'] if old else None)
             else:self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(id,))
             if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id)
             self.db.commit();return id

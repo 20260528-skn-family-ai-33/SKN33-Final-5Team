@@ -50,7 +50,7 @@ CSV/JSON 표 저장은 write_result, records/text 저장은 export_result입니�
 문서 추출은 extract_information.fields에 요청 항목을 지정하며 없는 값은 만들어내지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다.
 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 쓰세요. required_node_refs는 반드시 연결합니다.
 ask_user는 실행 중 사람 응답 대기 도구이며 생성 조건 questions와 다릅니다. reply_review는 실제 문의·응대 초안 검수에만 사용합니다.
-예약은 현재 지원되는 관리 표 자료 daily/weekly이며 시각·시간대·요일이 미정이면 질문합니다. 예약 없이 schedule=null입니다.
+예약은 저장된 입력으로 무인 실행 가능한 워크플로우의 hourly/daily/weekly/monthly를 지원합니다. 파일을 읽는 작업에만 실제 자료를 연결하며 비파일 작업에는 표를 요구하지 않습니다. hourly는 minute만, daily는 hour/minute, weekly는 hour/minute/weekday, monthly는 hour/minute와 monthday(1~31) 또는 month_end=true를 사용합니다. 없는 일자는 해당 달을 건너뛰며 말일은 매달 실제 마지막 날입니다. 시간대는 필수입니다. 필요한 조건이 미정이면 질문합니다. 예약 없이 schedule=null입니다.
 검증은 앱 코드가 수행하므로 검증 도구 호출을 출력하지 마세요. 검증 오류가 제공되면 해당 설정을 수정합니다.
 """
 
@@ -94,7 +94,7 @@ SYSTEM_V2 = """당신은 한국어 문서 업무를 설계하는 A4B 메인 모�
 - agent_node는 자료 조회·텍스트 추론용입니다. 새 역할은 instructions로 구성하며 외부 실행 권한을 추가할 수 없습니다.
 - 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 사용합니다. required_node_refs는 연결합니다.
 - ask_user는 실행 중 응답 대기입니다. 생성 단계 누락 조건은 questions입니다. reply_review는 문의·응대 초안 검수용입니다.
-- 예약은 관리 표 자료 daily/weekly만 지원하며 필요한 시각·시간대·요일이 없으면 질문합니다. 예약 요청이 없으면 schedule=null입니다.
+- 예약은 저장된 입력으로 실행 가능한 워크플로우의 hourly/daily/weekly/monthly를 지원합니다. 파일을 읽는 작업에만 자료를 연결하며 비파일 작업에는 표를 요구하지 않습니다. 필요한 시각·시간대·요일이 없으면 질문합니다. 예약 요청이 없으면 schedule=null입니다. hourly는 minute만, daily는 hour/minute, weekly는 hour/minute/weekday, monthly는 hour/minute와 monthday(1~31) 또는 month_end=true를 사용합니다. 없는 일자는 해당 달을 건너뛰며 말일은 매달 실제 마지막 날입니다. 시간대는 필수입니다.
 - 생성은 실행 완료가 아닙니다. 실행·저장 전 승인은 앱이 받습니다. 코드 검증 오류가 오면 사용자 조건을 유지하며 수정합니다.
 """
 
@@ -152,7 +152,7 @@ filter_sort.settings.execution_plan에 확정 조건을 반영합니다. 확정�
 requirements.quote는 source_quote_catalog의 실제 원문을 그대로 선택하고 해당 source_id를 사용합니다. 요약·공백 변경 금지.
 node_ref와 saved_workflow는 제공된 라이브러리·버전·출력만 사용합니다. required_node_refs를 보존합니다.
 설계 질문은 questions이고 ask_user는 실행 중 응답 대기 도구입니다. reply_review는 실제 문의·초안 검수에 사용합니다.
-예약은 daily/weekly와 관리 표를 사용합니다. 예약 요청이 없으면 schedule=null입니다.
+예약은 저장된 입력으로 무인 실행 가능한 워크플로우에 hourly/daily/weekly/monthly를 설정합니다. Gmail·외부 API 등 비파일 작업에는 표를 요구하지 않으며, 파일 읽기 단계가 있을 때만 실제 자료를 연결합니다. 예약 요청이 없으면 schedule=null입니다. hourly는 minute만, daily는 hour/minute, weekly는 hour/minute/weekday, monthly는 hour/minute와 monthday(1~31) 또는 month_end=true를 사용합니다. 없는 일자는 해당 달을 건너뛰며 말일은 매달 실제 마지막 날입니다. 시간대는 필수입니다.
 repair_feedback이 있으면 현재 초안의 코드 오류를 수정한 전체 JSON을 반환합니다. 확정 조건은 그대로 유지합니다.
 compatible_existing_ancestor_outputs는 참고 후보입니다. 분기별 가용성·순환·필수 입력은 기존 코드 검증을 통과해야 합니다.
 """
@@ -319,7 +319,8 @@ def business_condition_context(ledger):
               'duplicate.field':'중복 판단 열', 'duplicate.policy':'중복 행 보존 방식',
               'missing.policy':'빈 값 처리 방식', 'output.format':'결과 파일 형식',
               'schedule.frequency':'예약 주기', 'schedule.hour':'예약 시', 'schedule.minute':'예약 분',
-              'schedule.timezone':'예약 시간대', 'schedule.weekday':'예약 요일'}
+              'schedule.timezone':'예약 시간대', 'schedule.weekday':'예약 요일',
+              'schedule.monthday':'매월 실행 일자', 'schedule.month_end':'매월 말일 실행'}
     result = {'decision': ledger.get('decision'), 'operations': list(ledger.get('operations', [])), 'items': []}
     for key, slot in ledger.get('slots', {}).items():
         result['items'].append({'meaning': labels.get(key, '확인되지 않은 조건'),

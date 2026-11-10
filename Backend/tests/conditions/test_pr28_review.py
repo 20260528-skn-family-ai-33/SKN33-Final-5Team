@@ -53,9 +53,10 @@ def test_p2_negated_monthly_is_not_a_monthly_request(text, frequency):
     assert decision == 'ready' and slots['frequency'] == frequency and unsupported == []
 
 
-def test_p2_real_monthly_stays_unsupported():
-    decision, _, unsupported = ledger(['한국 시간 매월 1일 오전 9시에 JSON으로 저장해줘'], {**DAILY, 'schedule.frequency': 'weekly', 'schedule.hour': '9'})
-    assert decision == 'unsupported' and unsupported == ['월간 예약']
+def test_p2_real_monthly_keeps_its_own_supported_recurrence():
+    decision, slots, unsupported = ledger(['한국 시간 매월 1일 오전 9시에 JSON으로 저장해줘'], {**DAILY, 'schedule.frequency': 'weekly', 'schedule.hour': '9'})
+    assert decision == 'ready' and not unsupported
+    assert slots['frequency'] == 'monthly' and slots['monthday'] == 1
 
 
 def after_refusal(reply):

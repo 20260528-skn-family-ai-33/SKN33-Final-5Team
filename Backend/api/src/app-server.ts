@@ -12,20 +12,22 @@ import {TeamService,teamId} from './team-service';
 import {handleTeamApi,teamRequestBody} from './team-api';
 import {handleTeamLibrary,teamLibraryPermission} from './team-library-runtime';
 import {importTeamLibraryAsset} from './team-asset-import';
+import type {ScheduleSourceContext} from './schedule-source';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Runtime=ReturnType<typeof createWorkspaceRuntime>;
 /** Workspaces are chosen only from the authenticated RDS member ID, never request bodies. */
 export class WorkspaceRegistry {
  private entries=new Map<string,{directory:string;runtime:Runtime}>();
- constructor(private port:number,private privateMode:boolean,private publicOrigin?:string){}
+ constructor(private port:number,private privateMode:boolean,private publicOrigin?:string,
+  private sourceAuthorization?:(ownerId:string)=>Pick<ScheduleSourceContext,'authorizeOwner'|'authorizeTeam'>){}
  get(ownerId?:string,create=true){
   if(this.privateMode&&(!ownerId||!uuid.test(ownerId)))throw new AuthError(404,'작업 공간을 찾을 수 없습니다.');
   const key=ownerId||'local',directory=ownerId?baseDataDirectory('users',ownerId):baseDataDirectory();
   let entry=this.entries.get(key);
   if(!entry){
    if(!create&&!existsSync(directory))throw new AuthError(404,'작업 공간을 찾을 수 없습니다.');
-   entry={directory,runtime:withDataDirectory(directory,()=>createWorkspaceRuntime(this.port,ownerId,this.publicOrigin))};this.entries.set(key,entry);
+   entry={directory,runtime:withDataDirectory(directory,()=>createWorkspaceRuntime(this.port,ownerId,this.publicOrigin,ownerId?this.sourceAuthorization?.(ownerId):undefined))};this.entries.set(key,entry);
   }
   return {handle:(req:IncomingMessage,res:ServerResponse)=>withDataDirectory(entry.directory,()=>entry.runtime.handle(req,res))};
  }
@@ -51,8 +53,12 @@ async function frontend(req:IncomingMessage,res:ServerResponse,path:string){
 }
 export function createApplication(options:{port:number;config?:AuthConfig;auth?:CognitoAuth;users?:AuthUsers;teams?:TeamService;restore?:boolean}){
  const config=options.config||options.auth?.config,users=options.users||options.auth?.users||(config?(config.userStore==='postgres'?new PostgresAuthUsers(config):new SqliteAuthUsers(baseDataDirectory())):undefined);
- const auth=options.auth||(config&&users?new CognitoAuth(config,users):undefined),registry=new WorkspaceRegistry(options.port,!!auth,config?.origin);
+ const auth=options.auth||(config&&users?new CognitoAuth(config,users):undefined);
  const teams=auth&&users?(options.teams||new TeamService(baseDataDirectory(),users,config)):undefined;
+ const registry=new WorkspaceRegistry(options.port,!!auth,config?.origin,ownerId=>{
+  const owner=async()=>{const user=await users?.get(ownerId);if(!user||user.status!=='active')throw new AuthError(403,'자료를 사용할 회원 권한을 확인하세요.');return user;};
+  return {authorizeOwner:owner,authorizeTeam:async id=>{if(!teams)throw new AuthError(403,'팀 자료를 사용할 수 없습니다.');return teams.requireTeam(await owner(),id);}};
+ });
  validateWorkspaceFiles(!!auth);
  if(options.restore!==false)registry.restore();
  const server=createServer(async(req,res)=>{

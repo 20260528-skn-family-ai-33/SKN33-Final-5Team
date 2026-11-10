@@ -6,8 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from service.dispatch import handle
-from tests.workflow_engine.test_workflow import bind, edge, node, saved
 from workflow_engine.unified_tools.expansion.google_adapters import (
     GoogleApiError, GoogleJsonTransport, gmail_body_reader, gmail_documents, read_gmail_messages,
 )
@@ -140,16 +138,16 @@ def test_external_body_size_mismatch_and_missing_reader_fail_explicitly():
         gmail_documents(current)
 
 
-def test_external_request_budget_is_shared_across_all_messages_in_the_batch():
+def test_external_request_budget_applies_to_each_message_without_dropping_later_mail():
     calls=[]
     def call(operation,args):
         calls.append((operation,args))
         if operation=='email.list':return {'messages':[{'id':'a'},{'id':'b'}]}
         if operation=='email.get':return message(args['message_id'],{'mimeType':'multipart/mixed','parts':[part(attachment=str(i)) for i in range(11)]})
         return {'data':encoded(b'x'),'size':1}
-    with pytest.raises(ValueError,match='전체 요약을 중단'):
-        read_gmail_messages(call)
-    assert sum(operation=='email.attachment.get' for operation,_ in calls)==20
+    result=read_gmail_messages(call)
+    assert result['returned_count']==2
+    assert sum(operation=='email.attachment.get' for operation,_ in calls)==22
 
 
 def test_external_byte_budget_rejects_the_next_known_oversized_part_before_fetch():
@@ -170,7 +168,7 @@ def test_external_body_keeps_single_message_and_batch_character_limits():
         if operation=='email.get':return message(args['message_id'],part())
         return {'data':encoded(content),'size':len(content)}
     result=read_gmail_messages(call,max_results=10)
-    assert sum(len(item['text']) for item in result['documents'])<=40000
+    assert all(len(item['text'])<=8000 for item in result['documents'])
     assert result['truncated_message_ids']==[str(i) for i in range(10)]
     assert all(item['text'].endswith('[이후 본문 생략]') for item in result['documents'])
     single=gmail_documents(message('single',part()),gmail_body_reader(call))[0]
@@ -179,6 +177,8 @@ def test_external_body_keeps_single_message_and_batch_character_limits():
 
 @pytest.mark.parametrize('mode',['batch','individual'])
 def test_service_summary_reads_external_body_with_only_read_requests_and_real_evidence(tmp_path,monkeypatch,mode):
+    from service.dispatch import handle
+    from tests.workflow_engine.test_workflow import bind, edge, node, saved
     from workflow_engine import runner
     from workflow_engine.executors import agent_factory
     content='외부 파트의 실제 메일 본문';calls=[];expected={'text':'실제 본문을 확인한 요약입니다.','citations':[]}

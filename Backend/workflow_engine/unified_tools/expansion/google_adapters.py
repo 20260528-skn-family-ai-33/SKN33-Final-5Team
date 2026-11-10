@@ -239,35 +239,48 @@ def gmail_documents(message,read_body=None):
              'offset':0,'parser_engine':'gmail','derived_result':True,'text':text}]
 
 
-def read_gmail_messages(call,query=None,max_results=5):
-    """Collect a bounded first search page through read-only, account-scoped calls.
+def read_gmail_messages(call,query=None,max_results=100):
+    """Read up to a chosen limit across pages through account-scoped read calls.
 
     Gmail's newest-first list order is retained (Google's list-messages guide:
     https://developers.google.com/workspace/gmail/api/guides/list-messages).
     A failed read aborts the whole batch rather than
     returning a successful summary of only the messages fetched before failure.
     """
-    if type(max_results) is not int or not 1<=max_results<=10:
-        raise ValueError('Gmail 본문 조회는 한 번에 1~10개를 지정해주세요.')
+    if type(max_results) is not int or not 1<=max_results<=500:
+        raise ValueError('Gmail 본문 조회는 한 번에 1~500개를 지정해주세요.')
     if query is not None and not isinstance(query,str):
         raise ValueError('Gmail 검색 조건은 문자열이어야 합니다.')
-    listing=call('email.list',{'query':query,'max_results':max_results})
-    messages=listing.get('messages',[]) if isinstance(listing,dict) else None
-    if not isinstance(messages,list) or len(messages)>max_results:
-        raise ValueError('Gmail 메일 목록 응답을 확인하지 못했습니다.')
-    ids=[item.get('id') if isinstance(item,dict) else None for item in messages]
-    if any(not isinstance(id,str) or not id for id in ids) or len(set(ids))!=len(ids):
-        raise ValueError('Gmail 메일 목록에 유효한 메시지 ID가 없습니다.')
+    ids=[];seen_ids=set();seen_tokens=set();next_token=None;pages=0
+    while len(ids)<max_results:
+        count=min(100,max_results-len(ids))
+        arguments={'query':query,'max_results':count}
+        if next_token:arguments['page_token']=next_token
+        listing=call('email.list',arguments);pages+=1
+        messages=listing.get('messages',[]) if isinstance(listing,dict) else None
+        if not isinstance(messages,list) or len(messages)>count:
+            raise ValueError('Gmail 메일 목록 응답을 확인하지 못했습니다.')
+        page_ids=[item.get('id') if isinstance(item,dict) else None for item in messages]
+        if any(not isinstance(id,str) or not id or id in seen_ids for id in page_ids) or len(set(page_ids))!=len(page_ids):
+            raise ValueError('Gmail 메일 목록에 유효한 메시지 ID가 없습니다.')
+        ids.extend(page_ids);seen_ids.update(page_ids)
+        next_token=listing.get('nextPageToken')
+        if next_token is not None and (not isinstance(next_token,str) or not next_token):
+            raise ValueError('Gmail 다음 페이지 정보를 확인하지 못했습니다.')
+        if not next_token:break
+        if next_token in seen_tokens or pages>=500:
+            raise ValueError('Gmail 메일 목록의 페이지가 반복되거나 조회 한도를 초과했습니다.')
+        seen_tokens.add(next_token)
     documents=[];metadata=[];unavailable=[];truncated=[]
-    # Keep every selected message in the native summarizer's bounded context.
-    per_message=min(8000,40000//len(ids)) if ids else 8000
-    read_body=gmail_body_reader(call)
+    # Each selected message keeps its own bounded body; downstream summarization
+    # batches every document rather than dropping messages to fit one context.
+    per_message=8000
     for id in ids:
         try:
             message=call('email.get',{'message_id':id,'format':'full'})
             if not isinstance(message,dict) or message.get('id')!=id or not isinstance(message.get('payload'),dict):
                 raise ValueError('Gmail 메일 본문 응답을 확인하지 못했습니다.')
-            chunks=gmail_documents(message,read_body)
+            chunks=gmail_documents(message,gmail_body_reader(call))
         except Exception as error:
             if isinstance(error,GoogleApiError) and error.status in {401,403}:raise
             raise ValueError(f'Gmail 메일 {len(documents)+1}번째 읽기에 실패해 전체 요약을 중단했습니다. 연결 상태를 확인하고 다시 실행해주세요.') from None
@@ -288,7 +301,9 @@ def read_gmail_messages(call,query=None,max_results=5):
         metadata.append({key:message[key] for key in ('id','threadId','internalDate') if key in message})
     return {'messages':metadata,'documents':documents,'requested_count':max_results,'returned_count':len(documents),
             'body_unavailable_message_ids':unavailable,'truncated_message_ids':truncated,
-            'nextPageToken':listing.get('nextPageToken'),'complete':True}
+            'nextPageToken':next_token,'complete':True,'search_complete':not bool(next_token),
+            'limit_reached':bool(next_token) and len(ids)>=max_results,'query':query,
+            'body_character_limit':per_message,'pages_read':pages}
 
 
 def timestamp(value):

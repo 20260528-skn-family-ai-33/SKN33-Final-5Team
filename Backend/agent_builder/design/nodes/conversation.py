@@ -43,7 +43,7 @@ read_table/read_document는 file_ids 또는 실행 입력을 읽고 bindings=[]�
 원하는 파일 형식은 실제 출력 노드 settings.format에 지정합니다. 표 결과 CSV/JSON은 write_result, records/text 파일은 export_result로 저장합니다. 문서·이미지(영수증·스캔 등)에서 항목을 뽑아 표나 엑셀로 정리하는 요청은 read_document → extract_information(fields=요청 항목) → export_result(format=csv)로 구성합니다. read_document의 documents를 write_result에 연결하지 않습니다(write_result는 table 입력 전용). 실제 XLSX 요청은 create_spreadsheet의 계약을 사용하며 CSV로 바꾸지 않습니다. edges와 bindings에는 nodes에 실제로 있는 id만 쓰며, 끝을 표시하려고 없는 finish 노드를 연결하지 않습니다. 화면만 요청하면 저장 노드를 강제로 추가하지 않습니다. 파일 저장 위치는 A4B 서버 reports입니다.
 settings.node_ref는 node_library의 실제 ref만 사용하며 required_node_refs는 반드시 연결합니다. 재사용 설정이 업무와 다르면 새 처리 노드 node_ref=null을 구성합니다. saved_workflow는 실제 목록의 ID·버전·출력만 사용합니다. requirements는 최소 한 항목을 작성하고 available_evidence의 실제 evidence_id를 선택합니다. entry는 첫 실행 노드의 id이며 tool 이름이 아닙니다. 여러 자료를 읽어 연결할 때에도 edges는 read_left → read_right → join 순서의 한 경로로 연결합니다.
 reply_review는 실제 고객 문의·응대 초안 검수 요청에만 사용합니다. 후보 검수 보고서는 실제 발송이나 사람 승인 완료가 아닙니다. ask_user는 생성 조건 질문이 아니라 실행 중 사람 응답을 기다리는 도구입니다.
-예약 실행은 현재 지원되는 관리 표 자료로 daily/weekly를 설정합니다. 필요한 시각·시간대·요일이 미정이면 질문하고, 예약 없이 실행하면 schedule=null입니다. 예약에는 사용자 응답 대기 노드를 넣지 않습니다. report_destination=reports는 서버 보관함입니다.
+예약 실행은 저장된 입력으로 무인 실행할 수 있는 워크플로우에 hourly/daily/weekly/monthly를 설정합니다. 표 파일만 대상으로 제한하지 않습니다. 파일을 읽는 단계가 있을 때만 실제 자료를 연결하며, Gmail·외부 API 등 비파일 작업에는 표 자료를 요구하지 않습니다. hourly는 minute만, daily는 hour/minute, weekly는 hour/minute/weekday, monthly는 hour/minute와 monthday(1~31) 또는 month_end=true를 사용합니다. 없는 일자는 해당 달을 건너뛰며 말일은 매달 실제 마지막 날입니다. 시간대는 필수입니다. 필요한 조건이 미정이면 질문하고, 예약 없이 실행하면 schedule=null입니다. 예약에는 사용자 응답 대기 노드를 넣지 않습니다. 결과는 실행 기록에 저장되며 파일 생성 도구는 요청한 경우에만 연결합니다. report_destination=reports는 서버 보관함입니다.
 """
 
 

@@ -129,3 +129,33 @@ def test_saved_document_workflow_accepts_file_only_at_execution(tmp_path):
     assert json.loads(result['artifact']['content'])[0]['value']=='테스트'
     assert store.agent(agent_id)['config']['document_ids']==[]
     store.close()
+
+
+@pytest.mark.parametrize('mode',['direct','deepagent'])
+@pytest.mark.parametrize('question',[
+    'CSV 파일에서 집계할 열을 선택해 주세요.',
+    '계약서에서 검토할 기준을 알려주세요.',
+])
+def test_deferred_file_allows_business_questions_that_mention_the_file(monkeypatch,mode,question):
+    from tests.design.test_direct_conversation import Fake
+    answer=draft(questions=[question])
+    if mode=='direct':answer['requirements']=[{'description':'계약 검토','source_id':'user','quote':PROMPT}]
+    fake=Fake(answer)
+    class Agent:
+        def invoke(self,*args,**kwargs):return {'structured_response':answer}
+    monkeypatch.setenv('A4B_PLANNER_MODE',mode)
+    monkeypatch.setenv('A4B_PLANNER_PROMPT','v8')
+    monkeypatch.setattr('agent_builder.design.nodes.conversation.create_deep_agent',lambda **kw:Agent())
+    result=make_conversation('','test',model_factory=lambda:fake)(deferred())
+    assert result['draft']['questions']==[question]
+
+
+@pytest.mark.parametrize('question',[
+    'CSV 파일을 선택해 주세요.', '계약서 PDF를 첨부해 주세요.',
+    '파일 경로를 알려주세요.', '파일의 ID를 제공해주세요.',
+    '계약서 PDF 파일은 무엇인가요?',
+    '집계할 열을 선택해 주세요. 파일도 업로드해 주세요.',
+])
+def test_deferred_file_still_rejects_file_or_locator_requests(question):
+    from agent_builder.design.runtime_inputs import runtime_file_question_issues
+    assert runtime_file_question_issues({'questions':[question]},deferred())

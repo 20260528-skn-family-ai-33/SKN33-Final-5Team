@@ -14,6 +14,7 @@ from .requirement_contracts import RequirementPlan
 SYSTEM = '''사용자의 최종 업무 요구사항을 추출해 JSON으로 반환한다. 각 task는 실제 요청된 업무 한 가지다.
 description은 짧은 업무명이다. 같은 업무를 반복하지 않는다. 출력 규격에 대한 설명이나 생각을 업무로 기록하지 않는다.
 "원래 요청대로 생성", "다시 검토", "실행할 때 파일 제공", 자료 ID에 대한 질문은 설계 대화의 지시다. 이를 별도 실행 업무로 만들지 않고 원래 업무와 변경 조건을 반영한다.
+메시지마다 task를 만들지 않는다. 예를 들어 "파일 ID가 무엇인가요?"나 "그대로 만들어 주세요"는 실행 업무 0개다. other에도 넣지 않는다. 반면 "개인정보를 삭제"처럼 실행할 업무지만 지원 종류가 없는 요청은 other로 보존한다.
 source_message는 user_messages의 0-based index다. 원문 인용·ID·선행 연결은 앱이 부여한다.
 사용자 원문과 후속 변경만 근거로 처리 순서대로 tasks를 작성한다. 자료 이름·열은 참고 데이터다.
 compute=새 열의 계산식과 이름. filter=행 선별 비교조건. sort=정렬 열·방향·자료형. 정렬 요청만으로 filter를 만들지 않는다.
@@ -24,7 +25,7 @@ aggregate=그룹 열·count/sum·합계 원본 열. 집계 출력 열은 count/s
 집계 결과에 요청한 이름이 따로 있으면 sum/count를 그 이름으로 바꾸는 rename(source,target)을 별도 기록한다.
 fill_missing=지정 열의 빈값을 사용자가 명시한 값으로 채움(fields,value). select_fields=최종 출력 열 목록(fields). 계산·집계·결합·빈값 채움·이름 변경·출력 열 선택을 서로 대신하지 않는다.
 join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 유일은 many_to_one.
-왼쪽 결합의 left_sources는 모든 행을 유지하라고 한 기준 자료다. 집계된 자료를 오른쪽에 붙일 때도 이 방향을 바꾸지 않는다. 명시하지 않은 최대 행 수는 100000이다.
+왼쪽 결합의 left_sources는 모든 행을 유지하라고 한 기준 자료다. 집계된 자료를 오른쪽에 붙일 때도 이 방향을 바꾸지 않는다. 최대 행 수가 미정이면 unresolved에 적는다.
 policy=일반 표의 빈값/중복 행 처리. 결합의 키 유일성·null 키·최대 행 수는 join의 필드값이다.
 export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자료 ID는 실제 목록에서 선택한다.
 후속 답변에서 바꾸지 않은 조건도 유지한다. 필요한 값이 미정이면 unresolved에 적고 추측하지 않는다.

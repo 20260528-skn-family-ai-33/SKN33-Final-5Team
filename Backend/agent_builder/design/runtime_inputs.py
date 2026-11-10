@@ -5,7 +5,13 @@ _FILE = re.compile(r'파일|자료|문서|계약서|영수증|첨부|PDF|CSV|엑
 _DEFER = re.compile(r'(?:실행\s*(?:할\s*때|시)|나중에).{0,45}(?:넣을|넣겠|올릴|올리겠|첨부할|첨부하겠|업로드할|업로드하겠|입력할|제공할|받을|받도록|입력받)')
 _NOW = re.compile(r'(?:지금|먼저|설계\s*(?:할\s*때|시)).{0,30}(?:넣을|올릴|첨부할|업로드할|제공할)')
 _NEGATIVE = re.compile(r'(?:넣|올리|첨부하|업로드하|제공하|입력하)지\s*않|(?:안|못)\s*(?:넣|올|첨부|업로드|제공|입력)')
-_UPLOAD_QUESTION = re.compile(r'(?:올려|첨부해|업로드해|제공해|연결해|선택해).{0,15}(?:주세요|주실|주시|줄)|(?:파일|PDF|자료|문서).{0,12}(?:무엇|어디|있나요|있습니까)', re.I)
+_FILE_TARGET = r'(?:파일|자료|문서|계약서|영수증|첨부|PDF|CSV|엑셀)(?:\s*(?:파일|문서|PDF))?(?:\s*(?:의\s*)?(?:자체|이름|명|경로|ID|아이디))?'
+# Match what the question asks for, not two unrelated words anywhere in it.
+# "CSV 파일에서 집계할 열을 선택" asks for a column, not for the file.
+_UPLOAD_QUESTION = re.compile(
+    _FILE_TARGET + r'(?:을|를|은|는|이|가|도)?\s*(?:(?:다시|먼저|지금)\s*)?'
+    r'(?:(?:올려|첨부해|업로드해|제공해|연결해|선택해|알려).{0,12}(?:주세요|주실|주시|줄)|무엇|어디|있나요|있습니까)'
+    r'|(?:어떤|어느)\s*' + _FILE_TARGET + r'(?:을|를)?\s*(?:사용|처리|선택|연결)', re.I)
 
 
 def runtime_file_context(state):
@@ -37,7 +43,7 @@ def runtime_file_context(state):
 def runtime_file_question_issues(draft, state):
     if runtime_file_context(state) is None:
         return []
-    if any(_FILE.search(q) and _UPLOAD_QUESTION.search(q) for q in draft.get('questions', [])):
+    if any(_UPLOAD_QUESTION.search(q) for q in draft.get('questions', [])):
         return ['파일은 실행할 때 받기로 이미 답변했습니다. 파일 업로드를 다시 묻지 말고 실행 입력으로 설계하세요. 미정 업무 조건만 질문할 수 있습니다.']
     return []
 

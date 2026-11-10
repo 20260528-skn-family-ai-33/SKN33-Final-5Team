@@ -68,3 +68,14 @@ def test_human_check_shows_the_actual_analysis_text_and_keeps_it_after_confirmat
     result=ask_user.execute(n,{'outputs':{'analysis':{'text':'시험 분석 결과'}},'messages':[]},None,{},None)
     assert seen[0]['preview']==[{'text':'시험 분석 결과'}]
     assert result=={'text':'시험 분석 결과','answer':'확인했습니다'}
+
+
+def test_requested_fill_and_projection_have_registered_decoder_operations(monkeypatch):
+    from contracts.models import AgentDraft
+    from agent_builder.design.requirement_generation import required_operation_variants
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    schema=AgentDraft.model_json_schema()
+    specs=[{'kind':'fill_missing'},{'kind':'select_fields'}]
+    variants=required_operation_variants(specs,schema['$defs']['WorkflowNode'],schema['$defs']['Binding'],set())
+    assert {v['properties']['settings']['properties']['operation']['enum'][0] for v in variants}=={'handle_missing','select_columns'}
+    assert not required_operation_variants(specs,schema['$defs']['WorkflowNode'],schema['$defs']['Binding'],set(),{'filter_sort'})

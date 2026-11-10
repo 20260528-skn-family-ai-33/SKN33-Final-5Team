@@ -168,7 +168,7 @@ def make_conversation(api_key,model,model_factory=None):
             _timing_event({'event':'builder_tool_executed','tool':'list_tools'})
             return planner_catalog(catalog,discovery=inline_contracts)
         selected_contract_ids=set((state.get('capability_assessment') or {}).get('tool_ids',[])) & {t['id'] for t in catalog}
-        from agent_builder.design.requirement_generation import generation_requirements, constrain_generation, constrain_ordered_steps, generation_mode, output_budget, TOOLS as REQUIREMENT_TOOLS
+        from agent_builder.design.requirement_generation import generation_requirements, constrain_generation, constrain_ordered_steps, generation_mode, output_budget, required_operation_variants, TOOLS as REQUIREMENT_TOOLS
         requirement_specs,required_steps=generation_requirements(state)
         requirement_generation_mode=generation_mode()
         planner_token_budget=output_budget(required_steps,requirement_generation_mode)
@@ -216,6 +216,7 @@ def make_conversation(api_key,model,model_factory=None):
                 native=[v for v in native_variants if active_operation_ids is None or v['properties']['tool']['enum'][0] in active_operation_ids]
                 operation_ids = ((active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS) | inspected_operation_ids
                 schema['$defs']['WorkflowNode']={'anyOf':native+operation_variants(operation_node_schema,schema['$defs']['Binding'],operation_ids,variable_names)}
+                schema['$defs']['WorkflowNode']['anyOf']+=required_operation_variants(requirement_specs,operation_node_schema,schema['$defs']['Binding'],variable_names,operation_ids)
                 final_format=planner_format()
             return planner_catalog([selected],details=True)[0] if selected else {'error':'등록되지 않은 도구입니다.'}
         @tool
@@ -347,6 +348,7 @@ def make_conversation(api_key,model,model_factory=None):
             # tool explicitly unlocks its alternative operation contracts.
             operation_ids = (active_operation_ids if active_operation_ids is not None else {t['id'] for t in catalog}) - NATIVE_IDS
             variants.extend(operation_variants(operation_node_schema,schema['$defs']['Binding'],operation_ids,variable_names))
+            variants.extend(required_operation_variants(requirement_specs,operation_node_schema,schema['$defs']['Binding'],variable_names,operation_ids))
         schema['$defs']['WorkflowNode']={'anyOf':variants}
         if not scoped:
             from agent_builder.design.planner_constraints import typed_filter_conditions

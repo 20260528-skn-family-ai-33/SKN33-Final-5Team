@@ -158,3 +158,33 @@ def test_one_table_reader_preserves_selected_file_among_multiple_uploads(tmp_pat
         assert source_file_ids(reader,[a['id'],b['id']],store,config)==[a['id']]
         assert source_file_ids(reader,[b['id']],store,config)==[b['id']]
     finally:store.close()
+
+
+def test_explicit_policy_checks_effective_node_settings_not_overridden_defaults():
+    from agent_builder.design.explicit_table_criteria import explicit_draft_issues
+    from workflow_engine.executors.table.filter_sort import execute
+    s=seed();d=s['draft'];n=d['workflow']['nodes'][2]
+    s['messages'][-1]['content']='제공하는 실행 조건: {"missing_policy":"error"}'
+    d['execution_plan']['missing_policy']='keep'
+    assert n['settings']['execution_plan']['missing_policy']=='error'
+    assert not explicit_draft_issues(s,d)
+    with pytest.raises(ValueError):
+        execute(n,{'outputs':{'calc':{'table':{'columns':['amount'],'rows':[{'amount':None}]}}}},None,d,None)
+    n['settings']['execution_plan']=None
+    assert explicit_draft_issues(s,d)  # now the effective fallback is keep
+    d['execution_plan']['missing_policy']='error'
+    assert not explicit_draft_issues(s,d)
+
+
+def test_explicit_conditions_use_execution_order_without_an_artifact():
+    from agent_builder.design.explicit_table_criteria import explicit_draft_issues
+    from itertools import permutations
+    s=seed();d=s['draft'];w=d['workflow']
+    w['nodes']=w['nodes'][:3];w['edges']=w['edges'][:2]
+    s['messages'][-1]['content']='제공하는 실행 조건: '+json.dumps({'selection':d['execution_plan']['filters']})
+    for order in permutations(w['nodes']):
+        w['nodes']=list(order)
+        assert not explicit_draft_issues(s,d)
+    # A filter merely present in the array is not on the executable result path.
+    w['edges']=w['edges'][:1]
+    assert explicit_draft_issues(s,d)

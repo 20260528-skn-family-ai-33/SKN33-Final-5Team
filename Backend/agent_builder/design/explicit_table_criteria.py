@@ -82,9 +82,11 @@ def explicit_draft_issues(state,draft):
         from .content_lineage import content_ancestors
         from .reader_sources import reader_sources
         nodes={n['id']:n for n in draft['workflow']['nodes']}
-        from workflow_engine.execution_path import artifact_output_ids,artifact_origin
+        from workflow_engine.execution_path import artifact_output_ids,artifact_origin,execution_path
         outputs=artifact_output_ids(draft['workflow'])
-        end=artifact_origin(draft['workflow'],outputs[-1]) if outputs else next(reversed(nodes))
+        path=execution_path(draft['workflow'])
+        if not path:raise ValueError('실행 가능한 시작 단계를 확인하지 못했습니다.')
+        end=artifact_origin(draft['workflow'],outputs[-1]) if outputs else path[-1]['id']
         active=content_ancestors(nodes,end)|{end}
         def sources(id):
             result=set()
@@ -104,12 +106,14 @@ def explicit_draft_issues(state,draft):
                 issues.append('명시 조건 검증: 최종 출력 경로의 선별 조건이 누락되거나 요청하지 않은 조건이 추가됐습니다.')
         for spec in specs:
             if spec['kind']=='policy':
+                policy_nodes=[n for id,n in nodes.items() if id in active and n['tool']=='filter_sort' and not n['settings'].get('operation')]
+                if not policy_nodes:
+                    issues.append('명시 조건 검증: 요청한 빈값·중복 정책을 적용하는 실행 단계를 확인하지 못했습니다.')
                 for key,value in spec.items():
                     if key=='kind' or value is None:continue
-                    if draft['execution_plan'].get(key)!=value:issues.append('명시 조건 검증: 전체 '+key+' 설정이 사용자 요청과 다릅니다.')
-                    for n in nodes.values():
-                        own=n['settings'].get('execution_plan')
-                        if n['id'] in active and own and own.get(key)!=value:issues.append('명시 조건 검증: '+n['id']+'의 '+key+' 설정이 사용자 요청과 다릅니다.')
+                    for n in policy_nodes:
+                        effective=n['settings'].get('execution_plan') or draft['execution_plan']
+                        if effective.get(key)!=value:issues.append('명시 조건 검증: '+n['id']+'의 '+key+' 설정이 사용자 요청과 다릅니다.')
                 continue
             if not any(_matches(spec,n,draft,sources) for id,n in nodes.items() if id in active):
                 issues.append('명시 조건 검증: '+spec['kind']+'의 실제 설정·최종 출력 경로가 사용자 요청과 다릅니다: '+json.dumps(spec,ensure_ascii=False))

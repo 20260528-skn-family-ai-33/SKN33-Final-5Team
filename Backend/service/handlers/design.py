@@ -175,7 +175,7 @@ def _session_action(c):
                 if same and not blocking_issue(state):graph.invoke(None,config)
                 else:
                     graph.update_state(config,{'messages':state.get('messages',[]) if same else state.get('messages',[])+[{'role':'user','content':content}],
-                                               'confirmed':False},as_node='resources')
+                                               'confirmed':False,**({'repair_count':0} if not same else {})},as_node='resources')
                     graph.invoke(None,config)
             else:
                 base=storage.agent(s['agent_id']) if s.get('agent_id') else None

@@ -12,6 +12,17 @@ TOOLS={'compute':'calculate_columns','parse_dates':'calculate_columns','filter':
        'document_analysis':'compose_answer','human_review':'ask_user'}
 
 
+def required_operation_variants(specs,node_schema,binding_schema,variable_names,available=()):
+    """Expose required registered operations absent from a tool's native settings."""
+    from workflow_engine.catalog.canonical import operation_variants
+    operations={s['kind'] for s in specs} & {'fill_missing','select_fields'}
+    if not operations or 'filter_sort' in available:return []
+    names={'fill_missing':'handle_missing','select_fields':'select_columns'}
+    wanted={names[k] for k in operations}
+    return [v for v in operation_variants(node_schema,binding_schema,{'filter_sort'},variable_names)
+            if v['properties']['settings']['properties']['operation'].get('enum',[None])[0] in wanted]
+
+
 def generation_mode():
     value=os.getenv('A4B_REQUIREMENT_GENERATION_MODE','baseline')
     if value not in ('baseline','bounded'):

@@ -35,7 +35,9 @@ def _condition(value):
 
 
 def _same_filters(actual, expected, actual_match, expected_match):
-    return (actual_match==expected_match and
+    same_match=(actual_match==expected_match or
+                len(actual)==len(expected)==1 and actual_match in ('all','any') and expected_match in ('all','any'))
+    return (same_match and
             sorted(map(_condition,actual))==sorted(map(_condition,expected)))
 
 
@@ -90,6 +92,15 @@ def _matches(spec,node,draft,sources):
             formula=settings.get('calculation_formula');column=settings.get('output_column')
         else:return False
         return column==spec['output_column'] and _formula(formula)==_formula(spec['formula'])
+    if kind=='parse_dates':
+        if tool!='calculate_columns':return False
+        if operation=='parse_dates':
+            fields=args.get('columns');fmt=args.get('input_format');zone=args.get('timezone')
+        elif not operation and settings.get('table_operation')=='parse_dates':
+            fields=settings.get('fields');fmt=settings.get('date_input_format');zone=settings.get('date_timezone')
+        else:return False
+        return (isinstance(fields,list) and set(fields)==set(spec['fields'])
+                and fmt==spec['input_format'] and zone==spec['timezone'])
     if kind=='filter':
         if tool!='filter_sort' or operation:return False
         plan=settings.get('execution_plan') or draft['execution_plan']

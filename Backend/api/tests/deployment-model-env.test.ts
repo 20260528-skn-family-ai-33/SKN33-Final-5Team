@@ -57,6 +57,10 @@ test('default AWS settings match the baseline RunPod models; the 9B overlay is e
   assert.deepEqual(JSON.parse(tuned.A4B_OLLAMA_MODEL_ALIASES),{[registered]:tuned.A4B_MAIN_MODEL});
   assert.equal(tuned.A4B_OLLAMA_NUM_CTX,'32768');
   assert.equal(tuned.A4B_OLLAMA_NUM_PREDICT,'4096');assert.equal(tuned.A4B_OLLAMA_TEMPERATURE,'0');
+  const deepagent=renderCompose([base,join(root,'infrastructure/env/.env.aws.qwen35-9b.example'),join(root,'infrastructure/env/.env.aws.qwen35-9b-deepagent.example')]);
+  const profile={A4B_PLANNER_MODE:'deepagent',A4B_REQUIREMENT_MODE:'enforce',A4B_REQUIREMENT_GENERATION_MODE:'baseline',A4B_TOOL_CATALOG_MODE:'model',A4B_VERIFIER_MODE:'shadow'};
+  for(const [key,value] of Object.entries(profile))assert.equal(deepagent[key],value,key);
+  for(const key of ['A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL','A4B_MAIN_BASE_URL','A4B_MAIN_API_KEY','A4B_OLLAMA_NUM_CTX','A4B_OLLAMA_NUM_PREDICT'])assert.equal(deepagent[key],tuned[key],key);
   for(const [key,value] of Object.entries(baseline)){
    if(!['A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL','A4B_OLLAMA_MODEL_ALIASES','A4B_OLLAMA_NUM_CTX','A4B_OLLAMA_NUM_PREDICT','A4B_OLLAMA_TEMPERATURE'].includes(key))assert.equal(tuned[key],value,key);
   }

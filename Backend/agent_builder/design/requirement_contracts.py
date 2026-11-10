@@ -25,6 +25,13 @@ class Compute(Strict):
     output_column: str = Field(min_length=1, max_length=100)
 
 
+class ParseDates(Strict):
+    kind: Literal['parse_dates']
+    fields: list[str] = Field(min_length=1, max_length=20)
+    input_format: str = Field(min_length=1, max_length=100)
+    timezone: str = Field(min_length=1, max_length=100)
+
+
 class Filter(Strict):
     kind: Literal['filter']
     filters: list[FilterCondition] = Field(min_length=1, max_length=20)
@@ -82,7 +89,7 @@ class GmailSummary(Strict):
     request: str = Field(min_length=1, max_length=2000)
 
 
-Spec = Annotated[Read | ExtractFields | Compute | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary,
+Spec = Annotated[Read | ExtractFields | Compute | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary,
                  Field(discriminator='kind')]
 
 

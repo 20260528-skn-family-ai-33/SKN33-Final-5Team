@@ -38,8 +38,12 @@ def source_file_ids(node,file_ids,storage,config,outputs=None):
     readers=[n for n in (config.get('workflow') or {}).get('nodes',[])
              if n['tool']==tool and not n['settings'].get('operation')]
     if provided and len(readers)<=1:
-        # A new run input replaces the saved input for a single reader.
-        ids=provided
+        # Preserve an explicit Table source when a run also supplies unrelated
+        # uploads. A single supplied file remains an intentional replacement.
+        if tool=='read_table' and selected and len(provided)>1:
+            replacements=replacement_files([node],provided,storage)
+            ids=[replacements[old] for old in selected]
+        else:ids=provided
     elif provided:
         # Never bind several source slots by upload order or silently reuse old data.
         # Existing selected IDs are exact; replacements must match unique filenames.

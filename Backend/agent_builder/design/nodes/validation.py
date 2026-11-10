@@ -8,6 +8,8 @@ def validate_node(state):
     from agent_builder.conditions.condition_readiness import literal_condition_issues, written_comparison_issues
     issues.extend(literal_condition_issues(state))
     issues.extend(written_comparison_issues(state, draft))
+    from agent_builder.design.explicit_table_criteria import explicit_draft_issues
+    issues.extend(explicit_draft_issues(state,draft))
     resources={r['id']:r for r in state['resources']};texts=[m['content'] for m in state['messages'] if m['role']=='user']
     if not draft['name'].strip(): issues.append('에이전트 이름이 필요합니다.')
     from agent_builder.design.name_policy import invalid_workflow_name

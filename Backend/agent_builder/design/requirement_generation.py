@@ -5,7 +5,7 @@ import os
 from .requirement_ledger import ledger_fingerprint, plan_digest
 
 
-TOOLS={'compute':'calculate_columns','filter':'filter_sort','sort':'filter_sort',
+TOOLS={'compute':'calculate_columns','parse_dates':'calculate_columns','filter':'filter_sort','sort':'filter_sort',
        'policy':'filter_sort','aggregate':'aggregate_table','join':'join_tables',
        'export':'write_result','read':'read_table'}
 
@@ -70,7 +70,7 @@ def constrain_uploaded_join_inputs(schema,state):
     every node, source reader, policy value and connection. Unsealed/ambiguous
     sources and explicit literal-table calculations keep the general grammar.
     """
-    result=deepcopy(schema);specs,_=generation_requirements(state)
+    result=deepcopy(schema);specs,order=generation_requirements(state)
     joins=[s for s in specs if s['kind']=='join']
     if len(joins)!=1 or (state.get('requirement_ledger') or {}).get('unresolved'):return result
     join=joins[0];left=join.get('left_sources',[]);right=join.get('right_sources',[])
@@ -90,11 +90,20 @@ def constrain_uploaded_join_inputs(schema,state):
         arguments=settings['arguments_json']
         if arguments.get('type')!='object':continue
         for name in ('left','right'):arguments['properties'].pop(name,None)
-        arguments['required']=[name for name in arguments.get('required',[]) if name not in ('left','right')]
+        from workflow_engine.catalog.canonical import arguments_spec, operation_spec
+        required=arguments_spec('join_tables',operation_spec('join_tables','join'))
+        arguments['required']=list(dict.fromkeys(
+            [name for name in arguments.get('required',[]) if name not in ('left','right')]
+            +[name for name,needed in required.items() if needed and name not in ('left','right')]))
         binding=variant['properties']['bindings']
         binding.update(minItems=2,maxItems=2)
         binding['items']['properties']['input']={'type':'string','enum':['left','right']}
     result['$defs']['WorkflowNode']['anyOf']=compatible
+    roles=[s['kind'] for s in specs]
+    minimum=(len(order) if order else 2+sum(k in ('compute','parse_dates','aggregate','join','export') for k in roles)
+             +int(any(k in ('filter','sort','policy') for k in roles)))
+    nodes=result['$defs'].get('WorkflowDefinition',{}).get('properties',{}).get('nodes')
+    if nodes is not None:nodes['minItems']=max(nodes.get('minItems',1),minimum)
     return result
 
 
@@ -121,6 +130,7 @@ def constrain_generation(schema,state):
         if 'nodes' in workflow:workflow['nodes']['minItems']=max(workflow['nodes'].get('minItems',1),len(order))
         if 'next_steps' in workflow:workflow['next_steps']['minItems']=max(workflow['next_steps'].get('minItems',0),len(order)-1)
         computes=[s for s in specs if s['kind']=='compute']
+        dates=[s for s in specs if s['kind']=='parse_dates']
         aggregates=[s for s in specs if s['kind']=='aggregate']
         filters=[s for s in specs if s['kind']=='filter'];sorts=[s for s in specs if s['kind']=='sort']
         exports=[s for s in specs if s['kind']=='export']
@@ -129,10 +139,14 @@ def constrain_generation(schema,state):
             properties=variant['properties']['settings']['properties']
             if properties.get('operation',{}).get('enum'):continue
             values={}
-            if tool=='calculate_columns' and len(computes)==1:
+            if tool=='calculate_columns' and len(computes)==1 and not dates:
                 values=dict(table_operation='compute',calculation_formula=computes[0]['formula'],output_column=computes[0]['output_column'])
                 values.update({k:None for k in ('rename_from','rename_to','date_input_format','date_timezone') if k in properties})
                 if 'fields' in properties:values['fields']=[]
+            if tool=='calculate_columns' and len(dates)==1 and not computes:
+                values=dict(table_operation='parse_dates',fields=dates[0]['fields'],
+                            date_input_format=dates[0]['input_format'],date_timezone=dates[0]['timezone'])
+                values.update({k:None for k in ('calculation_formula','output_column','rename_from','rename_to') if k in properties})
             if tool=='aggregate_table' and len(aggregates)==1:
                 values={k:aggregates[0][k] for k in ('fields','aggregation','sum_field')}
             if tool=='filter_sort' and order.count('filter_sort')==1 and len(filters)<=1 and len(sorts)<=1:

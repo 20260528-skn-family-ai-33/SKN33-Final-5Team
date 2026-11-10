@@ -20,6 +20,9 @@ condition을 조회해 분기가 필요해지면 이후 생성 스키마는 기�
 
 def schema_for(schema):
     result=deepcopy(schema)
+    node_limits=result['$defs']['WorkflowDefinition']['properties'].get('nodes',{})
+    minimum=max(0,node_limits.get('minItems',1)-1)
+    maximum=min(14,node_limits.get('maxItems',15)-1)
     def convert(value):
         if isinstance(value,dict):
             properties=value.get('properties',{})
@@ -62,7 +65,7 @@ def schema_for(schema):
     result['$defs']['FirstBusinessStep']={'anyOf':first}
     result['$defs']['WorkflowDefinition']={'type':'object','additionalProperties':False,
         'properties':{'first_step':{'$ref':'#/$defs/FirstBusinessStep'},
-                      'next_steps':{'type':'array','maxItems':14,'items':{'$ref':'#/$defs/WorkflowNode'}}},
+                      'next_steps':{'type':'array','minItems':minimum,'maxItems':maximum,'items':{'$ref':'#/$defs/WorkflowNode'}}},
         'required':['first_step','next_steps']}
     return result
 

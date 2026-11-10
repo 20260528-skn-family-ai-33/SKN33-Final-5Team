@@ -74,12 +74,16 @@ def test_two_bad_drafts_are_blocked(monkeypatch):
 
 
 @pytest.mark.parametrize('kind,route',[('questions','await_input'),('unsupported','unsupported')])
-def test_pending_routes_never_expose_partial_graph(monkeypatch,kind,route):
+def test_pending_routes_keep_question_preview_but_never_approve_it(monkeypatch,kind,route):
     d=draft();d[kind]=['기준을 알려주세요' if kind=='questions' else '이메일 전송 도구가 없습니다']
     if kind=='unsupported':d['questions']=['계정을 알려주세요']
     original=state();result=planner(monkeypatch,Fake(d))(original)
-    assert result['draft']['workflow'] is None and not result['draft']['tool_ids']
-    if kind=='unsupported':assert result['draft']['questions']==[]
+    if kind=='unsupported':
+        assert result['draft']['workflow'] is None and not result['draft']['tool_ids']
+        assert result['draft']['questions']==[]
+    else:
+        assert len(result['draft']['workflow']['nodes'])==2
+        assert result['draft']['tool_ids']==['read_table','write_result']
     checked=validate_node({**original,**result})
     assert supervisor_node({**original,**result,**checked})['route']==route
 

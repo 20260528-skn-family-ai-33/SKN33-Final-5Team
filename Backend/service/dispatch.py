@@ -5,7 +5,8 @@ LangGraph conversation first, exactly as the original single worker did.
 """
 from infrastructure.persistence.storage import Storage
 from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
-from service.handlers import asset_library, design, generation, library, reviews, runs, schedules, uploads
+from workflow_engine.public_runs import public_result
+from service.handlers import asset_library, design, generation, library, library_sources, reviews, runs, schedules, uploads
 
 
 class Context:
@@ -15,6 +16,11 @@ class Context:
 
 
 ACTIONS={
+    'schedule_source':library_sources.source,
+    'library_source_plan':library_sources.plan,
+    'library_source_original_plan':library_sources.original_plan,
+    'library_source_export':library_sources.export,
+    'library_source_resolve':library_sources.resolve,
     'begin_generation':generation.begin,
     'interrupt_generation':generation.interrupt,
     'generation_history':generation.listing,
@@ -42,6 +48,7 @@ ACTIONS={
     'finish_asset_delete':uploads.finish_delete,
     'document_review':reviews.document_review,
     'agents':library.agents,
+    'schedules':library.schedules,
     'agent':library.agent,
     'rename_agent':library.rename_agent,
     'claim_due':schedules.claim_due,
@@ -80,7 +87,11 @@ def handle(data,conversation=None):
                     raise
 
             storage.workflow_connectors={'gmail':read_gmail}
-        context=Context(data,storage,RunLifecycle(storage),conversation)
-        return ACTIONS.get(context.action,design.session_action)(context)
+        view=storage
+        if data.get('library_source_snapshot') is not None:
+            from workflow_engine.scheduling.library_sources import LibrarySources
+            view=LibrarySources(storage).execution_storage(data)
+        context=Context(data,view,RunLifecycle(view),conversation)
+        return public_result(ACTIONS.get(context.action,design.session_action)(context))
     finally:
         storage.close()

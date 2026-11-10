@@ -33,18 +33,39 @@ def execute(node,state,storage,config,llm):
     if reviews:
         inputs['reviews'] = reviews
     docs = inputs['documents']
+    sources = {binding['node_id'] for binding in node['bindings'] if binding['input']=='documents'}
+    gmail_sources = [source['id'] for source in config.get('workflow',{}).get('nodes',[])
+                     if source['id'] in sources and source['tool']=='email.list'
+                     and source.get('settings',{}).get('operation')=='read_messages']
+    gmail_results = [state['outputs'].get(identifier, {}).get('result', {}) for identifier in gmail_sources]
+    from workflow_engine.executors.document.gmail_summary_batches import append_collection_notices
     if not docs:
-        sources = {binding['node_id'] for binding in node['bindings'] if binding['input']=='documents'}
-        gmail_collection = any(source['id'] in sources and source['tool']=='email.list'
-                               and source.get('settings',{}).get('operation')=='read_messages'
-                               for source in config.get('workflow',{}).get('nodes',[]))
-        if gmail_collection:
-            return answer_result(node,'검색 조건에 맞는 Gmail 메일이 없어 요약할 내용이 없습니다.',[],reviews)
+        if gmail_sources:
+            text = append_collection_notices('검색 조건에 맞는 Gmail 메일이 없어 요약할 내용이 없습니다.', gmail_results)
+            return answer_result(node,text,[],reviews)
         return answer_result(node,'문서에서 질문과 관련된 근거를 찾지 못했습니다.',[],reviews)
+    if any(document.get('parser_engine') == 'gmail' for document in docs):
+        from workflow_engine.executors.document.gmail_summary_batches import summarize_all
+        def compose_batch(batch, index, total):
+            batch_config = config
+            if total > 1:
+                batch_config = {**config, 'instructions': config['instructions'] +
+                    f'\n현재는 전체 {total}개 중 {index}번째 메일 묶음입니다. 이 묶음에 제공된 모든 메일과 본문 구간을 빠짐없이 요약하세요. '
+                    '본문 구간이 나뉜 메일은 이 구간의 내용만 요약하고 다른 구간의 내용을 추정하지 마세요. '
+                    '메일마다 제목·보낸 사람과 핵심 내용을 구분하세요. 이 묶음 밖의 메일 수나 내용을 추측하지 마세요.'}
+            return _compose_documents(node, state, storage, batch_config, llm, batch, inputs, [])
+        result = summarize_all(docs, compose_batch)
+        text = append_collection_notices(result['text'], gmail_results)
+        return answer_result(node, text, result['evidence'], reviews)
+    return _compose_documents(node, state, storage, config, llm, docs, inputs, reviews)
+
+
+def _compose_documents(node, state, storage, config, llm, docs, inputs, reviews):
+    settings = node['settings']
     gmail_reply_rule = ('\n메일이 참석 여부나 결정을 묻더라도, 현재 사용자가 답을 직접 알려주지 않았다면 '
                         '참석·불참·승인·약속을 대신 확정하지 마세요. 확인 후 회신하겠다는 초안을 작성하세요.'
                         if any(d.get('parser_engine')=='gmail' for d in docs) else '')
-    if sum((len(d['text']) for d in docs)) > 45000:
+    if not gmail_reply_rule and sum((len(d['text']) for d in docs)) > 45000:
         search = {'id': node['id'] + '_context', 'tool': 'search_document', 'settings': {**settings, 'query': None}, 'bindings': [{'input': 'documents', 'node_id': '_input', 'output': 'documents'}]}
         scoped = execute_node(search, {**state, 'outputs': {'_input': {'documents': docs}}}, storage, config, llm)
         docs = scoped['documents']

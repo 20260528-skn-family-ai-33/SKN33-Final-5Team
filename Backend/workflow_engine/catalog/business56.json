@@ -242,7 +242,7 @@
   {
     "id": "email.list",
     "name": "메일 목록 검색",
-      "description": "Gmail 메일 ID 검색. read_messages는 최근 검색 결과 1~10개의 본문을 실제 출처 documents로 읽어 요약에 연결합니다."
+      "description": "Gmail 메일 ID 검색. read_messages는 기본100개·최대500개의 본문을 페이지 순회로 읽고 실제 출처 documents를 요약에 연결합니다."
   },
   {
     "id": "email.get",

@@ -25,6 +25,9 @@ class Forbidden:
 @pytest.mark.parametrize('text,count',[
     (REQUEST,5), ('Gmail에서 최신 1개의 메일을 요약해줘.',1),
     ('지메일 최근 10건 메일 본문을 요약해서 정리해주세요',10),
+    ('지메일 최근 11건 메일 본문을 요약해서 정리해주세요',11),
+    ('지메일 최근 100건 메일 본문을 요약해서 정리해주세요',100),
+    ('지메일 최근 500건 메일 본문을 요약해서 정리해주세요',500),
 ])
 def test_registered_bounded_request_has_catalog_evidence_and_no_account_claim(text,count):
     current=state(text)
@@ -42,7 +45,7 @@ def test_registered_bounded_request_has_catalog_evidence_and_no_account_claim(te
     '슬랙에서 최근 5개 메시지 내용 요약해서 정리해줘',
     REQUEST+' 그리고 슬랙으로 보내줘', REQUEST+' 그리고 메일로 보내줘',
     '지메일에서 최근 5개 메일 내용 요약해서 정리해줘. 발송도 해줘.',
-    '지메일에서 최근 11개 메일 내용 요약해서 정리해줘',
+    '지메일에서 최근 501개 메일 내용 요약해서 정리해줘',
     '지메일에서 최근 0개 메일 내용 요약해서 정리해줘',
     '지메일에서 최근 메일 내용 요약해서 정리해줘',
     '지메일에서 안 읽은 최근 5개 메일 내용 요약해서 정리해줘',

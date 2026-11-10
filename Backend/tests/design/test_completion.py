@@ -132,12 +132,12 @@ def test_native_schedule_metadata_is_passed_without_fake_tool_or_permission():
     result=assess_capability({'messages':[{'role':'user','content':text}],'resources':[]},f)
     body=json.loads(f.messages[1]['content'])
     assert body['app_capabilities']==APP_CAPABILITIES
-    assert body['app_capabilities'][0]['supported_frequencies']==['daily','weekly']
+    assert body['app_capabilities'][0]['supported_frequencies']==['hourly','daily','weekly','monthly']
     assert all(t['id']!='workflow_schedule' for t in body['tools'])
     assert not result['allows_generation'] and not result['allows_execution']
     assert result['tool_ids']==['read_table','write_result']
 
-@pytest.mark.parametrize('label',['매주 예약 (weekly schedule)','매주 금요일 10시 주간 예약','daily schedule'])
+@pytest.mark.parametrize('label',['매주 예약 (weekly schedule)','매주 금요일 10시 주간 예약','daily schedule','매시간 정각 예약','매월 말일 예약'])
 def test_known_native_claim_is_removed_without_hiding_model_output(label):
     from agent_builder.capabilities.capability_judgement import normalize_native_claims
     raw={'decision':'missing_capability','missing_actions':[label,'외부 Slack 전송'],'reason':'모델 설명'}
@@ -148,7 +148,7 @@ def test_known_native_claim_is_removed_without_hiding_model_output(label):
     assert checked['decision']=='missing_capability'
     assert normalize_native_claims({**raw,'missing_actions':[label]})['decision']=='manual_review'
 
-@pytest.mark.parametrize('label',['매주 Slack 전송','월간 예약','매주 외부 자료 갱신','cron schedule','예약 활성화', '매일 예약과 이메일 발송'])
+@pytest.mark.parametrize('label',['매주 Slack 전송','연간 예약','매주 외부 자료 갱신','cron schedule','예약 활성화', '매일 예약과 이메일 발송'])
 def test_native_claim_check_never_removes_other_unsupported_actions(label):
     from agent_builder.capabilities.capability_judgement import normalize_native_claims
     raw={'decision':'missing_capability','missing_actions':[label],'reason':'모델 설명'}

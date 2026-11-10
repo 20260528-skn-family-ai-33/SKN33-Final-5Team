@@ -8,7 +8,7 @@ from copy import deepcopy
 PROMPT = '''
 최종 초안은 다음 중 하나로 반환합니다.
 1. 설계할 수 있으면 실제 workflow 객체를 작성하고 questions와 unsupported는 빈 목록으로 둡니다.
-2. 필수 조건이 미정이면 workflow=null로 두고 questions에 비어 있지 않은 확인 질문을 작성합니다.
+2. 필수 조건이 미정이면 questions에 비어 있지 않은 확인 질문을 작성하고, 확인된 노드와 연결은 workflow에 미완료 초안으로 보존합니다. 구성할 노드가 아직 없을 때만 workflow=null로 대기합니다. 질문이 남은 workflow는 미리보기이며 완료·승인된 설계가 아닙니다.
 3. 등록 도구로 수행할 수 없으면 workflow=null로 두고 unsupported에 비어 있지 않은 실제 이유를 작성합니다.
 workflow=null이면서 questions와 unsupported가 모두 빈 응답은 미완성입니다.
 도구 이름이나 requirements·explanation에 업무를 나열하는 것은 workflow를 대신하지 않습니다.
@@ -31,11 +31,12 @@ def validate_generated_outcome(raw):
     for field,values in [('questions',questions),('unsupported',unsupported)]:
         if not isinstance(values,list) or any(not isinstance(v,str) or not v.strip() for v in values):
             raise DraftOutcomeError(field+'에는 공백이 아닌 질문 또는 사유만 작성해야 합니다.')
-    if isinstance(workflow,dict) and workflow and not questions and not unsupported:
+    if isinstance(workflow,dict) and workflow and not unsupported:
         return
     if workflow is None and bool(questions) != bool(unsupported):
         return
-    raise DraftOutcomeError('workflow 객체, 실제 확인 질문, 실제 미지원 사유 중 하나가 필요합니다. '
+    raise DraftOutcomeError('실제 workflow 또는 확인 질문이나 미지원 사유가 필요합니다. '
+                            '질문에는 미완료 workflow를 보존할 수 있지만, 미지원 사유와 질문·workflow를 함께 반환할 수 없습니다. '
                             'workflow=null과 빈 questions·unsupported를 함께 반환할 수 없습니다.')
 
 
@@ -94,7 +95,9 @@ def outcome_schema(schema):
                 any(item.get('type')=='null' for item in wf.get('anyOf',[])))
             other='unsupported' if mode=='questions' else 'questions'
             if not nullable or p[mode].get('maxItems',1)<1 or not allow_empty(p[other]):continue
-            p['workflow']={'type':'null'}
+            # Clarification may retain the caller's graph/ordered preview. Its
+            # original shape and bounds still apply; unsupported has no graph.
+            if mode=='unsupported':p['workflow']={'type':'null'}
             p[mode]['minItems']=max(1,p[mode].get('minItems',0))
             # AgentDraft declares homogeneous string arrays. Min length is a
             # decoder aid; the runtime also rejects Unicode whitespace strings.

@@ -13,7 +13,7 @@ bindings는 input=실제 인자/입력 포트명, step=참조할 앞 단계의 1
 예: 두 읽기 단계 다음 join의 bindings=[{"input":"left","step":1,"output":"table"},{"input":"right","step":2,"output":"table"}].
 상수 인자는 settings.arguments_json에만 쓰며 같은 인자를 binding에도 중복 작성하지 않습니다.
 명시한 단계만 실행합니다. 필요한 도구를 빠뜨리지 말고 화면 표시용 중복 계산·파싱 단계를 추가하지 않습니다.
-finish는 필요할 때 마지막에 한 번만 둡니다. 질문·미지원이면 workflow=null입니다.
+finish는 필요할 때 마지막에 한 번만 둡니다. 질문이 남으면 확인된 단계만 미완료 workflow로 보존하고, 구성할 단계가 없을 때만 workflow=null로 대기합니다. 미지원이면 workflow=null입니다.
 condition을 조회해 분기가 필요해지면 이후 생성 스키마는 기존 entry/nodes/edges 그래프로 전환됩니다.
 '''
 

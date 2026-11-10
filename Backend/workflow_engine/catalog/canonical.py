@@ -94,7 +94,7 @@ def ports(tool, spec, selected=None):
 # Scalar policies whose domain must be checked before saving, even when table
 # inputs will only be supplied later. The executor still validates actual data.
 ARGUMENT_CONSTRAINTS = {
- ('email.list','read_messages'):{'max_results':{'type':'positive_integer','maximum':10}},
+ ('email.list','read_messages'):{'max_results':{'type':'positive_integer','maximum':500}},
  ('filter_sort','filter'):{'predicates':{'type':'array','items':'object','min_items':1},'combine':{'enum':['and','or']}},
  ('join_tables','join'):{'keys':{'type':'array','items':'string','min_items':1},'how':{'enum':['inner','left']},
      'cardinality':{'enum':['one_to_one','many_to_one']},'null_keys':{'enum':['error']},'max_rows':{'type':'positive_integer'}},
@@ -199,7 +199,7 @@ Slack 등 등록되지 않은 공급자를 Gmail로 대체하지 않습니다.
 사용자가 Gmail 메시지 ID를 직접 제공하지 않았다면 먼저 email.list로 메일을 검색합니다. 제목은 query 검색 조건에만 사용합니다.
 첫 메일은 email.list의 result에서 json_transform.lookup(path=["messages",0,"id"])으로 ID를 선택해 email.get의 message_id에 연결합니다. 문자열 "$binding"은 ID가 아닙니다.
 Gmail 요약·답장 초안에는 email.get의 documents를 compose_answer에 연결합니다. 초안 작성은 발송 없이 화면에 표시합니다.
-최근 여러 메일(예: 최근 5개)의 본문 요약은 email.list의 operation="read_messages", arguments_json={"max_results":5}로 한 번에 읽고 documents를 compose_answer 기본 동작에 연결합니다. query는 선택적인 Gmail 검색 조건이며, 한 번에 1~10개를 읽습니다. read_messages는 목록의 실제 ID로 본문을 읽고 출처를 보존하므로 별도 반복·ID 선택·read_document·파일 첨부가 필요하지 않습니다. 검색 결과가 5개보다 적으면 실제 개수만 처리하고, 빈 결과는 추측하지 않습니다. 본문 생략·읽기 불가 표시는 요약에서 숨기지 않습니다. 계정 연결은 실행 전제이며 기능 부족이 아닙니다.
+최근 여러 메일(예: 최근 100개)의 본문 요약은 email.list의 operation="read_messages", arguments_json={"max_results":100}로 읽고 documents를 compose_answer 기본 동작에 연결합니다. query는 선택적인 Gmail 검색 조건이며, 기본100개·최대500개 범위에서 페이지를 순회합니다. read_messages는 목록의 실제 ID로 본문을 읽고 출처를 보존하므로 별도 반복·ID 선택·read_document·파일 첨부가 필요하지 않습니다. 검색 결과가 요청한 개수보다 적으면 실제 개수만 처리하고, 빈 결과는 추측하지 않습니다. 조회 상한·본문 생략·읽기 불가 표시는 요약에서 숨기지 않습니다. 계정 연결은 실행 전제이며 기능 부족이 아닙니다.
 '''
 
 

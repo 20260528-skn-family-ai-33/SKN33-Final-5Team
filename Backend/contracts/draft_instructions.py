@@ -8,5 +8,6 @@ DESCRIPTION = (
 
 PROMPT = '\n' + DESCRIPTION + (
     '\ninstructions의 설명은 workflow의 실행 단계·설정을 대신하지 않습니다. '
-    '실행 가능한 업무는 두 항목을 모두 작성하고, 확인이 필요한 조건은 questions에 남기세요.\n'
+    '실행 가능한 업무는 두 항목을 모두 작성하고, 확인이 필요한 조건은 questions에 남기세요. '
+    '질문이 남아 있어도 확인된 workflow는 미완료 미리보기로 보존하며, 완료·승인된 설계라고 설명하지 마세요.\n'
 )

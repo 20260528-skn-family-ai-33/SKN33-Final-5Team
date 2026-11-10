@@ -1,12 +1,16 @@
 """Execute a pinned saved graph as a checkpointed subgraph, not a new source-code string."""
+def child_configuration(agent,parent,file_ids):
+    return {**agent['config'],'_saved_workflows':agent.get('workflow_dependencies',{}),
+            '_runtime_file_ids':file_ids,'_execution_time':parent.get('_execution_time')}
+
+
 def execute(node,state,storage,config,llm):
     from workflow_engine.runner import compile_workflow
     from verification.reply_review.state import collect_reviews
     settings=node['settings'];agent=config.get('_saved_workflows',{}).get(node['id'])
     if not agent:raise ValueError('저장된 워크플로우의 고정 버전이 연결되지 않았습니다. 설정을 다시 저장하세요.')
     inputs={b['input']:state['outputs'][b['node_id']][b['output']] for b in node['bindings']}
-    child={**agent['config'],'_saved_workflows':agent.get('workflow_dependencies',{}),
-           '_runtime_file_ids':state.get('file_ids',[])}
+    child=child_configuration(agent,config,state.get('file_ids',[]))
     graph,connection=compile_workflow(storage,child,llm,ownership=config.get('_ownership'),inherit_checkpoint=True)
     try:
         result=graph.invoke({'outputs':{},'steps':[],'request':inputs.get('text') or state['request'],'customer_message':state.get('customer_message',state['request']),'reply_draft':state.get('reply_draft'),'file_ids':state.get('file_ids',[]),'messages':state.get('messages',[]),'external_inputs':inputs})

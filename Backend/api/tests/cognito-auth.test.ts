@@ -96,7 +96,7 @@ test('signed Cognito login protects APIs, separates members, refreshes and revok
    assert.equal((await probe('/api/health','POST')).status,403);
   });
   await t.test('anonymous requests cannot read, modify or download private resources',async()=>{
-   for(const path of ['/api/workflows','/api/credentials','/api/executions','/api/agent-builder/agents','/api/agent-builder/original?id='+randomUUID(),'/api/files/download?executionId='+randomUUID()])assert.equal((await call(path)).status,401,path);
+   for(const path of ['/api/workflows','/api/credentials','/api/executions','/api/agent-builder/agents','/api/agent-builder/schedules','/api/agent-builder/original?id='+randomUUID(),'/api/files/download?executionId='+randomUUID()])assert.equal((await call(path)).status,401,path);
    assert.equal((await call('/api/workflows','','POST',makeFlow())).status,401);
    assert.equal((await call('/api/health')).status,200);assert.deepEqual(await (await call('/api/auth/me')).json(),{enabled:true,authenticated:false,user:null});
   });

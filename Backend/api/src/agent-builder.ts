@@ -18,6 +18,7 @@ import {readXlsx,extractPdfText} from './document-files';
 import {storageConfig,workerLimits} from './storage-config';
 import {createWorkerLanes,WorkerBusyError} from './worker-slots';
 import {assertTeamLibraryAccess} from './team-library-access';
+import {prepareScheduleSource,assertScheduleSourcePayload,parseScheduleSourceSelection,sourceRevision,validateScheduleSourceSelection,readScheduleSourceOriginal} from './schedule-source';
 
 export function builderReportBytes(artifact:{content:string;encoding?:string}):Buffer {
  return Buffer.from(artifact.content,artifact.encoding==='base64'?'base64':'utf8');
@@ -92,6 +93,9 @@ function generationFailureCode(error:unknown){
  return error instanceof WorkerBusyError?'worker_busy':error instanceof BuilderWorkerError?error.reasonCode:'request_rejected';
 }
 export async function builderWorker(payload:Record<string,unknown>):Promise<any>{
+ const prepared=await prepareScheduleSource(payload,runBuilderWorker);
+ if(prepared.result!==undefined)return prepared.result;
+ payload=prepared.payload;
  if(!['message','confirm'].includes(String(payload.action)))return runBuilderWorker(payload);
  const generation_request_id=String(payload.generation_request_id||randomUUID());
  // HTTP requests register before resolving model credentials; direct callers register here.
@@ -109,10 +113,10 @@ async function runBuilderWorker(payload:Record<string,unknown>):Promise<any>{
  const release=await acquireWorkerSlot(String(payload.action));
  // Recheck after waiting for a worker slot: membership may have changed while
  // queued. Server-only reconciliation can still remove unregistered files.
- try{if(payload.action!=='original_registered')await assertTeamLibraryAccess();}
+ try{if(payload.action!=='original_registered')await assertTeamLibraryAccess();await assertScheduleSourcePayload(payload);}
  catch(error){release();throw error;}
  const execution=['test','scheduled_run','retry_run','resume_run'].includes(String(payload.action));
- const runId=payload.action==='test'?randomUUID():String(payload.id||'');
+ const runId=payload.action==='test'?String(payload.run_id||randomUUID()):String(payload.id||'');
  const executionToken=execution?randomUUID():undefined;
  const workerPayload=execution?{...payload,execution_token:executionToken,...(payload.action==='test'?{run_id:runId}:{})}:payload;
  return new Promise((accept,reject)=>{
@@ -189,6 +193,35 @@ export async function parseBuilderAsset(input:any,onArtifactDirectory?:(relative
 export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void,gmailAccessToken?:()=>Promise<string|undefined>):Promise<boolean>{
  if(!url.pathname.startsWith('/api/agent-builder/'))return false;
  const action=url.pathname.slice('/api/agent-builder/'.length),method=req.method||'GET';
+ if(action==='source_original'){
+  if(method!=='GET'){res.setHeader('Allow','GET');json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+  libraryQuery(url,['run_id','asset_id']);const runId=url.searchParams.get('run_id'),assetId=url.searchParams.get('asset_id');
+  if(!runId||!idPattern.test(runId)||!assetId||!idPattern.test(assetId))throw new Error('실행과 원본 자료 ID를 확인하세요.');
+  const {asset,bytes}=await readScheduleSourceOriginal(runId,assetId,runBuilderWorker);
+  res.writeHead(200,{'Content-Type':originalMime(String(asset.format||'')),'Content-Length':bytes.length,
+   'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(String(asset.name||'원본 파일'))}`,
+   'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':'sandbox'});res.end(bytes);return true;
+ }
+ if(action==='schedule_source'){
+  res.setHeader('Cache-Control','no-store');
+  if(!['GET','POST'].includes(method)){res.setHeader('Allow','GET, POST');json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+  libraryQuery(url,method==='GET'?['id']:[]);
+  const data:Record<string,any>=method==='GET'?{id:url.searchParams.get('id')}:libraryBody(await readBody(req,16000),['id','base_revision','selection']);
+  if(typeof data.id!=='string'||!idPattern.test(data.id))throw new Error('워크플로우 ID를 확인하세요.');
+  if(method==='GET'){json(res,200,await builderWorker({action:'schedule_source',id:data.id}));return true;}
+  if(!Object.hasOwn(data,'selection'))throw new Error('자료 연결 설정을 지정하세요.');
+  const base_revision=sourceRevision(data.base_revision),selection=parseScheduleSourceSelection(data.selection);
+  if(selection){
+   const {agent}=await builderWorker({action:'agent',id:data.id});
+   const target=agent.config.workflow?.nodes?.find((node:any)=>node.id===selection.target_node_id);
+   const targetKind=target?.settings?.operation?undefined:target?.tool==='read_table'?'table':target?.tool==='read_document'?'document':undefined;
+   if(!targetKind)throw new Error('자료를 읽을 표·문서 작업을 선택하세요.');
+   if(targetKind==='table'&&selection.mode==='fixed'&&selection.asset_ids.length!==1)throw new Error('표 읽기 작업에는 고정 파일을 하나만 선택하세요.');
+   await validateScheduleSourceSelection(selection,targetKind,runBuilderWorker);
+  }
+  const savedSelection=selection?{...selection}:null;if(savedSelection)delete savedSelection.revision;
+  json(res,200,await builderWorker({action:'schedule_source',id:data.id,base_revision,selection:savedSelection}));return true;
+ }
  if(['library','library_upload','folders','asset_move'].includes(action)){
   const allowed=action==='library'?['GET']:action==='folders'?['POST','PATCH','DELETE']:['POST'];
   if(!allowed.includes(method)){res.setHeader('Allow',allowed.join(', '));json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
@@ -282,6 +315,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  }
  if(action==='catalog'&&method==='GET'){json(res,200,await builderWorker({action:'catalog'}));return true;}
  if(action==='agents'&&method==='GET'){json(res,200,await builderWorker({action:'agents'}));return true;}
+ if(action==='schedules'){
+  res.setHeader('Cache-Control','no-store');
+  if(method!=='GET'){res.setHeader('Allow','GET');json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+  json(res,200,await builderWorker({action:'schedules'}));return true;
+ }
  if(action==='rename_agent'&&method==='POST'){
   const data=await readBody(req,4096);
   if(typeof data?.id!=='string'||!idPattern.test(data.id)||!Number.isSafeInteger(data.version)||data.version<1||typeof data.name!=='string')throw new Error('워크플로우 ID, 버전, 이름을 확인해주세요.');
@@ -333,6 +371,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    payload={action:workerAction,model:credential.id===LOCAL_MODEL_ID?local!.model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs};
   }
   if(['upload','attach_asset','message','confirm'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
+  if(['message','confirm'].includes(workerAction)&&typeof store.gmailConnected==='function')payload.gmail_connected=store.gmailConnected();
   if(workerAction==='attach_asset'){
    if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
    payload.asset_id=data.assetId;
@@ -347,6 +386,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(workerAction==='message'&&data.questionId!==undefined){
    if(typeof data.questionId!=='string'||!/^[a-f0-9]{24}$/.test(data.questionId))throw new Error('확인 질문 ID를 확인하세요.');
    payload.question_id=data.questionId;
+  }
+  if(workerAction==='schedule_test'||workerAction==='schedule'&&data.active===true){
+   const current=await builderWorker({action:'agent',id:data.id});
+   if(builderNeedsGmail(current.agent.config,current.agent.workflow_dependencies)&&!await gmailAccessToken?.())
+    throw new Error('예약 실행에 사용할 Gmail 계정을 먼저 연결해주세요.');
   }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
    if(['message','confirm'].includes(workerAction)){

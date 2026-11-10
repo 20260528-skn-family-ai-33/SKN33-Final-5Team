@@ -4,7 +4,7 @@ Only the authenticated server chooses the workspace and space. The Node API
 checks team membership before selecting a team directory for a worker.
 """
 from contextlib import contextmanager
-import re
+import re,json
 import unicodedata
 from uuid import NAMESPACE_URL, uuid5
 from infrastructure.persistence.ids import uid, now
@@ -149,7 +149,7 @@ class AssetLibrary:
         folder_id=self.destination(folder_id)
         if before is not None and (type(before) is not int or not 1<=before<=9007199254740991):raise ValueError('자료 목록의 페이지 위치를 확인해주세요.')
         if q is not None and (not isinstance(q,str) or len(q)>200 or '\0' in q):raise ValueError('검색어는 200자 이내로 입력해주세요.')
-        fields=('name','format','created_at','size_bytes','original_path','pending_delete','processing_status')
+        fields=('name','format','created_at','size_bytes','original_path','pending_delete','processing_status','kind','input_kinds')
         columns=','.join(self.storage.json_text('a.json',field) for field in fields)
         params=[self.space_id];destination='p.folder_id IS NULL' if folder_id is None else 'p.folder_id=?'
         if folder_id is not None:params.append(folder_id)
@@ -166,6 +166,7 @@ class AssetLibrary:
         from service.handlers.uploads import asset_usages
         usages=asset_usages(self.storage,[row[1] for row in rows[:50]])
         assets=[dict(id=id,name=name,format=fmt,created_at=created,size_bytes=int(size) if size is not None else None,
-                     has_original=bool(original),pending_delete=bool(pending),processing_status=status,usages=usages[id],folder_id=parent)
-                for _,id,name,fmt,created,size,original,pending,status,parent in rows[:50]]
+                     has_original=bool(original),pending_delete=bool(pending),processing_status=status,usages=usages[id],folder_id=parent,
+                     kind=kind,input_kinds=json.loads(kinds) if kinds else [kind] if kind else [])
+                for _,id,name,fmt,created,size,original,pending,status,kind,kinds,parent in rows[:50]]
         return dict(space=self.space,folder_id=folder_id,folders=self.folders(),assets=assets,next=str(rows[49][0]) if len(rows)>50 else None)

@@ -6,16 +6,17 @@ import {WorkspaceSidebar} from './workspace-nav';
 import {UploadLibrary} from './upload-library';
 import {WorkspaceHeader} from './workspace-header';
 import {ServiceConnections} from './service-connections';
+import {ScheduledWorkflows} from './scheduled-workflows';
 import {WorkflowRenameDialog} from './workflow-rename-dialog';
 import {request} from '../components/flow/connection-panel';
 import './entry-app.css';
 import LandingPage from './landing-page';
 import {IntroDemo} from './intro-demo';
 import {useAuth,SignIn} from './auth';
-export type EntryRoute='intro'|'preview'|'workflows'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
+export type EntryRoute='intro'|'preview'|'workflows'|'schedules'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
 type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
-function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','workflows','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
+function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','workflows','schedules','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
 export default function EntryApp(){
  const auth=useAuth();
@@ -52,7 +53,7 @@ export default function EntryApp(){
  if(route==='intro')return <LandingPage onStart={()=>navigate('workflows')} onPreview={preview} onRoute={next=>navigate(next)}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>navigate('intro')} onNew={newFlow}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={navigate} onHome={()=>navigate('intro')}/>
-   <main className="entry-workspace-main">{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:
+   <main className="entry-workspace-main">{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onOpen={id=>navigate('run',id)} onCreate={newFlow}/>:
     <WorkspaceHome route={route as 'workflows'|'history'} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
    </main>
   </div>

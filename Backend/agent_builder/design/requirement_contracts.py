@@ -2,7 +2,7 @@
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from contracts.models import FilterCondition, SortCondition
+from contracts.models import FilterCondition, SortCondition, ScheduleSpec
 
 
 class Strict(BaseModel):
@@ -111,11 +111,23 @@ class SelectFields(Strict):
 
 class GmailSummary(Strict):
     kind: Literal['gmail_summary']
-    max_results: int = Field(ge=1, le=10)
+    max_results: int = Field(ge=1, le=500)
     request: str = Field(min_length=1, max_length=2000)
+    summary_instructions: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
-Spec = Annotated[Read | ExtractFields | Compute | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields,
+class GmailScheduledSummary(GmailSummary):
+    kind: Literal['gmail_scheduled_summary']
+    schedule: ScheduleSpec
+    query: Literal['{{gmail.previous_day}}', 'is:unread -in:sent -in:drafts']
+
+
+class ScheduledExecution(Strict):
+    kind: Literal['schedule']
+    schedule: ScheduleSpec
+
+
+Spec = Annotated[Read | ExtractFields | Compute | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
                  Field(discriminator='kind')]
 
 

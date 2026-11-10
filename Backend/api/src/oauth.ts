@@ -163,6 +163,13 @@ export class OAuthManager {
  cancel(id:string):void {
   for(const [state,pending] of this.pending)if(pending.input.id===id)this.pending.delete(state);
  }
+ /** Metadata only, before completion consumes the one-time state. */
+ pendingService(state?:string):string|null|undefined {
+  if(typeof state!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(state))return undefined;
+  const pending=this.pending.get(state);
+  // A known generic OAuth request is distinct from an unknown/consumed state.
+  return pending?(pending.config.service??null):undefined;
+ }
  /** The server consumes this result internally and persists it encrypted; never send this object to a browser. */
  async complete(query:{state?:string;code?:string;error?:string},callbackAuthority:string,options:{signal?:AbortSignal}={}):Promise<CredentialInput> {
   this.checkAuthority(callbackAuthority);

@@ -14,7 +14,7 @@ const nodeCompiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/node-libra
 const sourceCompiled=buildSync({stdin:{contents:"export {ScheduleLibrarySourceSettings} from './app/schedule-library-source'; export {AuthProvider} from './app/auth';",resolveDir:FRONTEND_ROOT,sourcefile:'schedule-source-test.tsx'},absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
 function load(code:string){const module={exports:{} as any};new Function('require','module','exports',code)(require,module,module.exports);return module.exports;}
 let dom:JSDOM;
-const globals=['window','document','navigator','location','localStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
+const globals=['window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
 const old=new Map(globals.map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
 // ReactDOM feature detection must see the DOM on first import.
 function installDOM(search=''){
@@ -190,6 +190,153 @@ test('connections: a slow account refresh cannot restore the address after disco
   assert.equal(document.querySelector('.service-connection-account'),null);
   assert.doesNotMatch(document.body.textContent!,/previous-account@example.com/);
   assert.ok(button('Google에서 연결'));
+ }finally{await h.close();}
+});
+
+test('connections: an unconnected Gmail card starts Google authorization directly',async()=>{
+ let begins=0;
+ const authorizationUrl='https://accounts.google.com/o/oauth2/v2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly';
+ const h=await setup('?screen=connections',{},(path,_body,method)=>{
+  if(path!=='/api/agent-builder/gmail')return undefined;
+  if(method==='POST'){begins++;return {authorizationUrl,connectionVersion:0,expiresAt:Date.now()+60000};}
+  return {configured:true,connected:false,connectionVersion:0,email:null};
+ },createElement(EntryApp));
+ try{
+  dom.window.open=()=>null;
+  assert.equal(document.querySelector('[role="dialog"]'),null);
+  const connect=document.querySelector<HTMLButtonElement>('.service-connection-card [aria-label="Gmail 계정 연결"]')!;
+  assert.equal(connect.textContent,'Google에서 연결');assert.equal(connect.disabled,false);
+  await click(connect);
+  assert.ok(document.querySelector('[role="dialog"]'));
+  assert.equal(document.querySelector('[role="dialog"] a')?.getAttribute('href'),authorizationUrl);
+  assert.equal(begins,1);assert.equal(location.search,'?screen=connections');
+ }finally{await h.close();}
+});
+
+test('connections: OAuth success replaces a pending pre-save Gmail status response',async()=>{
+ const waiting=deferred();let reads=0,connected=false;
+ const h=await setup('?screen=connections',{},(path,_body,method)=>{
+  if(path!=='/api/agent-builder/gmail')return undefined;
+  if(method==='POST')return {authorizationUrl:'https://accounts.google.com/o/oauth2/v2/auth',connectionVersion:0,expiresAt:Date.now()+60000};
+  if(++reads===2)return waiting.promise;
+  return {configured:true,connected,connectionVersion:connected?1:0,email:connected?'new@example.com':null};
+ },createElement(EntryApp));
+ try{
+  const popup={close(){},location:{replace(){}}} as unknown as Window;
+  dom.window.open=()=>popup;
+  await click(document.querySelector('.service-connection-card [aria-label="Gmail 계정 연결"]')!);
+  assert.equal(reads,2);
+  connected=true;
+  await act(async()=>{
+   const event=new dom.window.MessageEvent('message',{origin:location.origin,data:{type:'easyflow-oauth',ok:true}});
+   Object.defineProperty(event,'source',{value:popup});window.dispatchEvent(event);await tick();
+   waiting.resolve({configured:true,connected:false,connectionVersion:0,email:null});await tick();
+  });
+  assert.equal(document.querySelector('[role="dialog"]'),null);
+  assert.equal(document.querySelector('.service-connection-state')!.textContent,'연결됨');
+  assert.match(document.querySelector('.service-connection-account')!.textContent!,/new@example.com/);
+ }finally{waiting.resolve({configured:true,connected:false,connectionVersion:0,email:null});await h.close();}
+});
+
+test('connections: disconnect wins over a late reconnect popup success',async()=>{
+ const waiting=deferred();let connected=true,closes=0;
+ const h=await setup('?screen=connections',{},(path,_body,method)=>{
+  if(path!=='/api/agent-builder/gmail')return undefined;
+  if(method==='POST')return {authorizationUrl:'https://accounts.google.com/o/oauth2/v2/auth',connectionVersion:1,expiresAt:Date.now()+60000};
+  if(method==='DELETE')return waiting.promise;
+  return {configured:true,connected,connectionVersion:1,email:connected?'old@example.com':null};
+ },createElement(EntryApp));
+ try{
+  const popup={close(){closes++;},location:{replace(){}}} as unknown as Window;
+  dom.window.open=()=>popup;
+  await click(document.querySelector('.service-connection-card [aria-label="Gmail 계정 다시 연결"]')!);
+  await click(button('A4B 연결 해제'));
+  await act(async()=>{
+   const event=new dom.window.MessageEvent('message',{origin:location.origin,data:{type:'easyflow-oauth',ok:true}});
+   Object.defineProperty(event,'source',{value:popup});window.dispatchEvent(event);await tick();
+   connected=false;waiting.resolve({connected:false});await tick();
+  });
+  assert.equal(document.querySelector('.service-connection-state')!.textContent,'연결 안 됨');
+  assert.equal(document.querySelector('.service-connection-account'),null);
+  assert.doesNotMatch(document.body.textContent!,/old@example.com/);
+  assert.ok(closes>0,'disconnect closes the previous authorization popup');
+  assert.equal(sessionStorage.getItem('a4b-gmail-return'),null);
+ }finally{connected=false;waiting.resolve({connected:false});await h.close();}
+});
+
+test('connections: a connected Gmail card exposes account, verification, reconnect and disconnect',async()=>{
+ let connected=true;
+ const h=await setup('?screen=connections',{},(path,_body,method)=>{
+  if(path==='/api/agent-builder/gmail/test')return {email:'verified@example.com'};
+  if(path!=='/api/agent-builder/gmail')return undefined;
+  if(method==='DELETE')connected=false;
+  return {configured:true,connected,connectionVersion:1,email:connected?'saved@example.com':null};
+ },createElement(EntryApp));
+ try{
+  assert.match(document.querySelector('.service-connection-account')!.textContent!,/saved@example.com/);
+  assert.ok(document.querySelector('.service-connection-card [aria-label="Gmail 계정 다시 연결"]'));
+  await click(document.querySelector('.service-connection-card [aria-label="Gmail 연결 확인"]')!);
+  assert.equal(document.querySelector('[role="dialog"]'),null);
+  assert.match(document.querySelector('.service-connection-card')!.textContent!,/verified@example.com/);
+  assert.match(document.querySelector('.service-connection-card')!.textContent!,/Gmail 읽기 권한을 확인/);
+  await click(document.querySelector('.service-connection-card [aria-label="Gmail 연결 해제"]')!);
+  assert.equal(document.querySelector('.service-connection-account'),null);
+  assert.equal(document.querySelector('.service-connection-state')!.textContent,'연결 안 됨');
+  assert.ok(document.querySelector('.service-connection-card [aria-label="Gmail 계정 연결"]'));
+ }finally{await h.close();}
+});
+
+test('connections: returning to a visible window refreshes a stale Gmail card once',async()=>{
+ const waiting=deferred();let reads=0;
+ const h=await setup('?screen=connections',{},path=>{
+  if(path!=='/api/agent-builder/gmail')return undefined;
+  if(++reads===2)return waiting.promise;
+  return {configured:true,connected:true,connectionVersion:1,email:'previous@example.com'};
+ },createElement(EntryApp));
+ try{
+  assert.equal(reads,1);
+  await act(async()=>{
+   Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});
+   document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('focus'));await tick();
+  });
+  assert.equal(reads,1,'a hidden page does not fetch the account');
+  await act(async()=>{
+   Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});
+   window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));await tick();
+  });
+  assert.equal(reads,2,'focus and visibility share the in-flight status request');
+  await act(async()=>{waiting.resolve({configured:true,connected:false,connectionVersion:1,email:null});await tick();});
+  assert.equal(document.querySelector('.service-connection-state')!.textContent,'연결 안 됨');
+  assert.doesNotMatch(document.body.textContent!,/previous@example.com/);
+ }finally{waiting.resolve({configured:true,connected:false,connectionVersion:1,email:null});await h.close();}
+});
+
+test('connections: focus refresh cannot race an explicit Gmail disconnect',async()=>{
+ const waiting=deferred();let reads=0;
+ const h=await setup('?screen=connections',{},(path,_body,method)=>{
+  if(path!=='/api/agent-builder/gmail')return undefined;
+  if(method==='DELETE')return waiting.promise;
+  reads++;return {configured:true,connected:true,connectionVersion:1,email:'old@example.com'};
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('.service-connection-card [aria-label="Gmail 연결 해제"]')!);
+  await act(async()=>{window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));await tick();});
+  assert.equal(reads,1);
+  await act(async()=>{waiting.resolve({connected:false});await tick();});
+  assert.equal(document.querySelector('.service-connection-state')!.textContent,'연결 안 됨');
+  assert.doesNotMatch(document.body.textContent!,/old@example.com/);
+ }finally{waiting.resolve({connected:false});await h.close();}
+});
+
+test('connections: a saved Gmail account with an API error asks for verification and reconnect',async()=>{
+ const message='연결된 Gmail 주소를 확인하지 못했어요. 상태를 새로고침하거나 계정을 다시 연결해주세요.';
+ const h=await setup('?screen=connections',{},path=>path==='/api/agent-builder/gmail'?{configured:true,connected:true,connectionVersion:1,email:null,accountError:message}:undefined,createElement(EntryApp));
+ try{
+  assert.equal(document.querySelector('.service-connection-state')!.textContent,'연결 확인 필요');
+  assert.equal(document.querySelector('.service-connection-state')!.classList.contains('connected'),false);
+  assert.match(document.querySelector('.service-connection-card')!.textContent!,/상태를 새로고침하거나 계정을 다시 연결/);
+  assert.equal(document.querySelector<HTMLButtonElement>('.service-connection-card [aria-label="Gmail 계정 다시 연결"]')!.disabled,false);
+  assert.equal(h.calls.some(call=>call.body),false,'checking an unhealthy account must not remove or reconnect it');
  }finally{await h.close();}
 });
 
@@ -1108,6 +1255,24 @@ test('schedules: management opens the chosen workflow and leaving a pending list
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');assert.equal(document.querySelector('h1')?.textContent,'워크플로우');
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,0);assert.equal(h.calls.some(call=>call.body),false);
  }finally{waiting.resolve({workflows:[]});await h.close();}
+});
+
+for(const nextState of ['disconnected','account-error'])test('Gmail schedules: window return rechecks '+nextState+' before enabling execution',async()=>{
+ const base=agent('G','전날 Gmail 요약',dailySchedule),gmail={...base,config:{...base.config,tool_ids:['email.list','compose_answer']}};
+ let current='ready';
+ const h=await setup('?screen=run&service=G',{},path=>{
+  if(path.endsWith('/agents'))return {agents:[gmail]};
+  if(path.includes('/agent?id=G'))return {...snapshot(gmail),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
+  if(path==='/api/agent-builder/gmail')return {configured:true,connected:current!=='disconnected',connectionVersion:1,email:current==='ready'?'scheduled@example.com':null,...(current==='account-error'?{accountError:'Gmail 읽기 권한을 다시 확인해주세요.'}:{})};
+ },createElement(EntryApp));
+ try{
+  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('지금 실행').disabled,false);
+  current=nextState;
+  await act(async()=>{window.dispatchEvent(new Event('focus'));await tick();});
+  assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('지금 실행').disabled,true);
+  assert.equal(document.querySelector('.service-connection-state')!.textContent,nextState==='disconnected'?'연결 안 됨':'연결 확인 필요');
+  assert.equal(h.calls.some(call=>call.body),false);
+ }finally{await h.close();}
 });
 
 test('Gmail schedules: a connected account can activate, enqueue a test and run now without a managed file',async()=>{

@@ -26,6 +26,16 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
   </nav>;
 }
 
-export function WorkspaceSidebar({active,onNavigate,onHome,disabled=false,children}:{active:string;onNavigate:(destination:WorkspaceDestination)=>void;onHome?:()=>void;disabled?:boolean;children?:ReactNode}){
- return <aside className="workspace-sidebar"><WorkspaceNav active={active} onNavigate={onNavigate} disabled={disabled}/>{children}{onHome&&<div className="workspace-sidebar-footer"><button type="button" disabled={disabled} onClick={onHome}>서비스 소개</button></div>}</aside>;
+export function WorkspaceSidebar({active, onNavigate, help, disabled = false, children}: {
+  active: string;
+  onNavigate: (destination: WorkspaceDestination) => void;
+  help: ReactNode;
+  disabled?: boolean;
+  children?: ReactNode;
+}) {
+  return <aside className="workspace-sidebar">
+    <WorkspaceNav active={active} onNavigate={onNavigate} disabled={disabled}/>
+    {children}
+    <div className="workspace-sidebar-footer">{help}</div>
+  </aside>;
 }

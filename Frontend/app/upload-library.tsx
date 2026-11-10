@@ -341,8 +341,8 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSumm
     <div className="entry-page-heading"><div><h1>자료함</h1><p>파일을 올리고 폴더로 정리해 워크플로우에서 다시 사용하세요.</p></div>
       <div className="asset-library-actions">
         {canEdit && <><button type="button" className="as-button as-primary" disabled={busy} onClick={() => input.current?.click()}><UploadIcon size={15}/>파일 올리기</button>
-        <button type="button" className="as-button" disabled={busy} onClick={() => openAction({kind: 'create', parentId: folderId})}><FolderPlus size={15}/>새 폴더</button></>}
-        <button type="button" className="as-button" onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="자료 목록 새로고침"><RefreshCw size={16}/></button>
+        <button type="button" className="as-button as-secondary" disabled={busy} onClick={() => openAction({kind: 'create', parentId: folderId})}><FolderPlus size={15}/>새 폴더</button></>}
+        <button type="button" className="as-button" onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={16}/></button>
       </div>
     </div>
     <div className="asset-library-toolbar">
@@ -391,7 +391,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSumm
         <FileText className="asset-file-icon" size={21} aria-hidden="true"/><div className="asset-file-info"><h2>{asset.name}</h2><p>{uploadInfo(asset)}{asset.processing_status === 'ready' ? ' · 사용 가능' : asset.processing_status === 'partial' ? ' · 일부 확인 필요' : ''}{asset.pending_delete && ' · 삭제 대기 중'}</p>
           {usages.length ? <ul aria-label="자료 사용처">{usages.map(use => <li key={use.kind + use.id}>{use.name} · {usageLabels[use.kind]}</li>)}</ul> : !asset.pending_delete && <p>연결된 사용처 없음</p>}
         </div>
-        <div className="asset-file-actions"><button type="button" className="as-button" disabled={busy || asset.pending_delete} onClick={() => setSelected(asset)}>내용 보기</button>
+        <div className="asset-file-actions"><button type="button" className="as-button as-secondary" disabled={busy || asset.pending_delete} onClick={() => setSelected(asset)}>내용 보기</button>
           {canEdit && <><button type="button" className="as-button" disabled={busy || asset.pending_delete} aria-label={asset.name + ' 이동'} onClick={() => openAction({kind: 'move-asset', asset})}><FolderInput size={14}/>이동</button>
           <button type="button" className="as-button" disabled={busy || (!asset.pending_delete && !!blocked)} aria-label={asset.name + ' 삭제'} onClick={() => void remove(asset)}><Trash2 size={14}/>{deleting === asset.id ? '삭제 중…' : asset.pending_delete ? '삭제 재시도' : blocked || '삭제'}</button></>}
         </div>

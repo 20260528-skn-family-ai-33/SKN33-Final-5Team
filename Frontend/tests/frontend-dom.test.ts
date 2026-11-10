@@ -94,7 +94,7 @@ test('library: navigation keeps every queued file until all uploads finish',asyn
   Object.defineProperty(picker,'files',{configurable:true,value:['one.txt','two.txt','three.txt'].map(name=>new File(['내용'],name,{type:'text/plain'}))});
   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
   await waitFor(()=>uploaded.length===1);
-  for(const target of [button('워크플로우'),document.querySelector('[aria-label="서비스 소개로 이동"]')!,button('새 워크플로우')]){
+  for(const target of [button('워크플로우'),button('새 워크플로우')]){
    await click(target);
    assert.equal(location.search,'?screen=assets');
    assert.equal(document.querySelector('h1')?.textContent,'자료함');
@@ -406,6 +406,25 @@ test('DOM: historical XLSX chooses its destination before fetching the authentic
   assert.equal(document.querySelector('[role=alert]'),null);
  }finally{await h.close();}
 });
+test('entry: a workflow card opens only its execution history',async()=>{
+ const h=await setup('?screen=workflows',{},path=>{
+  if(path.includes('/agent?')){
+   const agent=path.includes('id=A')?A:B;
+   return snapshot(agent,[{id:'run-'+agent.id,status:'succeeded',agent_version:1}]);
+  }
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('[aria-label="서비스 A 실행 기록"]')!);
+  await h.flush();
+  assert.equal(new URL(location.href).searchParams.get('service'),'A');
+  assert.deepEqual(Array.from(document.querySelectorAll('.entry-history-list h2'),h=>h.textContent),['서비스 A']);
+  assert.ok(!h.calls.some(c=>c.path.includes('/agent?id=B')));
+  await click(button('전체 실행 기록'));
+  await h.flush();
+  assert.equal(document.querySelectorAll('.entry-history-list article').length,2);
+ }finally{await h.close();}
+});
+
 test('DOM: run history draws the saved version and design opens at reading size in either direction',async()=>{
  const flow=(label:string)=>({entry:'read',nodes:[
   {id:'read',tool:'read_document',label,settings:{},bindings:[]},
@@ -784,7 +803,7 @@ test('DOM: service-detail failure after saving offers reload without another con
   if(path.endsWith('/confirm'))return {...readySession(),status:'saved',saved_agent_id:'A'};
   if(path.includes('/agent?')&&details++===0)return new Response(JSON.stringify({error:'서비스 조회 오류'}),{status:503});
  });
- try{await click(button('초안 확인 · 저장'));await click(button('저장한 서비스 다시 불러오기'));assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.equal(h.calls.filter(c=>c.path.endsWith('/confirm')).length,1);}finally{await h.close();}
+ try{await click(button('초안 확인 · 저장'));await click(button('저장한 워크플로우 다시 불러오기'));assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.equal(h.calls.filter(c=>c.path.endsWith('/confirm')).length,1);}finally{await h.close();}
 });
 test('DOM: validation error preserves the node form for correction and retry',async()=>{
  let writes=0;
@@ -798,6 +817,38 @@ test('DOM: React StrictMode restoration keeps the requested service and correct 
 });
 test('DOM: Korean composition Enter does not prematurely submit the design message',async()=>{
  const h=await setup();try{const text=document.querySelector('[aria-label="업무 설명"]') as HTMLTextAreaElement;assert.ok(text);await input(text,'한국어 입력');await act(async()=>text.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true})));assert.equal(h.calls.filter(c=>c.path.endsWith('/message')).length,0);}finally{await h.close();}
+});
+for(const succeeds of [true,false])test('DOM: sent text moves to chat while waiting and '+(succeeds?'reconciles on success':'returns to the composer on failure'),async()=>{
+ const response=deferred();
+ const content='첫 줄 업무 설명\n두 번째 줄 조건';
+ const original='  '+content+'  ';
+ const session={...readySession(),messages:[],draft:null,status:'empty'};
+ const h=await setup('',{},path=>{
+  if(path.endsWith('/sessions'))return session;
+  if(path.endsWith('/message'))return response.promise;
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,original);
+  await click(document.querySelector('button[aria-label="업무 설명 보내기"]')!);
+  assert.equal(composer.value,'');
+  assert.equal(document.querySelector('.as-messages .as-message.user p')?.textContent,content);
+  assert.equal(document.querySelector('.as-welcome'),null);
+  assert.match(document.querySelector('.as-busy')?.textContent||'',/설정을 구성/);
+  await submit(composer.form!);
+  assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body.content),[content]);
+  await act(async()=>{
+   response.resolve(succeeds?{...session,revision:2,messages:[
+    {role:'user',content},{role:'assistant',content:'조건을 확인했습니다.'},
+   ]}:new Response(JSON.stringify({error:'전송 실패'}),{status:503}));
+   await tick();
+  });
+  assert.equal(document.querySelector('.as-busy'),null);
+  assert.equal(composer.value,succeeds?'':original);
+  assert.equal(document.querySelectorAll('.as-messages .as-message.user').length,succeeds?1:0);
+  if(succeeds)assert.equal(document.querySelector('.as-messages .as-message.assistant p')?.textContent,'조건을 확인했습니다.');
+  else assert.match(document.querySelector('[role=alert]')?.textContent||'',/전송 실패/);
+ }finally{await h.close();}
 });
 // Optional live-API pass; use the explicitly isolated review database only.
 if(process.env.A4B_FRONTEND_REVIEW_URL&&process.env.A4B_FRONTEND_REVIEW_IDS){
@@ -1012,7 +1063,7 @@ test('redesign: changing a saved workflow can be cancelled without losing an uns
 });
 test('redesign: mobile panel choices keep the composer value and expose exactly the selected area',async()=>{
  const h=await setup('?screen=workflow');
- try{await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'편집 영역을 바꿔도 보존');const nav=document.querySelector('.as-panel-switcher')!;await click(Array.from(nav.querySelectorAll('button')).find(b=>b.textContent==='흐름 확인')!);assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'canvas');await click(Array.from(nav.querySelectorAll('button')).find(b=>b.textContent==='설정 · 저장')!);assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'settings');assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,'편집 영역을 바꿔도 보존');}finally{await h.close();}
+ try{await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'편집 영역을 바꿔도 보존');const nav=document.querySelector('.as-panel-switcher')!;await click(Array.from(nav.querySelectorAll('button')).find(b=>b.textContent==='처리 흐름')!);assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'canvas');await click(Array.from(nav.querySelectorAll('button')).find(b=>b.textContent==='설정')!);assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'settings');assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,'편집 영역을 바꿔도 보존');}finally{await h.close();}
 });
 test('redesign: library hides manual creation and preserves saved-node edits',async()=>{
  const h=await setup('?screen=nodes',{},undefined,createElement(NodeLibrary,libraryProps()));
@@ -1023,16 +1074,16 @@ test('workspace shell: brand, help and create action keep identical markup acros
  let header='';
  for(const screen of ['workflows','schedules','history','nodes','workflow','run','assets','connections']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{const current=document.querySelector('.workspace-header')!.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(buttons().filter(b=>b.textContent?.trim()==='새 워크플로우').length,1);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
+  try{const current=document.querySelector('.workspace-header')!.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(document.querySelector('.workspace-brand')?.tagName,'DIV');assert.equal(document.querySelector('.workspace-header [data-tour="help"]'),null);assert.ok(document.querySelector('.workspace-sidebar-footer [data-tour="help"]'));assert.doesNotMatch(document.querySelector('.workspace-sidebar-footer')!.textContent!,/서비스 소개/);assert.equal(buttons().filter(b=>b.textContent?.trim()==='새 워크플로우').length,1);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
  }
 });
 test('workspace library: pending startup does not show zero counts or an editable empty form',async()=>{
  const waiting=deferred();const h=await setup('?screen=nodes',{},path=>path.endsWith('/catalog')?waiting.promise:undefined,createElement(EntryApp));
- try{assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오고/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('지원 기능 0종'));assert.equal(button('대화로 만들기').disabled,true);await act(async()=>{waiting.resolve({tools:[]});await tick();});assert.equal(document.querySelector('form[aria-label="작업 설정"]'),null);assert.equal(button('대화로 만들기').disabled,false);}finally{await h.close();}
+ try{assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오고/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('지원 기능 0종'));assert.equal(button('새 워크플로우').disabled,true);await act(async()=>{waiting.resolve({tools:[]});await tick();});assert.equal(document.querySelector('form[aria-label="작업 설정"]'),null);assert.equal(button('새 워크플로우').disabled,false);}finally{await h.close();}
 });
 test('workspace library: failed initial fetch is distinct from an empty library',async()=>{
  const h=await setup('?screen=nodes',{},path=>{if(path.endsWith('/catalog'))throw Error('카탈로그 불러오기 실패');},createElement(EntryApp));
- try{assert.match(document.querySelector('[role=alert]')!.textContent!,/불러오기 실패/);assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오지 못했습니다/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('대화로 워크플로우를 만들거나'));}finally{await h.close();}
+ try{assert.match(document.querySelector('[role=alert]')!.textContent!,/불러오기 실패/);assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오지 못했습니다/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('저장한 작업이 없어요.'));}finally{await h.close();}
 });
 
 test('product tour: next and previous follow real controls without changing an unsent request or executing work',async()=>{
@@ -1041,7 +1092,7 @@ test('product tour: next and previous follow real controls without changing an u
 });
 test('product tour: first use opens once, skip is remembered, and help can restart it',async()=>{
  const h=await setup('?screen=workflows',{'a4b-product-tour-v1':''},undefined,createElement(EntryApp));
- try{assert.ok(document.querySelector('[role=dialog]'));await click(button('나중에 보기'));assert.equal(document.querySelector('[role=dialog]'),null);await click(button('작업 라이브러리'));await h.flush();assert.equal(document.querySelector('[role=dialog]'),null);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('대화로'));await click(document.querySelector('[aria-label="안내 닫기"]')!);assert.equal(document.querySelector('[role=dialog]'),null);}finally{await h.close();}
+ try{assert.ok(document.querySelector('[role=dialog]'));await click(button('나중에 보기'));assert.equal(document.querySelector('[role=dialog]'),null);await click(button('작업 라이브러리'));await h.flush();assert.equal(document.querySelector('[role=dialog]'),null);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('저장한 작업'));await click(document.querySelector('[aria-label="안내 닫기"]')!);assert.equal(document.querySelector('[role=dialog]'),null);}finally{await h.close();}
 });
 test('product tour: finishing the list tour starts an empty design and continues its controls, without a model request',async()=>{
  const h=await setup('?screen=workflows',{'a4b-product-tour-v1':''},undefined,createElement(EntryApp));
@@ -1050,7 +1101,10 @@ test('product tour: finishing the list tour starts an empty design and continues
 
 test('product tour: a saved workflow explains review and explicit editing, without pretending its summary is editable',async()=>{
  const h=await setup('?screen=workflow&service=A',{},undefined,createElement(EntryApp));
- try{await click(button('사용 안내'));assert.match(document.querySelector('[role=dialog]')!.textContent!,/저장한 업무 내용을 확인/);assert.equal(document.querySelector('.as-composer'),null);await click(button('다음'));await click(button('다음'));assert.match(document.querySelector('[role=dialog]')!.textContent!,/이 흐름이 사용하는 설정/);await click(button('다음'));assert.equal(document.querySelector('.product-tour-card')?.getAttribute('data-tour-target'),'edit-workflow');assert.ok(!h.calls.some(c=>c.body));}finally{await h.close();}
+ try{
+  assert.deepEqual(Array.from(document.querySelectorAll('.as-panel-switcher button'),b=>b.textContent),['설계 요약','처리 흐름','설정']);
+  assert.equal(document.querySelector('.as-progress'),null);
+  await click(button('사용 안내'));assert.match(document.querySelector('[role=dialog]')!.textContent!,/저장한 업무 내용을 확인/);assert.equal(document.querySelector('.as-composer'),null);await click(button('다음'));await click(button('다음'));assert.match(document.querySelector('[role=dialog]')!.textContent!,/이 흐름이 사용하는 설정/);await click(button('다음'));assert.equal(document.querySelector('.product-tour-card')?.getAttribute('data-tour-target'),'edit-workflow');assert.ok(!h.calls.some(c=>c.body));}finally{await h.close();}
 });
 
 test('product tour: run guidance visits existing controls without submitting a run or changing its request',async()=>{
@@ -1069,8 +1123,8 @@ test('product tour: library guidance points at the two distinct preset actions a
  const preset={id:'read',version:1,ref:'read:1',origin:'builtin',saved_at:'2026-10-30',spec:{kind:'processing',name:'문서 읽기',purpose:'본문 읽기',tool:'read_document',model:null,instructions:'',reference:'',settings:{},execution_plan:null}};
  const h=await setup('?screen=nodes',{},path=>path.endsWith('/nodes')?{nodes:[],defaults:[preset]}:undefined,createElement(EntryApp));
  try{
-  await click(button('설정하기'));await input(field('작업 이름'),'보존할 작업');await click(button('사용 안내'));
-  const targets=['preset-configure','preset-use','create-task','saved-tasks'];
+  await click(button('설정 수정'));await input(field('작업 이름'),'보존할 작업');await click(button('사용 안내'));
+  const targets=['saved-tasks','preset-configure','preset-use'];
   for(let i=0;i<targets.length;i++){assert.equal(document.querySelector('.product-tour-card')?.getAttribute('data-tour-target'),targets[i]);if(i<targets.length-1)await click(button('다음'));}
   await click(button('안내 마치기'));assert.equal(field('작업 이름').value,'보존할 작업');assert.ok(!h.calls.some(c=>c.body));
  }finally{await h.close();}
@@ -1086,7 +1140,7 @@ test('product tour: preview guidance explains that sample actions are not persis
 
 test('product tour: Escape closes the guide and restores the original mobile panel',async()=>{
  const h=await setup('?screen=workflow',{},undefined,createElement(EntryApp));
- try{await click(button('흐름 확인'));assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'canvas');await click(button('사용 안내'));await click(button('다음'));await click(button('다음'));await click(button('다음'));assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'settings');await act(async()=>{document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});assert.equal(document.querySelector('[role=dialog]'),null);assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'canvas');}finally{await h.close();}
+ try{await click(button('처리 흐름'));assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'canvas');await click(button('사용 안내'));await click(button('다음'));await click(button('다음'));await click(button('다음'));assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'settings');await act(async()=>{document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});assert.equal(document.querySelector('[role=dialog]'),null);assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'canvas');}finally{await h.close();}
 });
 
 

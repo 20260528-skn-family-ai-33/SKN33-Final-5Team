@@ -10,7 +10,7 @@ def test_model_only_example_does_not_change_planning_policy():
     keys={line.split('=',1)[0] for line in path.read_text().splitlines()
           if line.strip() and not line.lstrip().startswith('#') and '=' in line}
     assert not keys & {'A4B_PLANNER_MODE','A4B_PLANNER_PROMPT','A4B_REQUIREMENT_MODE',
-                       'A4B_REQUIREMENT_GENERATION_MODE'}
+                       'A4B_REQUIREMENT_GENERATION_MODE','A4B_VERIFIER_MODE'}
     assert {'A4B_MAIN_MODEL','A4B_CAPABILITY_MODEL'} <= keys
 
 

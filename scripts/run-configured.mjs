@@ -22,9 +22,10 @@ if(sharedUrl){
 }
 for(const [key,value] of Object.entries({HOST:'127.0.0.1',PORT:'3041',EASYFLOW_DATA_DIR:'data-local-integration',
  A4B_MAIN_PROVIDER:'ollama',A4B_MAIN_BASE_URL:'http://127.0.0.1:11434/v1',A4B_MAIN_MODEL:'qwen3:8b-q4_K_M',
- A4B_VERIFIER_MODE:'shadow'}))process.env[key]??=value;
+ A4B_PLANNER_MODE:'deepagent',A4B_VERIFIER_MODE:'off'}))process.env[key]??=value;
 if(process.env.A4B_CONFIG_CHECK==='1'){
  console.log(JSON.stringify({mainProvider:process.env.A4B_MAIN_PROVIDER,mainModel:process.env.A4B_MAIN_MODEL,
+  plannerMode:process.env.A4B_PLANNER_MODE,verifierMode:process.env.A4B_VERIFIER_MODE,
   verifierProvider:process.env.A4B_VERIFIER_PROVIDER||'ollama',verifierModel:process.env.A4B_VERIFIER_MODEL||process.env.A4B_QWEN_MODEL||'qwen3.5:4b',
   sharedOllamaEndpoint:process.env.A4B_VERIFIER_BASE_URL===process.env.A4B_MAIN_BASE_URL?.replace(/\/v1\/?$/,''),port:process.env.PORT}));
 }else await import(pathToFileURL(resolve(root,'Backend/api/build-server/index.mjs')).href);

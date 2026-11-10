@@ -21,6 +21,62 @@ GitHub에 `production` 환경을 만들고 워크플로우 실행 브랜치를 `
 
 새 이미지가 시작된 뒤 EC2의 앱 화면과 공개 `/api/health`를 확인하고, 실패하면 이전 컨테이너를 다시 시작합니다. ECR에서 새 이미지를 받으면서 이전 버전도 보관할 디스크 공간을 확인한 뒤 첫 배포를 실행합니다.
 
+### EC2에서 구동하는 파인튜닝 9B 연결
+
+앱만 EC2에 있고 모델은 RunPod에서 구동한다면 아래의 기존 RunPod 설정을 사용합니다.
+**모델도 EC2에서 직접 구동**한다면
+[EC2 9B 추가 설정](../infrastructure/env/.env.ec2.qwen35-9b.example)을 사용합니다.
+모델 크기와 제공 호스트는 별개입니다. 9B를 사용한다는 이유로 EC2 설정을 선택하지 않습니다.
+
+기존 상태 검사는 RunPod HTTPS 주소만 공용 모델로 인정했습니다. EC2 모델 서버는
+`A4B_SHARED_MODEL_TARGET=ec2`를 명시해야 상태 검사와 화면에서 공용 EC2 서버로 표시됩니다.
+이 값은 관리자가 정하는 연결 분류이며 AWS 서버의 실체를 자동으로 인증하는 기능은 아닙니다.
+미설정 시에는 기존 RunPod 검사를 유지하며, 임의 로컬 주소가 자동으로 공용 연결로 바뀌지 않습니다.
+
+1. 앱에서 접근할 수 있는 Ollama `/v1` 주소를 기존 `A4B_MAIN_BASE_URL`에 지정합니다.
+   호스트 Ollama에 Docker 컨테이너에서 접속한다면 `http://host.docker.internal:11434/v1`처럼
+   컨테이너에서 도달할 주소가 필요합니다. `localhost`는 컨테이너 자신이므로 서버 구성에 맞춰야 합니다.
+2. 인계 모델이 실제로 등록돼 있는지 확인합니다. 이 예시는 설계에
+   `a4b-qwen35-9b-final664-pilot32k`, 지원 판단에 `a4b-qwen35-9b-previous-pilot32k`를 사용합니다.
+   모델 이름만 바꾸어 원본 9B를 파인튜닝 모델로 취급하지 않습니다.
+   지원 판단도 최종 모델로 운영하기로 결정했다면 `A4B_CAPABILITY_MODEL`을 그 등록 이름으로
+   명시하고 해당 구성의 품질은 별도 검증합니다.
+3. EC2 추가 설정을 `.env.ec2.qwen35-9b`로 복사하고 기존 설정 뒤에 적용합니다.
+
+   ```bash
+   docker compose --env-file .env.aws --env-file .env.ec2.qwen35-9b config --quiet
+   docker compose --env-file .env.aws --env-file .env.ec2.qwen35-9b up -d --build
+   ```
+
+   이 파일은 모델 연결·생성 한도와 함께 `A4B_PLANNER_MODE=deepagent`,
+   `A4B_VERIFIER_MODE=off`를 명시해 이전 direct/shadow 설정을 대체합니다.
+   주소·인증·DB·요구 검증 설정은 보존합니다. 노드·입력·요구사항 검사와 사용자 확인은
+   계속 수행하며, 보조 4B 호출이나 나중에 처리할 defer 검토는 새로 만들지 않습니다.
+   `A4B_PLANNER_PROMPT`는 direct 전용이므로 남아 있어도 DeepAgent 프롬프트를 선택하지 않습니다.
+4. **기존 Actions 배포는 위 예시를 자동으로 읽지 않습니다.** 이미 생성된 컨테이너의
+   환경변수를 재사용하므로 PR 병합과 코드 배포만으로 저장된 4B 설정이 9B로 바뀌지 않습니다.
+   배포 담당자가 `/var/lib/a4b-deploy/env-overrides`의 다른 항목을 보존하면서 아래 모델 설정을
+   반영해야 합니다. root 소유·권한 600을 유지하며 JSON 바깥 작은따옴표를 넣지 않습니다.
+
+   ```text
+   A4B_SHARED_MODEL_TARGET=ec2
+   A4B_MAIN_PROVIDER=ollama
+   A4B_PLANNER_MODE=deepagent
+   A4B_VERIFIER_MODE=off
+   A4B_MAIN_MODEL=a4b-qwen35-9b-final664-pilot32k
+   A4B_LLM_MODEL=a4b-qwen35-9b-final664-pilot32k
+   A4B_CAPABILITY_MODE=enforce
+   A4B_CAPABILITY_MODEL=a4b-qwen35-9b-previous-pilot32k
+   A4B_OLLAMA_MODEL_ALIASES={"a4b-qwen35-4b-16k":"a4b-qwen35-9b-final664-pilot32k"}
+   A4B_OLLAMA_NUM_CTX=32768
+   A4B_OLLAMA_NUM_PREDICT=4096
+   A4B_OLLAMA_TEMPERATURE=0
+   ```
+
+   `A4B_MAIN_BASE_URL`과 인증 값도 실제 등록 서버에 맞춰 보존하거나 배포 담당자가 변경합니다.
+   프런트 상태 표시 변경도 포함하므로 `target=all`로 함께 배포한 뒤 새 대화와 기존 대화의
+   실제 호출 모델명·결과를 확인합니다. 상태 검사는 모델 목록 확인이며 추론 품질 검증은 아닙니다.
+
 ### RunPod 모델 설정 선택
 
 기본 [AWS 환경변수 예시](../infrastructure/env/.env.aws.example)는
@@ -39,7 +95,8 @@ native 문맥은 16,384이고 `/v1` 모델의 Modelfile에도 같은 문맥이 �
    해당 패키지의 `README_KO.md`에 따라 고정 원본·어댑터 병합, GGUF 변환·검증·등록을 완료합니다.
    원본 9B나 4B의 이름만 바꾸어 파인튜닝 모델로 사용하지 않습니다.
 2. 사용할 Ollama 서버에 `a4b-qwen35-9b-final664-pilot32k`,
-   `a4b-qwen35-9b-previous-pilot32k`, `qwen3.5:4b`가 등록되어 있어야 합니다.
+   `a4b-qwen35-9b-previous-pilot32k`가 등록되어 있어야 합니다.
+   아래의 DeepAgent 실행 프로필 또는 EC2 9B 설정으로 보조 검토를 끄면 `qwen3.5:4b`는 필수가 아닙니다.
    기존 데이터가 있다면 아래 **기존 4B 대화·워크플로우 전환**도 적용해야 합니다.
    두 9B 모델의 Modelfile에서 `PARAMETER num_ctx 32768`을 확인합니다.
    `A4B_OLLAMA_NUM_CTX=32768`은 native 요청 설정이며, `/v1` 모델의 등록 설정을 변경하지 않습니다.
@@ -54,9 +111,14 @@ native 문맥은 16,384이고 `/v1` 모델의 Modelfile에도 같은 문맥이 �
    ```
 
 두 번째 파일은 모델 설정만 덮어쓰므로 첫 번째 파일의 Cognito·RDS·S3·접속 주소와 인증 값을 유지합니다.
-설계 모드(`A4B_PLANNER_MODE`), 프롬프트 버전, 요구조건 검사 정책도 기존 설정을 유지합니다.
-기본 AWS 예시의 `direct/v8`은 팀원이 전달한 9B 검증 실행과 동일한 프로필이 아닙니다.
-모델 교체와 설계 방식 전환은 별도로 검증합니다.
+설계 모드(`A4B_PLANNER_MODE`), 프롬프트 버전, 요구조건 검사 및 보조 검토 정책도 기존 설정을 유지합니다.
+모델 교체와 설계 방식 전환은 별도로 검증합니다. 기존 direct/shadow 설정을 바꾸려면
+아래 DeepAgent 실행 프로필을 세 번째 파일로 적용하거나 EC2 9B 설정을 사용합니다.
+기본 Compose·Ollama 예시·설정 실행기의 기본값도 DeepAgent/검토 off입니다.
+명시적으로 설정한 실험용 direct 또는 별도 검토 모드는 계속 선택할 수 있습니다.
+이미 저장된 `verification_required`/`verification_enforced` 상태는 이 설정만으로 해제하지 않습니다.
+이런 기존 세션은 검토 상태를 별도로 확인해야 하며 운영 DB를 자동으로 수정하지 않습니다.
+기존 defer 대기 기록도 자동 삭제하거나 실행하지 않습니다.
 GitHub Actions의 기존 EC2 배포는 이 예시 파일을 자동으로 읽지 않고 현재 컨테이너 설정을 재사용합니다.
 따라서 이미 운영 중인 9B 서버를 기본 4B 예시로 다시 설정할 필요가 없습니다.
 모델 연결 화면까지 바뀐 버전을 반영할 때는 `target=all`로 프런트엔드와 백엔드를 함께 배포한 뒤,
@@ -76,10 +138,19 @@ native 요청의 `think/truncate/shift=false`와 출력 종료 사유도 확인�
 기존 저장 초안의 형식과 이후 추가된 영수증·메일·엑셀 기능은 유지합니다.
 모델이 빠뜨린 업무를 코드가 임의 노드나 답변으로 채우지는 않습니다.
 
-[DeepAgent 검증 설정](../infrastructure/env/.env.aws.qwen35-9b-deepagent.example)은
+[DeepAgent 실행 설정](../infrastructure/env/.env.aws.qwen35-9b-deepagent.example)은
 모델 설정과 분리한 선택 예시입니다. 기본 및 9B 모델 파일 뒤에 세 번째 `--env-file`로 적용합니다.
-인계 환경의 핵심 설정은 `deepagent`, 요구조건 `enforce/baseline`, 도구 카탈로그 `model`,
-도구 추천 `hint/svm56`, 보조 검증 `shadow`입니다. `bounded`는 인계 검증의 설정이 아닙니다.
+실행 설정은 `deepagent`, 요구조건 `enforce/baseline`, 도구 카탈로그 `model`,
+도구 추천 `hint/svm56`, 보조 검토 `off`입니다. 과거 인계 기록은 보조 검증 `shadow`를 사용했지만,
+현재 프로필은 4B 보조 검토를 끄기로 한 결정에 따라 `off`로 설정합니다. 과거 기록과 동일한
+평가 구성이라고 해석하지 않습니다. `bounded`는 인계 검증의 설정이 아닙니다.
+
+```bash
+docker compose --env-file .env.aws --env-file .env.aws.qwen35-9b --env-file .env.aws.qwen35-9b-deepagent config --quiet
+docker compose --env-file .env.aws --env-file .env.aws.qwen35-9b --env-file .env.aws.qwen35-9b-deepagent up -d --build
+```
+
+세 번째 파일은 위 예시를 `.env.aws.qwen35-9b-deepagent`로 복사해 준비합니다.
 자동 배포에서는 검증한 항목만 EC2 `env-overrides`에 넣고 `target=backend`로 반영해야 합니다.
 이 예시 파일을 추가하는 것만으로 운영 설정은 바뀌지 않습니다.
 
@@ -93,7 +164,7 @@ native 요청의 `think/truncate/shift=false`와 출력 종료 사유도 확인�
 
 `A4B_MAIN_MODEL`은 새 대화의 기본 모델입니다. 기존 대화, 저장 워크플로우 버전,
 예약 작업의 고정본, 중단·실패한 실행은 저장 당시 모델명을 유지합니다.
-따라서 위의 모델 3개만 준비하고 주소와 기본 모델을 바꾸면 상태 화면은 정상이어도
+따라서 위의 9B 모델 2개만 준비하고 주소와 기본 모델을 바꾸면 상태 화면은 정상이어도
 기존 `a4b-qwen35-4b-16k` 요청은 404로 실패할 수 있습니다.
 `qwen3.5:4b`는 별도 이름이며 이 요청을 대신 받지 않습니다.
 

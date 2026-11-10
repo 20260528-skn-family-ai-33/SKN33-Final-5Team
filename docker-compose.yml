@@ -41,6 +41,8 @@ services:
       A4B_WORKER_MAX_CONCURRENCY: ${A4B_WORKER_MAX_CONCURRENCY:-12}
       A4B_WORKER_CONTROL_CONCURRENCY: ${A4B_WORKER_CONTROL_CONCURRENCY:-4}
       A4B_MAIN_PROVIDER: ${A4B_MAIN_PROVIDER:-ollama}
+      # EC2-hosted Ollama is a shared server only when explicitly selected.
+      A4B_SHARED_MODEL_TARGET: ${A4B_SHARED_MODEL_TARGET:-runpod}
       A4B_MAIN_BASE_URL: ${A4B_MAIN_BASE_URL:-${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}/v1}
       A4B_MAIN_API_KEY: ${A4B_MAIN_API_KEY:-}
       A4B_MAIN_MODEL: ${A4B_MAIN_MODEL:-${A4B_LLM_MODEL:-a4b-qwen35-4b-16k}}
@@ -54,12 +56,11 @@ services:
       A4B_VERIFIER_BASE_URL: ${A4B_VERIFIER_BASE_URL:-${A4B_DOCKER_OLLAMA_URL:-http://host.docker.internal:11434}}
       A4B_VERIFIER_API_KEY: ${A4B_VERIFIER_API_KEY:-${A4B_LLM_API_KEY:-}}
       A4B_VERIFIER_MODEL: ${A4B_VERIFIER_MODEL:-qwen3.5:4b}
-      # defer records verifier input; run scripts/run/run-deferred-verifications.py later (see README).
-      A4B_VERIFIER_MODE: ${A4B_VERIFIER_MODE:-defer}
-      # direct: the registered catalogue is passed in the design input. With files attached the
-      # model often inspects the file and never calls list_tools, which the model mode rejects.
+      # Optional model reviewer only; native workflow validation remains active.
+      A4B_VERIFIER_MODE: ${A4B_VERIFIER_MODE:-off}
       A4B_PLANNER_MODE: ${A4B_PLANNER_MODE:-deepagent}
       A4B_PLANNER_PROMPT: ${A4B_PLANNER_PROMPT:-v1}
+      # Catalogue delivery is independent of the DeepAgent/direct planner selection.
       A4B_TOOL_CATALOG_MODE: ${A4B_TOOL_CATALOG_MODE:-direct}
       # Request validation/clarification (question IDs, condition ledger, unsupported checks).
       # Preserve main's enforced default; the root .env can explicitly turn either check off.

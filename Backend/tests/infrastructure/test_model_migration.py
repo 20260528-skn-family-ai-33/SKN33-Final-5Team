@@ -22,11 +22,11 @@ CAPABILITY = 'a4b-qwen35-9b-previous-pilot32k'
 ALIASES = json.dumps({OLD: NEW})
 
 
-@pytest.fixture
-def migration(monkeypatch):
+@pytest.fixture(params=['https://model.invalid/v1', 'http://127.0.0.1:11434/v1'], ids=['remote', 'ec2-local'])
+def migration(monkeypatch, request):
     for key, value in {
         'A4B_STORAGE': 'sqlite', 'A4B_MAIN_PROVIDER': 'ollama',
-        'A4B_MAIN_BASE_URL': 'https://model.invalid/v1', 'A4B_MAIN_MODEL': NEW,
+        'A4B_MAIN_BASE_URL': request.param, 'A4B_MAIN_MODEL': NEW,
         'A4B_OLLAMA_MODEL_ALIASES': ALIASES, 'A4B_CAPABILITY_MODEL': CAPABILITY,
         'A4B_CAPABILITY_MODE': 'enforce', 'A4B_PLANNER_MODE': 'direct',
         'A4B_PLANNER_PROMPT': 'v4', 'A4B_CONDITION_MODE': 'off',

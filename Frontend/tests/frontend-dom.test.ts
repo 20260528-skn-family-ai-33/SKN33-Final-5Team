@@ -1690,6 +1690,41 @@ test('folder source: unsaved manual settings block execution and survive cancell
  }finally{await h.close();}
 });
 
+test('folder source: failed workflow selection preserves the source draft and execution block',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ const other=agent('other-folder','다른 보고서');
+ let selection:any={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
+ const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow,other]};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.includes('/agent?id=other-folder'))return new Response(JSON.stringify({error:'다른 워크플로우 조회 실패'}),{status:503});
+  if(path.startsWith('/api/agent-builder/schedule_source')){
+   if(method==='GET')return {selection};
+   selection={...body.selection,revision:selection.revision+1};return {selection};
+  }
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+ },createElement(EntryApp));
+ try{
+  await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='all');
+  await chooseSource('예약 자료 읽기 방식','latest');
+  assert.equal(button('워크플로우 실행').disabled,true);
+  let prompts=0;window.confirm=()=>{prompts++;return true;};
+  const otherLink=Array.from(document.querySelectorAll<HTMLButtonElement>('.as-agent-link')).find(item=>item.querySelector('strong')?.textContent==='다른 보고서')!;
+  await click(otherLink);
+  await sourceSettles(()=>!!document.querySelector('.as-global-error'));
+  assert.equal(prompts,1);
+  assert.equal(document.querySelector('h1')?.textContent,'팀 보고서');
+  assert.equal(new URL(location.href).searchParams.get('service'),'manual-folder');
+  assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')!.value,'latest');
+  assert.equal(button('워크플로우 실행').disabled,true,'A failed switch must not permit running the saved source while its draft is unsaved');
+  assert.equal(button('자료함 연결 저장').disabled,false);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/test')),false);
+  await click(button('자료함 연결 저장'));
+  assert.equal(button('워크플로우 실행').disabled,false);
+ }finally{await h.close();}
+});
+
 test('schedule source: version conflict preserves the draft and does not refresh the parent as a success',async()=>{
  let writes=0,saved=0;
  const selection={mode:'fixed',space:'personal',team_id:null,folder_id:null,asset_ids:['asset-1'],target_node_id:'read',revision:7};

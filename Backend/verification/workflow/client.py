@@ -124,8 +124,9 @@ def call_qwen(data:VerificationInput,config:OllamaConfig):
         if len(choices)!=1 or choices[0].get('finish_reason')!='stop':raise RuntimeError('incomplete_generation')
         result=VerificationOutput.model_validate_json(choices[0]['message'].get('content',''))
         return result,{'latency_ms':(time.perf_counter()-started)*1000,'reported_model':raw.get('model'),'usage':raw.get('usage')}
+    from infrastructure.llm.ollama_settings import is_resident_model
     raw=http_json(config,'/api/chat',{'model':config.model,'messages':[{'role':'system','content':SYSTEM},{'role':'user','content':content}],
-        'format':schema,'think':False,'truncate':False,'shift':False,'stream':False,'keep_alive':'5m',
+        'format':schema,'think':False,'truncate':False,'shift':False,'stream':False,'keep_alive':-1 if is_resident_model(config.model) else '5m',
         'options':{'temperature':0,'seed':42,'num_ctx':config.num_ctx,'num_predict':config.num_predict}})
     if not raw.get('done') or raw.get('done_reason')!='stop':raise RuntimeError('incomplete_generation')
     if raw.get('message',{}).get('thinking','').strip():raise RuntimeError('unexpected_thinking_mode')

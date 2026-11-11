@@ -62,6 +62,46 @@ def test_native_length_limit_rejects_even_parseable_partial_content(monkeypatch)
     assert len(calls)==1
 
 
+@pytest.mark.parametrize('name', ['a4b-qwen35-9b-previous-pilot32k',
+                                 'a4b-qwen35-9b-final664-pilot32k:latest'])
+def test_resident_models_share_native_and_openai_policy(monkeypatch, name):
+    from infrastructure.llm.model_factory import create_chat_model
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL', 'https://example.test/v1')
+    monkeypatch.delenv('A4B_OLLAMA_NUM_CTX', raising=False)
+    monkeypatch.delenv('A4B_OLLAMA_NUM_PREDICT', raising=False)
+    monkeypatch.delenv('A4B_OLLAMA_TEMPERATURE', raising=False)
+    native = OllamaPlanner(name, temperature=0.2)
+    assert native.num_ctx == 32768
+    seen = []
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return b'{"message":{"content":"{}"},"done":true,"done_reason":"stop"}'
+    def request(req, timeout):
+        seen.append(json.loads(req.data))
+        return Response()
+    monkeypatch.setattr('urllib.request.urlopen', request)
+    native.invoke([{'role': 'user', 'content': 'synthetic'}])
+    import httpx
+    sent = []
+    def openai_request(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={'id': 'synthetic', 'object': 'chat.completion',
+            'created': 0, 'model': name, 'choices': [{'index': 0, 'finish_reason': 'stop',
+            'message': {'role': 'assistant', 'content': 'OK'}}]})
+    with httpx.Client(transport=httpx.MockTransport(openai_request)) as client:
+        model = create_chat_model('', name, max_tokens=128, temperature=0.4, http_client=client)
+        model.streaming = False
+        assert model.invoke('synthetic').content == 'OK'
+    wire = sent[0]
+    for payload in [seen[0], wire]:
+        assert payload['shift'] is False and payload['truncate'] is False
+        assert payload['keep_alive'] == -1
+    assert seen[0]['options']['temperature'] == 0.2
+    assert wire['temperature'] == 0.4 and wire['max_tokens'] == 128
+
+
 @pytest.mark.parametrize('key,value',[
     ('A4B_OLLAMA_NUM_CTX','0'),('A4B_OLLAMA_TEMPERATURE','nan'),('A4B_OLLAMA_NUM_PREDICT','-1')])
 def test_invalid_deployment_limits_fail_before_network(monkeypatch,key,value):

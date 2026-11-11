@@ -2,6 +2,24 @@
 import math
 import os
 
+RESIDENT_MODELS = frozenset({'a4b-qwen35-9b-previous-pilot32k',
+                             'a4b-qwen35-9b-final664-pilot32k'})
+
+
+def is_resident_model(model):
+    return isinstance(model, str) and model.removesuffix(':latest') in RESIDENT_MODELS
+
+
+def context_limit(model):
+    return integer_setting('A4B_OLLAMA_NUM_CTX', 32768 if is_resident_model(model) else 16384,
+                           4096, 131072)
+
+
+def resident_options(model):
+    # Sampling/output settings remain caller-controlled. Other models retain
+    # their existing residency policy instead of occupying a 9B serving slot.
+    return {'shift': False, 'truncate': False, 'keep_alive': -1} if is_resident_model(model) else {}
+
 
 def integer_setting(name, default, minimum, maximum):
     value = int(os.getenv(name, '').strip() or str(default))

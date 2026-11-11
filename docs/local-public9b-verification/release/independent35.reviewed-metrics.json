@@ -1,0 +1,78 @@
+{
+  "gold_sha256": "93c821ded55570fda569ceb983f22fd2ebf8d6b8c7d395d445e68e4931bc7e35",
+  "status": "completed",
+  "frozen_cases": 35,
+  "measured_cases": 35,
+  "attempted_model_cases": 35,
+  "verified_response_cases": 35,
+  "backend_cases_without_model_dispatch": [],
+  "missing_case_ids": [],
+  "semantic_reviewed_cases": 35,
+  "ledger_reviewed_cases": 35,
+  "metrics": {
+    "whole_request_success": {
+      "numerator": 14,
+      "denominator": 35,
+      "value": 0.4
+    },
+    "necessary_question_recall": {
+      "numerator": 12,
+      "denominator": 12,
+      "value": 1.0
+    },
+    "unnecessary_repeated_followup_questions": {
+      "numerator": 2,
+      "denominator": 4,
+      "value": 0.5
+    },
+    "unnecessary_question_rate": {
+      "numerator": 13,
+      "denominator": 25,
+      "value": 0.52
+    },
+    "answer_incorporation_accuracy": {
+      "numerator": 3,
+      "denominator": 6,
+      "value": 0.5
+    },
+    "requirement_coverage": {
+      "numerator": 20,
+      "denominator": 63,
+      "value": 0.31746031746031744
+    },
+    "confirmed_condition_conflict": {
+      "numerator": 11,
+      "denominator": 74,
+      "value": 0.14864864864864866
+    },
+    "duplicate_accepted_task_rate": {
+      "numerator": 4,
+      "denominator": 41,
+      "value": 0.0975609756097561
+    },
+    "validator_pass_per_generated_draft": {
+      "numerator": 7,
+      "denominator": 25,
+      "value": 0.28
+    },
+    "final_draft_validation": {
+      "numerator": 6,
+      "denominator": 15,
+      "value": 0.4
+    },
+    "verified_case_model_responses": 136,
+    "verified_probe_model_responses": 1,
+    "observed_case_model_call_records": 136,
+    "elapsed_seconds": {
+      "cases": 35,
+      "p50": 47.99954400000024,
+      "p95": 147.75822169999992
+    }
+  },
+  "source_bytes_sha256": {
+    "corpus": "05924e51ed4df625b3b171a3dff6545d1ce04a222448e43765ba217052c0bb4e",
+    "run": "228da82e93418a18d8b6865f49997a40da5a1f469c94059ce6e38172077eb18e",
+    "labels": "3e06aeeb994fa11276892998652e3a326d7a9d71a97c4facca3c9257effc0a07",
+    "ledger_labels": "85d6829257b7d5c0e0ff544136e2e263dcf60de8be795d53bc540b8b84bd0ee5"
+  }
+}

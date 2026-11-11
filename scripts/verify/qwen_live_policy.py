@@ -34,10 +34,13 @@ def endpoint_policy(endpoint, allow_local_endpoint=None):
 
 def assert_model_url(url, policy):
     parsed = urlsplit(str(url))
+    allowed_paths = {'/v1/models', '/v1/chat/completions', '/api/tags', '/api/show', '/api/chat', '/api/version'}
+    if policy['kind'] == 'local':
+        allowed_paths.add('/api/ps')
     if (parsed.scheme != policy['scheme'] or parsed.hostname != policy['host'] or
             (parsed.port or (443 if parsed.scheme == 'https' else 80)) != policy['port'] or
             parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment or
-            parsed.path not in ('/v1/models', '/v1/chat/completions', '/api/tags', '/api/show', '/api/chat', '/api/version')):
+            parsed.path not in allowed_paths):
         raise OSError('Evaluation blocks non-model URL, port or API path')
 
 

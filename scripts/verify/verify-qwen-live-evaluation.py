@@ -100,9 +100,28 @@ def live_probe(tracer, identity, expected_identity=None):
     if value!={'ok':True,'count':5}:raise ValueError('Structured probe did not match its schema and values')
     if not tracer.calls[-1].get('actual_model'):raise ValueError('Actual response model metadata missing')
     if tracer.calls[-1]['actual_model'] not in (model,model+':latest'):raise ValueError('Actual model differs from configured model')
-    return {'model_ids':ids,'actual_model':tracer.calls[-1]['actual_model'],'structured_probe':'passed',
+    result = {'model_ids':ids,'actual_model':tracer.calls[-1]['actual_model'],'structured_probe':'passed',
             'server_model_metadata':server_metadata,
             'weights_family_attestation':'model ID and response metadata only; server weights not independently inspected'}
+    if os.getenv('A4B_EVALUATION_REQUIRE_GPU') == '1':
+        tracer.probe_step = 'local_gpu_residency'
+        if identity['kind'] != 'local' or provider != 'ollama':
+            raise ValueError('GPU residency check requires the selected local Ollama endpoint')
+        with urllib.request.urlopen(urllib.request.Request(base.removesuffix('/v1')+'/api/ps',headers=headers),
+                                    timeout=15) as response:
+            loaded = json.load(response).get('models') or []
+        expected_context = int(os.environ['A4B_OLLAMA_NUM_CTX'])
+        residency = []
+        for selected in selected_models:
+            item = next((record for record in loaded
+                         if canonical_model(record.get('name'), provider) == canonical_model(selected, provider)), {})
+            if (item.get('digest') != identity['models'][selected]['digest'] or
+                    not isinstance(item.get('size_vram'), int) or item['size_vram'] <= 0 or
+                    item.get('context_length') != expected_context):
+                raise ValueError('Ollama did not report the selected model occupying GPU memory at requested context')
+            residency.append({k: item.get(k) for k in ('name', 'digest', 'context_length', 'size', 'size_vram')})
+        result['gpu_residency_after_probe'] = residency
+    return result
 
 
 def run_case(case,model,tracer,directory):
@@ -111,7 +130,8 @@ def run_case(case,model,tracer,directory):
     from agent_builder.design.graph import build_graph
     start=time.monotonic();call_start=len(tracer.calls);stage_start=len(tracer.stages)
     record={'id':case['id'],'status':'started','kind':'live_backend_session_e2e','expected_route':case['gold']['routing'],
-            'request':case['request'],'turns':[],'external_execution':'NOT_RUN','frontend_browser_observed':False,
+            'request':case['request'],'turns':[],'turn_attempts':[],'model_call_offset':call_start,
+            'external_execution':'NOT_RUN','frontend_browser_observed':False,
             'http_api_exercised':False,'execution_success':None,'schema_valid':None}
     params={'directory':str(directory),'api_key':'local-not-a-secret'}
     session=handle({**params,'action':'new_session','model':model,'credential_id':'local-model'})
@@ -137,8 +157,19 @@ def run_case(case,model,tracer,directory):
                      'user_timezone':case['user_timezone'],'gmail_connected':case['resource_state']['gmail_connected_metadata']}
             if question_id:request['question_id']=question_id
             # Each call reopens storage/checkpoint via the real worker handler.
-            with patch('agent_builder.design.temporal_context._utc_now',lambda:datetime.fromisoformat(reference.replace('Z','+00:00'))):
-                session=handle(request)
+            attempt={'turn_index':turn,'status':'submitted','user':sanitize(content,tracer.secrets),
+                     'question_id':question_id,'reference_time':reference,'prior_revision':session['revision'],
+                     'prior_pending_question_ids':[q.get('id') for q in (session.get('pending_questions') or [])]}
+            record['turn_attempts'].append(attempt);tracer.turn_index=turn
+            try:
+                with patch('agent_builder.design.temporal_context._utc_now',lambda:datetime.fromisoformat(reference.replace('Z','+00:00'))):
+                    session=handle(request)
+            except Exception as error:
+                attempt.update(status='worker_error',error_type=type(error).__name__)
+                raise
+            finally:
+                tracer.turn_index=None
+            attempt.update(status='returned',response_id=session['id'],result_revision=session['revision'])
             record['turns'].append(sanitize({'user':content,'question_id':question_id,'reference_time':reference,
                                            'response':session},tracer.secrets))
             if turn==0:record['actual_route']=route(session)
@@ -183,7 +214,10 @@ def run_case(case,model,tracer,directory):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--corpus',type=Path,default=ROOT/'docs/qwen-live-evaluation-cases.json')
-    parser.add_argument('--phase',choices=['baseline','after'],required=True)
+    parser.add_argument('--corpus-profile',choices=['original-52','runpod-rebuild'],default='original-52')
+    parser.add_argument('--expected-gold-sha',help='Canonical SHA frozen before evaluating the new corpus')
+    parser.add_argument('--phase',choices=['baseline','after','reassessment'],required=True,
+                        help='Use reassessment for a standalone measurement with a newly frozen harness or holdout')
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--environment',type=Path)
     parser.add_argument('--baseline',type=Path)
@@ -194,12 +228,14 @@ def main():
     args=parser.parse_args()
     if args.output.exists():raise SystemExit('Output exists; preserve prior runs and use a new path')
     corpus=json.loads(args.corpus.read_text(encoding='utf-8'))
-    validate_corpus(corpus,{t['id']:t for t in TOOLS})
+    validate_corpus(corpus,{t['id']:t for t in TOOLS},args.corpus_profile,args.expected_gold_sha)
+    if args.case and (len(args.case)!=len(set(args.case)) or set(args.case)-{c['id'] for c in corpus['cases']}):
+        raise SystemExit('Duplicate or unknown --case selection')
     cases=[c for c in corpus['cases'] if not args.case or c['id'] in args.case]
     if not cases:raise SystemExit('No matching cases')
     manifest=code_manifest()
     report={'version':1,'phase':args.phase,'created_at':datetime.now(timezone.utc).isoformat(),
-            'gold_sha256':corpus['gold_sha256'],'catalog_fingerprint':corpus['catalog_fingerprint'],
+            'gold_sha256':corpus['gold_sha256'],'corpus_profile':args.corpus_profile,'catalog_fingerprint':corpus['catalog_fingerprint'],
             'code_manifest':manifest,'evaluation_harness_manifest':harness_manifest(),
             'requested_scenarios':len(cases),'evaluated_live_scenarios':0,
             'inference_calls':0,'status':'not_run','cases':[],'metrics':metrics([]),
@@ -207,6 +243,8 @@ def main():
             'scope':'backend service/checkpoint/model E2E, API and browser covered separately'}
     baseline=json.loads(args.baseline.read_text(encoding='utf-8')) if args.baseline else None
     if args.phase=='after':require_complete_baseline(baseline,corpus)
+    if args.phase=='reassessment' and baseline is not None:
+        raise ValueError('A standalone reassessment cannot declare a paired baseline')
     if baseline and baseline.get('evaluation_harness_manifest')!=report['evaluation_harness_manifest']:
         raise SystemExit('Evaluation harness differs from baseline; use a separate baseline')
     exit_code=0

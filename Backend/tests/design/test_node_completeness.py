@@ -81,7 +81,10 @@ def test_actual_mail_summary_is_accepted_and_read_only_request_is_not_forced_to_
     assert not processing_issues(value,value['draft'])
     assert validate_node(value)['status']=='ready'
     source_only=state(summary=False)
-    source_only['capability_assessment']['tool_ids']=['email.list']
+    read_request = 'Gmail에서 계약 관련 메일을 찾아 보여줘.'
+    source_only['messages'] = [dict(role='user', content=read_request)]
+    source_only['capability_assessment'].update(tool_ids=['email.list', 'compose_answer'], user_quotes=[read_request])
+    source_only['capability_fingerprint'] = input_fingerprint(source_only)
     assert not processing_issues(source_only,source_only['draft'])
 
 

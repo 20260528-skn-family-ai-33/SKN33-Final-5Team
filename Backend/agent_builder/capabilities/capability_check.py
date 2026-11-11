@@ -65,11 +65,24 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
         deferred=False;reuse_questions=False
         try:
             from agent_builder.conditions.condition_readiness import input_issues
+            from agent_builder.design.request_meaning import gmail_importance, IMPORTANCE_QUESTION
             faults=input_issues(state)
             events=state.get('capability_answers',[])
             event=events[-1] if events and events[-1]['turn']==len(state.get('messages',[]))-1 else None
             previous=state.get('capability_assessment') or {}
+            criterion, evidence = gmail_importance(state)
             if faults:result=assess_capability(state,None)
+            elif criterion == 'ambiguous':
+                result = {'decision':'clarify', 'tool_ids':[], 'missing_actions':[],
+                          'missing_conditions':[IMPORTANCE_QUESTION], 'user_quotes':[evidence],
+                          'reason':'사용자가 선택할 메일의 중요도 기준이 미정입니다.',
+                          'model_calls':0, 'allows_execution':False, 'allows_generation':False}
+                # Retain the question ID when a reply defers the same decision.
+                if event and previous.get('missing_conditions') == [IMPORTANCE_QUESTION]:
+                    reuse_questions = True
+                    deferred = event['kind'] == 'defer' or sum(
+                        e['kind'] == 'unknown' and set(e['question_ids']).intersection(event['question_ids'])
+                        != set() for e in events) >= 2
             elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or numeric_answer(state) or pending_nonanswer(state))
                   and state.get('messages', [])[-1].get('role')=='user'
                   and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
@@ -124,7 +137,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
             questions=(state.get('capability_questions',[]) if reuse_questions else [])
             if not questions:
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
-                            'key':'capability.condition.'+str(i),'source':'capability','text':_question_text(text),
+                            'key':'gmail.importance_criteria' if text == IMPORTANCE_QUESTION else 'capability.condition.'+str(i),
+                            'source':'capability','text':_question_text(text),
                             'options':resolution_options(state)} for i,text in enumerate(result['missing_conditions'])]
             # Keep the full missing list in the assessment; controls and answer IDs
             # describe only this turn's two questions. Reassess remaining items after the answer.

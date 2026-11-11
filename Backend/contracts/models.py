@@ -192,6 +192,7 @@ class BuilderState(TypedDict, total=False):
     capability_generation_route: str
     requirement_required: bool
     requirement_route: str
+    requirement_answers: list[dict]
     requirement_ledger: dict | None
     requirement_fingerprint: str | None
     requirement_digest: str | None

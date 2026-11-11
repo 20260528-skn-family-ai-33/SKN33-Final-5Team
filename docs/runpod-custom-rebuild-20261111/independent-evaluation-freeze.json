@@ -1,0 +1,43 @@
+{
+  "status": "frozen_before_independent_inference_and_app_changes",
+  "source_git_head": "75d46e20f239858f77e8db97571da07b6bdc4fac",
+  "corpus_file": "independent-evaluation-cases.json",
+  "gold_sha256": "93c821ded55570fda569ceb983f22fd2ebf8d6b8c7d395d445e68e4931bc7e35",
+  "corpus_bytes_sha256": "05924e51ed4df625b3b171a3dff6545d1ce04a222448e43765ba217052c0bb4e",
+  "gold_digest_definition": "SHA256(UTF-8 json.dumps(object with gold_sha256 omitted, ensure_ascii=False, sort_keys=True), Python default separators)",
+  "catalog_fingerprint": "b187f747a4e063dd5f74a7e58cf3217203aa09a974f4f982e17cb5a34f286c37",
+  "legacy52_gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "legacy52_bytes_sha256": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de",
+  "case_count": 35,
+  "all_independent_holdout": true,
+  "excluded_ambiguous": 2,
+  "categories": {
+    "ready": 6,
+    "clarify": 6,
+    "temporal": 6,
+    "multiturn": 6,
+    "unsupported": 4,
+    "composite": 7
+  },
+  "initial_routes": {
+    "READY": 20,
+    "CLARIFY": 11,
+    "UNSUPPORTED": 4
+  },
+  "final_routes": {
+    "READY": 24,
+    "CLARIFY": 7,
+    "UNSUPPORTED": 4
+  },
+  "answers": 4,
+  "revisions": 2,
+  "synthetic_execution_eligible": 11,
+  "gold_slot_opportunities_initial": 105,
+  "required_question_slots": 12,
+  "gold_task_opportunities_final_ready": 63,
+  "registered_tool_and_operation_validation": "passed",
+  "disjoint_ids_and_request_texts_from_legacy52": true,
+  "time_window_and_synthetic_row_checks": "passed",
+  "actual_model_calls_in_authoring": 0,
+  "rubric_bytes_sha256": "45d95bba7c30f114cf9733d0e1786cc7c9743b99a5a7ca4c46de4c7c4c96a213"
+}

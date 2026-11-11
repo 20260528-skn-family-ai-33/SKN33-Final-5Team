@@ -1,8 +1,12 @@
 // Read-only compact evidence view. Never changes frozen gold or raw run artifacts.
 import fs from 'node:fs';
-const [path,...ids]=process.argv.slice(2);
+const [path,...options]=process.argv.slice(2);
+const corpusArgument=options.indexOf('--corpus');
+const corpusPath=corpusArgument<0?new URL('../../docs/qwen-live-evaluation-cases.json',import.meta.url):options.splice(corpusArgument,2)[1];
+const ids=options;
 const report=JSON.parse(fs.readFileSync(path,'utf8'));
-const corpus=JSON.parse(fs.readFileSync(new URL('../../docs/qwen-live-evaluation-cases.json',import.meta.url),'utf8'));
+const corpus=JSON.parse(fs.readFileSync(corpusPath,'utf8'));
+if(report.gold_sha256!==corpus.gold_sha256)throw Error('Select the frozen corpus matching this run');
 const compact=x=>Array.isArray(x)?x.map(compact):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).filter(([k,v])=>v!==null&&(!Array.isArray(v)||v.length)&&!['trace','requirements','evidence','evidence_ids','question_options','document_ids','tool_ids'].includes(k)).map(([k,v])=>[k,compact(v)])):x;
 for(const row of report.cases.filter(c=>!ids.length||ids.includes(c.id))){
  const gold=corpus.cases.find(c=>c.id===row.id);

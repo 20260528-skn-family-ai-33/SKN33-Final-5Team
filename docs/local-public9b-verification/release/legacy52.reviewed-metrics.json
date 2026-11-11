@@ -1,0 +1,82 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "status": "completed",
+  "frozen_cases": 52,
+  "measured_cases": 52,
+  "attempted_model_cases": 49,
+  "verified_response_cases": 49,
+  "backend_cases_without_model_dispatch": [
+    "R01",
+    "C06",
+    "T08"
+  ],
+  "missing_case_ids": [],
+  "semantic_reviewed_cases": 52,
+  "ledger_reviewed_cases": 52,
+  "metrics": {
+    "whole_request_success": {
+      "numerator": 35,
+      "denominator": 52,
+      "value": 0.6730769230769231
+    },
+    "necessary_question_recall": {
+      "numerator": 27,
+      "denominator": 32,
+      "value": 0.84375
+    },
+    "unnecessary_repeated_followup_questions": {
+      "numerator": 1,
+      "denominator": 2,
+      "value": 0.5
+    },
+    "unnecessary_question_rate": {
+      "numerator": 12,
+      "denominator": 39,
+      "value": 0.3076923076923077
+    },
+    "answer_incorporation_accuracy": {
+      "numerator": 12,
+      "denominator": 12,
+      "value": 1.0
+    },
+    "requirement_coverage": {
+      "numerator": 67,
+      "denominator": 88,
+      "value": 0.7613636363636364
+    },
+    "confirmed_condition_conflict": {
+      "numerator": 4,
+      "denominator": 151,
+      "value": 0.026490066225165563
+    },
+    "duplicate_accepted_task_rate": {
+      "numerator": 1,
+      "denominator": 66,
+      "value": 0.015151515151515152
+    },
+    "validator_pass_per_generated_draft": {
+      "numerator": 24,
+      "denominator": 36,
+      "value": 0.6666666666666666
+    },
+    "final_draft_validation": {
+      "numerator": 23,
+      "denominator": 30,
+      "value": 0.7666666666666667
+    },
+    "verified_case_model_responses": 179,
+    "verified_probe_model_responses": 1,
+    "observed_case_model_call_records": 179,
+    "elapsed_seconds": {
+      "cases": 52,
+      "p50": 64.1134682500001,
+      "p95": 111.3390705999991
+    }
+  },
+  "source_bytes_sha256": {
+    "corpus": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de",
+    "run": "6af36471b657ad2076c1dda4e4d84df2c94c92cae8b0135b2efedb1b7b5fcb15",
+    "labels": "60332cf76d0392c28be8bda93690365db502d9248472848171871739d8f12abf",
+    "ledger_labels": "9f913ae9c4dc46029f676c02988bd0f1ccf93bcc63093bc2f8d74a6179b43941"
+  }
+}

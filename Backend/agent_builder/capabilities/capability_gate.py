@@ -53,12 +53,13 @@ def require_ready(state):
     issue=blocking_issue(state)
     if issue:raise ValueError(issue)
     if state.get('requirement_required'):
-        from agent_builder.design.requirement_ledger import ledger_fingerprint, plan_digest
+        from agent_builder.design.requirement_ledger import ledger_fingerprint, plan_digest, validate_plan
         ledger = state.get('requirement_ledger')
         if (not ledger or not ledger.get('tasks') or ledger.get('unresolved')
                 or state.get('requirement_fingerprint') != ledger_fingerprint(state)
                 or state.get('requirement_digest') != plan_digest(ledger)):
             raise ValueError('필수 업무 조건을 확인한 뒤 워크플로우를 생성할 수 있습니다.')
+        validate_plan(ledger, state)
 
 
 def require_save_ready(state):
@@ -81,7 +82,8 @@ def require_save_ready(state):
         from agent_builder.conditions.condition_readiness import plan_issues, literal_condition_issues
         from agent_builder.design.planner_constraints import table_tool_issues
         ledger=state.get('condition_ledger') or {}
-        if ledger.get('decision')!='ready' or literal_condition_issues(state) or plan_issues(ledger,state['draft']) or table_tool_issues(state):
+        if (ledger.get('decision') != 'ready' or literal_condition_issues(state)
+                or plan_issues(ledger, state['draft'], state=state) or table_tool_issues(state)):
             raise ValueError('확정 업무 조건이 반영된 설정만 저장할 수 있습니다.')
     if verification and state.get('verification_route')!='continue_review':
         raise ValueError('검증 보류 상태의 초안은 저장할 수 없습니다.')

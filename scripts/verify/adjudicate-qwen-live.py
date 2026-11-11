@@ -62,8 +62,9 @@ def score(record,case,label):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('run',type=Path);p.add_argument('labels',type=Path);p.add_argument('output',type=Path)
+    p.add_argument('--corpus',type=Path,default=ROOT/'docs/qwen-live-evaluation-cases.json')
     a=p.parse_args();run=json.loads(a.run.read_text(encoding='utf-8'));labels=json.loads(a.labels.read_text(encoding='utf-8'))
-    corpus=json.loads((ROOT/'docs/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
+    corpus=json.loads(a.corpus.read_text(encoding='utf-8'))
     assert run['gold_sha256']==corpus['gold_sha256']==labels['gold_sha256']
     cases={c['id']:c for c in corpus['cases']}
     rows=[]

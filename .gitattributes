@@ -23,3 +23,5 @@ docs/qwen-* -text
 docs/clarification-* -text
 # Preserve the one CRLF source file covered by the frozen evaluation source hash.
 Backend/agent_builder/design/nodes/direct_conversation.py -text whitespace=cr-at-eol
+# Keep byte-hashed local evaluation evidence stable across checkouts.
+docs/local-public9b-verification/**/*.json -text whitespace=cr-at-eol

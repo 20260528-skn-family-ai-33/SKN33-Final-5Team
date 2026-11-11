@@ -147,12 +147,17 @@ class RequiredTask(Strict):
     spec: Spec
 
 
+class RequirementQuestion(Strict):
+    key: str = Field(min_length=1, max_length=96, pattern=r'^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$')
+    text: str = Field(min_length=1, max_length=1000)
+
+
 class RequirementPlan(Strict):
     tasks: list[RequiredTask] = Field(max_length=30)
-    unresolved: list[str] = Field(max_length=10)
+    unresolved: list[str | RequirementQuestion] = Field(max_length=10)
 
     @model_validator(mode='after')
     def has_work_or_question(self):
-        if not self.tasks and not any(text.strip() for text in self.unresolved):
+        if not self.tasks and not any((q if isinstance(q, str) else q.text).strip() for q in self.unresolved):
             raise ValueError('업무 요구사항 또는 확인할 조건이 필요합니다.')
         return self

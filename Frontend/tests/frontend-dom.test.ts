@@ -1929,3 +1929,40 @@ for(const scenario of ['redacted','other-tab','completed-before-other-tab'])test
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
  }finally{await h.close();}
 });
+
+for(const recoveryResult of ['recovered','active','offline'])test('resume: a stopped generation can continue in the same conversation: '+recoveryResult,async()=>{
+ const own='00000000-0000-4000-8000-000000000081',retry='00000000-0000-4000-8000-000000000082';
+ const prompt='매출이 10000을 초과하는 행만 골라줘',before=readySession();
+ const after={...before,revision:2,messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'조건을 반영했습니다.'}]};
+ let sent=0,recovered=false;
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return before;
+  if(path.endsWith('/message')){if(++sent===1)throw Error('응답 유실');return after;}
+  if(path.includes('/generation_history'))return {requests:[{request_id:own,action:'message',session_revision:1,request_text:prompt,status:recovered?'failed':'running',reason:recovered?'이전 작업이 종료됐습니다.':null}]};
+  if(path.endsWith('/recover_generation')){
+   if(recoveryResult==='offline')throw Error('연결 실패');
+   recovered=recoveryResult==='recovered';return {recovered,reason:recovered?undefined:'active'};
+  }
+ });
+ let id=0;Object.defineProperty(crypto,'randomUUID',{configurable:true,value:()=>[own,retry][id++]});
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.closest('form')!);
+  for(let i=1;i<15;i++)await click(button('대화 다시 불러오기'));
+  assert.equal(composer.disabled,true);assert.equal(button('홈').disabled,false);
+  await click(button('이 대화 이어가기'));
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/recover_generation'))?.body,{id:'ready',revision:1,generationRequestId:own});
+  assert.equal(composer.value,prompt);
+  if(recoveryResult==='recovered'){
+   assert.equal(composer.disabled,false);await submit(composer.closest('form')!);
+   const writes=h.calls.filter(call=>call.path.endsWith('/message'));
+   assert.equal(writes.length,2);assert.equal(writes[1].body.id,'ready');
+   assert.equal(writes[1].body.generationRequestId,retry);
+   assert.match(document.querySelector('.as-messages')?.textContent||'',/조건을 반영했습니다/);
+   assert.equal(document.querySelector('[role="alert"]'),null);
+  }else{
+   assert.equal(composer.disabled,true);assert.equal(button('홈').disabled,false);
+   assert.ok(button('이 대화 이어가기'));assert.equal(sent,1);
+  }
+ }finally{await h.close();}
+});

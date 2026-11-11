@@ -33,3 +33,32 @@ def interrupt(c):
 
 def listing(c):
     return {'requests': history(c.storage, c.data['id'])}
+
+
+def recover(c):
+    """Close an abandoned audit only while no worker owns this session."""
+    from infrastructure.persistence.generation_lock import generation_session_lock
+    from uuid import UUID
+    sid=c.data['id']
+    c.storage.session(sid)
+    request_id=str(UUID(c.data['generation_request_id']))
+    with generation_session_lock(c.storage, sid) as acquired:
+        if not acquired:return {'recovered':False, 'reason':'active'}
+        audit=GenerationHistory(c.storage, request_id)
+        record=audit.read()
+        if record['session_id'] != sid:raise ValueError('이 대화의 생성 요청이 아닙니다.')
+        session=c.storage.session(sid)
+        if session['revision'] != c.data['revision']:
+            return {'recovered':False, 'reason':'changed'}
+        # A completed session may have been published just before the worker exited.
+        # Preserve that success instead of marking it failed.
+        from service.handlers.design import _session_action
+        from copy import copy
+        context=copy(c);context.action='session'
+        latest=_session_action(context)
+        if latest.get('last_generation_request_id') == request_id and latest.get('status') in ('ready','needs_clarification','saved'):
+            audit.finish(latest, result_revision=latest['revision'])
+        elif record['status'] == 'running':
+            audit.change(status='failed', reason_code='generation_abandoned',
+                         reason='이전 작업이 종료된 것을 확인했습니다. 보존된 입력으로 같은 대화에서 다시 요청할 수 있습니다.', error_type=None)
+        return {'recovered':True, 'request_id':request_id}

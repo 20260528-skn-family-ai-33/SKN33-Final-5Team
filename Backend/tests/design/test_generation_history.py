@@ -272,3 +272,138 @@ def test_two_request_results_keep_their_own_revision_without_mutating_input(tmp_
     assert indexed[first_id]['result_revision'] == first['revision']
     assert indexed[second_id]['result_revision'] == second['revision']
     assert call(tmp_path, 'session', id=s['id'])['last_generation_request_id'] == second_id
+
+
+def test_abandoned_generation_can_resume_in_the_same_session(tmp_path):
+    s = session(tmp_path)
+    request_id = uid()
+    call(tmp_path, 'begin_generation', id=s['id'], revision=0, content=PROMPT,
+         request_action='message', generation_request_id=request_id)
+    result = call(tmp_path, 'recover_generation', id=s['id'], revision=0, generation_request_id=request_id)
+    assert result['recovered'] is True
+    [record] = records(tmp_path, s['id'])
+    assert record['status'] == 'failed' and record['reason_code'] == 'generation_abandoned'
+    resumed = call(tmp_path, 'message', id=s['id'], revision=0, content=PROMPT, conversation=fake_conversation)
+    assert resumed['id'] == s['id'] and resumed['revision'] == 1
+    assert resumed['status'] == 'needs_clarification'
+    assert len([m for m in resumed['messages'] if m['role']=='user']) == 1
+
+
+def test_recovery_refuses_a_live_worker_and_preserves_its_audit(tmp_path):
+    from infrastructure.persistence.generation_lock import generation_session_lock
+    s = session(tmp_path)
+    request_id = uid()
+    call(tmp_path, 'begin_generation', id=s['id'], revision=0, content=PROMPT,
+         request_action='message', generation_request_id=request_id)
+    store = Storage(tmp_path)
+    try:
+        with generation_session_lock(store, s['id']) as acquired:
+            assert acquired
+            result = call(tmp_path, 'recover_generation', id=s['id'], revision=0, generation_request_id=request_id)
+            assert result == {'recovered':False, 'reason':'active'}
+            assert records(tmp_path, s['id'])[0]['status'] == 'running'
+    finally:
+        store.close()
+
+
+def test_recovery_checks_session_ownership_and_revision(tmp_path):
+    s, other = session(tmp_path), session(tmp_path)
+    request_id = uid()
+    call(tmp_path, 'begin_generation', id=s['id'], revision=0, content=PROMPT,
+         request_action='message', generation_request_id=request_id)
+    with pytest.raises(ValueError, match='이 대화'):
+        call(tmp_path, 'recover_generation', id=other['id'], revision=0, generation_request_id=request_id)
+    assert call(tmp_path, 'recover_generation', id=s['id'], revision=1,
+                generation_request_id=request_id) == {'recovered':False, 'reason':'changed'}
+    assert records(tmp_path, s['id'])[0]['status'] == 'running'
+
+
+def test_recovery_does_not_relaunch_a_cancelled_queued_request(tmp_path):
+    s = session(tmp_path)
+    request_id = uid()
+    call(tmp_path, 'begin_generation', id=s['id'], revision=0, content=PROMPT,
+         request_action='message', generation_request_id=request_id)
+    call(tmp_path, 'recover_generation', id=s['id'], revision=0, generation_request_id=request_id)
+    invoked = []
+    with pytest.raises(ValueError, match='이미 처리'):
+        call(tmp_path, 'message', id=s['id'], revision=0, content=PROMPT,
+             generation_request_id=request_id, conversation=lambda state:invoked.append(True))
+    assert not invoked
+    assert call(tmp_path, 'session', id=s['id'])['revision'] == 0
+
+
+def test_generation_holds_ownership_while_the_model_is_running(tmp_path):
+    s = session(tmp_path)
+    request_id = uid()
+    def conversation(state):
+        assert call(tmp_path, 'recover_generation', id=s['id'], revision=0,
+                    generation_request_id=request_id) == {'recovered':False, 'reason':'active'}
+        return fake_conversation(state)
+    result = call(tmp_path, 'message', id=s['id'], revision=0, content=PROMPT,
+                  generation_request_id=request_id, conversation=conversation)
+    assert result['status'] == 'needs_clarification'
+
+
+def test_killed_worker_releases_session_ownership_for_recovery(tmp_path):
+    import os
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+    s = session(tmp_path)
+    request_id = uid()
+    call(tmp_path, 'begin_generation', id=s['id'], revision=0, content=PROMPT,
+         request_action='message', generation_request_id=request_id)
+    ready = tmp_path/'owner-ready'
+    script = '''
+import sys,time
+from pathlib import Path
+from infrastructure.persistence.storage import Storage
+from infrastructure.persistence.generation_lock import generation_session_lock
+store=Storage(sys.argv[1])
+with generation_session_lock(store,sys.argv[2]) as acquired:
+    assert acquired
+    Path(sys.argv[3]).touch()
+    time.sleep(30)
+'''
+    process = subprocess.Popen([sys.executable, '-c', script, str(tmp_path), s['id'], str(ready)],
+        env={**os.environ, 'PYTHONPATH':str(Path(__file__).resolve().parents[2])},
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        deadline=time.monotonic()+10
+        while not ready.exists() and process.poll() is None and time.monotonic()<deadline:time.sleep(.01)
+        assert ready.exists()
+        assert call(tmp_path, 'recover_generation', id=s['id'], revision=0,
+                    generation_request_id=request_id)['reason'] == 'active'
+        process.kill();process.communicate(timeout=5)
+        assert call(tmp_path, 'recover_generation', id=s['id'], revision=0,
+                    generation_request_id=request_id)['recovered'] is True
+    finally:
+        if process.poll() is None:process.kill()
+        process.communicate(timeout=5)
+
+
+def test_published_reply_remains_completed_if_worker_fails_before_final_response(tmp_path, monkeypatch):
+    s = session(tmp_path)
+    request_id = uid()
+    def lost_response(*args, **kwargs):raise OSError('worker exited after publication')
+    monkeypatch.setattr(GenerationHistory, 'finish', lost_response)
+    with pytest.raises(OSError):
+        call(tmp_path, 'message', id=s['id'], revision=0, content=PROMPT,
+             generation_request_id=request_id, conversation=fake_conversation)
+    restored=call(tmp_path, 'session', id=s['id'])
+    [record]=records(tmp_path, s['id'])
+    assert restored['revision'] == record['result_revision'] == 1
+    assert restored['last_generation_request_id'] == request_id
+    assert record['status'] == 'waiting_input'
+
+
+def test_recovery_preserves_a_completed_outcome(tmp_path):
+    s = session(tmp_path)
+    request_id = uid()
+    result=call(tmp_path, 'message', id=s['id'], revision=0, content=PROMPT,
+                generation_request_id=request_id, conversation=fake_conversation)
+    assert call(tmp_path, 'recover_generation', id=s['id'], revision=result['revision'],
+                generation_request_id=request_id)['recovered'] is True
+    [record]=records(tmp_path, s['id'])
+    assert record['status']=='waiting_input' and record['result_revision']==result['revision']

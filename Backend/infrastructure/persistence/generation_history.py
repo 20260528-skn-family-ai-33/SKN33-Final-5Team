@@ -230,6 +230,21 @@ class GenerationHistory:
             self.error(error)
         return self.change(status='failed', **self.failure)
 
+    def published_in_transaction(self, state, revision):
+        """Publish the outcome and session revision in the same database transaction."""
+        record=self.read()
+        if record['status']=='running':
+            record.update(self.outcome(state, getattr(self,'result_next_nodes',())))
+            stamp=now()
+            record.update(updated_at=stamp, finished_at=stamp)
+            event=dict(at=stamp, stage=record['stage'], node=record['node'], status=record['status'])
+            event.update({key:record[key] for key in ('reason_code','reason','error_type') if record.get(key)})
+            record['events'].append(event)
+        elif record['status'] not in ('succeeded','waiting_input','waiting_confirmation'):
+            raise ValueError('종료된 생성 요청의 결과를 반영할 수 없습니다.')
+        record['result_revision']=revision
+        self._write(record)
+
     def saved_in_transaction(self, workflow_id):
         """The workflow and its successful outcome commit together, before worker exit."""
         record = self.read()

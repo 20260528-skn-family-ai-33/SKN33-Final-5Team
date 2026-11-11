@@ -61,6 +61,13 @@ def _install_receipt_question(graph, config, prompt, resources):
 def session_action(c):
     if c.action not in ('message','confirm'):
         return _session_action(c)
+    from infrastructure.persistence.generation_lock import generation_session_lock
+    with generation_session_lock(c.storage, c.data['id']) as acquired:
+        if not acquired:raise ValueError('이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.')
+        return _generation_action(c)
+
+
+def _generation_action(c):
     from infrastructure.persistence.generation_history import GenerationHistory
     audit = GenerationHistory.start(c.storage,{**c.data,'action':c.action})
     from copy import copy
@@ -195,6 +202,7 @@ def _session_action(c):
         if after.get('saved_agent_id'):
             s['agent_id']=after['saved_agent_id'];s['base_version']=storage.agent(s['agent_id'])['version']
         s={**s,'last_generation_request_id':data['generation_request_id']}
+        if getattr(storage,'generation_audit',None):storage.generation_audit.result_next_nodes=graph.get_state(config).next
         s=storage.update_session(s,data['revision'],after)
         if getattr(storage,'generation_audit',None):storage.generation_audit.finish(after,graph.get_state(config).next,result_revision=s['revision'])
         return public_state(storage,s,graph)

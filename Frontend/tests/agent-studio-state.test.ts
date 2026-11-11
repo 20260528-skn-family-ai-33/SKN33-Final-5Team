@@ -17,7 +17,7 @@ const snapshot=(id:string)=>({agent:{id},resources:[{id:'resource-'+id}],tests:[
 function harness(search='',stored:Record<string,string>={}){
  const storage=new Map(Object.entries(stored)),requests:{path:string;body:any}[]=[];let cleanup:(()=>void)|undefined;
  let load:(p:string,b:any)=>Promise<any>=async()=>snapshot('A');
- const c:any={URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,recovery:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
+ const c:any={AbortController,setTimeout,clearTimeout,URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,recovery:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
  c.queuedSourceRuns=[];
  c.setScheduleSourceDirty=(value:boolean)=>{c.scheduleSourceDirty=value;};
  for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
@@ -253,4 +253,43 @@ test('a saved workflow is recovered even when its audit still says running',asyn
  });
  await h.c.save();assert.equal(h.c.selected.id,'A');assert.equal(h.c.recovery,null);
  assert.equal(h.requests.filter(r=>r.path.endsWith('/confirm')).length,1);
+});
+
+test('recovery releases the navigation lock after bounded running checks without resending',async()=>{
+ const h=harness(),before={id:'s',revision:5,messages:[],status:'needs_clarification'};h.c.session=before;
+ h.load(async path=>{
+  if(path.endsWith('/message'))throw Error('response lost');
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
+  return before;
+ });
+ await h.c.send();
+ for(let i=1;i<15;i++)await h.c.reloadConversation();
+ assert.equal(h.c.recovery.running,false);assert.equal(h.c.text,'새 업무');assert.equal(h.c.inFlight.current,false);
+ assert.match(h.c.error,/다른 화면으로 이동/);
+ assert.equal(h.requests.filter(r=>r.path.endsWith('/message')).length,1);
+ await h.c.send();assert.equal(h.requests.filter(r=>r.path.endsWith('/message')).length,1);
+});
+
+test('recovery timeout aborts a hung read and releases the busy state',async()=>{
+ const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'needs_clarification'};
+ let expire!:()=>void,cleared=false;
+ h.c.setTimeout=(fn:()=>void)=>{expire=fn;return 1;};h.c.clearTimeout=()=>{cleared=true;};
+ h.c.request=async(path:string,_body:any,_method:any,signal:AbortSignal)=>{
+  if(path.endsWith('/message'))throw Error('response lost');
+  return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('read timeout')),{once:true}));
+ };
+ const pending=h.c.send();await flush();expire();await pending;
+ assert.equal(h.c.busy,'');assert.equal(h.c.inFlight.current,false);assert.equal(h.c.recovery.running,false);
+ assert.equal(h.c.text,'새 업무');assert.equal(cleared,true);
+});
+
+test('a completed reused-input reply recovers even before its running audit finalizes',async()=>{
+ const h=harness(),before={id:'s',revision:5,messages:[{role:'user',content:'새 업무'}],status:'validation_failed'};h.c.session=before;
+ h.load(async path=>{
+  if(path.endsWith('/message'))throw Error('response lost');
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
+  return {...before,revision:6,status:'ready',messages:[...before.messages,{role:'assistant',content:'초안을 확인하세요.'}]};
+ });
+ await h.c.send();assert.equal(h.c.text,'');assert.equal(h.c.recovery,null);assert.equal(h.c.error,'');
+ assert.equal(h.requests.filter(r=>r.path.endsWith('/message')).length,1);
 });

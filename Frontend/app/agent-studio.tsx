@@ -34,7 +34,7 @@ type InputRequirement={node_id?:string;kind:string;timing:string;fields:string[]
 type RunFileRequirement = InputRequirement & {required_before_start:boolean; issues?:string[]; file_ids?:string[]};
 type RunInputs = {request_required?:boolean; input_requirements?:RunFileRequirement[]; source_required?:boolean; required_connections?:string[]; library_source?:ScheduleLibrarySource|null};
 type Session={file_inspection?:InspectedFile[];tool_gap?:{gap_id:string;revision:number}|null;input_requirements?:InputRequirement[];pending_questions?:{id:string;key:string;text:string;options?:string[];action?:ReceiptAction;supersedes_texts?:string[]}[];id:string;revision:number;model:string;credential_id:string;agent_id:string|null;base_version:number;messages:{role:string;content:string}[];draft:Draft|null;status:string;issues:string[];trace:{node:string;label:string;status:string;detail:string}[];resources:Resource[];saved_agent_id?:string};
-type ConversationRecovery={before:Session;action:'message'|'confirm';content?:string;draftText?:string;fromComposer?:boolean;error:string;running:boolean};
+type ConversationRecovery={before:Session;action:'message'|'confirm';content?:string;draftText?:string;fromComposer?:boolean;error:string;running:boolean;pollCount?:number};
 type GenerationRequest={action:string;session_revision:number;request_text:string;status:string;reason?:string|null};
 type Agent={id:string;version:number;config:Draft;model:string;credential_id:string;updated_at:string;workflow_dependencies?:Record<string,Agent>};
 function evidenceLocation(evidence:{page?:number|null;native_location?:Record<string,unknown>}|null):string {
@@ -158,10 +158,12 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   const token=generation.current;
   if(attempt.fromComposer)setText(attempt.draftText??attempt.content??'');
   setRecovery(attempt);
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),15000);
   try{
    // Read history first: a running worker may publish its session just afterwards.
-   const history=await request<{requests:GenerationRequest[]}>('/api/agent-builder/generation_history?id='+encodeURIComponent(attempt.before.id));
-   const latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(attempt.before.id));
+   const history=await request<{requests:GenerationRequest[]}>('/api/agent-builder/generation_history?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
+   const latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
    if(token!==generation.current)return null;
    remember(latest);
    const matching=history.requests.filter(item=>item.session_revision===attempt.before.revision);
@@ -169,7 +171,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    const appended=latest.messages.slice(attempt.before.messages.length);
    const reusedInput=attempt.before.messages.at(-1)?.role==='user'&&attempt.before.messages.at(-1)?.content===attempt.content;
    // A completed session can be published just before its audit is finalized.
-   const publishedReply=!reusedInput&&outcome?.status==='running'&&['ready','needs_clarification'].includes(latest.status)
+   const publishedReply=outcome?.status==='running'&&['ready','needs_clarification'].includes(latest.status)
     &&appended.some(message=>message.role==='assistant');
    const completed=!!outcome&&(['waiting_input','waiting_confirmation','succeeded'].includes(outcome.status)||publishedReply);
    const delivered=attempt.action==='confirm'
@@ -179,8 +181,11 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
       reusedInput&&appended.some(message=>message.role==='assistant'));
    // Session publication can complete before the audit record is finalized.
    if(!delivered&&outcome?.status==='running'){
-    setRecovery({...attempt,running:true});
-    setError('서버에서 이전 요청을 처리하고 있습니다. 완료되면 대화를 갱신합니다.');
+    const pollCount=(attempt.pollCount??0)+1;
+    const running=pollCount<15;
+    setRecovery({...attempt,running,pollCount:running?pollCount:0});
+    setError(running?'서버에서 이전 요청을 처리하고 있습니다. 완료되면 대화를 갱신합니다.':
+     '서버의 처리 완료를 아직 확인하지 못했습니다. 다른 화면으로 이동하거나 대화 다시 불러오기로 확인할 수 있습니다. 중복 전송을 막기 위해 입력은 보존합니다.');
     return null;
    }
    if(attempt.fromComposer)setText(delivered?'':attempt.draftText??attempt.content??'');
@@ -193,7 +198,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
     setError(attempt.error+' 대화 상태를 확인하지 못했습니다. 다시 불러온 뒤 이어서 진행하세요.');
    }
    return null;
-  }
+  }finally{clearTimeout(timer);}
  }
  async function reloadConversation(){
   if(!recovery||inFlight.current)return;

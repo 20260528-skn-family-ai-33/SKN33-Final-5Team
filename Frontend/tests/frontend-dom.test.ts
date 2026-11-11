@@ -1840,14 +1840,14 @@ for(const status of ['waiting_input','waiting_confirmation','failed','running','
  const after={...before,revision:status==='stale'?2:3,status:'ready',messages:[...before.messages,{role:'assistant',content:'중복 처리 조건을 반영했습니다.'}]};
  let committed=false,auditRunning=true;
  const h=await setup('',{'a4b-builder-session':'ready'},path=>{
-  if(path.includes('/session?'))return committed?after:before;
+  if(path.includes('/session?'))return committed?(status==='running'&&auditRunning?{...after,status:'validation_failed',messages:before.messages}:after):before;
   if(path.endsWith('/message')){committed=true;throw Error('응답 연결 유실');}
   if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:2,request_text:status==='unrelated'?'다른 요청':prompt,status:status==='stale'||status==='unrelated'?'waiting_confirmation':status==='running'&&!auditRunning?'waiting_confirmation':status}]};
  });
  try{
   const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
   await input(composer,prompt);await submit(composer.closest('form')!);
-  assert.match(document.body.textContent||'',/중복 처리 조건을 반영했습니다/);
+  if(status!=='running')assert.match(document.body.textContent||'',/중복 처리 조건을 반영했습니다/);
   const delivered=['waiting_input','waiting_confirmation'].includes(status);
   assert.equal(composer.value,delivered?'':prompt);
   assert.equal(document.querySelector('[role="alert"]')===null,delivered);

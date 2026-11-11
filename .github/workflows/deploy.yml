@@ -178,7 +178,8 @@ jobs:
                       tests/design/test_explicit_keep_policy.py tests/design/test_explicit_output_columns.py \
                       tests/design/test_deferred_reader_schema.py tests/design/test_final_table_criteria.py \
                       tests/design/test_human_review_records.py tests/design/test_bounded_output_columns.py \
-                      tests/design/test_pending_preview_contract.py; do
+                      tests/design/test_pending_preview_contract.py \
+                      tests/infrastructure/test_ollama_native.py tests/deployment/test_runpod_warmup.py; do
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"

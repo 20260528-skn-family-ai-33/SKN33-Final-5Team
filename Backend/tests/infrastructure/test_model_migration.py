@@ -96,22 +96,22 @@ def test_existing_session_uses_9b_without_rewriting_its_model(tmp_path, monkeypa
 
 @pytest.fixture
 def chat_wire(monkeypatch, migration):
-    """Use the real OpenAI-compatible client and parser, with an in-memory HTTP server."""
+    """Use the real SDK/parser through native Ollama with an in-memory HTTP server."""
     from infrastructure.llm import ollama_chat_model
     original = ollama_chat_model.OllamaChatOpenAI
     calls = []
     def respond(request):
+        assert request.url.path == '/api/chat'
         payload = json.loads(request.content); calls.append(payload['model'])
+        assert payload['shift'] is False
         if payload['model'] != NEW:
             return httpx.Response(404, json={'error': {'message': 'model not found', 'type': 'not_found'}})
         content = json.dumps({'facts': [{'field': '제목', 'value': '테스트', 'source_id': 'sample:1:0', 'quote': '제목: 테스트'}]})
         # Both streaming and structured-output requests must use the resolved wire model.
-        body = {'id': 'test', 'object': 'chat.completion', 'created': 1, 'model': NEW,
-                'choices': [{'index': 0, 'message': {'role': 'assistant', 'content': content}, 'finish_reason': 'stop'}]}
+        body = {'model': NEW, 'message': {'role': 'assistant', 'content': content},
+                'done': True, 'done_reason': 'stop'}
         if payload.get('stream'):
-            body['object'] = 'chat.completion.chunk'
-            choice = body['choices'][0]; choice['delta'] = choice.pop('message')
-            return httpx.Response(200, text='data: ' + json.dumps(body) + '\n\ndata: [DONE]\n\n', headers={'Content-Type': 'text/event-stream'})
+            return httpx.Response(200, text=json.dumps(body) + '\n', headers={'Content-Type': 'application/x-ndjson'})
         return httpx.Response(200, json=body)
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         monkeypatch.setattr(ollama_chat_model, 'OllamaChatOpenAI', lambda **options: original(**options, http_client=client))

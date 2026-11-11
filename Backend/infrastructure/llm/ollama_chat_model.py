@@ -2,6 +2,7 @@
 from langchain_openai import ChatOpenAI
 from copy import deepcopy
 from infrastructure.llm.qwen_chat_model import omit_empty_tools
+from pydantic import model_validator
 
 
 def compatible_schema_payload(payload):
@@ -52,10 +53,21 @@ def compatible_schema_payload(payload):
 
 
 class OllamaChatOpenAI(ChatOpenAI):
+    @model_validator(mode='before')
+    @classmethod
+    def native_clients(cls, values):
+        from infrastructure.llm.ollama_native import NativeClient, AsyncNativeClient
+        values = dict(values)
+        for key, client_type in [('http_client', NativeClient), ('http_async_client', AsyncNativeClient)]:
+            if not isinstance(values.get(key), client_type):
+                values[key] = client_type(values.get(key))
+        return values
+
     def _get_request_payload(self, input_, *, stop=None, **kwargs):
         payload=compatible_schema_payload(omit_empty_tools(super()._get_request_payload(input_, stop=stop, **kwargs)))
         from agent_builder.design.graph import _timing_event
         _timing_event({'event':'model_request','model':payload.get('model'),
+            'transport':'ollama-native','shift':False,'truncate':False,
             'max_tokens':payload.get('max_tokens'),'max_completion_tokens':payload.get('max_completion_tokens'),
             'stream':payload.get('stream'),'structured':bool(payload.get('response_format')),
             'tool_count':len(payload.get('tools') or []),'thinking':(payload.get('extra_body') or {}).get('think',payload.get('think'))})

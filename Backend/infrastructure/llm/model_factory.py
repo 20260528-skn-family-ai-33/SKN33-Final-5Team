@@ -39,7 +39,8 @@ def create_chat_model(api_key, model, **limits):
                 'structured_outputs': {'whitespace_pattern': '[ ]?'},
             })
             return QwenChatOpenAI(**options)
-        # /v1 uses reasoning_effort; think is retained for compatible Ollama versions.
+        # The Ollama adapter translates ChatOpenAI to native /api/chat so all
+        # local call paths can explicitly disable context shifting.
         from infrastructure.llm.model_aliases import resolve_ollama_model
         options['model'] = resolve_ollama_model(model)
         from infrastructure.llm.ollama_settings import temperature_setting, output_limit, bounded_output_limit

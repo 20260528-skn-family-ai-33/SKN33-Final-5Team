@@ -1,5 +1,8 @@
 # 새 RunPod에서 Qwen과 GPU 파서 실행
 
+아래는 기본 4B 설치 절차입니다. 이미 두 9B가 등록된 운영 Pod의 시작 워밍업과
+DeepAgent 호출 설정은 [9B 문맥 설정 가이드](../../docs/ollama-context-shift.md)를 참고합니다.
+
 1. RTX 4090 한 장과 CUDA 12.6을 지원하는 Ubuntu 24.04 기반 RunPod PyTorch 이미지를 선택합니다. 30GB 이상 영구 볼륨을 `/workspace`에 연결하고 HTTP 포트 `11434`(Qwen 게이트웨이), `8100`(파서)을 설정합니다. Ollama 내부 포트 `11435`는 루프백에서 사용합니다.
 2. 이 변경이 포함된 커밋을 `/workspace/SKN33-Final-5Team`에 체크아웃합니다. 최초 부팅 중 SSH가 필요하면 먼저 이미지의 기본 시작 명령으로 Pod를 시작하고 체크아웃합니다.
 3. RunPod의 Pod 환경 변수에 다음 두 Secret을 연결합니다. EC2 앱이 사용하는 게이트웨이 토큰 및 파서 키와 값이 같아야 합니다. 파서 키는 24자 이상이어야 합니다.

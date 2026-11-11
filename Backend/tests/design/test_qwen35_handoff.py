@@ -49,16 +49,17 @@ def test_outcome_alternatives_survive_real_deepagent_model_binding():
     calls=[];answer=draft(questions=['어떤 조건인가요?']);answer['requirements']=[]
     def response(request):
         calls.append(json.loads(request.content))
-        return httpx.Response(200,json={'id':'chat-test','object':'chat.completion','created':0,
-            'model':'final664','choices':[{'index':0,'message':{'role':'assistant',
-                'content':json.dumps(answer)},'finish_reason':'stop'}]})
+        assert request.url.path == '/api/chat'
+        return httpx.Response(200,json={'model':'final664','message':{'role':'assistant',
+            'content':json.dumps(answer)},'done':True,'done_reason':'stop'})
     with httpx.Client(transport=httpx.MockTransport(response)) as client:
         model=OllamaChatOpenAI(model='final664',base_url='http://example.test/v1',api_key='test',http_client=client)
         agent=create_deep_agent(model=model,tools=[],response_format=ProviderStrategy(
             outcome_schema(AgentDraft.model_json_schema()),strict=True))
         result=agent.invoke({'messages':[{'role':'user','content':'확인 질문을 작성해줘'}]})
     assert result['structured_response']==answer and len(calls)==1
-    wire=calls[0]['response_format']['json_schema']['schema']
+    assert calls[0]['shift'] is False
+    wire=calls[0]['format']
     assert len(wire['anyOf'])==3
     Draft202012Validator(wire).validate(answer)
     assert not Draft202012Validator(wire).is_valid(draft())

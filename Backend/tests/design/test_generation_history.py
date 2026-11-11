@@ -233,3 +233,42 @@ def test_wrapped_provider_timeout_retains_its_category():
             raise ValueError('local model failed') from error
     except ValueError as error:
         assert error_info(error, 'request_analysis')['reason_code'] == 'model_timeout'
+
+
+def test_request_identity_survives_redaction_and_is_persisted_with_result(tmp_path):
+    s = session(tmp_path)
+    request_id = uid()
+    prompt = PROMPT + ' Bearer example-test-secret'
+    result = call(tmp_path, 'message', id=s['id'], revision=0, content=prompt,
+                  generation_request_id=request_id, conversation=fake_conversation)
+    [record] = records(tmp_path, s['id'])
+    assert record['request_id'] == request_id
+    assert record['request_text'] != prompt
+    assert record['result_revision'] == result['revision']
+    restored = call(tmp_path, 'session', id=s['id'])
+    assert restored['last_generation_request_id'] == request_id
+    assert restored['revision'] == record['result_revision']
+
+
+def test_request_id_cannot_be_reused_for_a_different_session(tmp_path):
+    first, second = session(tmp_path), session(tmp_path)
+    request_id = uid()
+    call(tmp_path, 'message', id=first['id'], revision=0, content=PROMPT,
+         generation_request_id=request_id, conversation=fake_conversation)
+    with pytest.raises(ValueError):
+        call(tmp_path, 'message', id=second['id'], revision=0, content=PROMPT,
+             generation_request_id=request_id, conversation=fake_conversation)
+    assert call(tmp_path, 'session', id=second['id'])['revision'] == 0
+
+
+def test_two_request_results_keep_their_own_revision_without_mutating_input(tmp_path):
+    s = session(tmp_path)
+    first_id, second_id = uid(), uid()
+    first = call(tmp_path, 'message', id=s['id'], revision=0, content=PROMPT,
+                 generation_request_id=first_id, conversation=fake_conversation)
+    second = call(tmp_path, 'message', id=s['id'], revision=first['revision'], content='중복은 유지',
+                  generation_request_id=second_id, conversation=fake_conversation)
+    indexed = {item['request_id']: item for item in records(tmp_path, s['id'])}
+    assert indexed[first_id]['result_revision'] == first['revision']
+    assert indexed[second_id]['result_revision'] == second['revision']
+    assert call(tmp_path, 'session', id=s['id'])['last_generation_request_id'] == second_id

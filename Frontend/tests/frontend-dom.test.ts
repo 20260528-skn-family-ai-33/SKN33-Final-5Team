@@ -14,12 +14,13 @@ const nodeCompiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/node-libra
 const sourceCompiled=buildSync({stdin:{contents:"export {ScheduleLibrarySourceSettings} from './app/schedule-library-source'; export {AuthProvider} from './app/auth';",resolveDir:FRONTEND_ROOT,sourcefile:'schedule-source-test.tsx'},absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
 function load(code:string){const module={exports:{} as any};new Function('require','module','exports',code)(require,module,module.exports);return module.exports;}
 let dom:JSDOM;
-const globals=['window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
+const globals=['crypto','window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
 const old=new Map(globals.map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
 // ReactDOM feature detection must see the DOM on first import.
 function installDOM(search=''){
  dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'http://localhost/'+search,pretendToBeVisual:true});
  for(const key of globals){if(key==='IS_REACT_ACT_ENVIRONMENT')Object.defineProperty(globalThis,key,{value:true,writable:true,configurable:true});else if(key in dom.window)Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],writable:true,configurable:true});}
+ Object.defineProperty(dom.window.crypto,'randomUUID',{value:()=>'00000000-0000-4000-8000-000000000081',configurable:true});
  dom.window.localStorage.setItem('a4b-product-tour-v1','done');
  Object.defineProperty(globalThis,'ResizeObserver',{value:class{observe(){}disconnect(){}},configurable:true});
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.scrollTo=()=>{};
@@ -742,7 +743,7 @@ test('DOM: receipt clarification uploads a file and submits only chosen fields t
   await click(field('날짜'));await click(field('결제 금액'));await input(field('다른 항목 추가'),'승인번호');
   await click(button('선택한 항목으로 계속'));
   const answers=h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body);
-  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id,userTimezone:'Asia/Seoul'}]);
+  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id,userTimezone:'Asia/Seoul',generationRequestId:'00000000-0000-4000-8000-000000000081'}]);
  }finally{await h.close();}
 });
 for(const [name,withSummary,itemColumns] of [
@@ -773,7 +774,7 @@ for(const [name,withSummary,itemColumns] of [
   await click(next);
   const lines=[...(withSummary?['영수증에서 추출할 항목: 날짜, 부가세']:[]),...(itemColumns.length?['영수증 품목 시트: '+itemColumns.join(', ')]:[])];
   assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body),
-   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n'),userTimezone:'Asia/Seoul'}]);
+   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n'),userTimezone:'Asia/Seoul',generationRequestId:'00000000-0000-4000-8000-000000000081'}]);
  }finally{await h.close();}
 });
 test('DOM: reopened receipt session replaces only superseded question lines on the active turn',async()=>{
@@ -1764,12 +1765,12 @@ test('home: linked detail pages keep the selected workflow and return to home',a
 test('DOM: a lost message response restores the server question without resending',async()=>{
  const before={...readySession(),status:'needs_clarification'};
  const prompt='주기를 매주로 바꿔줘';
- const after={...before,revision:2,messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'매주 무슨 요일에 실행할까요?'}]};
+ const after={...before,revision:2,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'매주 무슨 요일에 실행할까요?'}]};
  let committed=false;
  const h=await setup('',{'a4b-builder-session':'ready'},path=>{
   if(path.includes('/session?'))return committed?after:before;
   if(path.endsWith('/message')){committed=true;throw Error('응답 연결이 끊겼습니다.');}
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status:'waiting_input'}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:2,action:'message',session_revision:1,request_text:prompt,status:'waiting_input'}]};
  });
  try{
   const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
@@ -1784,11 +1785,11 @@ test('DOM: a lost message response restores the server question without resendin
 test('DOM: recovery polls a running request and enables the next answer after completion',async()=>{
  const before={...readySession(),status:'needs_clarification'},prompt='한국 시간으로 해줘';
  let committed=false,running=true;
- const after={...before,revision:2,messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'실행할 요일을 알려주세요.'}]};
+ const after={...before,revision:2,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'실행할 요일을 알려주세요.'}]};
  const h=await setup('',{'a4b-builder-session':'ready'},path=>{
   if(path.includes('/session?'))return committed&&!running?after:before;
   if(path.endsWith('/message')){committed=true;throw Error('연결 유실');}
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status:running?'running':'waiting_input'}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:2,action:'message',session_revision:1,request_text:prompt,status:running?'running':'waiting_input'}]};
  });
  try{
   const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
@@ -1837,12 +1838,12 @@ test('review: home prompt is consumed once and does not reappear after remount',
 for(const status of ['waiting_input','waiting_confirmation','failed','running','unrelated','stale'])test('review: reused input recovery checks audit and revision: '+status,async()=>{
  const prompt='마지막 행만 남겨줘';
  const before={...readySession(),revision:2,status:'validation_failed',messages:[{role:'user',content:prompt}]};
- const after={...before,revision:status==='stale'?2:3,status:'ready',messages:[...before.messages,{role:'assistant',content:'중복 처리 조건을 반영했습니다.'}]};
+ const after={...before,revision:status==='stale'?2:3,last_generation_request_id:status==='unrelated'?'other-request':'00000000-0000-4000-8000-000000000081',status:'ready',messages:[...before.messages,{role:'assistant',content:'중복 처리 조건을 반영했습니다.'}]};
  let committed=false,auditRunning=true;
  const h=await setup('',{'a4b-builder-session':'ready'},path=>{
   if(path.includes('/session?'))return committed?(status==='running'&&auditRunning?{...after,status:'validation_failed',messages:before.messages}:after):before;
   if(path.endsWith('/message')){committed=true;throw Error('응답 연결 유실');}
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:2,request_text:status==='unrelated'?'다른 요청':prompt,status:status==='stale'||status==='unrelated'?'waiting_confirmation':status==='running'&&!auditRunning?'waiting_confirmation':status}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:status==='unrelated'?'00000000-0000-4000-8000-000000000082':'00000000-0000-4000-8000-000000000081',result_revision:3,action:'message',session_revision:2,request_text:status==='unrelated'?'다른 요청':prompt,status:status==='stale'||status==='unrelated'?'waiting_confirmation':status==='running'&&!auditRunning?'waiting_confirmation':status}]};
  });
  try{
   const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
@@ -1869,7 +1870,7 @@ for(const status of ['failed','blocked'])test('fresh review: preserve input when
  const h=await setup('',{'a4b-builder-session':'ready'},path=>{
   if(path.includes('/session?'))return sent?after:before;
   if(path.endsWith('/message')){sent=true;throw Error('응답 연결 유실');}
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status,reason:'모델 검사를 완료하지 못했습니다.'}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:2,action:'message',session_revision:1,request_text:prompt,status,reason:'모델 검사를 완료하지 못했습니다.'}]};
  });
  try{
   const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
@@ -1882,12 +1883,12 @@ for(const status of ['failed','blocked'])test('fresh review: preserve input when
 
 test('recovery: a published new message waits for running audit before clearing input',async()=>{
  const prompt='매출을 내림차순으로 정렬해줘',before=readySession();
- const after={...before,revision:2,messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'정렬 조건을 반영했습니다.'}]};
+ const after={...before,revision:2,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'정렬 조건을 반영했습니다.'}]};
  let sent=false,running=true;
  const h=await setup('',{'a4b-builder-session':'ready'},path=>{
   if(path.includes('/session?'))return sent?(running?{...after,status:'validation_failed',messages:[...before.messages,{role:'user',content:prompt}]}:after):before;
   if(path.endsWith('/message')){sent=true;throw Error('응답 연결 유실');}
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status:running?'running':'waiting_confirmation'}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:2,action:'message',session_revision:1,request_text:prompt,status:running?'running':'waiting_confirmation'}]};
  });
  try{
   const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
@@ -1896,6 +1897,35 @@ test('recovery: a published new message waits for running audit before clearing 
   running=false;await click(button('대화 다시 불러오기'));
   assert.equal(composer.value,'');assert.equal(composer.disabled,false);
   assert.equal(document.querySelector('[role="alert"]'),null);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
+ }finally{await h.close();}
+});
+
+for(const scenario of ['redacted','other-tab','completed-before-other-tab'])test('correlation: lost response '+scenario,async()=>{
+ const own='00000000-0000-4000-8000-000000000081',other='00000000-0000-4000-8000-000000000082';
+ const prompt='Bearer example-test-secret가 있는 행을 골라줘';
+ const before={...readySession(),status:'validation_failed',messages:[{role:'user',content:prompt}]};
+ const after={...before,revision:scenario==='completed-before-other-tab'?3:2,status:'ready',last_generation_request_id:scenario==='redacted'?own:other,
+  messages:[...before.messages,{role:'assistant',content:scenario==='redacted'?'요청한 조건을 반영했습니다.':'다른 탭의 정렬 조건을 반영했습니다.'}]};
+ let sent=false;
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return sent?after:before;
+  if(path.endsWith('/message')){sent=true;throw Error('응답 연결 유실');}
+  if(path.includes('/generation_history'))return {requests:[
+   ...(scenario==='redacted'?[]:[{request_id:other,action:'message',session_revision:1,request_text:prompt,status:'waiting_confirmation',result_revision:2}]),
+   {request_id:own,action:'message',session_revision:1,request_text:'Bearer [보호된 값]',status:scenario==='other-tab'?'running':'waiting_confirmation',...(scenario!=='other-tab'?{result_revision:2}:{})}]};
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.closest('form')!);
+  if(scenario==='other-tab'){
+   assert.equal(composer.value,prompt);assert.equal(composer.disabled,true);
+   assert.ok(document.querySelector('[role="alert"]'));
+  }else{
+   assert.equal(composer.value,'');assert.equal(composer.disabled,false);
+   assert.equal(document.querySelector('[role="alert"]'),null);
+  }
+  assert.equal(h.calls.find(call=>call.path.endsWith('/message'))?.body.generationRequestId,own);
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
  }finally{await h.close();}
 });

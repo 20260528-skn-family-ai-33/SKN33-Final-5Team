@@ -17,7 +17,7 @@ const snapshot=(id:string)=>({agent:{id},resources:[{id:'resource-'+id}],tests:[
 function harness(search='',stored:Record<string,string>={}){
  const storage=new Map(Object.entries(stored)),requests:{path:string;body:any}[]=[];let cleanup:(()=>void)|undefined;
  let load:(p:string,b:any)=>Promise<any>=async()=>snapshot('A');
- const c:any={AbortController,setTimeout,clearTimeout,URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,recovery:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
+ const c:any={crypto:{randomUUID:()=>'00000000-0000-4000-8000-000000000081'},AbortController,setTimeout,clearTimeout,URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,recovery:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
  c.queuedSourceRuns=[];
  c.setScheduleSourceDirty=(value:boolean)=>{c.scheduleSourceDirty=value;};
  for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
@@ -35,7 +35,7 @@ test('clarification reply sends the browser timezone and authoritative session r
  h.c.session={id:'conversation',revision:4,status:'needs_clarification'};
  h.load(async()=>({id:'conversation',revision:5,status:'ready',messages:[]}));
  await h.c.send(undefined,'JSON으로 해줘','a'.repeat(24));
- assert.deepEqual({...h.requests[0].body},{id:'conversation',revision:4,content:'JSON으로 해줘',userTimezone:'America/New_York',questionId:'a'.repeat(24)});
+ assert.deepEqual({...h.requests[0].body},{id:'conversation',revision:4,content:'JSON으로 해줘',userTimezone:'America/New_York',questionId:'a'.repeat(24),generationRequestId:'00000000-0000-4000-8000-000000000081'});
  assert.equal(h.c.session.revision,5);
 });
 test('failed explicit link reports error and preserves conversation without fallback',async()=>{
@@ -165,8 +165,8 @@ test('lost message acknowledgement restores the committed session without replay
  const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'needs_clarification'};
  h.load(async path=>{
   if(path.endsWith('/message'))throw Error('response lost');
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'waiting_confirmation'}]};
-  return {id:'s',revision:6,messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'설정 확인'}],status:'ready'};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'message',session_revision:5,request_text:'새 업무',status:'waiting_confirmation'}]};
+  return {id:'s',revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'설정 확인'}],status:'ready'};
  });
  await h.c.send();assert.equal(h.c.session.revision,6);assert.equal(h.c.recovery,null);assert.equal(h.c.error,'');
  assert.equal(h.requests.filter(r=>r.path.endsWith('/message')).length,1);
@@ -175,7 +175,7 @@ test('a server-side generation failure is shown after refreshing the checkpoint'
  const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'needs_clarification'};
  h.load(async path=>{
   if(path.endsWith('/message'))throw Error('generic request failure');
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'failed',reason:'모델 응답 길이 제한'}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'message',session_revision:5,request_text:'새 업무',status:'failed',reason:'모델 응답 길이 제한'}]};
   return {id:'s',revision:5,messages:[],status:'validation_failed'};
  });
  await h.c.send();assert.equal(h.c.session.status,'validation_failed');assert.equal(h.c.error,'모델 응답 길이 제한');assert.equal(h.c.recovery,null);
@@ -185,8 +185,8 @@ test('recovery waits for a running server request and prevents duplicate submiss
  let running=true;
  h.load(async path=>{
   if(path.endsWith('/message'))throw Error('response lost');
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:running?'running':'waiting_input'}]};
-  return running?before:{id:'s',revision:6,messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'기준은 무엇인가요?'}],status:'needs_clarification'};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'message',session_revision:5,request_text:'새 업무',status:running?'running':'waiting_input'}]};
+  return running?before:{id:'s',revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'기준은 무엇인가요?'}],status:'needs_clarification'};
  });
  await h.c.send();assert.equal(h.c.recovery.running,true);await h.c.send();
  assert.equal(h.requests.filter(r=>r.path.endsWith('/message')).length,1);
@@ -205,7 +205,7 @@ test('an unrelated message committed in another tab does not discard this input'
  h.load(async path=>{
   if(path.endsWith('/message'))throw Error('revision changed');
   if(path.includes('/generation_history'))return {requests:[]};
-  return {id:'s',revision:6,messages:[{role:'user',content:'다른 탭의 업무'}],status:'needs_clarification'};
+  return {id:'s',revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000082',messages:[{role:'user',content:'다른 탭의 업무'}],status:'needs_clarification'};
  });
  await h.c.send();assert.equal(h.c.session.revision,6);assert.equal(h.c.text,'새 업무');assert.equal(h.c.error,'revision changed');
 });
@@ -213,8 +213,8 @@ test('lost save acknowledgement opens the saved workflow without confirming twic
  const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'ready'};
  h.load(async path=>{
   if(path.endsWith('/confirm'))throw Error('response lost');
-  if(path.includes('/generation_history'))return {requests:[{action:'confirm',session_revision:5,status:'succeeded'}]};
-  if(path.includes('/session?'))return {id:'s',revision:6,messages:[],status:'saved',saved_agent_id:'A'};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',workflow_id:'A',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'confirm',session_revision:5,status:'succeeded'}]};
+  if(path.includes('/session?'))return {id:'s',revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[],status:'saved',saved_agent_id:'A'};
   return snapshot('A');
  });
  await h.c.save();assert.equal(h.c.selected.id,'A');assert.equal(h.c.recovery,null);
@@ -225,8 +225,8 @@ test('a committed session wins over a stale running generation record',async()=>
  const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'needs_clarification'};
  h.load(async path=>{
   if(path.endsWith('/message'))throw Error('response lost');
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
-  return {id:'s',revision:6,messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'완료한 초안을 확인하세요.'}],status:'ready'};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
+  return {id:'s',revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'완료한 초안을 확인하세요.'}],status:'ready'};
  });
  await h.c.send();assert.equal(h.c.session.revision,6);assert.equal(h.c.recovery,null);assert.equal(h.c.error,'');
 });
@@ -236,8 +236,8 @@ test('the next answer uses the revision recovered from a lost response',async()=
  let sent=0;
  h.load(async path=>{
   if(path.endsWith('/message')){if(++sent===1)throw Error('response lost');return {id:'s',revision:7,messages:[],status:'ready'};}
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'waiting_input'}]};
-  return {id:'s',revision:6,messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'실행 주기를 알려주세요.'}],status:'needs_clarification'};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'message',session_revision:5,request_text:'새 업무',status:'waiting_input'}]};
+  return {id:'s',revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'실행 주기를 알려주세요.'}],status:'needs_clarification'};
  });
  await h.c.send();h.c.text='매주';await h.c.send();
  const writes=h.requests.filter(r=>r.path.endsWith('/message'));
@@ -247,8 +247,8 @@ test('a saved workflow is recovered even when its audit still says running',asyn
  const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'ready'};
  h.load(async path=>{
   if(path.endsWith('/confirm'))throw Error('response lost');
-  if(path.includes('/generation_history'))return {requests:[{action:'confirm',session_revision:5,status:'running'}]};
-  if(path.includes('/session?'))return {id:'s',revision:6,messages:[],status:'saved',saved_agent_id:'A'};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',workflow_id:'A',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'confirm',session_revision:5,status:'running'}]};
+  if(path.includes('/session?'))return {id:'s',revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',messages:[],status:'saved',saved_agent_id:'A'};
   return snapshot('A');
  });
  await h.c.save();assert.equal(h.c.selected.id,'A');assert.equal(h.c.recovery,null);
@@ -259,7 +259,7 @@ test('recovery releases the navigation lock after bounded running checks without
  const h=harness(),before={id:'s',revision:5,messages:[],status:'needs_clarification'};h.c.session=before;
  h.load(async path=>{
   if(path.endsWith('/message'))throw Error('response lost');
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
   return before;
  });
  await h.c.send();
@@ -287,9 +287,29 @@ test('a completed reused-input reply recovers even before its running audit fina
  const h=harness(),before={id:'s',revision:5,messages:[{role:'user',content:'새 업무'}],status:'validation_failed'};h.c.session=before;
  h.load(async path=>{
   if(path.endsWith('/message'))throw Error('response lost');
-  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
-  return {...before,revision:6,status:'ready',messages:[...before.messages,{role:'assistant',content:'초안을 확인하세요.'}]};
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',result_revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
+  return {...before,revision:6,last_generation_request_id:'00000000-0000-4000-8000-000000000081',status:'ready',messages:[...before.messages,{role:'assistant',content:'초안을 확인하세요.'}]};
  });
  await h.c.send();assert.equal(h.c.text,'');assert.equal(h.c.recovery,null);assert.equal(h.c.error,'');
  assert.equal(h.requests.filter(r=>r.path.endsWith('/message')).length,1);
+});
+
+test('correlation: a saved result from another tab cannot complete this confirmation',async()=>{
+ const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'ready'};
+ h.load(async path=>{
+  if(path.endsWith('/confirm'))throw Error('response lost');
+  if(path.includes('/generation_history'))return {requests:[{request_id:'00000000-0000-4000-8000-000000000081',action:'confirm',session_revision:5,status:'running'}]};
+  return {id:'s',revision:6,last_generation_request_id:'other-request',messages:[],status:'saved',saved_agent_id:'OTHER'};
+ });
+ await h.c.save();assert.equal(h.requests.some(call=>call.path.includes('/agent?')),false);
+ assert.equal(h.c.selected,null);assert.equal(h.c.recovery.running,true);
+});
+
+test('correlation: each explicit submission gets a distinct id before transmission',async()=>{
+ const h=harness(),ids=['00000000-0000-4000-8000-000000000091','00000000-0000-4000-8000-000000000092'];
+ h.c.crypto.randomUUID=()=>ids.shift();h.c.session={id:'s',revision:5,messages:[],status:'ready'};
+ h.load(async()=>({id:'s',revision:6,messages:[],status:'ready'}));
+ await h.c.send();h.c.text='다른 요청';await h.c.send();
+ const writes=h.requests.filter(call=>call.path.endsWith('/message'));
+ assert.deepEqual(writes.map(call=>call.body.generationRequestId),['00000000-0000-4000-8000-000000000091','00000000-0000-4000-8000-000000000092']);
 });

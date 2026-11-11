@@ -399,7 +399,8 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
    if(['message','confirm'].includes(workerAction)){
-    payload.generation_request_id=randomUUID();
+    if(data.generationRequestId!==undefined&&(typeof data.generationRequestId!=='string'||!idPattern.test(data.generationRequestId)))throw new Error('생성 요청 ID를 확인하세요.');
+    payload.generation_request_id=data.generationRequestId||randomUUID();
     await builderWorker({...payload,action:'begin_generation',request_action:workerAction});
     generationRequestId=payload.generation_request_id;
    }

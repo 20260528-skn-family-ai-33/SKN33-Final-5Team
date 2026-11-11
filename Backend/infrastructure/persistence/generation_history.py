@@ -220,8 +220,9 @@ class GenerationHistory:
             return result('waiting_confirmation', 'confirmation_required', '설계 검증을 마쳤고 사용자의 저장 확인을 기다립니다.', stage='validation')
         return result('failed', 'generation_incomplete', '생성 요청이 완료 상태에 도달하지 못했습니다.')
 
-    def finish(self, state, next_nodes=()):
-        return self.change(**self.outcome(state, next_nodes))
+    def finish(self, state, next_nodes=(), result_revision=None):
+        fields = {'result_revision': result_revision} if result_revision is not None else {}
+        return self.change(**self.outcome(state, next_nodes), **fields)
 
     def fail(self, error):
         self.db.rollback()  # A rejected save must not roll back its own diagnostic record.

@@ -33,9 +33,9 @@ type Resource={original_path?:string;capabilities?:string[];parser_metadata?:{do
 type InputRequirement={node_id?:string;kind:string;timing:string;fields:string[];ready:boolean;description?:string};
 type RunFileRequirement = InputRequirement & {required_before_start:boolean; issues?:string[]; file_ids?:string[]};
 type RunInputs = {request_required?:boolean; input_requirements?:RunFileRequirement[]; source_required?:boolean; required_connections?:string[]; library_source?:ScheduleLibrarySource|null};
-type Session={file_inspection?:InspectedFile[];tool_gap?:{gap_id:string;revision:number}|null;input_requirements?:InputRequirement[];pending_questions?:{id:string;key:string;text:string;options?:string[];action?:ReceiptAction;supersedes_texts?:string[]}[];id:string;revision:number;model:string;credential_id:string;agent_id:string|null;base_version:number;messages:{role:string;content:string}[];draft:Draft|null;status:string;issues:string[];trace:{node:string;label:string;status:string;detail:string}[];resources:Resource[];saved_agent_id?:string};
-type ConversationRecovery={before:Session;action:'message'|'confirm';content?:string;draftText?:string;fromComposer?:boolean;error:string;running:boolean;pollCount?:number};
-type GenerationRequest={action:string;session_revision:number;request_text:string;status:string;reason?:string|null};
+type Session={last_generation_request_id?:string;file_inspection?:InspectedFile[];tool_gap?:{gap_id:string;revision:number}|null;input_requirements?:InputRequirement[];pending_questions?:{id:string;key:string;text:string;options?:string[];action?:ReceiptAction;supersedes_texts?:string[]}[];id:string;revision:number;model:string;credential_id:string;agent_id:string|null;base_version:number;messages:{role:string;content:string}[];draft:Draft|null;status:string;issues:string[];trace:{node:string;label:string;status:string;detail:string}[];resources:Resource[];saved_agent_id?:string};
+type ConversationRecovery={before:Session;requestId:string;action:'message'|'confirm';content?:string;draftText?:string;fromComposer?:boolean;error:string;running:boolean;pollCount?:number};
+type GenerationRequest={request_id:string;result_revision?:number;workflow_id?:string;action:string;session_revision:number;request_text:string;status:string;reason?:string|null};
 type Agent={id:string;version:number;config:Draft;model:string;credential_id:string;updated_at:string;workflow_dependencies?:Record<string,Agent>};
 function evidenceLocation(evidence:{page?:number|null;native_location?:Record<string,unknown>}|null):string {
  const loc=evidence?.native_location;
@@ -166,19 +166,18 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    const latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
    if(token!==generation.current)return null;
    remember(latest);
-   const matching=history.requests.filter(item=>item.session_revision===attempt.before.revision);
-   const outcome=matching.find(item=>item.action===attempt.action&&(attempt.action==='confirm'||item.request_text===attempt.content));
-   const appended=latest.messages.slice(attempt.before.messages.length);
-   const reusedInput=attempt.before.messages.at(-1)?.role==='user'&&attempt.before.messages.at(-1)?.content===attempt.content;
-   // A completed session can be published just before its audit is finalized.
-   const publishedReply=outcome?.status==='running'&&['ready','needs_clarification'].includes(latest.status)
-    &&appended.some(message=>message.role==='assistant');
-   const completed=!!outcome&&(['waiting_input','waiting_confirmation','succeeded'].includes(outcome.status)||publishedReply);
+   const outcome=history.requests.find(item=>item.request_id===attempt.requestId&&item.action===attempt.action
+    &&item.session_revision===attempt.before.revision);
+   const applied=latest.last_generation_request_id===attempt.requestId&&latest.revision>attempt.before.revision;
+   const successful=!!outcome&&['waiting_input','waiting_confirmation','succeeded'].includes(outcome.status);
+   const resultRevision=outcome?.result_revision;
+   const recorded=successful&&typeof resultRevision==='number'&&Number.isInteger(resultRevision)
+    &&resultRevision>attempt.before.revision&&latest.revision>=resultRevision;
+   const published=applied&&['ready','needs_clarification','saved'].includes(latest.status)
+    &&(!outcome||outcome.status==='running'||successful);
    const delivered=attempt.action==='confirm'
-    ? latest.status==='saved'&&!!latest.saved_agent_id
-    : completed&&latest.revision>attempt.before.revision&&(
-      appended.some(message=>message.role==='user'&&message.content===attempt.content)||
-      reusedInput&&appended.some(message=>message.role==='assistant'));
+    ? latest.status==='saved'&&!!latest.saved_agent_id&&(published||successful&&outcome?.workflow_id===latest.saved_agent_id)
+    : recorded||published;
    // Session publication can complete before the audit record is finalized.
    if(!delivered&&outcome?.status==='running'){
     const pollCount=(attempt.pollCount??0)+1;
@@ -191,7 +190,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    if(attempt.fromComposer)setText(delivered?'':attempt.draftText??attempt.content??'');
    setRecovery(null);
    setError(outcome&&['failed','blocked'].includes(outcome.status)?outcome.reason||attempt.error:delivered?'':attempt.error);
-   return latest;
+   return attempt.action==='confirm'&&!delivered?null:latest;
   }catch{
    if(token===generation.current){
     setRecovery({...attempt,running:false});
@@ -227,6 +226,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   const draftText=text;
   const content=(choice??draftText).trim();
   if(inFlight.current||recovery||!content)return;
+  const requestId=crypto.randomUUID();
   inFlight.current=true;
   const fromComposer=choice===undefined;
   if(fromComposer)setText('');
@@ -239,10 +239,10 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    sentSession=s;
    remember(s);
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
-   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,...(questionId?{questionId}:{})});
+   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(questionId?{questionId}:{})});
    remember(result);
   }catch(e){
-   if(sentSession)await recoverConversation({before:sentSession,action:'message',content,draftText,fromComposer,error:(e as Error).message,running:false});
+   if(sentSession)await recoverConversation({before:sentSession,requestId,action:'message',content,draftText,fromComposer,error:(e as Error).message,running:false});
    else{if(fromComposer)setText(draftText);setError((e as Error).message);}
   }finally{
    inFlight.current=false;
@@ -270,12 +270,13 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  }
  async function save(){
   if(!session||session.status==='saved'||inFlight.current||recovery)return;
+  const requestId=crypto.randomUUID();
   generation.current++;setSelectedNodeId(null);inFlight.current=true;setBusy('검증한 설정을 저장하고 있습니다.');setError('');
   try{
    let s:Session;
-   try{s=await request('/api/agent-builder/confirm',{id:session.id,revision:session.revision});}
+   try{s=await request('/api/agent-builder/confirm',{id:session.id,revision:session.revision,generationRequestId:requestId});}
    catch(e){
-    const latest=await recoverConversation({before:session,action:'confirm',error:(e as Error).message,running:false});
+    const latest=await recoverConversation({before:session,requestId,action:'confirm',error:(e as Error).message,running:false});
     if(!latest||latest.status!=='saved'||!latest.saved_agent_id)return;
     s=latest;
    }

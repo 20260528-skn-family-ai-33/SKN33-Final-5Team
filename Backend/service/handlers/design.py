@@ -63,6 +63,9 @@ def session_action(c):
         return _session_action(c)
     from infrastructure.persistence.generation_history import GenerationHistory
     audit = GenerationHistory.start(c.storage,{**c.data,'action':c.action})
+    from copy import copy
+    c = copy(c)
+    c.data = {**c.data, 'generation_request_id': audit.id}
     c.storage.generation_audit = audit
     try:
         result = _session_action(c)
@@ -191,8 +194,9 @@ def _session_action(c):
         after=graph.get_state(config).values
         if after.get('saved_agent_id'):
             s['agent_id']=after['saved_agent_id'];s['base_version']=storage.agent(s['agent_id'])['version']
+        s={**s,'last_generation_request_id':data['generation_request_id']}
         s=storage.update_session(s,data['revision'],after)
-        if getattr(storage,'generation_audit',None):storage.generation_audit.finish(after,graph.get_state(config).next)
+        if getattr(storage,'generation_audit',None):storage.generation_audit.finish(after,graph.get_state(config).next,result_revision=s['revision'])
         return public_state(storage,s,graph)
     finally:
         if connection:connection.close()

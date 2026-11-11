@@ -1756,3 +1756,44 @@ test('home: linked detail pages keep the selected workflow and return to home',a
   assert.ok(methods.every(method=>method==='GET'));
  }finally{await h.close();}
 });
+
+test('DOM: a lost message response restores the server question without resending',async()=>{
+ const before={...readySession(),status:'needs_clarification'};
+ const prompt='주기를 매주로 바꿔줘';
+ const after={...before,revision:2,messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'매주 무슨 요일에 실행할까요?'}]};
+ let committed=false;
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return committed?after:before;
+  if(path.endsWith('/message')){committed=true;throw Error('응답 연결이 끊겼습니다.');}
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status:'waiting_input'}]};
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.closest('form')!);
+  assert.match(document.body.textContent||'',/매주 무슨 요일에 실행할까요/);
+  assert.equal(composer.value,'');assert.equal(composer.disabled,false);
+  assert.equal(document.querySelector('[role="alert"]'),null);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
+ }finally{await h.close();}
+});
+
+test('DOM: recovery polls a running request and enables the next answer after completion',async()=>{
+ const before={...readySession(),status:'needs_clarification'},prompt='한국 시간으로 해줘';
+ let committed=false,running=true;
+ const after={...before,revision:2,messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'실행할 요일을 알려주세요.'}]};
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return committed&&!running?after:before;
+  if(path.endsWith('/message')){committed=true;throw Error('연결 유실');}
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status:running?'running':'waiting_input'}]};
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.closest('form')!);
+  assert.equal(composer.disabled,true);assert.ok(button('대화 다시 불러오기'));
+  running=false;
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,2200));await tick();});
+  assert.match(document.body.textContent||'',/실행할 요일을 알려주세요/);
+  assert.equal(composer.disabled,false);assert.equal(document.querySelector('[role="alert"]'),null);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
+ }finally{await h.close();}
+});

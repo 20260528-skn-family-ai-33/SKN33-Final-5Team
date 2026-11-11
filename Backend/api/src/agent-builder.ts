@@ -354,7 +354,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,['upload','run_upload','source_upload'].includes(action)?12*1024*1024:100000);
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('요청 형식을 확인하세요.');
  const workerAction=action==='sessions'&&method==='POST'?'new_session':action;
- if(!['new_session','session','generation_history','agent','upload','attach_asset','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','generation_history','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+ if(!['new_session','session','generation_history','recover_generation','agent','upload','attach_asset','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','generation_history','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
  if(workerAction!=='new_session'&&!idPattern.test(data.id||''))throw new Error('항목 ID를 확인하세요.');
  const lockKey=['session','generation_history','agent','run'].includes(workerAction)?undefined:builderLockKey(data.id,workerAction==='test');
  if(lockKey&&locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
@@ -371,7 +371,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    if(data.nodeRefs!==undefined&&(!Array.isArray(data.nodeRefs)||data.nodeRefs.length>10||new Set(data.nodeRefs).size!==data.nodeRefs.length||data.nodeRefs.some((r:unknown)=>typeof r!=='string'||!/^[a-f0-9-]{36}:[1-9][0-9]{0,5}$/.test(r))))throw new Error('선택한 노드 버전을 확인하세요.');
    payload={action:workerAction,model:credential.id===LOCAL_MODEL_ID?local!.model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs};
   }
-  if(['upload','attach_asset','message','confirm'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
+  if(['upload','attach_asset','message','confirm','recover_generation'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
+  if(workerAction==='recover_generation'){
+   if(typeof data.generationRequestId!=='string'||!idPattern.test(data.generationRequestId))throw new Error('생성 요청 ID를 확인하세요.');
+   payload.generation_request_id=data.generationRequestId;
+  }
   if(['message','confirm'].includes(workerAction)&&typeof store.gmailConnected==='function')payload.gmail_connected=store.gmailConnected();
   if(workerAction==='attach_asset'){
    if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
@@ -399,7 +403,8 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
    if(['message','confirm'].includes(workerAction)){
-    payload.generation_request_id=randomUUID();
+    if(data.generationRequestId!==undefined&&(typeof data.generationRequestId!=='string'||!idPattern.test(data.generationRequestId)))throw new Error('생성 요청 ID를 확인하세요.');
+    payload.generation_request_id=data.generationRequestId||randomUUID();
     await builderWorker({...payload,action:'begin_generation',request_action:workerAction});
     generationRequestId=payload.generation_request_id;
    }

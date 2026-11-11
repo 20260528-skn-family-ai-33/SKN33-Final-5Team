@@ -13,26 +13,26 @@ export function WorkspaceBrandMark() {
 }
 
 type HeaderProps = {
-  onNew: () => void;
+  onHome: () => void;
+  onNew?: () => void;
   disabled?: boolean;
   actionLabel?: string;
   actions?: ReactNode;
 };
 
-export function WorkspaceHeader({onNew, disabled = false, actionLabel = '새 워크플로우', actions}: HeaderProps) {
+export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = '새 워크플로우', actions}: HeaderProps) {
   const preview = new URLSearchParams(location.search).get('screen') === 'preview';
 
   return <header className="workspace-header">
-    <div className="workspace-brand">
+    <button type="button" className="workspace-brand" aria-label="A4B 홈" onClick={onHome} disabled={disabled}>
       <WorkspaceBrandMark/><strong>A4B</strong>
-    </div>
+    </button>
     <div className="workspace-header-actions">
-      <AccountMenu showLocalStatus={!preview}/>
-      {!preview && <AiStatus/>}
       {actions}
-      <button data-tour="create-workflow" className="as-button as-primary" onClick={onNew} disabled={disabled}>
+      {onNew && <button data-tour="create-workflow" className="as-button as-primary" onClick={onNew} disabled={disabled}>
         <Plus size={16} aria-hidden="true"/>{actionLabel}
-      </button>
+      </button>}
+      {preview ? <AccountMenu/> : <AiStatus/>}
     </div>
   </header>;
 }

@@ -31,14 +31,14 @@ test('design mutations share the session lock inside a workspace and stay indepe
   }});return child;
  });syncBuiltinESMExports();
  const id=randomUUID(),choice={id,revision:0,requestId:randomUUID(),gapId:'gap_'+'a'.repeat(24),stateFingerprint:'a'.repeat(64),choice:'defer'};
- const bodies:Record<string,unknown>={upload:{id,revision:0,fileName:'sample.csv',data:Buffer.from('name\nAlice\n').toString('base64')},tool_gap_choice:choice,tool_gap_replan_decision:{id,revision:0,requestId:randomUUID(),proposalId:randomUUID(),decision:'defer'}};
+ const bodies:Record<string,unknown>={upload:{id,revision:0,fileName:'sample.csv',data:Buffer.from('name\nAlice\n').toString('base64')},tool_gap_choice:choice,recover_generation:{id,revision:0,generationRequestId:randomUUID()},tool_gap_replan_decision:{id,revision:0,requestId:randomUUID(),proposalId:randomUUID(),decision:'defer'}};
  async function call(directory:string,action:string){
   let status=0;
   await withDataDirectory(directory,()=>handleAgentBuilder({method:'POST'} as IncomingMessage,{setHeader(){}} as unknown as ServerResponse,new URL('http://localhost/api/agent-builder/'+action),{} as Store,async()=>bodies[action],(_res,value)=>{status=value;}));
   return status;
  }
  try{
-  for(const [held,concurrent] of [['upload','tool_gap_choice'],['upload','tool_gap_replan_decision'],['tool_gap_choice','upload'],['tool_gap_replan_decision','upload']]){
+  for(const [held,concurrent] of [['upload','tool_gap_choice'],['upload','tool_gap_replan_decision'],['tool_gap_choice','upload'],['tool_gap_replan_decision','upload'],['upload','recover_generation'],['recover_generation','upload']]){
    await t.test(held+' blocks '+concurrent+' only for its own workspace',async()=>{
     heldAction=held;gate=new Promise<void>(resolve=>{release=resolve;});const ready=new Promise<void>(resolve=>{started=resolve;});
     const pending=call(alice,held);

@@ -4,6 +4,8 @@ from contextlib import nullcontext
 import importlib.util
 import io
 import json
+import os
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import urllib.request
@@ -208,7 +210,10 @@ def test_progress_and_interruption_preserve_completed_and_inflight_evidence(tmp_
         return {'id':case['id'],'status':'completed','live_model_calls':1,'model_calls':[call],
                 'expected_route':'READY','actual_route':'READY','elapsed_seconds':0.01}
     monkeypatch.setattr(runner,'live_probe',probe);monkeypatch.setattr(runner,'run_case',run)
-    runner.main();report=json.loads(output.read_text(encoding='utf-8'))
+    # The runner changes serving flags and removes proxies even on interruption.
+    with patch.dict(os.environ):
+        runner.main()
+    report=json.loads(output.read_text(encoding='utf-8'))
     assert report['status']=='paused'
     assert len(report['cases'])==3
     if interrupt_at=='case':

@@ -99,6 +99,8 @@ class Storage:
         result=self.db.execute('UPDATE builder_sessions SET json=?,revision=revision+1 WHERE {ws} AND id=? AND revision=?',(json.dumps({k:v for k,v in s.items() if k!='revision'},ensure_ascii=False),s['id'],expected))
         if not result.rowcount: raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
         if self.business and design_state is not None:self.business.update_design(s['id'],design_state)
+        if design_state is not None and getattr(self,'generation_audit',None):
+            self.generation_audit.published_in_transaction(design_state, expected+1)
         self.db.commit(); return self.session(s['id'])
     def add_asset(self,asset,rows,commit=True):
         self.db.execute('INSERT INTO builder_assets({wsc}id,json,rows_json) VALUES({wsv}?,?,?)',(asset['id'],json.dumps(asset,ensure_ascii=False),json.dumps(rows,ensure_ascii=False)))
@@ -194,7 +196,7 @@ class Storage:
                     # Repair old partial saves on idempotent replays without pausing a healthy schedule.
                     if draft.get('schedule') and not schedules.get(old['id']):
                         schedules.configure(old['id'],commit=False)
-                    if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'])
+                    if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'],old['version'])
                     self.db.commit();return old['id']
             id=state.get('base_agent_id') or (session_id if self.business else uid())
             row=self.db.execute('SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=?',(id,)).fetchone()
@@ -210,7 +212,7 @@ class Storage:
             self._insert_agent_version(a)
             if draft.get('schedule'):schedules.configure(id,commit=False,previous_config=old['config'] if old else None)
             else:self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(id,))
-            if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id)
+            if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id,version+1)
             self.db.commit();return id
         except Exception:self.db.rollback();raise
     def write_test(self,run):

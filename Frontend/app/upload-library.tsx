@@ -137,7 +137,7 @@ export function AttachUploadDialog({mode, onLibrary, onClose, onNew, onSelect, c
 }
 
 const usageLabels: Record<Usage['kind'], string> = {
-  draft: '설계 중', workflow: '저장된 워크플로우', run: '실행 기록', running: '실행 중', schedule: '예약 데이터 소스',
+  draft: '설계 중', workflow: '저장된 워크플로우', run: '실행 기록', running: '실행 중', schedule: '예약에 사용하는 파일',
 };
 
 function useLibrary(endpoint: string, folderId: string | null, query: string) {
@@ -311,7 +311,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSumm
   async function remove(asset: Upload) {
     if (!canEdit || writing.current || running.current) return;
     const savedUse = asset.usages?.some(use => use.kind === 'workflow' || use.kind === 'run');
-    const impact = savedUse ? '기존 실행 결과는 보관됩니다. 이 원본이 필요한 다음 실행에는 새 파일을 연결하세요.' :
+    const impact = savedUse ? '기존 실행 결과는 보관됩니다. 다시 실행할 때 이 원본이 필요하면 새 파일을 연결하세요.' :
       '이 파일이 연결된 설계 대화에서도 연결이 해제됩니다.';
     if (!asset.pending_delete && !window.confirm('「' + asset.name + '」 원본을 삭제할까요? ' + impact + ' 삭제한 파일은 복구할 수 없습니다.')) return;
     writing.current = true; setDeleting(asset.id); setError(''); setNotice('');
@@ -386,7 +386,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSumm
     {!!items.length && <div className="asset-section-heading"><h2>파일</h2><span>{items.length}개{next ? ' 이상' : ''}</span></div>}
     <div className="entry-history-list asset-file-list">{items.map(asset => {
       const usages = asset.usages || [];
-      const blocked = usages.some(use => use.kind === 'schedule') ? '예약 소스 교체 후 삭제' : usages.some(use => use.kind === 'running') ? '실행 완료 후 삭제' : '';
+      const blocked = usages.some(use => use.kind === 'schedule') ? '예약 파일 교체 후 삭제' : usages.some(use => use.kind === 'running') ? '실행 완료 후 삭제' : '';
       return <article key={asset.id}>
         <FileText className="asset-file-icon" size={21} aria-hidden="true"/><div className="asset-file-info"><h2>{asset.name}</h2><p>{uploadInfo(asset)}{asset.processing_status === 'ready' ? ' · 사용 가능' : asset.processing_status === 'partial' ? ' · 일부 확인 필요' : ''}{asset.pending_delete && ' · 삭제 대기 중'}</p>
           {usages.length ? <ul aria-label="자료 사용처">{usages.map(use => <li key={use.kind + use.id}>{use.name} · {usageLabels[use.kind]}</li>)}</ul> : !asset.pending_delete && <p>연결된 사용처 없음</p>}

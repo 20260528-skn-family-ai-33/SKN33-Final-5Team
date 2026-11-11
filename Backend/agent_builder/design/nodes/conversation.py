@@ -433,10 +433,15 @@ def make_conversation(api_key,model,model_factory=None):
             from agent_builder.design.operation_steps import INSTRUCTIONS
             agent_options['system_prompt']+=INSTRUCTIONS
         if runtime_file:agent_options['system_prompt']+='\n'+runtime_file['instruction']
+        from agent_builder.design.temporal_context import temporal_context, TEMPORAL_INSTRUCTIONS
+        agent_options['system_prompt']+='\n'+TEMPORAL_INSTRUCTIONS
         agent=create_deep_agent(**agent_options)
         context={'available_evidence':[{'evidence_id':id,**value} for id,value in evidence.items()],'current_draft':state.get('draft'),'validation_issues':state.get('issues',[]),'available_resources':[{k:v for k,v in r.items() if k not in ['text','evidence_text']} for r in resources.values()],'saved_workflows':state.get('saved_workflows',[]),'node_library':state.get('node_library',[]),'required_node_refs':state.get('required_node_refs',[]),'supported_tools':planner_catalog(catalog),'repair_instruction':'검증 오류는 원문 인용 및 설정을 바로 고쳐 해결하세요. file_ids는 노드 이름이 아니라 available_resources의 실제 id만 사용합니다. binding은 반드시 이전 노드의 실제 출력 포트를 가리켜야 합니다. 확정 조건과 이미 답한 내용은 유지합니다.'}
         from agent_builder.design.service_connections import service_connection_context
         context['service_connections']=service_connection_context(state)
+        context['temporal_context']=temporal_context(state)
+        from agent_builder.design.request_meaning import sealed_meaning
+        context['request_meaning']=sealed_meaning(state)
         ledger=state.get('requirement_ledger')
         context['request_requirements']=({'tasks':[{k:v for k,v in t.items() if k!='quote'} for t in ledger['tasks']],
                                           'unresolved':ledger['unresolved']} if ledger else None)
@@ -557,7 +562,7 @@ def make_conversation(api_key,model,model_factory=None):
         try:raw=validated_draft_response(result,evidence,state,strict_outcome=local_ollama)
         except ValueError as error:
             from agent_builder.design.graph import _timing_event
-            _timing_event({'event':'draft_parse_error','attempt':'initial','code':getattr(error,'code','other'),'detail':str(error)[:400]})
+            _timing_event({'event':'draft_parse_error','attempt':'initial','code':getattr(error,'code','other'),'error_type':type(error).__name__})
             parse_error=error;raw=None
         relation_repairs=0
         # An empty result is not a draft, but null with a real question or
@@ -583,7 +588,7 @@ def make_conversation(api_key,model,model_factory=None):
             try:raw=validated_draft_response(result,evidence,state,strict_outcome=local_ollama)
             except ValueError as error:
                 from agent_builder.design.graph import _timing_event
-                _timing_event({'event':'draft_parse_error','attempt':'retry','code':getattr(error,'code','other'),'detail':str(error)[:400]})
+                _timing_event({'event':'draft_parse_error','attempt':'retry','code':getattr(error,'code','other'),'error_type':type(error).__name__})
                 raise ValueError('모델 응답을 읽을 수 없어 한 번 다시 생성했지만 완료하지 못했습니다. 요청을 확인한 뒤 다시 시도해주세요.') from error
             raw=reconcile_connection_questions(raw,state)
             if not raw.get('workflow') and not raw.get('questions') and not raw.get('unsupported'):

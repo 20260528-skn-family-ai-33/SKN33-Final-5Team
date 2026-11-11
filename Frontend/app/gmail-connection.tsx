@@ -161,7 +161,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
       {status?.connected && <div className="service-connection-account">
         <span>연결된 계정</span><strong>{status.email || '계정 정보를 확인하지 못했어요.'}</strong>
       </div>}
-      <p>메일과 첨부파일을 읽어 내용을 요약하고 답장 초안을 작성하세요.</p>
+      <p>메일과 첨부파일을 읽고 내용을 요약하세요.</p>
       <span className="service-connection-permissions">읽기 전용</span>
       {error && !open && <p role="alert">{error}</p>}
       {!open && status?.accountError && <p className="gmail-account-notice" role="status">{status.accountError}</p>}
@@ -183,7 +183,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
     <DialogContent className="as-dialog">
       <DialogHeader>
         <DialogTitle>Gmail 연결</DialogTitle>
-        <DialogDescription>Google에서 읽기 권한을 허용하면 워크플로우에서 메일을 조회하고, 요약과 답장 초안을 작성할 수 있어요.</DialogDescription>
+        <DialogDescription>Google에서 읽기 권한을 허용하면 워크플로우에서 메일과 첨부파일을 읽고 요약할 수 있어요.</DialogDescription>
       </DialogHeader>
       {status?.connected && <div className="gmail-connected-account">
         <Mail size={20} aria-hidden="true"/><div><span>연결된 계정</span><strong>{status.email || '계정 정보를 확인하지 못했어요.'}</strong></div>

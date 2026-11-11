@@ -1,0 +1,67 @@
+{
+  "baseline_source_sha256": "6550b20928227b74c6a2c33cded04e62d359a6550c034dce935cad5230e01be5",
+  "after_source_sha256": "6a417569cd7f1fd24065c981c6e31cf2d2622d0ff3c54e41164e60e3e60be460",
+  "harness_sha256": "784bd2475a1fa7ccad3f85a6a17fe5d7e708f9b5a958ef25e09b317a9959aea6",
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "changes": [
+    {
+      "path": "Backend/agent_builder/capabilities/capability_check.py",
+      "before_sha256": "2f9ad3f5cc93362868cd91ce62524aebf9df9af287dd0df6e090d8da43e2a401",
+      "after_sha256": "3a0a107b24ef5178e41883f610eb499e01a1046e72286272ebd1e78784d99ece"
+    },
+    {
+      "path": "Backend/agent_builder/capabilities/capability_judgement.py",
+      "before_sha256": "e000318902842a3d488dce71128557a6a7a1a92e179e7587b28496a5c36f72fb",
+      "after_sha256": "b6b99be956c0ab83c5c65bbafe1cb08cfb5608f483eb8d305de0d7ea4b792a10"
+    },
+    {
+      "path": "Backend/agent_builder/conditions/condition_readiness.py",
+      "before_sha256": "6af973f1339f9f5bb923813a340cd40491457736e13babb746b5d303d661ae12",
+      "after_sha256": "ca23a3d69cd941d222eb4a42f46d246bcc6fa50425978a6e69f74e50a9ab612e"
+    },
+    {
+      "path": "Backend/agent_builder/design/request_meaning.py",
+      "before_sha256": "ad97a8d9b8ebca1b5099f4ae6ce02d4e458f7b1afa9a3d838cdca8d9691f7510",
+      "after_sha256": "3f759288f6b0eeb88a03039dfebd3bb8ba48a20a1854f5e2d34f0c34177792e9"
+    },
+    {
+      "path": "Backend/agent_builder/design/requirement_contracts.py",
+      "before_sha256": "2ce09be3511b1922aadbc729a89a6d6daa26e3a12ed474fe77a1297a50a14335",
+      "after_sha256": "b415e81bfdb21a23b9ea010dc4bca99041052b3b80db74bde5762e952970b0e3"
+    },
+    {
+      "path": "Backend/agent_builder/design/requirement_coverage.py",
+      "before_sha256": "18aa2815c2ff5846294973107ed7f22ddc8b416da80c1b0ec8de48811042ec5b",
+      "after_sha256": "a8a5e300fc83bbddda5344ee9955d4d4353d0da194b2c4115d30f070f32d8acf"
+    },
+    {
+      "path": "Backend/agent_builder/design/requirement_ledger.py",
+      "before_sha256": "aca99426821305652e5a884a9d59fd8c02a4e6f55da508fc934f93fedaf6aa9f",
+      "after_sha256": "11e2c8175cd3a3775a7aa06f399c111896ea7cefafbaa92f5293511c364b06e4"
+    },
+    {
+      "path": "Backend/agent_builder/design/scalar_requirement.py",
+      "before_sha256": null,
+      "after_sha256": "4c102be98d2c838e972fc21a5b87336cbec30f1dd3eff844ab1bd0d8ef9629f1"
+    }
+  ],
+  "source_backup": "runtime\\qwen-public9b-pre-fix-source-20261110",
+  "verification": {
+    "python_regression": "docs/qwen-local-public9b-regression-after.xml",
+    "python_passed": 2069,
+    "typescript_tests": "docs/qwen-local-public9b-typescript-tests-after.tap",
+    "typescript_passed": 41,
+    "frontend_tsc": "passed exit 0",
+    "api_tsc": "passed exit 0",
+    "live_after": "completed_52_measured_with_failures_retained",
+    "live_after_at_source_freeze": "not_started",
+    "live_after_canonical": {
+      "path": "docs\\qwen-local-public9b-after-complete.json",
+      "bytes_sha256": "c85233a673876642c05e9304e0307a415e2b8df25ae48def2c343426aa8dd0b7"
+    },
+    "separate_repeat": {
+      "path": "docs\\qwen-local-public9b-after-repeat.json",
+      "bytes_sha256": "172b61021bc488c20af60bd7565fc5f30aa465695f49344625b2c360551bfe49"
+    }
+  }
+}

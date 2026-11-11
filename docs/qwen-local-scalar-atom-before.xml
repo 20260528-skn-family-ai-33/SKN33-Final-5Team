@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="6" time="1.779" timestamp="2026-11-10T23:20:48.161217+09:00" hostname="DESKTOP-DCSUQO3"><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_scalar_does_not_promote_assignment_or_description_atoms_to_requested_expression[x=3\uc77c \ub54c x * 2\ub97c \uacc4\uc0b0\ud574\uc918.-3-variables0]" time="0.011"><failure message="Failed: DID NOT RAISE ValueError">user_request = 'x=3일 때 x * 2를 계산해줘.', formula = '3', variables = {}
+
+    @pytest.mark.parametrize('user_request,formula,variables', [
+        ('x=3일 때 x * 2를 계산해줘.', '3', {}),
+        ('x=3일 때 x * 2를 계산해줘.', 'x', {'x': 3}),
+        ('설명에 나온 숫자는 3이고 실제로 2 + 4를 계산해줘.', '3', {}),
+    ])
+    def test_scalar_does_not_promote_assignment_or_description_atoms_to_requested_expression(user_request, formula, variables):
+&gt;       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\design\test_qwen_public_requirement_failures.py:287: Failed</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_scalar_does_not_promote_assignment_or_description_atoms_to_requested_expression[x=3\uc77c \ub54c x * 2\ub97c \uacc4\uc0b0\ud574\uc918.-x-variables1]" time="0.002"><failure message="Failed: DID NOT RAISE ValueError">user_request = 'x=3일 때 x * 2를 계산해줘.', formula = 'x', variables = {'x': 3}
+
+    @pytest.mark.parametrize('user_request,formula,variables', [
+        ('x=3일 때 x * 2를 계산해줘.', '3', {}),
+        ('x=3일 때 x * 2를 계산해줘.', 'x', {'x': 3}),
+        ('설명에 나온 숫자는 3이고 실제로 2 + 4를 계산해줘.', '3', {}),
+    ])
+    def test_scalar_does_not_promote_assignment_or_description_atoms_to_requested_expression(user_request, formula, variables):
+&gt;       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\design\test_qwen_public_requirement_failures.py:287: Failed</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_scalar_does_not_promote_assignment_or_description_atoms_to_requested_expression[\uc124\uba85\uc5d0 \ub098\uc628 \uc22b\uc790\ub294 3\uc774\uace0 \uc2e4\uc81c\ub85c 2 + 4\ub97c \uacc4\uc0b0\ud574\uc918.-3-variables2]" time="0.001"><failure message="Failed: DID NOT RAISE ValueError">user_request = '설명에 나온 숫자는 3이고 실제로 2 + 4를 계산해줘.', formula = '3', variables = {}
+
+    @pytest.mark.parametrize('user_request,formula,variables', [
+        ('x=3일 때 x * 2를 계산해줘.', '3', {}),
+        ('x=3일 때 x * 2를 계산해줘.', 'x', {'x': 3}),
+        ('설명에 나온 숫자는 3이고 실제로 2 + 4를 계산해줘.', '3', {}),
+    ])
+    def test_scalar_does_not_promote_assignment_or_description_atoms_to_requested_expression(user_request, formula, variables):
+&gt;       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\design\test_qwen_public_requirement_failures.py:287: Failed</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_explicit_single_constant_calculation_remains_supported[3]" time="0.070" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_explicit_single_constant_calculation_remains_supported[-3]" time="0.005" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_explicit_single_constant_calculation_remains_supported[(3)]" time="0.005" /></testsuite></testsuites>

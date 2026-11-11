@@ -1,0 +1,57 @@
+{
+  "kind": "live_endpoint_probe",
+  "started_at": "2026-11-10T12:22:36.154Z",
+  "env_source": "C:\\Users\\munkyu\\Desktop\\SKN33-Final-5Team\\.env",
+  "alias_mapping": "scripts/run-configured.mjs:13-21",
+  "configured": {
+    "A4B_MAIN_PROVIDER": "ollama",
+    "A4B_MAIN_MODEL": "a4b-qwen35-9b-final664-pilot32k",
+    "A4B_CAPABILITY_MODEL": "a4b-qwen35-9b-previous-pilot32k",
+    "A4B_PLANNER_MODE": "deepagent",
+    "A4B_PLANNER_PROMPT": null,
+    "A4B_OLLAMA_NUM_CTX": "32768",
+    "A4B_OLLAMA_NUM_PREDICT": "4096",
+    "A4B_OLLAMA_TEMPERATURE": "0",
+    "A4B_MAIN_TIMEOUT_S": "180",
+    "A4B_DESIGN_TIMEOUT_MS": "600000",
+    "A4B_CAPABILITY_MODE": "enforce",
+    "A4B_CONDITION_MODE": "enforce",
+    "A4B_REQUIREMENT_MODE": "enforce",
+    "A4B_VERIFIER_MODE": "off",
+    "A4B_TOOL_ADVICE_MODE": "hint",
+    "A4B_TOOL_ADVICE_BACKEND": "svm56"
+  },
+  "auth_configured": false,
+  "probes": [
+    {
+      "path": "/v1/models",
+      "status": 200,
+      "content_type": "application/json",
+      "elapsed_ms": 166,
+      "model_ids": [
+        "qwen3.5:4b",
+        "qwen3:8b-q4_K_M"
+      ]
+    },
+    {
+      "path": "/api/tags",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "elapsed_ms": 22,
+      "model_ids": [
+        "qwen3.5:4b",
+        "qwen3:8b-q4_K_M"
+      ]
+    }
+  ],
+  "inference_calls": 0,
+  "status": "blocked_model_not_listed",
+  "actual_model_id": null,
+  "endpoint_kind": "local",
+  "endpoint": "http://127.0.0.1:11434/v1",
+  "listed_model_id": null,
+  "missing_selected_models": [
+    "a4b-qwen35-9b-final664-pilot32k",
+    "a4b-qwen35-9b-previous-pilot32k"
+  ]
+}

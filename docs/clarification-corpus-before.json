@@ -1,0 +1,644 @@
+{
+  "scope": "Synthetic stage-routing fixtures, NOT Qwen semantic accuracy or end-to-end production evaluation",
+  "model_calls": 0,
+  "cases": [
+    {
+      "id": "recent5",
+      "request": "Gmail에서 최근 5개 메일을 요약해줘",
+      "prior_conversation": [],
+      "stage_under_test": "gmail",
+      "extracted_conditions": null,
+      "selected_tools": [
+        "email.list",
+        "compose_answer"
+      ],
+      "expected": "READY",
+      "actual": "READY",
+      "actual_reason_to_ask": [],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "extraction": {
+          "tasks": [
+            {
+              "source": "gmail",
+              "actions": [
+                "read",
+                "summarize"
+              ],
+              "selection": {
+                "order": "newest_first",
+                "limit": 5,
+                "limit_evidence": "5개",
+                "limit_source_message": 0,
+                "period": "all",
+                "period_evidence": null,
+                "period_source_message": null,
+                "filters": []
+              },
+              "schedule": null,
+              "summary_focus": [],
+              "other_requirements": [],
+              "source_message": 0
+            }
+          ],
+          "unresolved": []
+        },
+        "review": {
+          "faithful": true,
+          "issues": []
+        }
+      },
+      "frontend_response_projection": "최근 메일을 최대 5건 읽고 제목·보낸 사람·본문의 핵심 내용을 메일별로 요약합니다. 메일이 적으면 실제 조회된 메일만 정리하고, 내용이 없는 경우에는 없다고 안내합니다. 실행할 때 서비스 연결의 Gmail 읽기 권한과 AI 사용 가능 상태를 확인합니다.",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": true,
+      "failure_cause": null,
+      "elapsed_ms": 5.26,
+      "workflow_generated": true,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "yesterday",
+      "request": "Gmail에서 어제 온 메일을 요약해줘",
+      "prior_conversation": [],
+      "stage_under_test": "gmail",
+      "extracted_conditions": {
+        "tasks": [
+          {
+            "source": "gmail",
+            "actions": [
+              "read",
+              "summarize"
+            ],
+            "selection": {
+              "order": "newest_first",
+              "limit": null,
+              "limit_evidence": null,
+              "limit_source_message": null,
+              "period": "yesterday",
+              "period_source_message": 0,
+              "period_evidence": "어제",
+              "filters": []
+            },
+            "schedule": null,
+            "summary_focus": [],
+            "other_requirements": [],
+            "source_message": 0
+          }
+        ],
+        "unresolved": []
+      },
+      "selected_tools": [
+        "email.list",
+        "compose_answer"
+      ],
+      "expected": "READY",
+      "actual": "READY",
+      "actual_reason_to_ask": [],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "extraction": {
+          "tasks": [
+            {
+              "source": "gmail",
+              "actions": [
+                "read",
+                "summarize"
+              ],
+              "selection": {
+                "order": "newest_first",
+                "limit": null,
+                "limit_evidence": null,
+                "limit_source_message": null,
+                "period": "yesterday",
+                "period_evidence": "어제",
+                "period_source_message": 0,
+                "filters": []
+              },
+              "schedule": null,
+              "summary_focus": [],
+              "other_requirements": [],
+              "source_message": 0
+            }
+          ],
+          "unresolved": []
+        },
+        "review": {
+          "faithful": true,
+          "issues": []
+        }
+      },
+      "frontend_response_projection": "Asia/Seoul 기준 2026-11-09에 받은 메일을 최대 100건 읽도록 구성했습니다. 조회 한도를 넘으면 일부 메일은 포함되지 않을 수 있습니다. 제목·보낸 사람·본문의 핵심 내용을 메일별로 요약합니다. 메일이 적으면 실제 조회된 메일만 정리하고, 내용이 없는 경우에는 없다고 안내합니다. 실행할 때 서비스 연결의 Gmail 읽기 권한과 AI 사용 가능 상태를 확인합니다.",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": true,
+      "failure_cause": null,
+      "elapsed_ms": 9.422,
+      "workflow_generated": true,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "daily_report",
+      "request": "매일 오전 9시에 이메일 보고서를 보내줘",
+      "prior_conversation": [],
+      "stage_under_test": "requirements",
+      "extracted_conditions": {
+        "tasks": [
+          {
+            "description": "결과 파일 생성",
+            "source_message": 0,
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": [
+          "보고서의 내용이나 원본 자료",
+          "이메일 수신 주소"
+        ]
+      },
+      "selected_tools": [],
+      "expected": "CLARIFY",
+      "actual": "ERROR",
+      "actual_reason_to_ask": [
+        "보고서의 내용이나 원본 자료",
+        "이메일 수신 주소"
+      ],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "tasks": [
+          {
+            "description": "결과 파일 생성",
+            "source_message": 0,
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": [
+          "보고서의 내용이나 원본 자료",
+          "이메일 수신 주소"
+        ]
+      },
+      "frontend_response_projection": "요청 업무 목록을 확정하지 못했습니다. 보고서의 내용이나 원본 자료 / 이메일 수신 주소",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": false,
+      "failure_cause": "Business unresolved values routed to validation failure",
+      "elapsed_ms": 9.976,
+      "workflow_generated": false,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "customer_analysis",
+      "request": "고객 데이터를 분석해서 보고서를 만들어줘",
+      "prior_conversation": [],
+      "stage_under_test": "requirements",
+      "extracted_conditions": {
+        "tasks": [
+          {
+            "description": "결과 파일 생성",
+            "source_message": 0,
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": [
+          "분석할 고객 데이터",
+          "보고서에서 확인할 분석 기준"
+        ]
+      },
+      "selected_tools": [],
+      "expected": "CLARIFY",
+      "actual": "ERROR",
+      "actual_reason_to_ask": [
+        "분석할 고객 데이터",
+        "보고서에서 확인할 분석 기준"
+      ],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "tasks": [
+          {
+            "description": "결과 파일 생성",
+            "source_message": 0,
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": [
+          "분석할 고객 데이터",
+          "보고서에서 확인할 분석 기준"
+        ]
+      },
+      "frontend_response_projection": "요청 업무 목록을 확정하지 못했습니다. 분석할 고객 데이터 / 보고서에서 확인할 분석 기준",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": false,
+      "failure_cause": "Business unresolved values routed to validation failure",
+      "elapsed_ms": 12.56,
+      "workflow_generated": false,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "last_week_sales",
+      "request": "지난주 매출을 분석해서 이메일로 보내줘",
+      "prior_conversation": [],
+      "stage_under_test": "requirements",
+      "extracted_conditions": {
+        "tasks": [
+          {
+            "description": "결과 파일 생성",
+            "source_message": 0,
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": [
+          "매출 데이터의 위치",
+          "이메일 수신 주소"
+        ]
+      },
+      "selected_tools": [],
+      "expected": "CLARIFY",
+      "actual": "ERROR",
+      "actual_reason_to_ask": [
+        "매출 데이터의 위치",
+        "이메일 수신 주소"
+      ],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "tasks": [
+          {
+            "description": "결과 파일 생성",
+            "source_message": 0,
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": [
+          "매출 데이터의 위치",
+          "이메일 수신 주소"
+        ]
+      },
+      "frontend_response_projection": "요청 업무 목록을 확정하지 못했습니다. 매출 데이터의 위치 / 이메일 수신 주소",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": false,
+      "failure_cause": "Business unresolved values routed to validation failure",
+      "elapsed_ms": 10.405,
+      "workflow_generated": false,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "refer_address",
+      "request": "방금 말한 이메일 주소로 보내줘",
+      "prior_conversation": [
+        {
+          "role": "user",
+          "content": "보고서를 audit@example.invalid로 보내줘"
+        }
+      ],
+      "stage_under_test": "capability",
+      "extracted_conditions": {
+        "decision": "existing_tools",
+        "tool_ids": [
+          "email.send"
+        ],
+        "missing_conditions": [],
+        "missing_actions": [],
+        "reason": "합성 카탈로그 판정",
+        "user_quotes": [
+          "방금 말한 이메일 주소로 보내줘"
+        ]
+      },
+      "selected_tools": [
+        "email.send"
+      ],
+      "expected": "READY",
+      "actual": "READY",
+      "actual_reason_to_ask": [],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "decision": "existing_tools",
+        "tool_ids": [
+          "email.send"
+        ],
+        "missing_conditions": [],
+        "missing_actions": [],
+        "reason": "합성 카탈로그 판정",
+        "user_quotes": [
+          "방금 말한 이메일 주소로 보내줘"
+        ]
+      },
+      "frontend_response_projection": null,
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": true,
+      "failure_cause": null,
+      "elapsed_ms": 4.056,
+      "workflow_generated": false,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "already_provided",
+      "request": "Gmail에서 최근 5개 메일을 요약해줘",
+      "prior_conversation": [
+        {
+          "role": "user",
+          "content": "최근 메일은 5개로 정했어"
+        }
+      ],
+      "stage_under_test": "gmail",
+      "extracted_conditions": {
+        "tasks": [
+          {
+            "source": "gmail",
+            "actions": [
+              "read",
+              "summarize"
+            ],
+            "selection": {
+              "order": "newest_first",
+              "limit": 5,
+              "limit_evidence": "5개",
+              "limit_source_message": 1,
+              "period": "all",
+              "period_source_message": null,
+              "period_evidence": null,
+              "filters": []
+            },
+            "schedule": null,
+            "summary_focus": [],
+            "other_requirements": [],
+            "source_message": 1
+          }
+        ],
+        "unresolved": []
+      },
+      "selected_tools": [
+        "email.list",
+        "compose_answer"
+      ],
+      "expected": "READY",
+      "actual": "READY",
+      "actual_reason_to_ask": [],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "extraction": {
+          "tasks": [
+            {
+              "source": "gmail",
+              "actions": [
+                "read",
+                "summarize"
+              ],
+              "selection": {
+                "order": "newest_first",
+                "limit": 5,
+                "limit_evidence": "5개",
+                "limit_source_message": 1,
+                "period": "all",
+                "period_evidence": null,
+                "period_source_message": null,
+                "filters": []
+              },
+              "schedule": null,
+              "summary_focus": [],
+              "other_requirements": [],
+              "source_message": 1
+            }
+          ],
+          "unresolved": []
+        },
+        "review": {
+          "faithful": true,
+          "issues": []
+        }
+      },
+      "frontend_response_projection": "최근 메일을 최대 5건 읽도록 구성했습니다. 제목·보낸 사람·본문의 핵심 내용을 메일별로 요약합니다. 메일이 적으면 실제 조회된 메일만 정리하고, 내용이 없는 경우에는 없다고 안내합니다. 실행할 때 서비스 연결의 Gmail 읽기 권한과 AI 사용 가능 상태를 확인합니다.",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": true,
+      "failure_cause": null,
+      "elapsed_ms": 10.626,
+      "workflow_generated": true,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "answer_then_proceed",
+      "request": "JSON으로 만들어줘",
+      "prior_conversation": [
+        {
+          "role": "user",
+          "content": "고객 데이터를 분석해서 보고서를 만들어줘"
+        },
+        {
+          "role": "assistant",
+          "content": "결과 파일 형식은 무엇인가요?"
+        }
+      ],
+      "stage_under_test": "requirements",
+      "extracted_conditions": {
+        "tasks": [
+          {
+            "id": "r1",
+            "source_message": 0,
+            "quote": "고객 데이터를 분석해서 보고서를 만들어줘",
+            "description": "결과 파일 생성",
+            "depends_on": [],
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": []
+      },
+      "selected_tools": [],
+      "expected": "READY",
+      "actual": "READY",
+      "actual_reason_to_ask": [],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "tasks": [
+          {
+            "description": "결과 파일 생성",
+            "source_message": 0,
+            "spec": {
+              "kind": "export",
+              "format": "json"
+            }
+          }
+        ],
+        "unresolved": []
+      },
+      "frontend_response_projection": null,
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": true,
+      "failure_cause": null,
+      "elapsed_ms": 11.756,
+      "workflow_generated": false,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "change_condition",
+      "request": "5개 대신 최근 10개로 바꿔줘",
+      "prior_conversation": [
+        {
+          "role": "user",
+          "content": "Gmail에서 최근 5개 메일을 요약해줘"
+        }
+      ],
+      "stage_under_test": "gmail",
+      "extracted_conditions": {
+        "tasks": [
+          {
+            "source": "gmail",
+            "actions": [
+              "read",
+              "summarize"
+            ],
+            "selection": {
+              "order": "newest_first",
+              "limit": 10,
+              "limit_evidence": "10개",
+              "limit_source_message": 1,
+              "period": "all",
+              "period_source_message": null,
+              "period_evidence": null,
+              "filters": []
+            },
+            "schedule": null,
+            "summary_focus": [],
+            "other_requirements": [],
+            "source_message": 0
+          }
+        ],
+        "unresolved": []
+      },
+      "selected_tools": [
+        "email.list",
+        "compose_answer"
+      ],
+      "expected": "READY",
+      "actual": "READY",
+      "actual_reason_to_ask": [],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "extraction": {
+          "tasks": [
+            {
+              "source": "gmail",
+              "actions": [
+                "read",
+                "summarize"
+              ],
+              "selection": {
+                "order": "newest_first",
+                "limit": 10,
+                "limit_evidence": "10개",
+                "limit_source_message": 1,
+                "period": "all",
+                "period_evidence": null,
+                "period_source_message": null,
+                "filters": []
+              },
+              "schedule": null,
+              "summary_focus": [],
+              "other_requirements": [],
+              "source_message": 0
+            }
+          ],
+          "unresolved": []
+        },
+        "review": {
+          "faithful": true,
+          "issues": []
+        }
+      },
+      "frontend_response_projection": "최근 메일을 최대 10건 읽도록 구성했습니다. 제목·보낸 사람·본문의 핵심 내용을 메일별로 요약합니다. 메일이 적으면 실제 조회된 메일만 정리하고, 내용이 없는 경우에는 없다고 안내합니다. 실행할 때 서비스 연결의 Gmail 읽기 권한과 AI 사용 가능 상태를 확인합니다.",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": true,
+      "failure_cause": null,
+      "elapsed_ms": 7.024,
+      "workflow_generated": true,
+      "external_execution": "NOT_RUN"
+    },
+    {
+      "id": "unsupported",
+      "request": "결과를 Slack으로 보내줘",
+      "prior_conversation": [],
+      "stage_under_test": "capability",
+      "extracted_conditions": {
+        "decision": "missing_capability",
+        "tool_ids": [
+          "write_result"
+        ],
+        "missing_conditions": [],
+        "missing_actions": [
+          "Slack 전송"
+        ],
+        "reason": "합성 카탈로그 판정",
+        "user_quotes": [
+          "결과를 Slack으로 보내줘"
+        ]
+      },
+      "selected_tools": [
+        "write_result"
+      ],
+      "expected": "UNSUPPORTED",
+      "actual": "UNSUPPORTED",
+      "actual_reason_to_ask": [],
+      "qwen_raw_response": null,
+      "mock_response": {
+        "decision": "missing_capability",
+        "tool_ids": [
+          "write_result"
+        ],
+        "missing_conditions": [],
+        "missing_actions": [
+          "Slack 전송"
+        ],
+        "reason": "합성 카탈로그 판정",
+        "user_quotes": [
+          "결과를 Slack으로 보내줘"
+        ]
+      },
+      "frontend_response_projection": "등록 도구에 부족한 기능이 있는지 확인했습니다. 제작·재설계·보류 중 선택할 수 있습니다.",
+      "frontend_observed_in_browser": false,
+      "questions": [],
+      "passed": true,
+      "failure_cause": null,
+      "elapsed_ms": 5.774,
+      "workflow_generated": false,
+      "external_execution": "NOT_RUN"
+    }
+  ],
+  "metrics": {
+    "fixture_routing_accuracy": 0.7,
+    "fixture_class_f1": {
+      "READY": 1.0,
+      "CLARIFY": 0.0,
+      "UNSUPPORTED": 1.0
+    },
+    "required_question_rate": 0.0,
+    "unnecessary_question_rate": 0.0,
+    "repeated_question_rate_single_probe": 0,
+    "answer_semantic_accuracy": null,
+    "clarification_completion_rate": null,
+    "workflow_execution_success_rate": null,
+    "mean_fixture_latency_ms": 8.6859
+  }
+}

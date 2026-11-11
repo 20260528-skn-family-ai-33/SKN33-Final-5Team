@@ -1,0 +1,221 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "review_scope": "R01-R10 persisted cases independently adjudicated from baseline-v2 raw responses, accepted state, final workflow and frozen gold. No interrupted-run labels reused. Task coverage means semantically correct final workflow tasks; schema_valid remains a final-case metric, not all raw candidates.",
+  "cases": {
+    "R01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.limit": 5,
+        "provider": "gmail"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 R01의 model_calls=[]이며 코드 recipe로 READY가 됐다. 수용된 gmail_summary spec max_results=5와 최종 email.list/read_messages(max_results=5) → compose_answer.documents 연결이 일치한다. Gmail 최대 5건의 제목·보낸 사람·본문을 요약하는 지시이며 필수 질문이나 추가 업무가 없다. schema_valid=true이나 실제 외부 Gmail 실행은 하지 않았다. 전체 요청 성공은 설계 의미의 성공이며 모델 추론 또는 외부 실행 성공을 뜻하지 않는다."
+    },
+    "R02": {
+      "intent_correct": true,
+      "observed_slots": {
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2의 capability raw는 표 읽기/필터/JSON 저장을 식별한다. condition raw의 amount/gte/20/json, 빈 값 error, 중복 keep이 수용됐고 requirement raw 및 accepted ledger에는 export/filter/policy/read 네 업무가 있다. 최종 read_table(synthetic-sales) → filter_sort(amount>=20, missing=error, duplicate=keep) → write_result(json)의 table 의존성이 맞다. 실제 허용 합성 실행은 성공했고 id 2,3의 행과 순서가 gold에 일치한다. planner raw의 ask_user 이름과 빈 행 제거 설명은 부정확하나 최종 표시 질문은 없고 최종 설정은 오류 중단이며 추가 업무가 없다. trace 반환 응답은 native 3개+SDK 1개지만 header live_model_calls=3, SDK dispatch/response 플래그가 false인 계측 불일치를 별도 보고했다. 이 숫자를 실제 총호출수로 단정하지 않는다."
+    },
+    "R03": {
+      "intent_correct": false,
+      "observed_slots": {
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        "condition ledger operations=[filter]를 수용하여 요청하지 않은 선별 기준을 필수로 요구함; 생성 workflow는 없음"
+      ],
+      "evidence": "v2 holdout 판정이다. capability raw는 정렬을 식별했지만 condition 두 응답은 operation=filter로 분류하고 sort.policy에 desc(첫 응답에는 none도 중복)를 넣었다. accepted ledger는 sort.policy를 missing으로 거절하며 filter.field/operator/value도 missing이다. amount/descending은 typed accepted slot으로 확정되지 않아 output.format=json만 인정한다. 실제 질문은 이미 요청한 정렬 여부 재확인과 요청하지 않은 선별 열 질문 두 개로 모두 불필요하다. CLARIFY 및 workflow=null이라 세 최종 업무 coverage와 전체 성공은 false다. raw의 desc 시도와 실제 수용 슬롯을 구분하며 holdout을 수정 근거로 사용하지 않는다."
+    },
+    "R04": {
+      "intent_correct": false,
+      "observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "first",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        "accepted condition operations=[filter,deduplicate] 중 filter가 원문에 없는 추가 업무이며 불필요한 필터 질문을 유발함; 실행 workflow는 없음"
+      ],
+      "evidence": "v2 capability는 customer_id 중복의 첫 행 유지와 JSON을 인식한다. condition raw의 duplicate.field=customer_id, duplicate.policy=first, output.format=json은 수용되었지만 operation=filter도 수용되고 코드가 deduplicate를 추가했다. 결과적으로 filter.field/operator/value를 미정으로 남겨 어느 열로 선별할지와 비교 연산자를 두 질문으로 요구한다. 원문 중복 제거에 필요하지 않은 질문이며 CLARIFY에서 끝나 workflow가 없다. 세 정답 슬롯은 맞지만 operative intent의 추가 필터, 잘못된 route 때문에 전체 성공은 false다. capability 설명의 연간 예약 문구는 근거 없으나 실제 예약으로 채택되지 않았으므로 별도 실행 업무로 세지 않는다."
+    },
+    "R05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "compute.formula": "qty * unit_price",
+        "compute.output_column": "total",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 requirement raw 및 accepted spec은 qty * unit_price → total 계산과 JSON export를 보존한다. 별도 read/policy task는 중간 ledger에서 누락되어 추출 완전성의 한계가 있다. 최종 planner는 원문과 연결 자료를 사용해 read_table(synthetic-sales) → calculate_columns(compute, qty * unit_price, total) → write_result(json)을 구성하고 각 table binding을 올바르게 연결했다. 최종 execution_plan은 missing_policy=error, duplicate_policy=keep이며 추가 업무·질문·예약이 없다. READY/schema_valid=true 후 허용 합성 실행 rows 세 개의 total=10,30,20이 gold와 맞는다. 최종 성공을 중간 ledger 완전성이나 미실행 외부 연결 성공과 혼동하지 않는다."
+    },
+    "R06": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 holdout: capability 및 requirement description은 region별 amount 합계와 JSON을 이해하지만 수용된 spec은 kind=other, action=aggregate_and_export만 가지며 group_by/sum_field/format의 typed 업무 슬롯을 확정하지 않았다. 이미 연결된 synthetic-sales 자료 ID와 명시된 JSON의 저장 경로·형식을 다시 요구하는 두 질문은 불필요하다. 다른 표 결합이나 필터 조건은 질문 문구에 등장하나 실제 추가 workflow 업무로 채택된 근거는 없다. CLARIFY, workflow=null이므로 세 업무 coverage 및 전체 성공은 false다. 자연어 description의 단어와 기본 draft output_format=json을 정확한 구조화 추출로 세지 않는다. holdout은 수정 근거로 사용하지 않는다."
+    },
+    "R07": {
+      "intent_correct": false,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 capability raw는 calculate_columns.rename_columns와 JSON 저장 지원을 식별했다. 그러나 requirement 첫 raw는 rename(source=synthetic-sales,target=revenue), 재시도는 rename(amount,revenue)를 compute formula로 잘못 표현했다. 두 후보가 수용되지 않아 최종 requirement_ledger가 없고 validation_failed/SYSTEM_ERROR로 종료했다. 따라서 capability 설명만으로 operative intent/typed rename 슬롯 성공을 부여하지 않는다. 재시도의 행 수 제한 질문은 raw에만 있고 사용자 pending question으로 표시되지 않아 질문 분모에 넣지 않는다. workflow가 없어 read/rename/output coverage와 전체 성공은 false이며 거절된 compute 후보를 실행된 추가 업무로 세지 않는다."
+    },
+    "R08": {
+      "intent_correct": true,
+      "observed_slots": {
+        "source": "synthetic-policy",
+        "topic": "환불"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 capability raw는 연결된 synthetic-policy 문서와 환불 요약을 식별한다. requirement raw는 kind=document_analysis만 반환하고 accepted spec은 원문 request를 보존한다. 최종 첫 턴 workflow는 read_document(file_ids=[synthetic-policy]) → compose_answer이며 documents binding과 환불 규정 요약/화면 표시 지시가 맞다. source/topic 슬롯은 이 수용된 실행 인자·요약 지시에서 확인한다. 질문이나 추가 업무 없이 READY/schema_valid=true다. 이 사례는 실행 not_scheduled라 문서 도구 실제 실행이나 실제 요약 품질을 실측한 것으로 보고하지 않는다."
+    },
+    "R09": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 holdout: capability는 base64_codec을 선택했고 첫 requirement compute/base64_encode 후보는 거절된 뒤 kind=other,action=encode_string이 수용됐다. 인코딩 의도는 맞지만 hello와 encode는 typed accepted requirement 인자가 아니며 final accepted workflow도 없어 observed_slots는 비워 둔다. 두 planner raw 모두 finish를 최초 단계로 두고 그 text 출력을 Base64 입력에 연결하여 파싱/구조 검증에서 ValueError로 종료했다. turns=[]이며 사용자에게 실제 표시된 질문도 없다. 최종 workflow가 없어 encode 업무 coverage 및 전체 성공은 false다. schema_valid=null이므로 이 잘못된 raw 후보들이 기존 최종 case schema 실패율 분모에서 빠지는 계측 한계를 별도로 명시한다. rejected raw compute를 추가 실행 업무로 세지 않으며 holdout 수정 제안은 하지 않는다."
+    },
+    "R10": {
+      "intent_correct": true,
+      "observed_slots": {
+        "formula": "(12 + 8) * 3"
+      },
+      "extra_unsupported_slots": [
+        "compute.output_column=result"
+      ],
+      "questions": [],
+      "task_coverage": [
+        true
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        "accepted requirement에 원문에 없는 표 계산 결과 열 result 생성 조건이 포함됨; 최종 workflow에는 scalar 계산 한 단계만 있음"
+      ],
+      "evidence": "v2 capability와 최종 두 planner 후보는 scalar_calculate/evaluate 및 formula=(12 + 8) * 3,variables={}를 정확히 선택한다. 최종 수용 draft workflow의 단일 scalar 노드도 이 수식과 일치하므로 calculate task의 의미 coverage는 true다. 그러나 중간 accepted requirement는 kind=compute에 원문에 없는 output_column=result를 추가한다. validator는 그 표 계산 요구와 실제 scalar 노드가 맞지 않는다고 거절하여 SYSTEM_ERROR/schema_valid=false로 끝났다. formula는 첫 턴 수용 값으로 맞고 extra output column은 명시적 미지원 추측 슬롯으로 기록한다. route가 READY가 아니므로 whole_request_success=false이며 실제 계산 실행도 하지 않았다. 정확한 최종 후보와 실패한 전체 설계 경로를 구분한다."
+    }
+  },
+  "source_case_sha256": {
+    "R01": "7718a3b3266d201e5386dcc9a450350fc45b6884c76078d45e589d12eddd09d6",
+    "R02": "bee80d901c0a9ff5a5c65c46c4b77ccc484aae355f05c6113b9d97b659b91f9e",
+    "R03": "f7aa37785837228045d20c833f91ff0394e66c4d05056a4d2ffa7e13ddd8af2a",
+    "R04": "199813de20ece56df618dc2510bfbe4209e123378e2936f7672de25c75ca1fc6",
+    "R05": "65fc7a6510382cc418bec8f1a6bd9399b6daff658be6b05bca44fa55108c6010",
+    "R06": "5fc067080a02ddf05a4b9d359237e59aa719c24a09effaf0eb4fd63441c3f208",
+    "R07": "407739fe57c3d084485b9ececf54e88f7187e5a0290f0a78ea3cac281b7fdd06",
+    "R08": "cf3f8c7352b136909dbb9caca4beef31d90a890f3bc8525dce59165bfe682e92",
+    "R09": "a1e4843b495dc37893b01835fd6577d64e0f4fb0950e6d899904d4d057131476",
+    "R10": "0b84a17cde82c34ce76fc1b72f9fa4f01e50e9e817091d41e8f54c04ddbf783c"
+  },
+  "status": "completed_for_R01_R10_only",
+  "case_hash_algorithm": "SHA256 UTF-8 json.dumps(case, ensure_ascii=False, sort_keys=True), default JSON separators",
+  "whole_request_success_definition": "Explicit manual judgement of correct route, requested tasks/arguments/dependencies and absence of unrequested accepted work; external execution success is separate. True is never a default.",
+  "metrics_scope_note": "R01 is code-only and excluded from live-model metric denominators. SDK dispatch counters omit httpx2 calls; response evidence and final-case quality judgements are separate. R09 schema_valid=null does not describe all raw candidate schema validity."
+}

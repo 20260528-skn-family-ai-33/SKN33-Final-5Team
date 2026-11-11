@@ -1,0 +1,196 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "cases": {
+    "X01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "daily",
+        "schedule.hour": 18,
+        "provider": "gmail"
+      },
+      "extra_unsupported_slots": [
+        "gmail.filters=unread"
+      ],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "secondary_observations": [
+        "ungrounded_unread_in_accepted_meaning"
+      ],
+      "evidence": "X01의 accepted meaning에는 daily/18:00/Asia-Seoul 및 source=gmail이 있고, capability 두 응답은 실제 없는 Notion 저장만 missing_actions로 판정했다. 질문과 workflow 없이 UNSUPPORTED로 종료하여 미지원 대상의 올바른 분류·근거라는 전체 판정은 성공이다. 다만 요청하지 않은 filters=[unread]를 의미 추출과 faithful=true 검토가 수용한 결함은 extra_unsupported_slots로 별도 감점한다. 생성된 query나 추가 실행 업무는 없으므로 이를 실제 수행한 부가 동작으로 세지 않는다. 고객 문의 선택·분석까지 정확히 추출됐다는 판정이나 Gmail/Notion 실제 실행 성공은 아니다."
+    },
+    "X02": {
+      "intent_correct": true,
+      "observed_slots": {
+        "compute.formula": "qty * unit_price",
+        "compute.output_column": "total",
+        "filter.field": "total",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "sort.direction": "descending",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "evidence": "X02 raw와 accepted requirement는 compute/filter/sort/export를 정확히 보존한다. read/policy는 별도 ledger task로 추출되지 않았으나 planner raw와 최종 workflow의 read_table(synthetic-sales) → calculate_columns(qty * unit_price,total) → filter_sort(total>=20, 숫자 내림차순, 빈값error, 중복keep) → write_result(json)에서 실제 반영됐다. 공용 filter_sort에 필터·정렬이 함께 있는 것은 gold 허용 범위이며 table binding 순서가 맞다. 최상위 draft.execution_plan.filters=[]와 달리 실행 노드의 필터는 정확하고 실제 합성 실행 행 id2/3, total30/20 순서가 기대 결과와 일치한다. schema와 의미 및 로컬 실행 성공이며 외부 서비스 실행은 없다."
+    },
+    "X03": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "requirement_extraction",
+      "secondary_observations": [
+        "redundant_resource_question",
+        "internal_resource_identifier_question"
+      ],
+      "evidence": "holdout X03의 capability는 집계/필터/JSON 지원을 정확히 식별한다. 그러나 requirement raw 및 수용 spec은 aggregate_and_filter/policy/export를 모두 kind=other 자유문구로 남겼고 group_by/sum_field/filter 값의 typed 슬롯은 없다. description의 원문 반복을 구조화 추출로 세지 않는다. 이미 synthetic-sales가 연결되어 있는데 자료 ID를 재질문해 CLARIFY로 끝나 workflow가 없고 네 업무 coverage는 false다. 이 단일 턴은 정답에 답변 정책이 없는 READY 대상이므로 unmatched_question은 모델의 불필요 질문 뒤 평가 종료이며 정상 질문 어휘 매칭 한계 사례와 다르다. holdout 전용 수정 규칙은 만들지 않는다."
+    },
+    "X04": {
+      "intent_correct": true,
+      "observed_slots": {
+        "output.format": "md"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "evidence": "X04의 capability와 planner는 연결된 synthetic-policy 문서 요약 및 Markdown 저장을 보존한다. 최종 read_document(file_ids=[synthetic-policy]) → compose_answer(documents 입력, 문서 요약 지시) → export_result(text 입력,format=markdown)의 도구·인자·binding이 맞다. export_result 실제 구현에서 format=markdown은 답변.md를 생성하므로 observed output.format은 gold의 md로 의미 정규화한다. 최상위 표 execution_plan의 기본 json은 문서 export 노드의 실제 format을 덮어쓰지 않는다. 중간 requirement는 document_analysis 하나에 전체 요청을 보존했으나 별도 export task를 추출하지 못한 한계가 있다. READY/schema_valid=true인 설계 성공이며 not_scheduled 사례라 요약 생성·파일 도구 실행 품질을 실제 측정한 것은 아니다."
+    },
+    "X05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "first",
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 15
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "requirement_extraction",
+      "secondary_observations": [
+        "unnecessary_confirmation"
+      ],
+      "evidence": "X05 capability는 중복 첫 행 보존 후 amount>=15 필터의 업무를 식별했고 condition raw/accepted ledger는 customer_id/first/amount/gte/15,missing=error,format=json을 모두 specified로 유지한다. 그러나 requirement raw는 kind=other/action=process_table로 업무를 묶고 이미 완결된 요청 전체를 저장하시겠습니까라는 승인 질문으로 unresolved에 넣었다. 실제 사용자에게 이 불필요한 확인 질문 하나를 보여 CLARIFY에서 종료했고 workflow가 없어 네 업무 coverage는 false다. 조건 슬롯 추출 성공과 후속 요구사항 단계의 잘못된 되묻기를 구분한다. gold에 답변 정책이 없는 READY 사례이므로 unmatched_question을 정상 질문 어휘 한계로 분류하지 않는다."
+    },
+    "X06": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.limit": 3
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "capability_judgement",
+      "secondary_observations": [
+        "connection_precondition_as_unsupported",
+        "send_preserved_in_free_text_not_action"
+      ],
+      "evidence": "holdout X06은 accepted meaning의 limit=3과 read/summarize를 유지하고 발송·수신자·제목은 other_requirements의 자유문구에 남긴다. count만 typed 관측 슬롯으로 인정하며 자유문구의 recipient/subject를 구조화 필드로 추정하지 않는다. capability 두 raw는 명시된 발송을 이해했으나 Gmail 연결 상태 unknown을 기능 부재로 취급하여 등록된 email.send를 미지원 판정했다. 질문과 workflow 없이 UNSUPPORTED로 종료해 세 업무 coverage와 전체 성공은 false다. 일부 사용자 인용에서 합성 이메일 뒤의 한국어 조사 때문에 sanitizer가 주소를 REDACTED_EMAIL로 바꿨지만, 실제 입력은 고정 gold이며 raw other_requirements에는 .invalid 주소가 남는다. 외부 메일을 조회·발송하지 않았고 holdout 전용 규칙은 만들지 않는다."
+    },
+    "X07": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "threshold"
+          ],
+          "unnecessary": false,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "requirement_extraction",
+      "secondary_observations": [
+        "incomplete_necessary_questions",
+        "redundant_resource_or_join_question"
+      ],
+      "evidence": "X07의 capability와 requirement description은 선별→집계→JSON이라는 업무를 이해한다. 그러나 accepted spec은 kind=other/action=filter_and_aggregate로 구조화 선별 열·집계 열·format 필드가 없고 기본 draft json을 추출 성공으로 세지 않는다. 첫 질문은 큰 금액의 기준값을 확인하므로 threshold에 필요한 질문이다. 특정 금액 이상은 단순 예시이며 포함/초과 경계 선택을 실제로 묻지 않아 operator는 확인되지 않았다. 두 번째 질문은 이미 연결된 표의 ID와 요청하지 않은 결합 조건을 요구하여 불필요하다. CLARIFY 분류는 맞지만 필수 질문 누락과 무관한 질문으로 전체 clarification 성공은 false다. 추가 join workflow를 생성한 것은 아니므로 실행 부가 업무로 세지 않는다."
+    }
+  },
+  "source_case_sha256": {
+    "X01": "83a8ce757ac90612e87f9aaca639e1125ce76ba410faf6da09b260d183f84459",
+    "X02": "326c07cbe368a280c1933525df09816d25e2edaf721877040474c73a32427886",
+    "X03": "5f83b67126fdef24aa1d9342bac9aeadd02da3a278ccb15d95da17cfbb9ef78c",
+    "X04": "2fecef0f49f87228ed5d858938d8e1120f2f37262d40b09821bb07b8d9a1acb2",
+    "X05": "f01ddea3c9e750eb5f79e7dc20da8f4564fec1cd2bf2609a0bd328a27663412b",
+    "X06": "3c84b7e55eecd8a585d2db7586c6b4ca095d72830c64ceb6ba346d21d626fba9",
+    "X07": "63f399fef10e824e3b9622053055618574be5999646becc0ad5d6728434fda8a"
+  },
+  "reviewer": "Codex evidence review; not Qwen self-rating or independent human gold",
+  "status": "completed",
+  "slot_scope": "First-turn accepted structured fields and final workflow arguments; rejected raw and mere prose restatement excluded.",
+  "whole_request_success_definition": "Expected route and required questions/unsupported grounds; for READY all requested tasks, parameters, dependencies and no additional work. External execution separate.",
+  "source_run_canonical_sha256": "6a3ca27a9a33459dbce7050e8f435edaf8f4daf1f5b1e1f6cf33f3a3f54b4a93"
+}

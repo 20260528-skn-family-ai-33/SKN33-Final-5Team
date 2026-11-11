@@ -1,0 +1,479 @@
+{
+  "classification_scope": "One exclusive principal stage per unsuccessful whole request; earliest confirmed material semantic/gate error, with an unreturned timeout as the principal measured failure when no accepted requirement/workflow exists. Direct blocking stage is separate, not another failed case. This is trace attribution, not prompt/model/code ablation.",
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "baseline": {
+    "cases": {
+      "R03": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "f7aa37785837228045d20c833f91ff0394e66c4d05056a4d2ffa7e13ddd8af2a",
+        "evidence": "정렬을 filter로 분류하고 지원되지 않는 sort.policy=desc를 출력하여 불필요한 정렬/필터 질문으로 종료."
+      },
+      "R04": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "199813de20ece56df618dc2510bfbe4209e123378e2936f7672de25c75ca1fc6",
+        "evidence": "중복 필드·first·JSON은 맞지만 filter 작업도 수용해 원문에 없는 필터 조건을 요구."
+      },
+      "R06": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "5fc067080a02ddf05a4b9d359237e59aa719c24a09effaf0eb4fd63441c3f208",
+        "evidence": "집계 description을 kind=other로만 표현하고 이미 연결된 자료와 명시된 출력 형식을 다시 질문."
+      },
+      "R07": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "407739fe57c3d084485b9ececf54e88f7187e5a0290f0a78ea3cac281b7fdd06",
+        "evidence": "rename source를 자료 ID로 잘못 추출한 뒤 rename을 compute formula로 바꾸어 두 requirement 후보 모두 거절."
+      },
+      "R09": {
+        "primary_stage": "workflow",
+        "direct_failure_stage": "workflow",
+        "source_case_sha256": "a1e4843b495dc37893b01835fd6577d64e0f4fb0950e6d899904d4d057131476",
+        "evidence": "encode_string 의도 수용 후 두 planner가 finish를 첫 단계로 두고 그 출력을 Base64 입력에 연결하여 ValueError."
+      },
+      "R10": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "0b84a17cde82c34ce76fc1b72f9fa4f01e50e9e817091d41e8f54c04ddbf783c",
+        "evidence": "정확한 scalar workflow와 달리 requirement가 표 compute와 임의 result 열을 요구하여 의미 검증 거절."
+      },
+      "T02": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "meaning",
+        "source_case_sha256": "18803b978363ff3aa4406edc632d88df77aa3f1869b30018d9e1d252eea0455d",
+        "evidence": "요청하지 않은 unread를 수용하고 self-review도 승인하여 최종 Gmail query가 읽은 메일을 임의 제외."
+      },
+      "T03": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "c7ea604bf226b6cb2197ec443813dc4d562f35ee118640fd63cfa320e19b5990",
+        "evidence": "yesterday는 맞지만 other_requirements에 이미 표현한 Gmail 요청을 반복해 compiler 경로를 벗어남. 이후 requirement가 read/file_ids=[]와 불필요한 계정·자료 ID 질문을 생성."
+      },
+      "T05": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "cca776719d07dfb69c3fbae0d46513704c16fff9748679d5d954aa7d24d48061",
+        "evidence": "초기 unread는 거절되었으나 self-review의 잘못된 상대 날짜 비판 후 yesterday가 date_range로 바뀌어 수용. 이후 인증/API키 질문으로 종료."
+      },
+      "T06": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "workflow",
+        "source_case_sha256": "314c257d8230c69cc135ce261794dceb66cb70a33d3ee2107e8d9f81c8b3f9ac",
+        "evidence": "yesterday는 맞지만 중복 other_requirements로 compiler 경로를 벗어나 document_analysis로 축소. 최종 Gmail query가 빈 문자열이므로 DST 종료일 25시간 범위를 상실."
+      },
+      "M02": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "harness",
+        "source_case_sha256": "fe46f2283fc8454ca4a95599787f0a72146cc340b350d90ff72351e3dd8730b5",
+        "evidence": [
+          "First and only response asks how duplicate customer_id rows should be handled. Wording lacks 첫/마지막/남길/보존; answer_stop_reason=unmatched_question.",
+          "condition_check raw proposes duplicate.policy=first and accepted ledger marks it specified before the appropriate requirement question is displayed.",
+          "No completed follow-up response exists. This cannot establish whether answering last would succeed, and the valid question is not counted as a model question failure."
+        ]
+      },
+      "M03": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "601e7956c4f3a470cba6838f153c9728684bf9c7d9f9ab8023ae8e1cf612d85b",
+        "evidence": [
+          "Both accepted condition ledgers contain filter plus deduplicate. Initial policy first/json are explicit; no numeric/value filter was requested.",
+          "Second ledger accepts duplicate.field=customer_id but still requires filter.field/operator/value. repeated_question stop is downstream of these unneeded questions.",
+          "Holdout: evaluation only; no targeted implementation change was based on this case."
+        ]
+      },
+      "M04": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "030ed1f7de52264e063835462134fa175893201d0c74b44e352086b3938e8597",
+        "evidence": [
+          "Both raw condition responses have only operation=schedule yet add missing.policy(status=missing). It is already present before checkpoint merge.",
+          "After actual answer, daily09:00/Asia-Seoul/json are all grounded but the unnecessary missing-policy question remains. Initial minute=0 was also accepted without a time."
+        ]
+      },
+      "M05": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "5f5f94f58e50da50db54e800a1c9250c0ce8507c4786a2fd0b8d138804e547b3",
+        "evidence": [
+          "Both raw condition responses have only operation=schedule yet add duplicate.policy(status=missing).",
+          "Monday answer is incorporated as weekday0 with prior09:00/Asia-Seoul/json preserved; unrequested duplicate policy still blocks READY."
+        ]
+      },
+      "M06": {
+        "primary_stage": "capability",
+        "direct_failure_stage": "workflow",
+        "source_case_sha256": "28df8c70d3b9c0a251bdadd0bcb05b79219803e2d23618795c741396bc8c23ee",
+        "evidence": [
+          "Both capability assessments list read_table, filter_sort, write_result although only monthly table export was requested.",
+          "The monthday15 answer and monthly09:00/Asia-Seoul are preserved. Final read_table→write_result JSON draft is rejected because it omits capability's filter_sort, yielding SYSTEM_ERROR.",
+          "Holdout: evaluation only; task coverage is true but whole-request success is false."
+        ]
+      },
+      "M09": {
+        "primary_stage": "capability",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "a4e800c497b5995e4da62c0df3966f15b710e3efd6a36bc5c00f90a21aaf6880",
+        "evidence": [
+          "Initial capability asks both required sum column and unnecessary NaN/null/empty-string meaning. User already said 빈 값은 오류.",
+          "After amount answer, requirement retains the extra empty-value question and treats the answer as an additional update/re-execution task. No typed aggregate/export result or workflow exists.",
+          "Harness repeated_question stop is caused by the broad 열 matcher also present in 문자열; it is downstream of an unnecessary question, unlike M02's valid unmatched question.",
+          "Holdout: evaluation only."
+        ]
+      },
+      "M10": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "workflow",
+        "source_case_sha256": "4033b07de939a32caff52830ff2d8fd55383baccf61413ed3d52f62bd1f31a60",
+        "evidence": [
+          "request_meaning raw repeatedly proposes read+send and subject_check/body_complete or search filters rather than a send-only literal message. Reviewer rejects but ordinary planning inherits the same interpretation.",
+          "Recipient question is valid and a real follow-up attempt is evidenced by requirement source_message1 and raw planner candidates using the synthetic recipient.",
+          "Both raw candidates add searches/content composition; worker ends in ValueError before second response is appended. Only one turn is persisted, schema_valid is null, and no email is executed. Exact ValueError text is unavailable."
+        ]
+      },
+      "M12": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "25c6e7dfbd0547f7fcd791fba538a8a725f6ee8d15b8f19426e632393244bd19",
+        "evidence": [
+          "Initial yesterday query correctly covers 2026-11-09. Next-day maximum5 update first uses invalid quantity evidence and unread, then repair incorrectly places 어제 at user_message1.",
+          "Both fallback requirements produce Nov10 queries. Python rejects them, so no wrong-date workflow is accepted; final state is validation_failed with the stale prior100/Nov9 draft.",
+          "Holdout: evaluation only; old date retention does not establish successful count incorporation."
+        ]
+      },
+      "C01": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "c1c6c9751287d1f56ea186d7c82ac0adff454b4843d1a41926f01f5930694cdc",
+        "evidence": "required_clarification_missing"
+      },
+      "C03": {
+        "primary_stage": "capability",
+        "direct_failure_stage": "capability",
+        "source_case_sha256": "697de65897936f7e36d1466979878530fdf364c31bee357bba500795a0050a9e",
+        "evidence": "unsupported_classification_error"
+      },
+      "C05": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "18b82277ec0a01fa6cd1740767143fc507300ddf1ea891a94296f97ec24e2b0a",
+        "evidence": "ungrounded_slot_assumption"
+      },
+      "C06": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "meaning",
+        "source_case_sha256": "69eef99cab1cf34512fd3bb79f738c58b4237a6e4474e3b4615b5ff7c654b0a4",
+        "evidence": "ungrounded_slot_assumption"
+      },
+      "C07": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "409925fc71ac396b6c1f29d0ac033b2f1258331785cd028d7261403f5362161a",
+        "evidence": "required_clarification_missing"
+      },
+      "C08": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "2b45fc1ca00d54796f09b5ce3d35e7d9b657799478d78e0015128681b0fcd226",
+        "evidence": "ungrounded_slot_assumption"
+      },
+      "C10": {
+        "primary_stage": "capability",
+        "direct_failure_stage": "capability",
+        "source_case_sha256": "00d08bf920991d9a2608f64f6e4469257bf8c3459702e64ef611087a35a28387",
+        "evidence": "intent_misinterpretation"
+      },
+      "X03": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "5f83b67126fdef24aa1d9342bac9aeadd02da3a278ccb15d95da17cfbb9ef78c",
+        "evidence": "holdout X03의 capability는 집계/필터/JSON 지원을 정확히 식별한다. 그러나 requirement raw 및 수용 spec은 aggregate_and_filter/policy/export를 모두 kind=other 자유문구로 남겼고 group_by/sum_field/filter 값의 typed 슬롯은 없다. description의 원문 반복을 구조화 추출로 세지 않는다. 이미 synthetic-sales가 연결되어 있는데 자료 ID를 재질문해 CLARIFY로 끝나 workflow가 없고 네 업무 coverage는 false다. 이 단일 턴은 정답에 답변 정책이 없는 READY 대상이므로 unmatched_question은 모델의 불필요 질문 뒤 평가 종료이며 정상 질문 어휘 매칭 한계 사례와 다르다. holdout 전용 수정 규칙은 만들지 않는다."
+      },
+      "X05": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "f01ddea3c9e750eb5f79e7dc20da8f4564fec1cd2bf2609a0bd328a27663412b",
+        "evidence": "X05 capability는 중복 첫 행 보존 후 amount>=15 필터의 업무를 식별했고 condition raw/accepted ledger는 customer_id/first/amount/gte/15,missing=error,format=json을 모두 specified로 유지한다. 그러나 requirement raw는 kind=other/action=process_table로 업무를 묶고 이미 완결된 요청 전체를 저장하시겠습니까라는 승인 질문으로 unresolved에 넣었다. 실제 사용자에게 이 불필요한 확인 질문 하나를 보여 CLARIFY에서 종료했고 workflow가 없어 네 업무 coverage는 false다. 조건 슬롯 추출 성공과 후속 요구사항 단계의 잘못된 되묻기를 구분한다. gold에 답변 정책이 없는 READY 사례이므로 unmatched_question을 정상 질문 어휘 한계로 분류하지 않는다."
+      },
+      "X06": {
+        "primary_stage": "capability",
+        "direct_failure_stage": "capability",
+        "source_case_sha256": "3c84b7e55eecd8a585d2db7586c6b4ca095d72830c64ceb6ba346d21d626fba9",
+        "evidence": "holdout X06은 accepted meaning의 limit=3과 read/summarize를 유지하고 발송·수신자·제목은 other_requirements의 자유문구에 남긴다. count만 typed 관측 슬롯으로 인정하며 자유문구의 recipient/subject를 구조화 필드로 추정하지 않는다. capability 두 raw는 명시된 발송을 이해했으나 Gmail 연결 상태 unknown을 기능 부재로 취급하여 등록된 email.send를 미지원 판정했다. 질문과 workflow 없이 UNSUPPORTED로 종료해 세 업무 coverage와 전체 성공은 false다. 일부 사용자 인용에서 합성 이메일 뒤의 한국어 조사 때문에 sanitizer가 주소를 REDACTED_EMAIL로 바꿨지만, 실제 입력은 고정 gold이며 raw other_requirements에는 .invalid 주소가 남는다. 외부 메일을 조회·발송하지 않았고 holdout 전용 규칙은 만들지 않는다."
+      },
+      "X07": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "63f399fef10e824e3b9622053055618574be5999646becc0ad5d6728434fda8a",
+        "evidence": "X07의 capability와 requirement description은 선별→집계→JSON이라는 업무를 이해한다. 그러나 accepted spec은 kind=other/action=filter_and_aggregate로 구조화 선별 열·집계 열·format 필드가 없고 기본 draft json을 추출 성공으로 세지 않는다. 첫 질문은 큰 금액의 기준값을 확인하므로 threshold에 필요한 질문이다. 특정 금액 이상은 단순 예시이며 포함/초과 경계 선택을 실제로 묻지 않아 operator는 확인되지 않았다. 두 번째 질문은 이미 연결된 표의 ID와 요청하지 않은 결합 조건을 요구하여 불필요하다. CLARIFY 분류는 맞지만 필수 질문 누락과 무관한 질문으로 전체 clarification 성공은 false다. 추가 join workflow를 생성한 것은 아니므로 실행 부가 업무로 세지 않는다."
+      }
+    },
+    "counts": {
+      "condition": 9,
+      "requirement": 7,
+      "workflow": 1,
+      "meaning": 7,
+      "capability": 5
+    }
+  },
+  "after": {
+    "cases": {
+      "C01": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "c2b6a55c2f3474348baa6b9299760c5413e68c5cb78f1724528c949a796f0864",
+        "cause": "required_clarification_missing",
+        "evidence": "Fresh after C01 review: capability accepts scheduled sales reporting/email delivery. The accepted requirements stage preserves schedule daily/09:00/Asia-Seoul and adds an other/clarify_data_source placeholder. Its single unresolved question is displayed and covers report scope plus data source (2/3 required conditions), but recipient remains unasked. All three frozen schedule slots are structurally retained and no time value is asked again. The placeholder describes the same design clarification, not additional generated/executed business work. Final CLARIFY is correct, with no workflow or external execution, but whole-request success remains false because required recipient clarification is missing."
+      },
+      "C03": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "37a10b933c5b3956a62751c46d34379394aad9bc7d610f513b722341fe63df90",
+        "cause": "required_clarification_missing",
+        "evidence": "Fresh after C03 holdout review: capability initially lists account/source connection as missing functionality, then accepts existing_tools with no missing_actions. Its accepted explanatory prose still contradictorily says missing_capability, but the actual route proceeds to requirements and CLARIFY. The accepted ledger contains only other/email_delivery_with_analysis plus the recipient question. Source and analysis-goal questions are absent (1/3 required), and no accepted typed date interval is retained (0/2 slots). Quoted last-week wording alone is not structured date evidence. No workflow or external operation exists. The route improves but whole-request handling remains incomplete."
+      },
+      "C06": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "meaning",
+        "source_case_sha256": "b98c27685c7e0e26322ec14518924cb385de416ee1608565752030ecd756437f",
+        "cause": "ungrounded_slot_assumption",
+        "evidence": "Fresh after C06 holdout review: accepted request_meaning at stages[1] retains source=gmail/actions read+summarize but also fixes selection.filters=[important] with unresolved=[]; its model self-review says faithful=true, which is not independent gold. Capability and requirement stages proceed without an importance-criterion question. The candidate workflow reads is:important mail and summarizes it, while unrelated table execution filters remain in the draft. Python rejects the draft for missing filter_sort application, giving SYSTEM_ERROR/schema_valid=false. The ungrounded importance criterion is counted from accepted meaning, not the rejected planner candidate. No actual question, workflow execution or external mail access occurs. The requested provider is retained but missing-criterion clarification and whole-request handling fail."
+      },
+      "C09": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "90a4c7930309059abf74105fdc223c07ab2a5502ac6c0a6f68bae9554c9f5937",
+        "cause": "requirement_extraction_failure",
+        "evidence": "Fresh after C09 holdout review: capability understands new table-column calculation and JSON output but says no condition question is needed. Requirement candidate 1 invents qty*unit_price and total_amount with double-brace formula syntax plus a confirmation question; candidate 2 retains that invented arithmetic/name with single-brace syntax, adds JSON export and asks for an already connected table ID. Both fail requirement validation; stages[4].parsed_state.requirement_ledger is null. Neither candidate question is displayed, no formula/column question reaches the user (0/2), and no typed JSON slot is accepted (0/1). Rejected guesses are not counted as confirmed unsupported slots. Final SYSTEM_ERROR has no workflow or external execution, so whole-request handling fails."
+      },
+      "C10": {
+        "primary_stage": "capability",
+        "direct_failure_stage": "capability",
+        "source_case_sha256": "cc21d33412c5c70871b6d197cefca4a908bcd4a35b035d51c31dac225eed3ad4",
+        "cause": "unnecessary_question",
+        "evidence": "Fresh after C10 review: raw meaning candidates at model_calls[0] and [2] correctly preserve send plus literal subject/body in other_requirements, but reviews at [1] and [3] reject them; stages[1].parsed_state.request_meaning is null. Capability raw [4] incorrectly puts connection/recipient prerequisites in missing_actions, then raw [5] and accepted stages[2] correctly route to clarify with email.prepare/send. Accepted capability now understands sending the specified literal content rather than inventing title-review/body-completion work, so intent is correct and no extra business action is counted. Its two visible capability questions ask recipient (necessary, 1/1) and extra content/description (unnecessary because subject/body are supplied). No accepted typed subject/body fields remain (0/2); rejected raw candidates and quoted question text are not credited. CLARIFY improves routing, but unnecessary re-questioning and lost structured literals keep whole-request success false. No workflow or external email execution occurs."
+      },
+      "X03": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "4546fc0a2db69565c4f694bd3459c01cc5c652bafa18860ebb5148d01ce0c9b9",
+        "cause": "duplicate_export_requirement",
+        "evidence": [
+          "The new accepted requirement ledger contains typed aggregate(fields=[region],aggregation=sum,sum_field=amount), filter(sum gte25), policy(error,keep), and two JSON export tasks. The five frozen slots are present in accepted typed specs; no rejected/free-text value is credited.",
+          "Both actual planner candidates have read_table(synthetic-sales)→aggregate_table(region,sum amount)→filter_sort(sum>=25,missing error,duplicate keep)→write_result(json)→optional finish. The final retained candidate has correct table/artifact bindings and preserves all four gold tasks, so task coverage is 4/4. This partial workflow coverage is not READY or execution success.",
+          "The accepted ledger redundantly treats the same requested JSON output as r1 and r5. Both validator passes report 복수 결과 파일의 저장 위치·개별 출력은 추가 검토가 필요합니다, despite all five ledger rows being individually matched. Final route SYSTEM_ERROR/schema_valid=false/validation_failed prevents execution and whole-request success. The duplicate export requirement is the first confirmed causal error; no actual second file was generated.",
+          "No pending or draft questions are present. This holdout case is judged only; no case-specific fix is proposed."
+        ]
+      },
+      "X05": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "b93d9e2deef00fcf9915116ec1fba0e657d6d1edb8d18563c2f994cacfc7a030",
+        "cause": "requirement_policy_contradicts_user_and_condition",
+        "evidence": "Fresh after X05: condition ledger preserves customer_id/first/amount/gte/15, missing=error and JSON. The raw requirement response explicitly emits duplicate_policy=keep despite its own description saying first; this is accepted in r2 and counted as an unsupported contradictory typed value. Two planner responses and the final stored draft have the correct read_table(synthetic-sales) -> filter_sort(first by customer_id, amount>=15, missing=error) -> write_result(json) bindings. The native filter_sort implementation deduplicates before applying filters, so the combined node preserves the requested order and all four task coverage labels are true. Nevertheless the validator rejects the correct draft because it does not match the wrong keep-policy requirement, giving SYSTEM_ERROR/schema_valid=false. No question or local/external execution occurred. The previous unnecessary confirmation disappeared but whole-request success did not improve."
+      },
+      "X06": {
+        "primary_stage": "transport",
+        "direct_failure_stage": "transport",
+        "source_case_sha256": "f3a2c5fb18a40103a6c0425cd372b0a39a998510574de722cdce1a91f471330d",
+        "cause": "requirement_model_response_timeout_180_seconds",
+        "evidence": "Fresh after X06 holdout: capability correctly recognizes Gmail read/summary/send and treats account connection as an execution precondition, improving the previous unsupported decision. Both request_meaning candidates are rejected: self-review wrongly treats newest_first+limit3+periodall as losing recent, and gives contradictory feedback about the already included summary body. No accepted meaning or requirement ledger exists, so candidate limit/recipient/subject and capability prose are not counted as typed slots. The subsequent requirements native request fails with TimeoutError after 181.2883 seconds (configured timeout180); no raw model response is available for that call. Worker returns SYSTEM_ERROR with no questions or workflow. All three final tasks are uncovered and no connector ran. Primary final run failure is the observed transport/model-response timeout; earlier rejected meaning candidates are secondary, not proof of what a completed requirement response would have done. Server log separately confirms generation then cancellation and all slots idle. X06 failure is retained, not retried or replaced by a favorable sample."
+      },
+      "X07": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "5003b58100540bbc09ae21d5df815d335a4f37017d91569792bbfdd524289bc5",
+        "cause": "invalid_requirement_filter_instead_of_required_threshold_and_operator_questions",
+        "evidence": "Fresh X07 in the disjoint after-part2 shard: capability recognizes filter -> region amount aggregation -> JSON. Both requirement raw candidates invent an ungrounded gt operator and self-comparison compare_field=amount with value=null. They also contain correct aggregate/export fields, but both are rejected and no requirement ledger is accepted, so rejected candidate fields receive no typed-slot credit. The first candidate contains a threshold question which is never exposed; the repair removes unresolved questions. The actual worker response has no pending or draft questions, so necessary threshold/operator recall is 0/2, no workflow exists, and final route is SYSTEM_ERROR instead of CLARIFY. No transport failure occurred in this case and no local/external execution occurred. Gold and application/model settings match the first after shard; X06 timeout was not rerun."
+      },
+      "M02": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "ace28a386c6e571ac93f7fab562a94902acd4130958c8950156bc454b68ca6d8",
+        "cause": "requirement_adds_unneeded_empty_error_scenario_question_after_correct_duplicate_answer",
+        "evidence": [
+          "New after first ledger marks duplicate.policy missing and records rejection of the model's unsupported retention value. Unlike baseline it does not accept first and displays an appropriate duplicate-policy question.",
+          "Actual answer '중복은 마지막 행만 남겨줘.' uses question323c6708d438ab44ecca3ee2. Final typed condition ledger correctly preserves customer_id, last, missing.policy=error and JSON, and becomes ready.",
+          "Requirement stage kind=other then asks what an empty-value error should do, offering excluding empty rows or an error-containing JSON despite user's explicit error policy. This unnecessary extra requirement blocks generation; no workflow exists.",
+          "The second displayed question restates the answered last policy but actually asks an unneeded empty-error scenario, so resolved-question repeated=false. Frozen matcher sees 마지막/남긴다 and stops as repeated_question. This is downstream of an unnecessary system question, not baseline M02's valid-question lexical limitation."
+        ]
+      },
+      "M03": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "3348bf771bbae3c3966377a562248213bd011adee92c42d7dfe4c8bbc07f4586",
+        "cause": "condition_adds_filter_to_deduplicate_and_repeats_unrequested_filter_questions",
+        "evidence": [
+          "Holdout, evaluated afresh. Initial typed first/JSON/error are grounded but filter is added beside deduplicate. The generic first field question can elicit the required duplicate column despite its filter.field key; comparator is unnecessary.",
+          "Actual customer_id answer uses prior question3e160fdbd95085e7d8ccecb9 and is accepted as duplicate.field. Existing first/JSON/error remain, but invented filter.field/operator/value stay missing.",
+          "Final state repeats field and comparator questions and remains CLARIFY. Field is already answered, hence repeated=true; comparator was never answered and is irrelevant, hence unnecessary=true/repeated=false. The answer harness's repeated_question stop is downstream of the wrong operation."
+        ]
+      },
+      "M04": {
+        "primary_stage": "capability",
+        "direct_failure_stage": "workflow",
+        "source_case_sha256": "e3ef49b1de58761ff5f5dfe097516991138f9d873f636eb3017d5409a22769cf",
+        "cause": "capability_includes_unrequested_filter_sort_and_validator_rejects_correct_read_export_draft",
+        "evidence": [
+          "After first condition ledger rejects ungrounded minute0, retains both minute/hour unresolved, and displays a single combined time question. Extraneous model-proposed missing.policy remains missing internally but is no longer an unresolved requirement or displayed question.",
+          "Actual '매일 오전 9시 정각으로 해줘.' under questionf1e34c6fc92787a52d4218ac yields grounded hour9/minute0 and preserves daily/Asia-Seoul/JSON; condition decision becomes ready.",
+          "Both capability assessments nevertheless list read_table/filter_sort/write_result for a plain scheduled export. Final correct daily09:00 schedule and read_table→write_result(JSON) draft are rejected for missing that unrequested filter_sort, yielding SYSTEM_ERROR after two returned SDK planner candidates.",
+          "read_table has empty settings but draft.document_ids=[synthetic-sales] supplies the established source fallback; output binding is correct. Task coverage is true while whole-request success is false. Requirement duplicates the same schedule as a follow-up task, but final draft has one schedule and no added workflow action. No execution."
+        ]
+      },
+      "M05": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "0bb5fbf96c7737f9350b9e293a28a5f029ef08d1e0b22a8d3dfef0ca54bca768",
+        "cause": "requirement_outputs_weekday1_for_Monday_twice_despite_correct_condition_weekday0",
+        "evidence": [
+          "After initial weekly09:00/Asia-Seoul/JSON ledger preserves original values and no longer asks the irrelevant model-proposed duplicate.policy; only weekday is unresolved/displayed.",
+          "Actual Monday answer uses question2f0dd04e3ea8d65922cb7d19. Literal reconciliation accepts weekday0 and preserves earlier time/timezone/JSON despite malformed numeric proposals; condition decision is ready.",
+          "Both subsequent requirement raw responses describe Monday but encode weekday1. Python rejects the contradictory schedule and the second response is validation_failed/SYSTEM_ERROR; no requirement ledger or workflow is accepted. Final_observed_slots refer to the correct condition ledger, not a successful final schedule draft.",
+          "Capability still overlists filter_sort, but it did not cause the observed stop: requirement validation failed before planning. No external or local execution.",
+          "Scorer denominator caveat: failed final response has pending_questions=[] and only an error assistant message, but retained draft.questions still contains the already answered weekday prompt. Existing scorer falls back to this stale draft question; its extra label is unnecessary/repeated. Actual new pending-question or browser display was not observed."
+        ]
+      },
+      "M09": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "workflow",
+        "source_case_sha256": "14f2320ebb2043993bbca18a346590a97a3ff9d9de11b074d293cd5a9f00376e",
+        "cause": "requirement_turns_column_answer_into_separate_compute_task_then_coverage_rejects_correct_aggregate_draft",
+        "evidence": [
+          "Holdout evaluated afresh. Initial capability now asks only the required amount-column name and explicitly treats empty-error policy as supported; prose/default JSON are not typed initial slots.",
+          "Actual amount answer uses question83e82c9a34e6ba1e64c36de9. Final workflow reads synthetic-sales, aggregate_table(sum, sum_field=amount, fields=[region]), then writes JSON with correct table bindings. The draft missing_policy=error is used by aggregate executor for grouping fields; sum-field empty/non-number values also raise errors natively.",
+          "Final typed workflow fields satisfy gold and requested source/dependencies. No extra transformation appears in the workflow, but requirement r2 invents a separate amount-to-amount compute task from the clarification answer.",
+          "Coverage validation rejects the draft for lacking that spurious r2, yielding SYSTEM_ERROR after two returned planner responses. Correct task coverage does not imply whole success; no execution was performed."
+        ]
+      },
+      "M10": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "capability",
+        "source_case_sha256": "3aa330b9e66a85529508ecaad3ce81528fb9a8f62abcaa4e58353449c9dd88dd",
+        "cause": "meaning_reviewer_rejects_correct_send_only_literal_candidate_then_capability_asks_invented_checking_criteria",
+        "evidence": [
+          "After raw extraction improves: both candidates contain actions=[send], order=unspecified, period=all, filters=[], other_requirements=['제목: 점검','본문: 완료']. They do not add an existing-mail read/search. These are rejected candidates, not accepted typed subject/body slots.",
+          "Both model review responses say faithful=false with internally contradictory explanations: they acknowledge literal preservation yet demand those literals be filters and treat an empty selection as sending all mail. Python does not override false review, so trusted request_meaning remains null.",
+          "Fallback capability wrongly asks title-check and body-completion rules. It lists recipient only third, beyond the two displayed questions, and additionally calls body content missing. Thus no necessary recipient question is actually exposed in the recorded backend response.",
+          "Frozen answer policy cannot answer these unrelated prompts (two unmatched_question reasons); unlike baseline M02 this is a system question error, not a valid-question vocabulary limitation. There is one saved turn and no follow-up attempt or workflow. No email is sent."
+        ]
+      },
+      "M12": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "workflow",
+        "source_case_sha256": "19b9f6b2488ea96325aa5cf1df175264c5a018f2f435b60d4826d964f9d5fc21",
+        "cause": "meaning_accepts_relative_yesterday_as_date_range_with_duplicate_other_requirement_then_general_plan_adds_unrequested_steps",
+        "evidence": [
+          "Holdout evaluated afresh. First raw meaning encodes period=date_range with evidence 어제 and copies the entire request into other_requirements; model review says faithful=true. This accepted contract bypasses the supported relative-day summary compiler.",
+          "General requirement adds human_review; final rejected draft adds a global date-descending sort and an email.list max_results500 query 'after:2026-11-09 before:2026-11-10'. This date-only query does not supply the verified Asia/Seoul epoch boundaries of the gold/previous successful initial draft; correct anchored gmail.date is not credited.",
+          "Validation rejects missing filter_sort for the global sort and uncovered human_review. First and final route are SYSTEM_ERROR with one persisted response. Unlike baseline, no next-day '최대 5개만' turn occurs; neither final limit5 nor cross-day date preservation is measured. No model answer or final slots are invented for the missing turn.",
+          "Target read/summary final coverage is false because the requested revised maximum5 and anchored day are not represented. No Gmail or added action is executed."
+        ]
+      },
+      "R03": {
+        "primary_stage": "condition",
+        "direct_failure_stage": "condition",
+        "source_case_sha256": "fd11c5a598a154adab33321c11d6e3390bb51f61da02edb8cc8b673ff575fa16",
+        "cause": "condition_misclassifies_sort_as_filter_and_cannot_represent_descending_sort",
+        "evidence": [
+          "Holdout evaluation only. New capability recognizes sorting, but the first condition response duplicates sort.policy (desc and none) and requires contract repair; second response still supplies invalid sort.policy=desc under operation=filter.",
+          "Python rejects desc because this condition enum only represents none; accepted sort.policy remains missing. Accepted typed JSON is correct, but sort.field/direction are absent. Rejected desc is not scored as an accepted invented slot.",
+          "Final CLARIFY asks whether to sort at all and which field to filter, both unnecessary given amount numeric descending. No requirement/planner workflow or local execution occurs."
+        ]
+      },
+      "R04": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "606f803fe6630a95e4e76ab70ffb6cafb9e267785ece0670a62224f5c64e019b",
+        "cause": "requirement_reasks_explicit_retention_and_missing_value_policies_after_condition_ready",
+        "evidence": [
+          "New raw condition still labels the request filter while providing only duplicate/output/missing-policy slots. The repaired Python scope normalizer accepts deduplicate only, and the ledger correctly confirms customer_id/first/JSON and empty-value error with no unresolved condition.",
+          "The later actual requirement response uses kind=other/action=deduplicate_and_export and nevertheless asks whether to keep the first row or use another criterion, plus how to handle empty values. Both policies are already explicit, so both displayed questions are unnecessary.",
+          "Final route remains CLARIFY and no workflow executes. This is evidence that the condition normalization works but a downstream requirement re-questioning failure remains; it is not a complete successful R04 repair. Capability mentions annual scheduling in its prose without accepting any extra schedule, so that prose is not an extra action."
+        ]
+      },
+      "R06": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "e2d5c264f5fd056c3c7a7f80cfaf6101277546f794371025a16579ddcd299941",
+        "cause": "requirement_converts_missing_value_error_policy_to_fill_missing_ERROR",
+        "evidence": [
+          "New typed requirement specs correctly retain aggregate.fields=[region], aggregation=sum, sum_field=amount and export.format=json, so these accepted first-turn slots receive credit; capability prose alone is not the basis.",
+          "The same accepted ledger invents fill_missing(amount,ERROR), depending on aggregate, although the user requested an error on missing amounts. ERROR is an unsupported invented typed value and filling is extra accepted work.",
+          "The SDK planner returns no workflow and one draft question asking ERROR string versus numeric0. pending_questions is empty but the displayed draft question counts in the scorer fallback denominator. It is unnecessary because the error policy is explicit. Final CLARIFY, no execution and no task coverage."
+        ]
+      },
+      "R09": {
+        "primary_stage": "requirement",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "569ac1b99d5f25f9193fdc72bed1779f8466c787bf0dcd19c285caeaf490deeb",
+        "cause": "requirement_contract_cannot_represent_base64_operation_and_rejects_compute_then_scalar_formula",
+        "evidence": [
+          "Holdout evaluation only. Capability identifies base64_codec for hello encoding, so high-level intent is correct. New first requirement response expresses base64_encode(hello) as table compute with invented encoded_value; the repair expresses the same unsupported function as scalar_calculate.",
+          "Both requirement candidates are rejected; accepted requirement ledger/workflow are absent. Thus hello/encode are not scored as typed accepted slots and rejected encoded_value is not an accepted extra slot/action.",
+          "Final response is validation_failed/SYSTEM_ERROR before planner generation, with no questions and no execution. schema_valid=null means no final workflow was available; it does not measure the validity of every raw requirement candidate."
+        ]
+      },
+      "T01": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "91ecab7e1275141989b4567bfa07d8fcd50d1e2f70c2377caabce4e5c1169364",
+        "cause": "meaning_date_range_with_redundant_other_requirements_bypasses_compiler_then_requirement_adds_human_review",
+        "evidence": [
+          "After meaning raw chooses period=date_range with evidence 어제 and repeats the whole request inside other_requirements; self-review accepts faithful=true. filters=[] throughout, so this is not an unread-grounding rejection. The accepted period is wrong for frozen yesterday and the standard Gmail semantic compiler is bypassed.",
+          "Requirements accept document_analysis plus unrequested human_review. Both SDK planner responses produce email.list→compose_answer without human_review, and final validator reports the missing r2 review step. This is the direct SYSTEM_ERROR trigger after an earlier meaning error.",
+          "The workflow uses date-string query after:2026-11-09 before:2026-11-10, not the expected Asia/Seoul epoch boundaries 1794150000–1794236400 computed from the frozen clock with zoneinfo. The printed dates are recorded but are not credited as a verified resolved local-day query; no Gmail execution validates the boundary.",
+          "Final-case schema_valid=false is the harness validator metric, including semantic requirement rejection; it is not a claim that the raw JSON itself cannot parse. Baseline T01 success has regressed in this after run."
+        ]
+      },
+      "T03": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "c3909dc56a19427e7d3543daf87ceba67660ae0492b408d42361aaa36b99b958",
+        "cause": "meaning_date_range_with_redundant_other_requirements_bypasses_compiler_then_requirement_adds_human_review",
+        "evidence": [
+          "Holdout evaluation only. New meaning raw incorrectly classifies 어제 as date_range and puts the request in other_requirements; self-review accepts it. filters=[] so no unread rejection occurs. Accepted typed period is wrong, while no resolved local-day epoch query is established.",
+          "Requirements accept document_analysis and unrequested human_review. Two SDK candidates bind email.list documents→compose_answer, but the final draft is rejected because the invented review step is missing. No user question or external execution occurs.",
+          "Final query mixes after:2026-11-08 with an ISO timestamp before:2026-11-09T00:00:00+09:00, rather than the independently zoneinfo-computed Seoul boundaries1794063600–1794150000. The written dates are not credited as verified Gmail query semantics.",
+          "Final SYSTEM_ERROR/schema_valid=false includes semantic requirement failure; this is not a raw-JSON parse-rate result."
+        ]
+      },
+      "T04": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "f484223e0ebac179976fb616ccc8681613462a548a4de9873022e563faf92af8",
+        "cause": "meaning_date_range_with_redundant_other_requirements_bypasses_compiler_then_requirement_adds_human_review",
+        "evidence": [
+          "New meaning response extracts date_range rather than yesterday and repeats the original request in other_requirements. Its self-review is faithful=true, with filters=[]; unread guard does not reject the candidate.",
+          "Capability prose recognizes year-boundary date2026-12-31, but accepted requirement is document_analysis plus an unrequested human_review. Both SDK drafts omit the invented review, causing final requirement validation failure/SYSTEM_ERROR.",
+          "The actual email.list query contains date strings2026-12-31/2027-01-01, so textual year rollover is visible. It does not establish the expected Seoul epoch bounds1798642800–1798729200 computed with zoneinfo; a typed, verified resolved-day slot is not credited. Summary binds the same unverified read range.",
+          "No question or external execution occurs. This after result regresses from baseline T04 whole-request success; final-case schema_valid=false describes validator failure, not raw JSON syntax."
+        ]
+      },
+      "T05": {
+        "primary_stage": "meaning",
+        "direct_failure_stage": "requirement",
+        "source_case_sha256": "7348bcf0651537bb7fecd74b8bacdec57cefb7fb67909a9e89a6786ec942d91b",
+        "cause": "meaning_date_range_with_redundant_other_requirements_bypasses_compiler_then_requirement_adds_human_review",
+        "evidence": [
+          "New meaning chooses date_range with evidence 어제 and redundant other_requirements; faithful self-review accepts it. Unlike the earlier baseline trace, this run never proposes unread, so its failure must not be attributed to a guard rejection or copied baseline critique.",
+          "The accepted requirement becomes document_analysis plus human_review. Both SDK candidates create email.list→compose_answer only, and final validator blocks the omitted unrequested review. No question is displayed and no Gmail execution occurs.",
+          "The workflow prints date-string after:2026-03-08 before:2026-03-09. Independent zoneinfo computation gives New York DST-start bounds1772946000–1773028800, a23-hour day. The actual query does not encode verified epoch bounds, so date/window slots and the read/summary semantic coverage are not credited."
+        ]
+      }
+    },
+    "counts": {
+      "requirement": 12,
+      "meaning": 7,
+      "capability": 2,
+      "transport": 1,
+      "condition": 2
+    }
+  },
+  "source_shards": {
+    "docs\\qwen-local-public9b-baseline-v2.json": "187609496fbf1a9d9f2374848543fb1e10771a205bdb009b55ad617494f48290",
+    "docs\\qwen-local-public9b-after.json": "94f1a4bd6e27177dd2c7821ccfe2b776e9647516810c5f521b9265454ab1dbd9",
+    "docs\\qwen-local-public9b-after-part2.json": "fd0f15400b951db584c6515e4de9aa69e303043822278bee77a323efd968690a"
+  }
+}

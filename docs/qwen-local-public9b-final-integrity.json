@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-10T15:19:43.898725+00:00",
+  "scope": "Read-only final source/environment/evidence integrity snapshot; not a declaration that the main after evaluation or repeats are complete.",
+  "model_calls_performed": 0,
+  "source_or_configuration_changes": 0,
+  "writes_in_this_audit": [
+    "docs/qwen-local-public9b-final-integrity.json"
+  ],
+  "observed_after_snapshot": {
+    "path": "docs/qwen-local-public9b-after.json",
+    "status": "running",
+    "persisted_cases": 50,
+    "active_case_id": "X06",
+    "completion_not_inferred_from_snapshot": true
+  },
+  "application_source": {
+    "expected_source_sha256": "6a417569cd7f1fd24065c981c6e31cf2d2622d0ff3c54e41164e60e3e60be460",
+    "after_recorded_source_sha256": "6a417569cd7f1fd24065c981c6e31cf2d2622d0ff3c54e41164e60e3e60be460",
+    "computed_source_sha256": "6a417569cd7f1fd24065c981c6e31cf2d2622d0ff3c54e41164e60e3e60be460",
+    "expected_file_count": 243,
+    "current_file_count": 243,
+    "missing_manifest_files": [],
+    "added_within_manifest_scope": [],
+    "changed_manifest_files": [],
+    "all_manifest_files_match": true,
+    "new_files_since_baseline": [
+      "Backend/agent_builder/design/scalar_requirement.py"
+    ],
+    "new_files_since_baseline_present_in_after_manifest": true,
+    "untracked_application_files_within_manifest": [
+      "Backend/agent_builder/design/request_meaning.py",
+      "Backend/agent_builder/design/scalar_requirement.py",
+      "Backend/agent_builder/design/temporal_context.py"
+    ],
+    "untracked_application_files_outside_declared_manifest": [
+      "Backend/api/src/request-timezone.ts"
+    ],
+    "scope_directories": [
+      "Backend/agent_builder",
+      "Backend/contracts",
+      "Backend/infrastructure/llm",
+      "Backend/service",
+      "Backend/workflow_engine",
+      "Backend/ml",
+      "Frontend/app"
+    ],
+    "additional_paths": [
+      "Backend/api/src/agent-builder.ts",
+      "scripts/run-configured.mjs"
+    ],
+    "scope_limitation": "No new files are omitted within the evaluator-declared scope. Other API/frontend source directories are outside this historical manifest, so this is not a hash proof for the entire repository."
+  },
+  "harness": {
+    "expected_source_sha256": "784bd2475a1fa7ccad3f85a6a17fe5d7e708f9b5a958ef25e09b317a9959aea6",
+    "after_recorded_source_sha256": "784bd2475a1fa7ccad3f85a6a17fe5d7e708f9b5a958ef25e09b317a9959aea6",
+    "computed_source_sha256": "784bd2475a1fa7ccad3f85a6a17fe5d7e708f9b5a958ef25e09b317a9959aea6",
+    "file_count": 8,
+    "files": {
+      "verify-qwen-live-evaluation.py": "ba3f9042963aa8617e46893a7fe0dadc913503695980b74defcb9aaf73be013b",
+      "run-qwen-live-evaluation.mjs": "dcd6eec011851ac8d137316d6337581e326cb6b520cff377f7df096f7b145af9",
+      "qwen_live_trace.py": "2cc67595ae40a94760fe6d95be802e960eb077394f4b4b5efdae2f657215dcc9",
+      "qwen_live_support.py": "4b785d87627772156f31613e6e3a4992f6cf82ece1500f587f3826775ba57a7a",
+      "qwen_live_policy.py": "7a627aaf9df1bc54835eb35a602283233b04a5ee2dd47ed8724702d2068c7994",
+      "qwen_live_storage.py": "1d9f7edb427f6d7f44f123b6741b404221b05bcb88596a4dc54edae42a85d424",
+      "qwen-live-profiles.mjs": "13724b54b8212236ef84fb15c95fe1a29998ff874fb27d764601430ec78e1271",
+      "qwen-live-policy.mjs": "c303d066dba04919924356e6f7950bcb5257692606c0c661dc31ebd5cf1583e4"
+    },
+    "changed_files": [],
+    "matched": true
+  },
+  "gold": {
+    "path": "docs/qwen-live-evaluation-cases.json",
+    "file_bytes_sha256": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de",
+    "claimed_canonical_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+    "computed_canonical_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+    "expected_canonical_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+    "matched": true,
+    "eligible_cases": 52,
+    "hash_method": "SHA256(json.dumps(corpus excluding gold_sha256, ensure_ascii=False, sort_keys=True).encode())"
+  },
+  "preserved_runpod": {
+    "path": "docs/qwen-live-baseline.json",
+    "bytes": 2420497,
+    "sha256": "9a370221821cbac6599d09004afb7294f605084f6cf415f68939c1dd806390d8",
+    "expected_sha256": "9a370221821cbac6599d09004afb7294f605084f6cf415f68939c1dd806390d8",
+    "matched": true,
+    "status": "paused",
+    "persisted_cases": 52,
+    "source_expected_hash_record": "docs/qwen-local-resume-integrity.json"
+  },
+  "svm_artifacts": {
+    "environment_record": "docs/qwen-local-python-environment.json",
+    "files": [
+      {
+        "path": "runtime/ml-bundle/model/recommender_char_svm_5431.joblib",
+        "bytes": 6666988,
+        "sha256": "df14a313659394fcc9b9efda431da7643e692ad4b33ee923f02edc97cc1dbbea",
+        "expected_sha256": "df14a313659394fcc9b9efda431da7643e692ad4b33ee923f02edc97cc1dbbea",
+        "matched": true
+      },
+      {
+        "path": "runtime/ml-bundle/catalog/catalog_56.json",
+        "bytes": 34675,
+        "sha256": "cd956b51658051ecd95c642b5738238b3ae7f819c89799668280ba6d96f5dd2a",
+        "expected_sha256": "cd956b51658051ecd95c642b5738238b3ae7f819c89799668280ba6d96f5dd2a",
+        "matched": true
+      }
+    ],
+    "all_matched": true,
+    "probe_or_inference_performed": false
+  },
+  "test_evidence": {
+    "python": {
+      "junit": {
+        "path": "docs/qwen-local-public9b-regression-after.xml",
+        "bytes": 368565,
+        "sha256": "ec3e700c27e030333df618b686c839f36538487dd17f2af9d50215e6f38a60da"
+      },
+      "log": {
+        "path": "runtime/qwen-public9b-regression-after-20261110.log",
+        "bytes": 2372,
+        "sha256": "57a000439d11d137f4c064132f72b4df4d90ff55e39a5af0cb27d09d0f43467c"
+      },
+      "testcase_count": 2069,
+      "passed": 2069,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "log_summary": "2069 passed in 48.97s",
+      "claimed_passed": 2069,
+      "matched": true
+    },
+    "typescript": {
+      "artifact": {
+        "path": "docs/qwen-local-public9b-typescript-tests-after.tap",
+        "bytes": 3486,
+        "sha256": "9da45dbaa3d07f9219a14197d0bd83a4d2d7fd6893a200d6887b4bcc389cb4a2"
+      },
+      "summary": {
+        "tests": 41,
+        "pass": 41,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "claimed_passed": 41,
+      "matched": true
+    },
+    "typecheck": {
+      "frontend": {
+        "path": "runtime/qwen-local-public9b-frontend-tsc-after.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "diagnostic_output_empty": true,
+        "recorded_exit_code": 0,
+        "record_source": "docs/qwen-local-public9b-after-change-manifest.json verification.frontend_tsc",
+        "exit_code_evidence_level": "Primary agent observed tool execution exit 0 and recorded it immediately; no separate structured tool-result file exists. Empty stdout/stderr log alone cannot independently establish exit status.",
+        "rerun_during_this_audit": false
+      },
+      "api": {
+        "path": "runtime/qwen-local-public9b-api-tsc-after.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "diagnostic_output_empty": true,
+        "recorded_exit_code": 0,
+        "record_source": "docs/qwen-local-public9b-after-change-manifest.json verification.api_tsc",
+        "exit_code_evidence_level": "Primary agent observed tool execution exit 0 and recorded it immediately; no separate structured tool-result file exists. Empty stdout/stderr log alone cannot independently establish exit status.",
+        "rerun_during_this_audit": false
+      }
+    },
+    "rerun_during_this_audit": false
+  },
+  "limitations": [
+    "A main-run snapshot remains mutable until the evaluator completes; its whole-file hash is deliberately not presented as final here.",
+    "The application manifest covers its declared 243 files, not every source/dependency file in the repository.",
+    "SVM artifact hashes establish bytes, not recommendation quality.",
+    "Typecheck exit-zero evidence is the prior observed tool result recorded in the change manifest; empty logs alone are weaker evidence."
+  ],
+  "all_requested_hash_and_test_count_checks_passed": true
+}

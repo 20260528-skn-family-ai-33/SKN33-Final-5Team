@@ -29,6 +29,15 @@ function harness(search='',stored:Record<string,string>={}){
 test('explicit service overrides old conversation; persist selection only after successful load',async()=>{
  const h=harness('?service=B',{'a4b-builder-session':'old'});h.load(async()=>snapshot('B'));h.mount();await flush();assert.equal(h.c.selected.id,'B');assert.deepEqual(h.requests.map(r=>r.path),['/api/agent-builder/agent?id=B']);assert.equal(h.storage.has('a4b-builder-session'),false);assert.equal(h.storage.get('a4b-selected-agent'),'B');
 });
+test('clarification reply sends the browser timezone and authoritative session revision',async()=>{
+ const h=harness();
+ h.c.Intl={DateTimeFormat:()=>({resolvedOptions:()=>({timeZone:'America/New_York'})})};
+ h.c.session={id:'conversation',revision:4,status:'needs_clarification'};
+ h.load(async()=>({id:'conversation',revision:5,status:'ready',messages:[]}));
+ await h.c.send(undefined,'JSON으로 해줘','a'.repeat(24));
+ assert.deepEqual({...h.requests[0].body},{id:'conversation',revision:4,content:'JSON으로 해줘',userTimezone:'America/New_York',questionId:'a'.repeat(24)});
+ assert.equal(h.c.session.revision,5);
+});
 test('failed explicit link reports error and preserves conversation without fallback',async()=>{
  const h=harness('?service=B',{'a4b-builder-session':'old'});h.load(async()=>{throw Error('not found');});h.mount();await flush();assert.equal(h.c.selected,null);assert.equal(h.c.error,'not found');assert.equal(h.storage.get('a4b-builder-session'),'old');assert.equal(h.requests.length,1);
 });

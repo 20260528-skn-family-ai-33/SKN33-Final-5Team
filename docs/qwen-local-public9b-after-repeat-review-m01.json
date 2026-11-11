@@ -1,0 +1,72 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-after-repeat.json",
+  "measurement_scope": "Separate fixed-source repeat. Not merged into the primary 52-case after run and not used to select a winning result.",
+  "cases": {
+    "M01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "filter.field": "amount",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "operator"
+          ],
+          "unnecessary": false
+        },
+        {
+          "necessary_slots": [
+            "threshold"
+          ],
+          "unnecessary": false
+        }
+      ],
+      "final_observed_slots": {
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "output.format": "json"
+      },
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "answer_policy_limitation": false,
+      "primary_failure_cause": null,
+      "evidence": [
+        "Independently inspected repeat trace: initial condition ledger rejects an ungrounded operator, preserves amount/JSON/error/keep, and displays operator question7b6449ab35de34cfb005f7ea plus value question7836655210105d664aac2d1f.",
+        "Actual '20 이상으로 해줘.' under the prior operator question resolves both required slots. Same checkpoint session and growing conversation are verified in checkpoint_evidence.",
+        "Final READY workflow reads synthetic-sales, filters amount gte20 with missing_policy=error and duplicate_policy=keep, then writes JSON with correct table bindings. Requirement extraction still only lists export; final planner supplies all requested steps. No extra action.",
+        "Allowed native local execution succeeds with exactly the expected synthetic rows id2(amount30) and id3(amount20). This repeat preserves the main M01 result; it does not establish broader stochastic reliability or replace any main-run failure."
+      ],
+      "source_case_sha256": "9c49692e230aa1b22f216f73b5584f72046e098a033e669c9c5c95870820d5f9",
+      "checkpoint_evidence": {
+        "session_id": "a669def7-43ad-4dad-8ec4-2fe41d5ad0de",
+        "thread_id": "a669def7-43ad-4dad-8ec4-2fe41d5ad0de",
+        "response_ids": [
+          "a669def7-43ad-4dad-8ec4-2fe41d5ad0de",
+          "a669def7-43ad-4dad-8ec4-2fe41d5ad0de"
+        ],
+        "revisions": [
+          2,
+          3
+        ],
+        "message_counts": [
+          2,
+          4
+        ],
+        "submitted_question_id": "7b6449ab35de34cfb005f7ea",
+        "question_id_matches_previous_pending": true,
+        "same_session_thread_response_ids": true,
+        "prior_message_prefix_preserved": true
+      }
+    }
+  },
+  "source_run_file_sha256": "172b61021bc488c20af60bd7565fc5f30aa465695f49344625b2c360551bfe49"
+}

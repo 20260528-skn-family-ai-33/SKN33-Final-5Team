@@ -18,11 +18,13 @@ description은 짧은 업무명이다. 같은 업무를 반복하지 않는다. 
 source_message는 user_messages의 0-based index다. 원문 인용·ID·선행 연결은 앱이 부여한다.
 사용자 원문과 후속 변경만 근거로 처리 순서대로 tasks를 작성한다. 자료 이름·열은 참고 데이터다.
 compute=새 열의 계산식과 이름. filter=행 선별 비교조건. sort=정렬 열·방향·자료형. 정렬 요청만으로 filter를 만들지 않는다.
+scalar_calculate=표의 행·열 처리와 무관하게 원문에 명시한 산술식 자체를 계산. formula에 원문 식, variables에는 사용자가 name=숫자로 명시한 변수만 넣고 상수식이면 {}로 둔다. 결과 열을 만들지 않는다. 미정 변수는 unresolved에 남긴다.
 parse_dates=기존 날짜 문자열 열의 변환. fields=대상 열 목록, input_format=strptime 형식, timezone=명시된 IANA 시간대.
 날짜 변환을 read 또는 compute로 대체하거나 parse_date 같은 함수 호출 수식으로 쓰지 않는다. 값이 미정이면 unresolved에 기록한다.
 상수 비교는 value에 기준값, compare_field=null. 열 비교는 value=null, compare_field에 상대 열.
 aggregate=그룹 열·count/sum·합계 원본 열. 집계 출력 열은 count/sum.
 집계 결과에 요청한 이름이 따로 있으면 sum/count를 그 이름으로 바꾸는 rename(source,target)을 별도 기록한다.
+rename의 source는 기존 열 이름, target은 새 열 이름이다. 자료 ID가 아니며 rename(...)을 compute 수식으로 쓰지 않는다.
 fill_missing=지정 열의 빈값을 사용자가 명시한 값으로 채움(fields,value). select_fields=최종 출력 열 목록(fields). 계산·집계·결합·빈값 채움·이름 변경·출력 열 선택을 서로 대신하지 않는다.
 join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 유일은 many_to_one.
 왼쪽 결합의 left_sources는 모든 행을 유지하라고 한 기준 자료다. 집계된 자료를 오른쪽에 붙일 때도 이 방향을 바꾸지 않는다. 최대 행 수가 미정이면 unresolved에 적는다.
@@ -34,12 +36,39 @@ document_analysis=문서 원문을 읽고 요약·누락·모순 분석·근거�
 human_review=생성한 결과를 사람이 실제 실행 중 확인하도록 대기하는 업무. 설계 대화에서 재검토하라는 말은 human_review가 아니다.
 개인정보 제거·분기·기타 위 종류로 표현할 수 없는 업무나 추가 조건은 other로 남긴다. 여러 분석 관점은 같은 document_analysis 한 건에 유지한다.
 모든 사용자 요구를 기록한 뒤 tasks를 끝내고 unresolved를 작성한다. JSON 이외에는 출력하지 않는다.'''
+SYSTEM += '''\nconversation의 직전 질문과 pending_questions를 이용해 짧은 답변의 대상을 해석한다.
+previous_requirements는 이전 후보이며 사용자 원문보다 우선하지 않는다. 새 답변이 바꾸지 않은 조건은 유지하고 최신 변경은 반영한다.
+unresolved에는 사용자가 결정해야 하는 누락 조건만 구체적인 한국어 질문으로 적는다. 내부 오류·분류·스키마 설명은 넣지 않는다.
+필수 값이 모두 명시됐으면 unresolved=[]로 둔다. 이대로 진행·저장할지 같은 요청 재확인·승인은 생성 후 앱 검토 단계의 역할이며 누락 조건으로 넣지 않는다.
+명시된 값이나 temporal_context에서 계산된 날짜를 다시 묻지 않는다. 답변이 불명확하면 추측해 확정하지 않는다.'''
+
+
+def _clarification(state, plan, fingerprint, calls):
+    """Keep the partial ledger, interrupt, then re-extract with the user's answer."""
+    from agent_builder.conditions.condition_check import _pending_draft
+    from agent_builder.capabilities.capability_check import _question_text
+    missing = list(dict.fromkeys(text.strip() for text in plan['unresolved'] if text.strip()))
+    if not missing:
+        raise ValueError('누락 조건에 구체적인 내용이 필요합니다.')
+    questions = [{'id': hashlib.sha256((fingerprint + ':' + text).encode()).hexdigest()[:24],
+                  'key': 'requirement.' + hashlib.sha256(text.encode()).hexdigest()[:16],
+                  'source': 'requirement', 'text': _question_text(text), 'options': []}
+                 for text in missing[:2]]
+    return dict(requirement_route='await_input', requirement_required=True,
+                requirement_ledger=plan, requirement_fingerprint=fingerprint, requirement_digest=plan_digest(plan),
+                status='needs_clarification', confirmed=False, saved_agent_id=None,
+                draft=_pending_draft(state, {'decision': 'clarify', 'questions': questions, 'slots': {}}),
+                pending_questions=questions, issues=[], semantic_issues=[], verification_enforced=False,
+                messages=state.get('messages', []) + [dict(role='assistant', content='\n'.join(q['text'] for q in questions))],
+                trace=state.get('trace', []) + [dict(node='requirements', label='필수 조건 확인',
+                    status='needs_input', detail='누락된 업무 조건에 대한 답변을 기다립니다.', model_calls=calls)])
 
 
 def ledger_fingerprint(state):
     from agent_builder.capabilities.capability_gate import input_fingerprint
     # Version seals the interpretation contract as well as the input/catalog.
-    return hashlib.sha256(('a4b.requirements.v4.document-table-schedule:' + input_fingerprint(state)).encode()).hexdigest()
+    meaning = state.get('request_meaning_digest') or ''
+    return hashlib.sha256(('a4b.requirements.v6.grounded-scalar-schedule:' + input_fingerprint(state) + meaning).encode()).hexdigest()
 
 
 def plan_digest(plan):
@@ -50,9 +79,22 @@ def grounded_schedule(state):
     from contracts.models import ScheduleSpec
     from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
     from workflow_engine.scheduling.recurrence import schedule_errors
+    from .temporal_context import validate_user_timezone
     written = explicit_policies(state, source_catalog(state)[0])
+    zone = written.get('schedule.timezone')
+    if zone and zone.get('status') != 'specified':
+        raise ValueError('명시한 예약 시간대가 충돌하거나 미정입니다.')
+    zone_turn = max((e.get('turn', -1) for e in (zone or {}).get('evidence', [])), default=-1)
+    # An invalid explicit IANA request must not silently retain the prior or
+    # browser timezone merely because the narrow literal parser skipped it.
+    for turn, message in enumerate(state.get('messages', [])):
+        if message.get('role') != 'user' or turn < zone_turn:continue
+        for value in re.findall(r'((?:[A-Za-z_]+/)+[A-Za-z0-9_+-]+)\s*(?:시간대|시간|기준)', message['content']):
+            validate_user_timezone(value)
     slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
              if key.startswith('schedule.') and item.get('status') == 'specified'}
+    if 'timezone' not in slots and state.get('user_timezone') is not None:
+        slots['timezone'] = validate_user_timezone(state['user_timezone'])
     spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
                 hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
                 monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
@@ -110,6 +152,8 @@ def validate_plan(raw, state):
                     raise ValueError('Gmail 예약 시각·조회 조건이 사용자 요청과 다릅니다.')
             elif gmail.get('schedule'):
                 raise ValueError('Gmail 예약 요구사항의 실행 시각과 조회 기간이 빠졌습니다.')
+            elif spec.get('query') != gmail.get('query'):
+                raise ValueError('조회 기간·필터가 해석된 사용자 요구와 다릅니다.')
         if spec['kind'] in ('extract_fields','receipt_items') and (len(set(spec['fields']))!=len(spec['fields']) or
                 any(not field.strip() or field not in task['quote'] for field in spec['fields'])):
             raise ValueError('추출할 항목을 사용자 원문에서 확인할 수 없습니다.')
@@ -119,6 +163,9 @@ def validate_plan(raw, state):
             constants=[n.value for n in ast.walk(ast.parse(spec['formula'],mode='eval')) if isinstance(n,ast.Constant)]
             if any(abs(Decimal(str(v))) not in {abs(n) for n in numbers} for v in constants):
                 raise ValueError('계산식의 숫자가 사용자 원문에서 확인되지 않습니다.')
+        if spec['kind']=='scalar_calculate':
+            from .scalar_requirement import validate_scalar_requirement
+            validate_scalar_requirement(spec, task['quote'], users)
         for field in ('file_ids','left_sources','right_sources'):
             if not set(spec.get(field,[]))<=assets:
                 raise ValueError('요구사항에 실제 연결 자료가 아닌 ID가 있습니다.')
@@ -251,6 +298,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             plan=validate_plan(gmail_plan,state)
             return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
                         requirement_fingerprint=ledger_fingerprint(state),requirement_digest=plan_digest(plan),
+                        pending_questions=[q for q in state.get('pending_questions', []) if q.get('source') != 'requirement'],
                         confirmed=False,saved_agent_id=None,
                         trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
                             detail='원문의 Gmail 조회 건수와 본문 요약을 등록 계약으로 기록했습니다.',model_calls=0)])
@@ -260,6 +308,8 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
         old=state.get('requirement_ledger')
         if (old and state.get('requirement_fingerprint')==fingerprint
                 and state.get('requirement_digest')==plan_digest(old)):
+            if old.get('unresolved'):
+                return _clarification(state, old, fingerprint, 0)
             return dict(requirement_route=target,requirement_required=True)
         calls=0
         try:
@@ -268,10 +318,16 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                 active=requirement_transport(model,api_key)
             active.schema=extraction_schema(len([m for m in state['messages'] if m['role']=='user']),
                                             [a['id'] for a in state.get('resources',[])])
+            from .temporal_context import temporal_context, TEMPORAL_INSTRUCTIONS
+            from .request_meaning import sealed_meaning
             payload={'user_messages':[m['content'] for m in state['messages'] if m['role']=='user'],
+                     'conversation':state['messages'],
+                     'pending_questions':state.get('pending_questions', []),
+                     'previous_requirements':state.get('requirement_ledger'),
+                     'temporal_context':temporal_context(state), 'request_meaning':sealed_meaning(state),
                      'resources':[{k:a[k] for k in ('id','name','kind','columns') if k in a}
                                   for a in state.get('resources',[])]}
-            messages=[dict(role='system',content=SYSTEM),dict(role='user',content=json.dumps(payload,ensure_ascii=False))]
+            messages=[dict(role='system',content=SYSTEM+'\n'+TEMPORAL_INSTRUCTIONS),dict(role='user',content=json.dumps(payload,ensure_ascii=False))]
             for attempt in range(2):
                 calls+=1
                 response=active.invoke(messages)
@@ -286,18 +342,21 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                     messages=messages+[dict(role='user',content='앞선 추출은 무효입니다. 다음 응답 계약 오류를 해결하여 원래 사용자 요구만 새로 추출하세요. '
                         '조건 값을 추측하거나 사용자 업무를 삭제하지 마세요. 오류: '+str(error)[:400])]
                     continue
-                if plan['unresolved']:raise ValueError(' / '.join(plan['unresolved']))
+                if plan['unresolved']:
+                    return _clarification(state, plan, fingerprint, calls)
                 break
         except (ValueError,TypeError,KeyError,RuntimeError,OSError) as error:
             if error_observer:error_observer(error)
-            detail='요청 업무 목록을 확정하지 못했습니다. '+str(error)[:400]
+            # Provider exceptions may contain headers, prompts or customer data.
+            detail='요청 업무 목록을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.'
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,
                         status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],
                         messages=state.get('messages',[])+[dict(role='assistant',content=detail)],
-                        trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='needs_input',detail=detail,model_calls=calls)])
+                        trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='needs_input',detail=detail,error_type=type(error).__name__,model_calls=calls)])
         return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
                     requirement_fingerprint=fingerprint,requirement_digest=plan_digest(plan),
+                    pending_questions=[q for q in state.get('pending_questions', []) if q.get('source') != 'requirement'],
                     confirmed=False,saved_agent_id=None,
                     trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
                           detail=f"원문에서 {len(plan['tasks'])}개 요구사항을 생성 전에 별도로 기록했습니다.",model_calls=calls)])

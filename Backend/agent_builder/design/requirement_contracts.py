@@ -1,7 +1,7 @@
 """Request-only requirements; these are never written by the workflow generator."""
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from contracts.models import FilterCondition, SortCondition, ScheduleSpec
 
 
@@ -23,6 +23,12 @@ class Compute(Strict):
     kind: Literal['compute']
     formula: str = Field(min_length=1, max_length=500)
     output_column: str = Field(min_length=1, max_length=100)
+
+
+class ScalarCalculate(Strict):
+    kind: Literal['scalar_calculate']
+    formula: str = Field(min_length=1, max_length=500)
+    variables: dict[str, int | float] = Field(max_length=20)
 
 
 class ParseDates(Strict):
@@ -114,6 +120,7 @@ class GmailSummary(Strict):
     max_results: int = Field(ge=1, le=500)
     request: str = Field(min_length=1, max_length=2000)
     summary_instructions: str | None = Field(default=None, min_length=1, max_length=2000)
+    query: str | None = Field(default=None, max_length=2000)
 
 
 class GmailScheduledSummary(GmailSummary):
@@ -127,7 +134,7 @@ class ScheduledExecution(Strict):
     schedule: ScheduleSpec
 
 
-Spec = Annotated[Read | ExtractFields | Compute | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
+Spec = Annotated[Read | ExtractFields | Compute | ScalarCalculate | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
                  Field(discriminator='kind')]
 
 
@@ -141,5 +148,11 @@ class RequiredTask(Strict):
 
 
 class RequirementPlan(Strict):
-    tasks: list[RequiredTask] = Field(min_length=1, max_length=30)
+    tasks: list[RequiredTask] = Field(max_length=30)
     unresolved: list[str] = Field(max_length=10)
+
+    @model_validator(mode='after')
+    def has_work_or_question(self):
+        if not self.tasks and not any(text.strip() for text in self.unresolved):
+            raise ValueError('업무 요구사항 또는 확인할 조건이 필요합니다.')
+        return self

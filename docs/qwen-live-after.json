@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "kind": "environment_separated_evaluation_artifact_index",
+  "status": "completed",
+  "note": "This file is an index, not a raw run. Use canonical_result for the full after trace. The adjacent qwen-live-baseline.json is historical RunPod and is not its comparison baseline.",
+  "canonical_result": {
+    "path": "docs\\qwen-local-public9b-after-complete.json",
+    "bytes_sha256": "c85233a673876642c05e9304e0307a415e2b8df25ae48def2c343426aa8dd0b7"
+  },
+  "comparison_baseline": {
+    "path": "docs\\qwen-local-public9b-baseline-v2.json",
+    "bytes_sha256": "187609496fbf1a9d9f2374848543fb1e10771a205bdb009b55ad617494f48290"
+  },
+  "raw_after_shards": [
+    {
+      "path": "docs\\qwen-local-public9b-after.json",
+      "bytes_sha256": "94f1a4bd6e27177dd2c7821ccfe2b776e9647516810c5f521b9265454ab1dbd9"
+    },
+    {
+      "path": "docs\\qwen-local-public9b-after-part2.json",
+      "bytes_sha256": "fd0f15400b951db584c6515e4de9aa69e303043822278bee77a323efd968690a"
+    }
+  ],
+  "repeat_separate_not_merged": {
+    "path": "docs\\qwen-local-public9b-after-repeat.json",
+    "bytes_sha256": "172b61021bc488c20af60bd7565fc5f30aa465695f49344625b2c360551bfe49"
+  },
+  "historical_runpod_baseline": {
+    "path": "docs\\qwen-live-baseline.json",
+    "bytes_sha256": "9a370221821cbac6599d09004afb7294f605084f6cf415f68939c1dd806390d8"
+  },
+  "gold": {
+    "path": "docs\\qwen-live-evaluation-cases.json",
+    "bytes_sha256": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de"
+  },
+  "public_model": "a4b-public-qwen35-9b-32k",
+  "model_digest": "dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df",
+  "whole_request_success": {
+    "baseline": {
+      "numerator": 23,
+      "denominator": 52
+    },
+    "after": {
+      "numerator": 28,
+      "denominator": 52
+    }
+  },
+  "not_run_in_main_comparison": [],
+  "external_connector_execution": "NOT_RUN",
+  "http_server_and_browser": "NOT_RUN",
+  "report": "docs\\qwen-live-evaluation-report.md",
+  "failure_analysis": "docs\\qwen-live-failure-analysis.md"
+}

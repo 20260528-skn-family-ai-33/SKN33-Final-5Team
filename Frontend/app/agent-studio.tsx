@@ -220,7 +220,8 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    const s=await ensureSession();
    sentSession=s;
    remember(s);
-   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,...(questionId?{questionId}:{})});
+   const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,...(questionId?{questionId}:{})});
    remember(result);
   }catch(e){
    if(sentSession)await recoverConversation({before:sentSession,action:'message',content,draftText,fromComposer,error:(e as Error).message,running:false});

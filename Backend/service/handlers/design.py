@@ -78,6 +78,11 @@ def session_action(c):
 def _session_action(c):
     storage=c.storage;data=c.data;action=c.action;api_key=c.api_key;conversation=c.conversation;connection=None
     storage.gmail_connected=data.get('gmail_connected') if type(data.get('gmail_connected')) is bool else None
+    if action == 'message' and 'user_timezone' in data:
+        from agent_builder.design.temporal_context import validate_user_timezone
+        storage.request_timezone = validate_user_timezone(data['user_timezone'])
+    else:
+        storage.request_timezone = None
     try:
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in STATE_ONLY else None)
         if action in {'message','confirm'}:

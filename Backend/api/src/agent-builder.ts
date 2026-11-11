@@ -1,4 +1,5 @@
 import {parseToolGapChoiceRequest,parseRedesignDecisionRequest} from './tool-gap-contract';
+import {parseRequestTimezone} from './request-timezone';
 import {agentPython,backendPath,dataDirectory} from './paths';
 import {builderNeedsGmail,builderNeedsModel} from './builder-model-requirements';
 import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
@@ -386,6 +387,10 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(workerAction==='message'&&data.questionId!==undefined){
    if(typeof data.questionId!=='string'||!/^[a-f0-9]{24}$/.test(data.questionId))throw new Error('확인 질문 ID를 확인하세요.');
    payload.question_id=data.questionId;
+  }
+  if(workerAction==='message'){
+   const timezone=parseRequestTimezone(data.userTimezone);
+   if(timezone!==undefined)payload.user_timezone=timezone;
   }
   if(workerAction==='schedule_test'||workerAction==='schedule'&&data.active===true){
    const current=await builderWorker({action:'agent',id:data.id});

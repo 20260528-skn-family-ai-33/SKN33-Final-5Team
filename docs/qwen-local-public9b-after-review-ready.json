@@ -1,0 +1,295 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-after.json",
+  "review_scope": "R01-R10 completed after cases reviewed independently from new raw model responses, accepted typed state, final workflows and frozen gold. Baseline labels are not copied. Task coverage describes semantic final-workflow tasks; schema_valid is a final-case metric, not all raw candidate schemas.",
+  "status": "completed_for_R01_R10_only",
+  "case_hash_algorithm": "SHA256 UTF-8 json.dumps(case, ensure_ascii=False, sort_keys=True), default JSON separators",
+  "whole_request_success_definition": "Explicit manual judgement of correct route, requested tasks/arguments/dependencies and absence of unrequested accepted work; external execution success is separate. True is never a default.",
+  "metrics_scope_note": "R01 code-only result is excluded from live-model metric denominators. Capability prose and generic draft defaults do not earn typed accepted-slot credit. SDK dispatch counters omit httpx2 calls; returned response evidence is separate.",
+  "source_case_sha256": {
+    "R01": "6d6e36145a544037beeec4c71250e65744fc48b03d3d3197831cf6f243de7a3f",
+    "R02": "1944559d1cca345dd81766eeaa114b074db747691f3df86434efc65c0ac0fcd2",
+    "R03": "fd11c5a598a154adab33321c11d6e3390bb51f61da02edb8cc8b673ff575fa16",
+    "R04": "606f803fe6630a95e4e76ab70ffb6cafb9e267785ece0670a62224f5c64e019b",
+    "R05": "b47375e706e01d559c59260abb93ebbd531c5418f5e3d9e7c7867c255e2a23f6",
+    "R06": "e2d5c264f5fd056c3c7a7f80cfaf6101277546f794371025a16579ddcd299941",
+    "R07": "c692b2ac1af2dab74db64ea3cc61d10ebf2279e559dd3ea43b98046360a78ee3",
+    "R08": "46331bdd012deb37f76811193dd1486dc0d2a75db255a2a483a382e93962973e",
+    "R09": "569ac1b99d5f25f9193fdc72bed1779f8466c787bf0dcd19c285caeaf490deeb",
+    "R10": "98169880e8b335d0e5443acc9ea047fa26fe7e437940e7e0a2a554e5af8a548b"
+  },
+  "cases": {
+    "R01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.limit": 5,
+        "provider": "gmail"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": [
+        "After R01 uses the exact registered gmail_recent_summary.v1 recipe, with zero model_calls. The requirement gmail_summary max_results=5 and Gmail provider are explicit accepted typed state.",
+        "The READY, schema-valid workflow email.list(read_messages,max_results5)→compose_answer binds mail.documents to summary.documents and explicitly summarizes the returned mails; no extra filter or action is introduced. No clarification question is shown.",
+        "External Gmail reading and AI summary execution were not performed; synthetic connection metadata support design only. This is code-recipe success, not measured Qwen quality."
+      ],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null
+    },
+    "R02": {
+      "intent_correct": true,
+      "observed_slots": {
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": [
+        "The new after condition response and accepted ledger preserve amount/gte/20/JSON plus explicitly requested missing=error and duplicate=keep. Four returned model trace entries cover capability, conditions, requirements and SDK planning.",
+        "Accepted requirements now include typed export, filter(amount>=20), policy(error/keep), and read(synthetic-sales) tasks. Their extracted list puts export first and read last with no explicit dependencies; the final workflow correctly supplies read→filter→export dependencies, so intermediate ordering completeness is not inferred from final success.",
+        "The READY schema-valid read_table(synthetic-sales)→filter_sort(amount gte20,missing error,duplicate keep)→write_result(JSON) has correct table bindings and no extra action. Native local synthetic execution succeeded with exactly gold rows id2(amount30), id3(amount20). No question was shown."
+      ],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null
+    },
+    "R03": {
+      "intent_correct": false,
+      "observed_slots": {
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "action": "unrequested_filter_requirement",
+          "evidence": "Accepted condition operation is filter, with missing field/operator/value although the request is descending numeric sorting. No workflow was generated."
+        }
+      ],
+      "evidence": [
+        "Holdout evaluation only. New capability recognizes sorting, but the first condition response duplicates sort.policy (desc and none) and requires contract repair; second response still supplies invalid sort.policy=desc under operation=filter.",
+        "Python rejects desc because this condition enum only represents none; accepted sort.policy remains missing. Accepted typed JSON is correct, but sort.field/direction are absent. Rejected desc is not scored as an accepted invented slot.",
+        "Final CLARIFY asks whether to sort at all and which field to filter, both unnecessary given amount numeric descending. No requirement/planner workflow or local execution occurs."
+      ],
+      "primary_failure_cause": "condition_misclassifies_sort_as_filter_and_cannot_represent_descending_sort",
+      "primary_stage": "condition",
+      "direct_failure_stage": "condition"
+    },
+    "R04": {
+      "intent_correct": true,
+      "observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "first",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": [
+        "New raw condition still labels the request filter while providing only duplicate/output/missing-policy slots. The repaired Python scope normalizer accepts deduplicate only, and the ledger correctly confirms customer_id/first/JSON and empty-value error with no unresolved condition.",
+        "The later actual requirement response uses kind=other/action=deduplicate_and_export and nevertheless asks whether to keep the first row or use another criterion, plus how to handle empty values. Both policies are already explicit, so both displayed questions are unnecessary.",
+        "Final route remains CLARIFY and no workflow executes. This is evidence that the condition normalization works but a downstream requirement re-questioning failure remains; it is not a complete successful R04 repair. Capability mentions annual scheduling in its prose without accepting any extra schedule, so that prose is not an extra action."
+      ],
+      "primary_failure_cause": "requirement_reasks_explicit_retention_and_missing_value_policies_after_condition_ready",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement"
+    },
+    "R05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "compute.formula": "qty * unit_price",
+        "compute.output_column": "total",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": [
+        "New requirement response and accepted typed compute/export specs correctly preserve qty*unit_price, total and JSON; export depends on compute. Read source is supplied by final workflow rather than an explicit requirement read task.",
+        "READY schema-valid workflow read_table(synthetic-sales)→calculate_columns(compute,qty*unit_price,total)→write_result(JSON) preserves table bindings, missing=error/duplicate=keep in the draft execution plan, with no extra action or question.",
+        "Actual native synthetic execution succeeded and exactly matches all three gold rows with total10/30/20. This execution covers the provided synthetic rows; it does not independently measure behavior on absent values not present in those rows."
+      ],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null
+    },
+    "R06": {
+      "intent_correct": true,
+      "observed_slots": {
+        "aggregate.group_by": [
+          "region"
+        ],
+        "aggregate.sum_field": "amount",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [
+        "fill_missing.value=ERROR"
+      ],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "action": "fill_missing_with_ERROR",
+          "evidence": "Accepted requirement r3 spec kind=fill_missing, fields=[amount], value=ERROR replaces requested error handling with unrequested data imputation; no workflow executes."
+        }
+      ],
+      "evidence": [
+        "New typed requirement specs correctly retain aggregate.fields=[region], aggregation=sum, sum_field=amount and export.format=json, so these accepted first-turn slots receive credit; capability prose alone is not the basis.",
+        "The same accepted ledger invents fill_missing(amount,ERROR), depending on aggregate, although the user requested an error on missing amounts. ERROR is an unsupported invented typed value and filling is extra accepted work.",
+        "The SDK planner returns no workflow and one draft question asking ERROR string versus numeric0. pending_questions is empty but the displayed draft question counts in the scorer fallback denominator. It is unnecessary because the error policy is explicit. Final CLARIFY, no execution and no task coverage."
+      ],
+      "primary_failure_cause": "requirement_converts_missing_value_error_policy_to_fill_missing_ERROR",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement"
+    },
+    "R07": {
+      "intent_correct": true,
+      "observed_slots": {
+        "rename.source": "amount",
+        "rename.target": "revenue",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "evidence": [
+        "The new requirement response has valid typed rename(source amount,target revenue) and export(JSON) specs; no invented compute formula appears. Typed initial slots are correct. The extracted requirement list still places export before rename without explicit dependencies, so final success does not establish complete intermediate ordering.",
+        "READY schema-valid read_table(synthetic-sales)→calculate_columns(table_operation rename,rename_from amount,rename_to revenue)→write_result(JSON) uses the correct table bindings. No additional work or questions.",
+        "No local execution was scheduled for this case; success describes generated design and validation only."
+      ],
+      "primary_stage": null,
+      "direct_failure_stage": null
+    },
+    "R08": {
+      "intent_correct": true,
+      "observed_slots": {
+        "source": "synthetic-policy",
+        "topic": "환불"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "evidence": [
+        "The new accepted document_analysis request retains the refund-summary intent, and final typed read_document.file_ids explicitly selects synthetic-policy; compose_answer instructions explicitly ask for its refund policy summary.",
+        "READY schema-valid read_document→compose_answer binds documents correctly, followed by allowed optional finish using the summary text. No extra workflow action or question is present. Capability prose mentions consultation hours, but final summary instructions are refund-only; that prose is not counted as extra accepted work.",
+        "The document/summary workflow was not executed in this case, and no browser screen was observed; design correctness is separate from actual summary quality."
+      ],
+      "primary_stage": null,
+      "direct_failure_stage": null
+    },
+    "R09": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": "requirement_contract_cannot_represent_base64_operation_and_rejects_compute_then_scalar_formula",
+      "evidence": [
+        "Holdout evaluation only. Capability identifies base64_codec for hello encoding, so high-level intent is correct. New first requirement response expresses base64_encode(hello) as table compute with invented encoded_value; the repair expresses the same unsupported function as scalar_calculate.",
+        "Both requirement candidates are rejected; accepted requirement ledger/workflow are absent. Thus hello/encode are not scored as typed accepted slots and rejected encoded_value is not an accepted extra slot/action.",
+        "Final response is validation_failed/SYSTEM_ERROR before planner generation, with no questions and no execution. schema_valid=null means no final workflow was available; it does not measure the validity of every raw requirement candidate."
+      ],
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement"
+    },
+    "R10": {
+      "intent_correct": true,
+      "observed_slots": {
+        "formula": "(12 + 8) * 3"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "evidence": [
+        "The new actual requirement response is accepted as kind=scalar_calculate with literal formula (12+8)*3 and empty variables. It no longer invents a table-compute output column.",
+        "The SDK planner produces a single scalar_calculate node, operation evaluate, arguments_json formula (12 + 8) * 3 and variables={}. READY/schema-valid result has no irrelevant table/finish dependency, extra action or question.",
+        "No scalar execution was scheduled; this is correct generated design and validation, not a measured execution result of60."
+      ],
+      "primary_stage": null,
+      "direct_failure_stage": null
+    }
+  }
+}

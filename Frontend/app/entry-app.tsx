@@ -13,10 +13,10 @@ import './entry-app.css';
 import LandingPage from './landing-page';
 import {IntroDemo} from './intro-demo';
 import {useAuth,SignIn} from './auth';
-export type EntryRoute='intro'|'preview'|'workflows'|'schedules'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
+export type EntryRoute='intro'|'preview'|'workflows'|'schedules'|'schedule'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
 type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
-function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','workflows','schedules','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
+function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','workflows','schedules','schedule','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
 export default function EntryApp(){
  const auth=useAuth();
@@ -26,10 +26,10 @@ export default function EntryApp(){
  const context=useRef(location.search);
  const historyIndex=useRef(Number(window.history.state?.a4bIndex||0));
  const updateContext=()=>{context.current=location.search;historyIndex.current=Number(window.history.state?.a4bIndex||0);};
- useEffect(()=>{if(new URLSearchParams(location.search).get('screen')==='models'){const legacy=new URL(location.href);legacy.searchParams.set('screen','workflows');window.history.replaceState(window.history.state,'',legacy);context.current=location.search;}window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',location.href);const pop=()=>{const next=routeFromLocation(),internal=(r:string)=>['nodes','workflow','run'].includes(r),before=new URLSearchParams(context.current),after=new URLSearchParams(location.search);
+ useEffect(()=>{if(new URLSearchParams(location.search).get('screen')==='models'){const legacy=new URL(location.href);legacy.searchParams.set('screen','workflows');window.history.replaceState(window.history.state,'',legacy);context.current=location.search;}window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',location.href);const pop=()=>{const next=routeFromLocation(),internal=(r:string)=>['nodes','workflow','run','schedule'].includes(r),before=new URLSearchParams(context.current),after=new URLSearchParams(location.search);
   const remount=!internal(routeRef.current)||!internal(next)||before.get('service')!==after.get('service')||before.get('run')!==after.get('run');
   const targetIndex=Number(window.history.state?.a4bIndex||0);
-  if(remount&&(internal(routeRef.current)||routeRef.current==='assets')&&!guard.current()){
+  if(remount&&(internal(routeRef.current)||routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current()){
    const delta=historyIndex.current-targetIndex;
    if(delta)window.history.go(delta);
    else {const previous=new URL(location.href);previous.search=context.current;window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',previous);}
@@ -39,21 +39,22 @@ export default function EntryApp(){
   context.current=location.search;setRoute(next);
  };window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
  function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false){
-  if(routeRef.current==='assets'&&!guard.current())return;
+  if((routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current())return false;
   guard.current=()=>true;
   if(fresh){localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');}
-  const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('previewNode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);
-  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});
+  const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('previewNode');url.searchParams.delete('executionMode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);
+  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});return true;
  }
  if(!['intro','preview'].includes(route)&&(auth.loading||auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
  if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('workflows')}/>;
  const newFlow=()=>navigate('workflow',undefined,true);
- if(['nodes','workflow','run'].includes(route))return <AgentStudio key={navigationKey} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
+ const newScheduledFlow=newFlow;
+ if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('workflows')} onPreview={preview} onRoute={next=>navigate(next)}/>;
  return <div className="entry-app"><WorkspaceHeader onNew={newFlow}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={navigate} help={<WorkspaceHelp onStart={newFlow}/>}/>
-   <main className="entry-workspace-main">{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onOpen={id=>navigate('run',id)} onCreate={newFlow}/>:
+   <main className="entry-workspace-main">{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onCanLeaveChange={fn=>{guard.current=fn;}} onOpen={id=>navigate('schedule',id)} onCreate={newScheduledFlow}/>:
     <WorkspaceHome route={route as 'workflows'|'history'} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
    </main>
   </div>
@@ -80,7 +81,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow}:{route:'workflows
   <div className="entry-workflow-grid">{matches.map(a=><article className="entry-workflow-card" key={a.id}>
    <div><Workflow size={20}/><span className="as-status">저장 버전 {a.version}</span></div>
    <div className="entry-workflow-title"><h2>{a.config.name}</h2><button type="button" aria-label={a.config.name+' 이름 변경'} title="이름 변경" disabled={loading} onClick={()=>{setRenameNotice('');setRenaming(a);}}><Pencil size={15} aria-hidden="true"/></button></div>
-   <p>{a.config.purpose}</p><footer><small>작업 {a.config.workflow?.nodes.length??a.config.tool_ids.length}개 · {date(a.updated_at)}</small><button onClick={()=>navigate('workflow',a.id)} aria-label={a.config.name+' 설계 열기'}>설계 열기</button><button onClick={()=>navigate('history',a.id)} aria-label={a.config.name+' 실행 기록'}>실행 기록</button><button className="entry-run-link" onClick={()=>navigate('run',a.id)} aria-label={a.config.name+' 실행하기'}>실행하기<ArrowRight size={14}/></button></footer>
+   <p>{a.config.purpose}</p><footer><small>작업 {a.config.workflow?.nodes.length??a.config.tool_ids.length}개 · {date(a.updated_at)}</small><button onClick={()=>navigate('workflow',a.id)} aria-label={a.config.name+' 설계 열기'}>설계 열기</button><button onClick={()=>navigate('schedule',a.id)} aria-label={a.config.name+' 예약 관리'}>예약 관리</button><button onClick={()=>navigate('history',a.id)} aria-label={a.config.name+' 실행 기록'}>실행 기록</button><button className="entry-run-link" onClick={()=>navigate('run',a.id)} aria-label={a.config.name+' 직접 실행'}>직접 실행<ArrowRight size={14}/></button></footer>
   </article>)}</div>
   {renaming&&<WorkflowRenameDialog key={renaming.id} name={renaming.config.name} onClose={()=>setRenaming(null)} onSave={async name=>{
    const result=await request<{agent:AgentSummary}>('/api/agent-builder/rename_agent',{id:renaming.id,version:renaming.version,name});

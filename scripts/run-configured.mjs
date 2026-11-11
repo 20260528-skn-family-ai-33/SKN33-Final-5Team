@@ -2,6 +2,7 @@ import {readFileSync,existsSync} from 'node:fs';
 import {parseEnv} from 'node:util';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
+import {applyConfiguredModelEnvironment} from './model-environment.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 // One .env at the repository root (the same file npm run dev/start read); A4B_ENV_FILE selects another file.
 const envFile=process.env.A4B_ENV_FILE?resolve(root,process.env.A4B_ENV_FILE):resolve(root,'.env');
@@ -10,16 +11,7 @@ if(existsSync(envFile)){
   if(process.env[key]===undefined)process.env[key]=value;
 }else if(process.env.A4B_ENV_FILE){throw new Error('지정한 환경설정 파일을 찾을 수 없습니다.');}
 // Same deployment pattern as LENS: one Ollama /v1 URL, models selected by name.
-const sharedUrl=process.env.A4B_LLM_BASE_URL;
-if(sharedUrl){
- process.env.A4B_MAIN_PROVIDER??=process.env.A4B_LLM_PROVIDER||'ollama';
- process.env.A4B_MAIN_BASE_URL??=sharedUrl.replace(/\/$/,'');
- process.env.A4B_MAIN_MODEL??=process.env.A4B_LLM_MODEL||'qwen3:8b-q4_K_M';
- process.env.A4B_MAIN_API_KEY??=process.env.A4B_LLM_API_KEY||'';
- process.env.A4B_VERIFIER_PROVIDER??=process.env.A4B_MAIN_PROVIDER;
- process.env.A4B_VERIFIER_BASE_URL??=process.env.A4B_VERIFIER_PROVIDER==='ollama'?sharedUrl.replace(/\/$/,'').replace(/\/v1$/,''):sharedUrl.replace(/\/$/,'');
- process.env.A4B_VERIFIER_API_KEY??=process.env.A4B_LLM_API_KEY||'';
-}
+applyConfiguredModelEnvironment();
 for(const [key,value] of Object.entries({HOST:'127.0.0.1',PORT:'3041',EASYFLOW_DATA_DIR:'data-local-integration',
  A4B_MAIN_PROVIDER:'ollama',A4B_MAIN_BASE_URL:'http://127.0.0.1:11434/v1',A4B_MAIN_MODEL:'qwen3:8b-q4_K_M',
  A4B_PLANNER_MODE:'deepagent',A4B_VERIFIER_MODE:'off'}))process.env[key]??=value;

@@ -1,12 +1,20 @@
 """Schedule jobs and managed data sources."""
 from infrastructure.persistence.ids import uid, now
-from workflow_engine.scheduling.schedules import Schedules, preflight_schedule
+from workflow_engine.scheduling.schedules import Schedules, preflight_schedule, scheduled_agent
 from workflow_engine.scheduling.library_sources import source_tags
 
 
 def claim_due(c):return {'jobs':Schedules(c.storage).claim_due()}
 
 def schedule(c):return {'schedule':Schedules(c.storage).activate(c.data['id'],c.data['active'])}
+
+def schedule_configure(c):
+    manager=Schedules(c.storage)
+    c.storage.begin_write()
+    try:return {'schedule':manager.configure(c.data['id'],spec=c.data['spec'])}
+    except Exception:c.storage.db.rollback();raise
+
+def schedule_remove(c):return {'schedule':Schedules(c.storage).remove(c.data['id'])}
 
 def schedule_test(c):return {'job':Schedules(c.storage).enqueue_test(c.data['id'])}
 
@@ -23,7 +31,9 @@ def scheduled_run(c):
     from workflow_engine.runner import run_workflow
     data=c.data;storage=c.storage
     schedules=Schedules(storage);job=schedules.job(data['id'],data['lease_token'])
-    agent=storage.bind_agent(job['agent_snapshot']) if hasattr(storage,'bound') else job['agent_snapshot']
+    snapshot=job['agent_snapshot']
+    if snapshot['config'].get('schedule'):snapshot=scheduled_agent(snapshot,snapshot['config']['schedule'])
+    agent=storage.bind_agent(snapshot) if hasattr(storage,'bound') else snapshot
     if job.get('library_source') and not hasattr(storage,'bound'):raise ValueError('자료함 실행 파일의 권한 확인과 스냅샷이 필요합니다.')
     source=schedules.execution_source(agent)
     files=[source['asset_id']] if source else []

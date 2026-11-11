@@ -91,3 +91,34 @@ test('Gmail reservation controls reject disconnected accounts before enqueueing 
   if(previousPython===undefined)delete process.env.A4B_AGENT_PYTHON;else process.env.A4B_AGENT_PYTHON=previousPython;
  }
 });
+
+test('reservation configure and remove route separate settings without model credentials',async t=>{
+ const previousPython=process.env.A4B_AGENT_PYTHON;process.env.A4B_AGENT_PYTHON=process.execPath;resetWorkerSlots();
+ const payloads:any[]=[],id=randomUUID();
+ t.mock.method(childProcess,'spawn',()=>{
+  const child=new EventEmitter() as any;child.stdout=new PassThrough();child.stderr=new PassThrough();child.exitCode=null;child.signalCode=null;child.kill=()=>true;
+  let input='';child.stdin=new Writable({write(chunk,_encoding,done){input+=String(chunk);done();},final(done){
+   const payload=JSON.parse(input);payloads.push(payload);
+   queueMicrotask(()=>{child.stdout.end(JSON.stringify({ok:true,result:{schedule:payload.action==='schedule_remove'?null:{spec:payload.spec,active:false}}}));child.exitCode=0;child.emit('close');});done();
+  }});return child;
+ });syncBuiltinESMExports();
+ const spec={frequency:'weekly',timezone:'Asia/Seoul',hour:9,minute:30,weekday:0};
+ async function invoke(action:string,body:unknown,method='POST'){
+  let status=0,value:any;
+  await handleAgentBuilder({method} as IncomingMessage,{} as ServerResponse,new URL('http://localhost/api/agent-builder/'+action),{} as Store,async()=>body,
+   (_response,code,result)=>{status=code;value=result;});return {status,value};
+ }
+ try{
+  assert.deepEqual(await invoke('schedule_configure',{id,spec}),{status:200,value:{schedule:{spec,active:false}}});
+  assert.deepEqual(await invoke('schedule_remove',{id}),{status:200,value:{schedule:null}});
+  assert.deepEqual(payloads.map(p=>p.action),['schedule_configure','schedule_remove']);
+  assert.deepEqual(payloads[0].spec,spec);assert.equal(payloads[0].id,id);
+  assert.ok(payloads.every(p=>!('api_key' in p)&&!('model' in p)&&!('credential_id' in p)));
+  for(const invalid of [null,[],true,'daily'])await assert.rejects(invoke('schedule_configure',{id,spec:invalid}),/예약 일정/);
+  assert.equal((await invoke('schedule_remove',{},'GET')).status,405);
+  assert.equal(payloads.length,2);
+ }finally{
+  t.mock.restoreAll();syncBuiltinESMExports();resetWorkerSlots();
+  if(previousPython===undefined)delete process.env.A4B_AGENT_PYTHON;else process.env.A4B_AGENT_PYTHON=previousPython;
+ }
+});

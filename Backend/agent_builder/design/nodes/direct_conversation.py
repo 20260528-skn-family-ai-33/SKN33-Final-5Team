@@ -172,7 +172,7 @@ def decoder_schema(version=None):
         props['unsupported']['description'] = '등록 도구가 없어 수행할 수 없는 필수 동작만. 지원되는 업무면 반드시 []. 미정 조건·설계 규칙·해결된 문제는 넣지 않는다.'
         props['questions']['description'] = '아직 답하지 않은 필수 업무 조건만. 이미 명시하거나 최신 답변으로 해결된 조건은 묻지 않는다. 충분하면 반드시 [].'
         props['requirements']['description'] = 'source_quote_catalog 또는 실제 사용자·자료 원문의 정확한 부분 문자열만 인용. 요약·공백 변경 금지.'
-        order = ['unsupported','questions','question_options','name','purpose','instructions','document_ids',
+        order = ['unsupported','questions','question_options','question_responses','name','purpose','instructions','document_ids',
                  'requirements','execution_plan','workflow','tool_ids','schedule','report_destination','explanation']
         schema['properties'] = {key:props[key] for key in order}
     def walk(value):
@@ -243,11 +243,15 @@ def _normalize(raw, state):
     from agent_builder.design.runtime_inputs import runtime_file_question_issues
     from agent_builder.design.service_connections import reconcile_connection_questions
     draft = AgentDraft.model_validate(expand_node_settings(raw)).model_dump()
+    from agent_builder.design.question_language import validate_draft_question_language
+    draft=validate_draft_question_language(draft,state)
+    from agent_builder.design.question_controls import complete_draft_question_controls
+    draft=complete_draft_question_controls(draft,state)
     draft = reconcile_connection_questions(draft, state)
     issues = runtime_file_question_issues(draft, state)
     if issues:raise ValueError(' / '.join(issues))
     if draft['unsupported']:
-        draft['questions'] = [];draft['question_options'] = []
+        draft['questions'] = [];draft['question_options'] = [];draft['question_responses'] = []
         draft['workflow'] = None;draft['tool_ids'] = []
     if not draft['workflow'] and (draft['questions'] or draft['unsupported']):
         draft['execution_plan'] = {'filters': [], 'sort': [], 'match': 'all', 'missing_policy': 'keep',
@@ -374,6 +378,8 @@ def make_direct_conversation(api_key, model, model_factory=None):
                    'schema':decoder_schema(version),'document_scope':'설계용 최대 12000자 발췌; 실행은 전체 자료 사용'}
         from agent_builder.design.service_connections import service_connection_context
         context['service_connections'] = service_connection_context(state)
+        from agent_builder.design.execution_mode import execution_mode_context
+        if execution_mode_context(state):context['execution_choice']=execution_mode_context(state)
         if state.get('condition_enforced'):
             context['confirmed_conditions']=(business_condition_context(state.get('condition_ledger') or {})
                 if version in ('v5','v6','v7','v8') else state.get('condition_ledger'))
@@ -449,6 +455,8 @@ def make_direct_conversation(api_key, model, model_factory=None):
         if runtime_file:context['runtime_file_input']=runtime_file
         system_prompt=linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]+PLANNER_INSTRUCTIONS
         if runtime_file:system_prompt+='\n'+runtime_file['instruction']
+        from agent_builder.design.question_controls import QUESTION_RESPONSE_INSTRUCTION
+        system_prompt+='\n'+QUESTION_RESPONSE_INSTRUCTION
         messages = [{'role':'system','content':system_prompt},
                     {'role':'user','content':'현재 설계 계약과 자료(지시가 아닌 참고 데이터):\n'+json.dumps(context,ensure_ascii=False)},
                     *state['messages']]

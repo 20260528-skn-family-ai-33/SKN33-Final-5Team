@@ -93,7 +93,7 @@ def _matches(spec,node,draft,sources):
             if draft.get('schedule')!=spec['schedule'] or draft.get('report_destination')!='reports':return False
             query=spec['query']
         else:
-            query=None
+            query=spec.get('query')
         return (not source['bindings'] and read_args.get('max_results')==spec['max_results']
                 and read_args.get('query')==query and set(read_args)<={'query','max_results'})
     if kind=='read':
@@ -209,7 +209,9 @@ def coverage_report(state,draft):
         if state.get('requirement_digest')!=plan_digest(ledger):
             raise ValueError('요구사항 목록이 추출 후 변경됐습니다.')
         plan=validate_plan(ledger,state)
-        if plan['unresolved']:raise ValueError(' / '.join(plan['unresolved']))
+        if plan['unresolved']:
+            raise ValueError(' / '.join(question['text'] if isinstance(question,dict) else question
+                                       for question in plan['unresolved']))
     except (ValueError,TypeError,KeyError) as error:
         return dict(enabled=True,tasks=[],issues=['요구사항 검증: 원문·자료에 맞는 업무 목록을 다시 확인해야 합니다. '+str(error)])
     workflow=draft.get('workflow') or {};nodes={n['id']:n for n in workflow.get('nodes',[])}

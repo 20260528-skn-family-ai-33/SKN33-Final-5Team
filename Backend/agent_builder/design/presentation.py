@@ -51,3 +51,23 @@ def public_draft_explanation(draft):
         '요청한 작업의 지원 범위를 확인해 주세요.' if result.get('unsupported') else
         '업무 조건과 처리 순서를 확인해 주세요.')
     return result
+
+
+def public_requirement_errors(state):
+    """Keep legacy extraction diagnostics out of the customer conversation."""
+    prefixes=('요청 업무 목록을 확정하지 못했습니다',
+              '업무 조건을 확인하지 못했습니다. 처리할 내용과 필요한 기준을 조금 더 구체적으로')
+    notice='입력하신 조건은 보존했습니다. 업무 흐름을 구성하는 중 문제가 생겼습니다. 같은 조건으로 다시 시도해주세요.'
+    def public(text):
+        return notice if isinstance(text,str) and text.startswith(prefixes) else text
+    legacy=any(message.get('role')=='assistant' and isinstance(message.get('content'),str)
+               and message['content'].startswith(prefixes) for message in state.get('messages',[]))
+    return {**state,
+            'messages':[{**message,'content':public(message.get('content',''))}
+                        if message.get('role')=='assistant' else message
+                        for message in state.get('messages',[])],
+            'issues':list(dict.fromkeys(public(issue) for issue in state.get('issues',[]))),
+            **({'requirement_failure':{'kind':'processing_error','retryable':True}} if legacy else {}),
+            'trace':[{**step,'detail':public(step.get('detail',''))}
+                     if step.get('node')=='requirements' else step
+                     for step in state.get('trace',[])]}

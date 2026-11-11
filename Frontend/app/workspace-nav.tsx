@@ -12,7 +12,7 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
   return <nav className="workspace-nav" aria-label="작업 공간">
     {([
       ['workflows', '워크플로우', Workflow],
-      ['schedules', '예약 실행', CalendarClock],
+      ['schedules', '예약 관리', CalendarClock],
       ['history', '실행 기록', History],
       ['nodes', '작업 라이브러리', Layers],
       ['assets', '자료함', FolderOpen],

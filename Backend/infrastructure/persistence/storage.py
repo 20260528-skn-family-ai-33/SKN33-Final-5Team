@@ -67,7 +67,9 @@ class Storage:
         row=self.db.execute('SELECT json,revision FROM builder_sessions WHERE {ws} AND id=?',(id,)).fetchone()
         if not row: raise ValueError('대화를 찾을 수 없습니다.')
         return {**json.loads(row[0]),'revision':row[1]}
-    def new_session(self,model,credential_id,agent_id=None,node_refs=None):
+    def new_session(self,model,credential_id,agent_id=None,node_refs=None,execution_mode=None):
+        if execution_mode not in (None,'manual','scheduled'):
+            raise ValueError('실행 방식은 직접 실행 또는 예약 실행을 선택하세요.')
         base=self.agent(agent_id) if agent_id else None
         if node_refs is not None and (not isinstance(node_refs,list) or len(node_refs)>10 or any(not isinstance(ref,str) for ref in node_refs) or len(set(node_refs))!=len(node_refs)):
             raise ValueError('선택한 노드 버전을 확인하세요. 중복 없이 최대 10개 선택할 수 있습니다.')
@@ -78,6 +80,7 @@ class Storage:
             source=Schedules(self).source(agent_id)
             if source:files=[source['asset_id']]+[asset['id'] for asset in inputs if asset['kind']=='document']
         s={'id':uid(),'model':model,'credential_id':credential_id,'agent_id':agent_id,'base_version':base['version'] if base else 0,'file_ids':files,'created_at':now()}
+        if execution_mode is not None:s['execution_mode']=execution_mode
         from workflow_engine.library.node_library import get, default_nodes, list_nodes
         s['required_node_refs']=node_refs or []
         s['node_library']=([get(self,ref) for ref in node_refs] if node_refs else default_nodes()+list_nodes(self))
@@ -180,6 +183,8 @@ class Storage:
         from workflow_engine.library.node_library import init, apply_refs, used_snapshots, persist_proposals
         init(self)
         draft=json.loads(json.dumps({k:v for k,v in state['draft'].items() if k!='node_snapshots'}))
+        if state.get('include_schedule') is False:
+            draft['schedule']=None
         pool=state.get('node_library',[])
         draft['workflow']=apply_refs(draft.get('workflow'),pool,state.get('required_node_refs',[]))
         # Legacy table-only configurations need not acquire a new workflow key.
@@ -191,9 +196,6 @@ class Storage:
             self.require_assets(draft.get('document_ids',[]))
             for old in self.agents():
                 if old['session_id']==session_id and {k:v for k,v in old['config'].items() if k!='node_snapshots'}==draft:
-                    # Repair old partial saves on idempotent replays without pausing a healthy schedule.
-                    if draft.get('schedule') and not schedules.get(old['id']):
-                        schedules.configure(old['id'],commit=False)
                     if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'])
                     self.db.commit();return old['id']
             id=state.get('base_agent_id') or (session_id if self.business else uid())
@@ -208,8 +210,10 @@ class Storage:
             from workflow_engine.library.reusable_workflows import pin_dependencies
             a['workflow_dependencies']=pin_dependencies(self,draft,state['model'],state['credential_id'],id)
             self._insert_agent_version(a)
-            if draft.get('schedule'):schedules.configure(id,commit=False,previous_config=old['config'] if old else None)
-            else:self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(id,))
+            # A schedule is initialized during creation. Later workflow edits must
+            # not overwrite an independent reservation or recreate a removed one.
+            if not old and draft.get('schedule'):schedules.configure(id,commit=False)
+            elif old:schedules.workflow_changed(id,old['config'])
             if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id)
             self.db.commit();return id
         except Exception:self.db.rollback();raise

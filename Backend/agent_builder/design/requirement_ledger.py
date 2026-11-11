@@ -34,6 +34,33 @@ document_analysis=문서 원문을 읽고 요약·누락·모순 분석·근거�
 human_review=생성한 결과를 사람이 실제 실행 중 확인하도록 대기하는 업무. 설계 대화에서 재검토하라는 말은 human_review가 아니다.
 개인정보 제거·분기·기타 위 종류로 표현할 수 없는 업무나 추가 조건은 other로 남긴다. 여러 분석 관점은 같은 document_analysis 한 건에 유지한다.
 모든 사용자 요구를 기록한 뒤 tasks를 끝내고 unresolved를 작성한다. JSON 이외에는 출력하지 않는다.'''
+SYSTEM += '''\n서비스 연결과 인증은 앱 서버가 관리한다. 계정 ID·액세스 토큰·비밀키는 사용자 업무 조건이 아니며 unresolved로 요구하지 않는다.
+service_connections는 연결 여부의 메타데이터일 뿐이며 인증값은 받거나 추측하지 않는다. 연결되지 않았어도 실행 전에 서비스 연결에서 준비할 수 있다.
+unresolved에는 사용자가 실제로 정해야 하는 업무 조건을 자연스러운 질문으로 작성한다. 내부 필드 이름만 출력하지 않는다.
+사용자가 요구하지 않은 요약 형식 선호는 필수 조건으로 만들지 않는다. clarification_answers는 실제 질문과 사용자 답변이며 원래 요청과 함께 해석한다.'''
+SYSTEM += '\nGmail 조회 건수가 명시되지 않으면 앱의 실행 한도인 최대 100건을 사용할 수 있다. 이는 실행 한도이며 업무 필터의 추정값이 아니다. 사용자가 건수를 정했다면 그 값을 보존한다.'
+SYSTEM += '\n예약 시간대는 앱 고정 설정인 서울 표준시(Asia/Seoul)다. 원문에 시간대가 없어도 Asia/Seoul로 기록한다. 시간대는 미정 조건이나 질문으로 만들지 않으며, 다른 시간대 요청도 서울 표준시로 실행한다.'
+SYSTEM += '''\nunresolved의 각 항목은 문자열이 아닌 질문 객체 {key,text,group,reason,options,response,required}다.
+각 요청사항에서 고객이 결정할 조건을 개별 질문으로 나눈다. group은 관련 요청사항의 짧은 제목이고 key는 같은 조건을 식별할 안정적인 키다.
+text에는 고객이 이해할 완전한 질문만 작성하며 내부 변수 이름·토큰·계정 ID를 묻지 않는다.
+reason에는 이 답이 없으면 어떤 업무 설정을 결정할 수 없는지 한 문장으로 설명한다. 질문이나 내부 필드명을 반복하지 않는다.
+user_messages와 clarification_answers에서 이미 확인한 값은 보존하고 같은 조건을 다시 묻지 않는다. 후속 답변은 이전 원문과 함께 해석한다.
+"더 구체적으로 설명해주세요", "필요한 정보를 알려주세요" 같은 통짜 질문은 금지한다. 실제로 누락된 조건 하나와 필요한 이유를 명시한, 답할 수 있는 질문만 작성한다.
+선택 가능한 조건은 response.type=single_choice, 여러 항목 선택은 multi_choice로 선언하고 options에 실제로 고를 항목을 두 개 이상 작성한다.
+숫자 조건은 response.type=number로 선언하고 options는 비운다. minimum/maximum/step/unit은 실제 업무·도구 계약에 근거가 있을 때만 쓴다.
+실행 시각은 response.type=time, key=schedule.time으로 선언하고 09:00처럼 HH:MM 형식으로 시와 분을 한 번에 받는다. 시간은 정수형 number로 받거나 hour/minute 질문으로 쪼개지 않는다. 수량·금액 등 실제 숫자는 number를 유지한다.
+자유 서술이 필요한 조건만 response.type=text로 선언하고 options는 비운다. 선택형이나 수치 조건을 긴 자유 답변 질문 하나로 합치지 않는다.
+실행 일정·결과의 내용 구성·파일 형식·전달 방식은 서로 다른 결정이다. 미정인 항목은 각각 별도의 질문과 적절한 선택지로 제시한다.
+선택지는 available_capabilities에 등록된 실제 기능 안에서 작성한다. 외부 발송이나 파일 형식을 도구 계약 확인 없이 가능하다고 제안하지 않는다.
+처리 내용을 새로 지어내는 선택지는 만들지 않되, 등록 기능으로 가능한 형식·처리 방식은 고객이 고를 수 있게 한다.
+선호를 묻는 질문은 required=false로 두며 필수 조건처럼 막지 않는다. 단, 선택하지 않은 선호를 임의로 확정하지 않는다.
+질문에 대한 batch 답변은 clarification_answers의 question_id/key/text/value 연결을 따라 해당 조건만 갱신한다.
+clarification_answers에서 skipped=true와 value=null은 고객이 선택적인 선호 질문을 건너뛴 기록이다. 해당 값·형식을 임의로 확정하거나 같은 선택 질문을 필수 조건으로 다시 묻지 않는다.
+구체적인 업무를 아직 기록할 수 없으면 tasks=[]로 두고 확인할 질문을 unresolved에 작성한다. tasks와 unresolved가 둘 다 빈 응답은 허용하지 않는다.'''
+
+
+from .question_language import KOREAN_QUESTION_INSTRUCTION
+SYSTEM+='\n'+KOREAN_QUESTION_INSTRUCTION
 
 
 def ledger_fingerprint(state):
@@ -53,6 +80,8 @@ def grounded_schedule(state):
     written = explicit_policies(state, source_catalog(state)[0])
     slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
              if key.startswith('schedule.') and item.get('status') == 'specified'}
+    from .requirement_clarification import schedule_facts
+    slots.update({key.split('.',1)[1]:value for key,value in schedule_facts(state).items()})
     spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
                 hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
                 monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
@@ -66,6 +95,15 @@ def grounded_schedule(state):
 
 def validate_plan(raw, state):
     plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+    from workflow_engine.scheduling.policy import timezone_question
+    plan['unresolved']=[question for question in plan['unresolved']
+                        if not timezone_question(question if isinstance(question,dict) else {'key':question,'text':question})]
+    from .execution_mode import filter_execution_questions
+    plan['unresolved']=filter_execution_questions(plan['unresolved'],state)
+    if not plan['tasks'] and not plan['unresolved']:
+        raise ValueError('직접 실행에는 예약 조건이 필요하지 않습니다. 예약 질문 대신 요청한 실제 업무 목록을 추출하세요.')
+    from .requirement_contracts import validate_unanswered_questions
+    validate_unanswered_questions(plan,state)
     json.dumps(plan,allow_nan=False)
     users=[m['content'] for m in state.get('messages',[]) if m['role']=='user']
     assets={a['id'] for a in state.get('resources',[])}
@@ -101,15 +139,20 @@ def validate_plan(raw, state):
         if spec['kind'] in ('gmail_summary', 'gmail_scheduled_summary'):
             from .gmail_summary import gmail_summary_request
             gmail=gmail_summary_request(state)
-            if (not gmail or spec['max_results']!=gmail['count']
+            if not gmail:
+                from .gmail_requirement_grounding import validate_general_gmail_task
+                validate_general_gmail_task(task,state,schedule_elsewhere=any(t['spec']['kind']=='schedule' for t in plan['tasks']))
+            elif (spec['max_results']!=gmail['count']
                     or task['quote']!=gmail['request'] or spec['request']!=gmail['request']
                     or spec.get('summary_instructions')!=gmail.get('summary_instructions')):
                 raise ValueError('Gmail 조회 건수·요약 요구를 사용자 원문에서 확인할 수 없습니다.')
-            if spec['kind']=='gmail_scheduled_summary':
+            if gmail and spec['kind']=='gmail_scheduled_summary':
                 if spec['schedule']!=gmail.get('schedule') or spec['query']!=gmail.get('query'):
                     raise ValueError('Gmail 예약 시각·조회 조건이 사용자 요청과 다릅니다.')
-            elif gmail.get('schedule'):
+            elif gmail and gmail.get('schedule'):
                 raise ValueError('Gmail 예약 요구사항의 실행 시각과 조회 기간이 빠졌습니다.')
+            elif gmail and spec.get('query') is not None:
+                raise ValueError('요청하지 않은 메일 조회 조건이 추가됐습니다.')
         if spec['kind'] in ('extract_fields','receipt_items') and (len(set(spec['fields']))!=len(spec['fields']) or
                 any(not field.strip() or field not in task['quote'] for field in spec['fields'])):
             raise ValueError('추출할 항목을 사용자 원문에서 확인할 수 없습니다.')
@@ -155,6 +198,11 @@ def validate_plan(raw, state):
 
 def extraction_schema(user_count=None,asset_ids=None):
     schema=RequirementPlan.model_json_schema()
+    schema['properties']['unresolved']['items']={'$ref':'#/$defs/RequirementQuestion'}
+    question=schema['$defs']['RequirementQuestion']
+    question['required']=list(question['properties'])
+    question['properties']['reason']={'type':'string','minLength':1,'maxLength':500,
+        'description':'이 답이 없으면 결정할 수 없는 업무 설정을 고객에게 설명합니다.'}
     # The extractor chooses the action and source turn. The application copies
     # that complete request rather than asking a second model to paraphrase it.
     analysis=schema['$defs']['DocumentAnalysis']
@@ -249,18 +297,18 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
         gmail_plan=gmail_summary_plan(state)
         if gmail_plan:
             plan=validate_plan(gmail_plan,state)
-            return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
+            return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,requirement_failure=None,
                         requirement_fingerprint=ledger_fingerprint(state),requirement_digest=plan_digest(plan),
                         confirmed=False,saved_agent_id=None,
                         trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
                             detail='원문의 Gmail 조회 건수와 본문 요약을 등록 계약으로 기록했습니다.',model_calls=0)])
         if setting=='off' and not state.get('requirement_required'):
-            return dict(requirement_route=target,requirement_required=False)
+            return dict(requirement_route=target,requirement_required=False,requirement_failure=None)
         fingerprint=ledger_fingerprint(state)
         old=state.get('requirement_ledger')
         if (old and state.get('requirement_fingerprint')==fingerprint
                 and state.get('requirement_digest')==plan_digest(old)):
-            return dict(requirement_route=target,requirement_required=True)
+            return dict(requirement_route=target,requirement_required=True,requirement_failure=None)
         calls=0
         try:
             active=transport
@@ -271,6 +319,14 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             payload={'user_messages':[m['content'] for m in state['messages'] if m['role']=='user'],
                      'resources':[{k:a[k] for k in ('id','name','kind','columns') if k in a}
                                   for a in state.get('resources',[])]}
+            from .requirement_contracts import question_capability_context
+            payload['available_capabilities']=question_capability_context(state)
+            from .service_connections import service_connection_context
+            payload['service_connections']=service_connection_context(state)
+            if state.get('requirement_answers'):
+                payload['clarification_answers']=state['requirement_answers']
+            from agent_builder.design.execution_mode import execution_mode_context
+            if execution_mode_context(state):payload['execution_choice']=execution_mode_context(state)
             messages=[dict(role='system',content=SYSTEM),dict(role='user',content=json.dumps(payload,ensure_ascii=False))]
             for attempt in range(2):
                 calls+=1
@@ -280,25 +336,41 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                     if response.get('metrics',{}).get('done_reason') not in (None,'stop'):
                         raise ValueError('요구사항 추출 응답이 중간에 끝났습니다.')
                 else:content=response.content
+                from .gmail_requirement_grounding import MissingGmailSchedule
                 try:plan=extract_plan(json.loads(content),state)
+                except MissingGmailSchedule as error:
+                    from .requirement_clarification import clarification_reply
+                    return clarification_reply(state,error.questions,calls)
                 except (ValueError,TypeError,KeyError) as error:
                     if attempt:raise
                     messages=messages+[dict(role='user',content='앞선 추출은 무효입니다. 다음 응답 계약 오류를 해결하여 원래 사용자 요구만 새로 추출하세요. '
                         '조건 값을 추측하거나 사용자 업무를 삭제하지 마세요. 오류: '+str(error)[:400])]
                     continue
-                if plan['unresolved']:raise ValueError(' / '.join(plan['unresolved']))
+                from .requirement_clarification import business_questions, clarification_reply
+                questions,unknown=business_questions(plan['unresolved'],state)
+                if unknown and not attempt:
+                    messages=messages+[dict(role='user',content='업무 조건에 내부 필드 이름이 포함됐습니다. 인증값은 서버가 준비하므로 제거하고, 실제 미정인 업무 조건만 자연스러운 확인 질문으로 unresolved에 적어 다시 추출하세요. 사용자가 요구하지 않은 형식 선호를 필수로 만들지 마세요.')]
+                    continue
+                if unknown:raise ValueError('고객에게 표시할 구체적인 질문을 구성하지 못했습니다.')
+                from .requirement_contracts import RequirementQuestion
+                for question in questions:RequirementQuestion.model_validate(question)
+                pending=clarification_reply(state,questions,calls,unknown=unknown)
+                if pending:return pending
+                # Only app-managed credentials and unsolicited optional preferences were removed.
+                plan['unresolved']=[]
                 break
         except (ValueError,TypeError,KeyError,RuntimeError,OSError) as error:
             if error_observer:error_observer(error)
-            detail='요청 업무 목록을 확정하지 못했습니다. '+str(error)[:400]
+            detail='입력하신 조건은 보존했습니다. 업무 흐름을 구성하는 중 문제가 생겼습니다. 조건을 더 입력하지 않아도 같은 내용으로 다시 시도할 수 있습니다.'
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,
-                        status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],
+                        status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],pending_questions=[],
+                        requirement_failure={'kind':'processing_error','retryable':True},
                         messages=state.get('messages',[])+[dict(role='assistant',content=detail)],
                         trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='needs_input',detail=detail,model_calls=calls)])
-        return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
+        return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,requirement_failure=None,
                     requirement_fingerprint=fingerprint,requirement_digest=plan_digest(plan),
-                    confirmed=False,saved_agent_id=None,
+                    confirmed=False,saved_agent_id=None,pending_questions=[],
                     trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
                           detail=f"원문에서 {len(plan['tasks'])}개 요구사항을 생성 전에 별도로 기록했습니다.",model_calls=calls)])
     return check

@@ -53,6 +53,8 @@ ACTIONS={
     'rename_agent':library.rename_agent,
     'claim_due':schedules.claim_due,
     'schedule':schedules.schedule,
+    'schedule_configure':schedules.schedule_configure,
+    'schedule_remove':schedules.schedule_remove,
     'schedule_test':schedules.schedule_test,
     'schedule_cancel':schedules.schedule_cancel,
     'fail_job':schedules.fail_job,

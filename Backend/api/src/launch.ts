@@ -1,4 +1,6 @@
 // Agent creation is the default demo. Existing workflow engine stays reusable.
+import {applyConfiguredModelEnvironment} from '../../../scripts/model-environment.mjs';
+applyConfiguredModelEnvironment();
 process.env.A4B_FOCUSED_DEMO ??= '1';
 process.env.PORT ??= '3030';
 // Product entry uses the server Qwen connection; legacy OpenAI accounts must not be called.

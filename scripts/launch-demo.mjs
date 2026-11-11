@@ -4,10 +4,12 @@ import {spawn,spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {applyConfiguredModelEnvironment} from './model-environment.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const windows=process.platform==='win32';
 try{process.loadEnvFile(resolve(root,'.env'));}catch{}
+applyConfiguredModelEnvironment();
 const port=process.env.PORT||'3030';
 const url=`http://127.0.0.1:${port}`;
 

@@ -316,8 +316,9 @@ def test_experimental_generator_format_is_not_enabled_by_default(monkeypatch):
 class Extraction:
     def __init__(self,plan):self.plan=plan;self.calls=0
     def invoke(self,messages):
-        payload=json.loads(messages[-1]['content'])
-        assert set(payload)=={'user_messages','resources'}
+        payload=json.loads(messages[1 if len(messages)>1 else 0]['content'])
+        assert {'user_messages','resources'}<=set(payload)
+        assert set(payload)<={'user_messages','resources','service_connections','available_capabilities'}
         assert 'current_draft' not in payload
         self.calls+=1
         wire={**self.plan,'tasks':[{k:v for k,v in t.items() if k not in ('id','depends_on','quote')} for t in self.plan['tasks']]}

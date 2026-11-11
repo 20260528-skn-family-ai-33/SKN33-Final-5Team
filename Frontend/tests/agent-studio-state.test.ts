@@ -17,13 +17,14 @@ const snapshot=(id:string)=>({agent:{id},resources:[{id:'resource-'+id}],tests:[
 function harness(search='',stored:Record<string,string>={}){
  const storage=new Map(Object.entries(stored)),requests:{path:string;body:any}[]=[];let cleanup:(()=>void)|undefined;
  let load:(p:string,b:any)=>Promise<any>=async()=>snapshot('A');
- const c:any={URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
+ const c:any={screen:'run',executionMode:'manual',URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
  c.queuedSourceRuns=[];
+ c.scheduleDirtyRef={current:false};
  c.setScheduleSourceDirty=(value:boolean)=>{c.scheduleSourceDirty=value;};
- for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
+ for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns','SaveReviewOpen','ScheduleSettingsDirty','ClarificationDirty']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
  Object.defineProperty(c,'canStartRun',{get:()=>!!c.testText.trim()||!!c.selected?.config?.schedule});
  c.request=(path:string,body:any)=>{requests.push({path,body});return load(path,body);};createContext(c);
- runInContext(compile(['applyRunInputs','clearRunInputs','remember','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
+ runInContext(compile(['applyRunInputs','clearSettingsDirty','clearRunInputs','remember','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
  return {c,storage,requests,load:(f:typeof load)=>{load=f;},mount:()=>runInContext(compile(restoreText),c),stop:()=>cleanup?.()};
 }
 test('explicit service overrides old conversation; persist selection only after successful load',async()=>{
@@ -100,7 +101,7 @@ test('confirm failure preserves draft and unsent inputs',async()=>{
  const h=harness();h.c.session={id:'draft',revision:1,status:'ready'};h.c.runFiles=[{id:'input'}];h.load(async()=>{throw Error('rejected');});await h.c.save();assert.equal(h.c.session.status,'ready');assert.equal(h.c.runFiles.length,1);assert.equal(h.requests.length,1);
 });
 test('scheduled execution never submits hidden transient files or review drafts',async()=>{
- const h=harness();h.c.selected={id:'A',config:{schedule:{frequency:'daily'}}};h.c.runFiles=[{id:'old'}];h.c.replyDraft='old';h.c.testText='';h.load(async()=>({id:'run'}));await h.c.runTest();assert.equal(h.requests[0].body.fileIds.length,0);assert.equal(h.requests[0].body.replyDraft,undefined);
+ const h=harness();h.c.screen='schedule';h.c.selected={id:'A',config:{schedule:{frequency:'daily'}}};h.c.runFiles=[{id:'old'}];h.c.replyDraft='old';h.c.testText='';h.load(async()=>({id:'run'}));await h.c.runTest();assert.equal(h.requests[0].body.fileIds.length,0);assert.equal(h.requests[0].body.replyDraft,undefined);
 });
 test('manual execution keeps explicit files and review draft',async()=>{
  const h=harness();h.c.selected={id:'A',config:{}};h.c.runFiles=[{id:'new'}];h.c.replyDraft='new';h.load(async()=>({id:'run'}));await h.c.runTest();assert.equal(h.requests[0].body.fileIds[0],'new');assert.equal(h.requests[0].body.replyDraft,'new');
@@ -150,4 +151,16 @@ test('a skipped new-file request shows the skip reason without treating old resu
  h.load(async path=>path.endsWith('/test')?{status:'skipped',message:'새로 처리할 파일이 없습니다.'}:snapshot('A'));
  await h.c.runTest();assert.equal(h.c.testRun,null);assert.equal(h.c.queuedSourceRuns.length,0);
  assert.equal(h.c.scheduleNotice,'새로 처리할 파일이 없습니다.');
+});
+
+
+test('a scheduled workflow still accepts files and review drafts on its direct execution screen',async()=>{
+ const h=harness();h.c.selected={id:'A',config:{schedule:{frequency:'daily'}}};h.c.runFiles=[{id:'manual-file'}];h.c.replyDraft='manual draft';h.load(async()=>({id:'run'}));
+ await h.c.runTest();assert.deepEqual(Array.from(h.requests[0].body.fileIds),['manual-file']);assert.equal(h.requests[0].body.replyDraft,'manual draft');
+});
+
+test('new sessions do not send a preset execution mode, including legacy URL or state values',async()=>{
+ for(const mode of ['manual','scheduled']){
+  const h=harness('?executionMode='+mode);h.c.executionMode=mode;h.load(async()=>({id:'new',revision:0}));await h.c.ensureSession();assert.equal(h.requests[0].body.executionMode,undefined);
+ }
 });

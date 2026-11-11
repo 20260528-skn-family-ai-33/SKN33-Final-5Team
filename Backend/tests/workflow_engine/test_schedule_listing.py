@@ -36,7 +36,7 @@ def test_empty_schedule_listing(tmp_path):
     assert listing(tmp_path)=={'workflows':[]}
 
 
-def test_listing_filters_latest_configs_and_preserves_actual_status(tmp_path):
+def test_listing_uses_persisted_reservations_independent_of_workflow_config(tmp_path):
     store,active_id=seed(tmp_path)
     try:
         config=store.agent(active_id)['config']
@@ -45,22 +45,24 @@ def test_listing_filters_latest_configs_and_preserves_actual_status(tmp_path):
         paused_id=save('중지된 예약',config['schedule'])
         missing_id=save('예약 상태 확인 필요',config['schedule'])
         ordinary_id=save('수동 실행',None)
+        attached_id=save('나중에 예약 추가',None)
         removed_id=save('예약 제거',config['schedule'])
-        store.save_agent({**initial(),'base_agent_id':removed_id,'base_version':1,
-            'confirmed':True,'draft':{**config,'name':'예약 제거','schedule':None}})
         schedules=Schedules(store)
+        schedules.configure(attached_id,spec=config['schedule'])
+        schedules.remove(removed_id)
         schedules.activate(active_id,True)
         store.db.execute('DELETE FROM builder_schedules WHERE {ws} AND agent_id=?',(missing_id,))
         store.db.commit()
         expected=[{'agent':agent,'schedule':schedules.get(agent['id'])}
-                  for agent in store.agents() if agent['id'] in {active_id,paused_id,missing_id}]
+                  for agent in store.agents() if agent['id'] in {active_id,paused_id,attached_id}]
         before={agent['id']:schedules.get(agent['id']) for agent in store.agents()}
         result=listing(tmp_path)
         assert result=={'workflows':expected}
         by_id={item['agent']['id']:item for item in result['workflows']}
         assert by_id[active_id]['schedule']['active'] is True
         assert by_id[paused_id]['schedule']['active'] is False
-        assert by_id[missing_id]['schedule'] is None
+        assert missing_id not in by_id
+        assert by_id[attached_id]['agent']['config']['schedule'] is None
         assert ordinary_id not in by_id and removed_id not in by_id
         assert before=={agent['id']:schedules.get(agent['id']) for agent in store.agents()}
         assert all(schedules.jobs(agent_id)==[] for agent_id in before)

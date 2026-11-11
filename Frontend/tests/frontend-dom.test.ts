@@ -42,7 +42,7 @@ async function setup(search='',stored:Record<string,string>={},override?:(path:s
  globalThis.fetch=(async(input:any,init:any)=>{
   const path=String(input),body=init?.body?JSON.parse(init.body):undefined;calls.push({path,body});
   let value=override?await override(path,body,init?.method||'GET'):undefined;
-  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path.endsWith('/agents'))value={agents:[A,B]};else if(path.endsWith('/schedules'))value={workflows:[]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(/\/library(?:\?|$)/.test(path))value={space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[],next:null};else if(path.includes('/connection'))value={connection:{model:'qwen3:8b-q4_K_M',credential:{id:'local-model',provider:'openai',name:'Ollama · Qwen'}},health:{status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'}};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
+  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path.endsWith('/agents'))value={agents:[A,B]};else if(path.endsWith('/schedules'))value={workflows:[]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(path.startsWith('/api/agent-builder/schedule_source'))value={selection:null};else if(/\/library(?:\?|$)/.test(path))value={space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[],next:null};else if(path.includes('/connection'))value={connection:{model:'qwen3:8b-q4_K_M',credential:{id:'local-model',provider:'openai',name:'Ollama · Qwen'}},health:{status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'}};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
   return value instanceof Response?value:new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
  }) as any;
  const root=createRoot(document.getElementById('root'));await act(async()=>{root.render(component||createElement(AgentStudio));await tick();});
@@ -354,7 +354,7 @@ test('rename: saving updates the card, version and search without changing other
   await click(button('이름 저장'));
   assert.equal(document.querySelector('[role=dialog]'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
-  assert.ok(document.querySelector('button[aria-label="월간 매출 정리 실행하기"]'));
+  assert.ok(document.querySelector('button[aria-label="월간 매출 정리 직접 실행"]'));
   assert.match(document.querySelector('.entry-workflow-card .as-status')!.textContent!,/2/);
   await input(document.querySelector('input[aria-label="워크플로우 검색"]') as HTMLInputElement,'월간');
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
@@ -1012,7 +1012,7 @@ test('navigation: internal back/forward preserves unsent workflow text and avoid
   await input(document.querySelector('textarea[aria-label="업무 설명"]')!,'탭 이동 후 유지할 업무');
   const loads=t.calls.filter(c=>c.path.endsWith('/catalog')).length;
   await click(button('작업 라이브러리'));assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
-  await click(button('설계로 돌아가기'));await click(button('실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
+  await click(button('설계로 돌아가기'));await click(button('직접 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
   await travel('back');assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement)?.value,'탭 이동 후 유지할 업무');
@@ -1054,7 +1054,7 @@ test('navigation: cancelling browser back from a dirty editor restores the URL a
 test('redesign: infrastructure controls and model fields are absent from all product menus',async()=>{
  for(const screen of ['workflows','schedules','workflow','nodes','history']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['워크플로우','예약 실행','실행 기록','작업 라이브러리','자료함','서비스 연결']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
+  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['워크플로우','예약 관리','실행 기록','작업 라이브러리','자료함','서비스 연결']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
  }
 });
 test('redesign: changing a saved workflow can be cancelled without losing an unsent request',async()=>{
@@ -1202,20 +1202,20 @@ async function chooseScheduleStatus(value:string){
  await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype,'value')!.set!.call(select,value);select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await tick();});
 }
 
-test('schedules: shared navigation shows actual statuses and timezone-aware next executions without writing',async()=>{
+test('schedules: shared navigation shows actual statuses and Seoul-standard next executions without writing',async()=>{
  const methods:string[]=[];
  const h=await setup('?screen=workflows',{},(path,_body,method)=>{methods.push(method);if(path.endsWith('/schedules'))return {workflows:scheduleFixtures()};},createElement(EntryApp));
  try{
-  await click(button('예약 실행'));
+  await click(button('예약 관리'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedules');
-  assert.equal(document.querySelector('h1')?.textContent,'예약 실행');
-  assert.equal(document.querySelector('.workspace-nav [aria-current=page]')?.textContent,'예약 실행');
+  assert.equal(document.querySelector('h1')?.textContent,'예약 관리');
+  assert.equal(document.querySelector('.workspace-nav [aria-current=page]')?.textContent,'예약 관리');
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,4);
   assert.match(scheduleRow('A').textContent!,/활성/);assert.match(scheduleRow('A').textContent!,/매일/);
-  assert.match(scheduleRow('A').textContent!,/09:00/);assert.match(scheduleRow('A').textContent!,/Asia\/Seoul/);
+  assert.match(scheduleRow('A').textContent!,/09:00/);assert.match(scheduleRow('A').textContent!,/서울 표준시/);
   assert.match(scheduleRow('A').querySelector('[data-label="다음 실행"]')!.textContent!,/11월 11일.*09:00/);
-  assert.match(scheduleRow('W').textContent!,/America\/Los_Angeles/);
-  assert.match(scheduleRow('W').querySelector('[data-label="다음 실행"]')!.textContent!,/11월 10일.*17:00/);
+  assert.match(scheduleRow('W').textContent!,/서울 표준시/);
+  assert.match(scheduleRow('W').querySelector('[data-label="다음 실행"]')!.textContent!,/11월 11일.*10:00/);
   assert.match(scheduleRow('B').textContent!,/중지/);assert.doesNotMatch(scheduleRow('B').textContent!,/2099/);
   assert.match(scheduleRow('C').textContent!,/설정 확인 필요/);
   assert.equal(methods.every(method=>method==='GET'),true);
@@ -1231,7 +1231,7 @@ test('schedules: search and state filters combine and never include unrelated ma
   await input(document.querySelector<HTMLInputElement>('input[aria-label="예약 워크플로우 검색"]')!,'일일');
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,1);assert.ok(scheduleRow('A'));
   await chooseScheduleStatus('paused');assert.equal(document.querySelectorAll('[data-schedule-id]').length,0);
-  assert.doesNotMatch(document.body.textContent!,/예약된 워크플로우가 없습니다\./);
+  assert.doesNotMatch(document.body.textContent!,/등록한 예약이 없습니다\./);
   await input(document.querySelector<HTMLInputElement>('input[aria-label="예약 워크플로우 검색"]')!,'');
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,1);assert.ok(scheduleRow('B'));
   await chooseScheduleStatus('unconfigured');assert.equal(document.querySelectorAll('[data-schedule-id]').length,1);assert.ok(scheduleRow('C'));
@@ -1243,13 +1243,13 @@ test('schedules: the new menu preserves an unsent design when leaving is cancell
  const h=await setup('?screen=workflow',{},undefined,createElement(EntryApp));
  try{
   await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'예약 화면으로 이동해도 확인 없이 버리지 않을 입력');
-  window.confirm=()=>false;await click(button('예약 실행'));
+  window.confirm=()=>false;await click(button('예약 관리'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,'예약 화면으로 이동해도 확인 없이 버리지 않을 입력');
   assert.equal(h.calls.some(call=>call.path.endsWith('/schedules')),false);
-  window.confirm=()=>true;await click(button('예약 실행'));
+  window.confirm=()=>true;await click(button('예약 관리'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedules');
-  assert.match(document.body.textContent!,/예약된 워크플로우가 없습니다\./);assert.equal(h.calls.some(call=>call.body),false);
+  assert.match(document.body.textContent!,/등록한 예약이 없습니다\./);assert.equal(h.calls.some(call=>call.body),false);
  }finally{await h.close();}
 });
 
@@ -1271,10 +1271,10 @@ test('schedules: pending and failed requests are not presented as an empty sched
   return ++reads===1?waiting.promise:{workflows:scheduleFixtures().slice(0,1)};
  },createElement(EntryApp));
  try{
-  assert.match(document.body.textContent!,/불러오고/);assert.doesNotMatch(document.body.textContent!,/예약된 워크플로우가 없습니다\./);
+  assert.match(document.body.textContent!,/불러오고/);assert.doesNotMatch(document.body.textContent!,/등록한 예약이 없습니다\./);
   await act(async()=>{waiting.resolve(new Response(JSON.stringify({error:'예약 목록 연결 실패'}),{status:503}));await tick();});
   assert.match(document.querySelector('[role=alert]')!.textContent!,/예약 목록 연결 실패/);
-  assert.doesNotMatch(document.body.textContent!,/예약된 워크플로우가 없습니다\./);
+  assert.doesNotMatch(document.body.textContent!,/등록한 예약이 없습니다\./);
   await click(button('다시 시도'));
   assert.equal(document.querySelector('[role=alert]'),null);assert.ok(scheduleRow('A'));assert.equal(reads,2);
  }finally{waiting.resolve({workflows:[]});await h.close();}
@@ -1283,8 +1283,8 @@ test('schedules: pending and failed requests are not presented as an empty sched
 test('schedules: an empty list offers a fresh workflow without changing an existing saved workflow',async()=>{
  const h=await setup('?screen=schedules',{'a4b-builder-session':'old','a4b-selected-agent':'A'},undefined,createElement(EntryApp));
  try{
-  assert.match(document.body.textContent!,/예약된 워크플로우가 없습니다\./);
-  await click(button('예약 워크플로우 만들기'));
+  assert.match(document.body.textContent!,/등록한 예약이 없습니다\./);
+  await click(button('새 예약 워크플로우'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   assert.equal(localStorage.getItem('a4b-builder-session'),null);assert.equal(localStorage.getItem('a4b-selected-agent'),null);
   assert.ok(document.querySelector('textarea[aria-label="업무 설명"]'));
@@ -1299,11 +1299,11 @@ test('schedules: management opens the chosen workflow and leaving a pending list
   if(path.includes('/agent?id=A'))return snapshot(daily);
  },createElement(EntryApp));
  try{
-  const manage=Array.from(scheduleRow('A').querySelectorAll('button')).find(item=>item.textContent?.trim()==='예약 관리');assert.ok(manage);
+  const manage=Array.from(scheduleRow('A').querySelectorAll('button')).find(item=>item.textContent?.trim()==='상세 확인');assert.ok(manage);
   await click(manage);
-  assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.equal(new URL(location.href).searchParams.get('service'),'A');
+  assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(new URL(location.href).searchParams.get('service'),'A');
   assert.equal(document.querySelector('h1')?.textContent,'일일 보고서');assert.ok(document.querySelector('.as-schedule-card'));
-  await click(button('예약 실행'));assert.match(document.body.textContent!,/불러오고/);
+  await click(button('예약 관리'));assert.match(document.body.textContent!,/불러오고/);
   await click(button('워크플로우'));
   await act(async()=>{waiting.resolve({workflows:scheduleFixtures()});await tick();});
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');assert.equal(document.querySelector('h1')?.textContent,'워크플로우');
@@ -1314,16 +1314,16 @@ test('schedules: management opens the chosen workflow and leaving a pending list
 for(const nextState of ['disconnected','account-error'])test('Gmail schedules: window return rechecks '+nextState+' before enabling execution',async()=>{
  const base=agent('G','전날 Gmail 요약',dailySchedule),gmail={...base,config:{...base.config,tool_ids:['email.list','compose_answer']}};
  let current='ready';
- const h=await setup('?screen=run&service=G',{},path=>{
+ const h=await setup('?screen=schedule&service=G',{},path=>{
   if(path.endsWith('/agents'))return {agents:[gmail]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:current!=='disconnected',connectionVersion:1,email:current==='ready'?'scheduled@example.com':null,...(current==='account-error'?{accountError:'Gmail 읽기 권한을 다시 확인해주세요.'}:{})};
  },createElement(EntryApp));
  try{
-  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('지금 실행').disabled,false);
+  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
   current=nextState;
   await act(async()=>{window.dispatchEvent(new Event('focus'));await tick();});
-  assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('지금 실행').disabled,true);
+  assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('예약 자료로 지금 실행').disabled,true);
   assert.equal(document.querySelector('.service-connection-state')!.textContent,nextState==='disconnected'?'연결 안 됨':'연결 확인 필요');
   assert.equal(h.calls.some(call=>call.body),false);
  }finally{await h.close();}
@@ -1338,13 +1338,13 @@ test('Gmail schedules: a connected account can activate, enqueue a test and run 
  const completed={id:'gmail-now',status:'succeeded',answer:'전날 메일 요약 결과',agent_version:1,steps:[],rows:[],artifact:null,error:null};
  let active=false,latest:any[]=[];
  const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
- const h=await setup('?screen=run&service=G',{},(path,body)=>{
+ const h=await setup('?screen=schedule&service=G',{},(path,body)=>{
   if(path.endsWith('/agents'))return {agents:[gmail]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail,latest),schedule:schedule(),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:true,connectionVersion:1,email:'scheduled@example.com'};
   if(path.endsWith('/schedule')){assert.deepEqual(body,{id:'G',active:!active});active=body.active;return {schedule:schedule()};}
   if(path.endsWith('/schedule_test')){assert.deepEqual(body,{id:'G'});return {job:{id:'gmail-test-job',kind:'schedule_test',due_at:'2026-11-10T00:00:15Z'}};}
-  if(path.endsWith('/test')){assert.deepEqual(body,{id:'G',content:'',fileIds:[]});latest=[completed];return completed;}
+  if(path.endsWith('/test')){assert.deepEqual(body,{id:'G',content:'',fileIds:[],useSchedule:true});latest=[completed];return completed;}
  },createElement(EntryApp));
  try{
   assert.ok(document.querySelector('.as-schedule-card'));
@@ -1353,13 +1353,13 @@ test('Gmail schedules: a connected account can activate, enqueue a test and run 
   assert.equal(buttons().some(item=>item.textContent?.trim()==='파일 연결'),false);
   assert.equal(document.querySelector('.as-run-files'),null);
   assert.equal(document.querySelector('textarea[data-tour="run-input"]'),null);
-  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('15초 후 시험 예약').disabled,false);assert.equal(button('지금 실행').disabled,false);
+  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('15초 후 시험 예약').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
   assert.equal(h.calls.some(call=>call.body),false,'opening the schedule must not activate it');
   await click(button('예약 켜기'));
-  assert.equal(button('예약 중지').disabled,false);assert.match(document.querySelector('.as-schedule-card .as-status')!.textContent!,/활성/);
+  assert.equal(button('예약 중지').disabled,false);assert.match(document.querySelector('.schedule-settings .schedule-status')!.textContent!,/활성/);
   await click(button('15초 후 시험 예약'));
   assert.match(document.querySelector('.as-schedule-card')!.textContent!,/시험 예약.*대기|대기.*시험 예약/);
-  await click(button('지금 실행'));
+  await click(button('예약 자료로 지금 실행'));
   assert.match(document.querySelector('.as-test-result')!.textContent!,/전날 메일 요약 결과/);
   assert.deepEqual(h.calls.filter(call=>call.body).map(call=>call.path),['/api/agent-builder/schedule','/api/agent-builder/schedule_test','/api/agent-builder/test']);
   assert.equal(h.calls.some(call=>call.path.endsWith('/source_upload')),false);
@@ -1368,13 +1368,13 @@ test('Gmail schedules: a connected account can activate, enqueue a test and run 
 
 for(const required of [true,undefined])test(`Gmail schedules: file schedules keep managed-source requirements when source_required is ${required}`,async()=>{
  const fileAgent=agent('F','정기 재고 집계',dailySchedule);
- const h=await setup('?screen=run&service=F',{},path=>{
+ const h=await setup('?screen=schedule&service=F',{},path=>{
   if(path.endsWith('/agents'))return {agents:[fileAgent]};
   if(path.includes('/agent?id=F'))return {...snapshot(fileAgent),...(required===undefined?{}:{source_required:required}),request_required:false,input_requirements:[{kind:'table',required_before_start:true,ready:false,issues:['실행할 표 파일을 연결하세요.']}]};
  },createElement(EntryApp));
  try{
   assert.ok(button('파일 연결'));assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);
-  assert.equal(button('지금 실행').disabled,true);
+  assert.equal(button('예약 자료로 지금 실행').disabled,true);
   assert.match(document.querySelector('.as-schedule-card')!.textContent!,/관리 데이터 소스/);
   assert.equal(h.calls.some(call=>call.body),false);
  }finally{await h.close();}
@@ -1382,7 +1382,7 @@ for(const required of [true,undefined])test(`Gmail schedules: file schedules kee
 
 test('Gmail schedules: switching to a file schedule restores its file requirement instead of keeping the Gmail source mode',async()=>{
  const gmail=agent('G','전날 Gmail 요약',dailySchedule),fileAgent=agent('F','정기 재고 집계',dailySchedule);
- const h=await setup('?screen=run&service=G',{},path=>{
+ const h=await setup('?screen=schedule&service=G',{},path=>{
   if(path.endsWith('/agents'))return {agents:[gmail,fileAgent]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path.includes('/agent?id=F'))return {...snapshot(fileAgent),source_required:true,request_required:false,input_requirements:[{kind:'table',required_before_start:true,ready:false}]};
@@ -1393,7 +1393,7 @@ test('Gmail schedules: switching to a file schedule restores its file requiremen
   const openFile=Array.from(document.querySelectorAll('.as-agent-link')).find(item=>item.querySelector('strong')?.textContent==='정기 재고 집계');assert.ok(openFile);
   await click(openFile);
   assert.equal(document.querySelector('h1')?.textContent,'정기 재고 집계');assert.ok(button('파일 연결'));
-  assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('지금 실행').disabled,true);
+  assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('예약 자료로 지금 실행').disabled,true);
   assert.equal(h.calls.some(call=>call.body),false);
  }finally{await h.close();}
 });
@@ -1403,19 +1403,19 @@ test('source-free schedules: non-Gmail workflows can activate and run without re
  const completed={id:'scalar-now',status:'succeeded',answer:'계산 결과 42',agent_version:1,steps:[],rows:[],artifact:null,error:null};
  let active=false;
  const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
- const h=await setup('?screen=run&service=N',{},(path,body)=>{
+ const h=await setup('?screen=schedule&service=N',{},(path,body)=>{
   if(path.endsWith('/agents'))return {agents:[scalar]};
   if(path.includes('/agent?id=N'))return {...snapshot(scalar),schedule:schedule(),source_required:false,required_connections:[],request_required:false,input_requirements:[]};
   if(path.endsWith('/schedule')){assert.deepEqual(body,{id:'N',active:!active});active=body.active;return {schedule:schedule()};}
   if(path.endsWith('/schedule_test')){assert.deepEqual(body,{id:'N'});return {job:{id:'scalar-test-job',kind:'schedule_test',due_at:'2026-11-10T00:00:15Z'}};}
-  if(path.endsWith('/test')){assert.deepEqual(body,{id:'N',content:'',fileIds:[]});return completed;}
+  if(path.endsWith('/test')){assert.deepEqual(body,{id:'N',content:'',fileIds:[],useSchedule:true});return completed;}
  },createElement(EntryApp));
  try{
   assert.doesNotMatch(document.querySelector('.as-schedule-card')!.textContent!,/Gmail/);
   assert.equal(buttons().some(item=>item.textContent?.trim()==='파일 연결'),false);
-  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('15초 후 시험 예약').disabled,false);assert.equal(button('지금 실행').disabled,false);
+  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('15초 후 시험 예약').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
   await click(button('예약 켜기'));assert.ok(button('예약 중지'));
-  await click(button('15초 후 시험 예약'));await click(button('지금 실행'));
+  await click(button('15초 후 시험 예약'));await click(button('예약 자료로 지금 실행'));
   assert.match(document.querySelector('.as-test-result')!.textContent!,/계산 결과 42/);
   assert.equal(h.calls.some(call=>call.path==='/api/agent-builder/gmail'),false);
   assert.deepEqual(h.calls.filter(call=>call.body).map(call=>call.path),['/api/agent-builder/schedule','/api/agent-builder/schedule_test','/api/agent-builder/test']);
@@ -1425,7 +1425,7 @@ test('source-free schedules: non-Gmail workflows can activate and run without re
 test('Gmail schedules: disconnecting blocks new work while still allowing an active schedule to pause',async()=>{
  const gmail=agent('G','전날 Gmail 요약',dailySchedule);let connected=true,active=true;
  const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
- const h=await setup('?screen=run&service=G',{},(path,body,method)=>{
+ const h=await setup('?screen=schedule&service=G',{},(path,body,method)=>{
   if(path.endsWith('/agents'))return {agents:[gmail]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail),schedule:schedule(),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path==='/api/agent-builder/gmail'){
@@ -1435,9 +1435,9 @@ test('Gmail schedules: disconnecting blocks new work while still allowing an act
   if(path.endsWith('/schedule')){assert.deepEqual(body,{id:'G',active:false});active=false;return {schedule:schedule()};}
  },createElement(EntryApp));
  try{
-  assert.equal(button('지금 실행').disabled,false);
+  assert.equal(button('예약 자료로 지금 실행').disabled,false);
   await click(button('연결 관리'));await click(button('A4B 연결 해제'));
-  assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('지금 실행').disabled,true);
+  assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('예약 자료로 지금 실행').disabled,true);
   assert.equal(button('예약 중지').disabled,false);
   const close=document.querySelector('[role="dialog"] button[data-slot="dialog-close"]');
   if(close)await click(close);
@@ -1499,7 +1499,7 @@ const sourceAssets=[{id:'asset-1',name:'매출.csv',kind:'table',format:'csv'}];
 const sourceReader=[{id:'read',label:'매출 표 읽기',kind:'table'}];
 function sourceLibraryResponse(){return {folders:sourceFolders,assets:sourceAssets,next:null};}
 
-for(const space of ['personal','team'] as const)for(const mode of ['fixed','latest','new'] as const)
+for(const space of ['personal','team'] as const)for(const mode of ['fixed','latest','new','all'] as const)
 test('schedule source: '+space+' '+mode+' submits the exact folder, reader and revision',async()=>{
  let saved=0;const writes:any[]=[];
  const h=await setup('?screen=run',{},(path,body,method)=>{
@@ -1517,11 +1517,130 @@ test('schedule source: '+space+' '+mode+' submits the exact folder, reader and r
   if(space==='team')await chooseSource('예약 자료 공간','team-1');
   await chooseSource('예약 자료 폴더','folder-1');await chooseSource('예약 자료 읽기 방식',mode);
   if(mode==='fixed'){const checkbox=document.querySelector('.schedule-source-files input');assert.ok(checkbox);await click(checkbox);}
+  if(mode==='all'){
+   assert.match(document.querySelector('.schedule-library-source')!.textContent!,/파일을 매번 모두 읽어 하나의 실행/);
+   assert.match(document.querySelector('.schedule-library-source')!.textContent!,/같은 열 구조의 표들을 합쳐/);
+   assert.match(document.querySelector('.schedule-library-source')!.textContent!,/하위 폴더 제외/);
+   assert.equal(document.querySelector('.schedule-source-files'),null);
+  }
   await click(button('자료함 연결 저장'));
   assert.deepEqual(writes,[{id:'flow',base_revision:0,selection:{mode,space,team_id:space==='team'?'team-1':null,folder_id:'folder-1',asset_ids:mode==='fixed'?['asset-1']:[],target_node_id:'read'}}]);
   assert.equal(saved,1);assert.match(document.querySelector('.schedule-source-notice')!.textContent!,/예약이 중지/);
   const expected=space==='team'?'/api/teams/team-1/library/library?folder_id=folder-1':'/api/agent-builder/library?folder_id=folder-1';
   assert.ok(h.calls.some(call=>call.path===expected));
+ }finally{await h.close();}
+});
+
+test('schedule source: saved folder-wide documents keep their mode and explain a single combined report',async()=>{
+ const selection={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:3};
+ const h=await setup('?screen=run',{},(path,_body,method)=>{
+  if(path.startsWith('/api/agent-builder/schedule_source')&&method==='GET')return {selection};
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[{id:'doc-1',name:'주간업무.txt',kind:'document'}],next:null};
+ },createElement(SourceSettings,{workflowId:'flow',readers:[{id:'read',label:'업무보고 읽기',kind:'document'}],disabled:false,onSaved:async()=>{}}));
+ try{
+  await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
+  assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')!.value,'all');
+  assert.match(document.querySelector('.schedule-source-saved')!.textContent!,/폴더 전체 함께 읽기/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/여러 문서를 함께 읽어.*종합 보고서/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/이미 처리한 파일도 다시 읽습니다/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/최대 100개 파일/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/합계 45,000자/);
+  assert.equal(document.querySelector('.schedule-source-files'),null);
+  assert.equal(button('자료함 연결 저장').disabled,true);
+ }finally{await h.close();}
+});
+
+test('folder source: a manual workflow configures a folder and runs one report without a reservation',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ let selection:any=null;
+ const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.startsWith('/api/agent-builder/schedule_source')){
+   if(method==='GET')return {selection};
+   selection={...body.selection,revision:1};return {selection};
+  }
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+  if(path.endsWith('/test'))return {id:'combined-report',status:'succeeded',agent_version:1,answer:'두 업무보고를 합친 팀 보고서입니다.',steps:[],rows:[],artifact:null};
+ },createElement(EntryApp));
+ try{
+  await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
+  assert.equal(document.querySelectorAll('.schedule-library-source').length,1);
+  assert.equal(button('워크플로우 실행').disabled,true);
+  await chooseSource('예약 자료 폴더','folder-1');await chooseSource('예약 자료 읽기 방식','all');
+  await click(button('자료함 연결 저장'));
+  assert.equal(button('워크플로우 실행').disabled,false);
+  assert.match(document.querySelector('.as-run-files small')!.textContent!,/연결한 자료함에서 읽습니다/);
+  await click(button('워크플로우 실행'));
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/test'))!.body,{id:'manual-folder',content:'',fileIds:[]});
+  assert.equal(h.calls.some(call=>call.path.endsWith('/schedule_configure')),false);
+  assert.match(document.querySelector('.as-test-result')!.textContent!,/두 업무보고를 합친 팀 보고서/);
+ }finally{await h.close();}
+});
+
+test('folder source: manual attachments override the folder and still require the correct file kind',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ const selection={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
+ const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.startsWith('/api/agent-builder/schedule_source')&&method==='GET')return {selection};
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+  if(path.endsWith('/run_upload'))return {asset:{id:body.fileName,name:body.fileName,kind:body.fileName.endsWith('.csv')?'table':'document'}};
+  if(path.endsWith('/test'))return {id:'override-report',status:'succeeded',agent_version:1,answer:'이번 실행 문서 결과',steps:[],rows:[],artifact:null};
+ },createElement(EntryApp));
+ try{
+  const picker=document.querySelectorAll<HTMLInputElement>('input[type=file]')[2];
+  async function attach(name:string){
+   Object.defineProperty(picker,'files',{configurable:true,value:[new dom.window.File(['내용'],name)]});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+   await sourceSettles(()=>!!document.querySelector('[aria-label="'+name+' 제거"]'));
+  }
+  assert.equal(button('워크플로우 실행').disabled,false);
+  await attach('다른표.csv');assert.equal(button('워크플로우 실행').disabled,true);
+  assert.match(document.querySelector('.as-run-files small')!.textContent!,/문서를 첨부/);
+  await click(document.querySelector('[aria-label="다른표.csv 제거"]')!);
+  await attach('이번보고.txt');assert.equal(button('워크플로우 실행').disabled,false);
+  assert.match(document.querySelector('.as-run-files small')!.textContent!,/첨부한 파일을 사용.*자료함 연결은 유지/);
+  await click(button('워크플로우 실행'));
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/test'))!.body,{id:'manual-folder',content:'',fileIds:['이번보고.txt']});
+  assert.equal(h.calls.some(call=>call.path.endsWith('/schedule_source')&&call.body),false);
+ }finally{await h.close();}
+});
+
+test('folder source: unsaved manual settings block execution and survive cancelled navigation',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ let selection:any={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
+ const h=await setup('?screen=workflow&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.startsWith('/api/agent-builder/schedule_source')){
+   if(method==='GET')return {selection};
+   selection={...body.selection,revision:selection.revision+1};return {selection};
+  }
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+ },createElement(EntryApp));
+ try{
+  const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
+  await click(tab('직접 실행'));
+  await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
+  await chooseSource('예약 자료 읽기 방식','latest');
+  assert.equal(button('워크플로우 실행').disabled,true);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/저장한 뒤 실행/);
+  await click(button('워크플로우 실행'));assert.equal(h.calls.some(call=>call.path.endsWith('/test')),false);
+  let prompts=0;window.confirm=()=>{prompts++;return false;};
+  for(const target of [tab('설계'),tab('예약 관리'),button('작업 라이브러리'),button('설정 수정'),button('새 워크플로우')]){
+   await click(target);assert.equal(new URL(location.href).searchParams.get('screen'),'run');
+   assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')!.value,'latest');
+  }
+  await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,100));});
+  assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.ok(prompts>=6);
+  const unload=new dom.window.Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
+  await click(button('자료함 연결 저장'));assert.equal(button('워크플로우 실행').disabled,false);
+  const count=prompts;await click(tab('설계'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(prompts,count);
  }finally{await h.close();}
 });
 
@@ -1565,7 +1684,7 @@ test('schedule source: a pending save blocks duplicate writes and refreshes once
 test('schedule source: saving refreshes the actual paused schedule before enabling it again',async()=>{
  const flow=agent('F','월별 매출 보고',dailySchedule);flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_table',label:'매출 표 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
  let active=true,selection:any=null;
- const h=await setup('?screen=run&service=F',{},(path,body,method)=>{
+ const h=await setup('?screen=schedule&service=F',{},(path,body,method)=>{
   if(path.endsWith('/agents'))return {agents:[flow]};
   if(path.includes('/agent?id=F'))return {...snapshot(flow),schedule:{active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'},source_required:true,required_connections:[],library_source:selection,input_requirements:[{node_id:'read',kind:'table',required_before_start:true,ready:false,issues:[]}],request_required:false};
   if(path.startsWith('/api/agent-builder/schedule_source')){if(method==='GET')return {selection};selection={...body.selection,revision:1};active=false;return {selection};}
@@ -1585,7 +1704,7 @@ test('schedule source: skipped new-file runs remain empty after polling instead 
  const flow=agent('F','새 파일 집계',dailySchedule);
  const selection={mode:'new',space:'personal',team_id:null,folder_id:null,asset_ids:[],target_node_id:'read',revision:1};
  const oldRun={id:'old-success',status:'succeeded',answer:'과거 파일의 성공 결과입니다.',agent_version:1,steps:[],rows:[],artifact:null,error:null};
- const h=await setup('?screen=run&service=F',{},(path,_body,method)=>{
+ const h=await setup('?screen=schedule&service=F',{},(path,_body,method)=>{
   if(path.endsWith('/agents'))return {agents:[flow]};
   if(path.includes('/agent?id=F'))return {...snapshot(flow,[oldRun]),source_required:true,required_connections:[],library_source:selection,input_requirements:[{node_id:'read',kind:'table',required_before_start:true,ready:false,issues:[]}],request_required:false};
   if(path.startsWith('/api/agent-builder/schedule_source')&&method==='GET')return {selection};
@@ -1594,10 +1713,139 @@ test('schedule source: skipped new-file runs remain empty after polling instead 
  },createElement(EntryApp));
  try{
   assert.match(document.body.textContent!,/과거 파일의 성공 결과/);
-  await click(button('지금 실행'));assert.match(document.body.textContent!,/새로 처리할 파일이 없습니다/);
+  await click(button('예약 자료로 지금 실행'));assert.match(document.body.textContent!,/새로 처리할 파일이 없습니다/);
   assert.doesNotMatch(document.querySelector('.as-test-result')?.textContent||'',/과거 파일의 성공 결과/);
   await act(async()=>{t.mock.timers.tick(5000);await tick();});
   assert.doesNotMatch(document.querySelector('.as-test-result')?.textContent||'',/과거 파일의 성공 결과/);
   assert.match(document.body.textContent!,/새로 처리할 파일이 없습니다/);
+ }finally{await h.close();}
+});
+
+
+test('request-led scheduling: creation has no execution selector and sends no preset mode',async()=>{
+ const session={id:'mode-session',revision:0,messages:[],draft:null,status:'empty',issues:[],trace:[],resources:[]};
+ const h=await setup('?screen=workflow',{},(path,body)=>{
+  if(path.endsWith('/sessions'))return session;
+  if(path.endsWith('/message'))return {...session,revision:1,messages:[{role:'user',content:body.content}]};
+ },createElement(EntryApp));
+ try{
+  assert.equal(document.querySelector('input[name="execution-mode"]'),null);
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'매일 오전에 보고서를 만들어줘');
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  assert.equal(h.calls.find(call=>call.path.endsWith('/sessions'))?.body.executionMode,undefined);
+  assert.equal(document.querySelector('input[name="execution-mode"]'),null);
+ }finally{await h.close();}
+});
+
+for(const includeSchedule of [true,false])test('request-led scheduling: save review explicitly '+(includeSchedule?'includes':'omits')+' the proposed reservation',async()=>{
+ const spec={frequency:'daily',weekday:null,hour:9,minute:0,timezone:'Asia/Seoul'};
+ const config={...A.config,name:'재고 현황 보고서',schedule:spec,report_destination:'reports'};
+ const session={id:'intent-session',revision:4,messages:[{role:'user',content:'매일 오전 9시에 재고 현황을 정리해줘.'}],draft:config,status:'ready',issues:[],trace:[],resources:[]};
+ const savedAgent={...A,config:{...config,schedule:includeSchedule?spec:null}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/confirm'))return {...session,status:'saved',saved_agent_id:'A',draft:savedAgent.config};
+  if(path.includes('/agent?id=A'))return {...snapshot(savedAgent),source_required:false,schedule_request_required:false};
+ });
+ try{
+  assert.equal(document.querySelector('input[name="execution-mode"]'),null);
+  await click(button('초안 확인 · 저장'));
+  assert.match(document.querySelector('[role="dialog"]')?.textContent||'',/매일 09:00/);
+  assert.match(document.querySelector('[role="dialog"]')?.textContent||'',/서울 표준시/);
+  assert.match(document.querySelector('[role="dialog"]')?.textContent||'',/꺼진 상태로 저장/);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/confirm')).length,0);
+  assert.equal(document.querySelector('[role="dialog"] input[type="time"]'),null,'known times are shown rather than asked again');
+  if(!includeSchedule)await click(document.querySelector('input[name="save-schedule"][value="omit"]')!);
+  await click(button(includeSchedule?'예약과 함께 저장':'워크플로우만 저장'));
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/confirm')).length,1);
+  assert.equal(h.calls.find(call=>call.path.endsWith('/confirm'))!.body.includeSchedule,includeSchedule);
+  assert.equal(new URL(location.href).searchParams.get('screen'),includeSchedule?'schedule':'run');
+ }finally{await h.close();}
+});
+
+for(const sample of [
+ {name:'문서 검토',spec:{frequency:'weekly',weekday:2,hour:14,minute:30,timezone:'Asia/Seoul'},label:'매주 수요일 14:30'},
+ {name:'월말 비용 정리',spec:{frequency:'monthly',weekday:null,hour:18,minute:0,timezone:'Asia/Seoul',month_end:true},label:'매월 말일 18:00'},
+ {name:'서비스 상태 확인',spec:{frequency:'hourly',weekday:null,hour:null,minute:15,timezone:'Asia/Seoul'},label:'매시간 15분'},
+])test('request-led scheduling: review displays the existing '+sample.name+' recurrence without another question',async()=>{
+ const session={id:'generic-review',revision:2,messages:[],draft:{...A.config,name:sample.name,schedule:sample.spec},status:'ready',issues:[],trace:[],resources:[]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.includes('/session?')?session:undefined);
+ try{
+  await click(button('초안 확인 · 저장'));
+  assert.match(document.querySelector('[role="dialog"]')?.textContent||'',new RegExp(sample.label));
+  assert.equal(document.querySelectorAll('[role="dialog"] input').length,2,'review has save choices only');
+  await click(button('돌아가기'));
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/confirm')).length,0);
+ }finally{await h.close();}
+});
+
+test('clarification: numeric pending question sends zero with its exact question id',async()=>{
+ const q={id:'hour-question',key:'schedule.hour',text:'몇 시에 실행할까요?',response:{type:'number',minimum:0,maximum:23,step:1,unit:'시'}};
+ const session={id:'numeric-session',revision:2,messages:[{role:'assistant',content:q.text}],draft:{...A.config,questions:[q.text],question_options:[[]]},status:'needs_clarification',issues:[],trace:[],resources:[],pending_questions:[q]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/message'))return {...session,revision:3,draft:{...session.draft,questions:[]},pending_questions:[],messages:[...session.messages,{role:'user',content:body.content},{role:'assistant',content:'오전 0시를 반영했습니다.'}]};
+ },createElement(EntryApp));
+ try{
+  const numeric=document.querySelector<HTMLInputElement>('.clarification-form input[type="number"]')!;assert.ok(numeric);assert.equal(numeric.min,'0');assert.equal(numeric.max,'23');
+  await input(numeric,'0');assert.equal(h.calls.some(call=>call.body),false);await click(button('답변 적용'));
+  const sent=h.calls.find(call=>call.path.endsWith('/message'))!.body;assert.deepEqual(sent.answers,[{questionId:q.id,value:0}]);assert.equal(sent.content,q.text+' → 0');
+  assert.match(document.body.textContent!,/오전 0시를 반영했습니다/);
+ }finally{await h.close();}
+});
+
+test('clarification: a legacy choice requires confirmation and submits its question context',async()=>{
+ const q='결과 파일 형식을 선택하세요.';
+ const session={id:'choice-session',revision:1,messages:[{role:'assistant',content:q}],draft:{...A.config,questions:[q],question_options:[['CSV','JSON']]},status:'needs_clarification',issues:[],trace:[],resources:[]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/message'))return {...session,revision:2,draft:{...session.draft,questions:[]},messages:[...session.messages,{role:'user',content:body.content}]};
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector<HTMLInputElement>('.clarification-form input[value="JSON"]')!);
+  assert.equal(h.calls.some(call=>call.body),false);await click(button('답변 적용'));
+  const sent=h.calls.find(call=>call.path.endsWith('/message'))!.body;assert.equal(sent.content,q+' → JSON');assert.equal(sent.questionId,undefined);
+ }finally{await h.close();}
+});
+
+
+test('execution separation: a manual workflow gains a reservation while direct input stays independent',async()=>{
+ let reservation:any={active:false,agent_version:1,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'};
+ const finished={id:'separate-run',status:'succeeded',answer:'분리 실행 완료',agent_version:1,steps:[],rows:[],artifact:null};
+ const h=await setup('?screen=schedule&service=A',{},(path,body)=>{
+  if(path.includes('/agent?id=A'))return {...snapshot(A),schedule:reservation,request_required:true,schedule_request_required:false,source_required:false,input_requirements:[]};
+  if(path.endsWith('/test'))return finished;
+  if(path.endsWith('/schedule_remove')){reservation=null;return {schedule:null};}
+ },createElement(EntryApp));
+ try{
+  assert.equal(button('예약 켜기').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
+  await click(button('예약 자료로 지금 실행'));
+  let sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[0].body,{id:'A',content:'',fileIds:[],useSchedule:true});
+  await click(button('직접 실행'));assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
+  assert.equal(button('워크플로우 실행').disabled,true);await input(document.querySelector<HTMLTextAreaElement>('textarea[data-tour="run-input"]')!,'이번에는 다른 요청');
+  await click(button('워크플로우 실행'));sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[1].body,{id:'A',content:'이번에는 다른 요청',fileIds:[]});
+  await click(Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent==='예약 관리')!);await click(button('예약 해제'));
+  assert.equal(document.querySelector('.schedule-settings .schedule-status')?.textContent,'예약 없음');
+  assert.equal(document.querySelector('h1')?.textContent,A.config.name);assert.equal(button('예약 자료로 지금 실행').disabled,true);
+ }finally{await h.close();}
+});
+
+
+test('reservation edits survive cancelled tab, browser-back and new-workflow navigation',async()=>{
+ let reservation:any={active:false,agent_version:1,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'},prompts=0;
+ const h=await setup('?screen=run&service=A',{},(path,body)=>{
+  if(path.includes('/agent?id=A'))return {...snapshot(A),schedule:reservation,request_required:true,schedule_request_required:false,source_required:false,input_requirements:[]};
+  if(path.endsWith('/schedule_configure')){reservation={...reservation,spec:body.spec};return {schedule:reservation};}
+ },createElement(EntryApp));
+ try{
+  const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
+  await click(tab('예약 관리'));await click(button('일정 수정'));await input(field('실행 시간'),'10:00');
+  window.confirm=()=>{prompts++;return false;};await click(tab('직접 실행'));
+  assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
+  await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,100));});
+  assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
+  await click(button('새 워크플로우'));assert.equal(field('실행 시간').value,'10:00');assert.ok(prompts>=3);
+  await click(button('일정 저장'));const count=prompts;await click(tab('직접 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.equal(prompts,count);
+  assert.equal(h.calls.filter(call=>call.body).length,1);
  }finally{await h.close();}
 });

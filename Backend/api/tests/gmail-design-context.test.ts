@@ -29,12 +29,12 @@ test('design gets current server Gmail metadata and ignores client claims or tok
  });syncBuiltinESMExports();
  let connected=true;
  const store={gmailConnected:()=>connected,getCredential:()=>({provider:'openai',data:{apiKey:'fixture-model-key'}})} as unknown as Store;
- async function invoke(action:'message'|'confirm'){
+ async function invoke(action:'message'|'confirm',extra:Record<string,unknown>={}){
   const id=randomUUID();let status=0;
   await withDataDirectory(join(tmpdir(),'gmail-design-context','users',randomUUID()),()=>handleAgentBuilder(
    {method:'POST'} as IncomingMessage,{} as ServerResponse,new URL('http://localhost/api/agent-builder/'+action),store,
    async()=>({id,revision:0,content:'매 정시마다 Gmail의 안 읽은 메일을 요약해줘',
-    gmail_connected:!connected,gmail_access_token:'untrusted-client-token'}),
+    gmail_connected:!connected,gmail_access_token:'untrusted-client-token',...extra}),
    (_response,code)=>{status=code;},async()=>{throw new Error('Design must not fetch or refresh Gmail tokens');}));
   assert.equal(status,200);
   return payloads.findLast(payload=>payload.action===action);
@@ -44,6 +44,13 @@ test('design gets current server Gmail metadata and ignores client claims or tok
   connected=false;
   assert.equal((await invoke('message')).gmail_connected,false);
   assert.equal((await invoke('confirm')).gmail_connected,false);
+  assert.equal((await invoke('confirm',{includeSchedule:true})).include_schedule,true);
+  assert.equal((await invoke('confirm',{includeSchedule:false})).include_schedule,false);
+  await assert.rejects(invoke('confirm',{includeSchedule:'yes'}),/예약을 함께 저장/);
+  const batch=await invoke('message',{answers:[{questionId:'1'.repeat(24),value:0},
+   {questionId:'2'.repeat(24),value:['CSV','직접 정한 형식'],custom:true},{questionId:'3'.repeat(24),value:null,skip:true}]});
+  assert.deepEqual(batch.question_answers,[{question_id:'1'.repeat(24),value:0},
+   {question_id:'2'.repeat(24),value:['CSV','직접 정한 형식'],custom:true},{question_id:'3'.repeat(24),value:null,skip:true}]);
   assert.ok(payloads.filter(payload=>['message','confirm'].includes(payload.action)).every(payload=>!('gmail_access_token' in payload)));
  }finally{
   t.mock.restoreAll();syncBuiltinESMExports();resetWorkerSlots();

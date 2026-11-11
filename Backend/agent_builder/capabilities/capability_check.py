@@ -4,7 +4,7 @@ import os
 import re
 from agent_builder.capabilities.capability_judgement import assess_capability, guard_delivery_revision, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
-from agent_builder.conditions.input_resolution import answer_kind, resolution_options, latest_resolution, option_answer, numeric_answer, pending_nonanswer
+from agent_builder.conditions.input_resolution import answer_kind, latest_resolution, option_answer, numeric_answer, pending_nonanswer
 from agent_builder.conditions.condition_check import _pending_draft
 
 
@@ -92,6 +92,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
             if isinstance(error,AssessmentConflictError):
                 result.update(issues=['모델의 지원 판정과 누락 항목이 서로 맞지 않습니다. 요청을 보존하고 생성·저장을 중단했습니다.'],
                               assessment_conflict=error.reported,model_calls=error.model_calls)
+        from agent_builder.design.execution_mode import reconcile_manual_capability
+        result=reconcile_manual_capability(result,state)
         fingerprint=input_fingerprint(state)
         decision=result['decision']
         update={'capability_route':'conditions','capability_assessment':result,'capability_enforced':True,
@@ -107,10 +109,14 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
                 update['condition_required']=True  # schedule slots must be grounded before any draft
         elif decision=='clarify':
             questions=(state.get('capability_questions',[]) if reuse_questions else [])
+            from agent_builder.design.execution_mode import filter_execution_questions
+            questions=filter_execution_questions(questions,state)
             if not questions:
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
                             'key':'capability.condition.'+str(i),'source':'capability','text':_question_text(text),
-                            'options':resolution_options(state)} for i,text in enumerate(result['missing_conditions'])]
+                            'options':[]} for i,text in enumerate(result['missing_conditions'])]
+            from agent_builder.design.question_controls import complete_questions
+            questions=complete_questions(questions,state)
             # AgentDraft supports 3 visible questions; preserve every question record.
             grouped=questions[:2]+([{'text':'\n'.join(q['text'] for q in questions[2:]),'options':[]}] if len(questions)>2 else [])
             ledger={'decision':'clarify','questions':grouped,'slots':{}}
@@ -136,7 +142,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
 
 def await_capability_node(state):
     from langgraph.types import interrupt
-    questions=state['capability_questions']
+    from agent_builder.design.question_controls import complete_questions
+    questions=complete_questions(state['capability_questions'],state)
     payload={'kind':'clarification','questions':[q['text'] for q in questions],
              'question_records':questions,'scope':'capability','deferred':state.get('capability_deferred',False)}
     while True:
@@ -144,9 +151,21 @@ def await_capability_node(state):
         if answer.get('type')!='message' or not str(answer.get('content','')).strip():
             payload={**payload,'error':'지원 판단의 확인 질문에 답변해주세요. 일반 저장 확인으로 넘길 수 없습니다.'}
             continue
+        if answer.get('question_answers'):
+            from agent_builder.design.question_answers import question_answers
+            try:
+                answer={**answer,'question_answers':question_answers(answer['question_answers'],{**state,'pending_questions':questions})}
+            except ValueError as error:
+                payload={**payload,'error':str(error)}
+                continue
+            break
         if not answer.get('question_id') or answer['question_id'] in [q['id'] for q in questions]:break
         payload={**payload,'error':'현재 대화의 확인 질문에 답변해주세요.'}
     event={'turn':len(state['messages']),'answer':answer['content'],'kind':answer_kind(answer['content']),
            'question_ids':[answer['question_id']] if answer.get('question_id') else [q['id'] for q in questions]}
+    if answer.get('question_answers'):
+        event['answers']=answer['question_answers']
+        event['question_ids']=[item['question_id'] for item in answer['question_answers']]
+    event['questions']=[question for question in questions if question['id'] in event['question_ids']]
     return {'messages':state['messages']+[{'role':'user','content':answer['content']}],
             'capability_answers':state.get('capability_answers',[])+[event], 'confirmed':False,'saved_agent_id':None}

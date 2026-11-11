@@ -84,7 +84,7 @@ SUPPORTED_OPERATION_NAMES ={'filter', 'deduplicate', 'schedule', 'output', 'sort
 REQUIRED = {
     'filter': ['filter.field', 'filter.operator', 'filter.value'],
     'deduplicate': ['duplicate.policy'],
-    'schedule': ['schedule.frequency', 'schedule.minute', 'schedule.timezone'],
+    'schedule': ['schedule.frequency', 'schedule.minute'],
 }
 
 
@@ -120,7 +120,7 @@ duplicate.policy: first/last/keep/error. missing.policy: exclude/keep/error.
 schedule: frequency=hourly/daily/weekly/monthly, hour=0~23, minute=0~59, weekday=월요일0~일요일6,
 hourly는 hour 없이 minute만 필요합니다. monthly는 monthday=1~31 또는 month_end=true를 명시합니다.
 monthday가 없는 달은 건너뛰고 month_end는 실제 달의 마지막 날입니다. 두 방식을 동시에 넣지 않습니다.
-timezone=IANA 이름(한국 시간은 Asia/Seoul). 오전 8시는 hour=8, minute=0입니다.
+예약 timezone은 앱 고정 설정 Asia/Seoul입니다. 시간대 질문은 하지 않습니다. 오전 8시는 hour=8, minute=0입니다.
 output.format=csv/json. 관련 없는 항목은 만들지 않습니다.
 각 조건은 specified(확정), missing(미정), conflict(충돌) 중 하나입니다.
 specified만 value를 넣고 근거 evidence_ids를 실제 이번 요청 목록에서 선택합니다.
@@ -286,6 +286,8 @@ def prepare_conditions(state):
     latest=max((i for i,m in enumerate(state.get('messages',[])) if m['role']=='user'),default=-1)
     context['latest_user_update']={'turn':latest,'content':state['messages'][latest]['content'] if latest>=0 else '',
         'evidence_ids':[e['id'] for e in catalog if e.get('turn')==latest]}
+    from agent_builder.design.execution_mode import execution_mode_context
+    if execution_mode_context(state):context['execution_choice']=execution_mode_context(state)
     reference = {'supported_capabilities': CAPABILITIES, 'required_conditions': REQUIRED,
                  'supported_tools': [{'id': t['id'], 'description': t['description']} for t in TOOLS]}
     demos=[{'input':d['input'],'output':{'operation':d['output']['operations'][0],
@@ -645,6 +647,9 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
         latest_user=max((i for i,m in enumerate(state.get('messages',[])) if m.get('role')=='user'),default=-1)
         if refs and refs[-1].get('turn')==latest_user:
             result['duplicate.policy']=deepcopy(old)
+    if any(key.startswith('schedule.') for key in result) or 'schedule' in (state.get('condition_ledger') or {}).get('operations',[]):
+        result['schedule.timezone']={'key':'schedule.timezone','status':'specified','value':'Asia/Seoul',
+            'evidence_ids':[],'evidence':[],'extraction':'application_setting'}
     return result
 
 
@@ -687,6 +692,7 @@ _DAILY = re.compile(r'매일|날마다|하루\s*한\s*번|daily', re.I)
 _WEEKLY = re.compile(r'매주|주마다|[월화수목금토일]요일\s*마다|매\s*[월화수목금토일]요일|weekly', re.I)
 _SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지\s*말|아니|필요\s*없)')
 _TIME = re.compile(r'(오전|오후|아침|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?!간)(?:\s*(\d{1,2})\s*분|\s*(반))?')
+_CLOCK_TIME = re.compile(r'(?<![\d:])(?:(오전|오후|아침|저녁|밤|새벽)\s*)?([01]?\d|2[0-3]):([0-5]\d)(?![\d:])')
 _WEEKDAY_NAMES = '월화수목금토일'
 _TIMEZONES = [(r'한국\s*(?:시간|표준시)|서울\s*시간|KST', 'Asia/Seoul'), (r'(?<![A-Za-z])UTC(?![A-Za-z])|협정\s*세계시', 'UTC')]
 
@@ -704,6 +710,9 @@ def schedule_literals(text, follow_up=False):
     """
     if unsupported_schedule_requested(text):
         return []
+    if follow_up and not any(pattern.search(text) for pattern in (_HOURLY,_DAILY,_WEEKLY,_MONTHLY_SCHEDULE)):
+        if re.search(r'(?:파일|문서|보고서|열|컬럼)(?:의)?\s*(?:명|이름|제목)|(?:출력|저장)\s*(?:파일)?\s*(?:이름|제목)',text):
+            return []
     found = {}
     def add(key, value, span):
         if key in found and found[key][0] != value:
@@ -734,7 +743,13 @@ def schedule_literals(text, follow_up=False):
     if found.get('schedule.frequency', ('weekly',))[0] == 'weekly':
         for m in re.finditer(r'([월화수목금토일])요일', text):
             add('schedule.weekday', _WEEKDAY_NAMES.index(m.group(1)), m.group(0))
+    def task_clock(match):
+        before=text[max(0,match.start()-18):match.start()]
+        after=text[match.end():match.end()+22]
+        return bool(re.search(r'(?:마감|회의|약속|행사)(?:\s*(?:시작|종료|시간|시각|은|는|이|가))*\s*$',before)
+            or re.match(r'\s*(?:부터|까지).{0,12}(?:받|수신|발신|생성|기록|접수|조회|검색)',after))
     for m in ([] if frequency == 'hourly' else _TIME.finditer(text)):
+        if task_clock(m):continue
         period, hour, minute, half = m.group(1), int(m.group(2)), m.group(3), m.group(4)
         if hour > 23 or (minute and int(minute) > 59):
             continue
@@ -749,6 +764,18 @@ def schedule_literals(text, follow_up=False):
             continue  # 08:00 or 20:00 is the user's decision
         add('schedule.hour', hour, m.group(0))
         add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
+    if frequency!='hourly':
+        for m in _CLOCK_TIME.finditer(text):
+            if task_clock(m):continue
+            period,hour,minute=m.group(1),int(m.group(2)),int(m.group(3))
+            if period and hour>12:continue
+            if period in ('오후','저녁','밤') and hour<12:hour+=12
+            elif period in ('오전','아침','새벽') and hour==12:hour=0
+            add('schedule.hour',hour,m.group(0));add('schedule.minute',minute,m.group(0))
+        for m in re.finditer(r'정오|자정',text):
+            if task_clock(m):continue
+            add('schedule.hour',12 if m.group(0)=='정오' else 0,m.group(0))
+            add('schedule.minute',0,m.group(0))
     for pattern, zone in _TIMEZONES:
         m = re.search(pattern, text, re.I)
         if m:
@@ -970,6 +997,8 @@ def _grounded_enum(key, value, quote):
 
 
 def validate_conditions(raw, state, catalog):
+    from agent_builder.design.execution_mode import effective_execution_mode
+    native_schedule = effective_execution_mode(state) == 'scheduled'
     scope_review=False
     outside_scope = raw.get("operation") == "other"
     if 'operation' in raw:
@@ -984,6 +1013,13 @@ def validate_conditions(raw, state, catalog):
         raw={'operations':[] if scope_review else [single['operation']],
              'conditions':single['conditions'],'unsupported_actions':single['unsupported_actions']}
     proposal = Proposal.model_validate(raw).model_dump()
+    if not native_schedule:
+        # The creation choice owns when this workflow runs. Recurrence words
+        # in the business request must not restore an optional app schedule.
+        # Data filters on time/deadline columns remain ordinary filter slots.
+        proposal['operations'] = [op for op in proposal['operations'] if op != 'schedule']
+        proposal['conditions'] = [item for item in proposal['conditions']
+                                  if not item['key'].startswith('schedule.')]
     slots, invalid = {}, []
     # A supported operation name ("deduplicate") is not an unsupported external action; live
     # runs put it there for "중복이 있으면 오류로 멈춰" and stopped a supported request.
@@ -1000,6 +1036,10 @@ def validate_conditions(raw, state, catalog):
         invalid.append('unsupported_actions: 원문에 없는 식별자 형태의 동작 ('+', '.join(invented)+')')
     by_id = {e['id']: e for e in catalog}
     previous = deepcopy(state.get('condition_ledger') or {})
+    if not native_schedule:
+        previous['operations'] = [op for op in previous.get('operations', []) if op != 'schedule']
+        previous['slots'] = {key:item for key,item in previous.get('slots', {}).items()
+                             if not key.startswith('schedule.')}
     for key, old in previous.get('slots', {}).items():
         if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
             old.update(status='missing', value=None, evidence_ids=[], evidence=[])
@@ -1060,6 +1100,8 @@ def validate_conditions(raw, state, catalog):
         if key not in slots:
             slots[key] = deepcopy(old)
     literals = explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'))
+    if not native_schedule:
+        literals = {key:item for key,item in literals.items() if not key.startswith('schedule.')}
     def _turn(item):
         return max((e.get('turn', -1) for e in item.get('evidence', [])), default=-1)
     for key, item in list(literals.items()):
@@ -1072,7 +1114,7 @@ def validate_conditions(raw, state, catalog):
             invalid.append(f'{key}: 사용자의 명시적 정책 구절로 보존·대조')
         slots[key]=item
     choice = option_answer(state)
-    if choice:
+    if choice and (native_schedule or not choice['key'].startswith('schedule.')):
         evidence = [e for e in catalog if e['source_id'] == 'user' and e.get('turn') == choice['turn']][:1]
         if evidence and choice['label'] in choice_options(choice['key'], state):
             value = CHOICES[choice['key']][choice['label']] if choice['key'] in CHOICES else choice['label']
@@ -1108,9 +1150,9 @@ def validate_conditions(raw, state, catalog):
     # labelled the request "filter": live 2026-11-03, 17 of 17 READY schedule requests were
     # confirmed without their schedule. The literal values above are its evidence; anything not
     # written is asked. A monthly/yearly recurrence is a known unsupported schedule.
-    if 'schedule.frequency' in literals and 'schedule' not in operations:
+    if native_schedule and 'schedule.frequency' in literals and 'schedule' not in operations:
         operations.append('schedule')
-    if unsupported_schedule_requested(last_user_request(state)) and '연간·cron 예약' not in proposal['unsupported_actions']:
+    if native_schedule and unsupported_schedule_requested(last_user_request(state)) and '연간·cron 예약' not in proposal['unsupported_actions']:
         proposal['unsupported_actions'].append('연간·cron 예약')
     if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
         # Do not lose a requested filter simply because the model labelled the
@@ -1119,6 +1161,8 @@ def validate_conditions(raw, state, catalog):
     required = list(dict.fromkeys(key for operation in operations for key in REQUIRED[operation]))
     frequency = slots.get('schedule.frequency', {}).get('value')
     if 'schedule' in operations:
+        slots['schedule.timezone']={'key':'schedule.timezone','status':'specified','value':'Asia/Seoul',
+            'evidence_ids':[],'evidence':[],'extraction':'application_setting'}
         if frequency != 'hourly':
             required.append('schedule.hour')
         unused = (['schedule.hour'] if frequency == 'hourly' else [])
@@ -1146,6 +1190,9 @@ def validate_conditions(raw, state, catalog):
            for m in state.get('messages', []) if m['role'] == 'user'):
         slots.setdefault('output.format', {'key': 'output.format', 'status': 'missing', 'value': None, 'evidence_ids': [], 'evidence': []})
     resolution = latest_resolution(state)
+    if resolution and not native_schedule:
+        keys = [key for key in resolution['keys'] if not key.startswith('schedule.')]
+        resolution = {**resolution, 'keys':keys} if keys else None
     if resolution:
         for key in resolution['keys']:
             if key in slots:
@@ -1160,7 +1207,10 @@ def validate_conditions(raw, state, catalog):
         unresolved.append('input.table')
     issues = input_issues(state)
     last_user = state.get('messages', [])[latest]['content'] if latest >= 0 else ''
-    cancelled = bool(re.search(r'그만\s*(해|할)|예약.{0,8}(취소|하지\s*마)|작업.{0,8}취소', last_user))
+    # Cancelling only the optional trigger keeps the workflow's processing
+    # conditions. A request to stop the whole task still requires review.
+    cancelled = bool(re.search(r'그만\s*(해|할)|작업.{0,8}취소', last_user) or
+                     native_schedule and re.search(r'예약.{0,8}(취소|하지\s*마)',last_user))
     decision = ('system_error' if issues else 'manual_review' if cancelled else 'deferred' if resolution and resolution['deferred'] else 'unsupported' if proposal['unsupported_actions'] else
                 'manual_review' if scope_review else
                 'ready' if not operations and slots.get('duplicate.policy',{}).get('value')=='keep' and not unresolved else

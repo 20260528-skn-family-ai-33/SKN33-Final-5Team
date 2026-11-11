@@ -6,7 +6,7 @@ import {withTeamLibraryAccess} from './team-library-access';
 import {readWorkspaceFile} from './workspace-files';
 
 export type ScheduleSourceSelection={
- mode:'fixed'|'latest'|'new';space:'personal'|'team';team_id:string|null;folder_id:string|null;
+ mode:'fixed'|'latest'|'new'|'all';space:'personal'|'team';team_id:string|null;folder_id:string|null;
  asset_ids:string[];target_node_id:string;revision?:number;
 };
 export type SourceWorker=(payload:Record<string,unknown>)=>Promise<any>;
@@ -24,7 +24,7 @@ export function parseScheduleSourceSelection(value:unknown):ScheduleSourceSelect
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('자료 연결 설정을 확인하세요.');
  const data=value as Record<string,unknown>;
  if(Object.keys(data).some(key=>!selectionKeys.has(key)))throw new Error('자료 연결 설정에 지원하지 않는 항목이 있습니다.');
- if(typeof data.mode!=='string'||!['fixed','latest','new'].includes(data.mode)||typeof data.space!=='string'||!['personal','team'].includes(data.space))throw new Error('자료 선택 방식과 저장 공간을 확인하세요.');
+ if(typeof data.mode!=='string'||!['fixed','latest','new','all'].includes(data.mode)||typeof data.space!=='string'||!['personal','team'].includes(data.space))throw new Error('자료 선택 방식과 저장 공간을 확인하세요.');
  const space=data.space as ScheduleSourceSelection['space'];
  if(space==='personal'&&data.team_id!=null)throw new Error('개인 자료에는 팀 ID를 지정할 수 없습니다.');
  const team_id=space==='team'?identifier(data.team_id,'팀 ID'):null;
@@ -32,7 +32,7 @@ export function parseScheduleSourceSelection(value:unknown):ScheduleSourceSelect
  if(!Array.isArray(data.asset_ids)||data.asset_ids.length>100)throw new Error('연결할 파일은 최대 100개 선택하세요.');
  const asset_ids=data.asset_ids.map(id=>identifier(id,'자료 ID'));
  if(new Set(asset_ids).size!==asset_ids.length)throw new Error('같은 자료를 중복 선택할 수 없습니다.');
- if(data.mode==='fixed'?!asset_ids.length:!!asset_ids.length)throw new Error('고정 파일은 파일을 선택하고, 최신·새 파일은 폴더를 선택하세요.');
+ if(data.mode==='fixed'?!asset_ids.length:!!asset_ids.length)throw new Error('고정 파일은 파일을 선택하고, 최신·새 파일·전체 함께 읽기는 폴더를 선택하세요.');
  if(typeof data.target_node_id!=='string'||!data.target_node_id.trim()||data.target_node_id.length>120||/[\u0000-\u001f]/.test(data.target_node_id))throw new Error('자료를 읽을 작업을 선택하세요.');
  return {mode:data.mode as ScheduleSourceSelection['mode'],space,team_id,folder_id,asset_ids,target_node_id:data.target_node_id,
   ...(data.revision===undefined?{}:{revision:sourceRevision(data.revision)})};
@@ -78,6 +78,8 @@ const sourceActions=new Set(['test','scheduled_run','retry_run','resume_run','sc
 /** The same owner-scoped resolver prepares manual, queued and resumed executions. */
 export async function prepareScheduleSource(payload:Record<string,unknown>,worker:SourceWorker):Promise<{payload:Record<string,unknown>;result?:any;selection?:ScheduleSourceSelection}> {
  if(!contexts.getStore()||!sourceActions.has(String(payload.action))||payload.action==='schedule'&&payload.active!==true)return {payload};
+ // An explicit manual upload belongs to this run; the saved reservation source remains unchanged.
+ if(payload.action==='test'&&Array.isArray(payload.file_ids)&&payload.file_ids.length)return {payload};
  const plan=await worker({action:'library_source_plan',source_action:payload.action,id:payload.id,...(payload.active===undefined?{}:{active:payload.active})});
  if(plan.selection==null)return {payload};
  const selection=parseScheduleSourceSelection(plan.selection)!;
@@ -89,12 +91,13 @@ export async function prepareScheduleSource(payload:Record<string,unknown>,worke
   if(!Array.isArray(metadata.candidates))throw new Error('자료 목록을 확인하지 못했습니다.');
   await authorizeScheduleSource(selection);
   const resolved=await worker({action:'library_source_resolve',source_action:payload.action,id:payload.id,selection,
-   ...(payload.lease_token?{lease_token:payload.lease_token}:{}),candidates:metadata.candidates,...(run_id?{run_id}:{})});
+   ...(payload.lease_token?{lease_token:payload.lease_token}:{}),...(payload.use_schedule?{use_schedule:true}:{}),candidates:metadata.candidates,...(run_id?{run_id}:{})});
   if(resolved.status==='expanded'||resolved.status==='skipped'){await authorizeScheduleSource(selection);return {payload,result:resolved,selection};}
   if(!Array.isArray(resolved.refs))throw new Error('실행할 자료를 선택하지 못했습니다.');
   refs=resolved.refs;run_id=resolved.run_id||run_id;
  }
  if(!Array.isArray(refs))throw new Error('실행할 자료를 확인하지 못했습니다.');
+ if(selection.mode==='all'&&(!refs.length||refs.length>100))throw new Error('폴더 전체 함께 읽기는 파일 1~100개를 사용합니다. 폴더의 파일 수를 확인하세요.');
  const exportRefs=(selected:any[])=>inSourceSpace(selection,()=>worker({action:'library_source_export',selection,target_kind:plan.target_kind,refs:selected,
   ...(plan.pinned_snapshot?{verify_only:true}:{})}));
  let exported:any;

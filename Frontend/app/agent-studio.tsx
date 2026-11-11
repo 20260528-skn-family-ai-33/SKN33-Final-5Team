@@ -159,15 +159,16 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    if(token!==generation.current)return null;
    remember(latest);
    const matching=history.requests.filter(item=>item.session_revision===attempt.before.revision);
-   if(matching.some(item=>item.status==='running')){
-    setRecovery({...attempt,running:true});
-    setError('서버에서 이전 요청을 처리하고 있습니다. 완료되면 대화를 갱신합니다.');
-    return null;
-   }
    const delivered=attempt.action==='confirm'
     ? latest.status==='saved'&&!!latest.saved_agent_id
     : latest.revision>attempt.before.revision&&latest.messages.slice(attempt.before.messages.length)
       .some(message=>message.role==='user'&&message.content===attempt.content);
+   // Session publication can complete before the audit record is finalized.
+   if(latest.revision<=attempt.before.revision&&!delivered&&matching.some(item=>item.status==='running')){
+    setRecovery({...attempt,running:true});
+    setError('서버에서 이전 요청을 처리하고 있습니다. 완료되면 대화를 갱신합니다.');
+    return null;
+   }
    const outcome=matching.find(item=>item.action===attempt.action&&(attempt.action==='confirm'||item.request_text===attempt.content));
    if(attempt.fromComposer)setText(delivered?'':attempt.draftText??attempt.content??'');
    setRecovery(null);

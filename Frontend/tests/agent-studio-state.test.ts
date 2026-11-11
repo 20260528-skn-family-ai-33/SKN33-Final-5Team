@@ -211,3 +211,37 @@ test('lost save acknowledgement opens the saved workflow without confirming twic
  await h.c.save();assert.equal(h.c.selected.id,'A');assert.equal(h.c.recovery,null);
  assert.equal(h.requests.filter(r=>r.path.endsWith('/confirm')).length,1);
 });
+
+test('a committed session wins over a stale running generation record',async()=>{
+ const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'needs_clarification'};
+ h.load(async path=>{
+  if(path.endsWith('/message'))throw Error('response lost');
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'running'}]};
+  return {id:'s',revision:6,messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'완료한 초안을 확인하세요.'}],status:'ready'};
+ });
+ await h.c.send();assert.equal(h.c.session.revision,6);assert.equal(h.c.recovery,null);assert.equal(h.c.error,'');
+});
+
+test('the next answer uses the revision recovered from a lost response',async()=>{
+ const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'needs_clarification'};
+ let sent=0;
+ h.load(async path=>{
+  if(path.endsWith('/message')){if(++sent===1)throw Error('response lost');return {id:'s',revision:7,messages:[],status:'ready'};}
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:5,request_text:'새 업무',status:'waiting_input'}]};
+  return {id:'s',revision:6,messages:[{role:'user',content:'새 업무'},{role:'assistant',content:'실행 주기를 알려주세요.'}],status:'needs_clarification'};
+ });
+ await h.c.send();h.c.text='매주';await h.c.send();
+ const writes=h.requests.filter(r=>r.path.endsWith('/message'));
+ assert.equal(writes.length,2);assert.equal(writes[1].body.revision,6);assert.equal(writes[1].body.content,'매주');
+});
+test('a saved workflow is recovered even when its audit still says running',async()=>{
+ const h=harness();h.c.session={id:'s',revision:5,messages:[],status:'ready'};
+ h.load(async path=>{
+  if(path.endsWith('/confirm'))throw Error('response lost');
+  if(path.includes('/generation_history'))return {requests:[{action:'confirm',session_revision:5,status:'running'}]};
+  if(path.includes('/session?'))return {id:'s',revision:6,messages:[],status:'saved',saved_agent_id:'A'};
+  return snapshot('A');
+ });
+ await h.c.save();assert.equal(h.c.selected.id,'A');assert.equal(h.c.recovery,null);
+ assert.equal(h.requests.filter(r=>r.path.endsWith('/confirm')).length,1);
+});

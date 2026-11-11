@@ -73,11 +73,16 @@ def _restore_saved(c, audit, record, session, latest):
     if (latest.get('status')=='saved' and latest.get('saved_agent_id')==workflow_id
             and session.get('last_generation_request_id')==request_id):
         return {'recovered':True, 'request_id':request_id}
-    if session['revision'] != record['session_revision']:
+    progress=session.get('save_recovery') or {}
+    reserved=(progress.get('request_id')==request_id and progress.get('workflow_id')==workflow_id
+              and progress.get('revision')==session['revision']
+              and session.get('last_generation_request_id')==request_id
+              and session.get('agent_id')==workflow_id and session['base_version']==progress.get('workflow_version'))
+    if session['revision'] != record['session_revision'] and not reserved:
         return {'recovered':False, 'reason':'changed'}
-    # Legacy audit records lack a version. The unadvanced session still records
-    # the base version used by that confirmation, so resolve its next version.
-    version=record.get('workflow_version',session['base_version']+1)
+    # A legacy record resolves from the original base, or its reserved version
+    # when retrying after metadata committed but checkpoint publication failed.
+    version=record.get('workflow_version',progress.get('workflow_version') if reserved else session['base_version']+1)
     if type(version) is not int or version<1:raise ValueError('저장된 워크플로우 버전을 확인하세요.')
     saved=c.storage.agent_version(workflow_id, version)
     if saved['session_id'] != session['id']:
@@ -89,13 +94,19 @@ def _restore_saved(c, audit, record, session, latest):
         state={**(graph.get_state(config).values or {}), 'status':'saved', 'saved_agent_id':workflow_id,
                'confirmed':True,'draft':{key:value for key,value in saved['config'].items() if key!='node_snapshots'},
                'issues':[],'semantic_issues':[],'pending_questions':[]}
-        # This publishes the completed save node without invoking save_agent again.
+        if not reserved:
+            previous=getattr(c.storage,'generation_audit',None)
+            c.storage.generation_audit=audit
+            try:
+                # CAS must succeed before any checkpoint change. Persist the
+                # reservation so a failed checkpoint write can be retried safely.
+                c.storage.update_session({**session,'agent_id':workflow_id,'base_version':version,
+                    'last_generation_request_id':request_id,'save_recovery':{
+                        'request_id':request_id,'workflow_id':workflow_id,'workflow_version':version,
+                        'revision':session['revision']+1}},session['revision'],state)
+            finally:c.storage.generation_audit=previous
+        # Every design mutation holds the same session lock through publication.
+        # This completes the save checkpoint without invoking save_agent again.
         graph.update_state(config,state,as_node='save')
-        previous=getattr(c.storage,'generation_audit',None)
-        c.storage.generation_audit=audit
-        try:
-            c.storage.update_session({**session,'agent_id':workflow_id,'base_version':version,
-                                      'last_generation_request_id':request_id},session['revision'],state)
-        finally:c.storage.generation_audit=previous
     finally:connection.close()
     return {'recovered':True, 'request_id':request_id}

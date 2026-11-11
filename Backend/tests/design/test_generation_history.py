@@ -472,3 +472,127 @@ def test_saved_recovery_does_not_overwrite_a_newer_conversation(tmp_path, monkey
     assert latest['status']=='ready' and latest['revision']==updated['revision']
     assert latest['last_generation_request_id']!=request_id
     assert next(item for item in records(tmp_path,s['id']) if item['request_id']==request_id)['status']=='succeeded'
+
+
+def test_save_recovery_revision_conflict_leaves_checkpoint_unchanged(tmp_path, monkeypatch):
+    s,ready,request_id,record=_committed_save_without_checkpoint(tmp_path,monkeypatch)
+    before=call(tmp_path,'session',id=s['id'])
+    def conflict(*args,**kwargs):raise ValueError('다른 요청에서 대화가 변경됐습니다.')
+    monkeypatch.setattr(Storage,'update_session',conflict)
+    with pytest.raises(ValueError,match='다른 요청'):
+        call(tmp_path,'recover_generation',id=s['id'],revision=ready['revision'],generation_request_id=request_id)
+    after=call(tmp_path,'session',id=s['id'])
+    assert after==before
+
+
+def _recovery_table_asset(folder):
+    store=Storage(folder)
+    try:
+        asset_id=uid()
+        store.add_asset({'id':asset_id,'name':'race.csv','kind':'table','format':'csv',
+                         'columns':['n'],'row_count':1,'text':'n\n2','profile':{},'preview':[{'n':2}]},[{'n':2}])
+        return asset_id
+    finally:store.close()
+
+
+@pytest.mark.parametrize('attach_after_failure',[False,True])
+def test_checkpoint_failure_can_retry_without_overwriting_a_later_attachment(tmp_path,monkeypatch,attach_after_failure):
+    s,ready,request_id,record=_committed_save_without_checkpoint(tmp_path,monkeypatch)
+    asset_id=_recovery_table_asset(tmp_path)
+    import agent_builder.design.graph as graph_module
+    builder=graph_module.build_graph
+    failed=False
+    def interrupted_builder(*args,**kwargs):
+        graph,connection=builder(*args,**kwargs)
+        class Proxy:
+            def __getattr__(self,name):return getattr(graph,name)
+            def update_state(self,*args,**kwargs):
+                nonlocal failed
+                if not failed:
+                    failed=True
+                    raise OSError('checkpoint publication interrupted')
+                return graph.update_state(*args,**kwargs)
+        return Proxy(),connection
+    monkeypatch.setattr(graph_module,'build_graph',interrupted_builder)
+    with pytest.raises(OSError,match='checkpoint publication'):
+        call(tmp_path,'recover_generation',id=s['id'],revision=ready['revision'],generation_request_id=request_id)
+    reserved=call(tmp_path,'session',id=s['id'])
+    assert reserved['revision']==ready['revision']+1 and reserved['status']=='ready'
+    if attach_after_failure:
+        attached=call(tmp_path,'attach_asset',id=s['id'],revision=reserved['revision'],asset_id=asset_id)
+        assert attached['status']=='needs_clarification'
+        result=call(tmp_path,'recover_generation',id=s['id'],revision=attached['revision'],generation_request_id=request_id)
+        assert result=={'recovered':False,'reason':'changed'}
+        assert call(tmp_path,'session',id=s['id'])==attached
+    else:
+        result=call(tmp_path,'recover_generation',id=s['id'],revision=reserved['revision'],generation_request_id=request_id)
+        assert result['recovered'] is True
+        restored=call(tmp_path,'session',id=s['id'])
+        assert restored['status']=='saved' and restored['revision']==reserved['revision']
+        assert restored['saved_agent_id']==record['workflow_id']
+
+
+@pytest.mark.parametrize('first_action',['recover_generation','attach_asset'])
+def test_separate_workers_serialize_attachment_and_saved_recovery(tmp_path,monkeypatch,first_action):
+    import os
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+    s,ready,request_id,record=_committed_save_without_checkpoint(tmp_path,monkeypatch)
+    asset_id=_recovery_table_asset(tmp_path)
+    entered,released=tmp_path/'mutation-entered',tmp_path/'mutation-release'
+    payload={'directory':str(tmp_path),'action':first_action,'id':s['id'],'revision':ready['revision'],
+             'generation_request_id':request_id,'asset_id':asset_id}
+    script='''
+import sys,json,time
+from pathlib import Path
+from service.worker import handle
+from infrastructure.persistence.storage import Storage
+payload=json.loads(sys.argv[1])
+original=Storage.update_session
+blocked=False
+def pause(store,*args,**kwargs):
+    global blocked
+    if blocked:return original(store,*args,**kwargs)
+    blocked=True
+    if payload['action']=='attach_asset':result=original(store,*args,**kwargs)
+    Path(sys.argv[2]).touch()
+    deadline=time.monotonic()+15
+    while not Path(sys.argv[3]).exists():
+        if time.monotonic()>deadline:raise TimeoutError('test barrier timed out')
+        time.sleep(.01)
+    return result if payload['action']=='attach_asset' else original(store,*args,**kwargs)
+Storage.update_session=pause
+print(json.dumps(handle(payload)))
+'''
+    process=subprocess.Popen([sys.executable,'-c',script,json.dumps(payload),str(entered),str(released)],
+        env={**os.environ,'PYTHONPATH':str(Path(__file__).resolve().parents[2])},
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    try:
+        deadline=time.monotonic()+10
+        while not entered.exists() and process.poll() is None and time.monotonic()<deadline:time.sleep(.01)
+        assert entered.exists()
+        if first_action=='recover_generation':
+            with pytest.raises(ValueError,match='이전 요청'):
+                call(tmp_path,'attach_asset',id=s['id'],revision=ready['revision'],asset_id=asset_id)
+        else:
+            assert call(tmp_path,'recover_generation',id=s['id'],revision=ready['revision'],
+                        generation_request_id=request_id)=={'recovered':False,'reason':'active'}
+        released.touch()
+        stdout,stderr=process.communicate(timeout=10)
+        assert process.returncode==0,stderr
+        result=json.loads(stdout)
+        latest=call(tmp_path,'session',id=s['id'])
+        if first_action=='recover_generation':
+            assert result['recovered'] is True and latest['status']=='saved'
+            assert not latest['file_ids']
+        else:
+            assert latest['status']=='needs_clarification' and latest['file_ids']==[asset_id]
+            assert call(tmp_path,'recover_generation',id=s['id'],revision=latest['revision'],
+                        generation_request_id=request_id)=={'recovered':False,'reason':'changed'}
+            assert call(tmp_path,'session',id=s['id'])==latest
+    finally:
+        released.touch()
+        if process.poll() is None:process.kill()
+        process.communicate(timeout=5)

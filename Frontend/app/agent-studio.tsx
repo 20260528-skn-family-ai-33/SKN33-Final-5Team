@@ -175,8 +175,8 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
     latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
     if(token!==generation.current)return null;
     if(repair.reason==='changed'){
-     remember(latest);setRecovery({...attempt,running:false});
-     setError('다른 요청에서 대화가 변경됐습니다. 최신 대화를 확인하거나 다른 화면으로 이동하세요.');
+     remember(latest);setRecovery(null);
+     setError('다른 요청에서 대화가 변경됐습니다. 최신 대화를 확인한 뒤 이어서 진행하세요.');
      return null;
     }
     if(!repair.recovered&&!repairActive)throw new Error('저장 결과 복구를 확인하지 못했습니다.');

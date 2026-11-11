@@ -3,6 +3,8 @@ from contextlib import nullcontext
 import importlib.util
 import io
 import json
+import os
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import threading
@@ -167,7 +169,10 @@ def test_runner_stops_on_snapshot_failure_without_app_fallback_or_next_case(tmp_
         return {'id':case['id'],'status':'completed','live_model_calls':1,'model_calls':[call]}
     monkeypatch.setattr(runner,'write_report',write);monkeypatch.setattr(runner,'live_probe',live_probe)
     monkeypatch.setattr(runner,'run_case',run_case)
-    assert runner.main()==2
+    # The CLI deliberately changes process-wide serving settings and proxies.
+    # Keep those changes inside this fixture, including when the CLI fails.
+    with patch.dict(os.environ):
+        assert runner.main()==2
     if failure_stage=='final':
         assert ran==['R01','R02']
         assert saved[-1]['status']=='running'

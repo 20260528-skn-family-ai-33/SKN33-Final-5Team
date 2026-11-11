@@ -699,7 +699,9 @@ test('DOM: startup API failure is visible on the node-library screen too',async(
  try{assert.match(document.querySelector('[role=alert]')?.textContent||'',/카탈로그 연결 오류/);}finally{await h.close();}
 });
 function readySession(){return {id:'ready',revision:1,status:'ready',base_version:0,messages:[{role:'user',content:'합계를 계산해줘'},{role:'assistant',content:'설정 확인'}],draft:{...A.config,explanation:'설정 확인'},resources:[],trace:[],issues:[]};}
-test('DOM: receipt clarification uploads a file and submits only chosen fields to its pending question',async()=>{
+const receiptBrowserOptions=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul'}).resolvedOptions();
+test('DOM: receipt clarification uploads a file and submits only chosen fields to its pending question',async t=>{
+ t.mock.method(Intl.DateTimeFormat.prototype,'resolvedOptions',()=>receiptBrowserOptions);
  const attach={id:'a'.repeat(24),key:'receipt.attachment',text:'영수증을 첨부해 주세요.',action:{type:'attach_receipt'}};
  const fields={id:'b'.repeat(24),key:'receipt.fields',text:'어떤 항목을 추출할까요?',action:{type:'select_fields',options:['날짜','상호명','결제 금액']}};
  function waiting(question:typeof attach,revision:number){
@@ -739,12 +741,13 @@ test('DOM: receipt clarification uploads a file and submits only chosen fields t
   await click(field('날짜'));await click(field('결제 금액'));await input(field('다른 항목 추가'),'승인번호');
   await click(button('선택한 항목으로 계속'));
   const answers=h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body);
-  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id}]);
+  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id,userTimezone:'Asia/Seoul'}]);
  }finally{await h.close();}
 });
 for(const [name,withSummary,itemColumns] of [
  ['items only',false,['상품코드','금액']],['summary only',true,[]],['summary and items',true,['상품코드','상품명','단가','수량','금액']],
-] as const) test('DOM: grounded Excel receipt submits '+name+' to the current question',async()=>{
+] as const) test('DOM: grounded Excel receipt submits '+name+' to the current question',async t=>{
+ t.mock.method(Intl.DateTimeFormat.prototype,'resolvedOptions',()=>receiptBrowserOptions);
  const columns=['상품코드','상품명','단가','수량','금액'];
  const question={id:'c'.repeat(24),key:'receipt.fields',text:'엑셀에 담을 항목을 선택해 주세요.',
   action:{type:'select_fields',options:['날짜','결제 금액','승인번호'],detected_fields:[{label:'날짜',value:'2010-03-24'},{label:'승인번호'}],
@@ -769,7 +772,7 @@ for(const [name,withSummary,itemColumns] of [
   await click(next);
   const lines=[...(withSummary?['영수증에서 추출할 항목: 날짜, 부가세']:[]),...(itemColumns.length?['영수증 품목 시트: '+itemColumns.join(', ')]:[])];
   assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body),
-   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n')}]);
+   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n'),userTimezone:'Asia/Seoul'}]);
  }finally{await h.close();}
 });
 test('DOM: reopened receipt session replaces only superseded question lines on the active turn',async()=>{

@@ -188,6 +188,8 @@ jobs:
         run: |
           .venv-agent/bin/python -m pytest -q \
             tests/workflow_engine/test_library_schedule_sources.py \
+            tests/workflow_engine/test_folder_table_batch.py \
+            tests/workflow_engine/test_folder_report_summary.py \
             tests/workflow_engine/test_recurrence.py \
             tests/workflow_engine/test_gmail_scheduling.py \
             tests/workflow_engine/test_schedule_listing.py \

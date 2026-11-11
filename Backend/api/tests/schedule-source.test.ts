@@ -19,7 +19,7 @@ delete process.env.A4B_BUSINESS_RECORDS;delete process.env.A4B_S3_BUCKET;
 const {parseScheduleSourceSelection,sourceRevision,prepareScheduleSource,assertScheduleSourcePayload,withScheduleSourceContext,validateScheduleSourceSelection,readScheduleSourceOriginal}=await import('../src/schedule-source');
 const {handleAgentBuilder,builderWorker,resetWorkerSlots}=await import('../src/agent-builder');
 const ownerId=randomUUID(),teamId=randomUUID(),assetId=randomUUID(),agentId=randomUUID();
-const selection=(space:'personal'|'team'='personal',mode:'fixed'|'latest'|'new'='fixed')=>({mode,space,team_id:space==='team'?teamId:null,folder_id:null,asset_ids:mode==='fixed'?[assetId]:[],target_node_id:'reader',revision:1});
+const selection=(space:'personal'|'team'='personal',mode:'fixed'|'latest'|'new'|'all'='fixed')=>({mode,space,team_id:space==='team'?teamId:null,folder_id:null,asset_ids:mode==='fixed'?[assetId]:[],target_node_id:'reader',revision:1});
 const ref={id:assetId,name:'같은 이름.csv',kind:'table',version:'effective-parsed-version-1',created_at:'2026-11-10T00:00:00Z',updated_at:'2026-11-10T00:00:00Z'};
 const original='builder-originals/'+ 'a'.repeat(64)+'.csv';
 async function fixture(){
@@ -40,9 +40,18 @@ test('source selections reject ownership/path injection and inconsistent modes',
   {...selection(),directory:'../someone'}, {...selection(),owner_id:randomUUID()}, {...selection(),team_id:teamId},
   {...selection('team'),team_id:'../outside'}, {...selection(),folder_id:'../folder'}, {...selection(),asset_ids:[]},
   {...selection(),asset_ids:[assetId,assetId]}, {...selection('personal','latest'),asset_ids:[assetId]},
-  {...selection(),target_node_id:''}, {...selection(),revision:-1},
+  {...selection(),target_node_id:''}, {...selection(),revision:-1}, {...selection('personal','all'),asset_ids:[assetId]},
  ])assert.throws(()=>parseScheduleSourceSelection(invalid));
  assert.equal(parseScheduleSourceSelection(selection('team','new'))?.space,'team');
+ assert.deepEqual(parseScheduleSourceSelection(selection('team','all')),selection('team','all'));
+});
+
+test('manual uploads override the saved reservation source for only this execution',async()=>{
+ const payload={action:'test',id:agentId,file_ids:[randomUUID()]};
+ const result=await withScheduleSourceContext({directory:tmpdir()},()=>prepareScheduleSource(payload,async()=>{
+  throw new Error('An explicit manual upload must not resolve the reservation source');
+ }));
+ assert.deepEqual(result,{payload});
 });
 
 for(const space of ['personal','team'] as const)test(`source resolution stays in the ${space} namespace and never creates a personal library copy`,async()=>{
@@ -84,8 +93,8 @@ test('revoked team membership stops resolution and is rechecked again before a p
  }finally{await files.close();}
 });
 
-test('fixed document batches export each parsed snapshot separately and preserve selected order',async()=>{
- const files=await fixture(),second={...ref,id:randomUUID(),name:'두 번째 문서'},chosen={...selection(),asset_ids:[ref.id,second.id]},batches:any[][]=[];
+for(const mode of ['fixed','all'] as const)test(`${mode} document batches share one run and preserve all parsed snapshots in selected order`,async()=>{
+ const files=await fixture(),second={...ref,id:randomUUID(),name:'두 번째 문서'},chosen={...selection('personal',mode),asset_ids:mode==='fixed'?[ref.id,second.id]:[]},batches:any[][]=[];
  const worker=async(payload:Record<string,any>)=>{
   if(payload.action==='library_source_plan')return {selection:chosen,target_kind:'document',needs_resolve:true,pinned_snapshot:false};
   if(payload.action==='library_source_resolve')return {status:'resolved',refs:[ref,second],run_id:randomUUID()};
@@ -97,6 +106,15 @@ test('fixed document batches export each parsed snapshot separately and preserve
   const prepared=await withScheduleSourceContext({directory:files.owner},()=>withDataDirectory(files.owner,()=>prepareScheduleSource({action:'test',id:agentId},worker)));
   assert.equal(batches.length,2);assert.deepEqual((prepared.payload.library_source_snapshot as any).assets.map((item:any)=>item.asset.id),[ref.id,second.id]);
  }finally{await files.close();}
+});
+
+for(const count of [0,101])test(`all-file sources reject ${count} files before reading original content`,async()=>{
+ const chosen=selection('personal','all');let exports=0;
+ await assert.rejects(withScheduleSourceContext({directory:tmpdir()},()=>prepareScheduleSource({action:'test',id:agentId},async payload=>{
+  if(payload.action==='library_source_plan')return {selection:chosen,target_kind:'document',refs:Array.from({length:count},()=>ref),needs_resolve:false,pinned_snapshot:false};
+  exports++;throw Error('Out-of-range batches must not read originals');
+ })),/1~100/);
+ assert.equal(exports,0);
 });
 
 for(const action of ['retry_run','resume_run'])test(`${action} verifies original access without replacing the run's pinned content`,async()=>{

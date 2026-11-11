@@ -6,18 +6,19 @@ import {teamLibraryBase,useTeamSpaces} from './team-library';
 import './schedule-library-source.css';
 
 export type ScheduleLibrarySource={
- mode:'fixed'|'latest'|'new';space:'personal'|'team';team_id:string|null;folder_id:string|null;
+ mode:'fixed'|'latest'|'new'|'all';space:'personal'|'team';team_id:string|null;folder_id:string|null;
  asset_ids:string[];target_node_id:string;revision:number;
 };
 export type SourceReader={id:string;label:string;kind:string};
 type Folder={id:string;name:string;parent_id:string|null};
 type Asset={id:string;name:string;format?:string;kind?:string;capabilities?:string[];created_at?:string;pending_delete?:boolean;processing_status?:string};
 type LibraryPage={folders:Folder[];assets:Asset[];next:string|null};
-const modeLabels={fixed:'고정 파일',latest:'최신 파일',new:'새 파일만 처리'};
+const modeLabels={fixed:'고정 파일',latest:'최신 파일',new:'새 파일만 처리',all:'폴더 전체 함께 읽기'};
 const modeDescriptions={
  fixed:'선택한 파일을 매번 읽습니다. 같은 이름으로 새 파일을 올려도 대상은 바뀌지 않습니다.',
- latest:'예약이 실행될 때 선택한 폴더에서 가장 최근에 등록된 파일 하나를 읽습니다.',
+ latest:'실행할 때 선택한 폴더에서 가장 최근에 등록된 파일 하나를 읽습니다.',
  new:'선택한 폴더에서 아직 성공적으로 처리하지 않은 파일을 찾아 파일별로 실행합니다. 실패한 파일은 완료 처리하지 않습니다.',
+ all:'선택한 폴더의 처리 가능한 파일을 매번 모두 읽어 하나의 실행으로 처리합니다. 추가·변경된 파일은 다음 실행에 반영됩니다.',
 };
 
 function folderLabel(folder:Folder,folders:Folder[]) {
@@ -95,12 +96,14 @@ export function ScheduleLibrarySourceSettings({workflowId,readers,disabled,onSav
   {loading?<p role="status">예약 자료 설정을 불러오고 있습니다.</p>:loadFailed?<div role="alert"><p>{error}</p><button type="button" className="as-button" onClick={()=>void loadSelection()}>자료 설정 다시 불러오기</button></div>:<>
    {selection&&<p className="schedule-source-saved">저장된 읽기 방식: <strong>{modeLabels[selection.mode]}</strong></p>}
    <fieldset disabled={disabled||saving} className="schedule-source-fields">
-    <div className="schedule-source-options"><label>읽기 방식<select aria-label="예약 자료 읽기 방식" value={mode} onChange={event=>{changed();setMode(event.target.value as ScheduleLibrarySource['mode']);}}><option value="fixed">고정 파일</option><option value="latest">최신 파일</option><option value="new">새 파일만 처리</option></select></label>
+    <div className="schedule-source-options"><label>읽기 방식<select aria-label="예약 자료 읽기 방식" value={mode} onChange={event=>{changed();setMode(event.target.value as ScheduleLibrarySource['mode']);}}><option value="fixed">고정 파일</option><option value="latest">최신 파일</option><option value="new">새 파일만 처리</option><option value="all">폴더 전체 함께 읽기</option></select></label>
     <label>자료를 읽을 작업<select aria-label="자료를 읽을 작업" value={target} onChange={event=>{changed();setTarget(event.target.value);setAssetIds([]);}}>{readers.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
     <label>자료 공간<select aria-label="예약 자료 공간" value={teamId} onChange={event=>{changed();setTeamId(event.target.value);setFolderId(null);setAssetIds([]);}}><option value="">내 자료함</option>{spaces.teams.map(team=><option key={team.id} value={team.id}>{team.name}</option>)}{teamId&&!spaces.teams.some(team=>team.id===teamId)&&<option value={teamId}>저장된 팀 · 권한 확인 필요</option>}</select></label>
     <label>대상 폴더<select aria-label="예약 자료 폴더" value={folderId||''} disabled={listLoading||!!listError} onChange={event=>{changed();setFolderId(event.target.value||null);setAssetIds([]);}}><option value="">{rootName} · 최상위</option>{folders.map(item=><option key={item.id} value={item.id}>{folderLabel(item,folders)}</option>)}</select></label></div>
     <p className="schedule-source-description">{modeDescriptions[mode]}</p>
     {mode==='new'&&<p className="schedule-source-description">연결할 공간·폴더·작업을 바꾸어 저장하면 처리 기준이 새로 시작되어, 이전에 처리한 파일도 다시 대상이 될 수 있습니다.</p>}
+    {mode==='all'&&<p className="schedule-source-description">{reader?.kind==='table'?'같은 열 구조의 표들을 합쳐 처리합니다. 열 구조가 다르면 파일을 정리한 뒤 다시 실행하세요.':'여러 문서를 함께 읽어 저장한 업무 흐름에 따라 종합 보고서나 추출 표를 만듭니다.'} 이미 처리한 파일도 다시 읽습니다.</p>}
+    {mode==='all'&&<p className="schedule-source-description">최대 100개 파일을 함께 읽습니다.{reader?.kind==='document'?' 읽은 본문은 합계 45,000자까지 처리하며, 초과하면 폴더를 나누도록 안내합니다.':''}</p>}
     {mode!=='fixed'&&<p className="schedule-source-description">대상: {rootName}{folder?' / '+folderLabel(folder,folders):' / 최상위'}의 파일 · 하위 폴더 제외</p>}
     {teamId&&<p className="schedule-source-description">팀 원본을 실행할 때 읽고 접근 권한을 다시 확인합니다. 실행에 사용한 파일과 버전은 기록으로 보관합니다.</p>}
     {spaces.error&&<p role="alert">{spaces.error}</p>}
@@ -111,6 +114,7 @@ export function ScheduleLibrarySourceSettings({workflowId,readers,disabled,onSav
     </div>}
     {listLoading&&<p role="status">자료 목록을 불러오고 있습니다.</p>}
     {mode==='fixed'&&next&&!listError&&<button type="button" className="as-text-button" disabled={listLoading} onClick={()=>void loadFiles(next)}>자료 더 보기</button>}
+    {dirty&&<p className="schedule-source-description" role="status">변경한 자료함 연결을 저장한 뒤 실행하세요.</p>}
     <button type="button" className="as-button" disabled={!dirty||listLoading||!!listError||!target||mode==='fixed'&&!assetIds.length} onClick={()=>void save()}><Save size={14}/>{saving?'저장 중…':'자료함 연결 저장'}</button>
    </fieldset>
    {error&&<p role="alert">{error}</p>}{notice&&<p role="status" className="schedule-source-notice">{notice}</p>}

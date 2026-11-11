@@ -49,8 +49,23 @@ def _arguments(node):
 def _matches(spec,node,draft,sources):
     tool=node['tool'];settings=node['settings'];operation=settings.get('operation')
     args=_arguments(node);kind=spec['kind']
+    if kind == 'email_send':
+        if tool != 'email.send' or operation != 'execute' or set(args) != {'to', 'subject', 'body'}:
+            return False
+        if args['to'] not in (spec['to'], [spec['to']]) or args['subject'] != spec['subject']:
+            return False
+        if spec['body'] is not None:
+            return not node['bindings'] and args['body'] == spec['body']
+        return (len(node['bindings']) == 1 and node['bindings'][0]['input'] == 'body'
+                and node['bindings'][0]['output'] == 'text' and args['body'] == {'$binding': 'body'}
+                and any(n['id'] == node['bindings'][0]['node_id'] and n['tool'] == 'compose_answer'
+                        for n in draft['workflow']['nodes']))
     if kind=='document_analysis':
         if tool!='compose_answer' or operation or spec['request'] not in (settings.get('instructions') or ''):return False
+        if spec.get('gmail_limit') is not None:
+            from .gmail_summary import _read_summary_arguments
+            read = _read_summary_arguments(draft)
+            return bool(read and read[1]['id'] == node['id'] and read[2]['max_results'] == spec['gmail_limit'])
         return any(b['input']=='documents' and b['output']=='documents' for b in node['bindings'])
     if kind=='human_review':
         # An explicit execution-time review must really pause, not let an LLM
@@ -226,7 +241,12 @@ def coverage_report(state,draft):
     except (ValueError,TypeError,KeyError) as error:
         return dict(enabled=True,tasks=[],issues=['요구사항 검증: 원문·자료에 맞는 업무 목록을 다시 확인해야 합니다. '+str(error)])
     workflow=draft.get('workflow') or {};nodes={n['id']:n for n in workflow.get('nodes',[])}
-    from .content_lineage import content_ancestors
+    expected_sends = sum(t['spec']['kind'] == 'email_send' for t in plan['tasks'])
+    if expected_sends and sum(n['tool'] == 'email.send' for n in nodes.values()) != expected_sends:
+        problems.append('확인된 이메일 발송 업무 수와 실제 발송 단계 수가 일치하지 않습니다.')
+    from .gmail_summary import gmail_day_issues
+    problems.extend(gmail_day_issues(state, draft))
+    from .content_lineage import content_ancestors, content_bindings
     from .reader_sources import reader_sources
     upstream={id:content_ancestors(nodes,id) for id in nodes}
     for id,n in nodes.items():
@@ -261,6 +281,14 @@ def coverage_report(state,draft):
     # Find a single consistent assignment, not disconnected matches in different
     # branches or unused parallel inputs. Same-node filter/sort/policy is valid.
     tasks=plan['tasks'];selected={};attempts=0
+    # validate_plan establishes one document_analysis parent for a bound mail body.
+    # Its sibling Markdown export must receive the same text, including when the
+    # graph also has a later rewrite descended from that summary.
+    summary_ids = {t['depends_on'][0] for t in tasks
+                   if t['spec']['kind'] == 'email_send' and t['spec']['body'] is None}
+    direct_text = {t['id']: t['depends_on'][0] for t in tasks
+                   if len(t['depends_on']) == 1 and t['depends_on'][0] in summary_ids
+                   and (t['spec']['kind'] == 'email_send' or t['spec'] == {'kind': 'export', 'format': 'md'})}
     exports=[t['id'] for t in tasks if t['spec']['kind'] in ('export','receipt_workbook')]
     from workflow_engine.execution_path import artifact_output_ids, artifact_origin
     try:
@@ -277,10 +305,21 @@ def coverage_report(state,draft):
         if attempts>4096:return False
         if index==len(tasks):
             if exports and any(selected[e]!=final_output for e in exports):return False
+            # A requested mail is a second terminal consumer. It must run and
+            # bind its own upstream content, but it does not produce a file's contents.
+            from workflow_engine.execution_path import execution_path
+            path = {node['id'] for node in execution_path(workflow)}
+            if any(selected[t['id']] not in path for t in tasks if t['spec']['kind'] == 'email_send'):
+                return False
             return all(any(selected[t['id']]==selected[e] or selected[t['id']] in upstream[selected[e]] for e in exports)
-                       for t in tasks if t['id'] not in exports) if exports else True
+                       for t in tasks if t['id'] not in exports and t['spec']['kind'] != 'email_send') if exports else True
         task=tasks[index]
         for node_id in candidates[task['id']]:
+            if task['id'] in direct_text:
+                bindings = content_bindings(nodes[node_id])
+                if (len(bindings) != 1 or bindings[0]['output'] != 'text'
+                        or bindings[0]['node_id'] != selected[direct_text[task['id']]]):
+                    continue
             if all(selected[d]==node_id or selected[d] in upstream[node_id] for d in task['depends_on']):
                 selected[task['id']]=node_id
                 if assign(index+1):return True

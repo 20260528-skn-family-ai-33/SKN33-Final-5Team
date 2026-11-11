@@ -256,9 +256,9 @@ def test_confirmed_recipe_saves_a_paused_relative_schedule_without_a_file(tmp_pa
     from workflow_engine.scheduling.schedules import Schedules
     monkeypatch.setenv('A4B_STORAGE', 'sqlite')
     monkeypatch.delenv('EASYFLOW_PUBLIC_URL', raising=False)
-    current = state()
+    current = {**state(), 'model': 'test-model'}
     result = gmail_summary_reply(current)
-    confirmed = {**current, **result, 'confirmed': True, 'model': 'test-model', 'credential_id': 'test-credential'}
+    confirmed = {**current, **result, 'confirmed': True, 'credential_id': 'test-credential'}
     store = Storage(tmp_path)
     try:
         identifier = store.save_agent(confirmed)

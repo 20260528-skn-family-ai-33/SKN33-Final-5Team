@@ -1,0 +1,366 @@
+{
+  "runtime\\planner-capability-9b-experiment\\H21-FIRST-FINAL.json": {
+    "cases": [
+      "H21"
+    ],
+    "baseline_run_cases": [
+      "H21"
+    ],
+    "full_case_sequence_matches": true,
+    "all_semantic_checks_passed": true,
+    "baseline_app_sha": "c99d88424a4e1baa113eb531b34a3ab75adfd0a6f1ec182b151845d0b8312416",
+    "candidate_app_sha": "6f4208383d828104a4ecfdce4b2986072331c650ff80f51e652247504352cc42",
+    "changed_app_files": {
+      "Backend/agent_builder/capabilities/capability_judgement.py": {
+        "before": "130a9dc9b90ea0f36d823f4d2bb66f11386600991e1471646b78e9b3e79a802c",
+        "after": "23a6e6fcc429bad72b17906760af1e3d3bc8df1d3e0a8b4d366b55cdb66fc9fc"
+      },
+      "Backend/agent_builder/design/nodes/conversation.py": {
+        "before": "ebb1a8da39ba78d4ff5644ed2a3d11cee3729e20088866286190fc83976c9c6a",
+        "after": "54793df2fbeb8f617769d6e3cfa0454d64d1ac35cbda5edcb2048cf0077fa1eb"
+      },
+      "Backend/workflow_engine/workflow.py": {
+        "before": "494efa5d777861b3f3cf23428d8a877d78351352bb9f35770457f7ce59336f49",
+        "after": "9e2c267c570ab292f8fddbd9330ff03c3fb721740446670754f1698de585e7da"
+      }
+    },
+    "scenario_p50_s": {
+      "before": 102.60520710000128,
+      "after": 90.76215729999967,
+      "delta": -11.843049800001609
+    },
+    "case_wall_delta_s": {
+      "H21": -11.843049800001609
+    },
+    "matched_successful_turn_wall_delta_s": {
+      "H21": [
+        {
+          "turn": 0,
+          "route": "CLARIFY",
+          "delta_s": -0.3041244000014558
+        },
+        {
+          "turn": 1,
+          "route": "READY",
+          "delta_s": -11.562973899999633
+        }
+      ]
+    },
+    "baseline": {
+      "H21": {
+        "oracle": "pass",
+        "scenario_wall_s": 102.60520710000128,
+        "user_turns": [
+          {
+            "turn": 0,
+            "route": "CLARIFY",
+            "status": "returned",
+            "wall_s": 22.45818270000018,
+            "gap_to_30_s": -7.5418172999998205,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 10119,
+            "output_tokens": 269,
+            "token_samples": 1,
+            "model_wall_s": 22.2802,
+            "measured_load_s": 0.0072675,
+            "load_samples": 1
+          },
+          {
+            "turn": 1,
+            "route": "READY",
+            "status": "returned",
+            "wall_s": 79.90923829999883,
+            "gap_to_30_s": 49.90923829999883,
+            "calls": 4,
+            "responses": 4,
+            "input_tokens": 30346,
+            "output_tokens": 792,
+            "token_samples": 4,
+            "model_wall_s": 73.6923,
+            "measured_load_s": 0.023310099999999997,
+            "load_samples": 3
+          }
+        ],
+        "stages": {
+          "resources": {
+            "wall_s": 0.003992499998275889,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "request_meaning": {
+            "wall_s": 6.539999958476983e-05,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "capability_check": {
+            "wall_s": 35.387176099997305,
+            "calls": 2,
+            "responses": 2,
+            "input_tokens": 21003,
+            "output_tokens": 388,
+            "token_samples": 2,
+            "model_wall_s": 35.2851,
+            "measured_load_s": 0.0158139,
+            "load_samples": 2
+          },
+          "condition_check": {
+            "wall_s": 9.422473300001002,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 5654,
+            "output_tokens": 114,
+            "token_samples": 1,
+            "model_wall_s": 9.3344,
+            "measured_load_s": 0.00796,
+            "load_samples": 1
+          },
+          "requirements": {
+            "wall_s": 4.823384999999689,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 3689,
+            "output_tokens": 32,
+            "token_samples": 1,
+            "model_wall_s": 4.7338,
+            "measured_load_s": 0.0068037,
+            "load_samples": 1
+          },
+          "generation": {
+            "wall_s": 52.47775199999887,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 10119,
+            "output_tokens": 527,
+            "token_samples": 1,
+            "model_wall_s": 46.6192,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "condition_audit": {
+            "wall_s": 0.0016531000001123175,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "validate": {
+            "wall_s": 0.010790300002554432,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "verification": {
+            "wall_s": 4.680000347434543e-05,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "supervisor": {
+            "wall_s": 0.002418500000203494,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          }
+        },
+        "calls": 5,
+        "responses": 5,
+        "input_tokens": 40465,
+        "output_tokens": 1061,
+        "token_samples": 5,
+        "model_wall_s": 95.9725,
+        "measured_load_s": 0.0305776,
+        "load_samples": 4
+      }
+    },
+    "candidate": {
+      "H21": {
+        "oracle": "pass",
+        "scenario_wall_s": 90.76215729999967,
+        "user_turns": [
+          {
+            "turn": 0,
+            "route": "CLARIFY",
+            "status": "returned",
+            "wall_s": 22.154058299998724,
+            "gap_to_30_s": -7.845941700001276,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 10119,
+            "output_tokens": 269,
+            "token_samples": 1,
+            "model_wall_s": 22.0254,
+            "measured_load_s": 0.0227432,
+            "load_samples": 1
+          },
+          {
+            "turn": 1,
+            "route": "READY",
+            "status": "returned",
+            "wall_s": 68.3462643999992,
+            "gap_to_30_s": 38.3462643999992,
+            "calls": 4,
+            "responses": 4,
+            "input_tokens": 27959,
+            "output_tokens": 661,
+            "token_samples": 4,
+            "model_wall_s": 65.3813,
+            "measured_load_s": 0.040442500000000006,
+            "load_samples": 3
+          }
+        ],
+        "stages": {
+          "resources": {
+            "wall_s": 0.0011917000010726042,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "request_meaning": {
+            "wall_s": 7.509999704780057e-05,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "capability_check": {
+            "wall_s": 35.126744600001985,
+            "calls": 2,
+            "responses": 2,
+            "input_tokens": 21003,
+            "output_tokens": 388,
+            "token_samples": 2,
+            "model_wall_s": 35.0394,
+            "measured_load_s": 0.031469000000000004,
+            "load_samples": 2
+          },
+          "condition_check": {
+            "wall_s": 9.692188000000897,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 5654,
+            "output_tokens": 114,
+            "token_samples": 1,
+            "model_wall_s": 9.5979,
+            "measured_load_s": 0.0112669,
+            "load_samples": 1
+          },
+          "requirements": {
+            "wall_s": 4.848625099999481,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 3689,
+            "output_tokens": 32,
+            "token_samples": 1,
+            "model_wall_s": 4.7311,
+            "measured_load_s": 0.0204498,
+            "load_samples": 1
+          },
+          "generation": {
+            "wall_s": 40.61628339999879,
+            "calls": 1,
+            "responses": 1,
+            "input_tokens": 7732,
+            "output_tokens": 396,
+            "token_samples": 1,
+            "model_wall_s": 38.0383,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "condition_audit": {
+            "wall_s": 0.001915799999551382,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "validate": {
+            "wall_s": 0.010412899999209912,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "verification": {
+            "wall_s": 3.9100003050407395e-05,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          },
+          "supervisor": {
+            "wall_s": 0.002786100001685554,
+            "calls": 0,
+            "responses": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "token_samples": 0,
+            "model_wall_s": 0,
+            "measured_load_s": null,
+            "load_samples": 0
+          }
+        },
+        "calls": 5,
+        "responses": 5,
+        "input_tokens": 38078,
+        "output_tokens": 930,
+        "token_samples": 5,
+        "model_wall_s": 87.4067,
+        "measured_load_s": 0.06318570000000001,
+        "load_samples": 4
+      }
+    }
+  }
+}

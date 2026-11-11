@@ -3,6 +3,9 @@ import re
 from workflow_engine.catalog.registry import node_ports, uses_operation
 from documents.resources.document_resources import supports
 
+NATIVE_TEXT_EXPORT_FORMATS = ('markdown', 'json')
+
+
 def port_issue_detail(node,binding,source,ins):
     """Say which side of a binding is wrong and what the source really produces."""
     tool=node['tool']
@@ -137,7 +140,7 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
             except ValueError as error:issues.append(id+': '+str(error))
             if not supplied.intersection({'records','text','answer'}):issues.append('저장할 records/text/answer 결과 입력이 필요합니다: '+id)
             if 'records' in supplied and settings['format'] not in ['csv','json']:issues.append('표 결과는 CSV/JSON을 선택하세요: '+id)
-            if 'records' not in supplied and supplied.intersection({'text','answer'}) and settings['format'] not in ['markdown','json']:issues.append('텍스트 결과는 Markdown 또는 JSON을 선택하세요: '+id)
+            if 'records' not in supplied and supplied.intersection({'text','answer'}) and settings['format'] not in NATIVE_TEXT_EXPORT_FORMATS:issues.append('텍스트 결과는 Markdown 또는 JSON을 선택하세요: '+id)
         if tool=='write_result' and (settings.get('format') or (default_plan or {}).get('output_format')) not in (None,'csv','json'):
             issues.append('표 결과는 CSV/JSON을 선택하세요: '+id)
         if tool in ['read_document','read_table']:

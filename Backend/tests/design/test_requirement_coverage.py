@@ -255,6 +255,29 @@ def test_unverifiable_tasks_are_preserved_and_held_instead_of_ignored():
     assert any('r6' in x for x in result['issues'])
 
 
+def test_supervisor_skips_only_an_unverifiable_requirement_on_the_current_plan():
+    from agent_builder.design.nodes.supervisor import supervisor_node
+    current = seed()
+    ledger = current['requirement_ledger']
+    ledger['tasks'].append(task('r6','other',action='자유 형식 요약'))
+    current['requirement_digest'] = plan_digest(ledger)
+    current.update(validate_node(current), repair_count=1)
+    held = {**current, **supervisor_node(current)}
+    assert held['route'] == 'invalid' and held['status'] == 'validation_failed'
+    assert held['issues'] == current['issues'] and held['draft'] == current['draft']
+    assert 'r6' in held['trace'][-1]['detail']
+    assert supervisor_node({**current, 'requirement_digest':'stale'})['route'] == 'repair'
+    assert supervisor_node({**current, 'status':'unsupported'})['route'] == 'unsupported'
+    question = {**current['draft'], 'questions':['사용자가 결정할 실제 조건은 무엇인가요?']}
+    assert supervisor_node({**current, 'draft':question})['route'] == 'await_input'
+
+    # A known task with recoverable settings must still reach the repair path.
+    known = seed()
+    known['draft']['workflow']['nodes'][2]['settings']['execution_plan']['sort'] = []
+    known.update(validate_node(known), repair_count=1)
+    assert supervisor_node(known)['route'] == 'repair'
+
+
 def test_even_a_model_pass_and_user_confirmation_cannot_save_a_missing_sort(tmp_path):
     state=seed();state['draft']['workflow']['nodes'][2]['settings']['execution_plan']['sort']=[]
     state.update(confirmed=True,status='ready',verification_required=True,verification_route='continue_review')

@@ -152,8 +152,21 @@ def validate_plan(raw, state):
     validate_unanswered_questions(plan,state)
     json.dumps(plan,allow_nan=False)
     users=[m['content'] for m in state.get('messages',[]) if m['role']=='user']
+    from .request_meaning import answered_mail_spec
+    literal_send = answered_mail_spec(state)
+    if literal_send and (plan['unresolved'] or [t['spec'] for t in plan['tasks']] != [literal_send]):
+        raise ValueError('확인된 수신자와 기존 발송 업무가 일치하지 않습니다.')
     assets={a['id'] for a in state.get('resources',[])}
     ids=[t['id'] for t in plan['tasks']]
+    delivery = summary_delivery_spec(state)
+    if delivery:
+        reads = [t['id'] for t in plan['tasks'] if t['spec'] == dict(kind='read', file_ids=[state['resources'][0]['id']])]
+        summaries = [t['id'] for t in plan['tasks'] if t['spec']['kind']=='document_analysis']
+        if (len(reads) != 1 or len(summaries) != 1 or not any(
+                t['id'] == summaries[0] and t['depends_on'] == reads for t in plan['tasks']) or any(
+                sum(t['spec'] == spec and t['depends_on'] == summaries for t in plan['tasks']) != 1
+                for spec in (dict(kind='export', format='md'), delivery))):
+            raise ValueError('같은 요약을 파일과 메일 본문 양쪽에 연결해야 합니다.')
     if len(set(ids))!=len(ids):raise ValueError('요구사항 ID가 중복됩니다.')
     all_ids=set(ids)
     text='\n'.join(users)
@@ -181,8 +194,22 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
+        if spec['kind'] == 'email_send' and spec['body'] is not None and (
+                spec != literal_send or index != 0 or task['depends_on'] or task['quote'] != users[index]):
+            raise ValueError('메일 수신자·제목·본문을 사용자 답변과 발송 요청에서 확인해야 합니다.')
+        if spec['kind'] == 'email_send' and spec['body'] is None:
+            parents = [t for t in plan['tasks'] if t['id'] in task['depends_on']]
+            if (spec != delivery or len(parents) != 1 or parents[0]['spec']['kind'] != 'document_analysis'
+                    or index != parents[0]['source_message'] or task['quote'] != users[index]):
+                raise ValueError('메일 본문의 요약과 수신자·제목을 원문에서 확인해야 합니다.')
         if spec['kind']=='document_analysis' and spec['request']!=task['quote']:
             raise ValueError('문서 분석 지침은 해당 사용자 발화 전체를 보존해야 합니다.')
+        if spec['kind']=='document_analysis':
+            from .gmail_summary import gmail_count_revision
+            expected_count = gmail_count_revision(state) if len(plan['tasks']) == 1 else None
+            if (spec.get('gmail_limit') != expected_count
+                    or spec.get('gmail_limit_source_message') != (len(users) - 1 if expected_count else None)):
+                raise ValueError('Gmail 조회 수량을 최신 사용자 수정과 대조해야 합니다.')
         if spec['kind']=='fill_missing' and isinstance(spec['value'],(int,float)) and not isinstance(spec['value'],bool):
             if Decimal(str(spec['value'])) not in numbers:raise ValueError('빈값 대체 숫자가 사용자 원문에서 확인되지 않습니다.')
         if spec['kind']=='parse_dates':
@@ -269,7 +296,10 @@ def extraction_schema(user_count=None,asset_ids=None,*,owned_kinds=()):
     # that complete request rather than asking a second model to paraphrase it.
     analysis=schema['$defs']['DocumentAnalysis']
     analysis['properties'].pop('request');analysis['required'].remove('request')
+    analysis['properties'].pop('gmail_limit')
+    analysis['properties'].pop('gmail_limit_source_message')
     task=schema['$defs']['RequiredTask']
+    owned_kinds = set(owned_kinds) | {'email_send'}  # Only grounded code may project a delivery.
     if owned_kinds:
         kinds = task['properties']['spec']['discriminator']['mapping']
         refs = {kinds.pop(kind) for kind in owned_kinds}
@@ -315,6 +345,74 @@ def extraction_schema(user_count=None,asset_ids=None,*,owned_kinds=()):
     return schema
 
 
+def summary_delivery_spec(state):
+    """Ground two consumers of one document summary from their explicit references."""
+    users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
+    resources = state.get('resources', [])
+    if (len(users) != 1 or len(resources) != 1 or resources[0].get('kind') != 'document'
+            or state.get('base_agent_id') or state.get('required_node_refs')):
+        return None
+    text = users[0]
+    # Quoted content is a literal field value. It cannot supply another address,
+    # operation, or clause break. Only a labelled subject can enter the send spec.
+    quoted = re.compile(r'“([^“”]+)”|"([^"]+)"|‘([^‘’]+)’')
+    subjects = []
+    def mask(match):
+        if re.search(r'(?:제목|subject)\s*(?:[=:]|은|는)?\s*$', text[:match.start()], re.I):
+            subjects.append(next(value for value in match.groups() if value is not None))
+            return ' SUBJECT_VALUE '
+        return ' QUOTED_LITERAL '
+    text = quoted.sub(mask, text)
+    if len(subjects) != 1:
+        return None
+    parts = [part.strip() for part in re.split(r'[;，,\n]|[.!?](?=\s|$)|(?<=하고)\s+(?=(?:그|같은|동일한|해당)\s*요약)', text) if part.strip()]
+    name = resources[0].get('name')
+    if not isinstance(name, str) or not name:
+        return None
+    source_name = name.rsplit('.', 1)[0]
+    summary = r'(?:그|같은|동일한|해당)\s*요약(?:문|본|\s*결과)?'
+    address = r'[A-Za-z0-9_+-]+(?:\.[A-Za-z0-9_+-]+)*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+'
+    produced = saved = False
+    recipient = None
+    for part in parts:
+        if not re.search(summary, part):
+            # Strip only the named source, the one summary effect and an optional
+            # deliverable-count announcement. Unconsumed instructions (including
+            # approval, redaction, or conditional delivery) need their own task.
+            resource = rf'(?:{re.escape(resources[0]["name"])}|{re.escape(source_name)})\s*(?:문서|파일)?(?:를|을)'
+            rest, sources = re.subn(resource, ' ', part)
+            rest, summaries = re.subn(r'(?:한\s*번\s*)?요약(?:해\s*(?:줘|주세요)|한\s*(?:뒤|후))', ' ', rest)
+            if (produced or not source_name or (sources, summaries) != (1, 1)
+                    or not re.fullmatch(r'\s*(?:(?:두\s*(?:개|가지)\s*)?결과(?:물)?를\s*남겨\s*(?:줘|주세요))?\s*', rest)):
+                return None
+            produced = True
+            continue
+        # Account for all operands of each consumer separately. Their order in
+        # the request (and the order of subject, recipient, and body) is immaterial.
+        body = re.search(summary + r'\s*(?:을|를)\s*(?:Gmail|지메일)\s*본문(?:으로|에)', part, re.I)
+        if body:
+            addresses = re.findall(address, part)
+            if recipient or len(addresses) != 1 or 'SUBJECT_VALUE' not in part:
+                return None
+            rest = part[:body.start()] + ' ' + part[body.end():]
+            rest = re.sub(re.escape(addresses[0]) + r'\s*(?:에게|에|로)', ' ', rest)
+            rest = re.sub(r'(?:제목|subject)\s*(?:[=:]|은|는)?\s*SUBJECT_VALUE\s*(?:으로|로)?', ' ', rest, flags=re.I)
+            if not re.fullmatch(r'\s*(?:보내|전송해|발송해)\s*(?:고|줘|주세요)\s*', rest):
+                return None
+            recipient = addresses[0]
+        else:
+            # Only a download of that text is established; a raw document,
+            # separate translation, destination path, or another format is distinct.
+            rest = re.sub(summary + r'\s*(?:을|를)', ' ', part)
+            rest, formats = re.subn(r'(?<![a-z])(?:Markdown|md)(?![a-z])\s*(?:파일|문서)?\s*(?:으로|로)', ' ', rest, flags=re.I)
+            if saved or formats != 1 or not re.fullmatch(r'\s*(?:저장|내보내기)(?:하고|해\s*(?:줘|주세요)|한\s*(?:후|뒤))\s*', rest):
+                return None
+            saved = True
+    if produced and saved and recipient:
+        return dict(kind='email_send', to=recipient, subject=subjects[0], body=None)
+    return None
+
+
 def extract_plan(raw,state):
     """Code owns IDs and sequential data dependencies, not the model.
 
@@ -336,10 +434,23 @@ def extract_plan(raw,state):
     confirmed = confirmed_condition_view(state)
     expected = owned_specs(confirmed, state)
     candidates = project_owned(raw['tasks'], expected, state)
+    delivery = summary_delivery_spec(state)
+    if delivery and any(c['spec']['kind'] == 'document_analysis' for c in candidates):
+        read = dict(kind='read', file_ids=[state['resources'][0]['id']])
+        if not any(c['spec'] == read for c in candidates):
+            candidates.insert(0, dict(source_message=0, description='요약할 원본 문서 읽기', spec=read))
+        for spec, description in [(dict(kind='export', format='md'), '같은 요약의 Markdown 파일'),
+                                  (delivery, '같은 요약을 본문으로 메일 발송')]:
+            if not any(c['spec'] == spec for c in candidates):
+                candidates.append(dict(source_message=0, description=description, spec=spec))
+    else:
+        delivery = None
     unresolved = []
     for question in raw['unresolved']:
         if not isinstance(question, str):
             question = RequirementQuestion.model_validate(question).model_dump()
+            if delivery and question['key'] in ('document_analysis.output_format', 'document_analysis.email_recipient'):
+                continue
             if confirmed and question['key'] in confirmed['slots']:
                 continue
         elif confirmed:
@@ -351,6 +462,14 @@ def extract_plan(raw,state):
     grouped = grouped_result_specs(state) if not unresolved else None
     if grouped:
         candidates = reconcile_grouped_result(candidates, state, grouped)
+    from .condition_requirements import ordered_row_steps
+    ordered = ordered_row_steps(state) if confirmed else ()
+    if ordered:
+        positions = [i for i, item in enumerate(candidates) if item['spec']['kind'] in ordered]
+        if len(positions) == 2:
+            steps = sorted((candidates[i] for i in positions), key=lambda item: ordered.index(item['spec']['kind']))
+            for index, step in zip(positions, steps):
+                candidates[index] = step
     tasks=[];previous=None
     for index,item in enumerate(candidates,1):
         source=item['source_message']
@@ -362,11 +481,23 @@ def extract_plan(raw,state):
         if kind=='document_analysis':
             if 'request' in item['spec']:raise ValueError('문서 분석 원문은 앱이 부여합니다.')
             item={**item,'spec':{**item['spec'],'request':users[source]}}
-        dependency=[previous] if previous and kind not in ('read','policy') else []
+            from .gmail_summary import gmail_count_revision
+            count = gmail_count_revision(state) if len(candidates) == 1 else None
+            if count:
+                item['spec'].update(gmail_limit=count, gmail_limit_source_message=len(users) - 1)
+        dependency=[previous] if previous and kind != 'read' and (kind != 'policy' or ordered) else []
         task={**item,'source_message':source,'id':'r'+str(index),'depends_on':dependency,'quote':users[source]}
         tasks.append(task)
-        if kind not in ('read','policy','export') or (grouped and kind == 'read'):
+        if kind not in ('read','policy','export') or (grouped and kind == 'read') or (ordered and kind == 'policy'):
             previous=task['id']
+    if delivery:
+        reads = [t['id'] for t in tasks if t['spec'] == read]
+        summaries = [t['id'] for t in tasks if t['spec']['kind']=='document_analysis']
+        for task in tasks:
+            if task['id'] in summaries:
+                task['depends_on'] = reads
+            elif task['spec'] in (delivery, dict(kind='export', format='md')):
+                task['depends_on'] = summaries
     return validate_plan(dict(tasks=tasks,unresolved=unresolved),state)
 
 
@@ -416,6 +547,13 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
         failure_kind = 'model_output_error'
         try:
             fingerprint=ledger_fingerprint(state)
+            from .request_meaning import answered_mail_spec
+            send = answered_mail_spec(state)
+            if send:
+                source = next(m['content'] for m in state['messages'] if m['role'] == 'user')
+                plan = dict(tasks=[dict(id='r1', source_message=0, quote=source, description='이메일 발송',
+                                        depends_on=[], spec=send)], unresolved=[])
+                return _completed(state, target, validate_plan(plan, state), fingerprint, 0)
             confirmed = confirmed_condition_view(state)
             from .scheduled_table_request import scheduled_table_plan
             scheduled = scheduled_table_plan(state, confirmed)

@@ -606,6 +606,14 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
             per_turn[key] = {'key': key, 'status': 'conflict' if conflict else 'specified',
                              'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                              'evidence': [refs[0]], 'extraction': 'literal_schedule_rule'}
+        # The selected question already supplies the policy slot. Persist the
+        # answer even when a later model proposal omits that slot entirely.
+        refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user']
+        for value in CHOICES['duplicate.policy'].values():
+            if _scoped_answer('duplicate.policy', value, state, refs):
+                per_turn['duplicate.policy'] = dict(key='duplicate.policy', status='specified',
+                    value=value, evidence_ids=[refs[0]['id']], evidence=[refs[0]], extraction='scoped_answer')
+                break
         cancelled_dedup = False
         for key, value, span in policy_clauses(text, columns):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
@@ -701,7 +709,9 @@ _SCHEDULE_NEGATED = re.compile(r'\s*(?:은|는)?\s*(?:말고|하지\s*마|하지
 _TIME = re.compile(r'(오전|오후|아침|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?!간)(?:\s*(\d{1,2})\s*분|\s*(반))?')
 _CLOCK_TIME = re.compile(r'(?<![\d:])(?:(오전|오후|아침|저녁|밤|새벽)\s*)?([01]?\d|2[0-3]):([0-5]\d)(?![\d:])')
 _WEEKDAY_NAMES = '월화수목금토일'
-_TIMEZONES = [(r'한국\s*(?:시간|표준시)|서울\s*시간|KST', 'Asia/Seoul'), (r'(?<![A-Za-z])UTC(?![A-Za-z])|협정\s*세계시', 'UTC')]
+_TIMEZONES = [(r'한국\s*(?:시간|표준시)|서울\s*시간|KST', 'Asia/Seoul'),
+              (r'(?<![A-Za-z])UTC(?![A-Za-z])|협정\s*세계시', 'UTC'),
+              (r'뉴욕\s*시간', 'America/New_York'), (r'(?:일본|도쿄)\s*시간', 'Asia/Tokyo')]
 
 
 def last_user_request(state):
@@ -1011,9 +1021,10 @@ def _scoped_answer(key, value, state, evidence):
         text = messages[turn]['content'].strip().rstrip('.!?。')
         if messages[turn]['role'] != 'user' or ref.get('quote', '') not in messages[turn]['content']:
             continue
-        event = next((event for event in state.get('condition_answers', [])
+        events = [*state.get('condition_answers', []), *state.get('capability_answers', [])]
+        event = next((event for event in events
                       if event.get('turn') == turn and event.get('answer') == messages[turn]['content']
-                      and event.get('question_ids') and key in event.get('candidate_keys', [])), None)
+                      and len(event.get('question_ids', [])) == 1 and event.get('candidate_keys') == [key]), None)
         pending = [q for q in state.get('pending_questions', []) if q.get('key') == key]
         # Older callers do not record events; a current pending question still
         # supplies context, but only for a new user turn after that ledger.
@@ -1026,8 +1037,10 @@ def _scoped_answer(key, value, state, evidence):
             labels = CHOICES[key]
             if labels.get(text) == value:
                 return True
-            match = re.fullmatch(r'(첫|마지막)\s*행(?:만)?\s*(?:(?:으로|로)\s*)?(?:남겨(?:줘)?|남김|남기기|해줘)?', text)
-            if match and value == ('first' if match[1] == '첫' else 'last'):
+            order = _DUP_ORDER.get(value)
+            if order and re.fullmatch(r'(?:원본(?:에서|의)\s*)?(?:' + order + r')'
+                                      r'(?:으로)?\s*(?:나온\s*)?행(?:만)?\s*(?:(?:으로|로)\s*)?'
+                                      r'(?:남겨(?:\s*줘)?|남김|남기기|보존해(?:\s*줘)?|해줘)?', text):
                 return True
         if key == 'schedule.minute':
             match = re.fullmatch(r'(\d{1,2})\s*분(?:으로|에|요)?', text)
@@ -1199,10 +1212,8 @@ def validate_conditions(raw, state, catalog):
                 if key == 'filter.value' and isinstance(value, str) and value not in quote:
                     raise ValueError('기준 값이 원문에 그대로 있지 않습니다.')
                 if key=='schedule.timezone':
-                    compact=re.sub(r'\s+','',quote)
-                    aliases={'Asia/Seoul':['한국시간','한국표준시','서울시간'], 'UTC':['협정세계시','UTC'],
-                             'America/New_York':['뉴욕시간'], 'Asia/Tokyo':['일본시간','도쿄시간']}
-                    if value not in quote and not any(alias in compact for alias in aliases.get(value,[])):
+                    if value not in quote and not any(zone == value and re.search(pattern, quote, re.I)
+                                                     for pattern, zone in _TIMEZONES):
                         raise ValueError('시간대 값의 명시적 원문 근거가 없습니다.')
                 if key=='schedule.weekday':
                     days=[i for i,day in enumerate(['월요일','화요일','수요일','목요일','금요일','토요일','일요일']) if day in quote]
@@ -1284,6 +1295,21 @@ def validate_conditions(raw, state, catalog):
         invalid.append(issue)
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
     user_text = '\n'.join(m['content'] for m in state.get('messages', []) if m['role'] == 'user')
+    # Some decoders enumerate the entire optional schema with missing/null
+    # entries. An unrelated operation needs a selected operation, user
+    # evidence, or previous state. Field names alone cannot create it.
+    if (operations == ['deduplicate'] and literals.get('duplicate.policy', {}).get('extraction') == 'scoped_answer'):
+        from agent_builder.design.processing_guard import _legacy_actions
+        answer_turn = literals['duplicate.policy']['evidence'][0]['turn']
+        request = {**state, 'messages': [m for i, m in enumerate(state['messages']) if i != answer_turn]}
+        requested_actions = _legacy_actions(request)
+        for operation in ('filter', 'schedule'):
+            family = {k: item for k, item in slots.items() if k.startswith(operation + '.')}
+            if (family and operation not in requested_actions and not any(k in previous.get('slots', {}) for k in family)
+                    and all(item['status'] == 'missing' and not item['evidence_ids'] for item in family.values())
+                    and not (operation == 'schedule' and re.search(r'예약|주기|일정|schedule', user_text, re.I))):
+                for key in family:
+                    del slots[key]
     if ('filter' in operations and not any(key.startswith('filter.') for key in slots)
             and 'duplicate.policy' in literals
             and literals['duplicate.policy'].get('value') in ('first', 'last', 'error')
@@ -1511,8 +1537,24 @@ def plan_issues(ledger, draft, *, state=None):
     if draft.get('questions') or draft.get('unsupported'):
         problems.append('확정 조건을 재질문하거나 지원되는 업무를 미지원으로 변경했습니다.')
     nodes = (draft.get('workflow') or {}).get('nodes', [])
-    plans = [(node['settings'].get('execution_plan') or draft.get('execution_plan', {}))
-             for node in nodes if node['tool'] == 'filter_sort']
+    native = [n for n in nodes if n['tool'] == 'filter_sort' and not n['settings'].get('operation')]
+    plans = [n['settings'].get('execution_plan') or draft.get('execution_plan', {}) for n in native]
+    from agent_builder.design.condition_requirements import ordered_row_steps
+    order = ordered_row_steps(state)
+    dedup_plans = plans
+    if order:
+        from agent_builder.design.content_lineage import content_ancestors
+        nodes_by_id = {n['id']: n for n in nodes}
+        filters_at = [n['id'] for n,p in zip(native, plans) if p.get('filters')]
+        dedup_at = [n['id'] for n,p in zip(native, plans) if p.get('duplicate_policy') not in ('keep', None)]
+        dedup_plans = [p for n,p in zip(native, plans) if n['id'] in dedup_at]
+        if len(filters_at) == len(dedup_at) == 1:
+            first, second = (filters_at[0], dedup_at[0]) if order[0] == 'filter' else (dedup_at[0], filters_at[0])
+            linked = (order[0] == 'policy' if first == second else first in content_ancestors(nodes_by_id, second))
+        else:
+            linked = False
+        if not linked:
+            problems.append('원문에 지정된 선별과 중복 제거 순서대로 앞 단계의 행을 다음 단계에 연결해야 합니다.')
     if not nodes:
         problems.append('확정 조건을 적용할 워크플로우가 없습니다.')
     if ledger['operations'] == ['deduplicate']:
@@ -1544,7 +1586,8 @@ def plan_issues(ledger, draft, *, state=None):
         if not any(all(condition.get(k) == v for k, v in expected.items()) and not condition.get('compare_field') for condition in filters):
             problems.append('확정된 선별 열·비교·기준 값이 실행 설정과 다릅니다.')
     for key, field in [('duplicate.field', 'duplicate_field'), ('duplicate.policy', 'duplicate_policy'), ('missing.policy', 'missing_policy')]:
-        if key in slots and (not plans or any(plan.get(field) != slots[key] for plan in plans)):
+        relevant = dedup_plans if key.startswith('duplicate.') else plans
+        if key in slots and (not relevant or any(plan.get(field) != slots[key] for plan in relevant)):
             problems.append('확정 조건이 실행 설정과 다릅니다: ' + key)
     if 'schedule' in ledger['operations']:
         spec = draft.get('schedule') or {}

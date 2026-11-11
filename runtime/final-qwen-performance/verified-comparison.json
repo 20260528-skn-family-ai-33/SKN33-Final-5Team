@@ -1,0 +1,147 @@
+{
+  "before-four": {
+    "trace_sha256": "1b041f94169e5f064842929c055ea738110eb19f166fb38cbb14333b4d26dfdb",
+    "application_sha256": "d251614121aff1892bd29d3ddff2bbf3e30148d08c15079a0aa314fc02f85df8",
+    "evaluation_harness_sha256": "b0babec95e78a97ec573573a7ddd73b548fb981b02d15514562813bb782dced1",
+    "gold_sha256": "93c821ded55570fda569ceb983f22fd2ebf8d6b8c7d395d445e68e4931bc7e35",
+    "cases": {
+      "H01": {
+        "success": true,
+        "cases": 1,
+        "calls": 4,
+        "input_tokens": 28806,
+        "output_tokens": 979,
+        "model_wall_s": 91.2612,
+        "overall_s": 97.10876620000272,
+        "p50_s": 97.10876620000272,
+        "p95_s": 97.10876620000272
+      },
+      "H20": {
+        "success": true,
+        "cases": 1,
+        "calls": 2,
+        "input_tokens": 4540,
+        "output_tokens": 174,
+        "model_wall_s": 26.3081,
+        "overall_s": 26.94638479999776,
+        "p50_s": 26.94638479999776,
+        "p95_s": 26.94638479999776
+      },
+      "H21": {
+        "success": false,
+        "issue": "initial or final route",
+        "cases": 1,
+        "calls": 3,
+        "input_tokens": 27149,
+        "output_tokens": 495,
+        "model_wall_s": 47.876,
+        "overall_s": 48.635065999998915,
+        "p50_s": 48.635065999998915,
+        "p95_s": 48.635065999998915
+      },
+      "H32": {
+        "success": true,
+        "cases": 1,
+        "calls": 8,
+        "input_tokens": 47178,
+        "output_tokens": 1709,
+        "model_wall_s": 139.3703,
+        "overall_s": 140.95468729999993,
+        "p50_s": 140.95468729999993,
+        "p95_s": 140.95468729999993
+      }
+    },
+    "total": {
+      "cases": 4,
+      "calls": 17,
+      "input_tokens": 107673,
+      "output_tokens": 3357,
+      "model_wall_s": 304.8156,
+      "overall_s": 313.6449042999993,
+      "p50_s": 72.87191610000082,
+      "p95_s": 140.95468729999993
+    },
+    "same_three": {
+      "cases": 3,
+      "calls": 14,
+      "input_tokens": 80524,
+      "output_tokens": 2862,
+      "model_wall_s": 256.9396,
+      "overall_s": 265.0098383000004,
+      "p50_s": 97.10876620000272,
+      "p95_s": 140.95468729999993
+    }
+  },
+  "verified-9b-only": {
+    "trace_sha256": "3701c0983b96e4a58d5e30037b2f1da426778e08328a791636a9638320751387",
+    "application_sha256": "c99d88424a4e1baa113eb531b34a3ab75adfd0a6f1ec182b151845d0b8312416",
+    "evaluation_harness_sha256": "b0babec95e78a97ec573573a7ddd73b548fb981b02d15514562813bb782dced1",
+    "gold_sha256": "93c821ded55570fda569ceb983f22fd2ebf8d6b8c7d395d445e68e4931bc7e35",
+    "cases": {
+      "H01": {
+        "success": true,
+        "cases": 1,
+        "calls": 4,
+        "input_tokens": 28806,
+        "output_tokens": 979,
+        "model_wall_s": 97.1163,
+        "overall_s": 108.81802919999973,
+        "p50_s": 108.81802919999973,
+        "p95_s": 108.81802919999973
+      },
+      "H20": {
+        "success": true,
+        "cases": 1,
+        "calls": 2,
+        "input_tokens": 4540,
+        "output_tokens": 174,
+        "model_wall_s": 27.9851,
+        "overall_s": 28.820914300002187,
+        "p50_s": 28.820914300002187,
+        "p95_s": 28.820914300002187
+      },
+      "H21": {
+        "success": true,
+        "cases": 1,
+        "calls": 5,
+        "input_tokens": 40465,
+        "output_tokens": 1061,
+        "model_wall_s": 109.771,
+        "overall_s": 111.73650700000144,
+        "p50_s": 111.73650700000144,
+        "p95_s": 111.73650700000144
+      },
+      "H32": {
+        "success": true,
+        "cases": 1,
+        "calls": 4,
+        "input_tokens": 37758,
+        "output_tokens": 1005,
+        "model_wall_s": 113.0841,
+        "overall_s": 114.21295480000117,
+        "p50_s": 114.21295480000117,
+        "p95_s": 114.21295480000117
+      }
+    },
+    "total": {
+      "cases": 4,
+      "calls": 15,
+      "input_tokens": 111569,
+      "output_tokens": 3219,
+      "model_wall_s": 347.9565,
+      "overall_s": 363.5884053000045,
+      "p50_s": 110.27726810000058,
+      "p95_s": 114.21295480000117
+    },
+    "same_three": {
+      "cases": 3,
+      "calls": 10,
+      "input_tokens": 71104,
+      "output_tokens": 2158,
+      "model_wall_s": 238.1855,
+      "overall_s": 251.85189830000309,
+      "p50_s": 108.81802919999973,
+      "p95_s": 114.21295480000117
+    }
+  }
+}

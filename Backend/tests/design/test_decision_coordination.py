@@ -78,13 +78,78 @@ def test_condition_manual_review_is_a_resumable_question(tmp_path,monkeypatch):
     try:
         waiting=graph.invoke(current,config)
         assert waiting['status']=='needs_clarification' and not planned
-        assert waiting['pending_questions'][0]['source']=='reconciliation'
+        assert waiting['pending_questions'][0]['source']=='condition'
+        assert waiting['pending_questions'][0]['key']=='filter.value'
         with pytest.raises(ValueError):make_save_node(store)({**waiting,'confirmed':True})
         ready=graph.invoke(Command(resume=dict(type='message',content='비용은 100만원 초과로 유지해 주세요.',
             question_id=waiting['pending_questions'][0]['id'])),config)
         assert ready['status']=='ready' and planned==[1]
-        assert ready.get('condition_answers',[])==[]
+        assert ready['condition_answers'][-1]['candidate_keys']==['filter.value']
         assert graph.invoke(Command(resume={'type':'confirm'}),config)['status']=='saved'
+    finally:connection.close();store.close()
+
+
+@pytest.mark.parametrize('answer,policy,expected',[('마지막 행','last',2),('첫 행','first',1)])
+@pytest.mark.parametrize('with_question_id',[True,False])
+def test_condition_recovery_short_answer_survives_restart_and_executes(
+        tmp_path,monkeypatch,answer,policy,expected,with_question_id):
+    from agent_builder.conditions import condition_check
+    original=condition_check.judge_conditions
+    current=state('같은 사번이면 한 행만 남겨줘. 빈 값은 오류, JSON으로 저장해줘.')
+    calls=[];planned=[]
+    def judge(s,transport,**kwargs):
+        calls.append(1)
+        if len(calls)==1:
+            ledger=checked(s,proposal(s,{'duplicate.field':'사번','missing.policy':'error',
+                'output.format':'json'},['deduplicate']))
+            assert ledger['unresolved']==['duplicate.policy']
+            ledger.update(decision='manual_review',outside_scope=False,questions=[])
+            return dict(ledger=ledger,model_calls=1,metrics={})
+        # The model extracts the correct value from the short answer; the real
+        # validator must connect its evidence to the pending condition slot.
+        return original(s,Fake([proposal(s,{'duplicate.policy':policy},['deduplicate'])]),**kwargs)
+    monkeypatch.setattr(condition_check,'judge_conditions',judge)
+    def planner(s):
+        planned.append(deepcopy(s))
+        draft=workflow_draft(s)
+        for plan in (draft['execution_plan'],draft['workflow']['nodes'][1]['settings']['execution_plan']):
+            plan.update(filters=[],sort=[],duplicate_field='사번',duplicate_policy=policy)
+        return dict(draft=draft,confirmed=False)
+    def open_graph(store):
+        return build_graph(store,conversation=planner,capability_mode='off',condition_mode='enforce',
+            condition_transport=Fake([]),requirement_mode='off',verifier_mode='off')
+    config={'configurable':{'thread_id':current['session_id']}}
+    store=Storage(tmp_path);graph,connection=open_graph(store)
+    try:
+        waiting=graph.invoke(current,config)
+        assert waiting['status']=='needs_clarification' and not planned
+        question=waiting['pending_questions'][0]
+        assert '중복된 행' in question['text']
+        assert question['key']=='duplicate.policy' and question['source']=='condition'
+        assert question['options']==waiting['draft']['question_options'][0]
+        assert '마지막 행만 남김' in question['options']
+    finally:connection.close();store.close()
+    store=Storage(tmp_path);graph,connection=open_graph(store)
+    try:
+        stale=graph.invoke(Command(resume=dict(type='message',content=answer,question_id='stale')),config)
+        assert stale['__interrupt__'][0].value['error'] and len(calls)==1
+        reply=dict(type='message',content=answer)
+        if with_question_id:reply['question_id']=question['id']
+        ready=graph.invoke(Command(resume=reply),config)
+        assert ready['status']=='ready', ready.get('pending_questions')
+        assert ready['condition_ledger']['slots']['duplicate.policy']['value']==policy
+        assert ready['condition_answers'][-1]['candidate_keys']==['duplicate.policy']
+        assert ready['condition_answers'][-1]['question_ids']==[question['id']]
+        assert len(planned)==1 and len(calls)==2 and not store.agents()
+        saved=graph.invoke(Command(resume={'type':'confirm'}),config)
+        assert saved['status']=='saved'
+        store.add_asset({'id':'employees','name':'employees.json','kind':'table','columns':['사번','순번']},
+            [{'사번':'A','순번':1},{'사번':'A','순번':2}])
+        from service.worker import handle
+        executed=handle(dict(directory=str(tmp_path),action='test',id=saved['saved_agent_id'],
+            content='',file_ids=['employees']))
+        assert executed['status']=='succeeded', executed.get('error')
+        assert executed['rows']==[{'사번':'A','순번':expected}]
     finally:connection.close();store.close()
 
 

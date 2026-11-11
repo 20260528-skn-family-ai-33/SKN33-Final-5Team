@@ -153,11 +153,18 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             cancelled=bool(re.search(r'그만\s*(해|할)|예약.{0,8}(취소|하지\s*마)|작업.{0,8}취소',user))
             if not cancelled:
                 from agent_builder.design.clarification import clarification_pause
-                from agent_builder.conditions.condition_readiness import QUESTIONS
-                questions=[QUESTIONS[k] for k in ledger.get('unresolved',[]) if k in QUESTIONS]
+                from agent_builder.conditions.condition_readiness import QUESTIONS, choice_options
+                keys=list(dict.fromkeys(k for k in ledger.get('unresolved',[]) if k in QUESTIONS))[:2]
+                questions=[QUESTIONS[k] for k in keys]
                 pause=clarification_pause(state,'conditions',questions or
                     ['반드시 유지할 처리 단계와 적용할 기준을 알려주세요.'],
                     detail='업무 조건을 자동으로 확정하지 못했습니다. 요청을 보존하고 추가 확인합니다.')
+                # A slot-specific recovery is still a condition question. Keep
+                # its key and offered choices so short answers remain grounded
+                # after checkpoint resume; generic retries have no slot binding.
+                for question,key in zip(pause['pending_questions'],keys):
+                    question.update(key=key,source='condition',options=choice_options(key,state))
+                pause['draft']['question_options']=[q['options'] for q in pause['pending_questions']]
                 return {**update,**pause,'condition_route':'supervisor','verification_enforced':False}
         update.update(condition_route='supervisor', confirmed=False, saved_agent_id=None,
                       draft=_pending_draft(state, ledger), pending_questions=ledger.get('questions', []),

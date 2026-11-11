@@ -1,7 +1,7 @@
 from langgraph.types import interrupt
 
 def await_input_node(state):
-    pending=[q for q in state.get('pending_questions',[]) if state.get('condition_enforced') or q.get('source') in ('receipt','requirements','reconciliation')]
+    pending=[q for q in state.get('pending_questions',[]) if state.get('condition_enforced') or q.get('source') in ('receipt','requirement','reconciliation')]
     payload={'kind':'clarification','questions':state['draft']['questions']+state['issues']}
     if pending:payload['question_records']=pending
     while True:
@@ -14,7 +14,7 @@ def await_input_node(state):
     result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False}
     if any(q.get('source')=='reconciliation' for q in pending):
         result['repair_count']=0
-    condition_pending=[q for q in pending if q.get('source') not in ('requirements','reconciliation')]
+    condition_pending=[q for q in pending if q.get('source') not in ('requirement','reconciliation')]
     if condition_pending and state.get('condition_enforced'):
         result['condition_answers']=state.get('condition_answers',[])+[{'question_ids':[answer['question_id']] if answer.get('question_id') else [q['id'] for q in condition_pending],
             'candidate_keys':[q['key'] for q in condition_pending if not answer.get('question_id') or q['id']==answer['question_id']],

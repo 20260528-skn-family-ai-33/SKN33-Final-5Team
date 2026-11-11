@@ -1,0 +1,94 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "cases": {
+    "C01": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [{"necessary_slots": ["source"], "unnecessary": false}],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, development. capability_check accepts daily scheduled email intent. First raw requirements candidate contains daily/Asia-Seoul/09:00 plus report-scope and recipient questions, but it is not the accepted ledger: the second raw candidate and parsed requirements contain tasks=[] with one source-only unresolved paragraph; first public draft.schedule is null. Therefore no structured schedule slots are credited as accepted. The sole displayed question asks the source, mentions internal schedule enums and resource ID/file path, and does not ask the missing recipient or report scope. It restates 09:00 without asking it again. CLARIFY is correct, but necessary-question recall is 1/3 and schedule preservation is unproven in the accepted state. No workflow or external execution."
+    },
+    "C02": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {"necessary_slots": ["source"], "unnecessary": false},
+        {"necessary_slots": ["analysis_goal"], "unnecessary": false}
+      ],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, development. First raw capability incorrectly calls source/criteria missing capabilities; its retry corrects the decision to clarify. Accepted capability assessment explains customer-data reading, analysis by aggregate/filter, and report creation; it requests the data source and analysis criteria. The two actual pending_questions ask the customer-file location/connection and concrete analysis criteria (sales, purchase frequency, segment), matching both frozen missing slots. A third output-format item is present only in capability.missing_conditions and is not a displayed question in this run. No condition/requirement/planner workflow was reached, as expected for unanswered CLARIFY."
+    },
+    "C03": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, holdout evaluation only. Both raw capability candidates return missing_capability. The accepted second response explicitly describes the supported read/filter/aggregate/summarize/email-send chain and mentions 2026-11-02 ~ 2026-11-09 in prose, so sales-analysis/email intent is understood. It nevertheless treats Gmail account and source connection as missing actions and returns UNSUPPORTED instead of asking for source/recipient/analysis goal. No condition or requirement ledger/date-filter/workflow is produced; prose dates do not establish a normalized exclusive end boundary, so accepted executable date-range slots are not credited. No questions or external execution."
+    },
+    "C04": {
+      "intent_correct": true,
+      "observed_slots": {"filter.field": "amount", "output.format": "json"},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {"necessary_slots": ["operator"], "unnecessary": false},
+        {"necessary_slots": ["threshold"], "unnecessary": false}
+      ],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, development. Raw condition extraction proposes filter.operator=gt, but Python invalid_values identifies absent explicit evidence and accepted condition_ledger resets that slot to missing. Accepted amount and JSON slots match gold, with explicit duplicate keep/missing error preserved. The two actual questions request comparator and threshold in that order. The rejected raw gt is not counted as an accepted unsupported slot. No workflow is generated before the unanswered conditions."
+    },
+    "C05": {
+      "intent_correct": true,
+      "observed_slots": {"output.format": "json"},
+      "extra_unsupported_slots": ["duplicate.policy=error"],
+      "questions": [{"necessary_slots": ["duplicate_field"], "unnecessary": false}],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, development. Raw condition extraction identifies deduplicate but assigns duplicate.policy=error using the whole request as evidence. The only error instruction concerns missing values ('빈 값은 오류'); no duplicate retention/error policy was chosen. Python accepts duplicate.policy=error as specified while separately preserving missing.policy=error and output.format=json. unresolved and the single displayed question contain only duplicate.field. Thus the duplicate-policy question is omitted and an unsupported duplicate error value is accepted. No workflow or external execution."
+    },
+    "C06": {
+      "intent_correct": true,
+      "observed_slots": {"provider": "gmail"},
+      "extra_unsupported_slots": ["importance=important"],
+      "questions": [],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, holdout evaluation only. Accepted request_meaning retains Gmail read/summarize but silently chooses filters=[important]; its raw faithfulness review says true. Capability treats important as an already determined filter instead of asking the missing importance criterion. Accepted requirement is document_analysis. Two planner candidates use email.list/read_messages query='important' and compose_answer with a documents binding, while their execution_plan also invents an important/is_empty boolean table filter. The existing validator rejects the absent filter_sort node; final status is validation_failed/SYSTEM_ERROR and no question was displayed. The ungrounded important criterion is counted once as an unsupported accepted value. Workflow candidates were not externally executed."
+    },
+    "C07": {
+      "intent_correct": true,
+      "observed_slots": {"schedule.frequency": "weekly", "schedule.timezone": "Asia/Seoul", "output.format": "json"},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {"necessary_slots": ["hour"], "unnecessary": false},
+        {"necessary_slots": [], "unnecessary": false}
+      ],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, development. Accepted condition ledger correctly preserves weekly, Asia/Seoul and JSON, with hour/minute/weekday all unresolved. The visible questions are '몇 시에 실행할까요?' then '몇 분에 실행할까요?'; no weekday question is exposed because the two time parts consume the question limit. The first question is credited to gold hour (time of day). The minute-only follow-on is relevant rather than unnecessary, but it does not independently satisfy a complete time-of-day or weekday slot. Necessary-question recall is 1/2; no invented time value is accepted and no workflow is generated."
+    },
+    "C08": {
+      "intent_correct": true,
+      "observed_slots": {"schedule.frequency": "daily", "schedule.timezone": "Asia/Seoul", "output.format": "json"},
+      "extra_unsupported_slots": ["schedule.hour=8", "schedule.minute=0"],
+      "questions": [{"necessary_slots": [], "unnecessary": true}],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, development. Raw condition extraction supplies hour='8' and minute='0' with the whole request as evidence despite no stated time. The accepted condition ledger converts them to specified integers 8/0, with invalid_values empty, and preserves the correct daily/Asia-Seoul/JSON slots. It adds an unresolved duplicate.policy and exposes only '중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?'. No deduplication was requested. This is an unnecessary question; the sole necessary time-of-day question is omitted (0/1), while two ungrounded time values are accepted. No workflow is generated."
+    },
+    "C09": {
+      "intent_correct": true,
+      "observed_slots": {"output.format": "json"},
+      "extra_unsupported_slots": [],
+      "questions": [{"necessary_slots": ["formula", "column"], "unnecessary": false}],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, holdout evaluation only. Capability identifies compute-plus-JSON export. Accepted requirement ledger contains a compute task and dependent export task with format=json, and explicitly unresolved calculation name/formula. The one displayed question asks both the new column name and formula, satisfying both missing slots. The partial compute spec stores literal strings formula='null' and output_column='null'; these are placeholder artifacts while the same fields remain explicitly unresolved, not credited as confirmed values or an executable workflow. Final route stays CLARIFY and no planner/workflow/execution occurs."
+    },
+    "C10": {
+      "intent_correct": false,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "evidence": "Local public9b baseline, development. The first meaning candidate invents read plus subject/body search filters and its faithfulness review rejects it. The second meaning candidate correctly proposes send with literal subject='점검' and body='완료' in other_requirements, but the second model review incorrectly rejects that literal interpretation and asks for search/filter semantics. No request_meaning is accepted. Both capability candidates then misread the literal subject/body as title inspection and body completion actions, call those actions unsupported, and return UNSUPPORTED. Therefore intent is incorrect, neither stated literal content slot is preserved in accepted state, and the missing recipient is never asked. No workflow or external execution."
+    }
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "checked_at": "2026-11-10T21:18:57.792134+09:00",
+  "kind": "local_resume_file_integrity_audit_not_model_evaluation",
+  "writes_in_this_audit": [
+    "docs/qwen-local-resume-integrity.json"
+  ],
+  "model_calls_performed": 0,
+  "git": {
+    "head": "525f66325a14f8d3995ad0cb57277e5a6f4f23ed",
+    "expected_head": "525f66325a14f8d3995ad0cb57277e5a6f4f23ed",
+    "branch": "qwen-evaluation-resume",
+    "previous_branch_documented": "codex/gmail-connection-setup-ux-20261110"
+  },
+  "gold": {
+    "path": "docs/qwen-live-evaluation-cases.json",
+    "claimed_canonical_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+    "computed_canonical_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+    "canonical_hash_matches": true,
+    "file_bytes_sha256": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de",
+    "canonical_hash_algorithm": "SHA256 of UTF-8 json.dumps(corpus excluding gold_sha256, ensure_ascii=False, sort_keys=True), default JSON separators",
+    "file_bytes_hash_is_distinct_from_canonical_hash": true,
+    "eligible_case_count": 52,
+    "category_counts": {
+      "ready": 10,
+      "clarify": 10,
+      "temporal": 8,
+      "multiturn": 12,
+      "unsupported": 5,
+      "composite": 7
+    },
+    "excluded_count": 1
+  },
+  "application_source": {
+    "baseline_source_sha256": "6550b20928227b74c6a2c33cded04e62d359a6550c034dce935cad5230e01be5",
+    "current_source_sha256": "6550b20928227b74c6a2c33cded04e62d359a6550c034dce935cad5230e01be5",
+    "source_hash_matches": true,
+    "baseline_file_count": 242,
+    "current_file_count": 242,
+    "changed_files": [],
+    "missing_files": [],
+    "added_files": [],
+    "all_manifest_files_byte_identical": true,
+    "application_source_modified_by_this_audit": false,
+    "manifest_scope_directories": [
+      "Backend/agent_builder",
+      "Backend/contracts",
+      "Backend/infrastructure/llm",
+      "Backend/service",
+      "Backend/workflow_engine",
+      "Backend/ml",
+      "Frontend/app"
+    ],
+    "additional_manifest_paths": [
+      "Backend/api/src/agent-builder.ts",
+      "scripts/run-configured.mjs"
+    ],
+    "scope_note": "Identity is proved only for the original 242 manifest paths. Other API files (including request-timezone.ts), evaluation harness, tests, dependencies and model weights are outside this source manifest."
+  },
+  "preserved_evidence": {
+    "baseline": {
+      "path": "docs/qwen-live-baseline.json",
+      "file_bytes_sha256": "9a370221821cbac6599d09004afb7294f605084f6cf415f68939c1dd806390d8",
+      "status": "paused",
+      "requested_scenarios": 52,
+      "persisted_attempted_cases": 29,
+      "attempted_status_counts": {
+        "completed": 28,
+        "failed": 1
+      },
+      "live_model_cases": 27,
+      "code_only_cases": [
+        "R01",
+        "T08"
+      ],
+      "retained_case_inference_calls": 78,
+      "retained_trace_entries": 78,
+      "total_inference_calls": null,
+      "interrupted_case": "M02",
+      "inference_calls_accounting": "29 persisted cases; structured probe passed; interrupted M02 calls not persisted and total billing/call count unknown",
+      "not_run_count": 23,
+      "not_run_case_ids": [
+        "M02",
+        "M03",
+        "M04",
+        "M05",
+        "M06",
+        "M07",
+        "M08",
+        "M09",
+        "M10",
+        "M11",
+        "M12",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X02",
+        "X03",
+        "X04",
+        "X05",
+        "X06",
+        "X07"
+      ],
+      "remaining_list_matches": true
+    },
+    "interrupted_raw": {
+      "path": "docs/qwen-live-baseline-interrupted-raw.json",
+      "file_bytes_sha256": "099f79acfaa1d43655dea8d0ac99e8da126bdb04f0377f60677f3daa11f62794",
+      "header_status": "completed",
+      "persisted_cases": 29,
+      "header_does_not_prove_full_completion": true
+    },
+    "review_labels": {
+      "path": "docs/qwen-live-baseline-review.json",
+      "file_bytes_sha256": "327500bb91306f06af6335f181bae4b037b38325918b0ae4e86228dfd71f7c5a",
+      "reviewed_cases": 25,
+      "persisted_cases_without_labels": [
+        "T06",
+        "T07",
+        "T08",
+        "M01"
+      ]
+    }
+  },
+  "continuation_constraints": [
+    "Keep original RunPod evidence unchanged.",
+    "Local GPU evaluation must begin a separate full 52-case baseline and must not be merged with RunPod evidence.",
+    "Complete the local baseline before application changes and after evaluation.",
+    "The original merge checks do not attest to endpoint, model weights, dependency or hardware identity.",
+    "RunPod retained case calls are not total usage: structured probe passed and interrupted M02 call count is unknown.",
+    "Historical regression artifacts are not a new test execution.",
+    "No inference or download was performed by this audit."
+  ]
+}

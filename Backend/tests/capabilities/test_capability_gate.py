@@ -240,13 +240,14 @@ def test_partial_parsing_fault_during_question_never_resolves_unknown(tmp_path):
     conn.close();store.close()
 
 
-def test_all_five_questions_are_delivered_and_wrong_id_stays_pending(tmp_path):
+def test_two_questions_are_delivered_all_missing_preserved_and_wrong_id_stays_pending(tmp_path):
     store=Storage(tmp_path);s=state();cfg={'configurable':{'thread_id':s['session_id']}};calls=[]
     questions=['확인 항목 '+str(i)+'을 알려주세요.' for i in range(5)]
     graph,conn=setup(store,s,calls,Fake([assessment(s,'clarify',questions)]))
     current=graph.invoke(s,cfg)
-    assert current['__interrupt__'][0].value['questions']==questions
-    assert len(current['draft']['questions'])==3 and len(current['pending_questions'])==5
+    assert current['__interrupt__'][0].value['questions']==questions[:2]
+    assert len(current['draft']['questions'])==2 and len(current['pending_questions'])==2
+    assert current['capability_assessment']['missing_conditions']==questions
     current=graph.invoke(Command(resume={'type':'message','content':'응답','question_id':'other-session'}),cfg)
     assert current['__interrupt__'][0].value['error'] and not calls and not store.agents()
     assert not current.get('capability_answers')

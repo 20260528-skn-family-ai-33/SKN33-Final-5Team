@@ -1,0 +1,36 @@
+{
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "source_review": "docs\\qwen-local-public9b-baseline-v2-review-composite.json",
+  "source_review_sha256": "b5ed3691daf26c68196c912fb90a8a1fc2e79b2a662fc6b17230eec2a23c02ec",
+  "classification_scope": "One primary stage per unsuccessful composite request, earliest confirmed material error; independent downstream problems retained in evidence.",
+  "cases": {
+    "X03": {
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "primary_failure_cause": "requirement_extraction",
+      "source_case_sha256": "5f83b67126fdef24aa1d9342bac9aeadd02da3a278ccb15d95da17cfbb9ef78c",
+      "evidence": "holdout X03의 capability는 집계/필터/JSON 지원을 정확히 식별한다. 그러나 requirement raw 및 수용 spec은 aggregate_and_filter/policy/export를 모두 kind=other 자유문구로 남겼고 group_by/sum_field/filter 값의 typed 슬롯은 없다. description의 원문 반복을 구조화 추출로 세지 않는다. 이미 synthetic-sales가 연결되어 있는데 자료 ID를 재질문해 CLARIFY로 끝나 workflow가 없고 네 업무 coverage는 false다. 이 단일 턴은 정답에 답변 정책이 없는 READY 대상이므로 unmatched_question은 모델의 불필요 질문 뒤 평가 종료이며 정상 질문 어휘 매칭 한계 사례와 다르다. holdout 전용 수정 규칙은 만들지 않는다."
+    },
+    "X05": {
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "primary_failure_cause": "requirement_extraction",
+      "source_case_sha256": "f01ddea3c9e750eb5f79e7dc20da8f4564fec1cd2bf2609a0bd328a27663412b",
+      "evidence": "X05 capability는 중복 첫 행 보존 후 amount>=15 필터의 업무를 식별했고 condition raw/accepted ledger는 customer_id/first/amount/gte/15,missing=error,format=json을 모두 specified로 유지한다. 그러나 requirement raw는 kind=other/action=process_table로 업무를 묶고 이미 완결된 요청 전체를 저장하시겠습니까라는 승인 질문으로 unresolved에 넣었다. 실제 사용자에게 이 불필요한 확인 질문 하나를 보여 CLARIFY에서 종료했고 workflow가 없어 네 업무 coverage는 false다. 조건 슬롯 추출 성공과 후속 요구사항 단계의 잘못된 되묻기를 구분한다. gold에 답변 정책이 없는 READY 사례이므로 unmatched_question을 정상 질문 어휘 한계로 분류하지 않는다."
+    },
+    "X06": {
+      "primary_stage": "capability",
+      "direct_failure_stage": "capability",
+      "primary_failure_cause": "capability_judgement",
+      "source_case_sha256": "3c84b7e55eecd8a585d2db7586c6b4ca095d72830c64ceb6ba346d21d626fba9",
+      "evidence": "holdout X06은 accepted meaning의 limit=3과 read/summarize를 유지하고 발송·수신자·제목은 other_requirements의 자유문구에 남긴다. count만 typed 관측 슬롯으로 인정하며 자유문구의 recipient/subject를 구조화 필드로 추정하지 않는다. capability 두 raw는 명시된 발송을 이해했으나 Gmail 연결 상태 unknown을 기능 부재로 취급하여 등록된 email.send를 미지원 판정했다. 질문과 workflow 없이 UNSUPPORTED로 종료해 세 업무 coverage와 전체 성공은 false다. 일부 사용자 인용에서 합성 이메일 뒤의 한국어 조사 때문에 sanitizer가 주소를 REDACTED_EMAIL로 바꿨지만, 실제 입력은 고정 gold이며 raw other_requirements에는 .invalid 주소가 남는다. 외부 메일을 조회·발송하지 않았고 holdout 전용 규칙은 만들지 않는다."
+    },
+    "X07": {
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "primary_failure_cause": "requirement_extraction",
+      "source_case_sha256": "63f399fef10e824e3b9622053055618574be5999646becc0ad5d6728434fda8a",
+      "evidence": "X07의 capability와 requirement description은 선별→집계→JSON이라는 업무를 이해한다. 그러나 accepted spec은 kind=other/action=filter_and_aggregate로 구조화 선별 열·집계 열·format 필드가 없고 기본 draft json을 추출 성공으로 세지 않는다. 첫 질문은 큰 금액의 기준값을 확인하므로 threshold에 필요한 질문이다. 특정 금액 이상은 단순 예시이며 포함/초과 경계 선택을 실제로 묻지 않아 operator는 확인되지 않았다. 두 번째 질문은 이미 연결된 표의 ID와 요청하지 않은 결합 조건을 요구하여 불필요하다. CLARIFY 분류는 맞지만 필수 질문 누락과 무관한 질문으로 전체 clarification 성공은 false다. 추가 join workflow를 생성한 것은 아니므로 실행 부가 업무로 세지 않는다."
+    }
+  }
+}

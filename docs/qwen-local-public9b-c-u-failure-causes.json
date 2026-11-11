@@ -1,0 +1,43 @@
+{
+  "source_baseline_review": "docs/qwen-local-public9b-baseline-v2-review-clarify.json",
+  "source_baseline_review_sha256": "950510809f4b5a5c6ce00cb9c99e26d3b0b952e5c2e5a714219201bfbd7460e0",
+  "policy": "Supplement only; completed baseline reviews and raw artifacts are unchanged. Stage identifies the principal accepted interpretation/gate causing the failure; question types can be mapped as secondary causes.",
+  "baseline_cases": {
+    "C01": {
+      "case_sha256": "c1c6c9751287d1f56ea186d7c82ac0adff454b4843d1a41926f01f5930694cdc",
+      "primary_failure_cause": "required_clarification_missing",
+      "primary_failure_stage": "requirement"
+    },
+    "C03": {
+      "case_sha256": "697de65897936f7e36d1466979878530fdf364c31bee357bba500795a0050a9e",
+      "primary_failure_cause": "unsupported_classification_error",
+      "primary_failure_stage": "capability"
+    },
+    "C05": {
+      "case_sha256": "18b82277ec0a01fa6cd1740767143fc507300ddf1ea891a94296f97ec24e2b0a",
+      "primary_failure_cause": "ungrounded_slot_assumption",
+      "primary_failure_stage": "condition"
+    },
+    "C06": {
+      "case_sha256": "69eef99cab1cf34512fd3bb79f738c58b4237a6e4474e3b4615b5ff7c654b0a4",
+      "primary_failure_cause": "ungrounded_slot_assumption",
+      "primary_failure_stage": "meaning"
+    },
+    "C07": {
+      "case_sha256": "409925fc71ac396b6c1f29d0ac033b2f1258331785cd028d7261403f5362161a",
+      "primary_failure_cause": "required_clarification_missing",
+      "primary_failure_stage": "condition"
+    },
+    "C08": {
+      "case_sha256": "2b45fc1ca00d54796f09b5ce3d35e7d9b657799478d78e0015128681b0fcd226",
+      "primary_failure_cause": "ungrounded_slot_assumption",
+      "primary_failure_stage": "condition"
+    },
+    "C10": {
+      "case_sha256": "00d08bf920991d9a2608f64f6e4469257bf8c3459702e64ef611087a35a28387",
+      "primary_failure_cause": "intent_misinterpretation",
+      "primary_failure_stage": "capability"
+    }
+  },
+  "baseline_unsupported_cases": "U01-U05 whole_request_success=true; no primary failure cause"
+}

@@ -1,0 +1,3084 @@
+{
+  "source_run": "docs\\qwen-local-public9b-baseline-v2.json",
+  "source_run_sha256": "a2c379a93dec91ae6333d620cdfab4f20a07ab8c020d13231330be2b00e2222f",
+  "labels_sha256": "b88b9cec84d36179031a88cabe0a62408a90396bc9c64972fffbd61f36b7fb02",
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "reviewer": "Codex trace/JSON review; not an independent human gold review",
+  "slot_scope": "Frozen gold slot keys plus explicitly reviewed unsupported invented values; missing=FN, wrong=FP+FN. Defaults outside this scope excluded.",
+  "reviewed_cases": 52,
+  "live_metrics": {
+    "intent_accuracy": {
+      "value": 0.88,
+      "numerator": 44,
+      "denominator": 50,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "slot_extraction_f1": {
+      "value": 0.71875,
+      "numerator": 138,
+      "denominator": 192,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "routing_macro_f1": {
+      "value": 0.7561076604554865,
+      "denominator": 50,
+      "unit": "case",
+      "per_class": {
+        "READY": 0.6857142857142857,
+        "CLARIFY": 0.782608695652174,
+        "UNSUPPORTED": 0.8
+      },
+      "status": "measured",
+      "system_errors_count_as_expected_class_false_negative": true
+    },
+    "necessary_question_recall": {
+      "value": 0.65625,
+      "numerator": 21,
+      "denominator": 32,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "unnecessary_question_rate": {
+      "value": 0.5,
+      "numerator": 21,
+      "denominator": 42,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "repeated_question_rate": {
+      "value": 0.2,
+      "numerator": 1,
+      "denominator": 5,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "answer_incorporation_accuracy": {
+      "value": 0.8333333333333334,
+      "numerator": 10,
+      "denominator": 12,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "clarification_completion_rate": {
+      "value": 0.3,
+      "numerator": 3,
+      "denominator": 10,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_schema_validity": {
+      "value": 0.7777777777777778,
+      "numerator": 14,
+      "denominator": 18,
+      "unit": "case",
+      "status": "measured"
+    },
+    "tool_operation_accuracy": {
+      "value": 0.5,
+      "numerator": 42,
+      "denominator": 84,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "requirement_coverage": {
+      "value": 0.42857142857142855,
+      "numerator": 36,
+      "denominator": 84,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_execution_success": {
+      "value": 1.0,
+      "numerator": 4,
+      "denominator": 4,
+      "unit": "case",
+      "status": "measured"
+    },
+    "latency_p50_seconds": {
+      "value": 42.03804099999252,
+      "denominator": 50,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    },
+    "latency_p95_seconds": {
+      "value": 102.1738398999878,
+      "denominator": 50,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    }
+  },
+  "all_backend_metrics_including_code_recipes": {
+    "intent_accuracy": {
+      "value": 0.8846153846153846,
+      "numerator": 46,
+      "denominator": 52,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "slot_extraction_f1": {
+      "value": 0.7378640776699029,
+      "numerator": 152,
+      "denominator": 206,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "routing_macro_f1": {
+      "value": 0.7668524712002972,
+      "denominator": 52,
+      "unit": "case",
+      "per_class": {
+        "READY": 0.717948717948718,
+        "CLARIFY": 0.782608695652174,
+        "UNSUPPORTED": 0.8
+      },
+      "status": "measured",
+      "system_errors_count_as_expected_class_false_negative": true
+    },
+    "necessary_question_recall": {
+      "value": 0.65625,
+      "numerator": 21,
+      "denominator": 32,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "unnecessary_question_rate": {
+      "value": 0.5,
+      "numerator": 21,
+      "denominator": 42,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "repeated_question_rate": {
+      "value": 0.2,
+      "numerator": 1,
+      "denominator": 5,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "answer_incorporation_accuracy": {
+      "value": 0.8333333333333334,
+      "numerator": 10,
+      "denominator": 12,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "clarification_completion_rate": {
+      "value": 0.3,
+      "numerator": 3,
+      "denominator": 10,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_schema_validity": {
+      "value": 0.8,
+      "numerator": 16,
+      "denominator": 20,
+      "unit": "case",
+      "status": "measured"
+    },
+    "tool_operation_accuracy": {
+      "value": 0.5227272727272727,
+      "numerator": 46,
+      "denominator": 88,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "requirement_coverage": {
+      "value": 0.45454545454545453,
+      "numerator": 40,
+      "denominator": 88,
+      "unit": "reviewed opportunity",
+      "status": "adjudicated"
+    },
+    "workflow_execution_success": {
+      "value": 1.0,
+      "numerator": 4,
+      "denominator": 4,
+      "unit": "case",
+      "status": "measured"
+    },
+    "latency_p50_seconds": {
+      "value": 40.1917620000022,
+      "denominator": 52,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    },
+    "latency_p95_seconds": {
+      "value": 102.1738398999878,
+      "denominator": 52,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    }
+  },
+  "split_metrics": {
+    "development": {
+      "intent_accuracy": {
+        "value": 0.8857142857142857,
+        "numerator": 31,
+        "denominator": 35,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "slot_extraction_f1": {
+        "value": 0.7832167832167832,
+        "numerator": 112,
+        "denominator": 143,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "routing_macro_f1": {
+        "value": 0.8613636363636363,
+        "denominator": 35,
+        "unit": "case",
+        "per_class": {
+          "READY": 0.8,
+          "CLARIFY": 0.875,
+          "UNSUPPORTED": 0.9090909090909091
+        },
+        "status": "measured",
+        "system_errors_count_as_expected_class_false_negative": true
+      },
+      "necessary_question_recall": {
+        "value": 0.6956521739130435,
+        "numerator": 16,
+        "denominator": 23,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "unnecessary_question_rate": {
+        "value": 0.37037037037037035,
+        "numerator": 10,
+        "denominator": 27,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "repeated_question_rate": {
+        "value": 0.0,
+        "numerator": 0,
+        "denominator": 2,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "answer_incorporation_accuracy": {
+        "value": 1.0,
+        "numerator": 8,
+        "denominator": 8,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "clarification_completion_rate": {
+        "value": 0.42857142857142855,
+        "numerator": 3,
+        "denominator": 7,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_schema_validity": {
+        "value": 0.9285714285714286,
+        "numerator": 13,
+        "denominator": 14,
+        "unit": "case",
+        "status": "measured"
+      },
+      "tool_operation_accuracy": {
+        "value": 0.6428571428571429,
+        "numerator": 36,
+        "denominator": 56,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "requirement_coverage": {
+        "value": 0.6071428571428571,
+        "numerator": 34,
+        "denominator": 56,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_execution_success": {
+        "value": 1.0,
+        "numerator": 4,
+        "denominator": 4,
+        "unit": "case",
+        "status": "measured"
+      },
+      "latency_p50_seconds": {
+        "value": 36.27223200000299,
+        "denominator": 35,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      },
+      "latency_p95_seconds": {
+        "value": 102.1738398999878,
+        "denominator": 35,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      }
+    },
+    "holdout": {
+      "intent_accuracy": {
+        "value": 0.8666666666666667,
+        "numerator": 13,
+        "denominator": 15,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "slot_extraction_f1": {
+        "value": 0.5306122448979592,
+        "numerator": 26,
+        "denominator": 49,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "routing_macro_f1": {
+        "value": 0.4904761904761905,
+        "denominator": 15,
+        "unit": "case",
+        "per_class": {
+          "READY": 0.4,
+          "CLARIFY": 0.5714285714285714,
+          "UNSUPPORTED": 0.5
+        },
+        "status": "measured",
+        "system_errors_count_as_expected_class_false_negative": true
+      },
+      "necessary_question_recall": {
+        "value": 0.5555555555555556,
+        "numerator": 5,
+        "denominator": 9,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "unnecessary_question_rate": {
+        "value": 0.7333333333333333,
+        "numerator": 11,
+        "denominator": 15,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "repeated_question_rate": {
+        "value": 0.3333333333333333,
+        "numerator": 1,
+        "denominator": 3,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "answer_incorporation_accuracy": {
+        "value": 0.5,
+        "numerator": 2,
+        "denominator": 4,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "clarification_completion_rate": {
+        "value": 0.0,
+        "numerator": 0,
+        "denominator": 3,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_schema_validity": {
+        "value": 0.25,
+        "numerator": 1,
+        "denominator": 4,
+        "unit": "case",
+        "status": "measured"
+      },
+      "tool_operation_accuracy": {
+        "value": 0.21428571428571427,
+        "numerator": 6,
+        "denominator": 28,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "requirement_coverage": {
+        "value": 0.07142857142857142,
+        "numerator": 2,
+        "denominator": 28,
+        "unit": "reviewed opportunity",
+        "status": "adjudicated"
+      },
+      "workflow_execution_success": {
+        "value": null,
+        "numerator": 0,
+        "denominator": 0,
+        "unit": "case",
+        "status": "not_measured"
+      },
+      "latency_p50_seconds": {
+        "value": 44.70795630000066,
+        "denominator": 15,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      },
+      "latency_p95_seconds": {
+        "value": 120.58809770000516,
+        "denominator": 15,
+        "unit": "case",
+        "status": "measured",
+        "estimator": "median / nearest-rank p95"
+      }
+    }
+  },
+  "case_reviews": [
+    {
+      "id": "R01",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 R01의 model_calls=[]이며 코드 recipe로 READY가 됐다. 수용된 gmail_summary spec max_results=5와 최종 email.list/read_messages(max_results=5) → compose_answer.documents 연결이 일치한다. Gmail 최대 5건의 제목·보낸 사람·본문을 요약하는 지시이며 필수 질문이나 추가 업무가 없다. schema_valid=true이나 실제 외부 Gmail 실행은 하지 않았다. 전체 요청 성공은 설계 의미의 성공이며 모델 추론 또는 외부 실행 성공을 뜻하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R02",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 8,
+          "denominator": 8
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "v2의 capability raw는 표 읽기/필터/JSON 저장을 식별한다. condition raw의 amount/gte/20/json, 빈 값 error, 중복 keep이 수용됐고 requirement raw 및 accepted ledger에는 export/filter/policy/read 네 업무가 있다. 최종 read_table(synthetic-sales) → filter_sort(amount>=20, missing=error, duplicate=keep) → write_result(json)의 table 의존성이 맞다. 실제 허용 합성 실행은 성공했고 id 2,3의 행과 순서가 gold에 일치한다. planner raw의 ask_user 이름과 빈 행 제거 설명은 부정확하나 최종 표시 질문은 없고 최종 설정은 오류 중단이며 추가 업무가 없다. trace 반환 응답은 native 3개+SDK 1개지만 header live_model_calls=3, SDK dispatch/response 플래그가 false인 계측 불일치를 별도 보고했다. 이 숫자를 실제 총호출수로 단정하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "read_table_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "filter_sort_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "write_result_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R03",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "v2 holdout 판정이다. capability raw는 정렬을 식별했지만 condition 두 응답은 operation=filter로 분류하고 sort.policy에 desc(첫 응답에는 none도 중복)를 넣었다. accepted ledger는 sort.policy를 missing으로 거절하며 filter.field/operator/value도 missing이다. amount/descending은 typed accepted slot으로 확정되지 않아 output.format=json만 인정한다. 실제 질문은 이미 요청한 정렬 여부 재확인과 요청하지 않은 선별 열 질문 두 개로 모두 불필요하다. CLARIFY 및 workflow=null이라 세 최종 업무 coverage와 전체 성공은 false다. raw의 desc 시도와 실제 수용 슬롯을 구분하며 holdout을 수정 근거로 사용하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "sort",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R04",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "v2 capability는 customer_id 중복의 첫 행 유지와 JSON을 인식한다. condition raw의 duplicate.field=customer_id, duplicate.policy=first, output.format=json은 수용되었지만 operation=filter도 수용되고 코드가 deduplicate를 추가했다. 결과적으로 filter.field/operator/value를 미정으로 남겨 어느 열로 선별할지와 비교 연산자를 두 질문으로 요구한다. 원문 중복 제거에 필요하지 않은 질문이며 CLARIFY에서 끝나 workflow가 없다. 세 정답 슬롯은 맞지만 operative intent의 추가 필터, 잘못된 route 때문에 전체 성공은 false다. capability 설명의 연간 예약 문구는 근거 없으나 실제 예약으로 채택되지 않았으므로 별도 실행 업무로 세지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R05",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "v2 requirement raw 및 accepted spec은 qty * unit_price → total 계산과 JSON export를 보존한다. 별도 read/policy task는 중간 ledger에서 누락되어 추출 완전성의 한계가 있다. 최종 planner는 원문과 연결 자료를 사용해 read_table(synthetic-sales) → calculate_columns(compute, qty * unit_price, total) → write_result(json)을 구성하고 각 table binding을 올바르게 연결했다. 최종 execution_plan은 missing_policy=error, duplicate_policy=keep이며 추가 업무·질문·예약이 없다. READY/schema_valid=true 후 허용 합성 실행 rows 세 개의 total=10,30,20이 gold와 맞는다. 최종 성공을 중간 ledger 완전성이나 미실행 외부 연결 성공과 혼동하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R06",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "v2 holdout: capability 및 requirement description은 region별 amount 합계와 JSON을 이해하지만 수용된 spec은 kind=other, action=aggregate_and_export만 가지며 group_by/sum_field/format의 typed 업무 슬롯을 확정하지 않았다. 이미 연결된 synthetic-sales 자료 ID와 명시된 JSON의 저장 경로·형식을 다시 요구하는 두 질문은 불필요하다. 다른 표 결합이나 필터 조건은 질문 문구에 등장하나 실제 추가 workflow 업무로 채택된 근거는 없다. CLARIFY, workflow=null이므로 세 업무 coverage 및 전체 성공은 false다. 자연어 description의 단어와 기본 draft output_format=json을 정확한 구조화 추출로 세지 않는다. holdout은 수정 근거로 사용하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "aggregate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R07",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "v2 capability raw는 calculate_columns.rename_columns와 JSON 저장 지원을 식별했다. 그러나 requirement 첫 raw는 rename(source=synthetic-sales,target=revenue), 재시도는 rename(amount,revenue)를 compute formula로 잘못 표현했다. 두 후보가 수용되지 않아 최종 requirement_ledger가 없고 validation_failed/SYSTEM_ERROR로 종료했다. 따라서 capability 설명만으로 operative intent/typed rename 슬롯 성공을 부여하지 않는다. 재시도의 행 수 제한 질문은 raw에만 있고 사용자 pending question으로 표시되지 않아 질문 분모에 넣지 않는다. workflow가 없어 read/rename/output coverage와 전체 성공은 false이며 거절된 compute 후보를 실행된 추가 업무로 세지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "rename",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R08",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 capability raw는 연결된 synthetic-policy 문서와 환불 요약을 식별한다. requirement raw는 kind=document_analysis만 반환하고 accepted spec은 원문 request를 보존한다. 최종 첫 턴 workflow는 read_document(file_ids=[synthetic-policy]) → compose_answer이며 documents binding과 환불 규정 요약/화면 표시 지시가 맞다. source/topic 슬롯은 이 수용된 실행 인자·요약 지시에서 확인한다. 질문이나 추가 업무 없이 READY/schema_valid=true다. 이 사례는 실행 not_scheduled라 문서 도구 실제 실행이나 실제 요약 품질을 실측한 것으로 보고하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R09",
+      "actual_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": "v2 holdout: capability는 base64_codec을 선택했고 첫 requirement compute/base64_encode 후보는 거절된 뒤 kind=other,action=encode_string이 수용됐다. 인코딩 의도는 맞지만 hello와 encode는 typed accepted requirement 인자가 아니며 final accepted workflow도 없어 observed_slots는 비워 둔다. 두 planner raw 모두 finish를 최초 단계로 두고 그 text 출력을 Base64 입력에 연결하여 파싱/구조 검증에서 ValueError로 종료했다. turns=[]이며 사용자에게 실제 표시된 질문도 없다. 최종 workflow가 없어 encode 업무 coverage 및 전체 성공은 false다. schema_valid=null이므로 이 잘못된 raw 후보들이 기존 최종 case schema 실패율 분모에서 빠지는 계측 한계를 별도로 명시한다. rejected raw compute를 추가 실행 업무로 세지 않으며 holdout 수정 제안은 하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "encode",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "requirement_coverage": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": "v2 capability와 최종 두 planner 후보는 scalar_calculate/evaluate 및 formula=(12 + 8) * 3,variables={}를 정확히 선택한다. 최종 수용 draft workflow의 단일 scalar 노드도 이 수식과 일치하므로 calculate task의 의미 coverage는 true다. 그러나 중간 accepted requirement는 kind=compute에 원문에 없는 output_column=result를 추가한다. validator는 그 표 계산 요구와 실제 scalar 노드가 맞지 않는다고 거절하여 SYSTEM_ERROR/schema_valid=false로 끝났다. formula는 첫 턴 수용 값으로 맞고 extra output column은 명시적 미지원 추측 슬롯으로 기록한다. route가 READY가 아니므로 whole_request_success=false이며 실제 계산 실행도 하지 않았다. 정확한 최종 후보와 실패한 전체 설계 경로를 구분한다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "calculate",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "C01",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 3
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C01 review: accepted capability describes daily scheduled email delivery. The first raw requirement candidate contained a daily/09:00/Asia-Seoul schedule plus recipient/scope questions, but it was not the accepted ledger. The accepted requirements stage has tasks=[] and one unresolved source question, also the sole visible pending question. Therefore accepted structured slot evidence is absent (0/3 frozen schedule slots), necessary questions cover source only (1/3), and routing is correctly CLARIFY. Raw rejected schedule fields and schedule prose in the question are not counted as accepted structured slots. No workflow was generated or executed. The visible source question also exposes implementation wording such as hourly/daily/weekly/monthly, data ID and file path. Missing recipient/scope questions and loss of the structured schedule make whole-request success false."
+    },
+    {
+      "id": "C02",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C02 review: the first raw capability candidate incorrectly said missing_capability for absent customer data and unspecified report details, but the accepted second response is clarify with no missing_actions. The accepted interpretation describes customer-data analysis followed by report creation and exposes exactly two questions: data source and analysis goal. Both frozen missing slots are covered (2/2), with no assumed data/analysis values or extra work. The third missing_conditions item, output format, is not displayed and is not counted as an asked question. Frozen slots are empty, so slot F1 has no opportunities. The final route is CLARIFY and no workflow or external execution occurs; this satisfies the frozen whole-request clarification expectation."
+    },
+    {
+      "id": "C03",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C03 holdout review: the accepted capability describes sales analysis and email delivery with registered tools, so the broad intent is understood. However it retains missing_capability with missing_actions for Gmail account and sales-source connection, and the visible result is UNSUPPORTED with no clarification questions. Frozen expectation is CLARIFY for source, recipient and analysis goal (0/3 questions). The dates 2026-11-02 to 2026-11-09 occur only in explanatory capability prose; there is no accepted structured date selection, requirement, or workflow, and exclusive-end semantics are not established. Both date slots therefore remain unobserved under the declared structural-slot scope. No workflow or external execution occurred. Whole-request failure is the unsupported classification and absent required clarification, not an invented external execution."
+    },
+    {
+      "id": "C04",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C04 review: accepted condition_ledger has operations=['filter'], specified filter.field=amount and output.format=json, and preserves the explicitly requested missing=error and duplicate=keep policies. It rejects the raw model's gt operator for lacking explicit evidence, leaves operator/value missing, and shows exactly the necessary operator and threshold questions (2/2). Supplied field and output format are not asked again. No raw rejected gt is counted as an invented accepted slot. Capability prose mentions sorting/top rows, but this was not adopted as a condition operation or workflow, so it is recorded as intermediate imprecision rather than an added executable action. Final route CLARIFY is correct and no workflow/external execution occurs."
+    },
+    {
+      "id": "C05",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C05 review: capability and condition operation correctly identify deduplication. The raw condition response chooses duplicate.policy=error using the entire request as evidence, although the original error instruction belongs only to missing values. Python accepts that duplicate policy as specified, adds grounded output.format=json and missing.policy=error, and leaves only duplicate.field unresolved. The visible question covers duplicate_field but omits duplicate_policy (1/2 required questions). The unsupported duplicate.policy=error is one explicit false-positive slot outside the frozen output-format key. Correct CLARIFY routing does not make the assumed retention/error policy correct; no workflow or external execution was produced."
+    },
+    {
+      "id": "C06",
+      "actual_route": "SYSTEM_ERROR",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C06 holdout review: accepted request_meaning has source=gmail and actions read/summarize, proving the provider slot and broad intent. It also fixes selection.filters=['important'] and unresolved=[], although the frozen request requires an importance criterion question. Capability accepts that interpretation and requirement uses document_analysis. No visible question is asked (0/1 required). The stored draft wires email.list.read_messages(query='important') to compose_answer, but also contains unrelated table execution filters/sort and fails validator with a missing filter_sort-node issue. Final route is SYSTEM_ERROR, schema_valid=false, and external execution is NOT_RUN. The unsupported importance criterion is counted from accepted request_meaning, not from a rejected raw planner candidate; incidental table filter/sort in the rejected draft is reported here but not counted as additional accepted slots or executed actions. Whole-request success is false."
+    },
+    {
+      "id": "C07",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C07 review: accepted condition_ledger correctly preserves weekly, Asia/Seoul and json and leaves hour, minute and weekday missing. It displays separate hour and minute questions, so both concern the single frozen time slot (hour) while weekday is not asked (1/2 required slots). These questions are relevant components of an unspecified time, not invented conditions or repeated follow-up questions; the failure is incomplete coverage within the two-question display. No unsupported time is confirmed, and final CLARIFY routing is correct. No workflow or external execution exists. Whole-request success is false because the missing weekday is not covered."
+    },
+    {
+      "id": "C08",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 8
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C08 review: the accepted schedule condition ledger preserves daily, Asia/Seoul and json, but also accepts model-invented hour=8 and minute=0 as specified. Both unsupported values are explicit slot false positives. The model additionally emits missing duplicate.policy; Python retains this unrelated missing slot and asks only how to handle duplicates. No missing execution-time question is displayed (0/1), and the sole question is unnecessary. CLARIFY routing alone is correct but represents the wrong uncertainty. No actual deduplication workflow was generated, so the extra duplicate-policy question is scored as an unnecessary question, not as an executed extra action. No workflow or external execution exists; whole-request success is false."
+    },
+    {
+      "id": "C09",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C09 holdout review: the accepted requirement ledger represents the requested compute and export tasks and stores export.format=json. Its unresolved list explicitly asks for both the new column name and formula; the same combined question is visible (2/2 required slots), with no output-format re-question. The partial compute spec uses the literal strings 'null' for formula and output_column. These are recorded as a representation weakness, not confirmed usable values: the same accepted ledger marks both values unresolved, the clarification gate blocks generation, and no workflow exists. Accordingly they are not counted as invented resolved slots. Final CLARIFY routing, retained JSON format and the complete missing-condition question satisfy this frozen clarification case. No execution occurred."
+    },
+    {
+      "id": "C10",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 C10 review: the final accepted capability turns the literal subject '점검' and body '완료' into title-review/body-completion work and declares that invented task unsupported. This changes the requested intent; final route is UNSUPPORTED rather than the required recipient CLARIFY, and no recipient question is shown (0/1). A raw meaning candidate correctly placed the subject/body in other_requirements, but its following review returned faithful=false, the accepted request_meaning stage is null, and no accepted structured subject/body or workflow remains. Therefore neither raw literal value is credited as an observed slot. The added review/completion action is explicitly recorded at interpretation level only; no mail or other external operation was executed."
+    },
+    {
+      "id": "T01",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2의 실제 의미 추출은 Gmail read/summarize, period=yesterday, evidence=어제, filters=[]이며 faithfulness도 true다. 수용된 requirement와 mail workflow query는 after:1794150000 before:1794236400 -in:sent -in:drafts로 같다. zoneinfo로 계산한 기준시각 2026-11-10 10:00+09의 전날인 11-09 00:00+09부터 11-10 00:00+09까지 24시간과 일치한다. email.list/read_messages → compose_answer.documents 연결과 요약 지시가 맞고 질문·추가 업무 없이 READY/schema_valid=true다. 최대100건 기본 한도와 한도 초과 가능성을 draft가 안내한다. Gmail 실제 조회·요약 실행은 NOT_RUN이며 날짜 경계 설계의 검증이다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T02",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 5
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 실제 의미 raw는 오늘 받은 메일 요청에 period=today와 근거 오늘을 추출하면서 filters=[unread]를 추가했고 faithfulness=true가 이를 통과시켰다. accepted meaning/requirement와 최종 query 모두 is:unread를 보존한다. after:1794200400 before:1794286800은 zoneinfo 기준 뉴욕 현지 2026-11-09 00:00-05부터 11-10 00:00-05까지 24시간으로 올바르므로 날짜 두 슬롯은 인정한다. 그러나 읽은 메일을 임의 제외하여 read 대상과 그 요약 범위가 틀리므로 두 task coverage 및 whole_request_success는 false다. READY/schema_valid=true를 의미 성공으로 보지 않으며 실제 Gmail 실행은 하지 않았다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T03",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 holdout: 첫 의미 후보의 unread 추가를 faithfulness가 거절했고, 재시도 accepted meaning은 Gmail read/summarize, period=yesterday, filters=[]를 보존했다. 다만 other_requirements에 원문을 반복한 후 generic 경로로 갔다. requirement는 read/file_ids=[]만 남기고 Gmail 계정 연결 또는 데이터 소스 ID를 필수 질문으로 노출했다. 설계에 필요한 업무 조건이 이미 있으므로 이 질문은 불필요하며 CLARIFY/workflow=null이다. 수용된 yesterday만 슬롯으로 인정하고 절대 날짜 query가 없으므로 gmail.date는 누락이다. zoneinfo 기대 경계는 1794063600–1794150000(서울 2026-11-08 하루)이지만 실제 생성되지 않았다. 거절된 unread 후보는 accepted 추가 슬롯/업무에 넣지 않는다. holdout은 판정만 한다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T04",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 실제 의미 추출은 Gmail read/summarize, yesterday/어제와 filters=[]이며 faithfulness=true다. accepted requirement와 최종 email.list/read_messages query의 after:1798642800 before:1798729200은 zoneinfo 기준 서울 2026-12-31 00:00+09부터 2027-01-01 00:00+09까지 24시간으로 연도 경계를 정확히 보존한다. mail.documents → compose_answer 연결과 요약 지시가 맞고 질문·추가 업무 없이 READY/schema_valid=true다. 100건 기본 한도를 안내하며 외부 Gmail 실제 실행은 NOT_RUN이다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T05",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 첫 의미 후보는 yesterday와 unread를 함께 반환했다. faithfulness가 unread는 올바르게 거절했으나 period_source_message=0을 상대 날짜와 혼동하는 비판도 추가했다. 재시도는 period를 date_range로 바꾸었고 그 값이 accepted meaning으로 수용됐다. Gmail read/summarize 의도는 유지되나 period 슬롯은 gold yesterday와 다르다. requirement는 read/file_ids=[]만 남기고 인증 정보나 API 키를 필요 조건으로 질문하여 CLARIFY/workflow=null이다. 이 질문은 실행 전 연결 전제를 설계 질문으로 잘못 요구한다. 뉴욕 DST 시작일의 실제 기대 범위는 zoneinfo로 1772946000–1773028800(2026-03-08 00:00-05 → 03-09 00:00-04, 23시간)이나 실제 query가 없으므로 날짜·23시간 보존 성공은 부여하지 않는다. 거절된 unread는 추가 accepted 슬롯으로 세지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T06",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 holdout: 첫 raw unread 추가는 faithfulness가 거절했고 재시도 accepted meaning은 yesterday와 filters=[]를 보존한다. 이후 requirement는 document_analysis로만 표현되며 planner와 최종 email.list/read_messages 인자는 max_results=100,query=\"\"이다. draft의 period:yesterday 설명이나 요약 instructions는 실제 Gmail 검색 인자를 제한하지 못한다. 따라서 period 의미 슬롯은 인정하지만 절대 날짜 및 DST 종료일 25시간 경계는 누락이다. zoneinfo로 필요한 구간은 1793505600–1793595600(뉴욕 2026-11-01 00:00-04부터 11-02 00:00-05까지 25시간)인데 실제 query에 없었다. 잘못된 읽기 범위와 상위 입력을 받은 요약 모두 coverage=false이며 READY/schema_valid=true여도 전체 성공은 false다. rejected unread는 추가 accepted 업무로 세지 않는다. 외부 Gmail 실행은 하지 않았고 holdout 수정 제안은 하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T07",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2는 request_meaning 추출과 faithfulness 두 응답이 모두 실제 model metadata와 returned 상태로 보존됐다. raw 및 accepted meaning은 다섯 통을 limit=5,limit_evidence=다섯 통,source_message=0으로 해석하고 newest_first/period=all/filters=[]를 유지한다. accepted gmail_summary.max_results=5와 최종 email.list/read_messages(max_results=5) → compose_answer.documents가 맞고 최대5건의 본문 요약 지시가 있다. 질문·추가 업무 없이 READY/schema_valid=true이며 실제 Gmail 실행은 NOT_RUN이다. 중단된 이전 run의 started-only 항목이나 판정을 재사용하지 않았다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "T08",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 10,
+          "denominator": 10
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": "v2 T08은 model_calls=[] 및 live_model_calls=0인 등록 코드 recipe다. accepted gmail_scheduled_summary와 최종 draft schedule이 daily/Asia/Seoul/09:00으로 일치하고 mail query={{gmail.previous_day}}를 보존한다. 전날 범위를 매 예약 실행일에 계산한다는 지시이며 특정 날짜 epoch를 고정하지 않았다. email.list/read_messages의 documents를 compose_answer로 연결하며 추가 업무·질문 없이 READY/schema_valid=true다. 100건 한도와 예약 별도 활성화 안내가 있다. 모델 추론 성공 분모에서 제외하고 실제 예약 실행·Gmail 조회·요약 실행 성공을 주장하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M01",
+      "actual_route": "CLARIFY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial condition ledger correctly leaves operator/value missing and preserves amount/json; raw unsupported operator is rejected by Python.",
+        "Two required questions are displayed; one answer '20 이상으로 해줘.' addresses both. Same response/session/thread 10858306-a3ad-421e-ad12-dd26be211b6f, revision 2→3, messages 2→4, submitted question_id matches the prior operator question.",
+        "After checkpoint reopen final ledger and workflow contain amount gte 20, missing_policy error, duplicate_policy keep and JSON. read_table(synthetic-sales)→filter_sort→write_result bindings and ordering are correct; no extra action.",
+        "Native local execution succeeded with exactly the gold rows id=2(amount30), id=3(amount20). Requirement extraction itself retained only an export task; final planner restored the complete requested read/filter/export chain."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "read_table_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "filter_sort_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "write_result_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M02",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 5
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Condition ledger accepted duplicate.policy=first without a user-stated retention policy. customer_id/json and explicit missing-policy error were preserved. This is an independent grounding failure despite final CLARIFY.",
+        "Requirement asks how duplicate customer_id rows should be handled, including keeping one row. This is a relevant policy question, but its wording lacks frozen matcher terms 첫/마지막/남길/보존, so answer_stop_reason=unmatched_question stopped after one turn. This is a harness answer-selection limitation, not proof that the policy question itself was unnecessary.",
+        "The broad examples additionally mention excluding empty rows although user said 빈 값은 오류; that misleading example is retained as a question-quality concern. No answer, second session response, final last-policy state, workflow or execution exists; do not impute the expected last answer."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M03",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 3,
+          "denominator": 4
+        },
+        "repeated_question_rate": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout: evaluation only. First/JSON/empty-error remain grounded, but condition adds an unrelated filter operation. The first generic '어느 열을 기준으로 선별할까요?' can obtain the needed duplicate field despite wrong filter key; the comparator question is unnecessary.",
+        "Answer customer_id is sent under the actual prior field question ID; response/session/thread 303f437e-dfbe-4e2b-9c10-57a4dbc01466 persists, revision 2→3 and messages 2→4. Final duplicate.field customer_id and prior first/JSON are preserved.",
+        "System nevertheless repeats field/comparator prompts for the invented filter and remains CLARIFY. Field is already answered; comparator remains unanswered but was irrelevant from the start. frozen matcher repeated_question stops further answers; this is rooted in the spurious filter requirement, not a valid-question lexical mismatch. No workflow or execution."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M04",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 7
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial ledger preserves daily/Asia-Seoul/JSON but accepts minute=0 before any time was specified. It asks required hour plus an unneeded missing-value policy for simple read/export.",
+        "Answer '매일 오전 9시 정각으로 해줘.' uses prior hour question ID; response/session/thread ccc59a32-a211-4159-a53d-8700d5891be1 and history persist, revision 2→3/messages 2→4. Final hour9/minute0 are now explicitly grounded and prior frequency/timezone/JSON remain.",
+        "Unanswered missing-policy prompt is re-exposed, so repeated=false in the resolved-question metric. It is still unnecessary and blocks READY; frozen policy has no answer for this invented requirement. No workflow or execution.",
+        "Both raw condition responses contain only operation=schedule; the extraneous missing-policy slot is model-proposed from the initial turn. condition_readiness.py unresolved scans all non-specified slots rather than only required keys (baseline line1157), so it is promoted to a blocking question. Checkpoint merge is not the originating cause."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M05",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial weekly09:00/Asia-Seoul/JSON are preserved; questions ask unneeded duplicate policy and required weekday.",
+        "'매주 월요일로 해줘.' is submitted under the actual weekday question ID; response/session/thread d7b993c9-55d9-4b8b-981a-77b956f0ce90 persists, revision 2→3/messages 2→4. Literal reconciliation preserves hour9/minute0 and supplies weekday0 despite raw invalid schedule values.",
+        "Final ledger has all gold schedule values but unneeded duplicate policy remains missing and is asked again. It was never answered, hence repeated=false, but blocks READY for a plain read/export. unmatched_question is caused by a system-added requirement; no workflow or execution.",
+        "Both raw condition responses contain only operation=schedule; the extraneous duplicate.policy slot with status=missing is model-proposed from the initial turn. condition_readiness.py unresolved scans all non-specified slots rather than only required keys (baseline line1157), so it is promoted to a blocking question. Checkpoint merge is not the originating cause."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M06",
+      "actual_route": "CLARIFY",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 6
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout: evaluation only. Initial monthly09:00/Asia-Seoul/JSON are correct and one appropriate monthday question is displayed.",
+        "Answer '매월 15일로 해줘.' uses the preceding monthday question ID. Same response/session/thread eb71eeeb-ae22-4ab0-8ee3-a959dc386744, revision2→3/messages2→4. Literal reconciliation preserves time/timezone/JSON and incorporates monthday15 despite malformed raw schedule numeric values.",
+        "Final draft schedule is monthly Asia/Seoul 09:00 on day15, and read_table→write_result(JSON) has correct binding; read settings are empty but draft.document_ids=[synthetic-sales] supplies the existing source fallback. No extra workflow action is present. This semantic task coverage does not mean a READY result.",
+        "Both capability assessments list filter_sort despite no requested table transformation. Final validation rejects the read/export-only draft for omitting that capability tool, returning validation_failed/SYSTEM_ERROR after two SDK planner responses. Execution did not run."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M07",
+      "actual_route": "CLARIFY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial capability assessment explicitly recognizes scaled column creation/JSON and asks only the unresolved qty multiplier; no arbitrary factor is accepted.",
+        "'qty에 2를 곱해줘.' uses the actual capability question ID; response/session/thread 75137ca8-cab9-4a4e-89d0-62321fba865a persists, revision2→3/messages2→4.",
+        "Final requirement and READY workflow bind read_table(synthetic-sales)→calculate_columns(table_operation=compute, calculation_formula=qty * 2, output_column=scaled)→write_result(format=json). Previous output column/format remain and there is no extra operation. Local execution was not requested for this corpus case and was not performed.",
+        "Cross-review scope correction: initial capability prose and the generic draft JSON default are not typed accepted slots. Their semantic wording is retained as qualitative evidence only; initial observed_slots is empty, consistently with R/C review."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M08",
+      "actual_route": "CLARIFY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 1,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial capability reason recognizes qty multiplied by2 and JSON, asks the undecided new column name. qty_doubled is clearly an example in the question, not an accepted column value.",
+        "The actual answer is '새 열 이름은 doubled로 해줘.' under the prior capability question ID. Session response/history continuity is verified in checkpoint_evidence.",
+        "Final requirement compute output_column=doubled preserves formula qty * 2. READY workflow has correctly bound read_table(synthetic-sales)→calculate_columns(compute, qty * 2, doubled)→write_result(json), with no extra operation. Intermediate requirement spec omits read/export, which the planner restores. No local execution was requested or performed for this corpus case.",
+        "Cross-review scope correction: initial capability prose and the generic draft JSON default are not typed accepted slots. Their semantic wording is retained as qualitative evidence only; initial observed_slots is empty, consistently with R/C review."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M09",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 2,
+          "denominator": 3
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout: evaluation only. First capability correctly identifies aggregation and missing amount column, but region appears only in a copied user quote and JSON is a generic draft default. Neither is credited as a typed initial extracted slot.",
+        "First questions ask the necessary sum column and an unnecessary definition of empty values despite explicit 빈 값은 오류. User answers amount using the actual amount-column question ID; checkpoint continuity is recorded below.",
+        "Final requirement r1 explicitly preserves region and JSON and incorporates amount, but only kind=other, aggregate_and_save_json is extracted. A separate r2 improperly treats the clarification as an update/re-execution task. No workflow exists, so task coverage remains false.",
+        "Final question again asks empty-value semantics. It was not answered, so repeated=false in the resolved-question metric, even though the answer harness records repeated_question (its broad 열 token also occurs in 문자열). The primary issue is the added requirement, not a valid necessary question lacking a lexical answer-policy match.",
+        "Cross-review scope correction: initial capability prose and the generic draft JSON default are not typed accepted slots. Their semantic wording is retained as qualitative evidence only; initial observed_slots is empty, consistently with R/C review.",
+        "Final region/amount/JSON occur only in a kind=other requirement description, not typed aggregate/export fields or a workflow. They are not credited as final_observed_slots; semantic prose retention does not prove typed answer incorporation."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "aggregate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M10",
+      "actual_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "clarification_completion_rate": {
+          "numerator": 0,
+          "denominator": 1
+        }
+      },
+      "adjudication_evidence": [
+        "Initial route CLARIFY and recipient question are appropriate, but meaning extraction/review and capability explanations repeatedly misinterpret 제목 점검 and 본문 완료 as checks/search filters rather than subject=점검/body=완료. The literal fields are not credited as initial extracted slots merely because the original request is copied into a requirement description.",
+        "Meaning review rejects both candidates in each of two interpretation passes; request_meaning remains null. Native capability fallback still retains the mistaken search-and-forward interpretation. Requirement asks recipient, then clears unresolved after a recipient answer.",
+        "The actual second-answer attempt is evidenced by requirement source_message=1 and raw SDK candidates using audit@example.invalid. However worker ValueError occurs before the second response is appended to turns, so the record has only one persisted response. Do not fabricate a final accepted recipient/subject/body state or a successful checkpoint response. Existing answer-incorporation scorer excludes this attempted follow-up because len(turns)==1; report the excluded attempt separately.",
+        "Raw candidate1 searches subject:점검 body:완료 and derives outgoing subject/body from composed text; candidate2 searches subject:완료 and emits subject 제목 점검 완료 메일 with a generated body. Two returned SDK candidates are invalid and no final workflow exists; record schema_valid is null, so candidate schema failures are not reflected by the final-bool schema denominator. The exact ValueError text is not stored. No email was sent."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "send",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M11",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 2,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "Initial service recipe creates READY email.list read_messages with max_results5 and a bound documents summary. Initial recipe capability uses zero model calls; the later correction causes two actual request_meaning responses, so the case is mixed recipe plus live follow-up, not wholly model-generated.",
+        "User revises '아니, 10개로 바꿔줘.' in the same session without a pending question. Requirement and final READY workflow correctly change max_results to10 and summary instructions to maximum10, preserving recent-email reading and mail-by-mail grounded summarization.",
+        "Final email.list→compose_answer uses documents→documents binding, no extra action or invented query. Session/history evidence is recorded below. Gmail connection metadata are synthetic and actual Gmail read/summary execution did not run."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "M12",
+      "actual_route": "READY",
+      "final_route": "SYSTEM_ERROR",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 4,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "answer_incorporation_accuracy": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "tool_operation_accuracy": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 2
+        }
+      },
+      "adjudication_evidence": [
+        "Holdout: evaluation only. Initial meaning correctly anchors yesterday to user_message0 at 2026-11-10T01:00Z, compiling Asia/Seoul 2026-11-09 query after:1794150000 before:1794236400 -in:sent -in:drafts. Initial unbounded count uses a disclosed service default100; it is not counted as an unsupported invented slot.",
+        "Next-day follow-up at 2026-11-11T01:00Z requests maximum5. Same session/thread 348115b8-c8ec-4787-8360-d36b9c0284a6, revision1→2, messages2→4 retain both original user request and response. No clarification question was needed.",
+        "First revised meaning proposes limit5 but invalid quantity evidence '최대 5개만' and unrequested unread; Python rejects before review. Repair uses limit evidence5개 but falsely points period_source_message=1 at a message without 어제 and inserts the repair instruction into other_requirements; again rejected. request_meaning becomes null.",
+        "Both fallback requirement responses shift yesterday to 2026-11-10 (query after:1794236400 before:1794322800), which the Python ledger rejects. Final route is SYSTEM_ERROR and no bad-date query is accepted. The final draft is the retained prior100/Nov9 workflow, not a successful update to5. Both read and summary task coverage fail for the final limit; original date preservation alone is not whole success. No external Gmail execution."
+      ],
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "mail"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "summary"
+          ],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "U01",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 U01 review: both raw capability responses and the accepted capability state identify Slack channel delivery as the requested missing action. The accepted reason correctly distinguishes absent Slack messaging capability from registered Gmail/calendar operations; it does not invent a Slack implementation or ask for a token/channel before acknowledging the unsupported action. Final route is UNSUPPORTED, pending clarification questions are empty, and workflow is null. No external action is executed. The tool-gap choice offers create/redesign/defer options but does not automatically create/register a tool or replace the requested destination. The frozen gold contains no slot extraction opportunities. Whole-request handling succeeds because the unsupported action and its catalogue-based reason are correct."
+    },
+    {
+      "id": "U02",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 U02 review: the previous sales-analysis/email request and source question remain in the conversation, followed by the explicit connected-PostgreSQL answer. Both raw capability candidates and the accepted state correctly identify direct PostgreSQL access as absent from the registered catalogue, distinguish file-based table reading, and stop at that missing prerequisite without asking the already answered source again. Final route is UNSUPPORTED, no clarification questions or workflow are present, and no customer database or email operation runs. The accepted capability prose preserves the provided source, but no structured source slot/meaning/condition/requirement field exists, so connected_postgresql is not credited under the same structural-slot scope used for C cases (0/1). This representation limit is separate from successful unsupported handling: the missing action and reason are correct, earlier intent is retained, and no substitute action is adopted."
+    },
+    {
+      "id": "U03",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 1
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 U03 holdout review: both capability candidates and the accepted state identify yearly scheduling as the unsupported requirement, correctly citing the registered hourly/daily/weekly/monthly recurrence scope. The table read/write tools are retained as supported components, but generation and execution remain blocked for the requested yearly recurrence. No different recurrence is substituted, no frequency question is asked, and the final route is UNSUPPORTED with workflow=null and external execution NOT_RUN. The accepted missing-action label/prose correctly describes yearly scheduling, but no structured schedule.frequency/meaning/condition/requirement field exists; yearly is therefore not credited under the declared structural-slot scope (0/1). Whole-request unsupported handling succeeds independently of this structured-slot representation limit. This holdout observation is not used as a repair instruction."
+    },
+    {
+      "id": "U04",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 U04 review: both raw capability responses and the accepted state identify Microsoft Teams channel delivery as the unsupported action. The accepted reason correctly says registered email operations are Gmail-specific and no Teams messaging tool exists. It does not map the request to email, generate a replacement delivery workflow, or ask irrelevant connection questions. Final route is UNSUPPORTED with no pending clarification questions or workflow; no message is sent. Tool-gap options require a later choice and are not an executed extra action. Gold contains no slot extraction opportunities; intent, unsupported action and reason satisfy the whole request."
+    },
+    {
+      "id": "U05",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "Fresh v2 U05 review: both raw capability responses and the accepted state identify WhatsApp customer notification delivery as absent from the registered catalogue. Gmail/calendar availability is correctly kept separate from WhatsApp support. Final route is UNSUPPORTED, the accepted missing action is the requested WhatsApp notification, and no missing-condition question or workflow is produced. No external action executes and no alternative destination/action is adopted. Gold contains no slot extraction opportunities. The catalogue-based refusal is correct, so whole-request handling succeeds."
+    },
+    {
+      "id": "X01",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 6,
+          "denominator": 7
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "X01의 accepted meaning에는 daily/18:00/Asia-Seoul 및 source=gmail이 있고, capability 두 응답은 실제 없는 Notion 저장만 missing_actions로 판정했다. 질문과 workflow 없이 UNSUPPORTED로 종료하여 미지원 대상의 올바른 분류·근거라는 전체 판정은 성공이다. 다만 요청하지 않은 filters=[unread]를 의미 추출과 faithful=true 검토가 수용한 결함은 extra_unsupported_slots로 별도 감점한다. 생성된 query나 추가 실행 업무는 없으므로 이를 실제 수행한 부가 동작으로 세지 않는다. 고객 문의 선택·분석까지 정확히 추출됐다는 판정이나 Gmail/Notion 실제 실행 성공은 아니다."
+    },
+    {
+      "id": "X02",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 14,
+          "denominator": 14
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 5,
+          "denominator": 5
+        },
+        "requirement_coverage": {
+          "numerator": 5,
+          "denominator": 5
+        }
+      },
+      "adjudication_evidence": "X02 raw와 accepted requirement는 compute/filter/sort/export를 정확히 보존한다. read/policy는 별도 ledger task로 추출되지 않았으나 planner raw와 최종 workflow의 read_table(synthetic-sales) → calculate_columns(qty * unit_price,total) → filter_sort(total>=20, 숫자 내림차순, 빈값error, 중복keep) → write_result(json)에서 실제 반영됐다. 공용 filter_sort에 필터·정렬이 함께 있는 것은 gold 허용 범위이며 table binding 순서가 맞다. 최상위 draft.execution_plan.filters=[]와 달리 실행 노드의 필터는 정확하고 실제 합성 실행 행 id2/3, total30/20 순서가 기대 결과와 일치한다. schema와 의미 및 로컬 실행 성공이며 외부 서비스 실행은 없다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "compute",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "sort",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_4"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X03",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 5
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 4
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 4
+        }
+      },
+      "adjudication_evidence": "holdout X03의 capability는 집계/필터/JSON 지원을 정확히 식별한다. 그러나 requirement raw 및 수용 spec은 aggregate_and_filter/policy/export를 모두 kind=other 자유문구로 남겼고 group_by/sum_field/filter 값의 typed 슬롯은 없다. description의 원문 반복을 구조화 추출로 세지 않는다. 이미 synthetic-sales가 연결되어 있는데 자료 ID를 재질문해 CLARIFY로 끝나 workflow가 없고 네 업무 coverage는 false다. 이 단일 턴은 정답에 답변 정책이 없는 READY 대상이므로 unmatched_question은 모델의 불필요 질문 뒤 평가 종료이며 정상 질문 어휘 매칭 한계 사례와 다르다. holdout 전용 수정 규칙은 만들지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "aggregate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X04",
+      "actual_route": "READY",
+      "final_route": "READY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 2
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 3,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 3,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "X04의 capability와 planner는 연결된 synthetic-policy 문서 요약 및 Markdown 저장을 보존한다. 최종 read_document(file_ids=[synthetic-policy]) → compose_answer(documents 입력, 문서 요약 지시) → export_result(text 입력,format=markdown)의 도구·인자·binding이 맞다. export_result 실제 구현에서 format=markdown은 답변.md를 생성하므로 observed output.format은 gold의 md로 의미 정규화한다. 최상위 표 execution_plan의 기본 json은 문서 export 노드의 실제 format을 덮어쓰지 않는다. 중간 requirement는 document_analysis 하나에 전체 요청을 보존했으나 별도 export task를 추출하지 못한 한계가 있다. READY/schema_valid=true인 설계 성공이며 not_scheduled 사례라 요약 생성·파일 도구 실행 품질을 실제 측정한 것은 아니다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_1"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_2"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": true,
+          "candidate_node_ids": [
+            "step_3"
+          ],
+          "semantic_coverage": true,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X05",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 10,
+          "denominator": 10
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 4
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 4
+        }
+      },
+      "adjudication_evidence": "X05 capability는 중복 첫 행 보존 후 amount>=15 필터의 업무를 식별했고 condition raw/accepted ledger는 customer_id/first/amount/gte/15,missing=error,format=json을 모두 specified로 유지한다. 그러나 requirement raw는 kind=other/action=process_table로 업무를 묶고 이미 완결된 요청 전체를 저장하시겠습니까라는 승인 질문으로 unresolved에 넣었다. 실제 사용자에게 이 불필요한 확인 질문 하나를 보여 CLARIFY에서 종료했고 workflow가 없어 네 업무 coverage는 false다. 조건 슬롯 추출 성공과 후속 요구사항 단계의 잘못된 되묻기를 구분한다. gold에 답변 정책이 없는 READY 사례이므로 unmatched_question을 정상 질문 어휘 한계로 분류하지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "filter",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X06",
+      "actual_route": "UNSUPPORTED",
+      "final_route": "UNSUPPORTED",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 2,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "unnecessary_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        },
+        "tool_operation_accuracy": {
+          "numerator": 0,
+          "denominator": 3
+        },
+        "requirement_coverage": {
+          "numerator": 0,
+          "denominator": 3
+        }
+      },
+      "adjudication_evidence": "holdout X06은 accepted meaning의 limit=3과 read/summarize를 유지하고 발송·수신자·제목은 other_requirements의 자유문구에 남긴다. count만 typed 관측 슬롯으로 인정하며 자유문구의 recipient/subject를 구조화 필드로 추정하지 않는다. capability 두 raw는 명시된 발송을 이해했으나 Gmail 연결 상태 unknown을 기능 부재로 취급하여 등록된 email.send를 미지원 판정했다. 질문과 workflow 없이 UNSUPPORTED로 종료해 세 업무 coverage와 전체 성공은 false다. 일부 사용자 인용에서 합성 이메일 뒤의 한국어 조사 때문에 sanitizer가 주소를 REDACTED_EMAIL로 바꿨지만, 실제 입력은 고정 gold이며 raw other_requirements에는 .invalid 주소가 남는다. 외부 메일을 조회·발송하지 않았고 holdout 전용 규칙은 만들지 않는다.",
+      "reviewed_task_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "summary",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "send",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": false,
+          "dependency_correct": null
+        }
+      ]
+    },
+    {
+      "id": "X07",
+      "actual_route": "CLARIFY",
+      "final_route": "CLARIFY",
+      "adjudicated_metrics": {
+        "intent_accuracy": {
+          "numerator": 1,
+          "denominator": 1
+        },
+        "slot_extraction_f1": {
+          "numerator": 0,
+          "denominator": 4
+        },
+        "necessary_question_recall": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "unnecessary_question_rate": {
+          "numerator": 1,
+          "denominator": 2
+        },
+        "repeated_question_rate": {
+          "numerator": 0,
+          "denominator": 0
+        }
+      },
+      "adjudication_evidence": "X07의 capability와 requirement description은 선별→집계→JSON이라는 업무를 이해한다. 그러나 accepted spec은 kind=other/action=filter_and_aggregate로 구조화 선별 열·집계 열·format 필드가 없고 기본 draft json을 추출 성공으로 세지 않는다. 첫 질문은 큰 금액의 기준값을 확인하므로 threshold에 필요한 질문이다. 특정 금액 이상은 단순 예시이며 포함/초과 경계 선택을 실제로 묻지 않아 operator는 확인되지 않았다. 두 번째 질문은 이미 연결된 표의 ID와 요청하지 않은 결합 조건을 요구하여 불필요하다. CLARIFY 분류는 맞지만 필수 질문 누락과 무관한 질문으로 전체 clarification 성공은 false다. 추가 join workflow를 생성한 것은 아니므로 실행 부가 업무로 세지 않는다."
+    }
+  ]
+}

@@ -48,7 +48,7 @@ def test_direct_storage_cannot_bypass_helper_name_guard(tmp_path):
     store.close()
 
 
-def test_repeated_bad_name_stops_and_can_recover_after_user_message(tmp_path):
+def test_repeated_bad_name_waits_for_user_correction_before_save(tmp_path):
     s=state();store=Storage(tmp_path);cfg={'configurable':{'thread_id':s['session_id']}}
     original=workflow_draft(s);calls=[]
     def planner(current):
@@ -57,8 +57,11 @@ def test_repeated_bad_name_stops_and_can_recover_after_user_message(tmp_path):
         return {'draft':out,'confirmed':False,'repair_count':current.get('repair_count',0)+1,'saved_agent_id':None}
     graph,conn=build_graph(store,conversation=planner,capability_mode='off',condition_mode='off',verifier_mode='off')
     blocked=graph.invoke(s,cfg)
-    assert blocked['status']=='validation_failed' and not store.agents() and len(calls)==2
-    resumed=graph.invoke({**graph.get_state(cfg).values,'messages':blocked['messages']+[{'role':'user','content':'이름은 비용 조건 선별로 해줘'}], 'repair_count':0,'confirmed':False},cfg)
+    assert blocked['status']=='needs_clarification' and not store.agents() and len(calls)==2
+    assert blocked['__interrupt__'][0].value['kind']=='clarification'
+    with pytest.raises(ValueError):require_save_ready({**blocked,'confirmed':True})
+    resumed=graph.invoke(Command(resume={'type':'message','content':'이름은 비용 조건 선별로 해줘',
+        'question_id':blocked['pending_questions'][0]['id']}),cfg)
     assert resumed['status']=='ready' and resumed['draft']['name']=='비용 조건 선별'
     assert resumed['draft']['workflow']==original['workflow'] and not store.agents()
     saved=graph.invoke(Command(resume={'type':'confirm'}),cfg)

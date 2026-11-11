@@ -1,0 +1,139 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-after.json",
+  "review_scope": "X01-X04 completed after cases independently reviewed from raw model responses, accepted typed state, displayed questions, final workflow and frozen gold. No baseline label copying.",
+  "status": "completed",
+  "case_hash_algorithm": "SHA256 UTF-8 json.dumps(case, ensure_ascii=False, sort_keys=True), default JSON separators",
+  "whole_request_success_definition": "READY requires correct route/all tasks/arguments/dependencies and no extra accepted work; UNSUPPORTED requires correct unsupported classification and grounded reason. Accepted unsupported guessed slots are separately penalized even when UNSUPPORTED is correctly returned. External execution is separate.",
+  "source_case_sha256": {
+    "X01": "9d0a51b50a2dce14530c059b733715950bcf86cd8a0e103688ee05ee3d4e4a41",
+    "X02": "17e07d0dfd9536d40be444761824b92fb282b26b346fe17b8b007619c57930b1",
+    "X03": "4546fc0a2db69565c4f694bd3459c01cc5c652bafa18860ebb5148d01ce0c9b9",
+    "X04": "3cd7e5daae8871a41fc7a7c99acfc7260608b6b2605f48f01ce88502baac84a0"
+  },
+  "cases": {
+    "X01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "daily",
+        "schedule.hour": 18,
+        "provider": "gmail"
+      },
+      "extra_unsupported_slots": [
+        "gmail.filter=sender:customer"
+      ],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null,
+      "evidence": [
+        "New first meaning candidate omits summarize; self-review rejects it. The repaired accepted meaning includes Gmail read/summarize, Notion requirement, daily18:00, which gives the three typed gold slots credit.",
+        "The repair also accepts sender:customer although no concrete sender address or customer mapping is supplied. This unsupported invented selector is a separate slot FP; unlike the baseline trace, no unread selector is present.",
+        "Both capability responses correctly identify missing Notion integration and preserve supported Gmail reading/summary. Final UNSUPPORTED has missing_actions Notion 에 정리하기, with generation/execution disabled, no workflow and no question. Under the fixed UNSUPPORTED criterion this is whole-request success despite the separately penalized intermediate slot error.",
+        "create_document appears only as a catalog-supported alternative requiring user decision; it is not an accepted/generated/executed replacement workflow. No extra executed action or external Gmail/Notion access is claimed."
+      ]
+    },
+    "X02": {
+      "intent_correct": true,
+      "observed_slots": {
+        "compute.formula": "qty * unit_price",
+        "compute.output_column": "total",
+        "filter.field": "total",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "sort.direction": "descending",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null,
+      "evidence": [
+        "New accepted typed requirement specs preserve compute(qty*unit_price,total), filter(total gte20), numeric descending sort(total), and JSON export, with explicit compute→filter→sort→export dependencies. Read source is supplied in the final workflow. All seven frozen slots are grounded typed values.",
+        "READY/schema-valid workflow reads synthetic-sales, calculates total, then uses one allowed shared filter_sort node with numeric total>=20 and descending total sort, missing_policy=error/duplicate_policy=keep, followed by JSON write. Every table binding follows the required dependency order; no extra action or question.",
+        "Actual native synthetic execution succeeded. Output rows are exactly gold in order: id2 qty3/unit_price10/amount30/부산/B/2026-11-05/total30, then id3 qty2/unit_price10/amount20/서울/A/2026-11-08/total20. All row fields and ordering were compared, not only row count."
+      ]
+    },
+    "X03": {
+      "intent_correct": true,
+      "observed_slots": {
+        "aggregate.group_by": [
+          "region"
+        ],
+        "aggregate.sum_field": "amount",
+        "filter.field": "sum",
+        "filter.operator": "gte",
+        "filter.value": 25
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "stage": "requirements",
+          "requirement_ids": [
+            "r1",
+            "r5"
+          ],
+          "action": "duplicate JSON export requirement",
+          "evidence": "One requested JSON output is accepted twice as separate export tasks. Requirement validation interprets this as multiple result files and blocks the otherwise matching single-output workflow. No duplicate file was executed."
+        }
+      ],
+      "primary_failure_cause": "duplicate_export_requirement",
+      "primary_stage": "requirement",
+      "direct_failure_stage": "requirement",
+      "evidence": [
+        "The new accepted requirement ledger contains typed aggregate(fields=[region],aggregation=sum,sum_field=amount), filter(sum gte25), policy(error,keep), and two JSON export tasks. The five frozen slots are present in accepted typed specs; no rejected/free-text value is credited.",
+        "Both actual planner candidates have read_table(synthetic-sales)→aggregate_table(region,sum amount)→filter_sort(sum>=25,missing error,duplicate keep)→write_result(json)→optional finish. The final retained candidate has correct table/artifact bindings and preserves all four gold tasks, so task coverage is 4/4. This partial workflow coverage is not READY or execution success.",
+        "The accepted ledger redundantly treats the same requested JSON output as r1 and r5. Both validator passes report 복수 결과 파일의 저장 위치·개별 출력은 추가 검토가 필요합니다, despite all five ledger rows being individually matched. Final route SYSTEM_ERROR/schema_valid=false/validation_failed prevents execution and whole-request success. The duplicate export requirement is the first confirmed causal error; no actual second file was generated.",
+        "No pending or draft questions are present. This holdout case is judged only; no case-specific fix is proposed."
+      ]
+    },
+    "X04": {
+      "intent_correct": true,
+      "observed_slots": {
+        "output.format": "md"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "primary_failure_cause": null,
+      "primary_stage": null,
+      "direct_failure_stage": null,
+      "evidence": [
+        "New capability correctly selects read_document/compose_answer/export_result for connected synthetic-policy. Accepted requirement spec remains a generic document_analysis request and does not separately type the export; final planner supplies the requested summary and export from the original request. This final success does not prove complete intermediate requirement extraction.",
+        "The actual READY/schema-valid workflow reads synthetic-policy, passes documents to compose_answer with the original policy-summary request, then passes text to export_result(format=markdown). Bindings and dependencies satisfy all three required tasks; no extra action or question.",
+        "Observed output.format is canonicalized to md from the accepted executable format=markdown. Backend/workflow_engine/executors/output/export_result.py text_artifact maps markdown to 답변.md with text/markdown content type, so this is the same requested artifact format. The top-level table-plan default output_format=json is not an executed output in this document workflow and is not credited or penalized as a second output.",
+        "This case was validated but not locally or externally executed; generated summary quality and artifact contents are therefore not measured."
+      ]
+    }
+  }
+}

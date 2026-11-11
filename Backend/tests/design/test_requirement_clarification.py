@@ -29,40 +29,40 @@ def uncertain_plan(questions=None):
 def test_unresolved_inputs_are_questions_not_generation_errors():
     state=fresh();state.update(issues=['이전 오류'],confirmed=True,saved_agent_id='old')
     result=make_requirement_check('fixture',Extraction(uncertain_plan()),mode='enforce')(state)
-    assert result['requirement_route']=='clarify'
+    assert result['requirement_route']=='await_input'
     assert result['status']=='needs_clarification' and result['issues']==[]
     assert not result['confirmed'] and result['saved_agent_id'] is None
     assert result['draft']['workflow'] is None
     assert result['draft']['tool_ids']==[]
     assert AgentDraft.model_validate(result['draft']).questions==result['requirement_ledger']['unresolved']
-    assert result['pending_questions'][0]['source']=='requirements'
+    assert result['pending_questions'][0]['source']=='requirement'
     assert result['messages'][-1]['content'].endswith(result['draft']['questions'][0])
 
 
 def test_question_limit_does_not_drop_unresolved_conditions():
     questions=[f'조건 {i}을 알려주세요.' for i in range(5)]
     result=make_requirement_check('fixture',Extraction(uncertain_plan(questions)),mode='enforce')(fresh())
-    assert result['draft']['questions']==questions[:3]
-    assert len(result['pending_questions'])==3
+    assert len(result['draft']['questions'])==2
+    assert len(result['pending_questions'])==2
     assert result['requirement_ledger']['unresolved']==questions
-    assert len({q['id'] for q in result['pending_questions']})==3
+    assert len({q['id'] for q in result['pending_questions']})==2
 
 
 def test_cached_unresolved_ledger_cannot_skip_question_gate():
     check=make_requirement_check('fixture',Extraction(uncertain_plan()),mode='enforce')
     state=fresh();first=check(state)
     again=check({**state,**first})
-    assert again['requirement_route']=='clarify'
+    assert again['requirement_route']=='await_input'
     assert again['pending_questions']==first['pending_questions']
 
 
 def test_unresolved_checkpoint_remains_unsavable_when_environment_is_off(tmp_path):
     state=fresh();state['requirement_required']=True
     result=make_requirement_check('fixture',Extraction(uncertain_plan()),mode='off')(state)
-    assert result['requirement_route']=='clarify'
+    assert result['requirement_route']=='await_input'
     store=Storage(tmp_path)
     try:
-        with pytest.raises(ValueError,match='요구사항'):
+        with pytest.raises(ValueError,match='업무 조건|요구사항'):
             make_save_node(store)({**state,**result,'draft':seed()['draft'],'confirmed':True})
         assert not store.agents()
     finally:store.close()

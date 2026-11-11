@@ -7,10 +7,10 @@ from contracts.models import AgentDraft
 
 
 def clarification_pause(state, stage, questions, *, detail, preserve_draft=False):
-    texts=list(dict.fromkeys(q.strip() for q in questions if q.strip()))[:3]
+    texts=list(dict.fromkeys(q.strip() for q in questions if q.strip()))[:2]
     if not texts:
         raise ValueError('사용자에게 확인할 질문이 비어 있습니다.')
-    source='requirements' if stage=='requirements' else 'reconciliation'
+    source='reconciliation'
     identity=json.dumps([state.get('session_id'),[m for m in state.get('messages',[]) if m['role']=='user'],
                         state.get('resources',[]),stage,texts],
                         ensure_ascii=False,sort_keys=True)

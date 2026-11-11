@@ -1,0 +1,16 @@
+{
+  "case_id": "X06",
+  "case_sha256": "f3a2c5fb18a40103a6c0425cd372b0a39a998510574de722cdce1a91f471330d",
+  "source_run": "docs/qwen-local-public9b-after.json",
+  "observed_failure": "native requirement TimeoutError, elapsed181.2883 seconds, configured180",
+  "server_log": "C:\\Users\\munkyu\\AppData\\Local\\Ollama\\server.log",
+  "server_log_snapshot_bytes_sha256": "ec81f928fcf1ef8ee62c9f7be07e4bedf91f7b8a250b6ef169a8618862a1191f",
+  "server_log_excerpt": [
+    "[GIN] 2026/11/11 - 00:20:46 | 500 |     3m0s |       127.0.0.1 | POST     \"/api/chat\"",
+    "srv          stop: cancel task, id_task = 691",
+    "slot      release: id  0 | task 691 | stop processing: n_tokens = 6272, truncated = 0",
+    "srv  update_slots: all slots are idle"
+  ],
+  "interpretation": "Server generated tokens before request cancellation and then reported idle. No completed raw model response was recovered; no missing usage or response content has been imputed.",
+  "followup": "Only previously unexecuted X07 was run in a separate shard; X06 was not retried."
+}

@@ -1,0 +1,874 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="51" skipped="0" tests="92" time="2.765" timestamp="2026-11-10T23:07:30.235952+09:00" hostname="DESKTOP-DCSUQO3"><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_deduplicate_without_retention_does_not_confirm_model_default[first]" time="0.014"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">guessed = 'first'
+
+    @pytest.mark.parametrize('guessed',['first','last'])
+    def test_c05_deduplicate_without_retention_does_not_confirm_model_default(guessed):
+        current=state('연결한 표에서 중복을 제거하고 JSON으로 저장해줘. 빈 값은 오류로 처리해.')
+        raw=proposal(current,{'duplicate.field':None,'duplicate.policy':guessed,'missing.policy':'error','output.format':'json'},['deduplicate'])
+        result=checked(current,raw)
+&gt;       assert result['slots']['duplicate.policy']['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:15: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_deduplicate_without_retention_does_not_confirm_model_default[last]" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">guessed = 'last'
+
+    @pytest.mark.parametrize('guessed',['first','last'])
+    def test_c05_deduplicate_without_retention_does_not_confirm_model_default(guessed):
+        current=state('연결한 표에서 중복을 제거하고 JSON으로 저장해줘. 빈 값은 오류로 처리해.')
+        raw=proposal(current,{'duplicate.field':None,'duplicate.policy':guessed,'missing.policy':'error','output.format':'json'},['deduplicate'])
+        result=checked(current,raw)
+&gt;       assert result['slots']['duplicate.policy']['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:15: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c05_unknown_retention_remains_unknown_after_restart_then_answer_replaces_it" time="0.007"><failure message="AssertionError: assert 'ready' == 'clarify'&#10;  &#10;  - clarify&#10;  + ready">def test_c05_unknown_retention_remains_unknown_after_restart_then_answer_replaces_it():
+        current=state('customer_id 중복을 제거해서 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['customer_id']}]
+        raw=proposal(current,{'duplicate.field':'customer_id','duplicate.policy':'first','output.format':'json'},['deduplicate'])
+        first=checked(current,raw)
+&gt;       assert first['decision']=='clarify'
+E       AssertionError: assert 'ready' == 'clarify'
+E         
+E         - clarify
+E         + ready
+
+tests\design\test_qwen_live_failures.py:24: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c01_validated_request_timezone_can_ground_explicit_schedule" time="0.001"><failure message="ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.">def test_c01_validated_request_timezone_can_ground_explicit_schedule():
+        current=state('매일 오전 9시에 매출 보고서를 이메일로 보내줘.')
+        current['user_timezone']='Asia/Seoul'
+&gt;       result=grounded_schedule(current)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\design\test_qwen_live_failures.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+state = {'session_id': '1ba974ac-37c2-4dbc-8d9e-96d643f0338e', 'messages': [{'role': 'user', 'content': '매일 오전 9시에 매출 보고서를 이메일로 보내줘.'}], 'resources': [], 'draft': None, ...}
+
+    def grounded_schedule(state):
+        from contracts.models import ScheduleSpec
+        from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+        from workflow_engine.scheduling.recurrence import schedule_errors
+        written = explicit_policies(state, source_catalog(state)[0])
+        slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
+                 if key.startswith('schedule.') and item.get('status') == 'specified'}
+        spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
+                    hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
+                    monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
+        if spec['frequency'] == 'hourly':spec['hour'] = None
+        if spec['frequency'] != 'weekly':spec['weekday'] = None
+        if spec['frequency'] != 'monthly':spec.update(monthday=None, month_end=False)
+        elif spec['month_end']:spec['monthday'] = None
+&gt;       if schedule_errors(spec):raise ValueError('예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.')
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.
+
+agent_builder\design\requirement_ledger.py:89: ValueError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_schedule_never_guesses_invalid_request_timezone[None]" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_schedule_never_guesses_invalid_request_timezone[not-a-zone]" time="0.001" /><testcase classname="tests.design.test_qwen_live_failures" name="test_explicit_schedule_timezone_wins_over_browser_timezone" time="0.009" /><testcase classname="tests.design.test_qwen_live_failures" name="test_c02_resource_identifier_question_uses_resource_connection_ui[\ubd84\uc11d\ud560 \uc790\ub8cc ID\ub97c \uc54c\ub824\uc8fc\uc138\uc694.]" time="0.001"><failure message="AssertionError: assert 'ID' not in '분석할 자료 ID를 알려주세요.'&#10;  &#10;  'ID' is contained here:&#10;    분석할 자료 ID를 알려주세요.&#10;  ?        ++">question = '분석할 자료 ID를 알려주세요.'
+
+    @pytest.mark.parametrize('question',['분석할 자료 ID를 알려주세요.','사용할 파일 ID는 무엇인가요?'])
+    def test_c02_resource_identifier_question_uses_resource_connection_ui(question):
+        result=_question_text(question)
+&gt;       assert 'ID' not in result
+E       AssertionError: assert 'ID' not in '분석할 자료 ID를 알려주세요.'
+E         
+E         'ID' is contained here:
+E           분석할 자료 ID를 알려주세요.
+E         ?        ++
+
+tests\design\test_qwen_live_failures.py:58: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c02_resource_identifier_question_uses_resource_connection_ui[\uc0ac\uc6a9\ud560 \ud30c\uc77c ID\ub294 \ubb34\uc5c7\uc778\uac00\uc694?]" time="0.001"><failure message="AssertionError: assert 'ID' not in '사용할 파일 ID는 무엇인가요?'&#10;  &#10;  'ID' is contained here:&#10;    사용할 파일 ID는 무엇인가요?&#10;  ?        ++">question = '사용할 파일 ID는 무엇인가요?'
+
+    @pytest.mark.parametrize('question',['분석할 자료 ID를 알려주세요.','사용할 파일 ID는 무엇인가요?'])
+    def test_c02_resource_identifier_question_uses_resource_connection_ui(question):
+        result=_question_text(question)
+&gt;       assert 'ID' not in result
+E       AssertionError: assert 'ID' not in '사용할 파일 ID는 무엇인가요?'
+E         
+E         'ID' is contained here:
+E           사용할 파일 ID는 무엇인가요?
+E         ?        ++
+
+tests\design\test_qwen_live_failures.py:58: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_business_column_id_is_not_a_resource_identifier" time="0.000" /><testcase classname="tests.design.test_qwen_live_failures" name="test_c07_time_parts_share_one_question_leaving_room_for_weekday" time="0.007"><failure message="AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']&#10;  &#10;  At index 0 diff: 'schedule.minute' != 'schedule.hour'&#10;  Use -v to get more diff">def test_c07_time_parts_share_one_question_leaving_room_for_weekday():
+        current=state('한국 시간으로 매주 표를 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['amount']}]
+        raw=proposal(current,{'schedule.frequency':'weekly','schedule.timezone':'Asia/Seoul','output.format':'json'},['schedule'])
+        result=checked(current,raw)
+        assert {'schedule.hour','schedule.minute','schedule.weekday'}&lt;=set(result['unresolved'])
+&gt;       assert [q['key'] for q in result['questions']]==['schedule.hour','schedule.weekday']
+E       AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']
+E         
+E         At index 0 diff: 'schedule.minute' != 'schedule.hour'
+E         Use -v to get more diff
+
+tests\design\test_qwen_live_failures.py:72: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c08_unwritten_time_is_not_a_confirmed_model_default[schedule.minute-0]" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">key = 'schedule.minute', value = '0'
+
+    @pytest.mark.parametrize('key,value',[('schedule.minute','0'),('schedule.hour','9')])
+    def test_c08_unwritten_time_is_not_a_confirmed_model_default(key,value):
+        current=state('한국 시간으로 매일 표를 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['amount']}]
+        raw=proposal(current,{'schedule.frequency':'daily','schedule.timezone':'Asia/Seoul',key:value,'output.format':'json'},['schedule'])
+        result=checked(current,raw)
+&gt;       assert result['slots'][key]['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:82: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_live_failures" name="test_c08_unwritten_time_is_not_a_confirmed_model_default[schedule.hour-9]" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">key = 'schedule.hour', value = '9'
+
+    @pytest.mark.parametrize('key,value',[('schedule.minute','0'),('schedule.hour','9')])
+    def test_c08_unwritten_time_is_not_a_confirmed_model_default(key,value):
+        current=state('한국 시간으로 매일 표를 JSON으로 저장해줘.')
+        current['resources']=[{'id':'table','kind':'table','columns':['amount']}]
+        raw=proposal(current,{'schedule.frequency':'daily','schedule.timezone':'Asia/Seoul',key:value,'output.format':'json'},['schedule'])
+        result=checked(current,raw)
+&gt;       assert result['slots'][key]['status']=='missing'
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\design\test_qwen_live_failures.py:82: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_legacy_duplicate_retention_guess_is_revalidated_without_new_proposal[first]" time="0.005"><failure message="AssertionError: assert 'ready' == 'clarify'&#10;  &#10;  - clarify&#10;  + ready">guess = 'first'
+
+    @pytest.mark.parametrize("guess", ["first", "last"])
+    def test_legacy_duplicate_retention_guess_is_revalidated_without_new_proposal(guess):
+        current = table_state("customer_id 중복을 제거해서 JSON으로 저장해줘.")
+        current["condition_ledger"] = legacy_checkpoint(current, {
+            "duplicate.field": "customer_id", "duplicate.policy": guess, "output.format": "json",
+        }, ["deduplicate"])
+        result = checked(current, proposal(current, {}, ["deduplicate"]))
+&gt;       assert result["decision"] == "clarify"
+E       AssertionError: assert 'ready' == 'clarify'
+E         
+E         - clarify
+E         + ready
+
+tests\conditions\test_qwen_public_condition_failures.py:53: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_legacy_duplicate_retention_guess_is_revalidated_without_new_proposal[last]" time="0.001"><failure message="AssertionError: assert 'ready' == 'clarify'&#10;  &#10;  - clarify&#10;  + ready">guess = 'last'
+
+    @pytest.mark.parametrize("guess", ["first", "last"])
+    def test_legacy_duplicate_retention_guess_is_revalidated_without_new_proposal(guess):
+        current = table_state("customer_id 중복을 제거해서 JSON으로 저장해줘.")
+        current["condition_ledger"] = legacy_checkpoint(current, {
+            "duplicate.field": "customer_id", "duplicate.policy": guess, "output.format": "json",
+        }, ["deduplicate"])
+        result = checked(current, proposal(current, {}, ["deduplicate"]))
+&gt;       assert result["decision"] == "clarify"
+E       AssertionError: assert 'ready' == 'clarify'
+E         
+E         - clarify
+E         + ready
+
+tests\conditions\test_qwen_public_condition_failures.py:53: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_actual_retention_answer_survives_another_checkpoint_validation[\uccab \ud589\ub9cc \ub0a8\uae40-first]" time="0.002" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_actual_retention_answer_survives_another_checkpoint_validation[\ub9c8\uc9c0\ub9c9 \ud589-last]" time="0.002" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_short_retention_words_do_not_answer_an_unrelated_question" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">def test_short_retention_words_do_not_answer_an_unrelated_question():
+        current = table_state("customer_id 중복을 제거해줘.")
+        first = checked(current, proposal(current, {"duplicate.field": "customer_id",
+                                                   "duplicate.policy": None}, ["deduplicate"]))
+        unrelated = {"id": "a" * 24, "key": "output.format", "text": "출력 형식은 무엇인가요?",
+                     "options": ["CSV", "JSON"]}
+        first["questions"] = [unrelated]
+        restored = answer_state(current, first, "마지막 행", "output.format")
+        result = checked(restored, proposal(restored, {"duplicate.policy": "last"}, ["deduplicate"]))
+&gt;       assert result["slots"]["duplicate.policy"]["status"] == "missing"
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\conditions\test_qwen_public_condition_failures.py:84: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_empty_value_error_does_not_ground_duplicate_error" time="0.001"><failure message="AssertionError: assert 'specified' == 'missing'&#10;  &#10;  - missing&#10;  + specified">def test_empty_value_error_does_not_ground_duplicate_error():
+        current = table_state("customer_id 중복을 제거해줘. 빈 값은 오류로 처리해. JSON으로 저장해.")
+        result = checked(current, proposal(current, {"duplicate.field": "customer_id",
+            "duplicate.policy": "error", "missing.policy": "error", "output.format": "json"}, ["deduplicate"]))
+        assert result["slots"]["missing.policy"]["value"] == "error"
+&gt;       assert result["slots"]["duplicate.policy"]["status"] == "missing"
+E       AssertionError: assert 'specified' == 'missing'
+E         
+E         - missing
+E         + specified
+
+tests\conditions\test_qwen_public_condition_failures.py:92: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_explicit_duplicate_and_empty_value_error_scopes_are_preserved" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_legacy_unwritten_time_is_revalidated_without_new_proposal" time="0.001"><failure message="AssertionError: assert 'ready' == 'clarify'&#10;  &#10;  - clarify&#10;  + ready">def test_legacy_unwritten_time_is_revalidated_without_new_proposal():
+        current = table_state("한국 시간으로 매일 표를 JSON으로 저장해줘.")
+        current["condition_ledger"] = legacy_checkpoint(current, {
+            "schedule.frequency": "daily", "schedule.hour": "9", "schedule.minute": "0",
+            "schedule.timezone": "Asia/Seoul", "output.format": "json",
+        }, ["schedule"])
+        result = checked(current, proposal(current, {}, ["schedule"]))
+&gt;       assert result["decision"] == "clarify"
+E       AssertionError: assert 'ready' == 'clarify'
+E         
+E         - clarify
+E         + ready
+
+tests\conditions\test_qwen_public_condition_failures.py:111: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction[customer_id \uc911\ubcf5\uc744 \uc81c\uac70\ud574\uc11c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-values0-operations0-duplicate.policy]" time="0.001"><failure message="assert False&#10; +  where False = any(&lt;generator object test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001FAC47BB370&gt;)">text = 'customer_id 중복을 제거해서 JSON으로 저장해줘.'
+values = {'duplicate.field': 'customer_id', 'duplicate.policy': 'first', 'output.format': 'json'}
+operations = ['deduplicate'], key = 'duplicate.policy'
+
+    @pytest.mark.parametrize("text,values,operations,key", [
+        ("customer_id 중복을 제거해서 JSON으로 저장해줘.",
+         {"duplicate.field": "customer_id", "duplicate.policy": "first", "output.format": "json"},
+         ["deduplicate"], "duplicate.policy"),
+        ("한국 시간으로 매일 표를 JSON으로 저장해줘.",
+         {"schedule.frequency": "daily", "schedule.hour": "9", "schedule.minute": "0",
+          "schedule.timezone": "Asia/Seoul", "output.format": "json"}, ["schedule"], "schedule.hour"),
+    ])
+    def test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction(text, values, operations, key):
+        current = table_state(text)
+        current.update(condition_ledger=legacy_checkpoint(current, values, operations), condition_enforced=True)
+&gt;       assert any(key in issue for issue in literal_condition_issues(current))
+E       assert False
+E        +  where False = any(&lt;generator object test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001FAC47BB370&gt;)
+
+tests\conditions\test_qwen_public_condition_failures.py:126: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction[\ud55c\uad6d \uc2dc\uac04\uc73c\ub85c \ub9e4\uc77c \ud45c\ub97c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-values1-operations1-schedule.hour]" time="0.001"><failure message="assert False&#10; +  where False = any(&lt;generator object test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001FAC47FAB50&gt;)">text = '한국 시간으로 매일 표를 JSON으로 저장해줘.'
+values = {'schedule.frequency': 'daily', 'schedule.hour': '9', 'schedule.minute': '0', 'schedule.timezone': 'Asia/Seoul', ...}
+operations = ['schedule'], key = 'schedule.hour'
+
+    @pytest.mark.parametrize("text,values,operations,key", [
+        ("customer_id 중복을 제거해서 JSON으로 저장해줘.",
+         {"duplicate.field": "customer_id", "duplicate.policy": "first", "output.format": "json"},
+         ["deduplicate"], "duplicate.policy"),
+        ("한국 시간으로 매일 표를 JSON으로 저장해줘.",
+         {"schedule.frequency": "daily", "schedule.hour": "9", "schedule.minute": "0",
+          "schedule.timezone": "Asia/Seoul", "output.format": "json"}, ["schedule"], "schedule.hour"),
+    ])
+    def test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction(text, values, operations, key):
+        current = table_state(text)
+        current.update(condition_ledger=legacy_checkpoint(current, values, operations), condition_enforced=True)
+&gt;       assert any(key in issue for issue in literal_condition_issues(current))
+E       assert False
+E        +  where False = any(&lt;generator object test_ready_checkpoint_audit_rejects_unwritten_values_even_before_new_extraction.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001FAC47FAB50&gt;)
+
+tests\conditions\test_qwen_public_condition_failures.py:126: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_explicit_clock_and_hourly_exact_hour_are_preserved[\ud55c\uad6d \uc2dc\uac04 \ub9e4\uc77c \uc624\uc804 9\uc2dc\uc5d0 \ud45c\ub97c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-values0]" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_explicit_clock_and_hourly_exact_hour_are_preserved[\ud55c\uad6d \uc2dc\uac04 \ub9e4\uc2dc\uac04 \uc815\uac01\uc5d0 \ud45c\ub97c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-values1]" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_hourly_minute_answer_is_scoped_to_actual_pending_question[\uc815\uac01-0]" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_hourly_minute_answer_is_scoped_to_actual_pending_question[15\ubd84-15]" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_ambiguous_hour_does_not_become_confirmed_from_a_model_value" time="0.001"><failure message="AssertionError: assert 'ready' == 'clarify'&#10;  &#10;  - clarify&#10;  + ready">def test_ambiguous_hour_does_not_become_confirmed_from_a_model_value():
+        current = table_state("한국 시간 매일 9시에 표를 JSON으로 저장해줘.")
+        result = checked(current, proposal(current, {"schedule.frequency": "daily", "schedule.hour": "9",
+            "schedule.minute": "0", "schedule.timezone": "Asia/Seoul", "output.format": "json"}, ["schedule"]))
+&gt;       assert result["decision"] == "clarify"
+E       AssertionError: assert 'ready' == 'clarify'
+E         
+E         - clarify
+E         + ready
+
+tests\conditions\test_qwen_public_condition_failures.py:157: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_grouped_time_question_preserves_slots_and_space_for_weekday[time_keys0]" time="0.001"><failure message="AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']&#10;  &#10;  At index 0 diff: 'schedule.minute' != 'schedule.hour'&#10;  Use -v to get more diff">time_keys = ('schedule.minute', 'schedule.hour')
+
+    @pytest.mark.parametrize("time_keys", [("schedule.minute", "schedule.hour"), ("schedule.hour", "schedule.minute")])
+    def test_grouped_time_question_preserves_slots_and_space_for_weekday(time_keys):
+        current = table_state("한국 시간 매주 표를 JSON으로 저장해줘.")
+        values = {"schedule.frequency": "weekly", "schedule.timezone": "Asia/Seoul", "output.format": "json"}
+        values.update({key: None for key in time_keys})
+        result = checked(current, proposal(current, values, ["schedule"]))
+        assert {"schedule.hour", "schedule.minute", "schedule.weekday"} &lt;= set(result["unresolved"])
+&gt;       assert [q["key"] for q in result["questions"]] == ["schedule.hour", "schedule.weekday"]
+E       AssertionError: assert ['schedule.mi...chedule.hour'] == ['schedule.ho...dule.weekday']
+E         
+E         At index 0 diff: 'schedule.minute' != 'schedule.hour'
+E         Use -v to get more diff
+
+tests\conditions\test_qwen_public_condition_failures.py:168: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_grouped_time_question_preserves_slots_and_space_for_weekday[time_keys1]" time="0.001"><failure message="AssertionError: assert ['schedule.ho...edule.minute'] == ['schedule.ho...dule.weekday']&#10;  &#10;  At index 1 diff: 'schedule.minute' != 'schedule.weekday'&#10;  Use -v to get more diff">time_keys = ('schedule.hour', 'schedule.minute')
+
+    @pytest.mark.parametrize("time_keys", [("schedule.minute", "schedule.hour"), ("schedule.hour", "schedule.minute")])
+    def test_grouped_time_question_preserves_slots_and_space_for_weekday(time_keys):
+        current = table_state("한국 시간 매주 표를 JSON으로 저장해줘.")
+        values = {"schedule.frequency": "weekly", "schedule.timezone": "Asia/Seoul", "output.format": "json"}
+        values.update({key: None for key in time_keys})
+        result = checked(current, proposal(current, values, ["schedule"]))
+        assert {"schedule.hour", "schedule.minute", "schedule.weekday"} &lt;= set(result["unresolved"])
+&gt;       assert [q["key"] for q in result["questions"]] == ["schedule.hour", "schedule.weekday"]
+E       AssertionError: assert ['schedule.ho...edule.minute'] == ['schedule.ho...dule.weekday']
+E         
+E         At index 1 diff: 'schedule.minute' != 'schedule.weekday'
+E         Use -v to get more diff
+
+tests\conditions\test_qwen_public_condition_failures.py:168: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_duplicate_only_conditions_do_not_create_a_filter_from_operation_label[customer_id-\uccab-first]" time="0.002"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">column = 'customer_id', word = '첫', policy = 'first'
+
+    @pytest.mark.parametrize("column,word,policy", [("customer_id", "첫", "first"), ("거래ID", "마지막", "last")])
+    def test_duplicate_only_conditions_do_not_create_a_filter_from_operation_label(column, word, policy):
+        current = table_state(f"연결한 표에서 {column}가 중복이면 {word} 행만 남겨 JSON으로 저장해줘. 빈 값은 오류.",
+                              columns=(column, "amount"))
+        raw = proposal(current, {"duplicate.field": column, "duplicate.policy": policy,
+                                "missing.policy": "error", "output.format": "json"}, ["filter"])
+        result = checked(current, raw)
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:179: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_duplicate_only_conditions_do_not_create_a_filter_from_operation_label[\uac70\ub798ID-\ub9c8\uc9c0\ub9c9-last]" time="0.007"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">column = '거래ID', word = '마지막', policy = 'last'
+
+    @pytest.mark.parametrize("column,word,policy", [("customer_id", "첫", "first"), ("거래ID", "마지막", "last")])
+    def test_duplicate_only_conditions_do_not_create_a_filter_from_operation_label(column, word, policy):
+        current = table_state(f"연결한 표에서 {column}가 중복이면 {word} 행만 남겨 JSON으로 저장해줘. 빈 값은 오류.",
+                              columns=(column, "amount"))
+        raw = proposal(current, {"duplicate.field": column, "duplicate.policy": policy,
+                                "missing.policy": "error", "output.format": "json"}, ["filter"])
+        result = checked(current, raw)
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:179: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_unresolved_real_filter_is_not_removed_by_duplicate_only_model_conditions[filter_values0]" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_unresolved_real_filter_is_not_removed_by_duplicate_only_model_conditions[filter_values1]" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_existing_grounded_filter_survives_a_later_duplicate_only_answer" time="0.002" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_pure_schedule_does_not_promote_unrequested_model_policy_to_a_question[missing.policy]" time="0.001"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">policy = 'missing.policy'
+
+    @pytest.mark.parametrize("policy", ["missing.policy", "duplicate.policy"])
+    def test_pure_schedule_does_not_promote_unrequested_model_policy_to_a_question(policy):
+        current = table_state("한국 시간 매일 오전 9시에 표를 JSON으로 저장해줘.")
+        result = checked(current, proposal(current, {"schedule.frequency": "daily", "schedule.hour": "9",
+            "schedule.minute": "0", "schedule.timezone": "Asia/Seoul", "output.format": "json", policy: None}, ["schedule"]))
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:213: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_pure_schedule_does_not_promote_unrequested_model_policy_to_a_question[duplicate.policy]" time="0.001"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">policy = 'duplicate.policy'
+
+    @pytest.mark.parametrize("policy", ["missing.policy", "duplicate.policy"])
+    def test_pure_schedule_does_not_promote_unrequested_model_policy_to_a_question(policy):
+        current = table_state("한국 시간 매일 오전 9시에 표를 JSON으로 저장해줘.")
+        result = checked(current, proposal(current, {"schedule.frequency": "daily", "schedule.hour": "9",
+            "schedule.minute": "0", "schedule.timezone": "Asia/Seoul", "output.format": "json", policy: None}, ["schedule"]))
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:213: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer[False-daily-\ud55c\uad6d \uc2dc\uac04\uc73c\ub85c \ub9e4\uc77c \ud45c\ub97c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-missing.policy-schedule.hour-\ub9e4\uc77c \uc624\uc804 9\uc2dc \uc815\uac01\uc73c\ub85c \ud574\uc918.-initial_time0-answer_values0]" time="0.002"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">frequency = 'daily', user_request = '한국 시간으로 매일 표를 JSON으로 저장해줘.'
+policy = 'missing.policy', answer_key = 'schedule.hour'
+reply = '매일 오전 9시 정각으로 해줘.'
+initial_time = {'schedule.hour': None, 'schedule.minute': '0'}
+answer_values = {'schedule.hour': '9', 'schedule.minute': '0'}
+repeat_spurious_policy = False
+
+    @pytest.mark.parametrize("frequency,user_request,policy,answer_key,reply,initial_time,answer_values", [
+        ("daily", "한국 시간으로 매일 표를 JSON으로 저장해줘.", "missing.policy", "schedule.hour",
+         "매일 오전 9시 정각으로 해줘.", {"schedule.hour": None, "schedule.minute": "0"},
+         {"schedule.hour": "9", "schedule.minute": "0"}),
+        ("weekly", "한국 시간으로 매주 오전 9시에 표를 JSON으로 저장해줘.", "duplicate.policy", "schedule.weekday",
+         "매주 월요일로 해줘.", {"schedule.hour": "9", "schedule.minute": "0", "schedule.weekday": None},
+         {"schedule.hour": "},{", "schedule.minute": "},{", "schedule.weekday": "},{"}),
+    ])
+    @pytest.mark.parametrize("repeat_spurious_policy", [False, True])
+    def test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer(
+            frequency, user_request, policy, answer_key, reply, initial_time, answer_values, repeat_spurious_policy):
+        current = table_state(user_request)
+        values = {"schedule.frequency": frequency, "schedule.timezone": "Asia/Seoul",
+                  "output.format": "json", **initial_time, policy: None}
+        # Model the already-persisted baseline state, not a ledger produced by the repaired code.
+        previous = legacy_checkpoint(current, values, ["schedule"])
+        previous.update(decision="clarify", unresolved=[answer_key, policy], questions=[
+            {"id": "b" * 24, "key": answer_key, "text": "몇 시에 실행할까요?" if answer_key.endswith("hour")
+             else "매주 무슨 요일에 실행할까요?", "options": []},
+            {"id": "c" * 24, "key": policy, "text": "빈 값 또는 중복 정책을 알려주세요.", "options": []},
+        ])
+        restored = answer_state(current, previous, reply, answer_key)
+        updates = {**answer_values, **({policy: None} if repeat_spurious_policy else {})}
+        result = checked(restored, proposal(restored, updates, ["schedule"]))
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:242: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer[False-weekly-\ud55c\uad6d \uc2dc\uac04\uc73c\ub85c \ub9e4\uc8fc \uc624\uc804 9\uc2dc\uc5d0 \ud45c\ub97c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-duplicate.policy-schedule.weekday-\ub9e4\uc8fc \uc6d4\uc694\uc77c\ub85c \ud574\uc918.-initial_time1-answer_values1]" time="0.002"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">frequency = 'weekly', user_request = '한국 시간으로 매주 오전 9시에 표를 JSON으로 저장해줘.'
+policy = 'duplicate.policy', answer_key = 'schedule.weekday'
+reply = '매주 월요일로 해줘.'
+initial_time = {'schedule.hour': '9', 'schedule.minute': '0', 'schedule.weekday': None}
+answer_values = {'schedule.hour': '},{', 'schedule.minute': '},{', 'schedule.weekday': '},{'}
+repeat_spurious_policy = False
+
+    @pytest.mark.parametrize("frequency,user_request,policy,answer_key,reply,initial_time,answer_values", [
+        ("daily", "한국 시간으로 매일 표를 JSON으로 저장해줘.", "missing.policy", "schedule.hour",
+         "매일 오전 9시 정각으로 해줘.", {"schedule.hour": None, "schedule.minute": "0"},
+         {"schedule.hour": "9", "schedule.minute": "0"}),
+        ("weekly", "한국 시간으로 매주 오전 9시에 표를 JSON으로 저장해줘.", "duplicate.policy", "schedule.weekday",
+         "매주 월요일로 해줘.", {"schedule.hour": "9", "schedule.minute": "0", "schedule.weekday": None},
+         {"schedule.hour": "},{", "schedule.minute": "},{", "schedule.weekday": "},{"}),
+    ])
+    @pytest.mark.parametrize("repeat_spurious_policy", [False, True])
+    def test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer(
+            frequency, user_request, policy, answer_key, reply, initial_time, answer_values, repeat_spurious_policy):
+        current = table_state(user_request)
+        values = {"schedule.frequency": frequency, "schedule.timezone": "Asia/Seoul",
+                  "output.format": "json", **initial_time, policy: None}
+        # Model the already-persisted baseline state, not a ledger produced by the repaired code.
+        previous = legacy_checkpoint(current, values, ["schedule"])
+        previous.update(decision="clarify", unresolved=[answer_key, policy], questions=[
+            {"id": "b" * 24, "key": answer_key, "text": "몇 시에 실행할까요?" if answer_key.endswith("hour")
+             else "매주 무슨 요일에 실행할까요?", "options": []},
+            {"id": "c" * 24, "key": policy, "text": "빈 값 또는 중복 정책을 알려주세요.", "options": []},
+        ])
+        restored = answer_state(current, previous, reply, answer_key)
+        updates = {**answer_values, **({policy: None} if repeat_spurious_policy else {})}
+        result = checked(restored, proposal(restored, updates, ["schedule"]))
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:242: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer[True-daily-\ud55c\uad6d \uc2dc\uac04\uc73c\ub85c \ub9e4\uc77c \ud45c\ub97c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-missing.policy-schedule.hour-\ub9e4\uc77c \uc624\uc804 9\uc2dc \uc815\uac01\uc73c\ub85c \ud574\uc918.-initial_time0-answer_values0]" time="0.002"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">frequency = 'daily', user_request = '한국 시간으로 매일 표를 JSON으로 저장해줘.'
+policy = 'missing.policy', answer_key = 'schedule.hour'
+reply = '매일 오전 9시 정각으로 해줘.'
+initial_time = {'schedule.hour': None, 'schedule.minute': '0'}
+answer_values = {'schedule.hour': '9', 'schedule.minute': '0'}
+repeat_spurious_policy = True
+
+    @pytest.mark.parametrize("frequency,user_request,policy,answer_key,reply,initial_time,answer_values", [
+        ("daily", "한국 시간으로 매일 표를 JSON으로 저장해줘.", "missing.policy", "schedule.hour",
+         "매일 오전 9시 정각으로 해줘.", {"schedule.hour": None, "schedule.minute": "0"},
+         {"schedule.hour": "9", "schedule.minute": "0"}),
+        ("weekly", "한국 시간으로 매주 오전 9시에 표를 JSON으로 저장해줘.", "duplicate.policy", "schedule.weekday",
+         "매주 월요일로 해줘.", {"schedule.hour": "9", "schedule.minute": "0", "schedule.weekday": None},
+         {"schedule.hour": "},{", "schedule.minute": "},{", "schedule.weekday": "},{"}),
+    ])
+    @pytest.mark.parametrize("repeat_spurious_policy", [False, True])
+    def test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer(
+            frequency, user_request, policy, answer_key, reply, initial_time, answer_values, repeat_spurious_policy):
+        current = table_state(user_request)
+        values = {"schedule.frequency": frequency, "schedule.timezone": "Asia/Seoul",
+                  "output.format": "json", **initial_time, policy: None}
+        # Model the already-persisted baseline state, not a ledger produced by the repaired code.
+        previous = legacy_checkpoint(current, values, ["schedule"])
+        previous.update(decision="clarify", unresolved=[answer_key, policy], questions=[
+            {"id": "b" * 24, "key": answer_key, "text": "몇 시에 실행할까요?" if answer_key.endswith("hour")
+             else "매주 무슨 요일에 실행할까요?", "options": []},
+            {"id": "c" * 24, "key": policy, "text": "빈 값 또는 중복 정책을 알려주세요.", "options": []},
+        ])
+        restored = answer_state(current, previous, reply, answer_key)
+        updates = {**answer_values, **({policy: None} if repeat_spurious_policy else {})}
+        result = checked(restored, proposal(restored, updates, ["schedule"]))
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:242: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer[True-weekly-\ud55c\uad6d \uc2dc\uac04\uc73c\ub85c \ub9e4\uc8fc \uc624\uc804 9\uc2dc\uc5d0 \ud45c\ub97c JSON\uc73c\ub85c \uc800\uc7a5\ud574\uc918.-duplicate.policy-schedule.weekday-\ub9e4\uc8fc \uc6d4\uc694\uc77c\ub85c \ud574\uc918.-initial_time1-answer_values1]" time="0.002"><failure message="AssertionError: assert 'clarify' == 'ready'&#10;  &#10;  - ready&#10;  + clarify">frequency = 'weekly', user_request = '한국 시간으로 매주 오전 9시에 표를 JSON으로 저장해줘.'
+policy = 'duplicate.policy', answer_key = 'schedule.weekday'
+reply = '매주 월요일로 해줘.'
+initial_time = {'schedule.hour': '9', 'schedule.minute': '0', 'schedule.weekday': None}
+answer_values = {'schedule.hour': '},{', 'schedule.minute': '},{', 'schedule.weekday': '},{'}
+repeat_spurious_policy = True
+
+    @pytest.mark.parametrize("frequency,user_request,policy,answer_key,reply,initial_time,answer_values", [
+        ("daily", "한국 시간으로 매일 표를 JSON으로 저장해줘.", "missing.policy", "schedule.hour",
+         "매일 오전 9시 정각으로 해줘.", {"schedule.hour": None, "schedule.minute": "0"},
+         {"schedule.hour": "9", "schedule.minute": "0"}),
+        ("weekly", "한국 시간으로 매주 오전 9시에 표를 JSON으로 저장해줘.", "duplicate.policy", "schedule.weekday",
+         "매주 월요일로 해줘.", {"schedule.hour": "9", "schedule.minute": "0", "schedule.weekday": None},
+         {"schedule.hour": "},{", "schedule.minute": "},{", "schedule.weekday": "},{"}),
+    ])
+    @pytest.mark.parametrize("repeat_spurious_policy", [False, True])
+    def test_m04_m05_legacy_unrequested_policy_does_not_block_actual_time_answer(
+            frequency, user_request, policy, answer_key, reply, initial_time, answer_values, repeat_spurious_policy):
+        current = table_state(user_request)
+        values = {"schedule.frequency": frequency, "schedule.timezone": "Asia/Seoul",
+                  "output.format": "json", **initial_time, policy: None}
+        # Model the already-persisted baseline state, not a ledger produced by the repaired code.
+        previous = legacy_checkpoint(current, values, ["schedule"])
+        previous.update(decision="clarify", unresolved=[answer_key, policy], questions=[
+            {"id": "b" * 24, "key": answer_key, "text": "몇 시에 실행할까요?" if answer_key.endswith("hour")
+             else "매주 무슨 요일에 실행할까요?", "options": []},
+            {"id": "c" * 24, "key": policy, "text": "빈 값 또는 중복 정책을 알려주세요.", "options": []},
+        ])
+        restored = answer_state(current, previous, reply, answer_key)
+        updates = {**answer_values, **({policy: None} if repeat_spurious_policy else {})}
+        result = checked(restored, proposal(restored, updates, ["schedule"]))
+&gt;       assert result["decision"] == "ready"
+E       AssertionError: assert 'clarify' == 'ready'
+E         
+E         - ready
+E         + clarify
+
+tests\conditions\test_qwen_public_condition_failures.py:242: AssertionError</failure></testcase><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_user_requested_unknown_policy_is_not_discarded_as_outside_schedule_scope[missing.policy-\ube48 \uac12 \ucc98\ub9ac\ub294 \uc544\uc9c1 \ubbf8\uc815\uc774\uc57c.]" time="0.002" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_user_requested_unknown_policy_is_not_discarded_as_outside_schedule_scope[duplicate.policy-\uc911\ubcf5 \ucc98\ub9ac\ub294 \uc544\uc9c1 \ubbf8\uc815\uc774\uc57c.]" time="0.002" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_explicit_policies_survive_pure_schedule_scope_filtering" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_real_filter_missing_data_policy_remains_required_in_a_scheduled_workflow" time="0.001" /><testcase classname="tests.conditions.test_qwen_public_condition_failures" name="test_real_deduplication_policy_remains_required_in_a_scheduled_workflow" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_c01_request_timezone_grounds_schedule_without_changing_wall_clock[UTC]" time="0.002"><failure message="ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.">zone = 'UTC'
+
+    @pytest.mark.parametrize('zone', ['UTC', 'America/New_York'])
+    def test_c01_request_timezone_grounds_schedule_without_changing_wall_clock(zone):
+        state = request_state('매일 오전 9시에 보고서를 만들어줘.')
+        state['user_timezone'] = zone
+&gt;       schedule = grounded_schedule(state)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+state = {'session_id': 'fb52a381-e1ea-474a-855d-a3f3f6421d0c', 'messages': [{'role': 'user', 'content': '매일 오전 9시에 보고서를 만들어줘.'}], 'resources': [], 'draft': None, ...}
+
+    def grounded_schedule(state):
+        from contracts.models import ScheduleSpec
+        from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+        from workflow_engine.scheduling.recurrence import schedule_errors
+        written = explicit_policies(state, source_catalog(state)[0])
+        slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
+                 if key.startswith('schedule.') and item.get('status') == 'specified'}
+        spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
+                    hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
+                    monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
+        if spec['frequency'] == 'hourly':spec['hour'] = None
+        if spec['frequency'] != 'weekly':spec['weekday'] = None
+        if spec['frequency'] != 'monthly':spec.update(monthday=None, month_end=False)
+        elif spec['month_end']:spec['monthday'] = None
+&gt;       if schedule_errors(spec):raise ValueError('예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.')
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.
+
+agent_builder\design\requirement_ledger.py:89: ValueError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_c01_request_timezone_grounds_schedule_without_changing_wall_clock[America/New_York]" time="0.001"><failure message="ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.">zone = 'America/New_York'
+
+    @pytest.mark.parametrize('zone', ['UTC', 'America/New_York'])
+    def test_c01_request_timezone_grounds_schedule_without_changing_wall_clock(zone):
+        state = request_state('매일 오전 9시에 보고서를 만들어줘.')
+        state['user_timezone'] = zone
+&gt;       schedule = grounded_schedule(state)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+state = {'session_id': 'f59b8e77-a117-4bee-a9f8-0f93e820d651', 'messages': [{'role': 'user', 'content': '매일 오전 9시에 보고서를 만들어줘.'}], 'resources': [], 'draft': None, ...}
+
+    def grounded_schedule(state):
+        from contracts.models import ScheduleSpec
+        from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+        from workflow_engine.scheduling.recurrence import schedule_errors
+        written = explicit_policies(state, source_catalog(state)[0])
+        slots = {key.split('.', 1)[1]:item['value'] for key,item in written.items()
+                 if key.startswith('schedule.') and item.get('status') == 'specified'}
+        spec = dict(frequency=slots.get('frequency'), timezone=slots.get('timezone'),
+                    hour=slots.get('hour'), minute=slots.get('minute'), weekday=slots.get('weekday'),
+                    monthday=slots.get('monthday'), month_end=slots.get('month_end', False))
+        if spec['frequency'] == 'hourly':spec['hour'] = None
+        if spec['frequency'] != 'weekly':spec['weekday'] = None
+        if spec['frequency'] != 'monthly':spec.update(monthday=None, month_end=False)
+        elif spec['month_end']:spec['monthday'] = None
+&gt;       if schedule_errors(spec):raise ValueError('예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.')
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: 예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.
+
+agent_builder\design\requirement_ledger.py:89: ValueError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_c01_unknown_request_timezone_does_not_use_process_default[None]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_c01_unknown_request_timezone_does_not_use_process_default[]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_c01_unknown_request_timezone_does_not_use_process_default[invalid-zone]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_c01_known_timezone_does_not_supply_an_unwritten_execution_time" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r07_invalid_rename_formula_can_repair_to_column_rename" time="0.017" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r07_repeated_invalid_rename_formula_does_not_become_ready" time="0.011" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_literal_scalar_requirement_matches_registered_operation[(12 + 8) * 3]" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan&#10;tasks.0.spec&#10;  Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid">formula = '(12 + 8) * 3'
+
+    @pytest.mark.parametrize('formula', ['(12 + 8) * 3', '(7 - 2) / 5', '2.5 * -4'])
+    def test_r10_literal_scalar_requirement_matches_registered_operation(formula):
+&gt;       state = scalar_state(formula)
+                ^^^^^^^^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\design\test_qwen_public_requirement_failures.py:107: in scalar_state
+    ledger = extract_plan(raw_plan, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_builder\design\requirement_ledger.py:252: in extract_plan
+    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw = {'tasks': [{'source_message': 0, 'description': '요청 업무', 'spec': {'kind': 'scalar_calculate', 'formula': '(12 + 8) * 3', 'variables': {}}, 'id': 'r1', ...}], 'unresolved': []}
+state = {'session_id': 'd3175940-7b83-4388-805f-f87a75fd2b28', 'messages': [{'role': 'user', 'content': '(12 + 8) * 3을 계산해서 결과를 보여줘.'}], 'resources': [], 'draft': None, ...}
+
+    def validate_plan(raw, state):
+&gt;       plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan
+E       tasks.0.spec
+E         Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid
+
+agent_builder\design\requirement_ledger.py:94: ValidationError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_literal_scalar_requirement_matches_registered_operation[(7 - 2) / 5]" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan&#10;tasks.0.spec&#10;  Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) / 5', 'variables': {}}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid">formula = '(7 - 2) / 5'
+
+    @pytest.mark.parametrize('formula', ['(12 + 8) * 3', '(7 - 2) / 5', '2.5 * -4'])
+    def test_r10_literal_scalar_requirement_matches_registered_operation(formula):
+&gt;       state = scalar_state(formula)
+                ^^^^^^^^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\design\test_qwen_public_requirement_failures.py:107: in scalar_state
+    ledger = extract_plan(raw_plan, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_builder\design\requirement_ledger.py:252: in extract_plan
+    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw = {'tasks': [{'source_message': 0, 'description': '요청 업무', 'spec': {'kind': 'scalar_calculate', 'formula': '(7 - 2) / 5', 'variables': {}}, 'id': 'r1', ...}], 'unresolved': []}
+state = {'session_id': 'f2afae06-dcfd-4627-bd25-7a76646f4ab8', 'messages': [{'role': 'user', 'content': '(7 - 2) / 5을 계산해서 결과를 보여줘.'}], 'resources': [], 'draft': None, ...}
+
+    def validate_plan(raw, state):
+&gt;       plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan
+E       tasks.0.spec
+E         Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) / 5', 'variables': {}}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid
+
+agent_builder\design\requirement_ledger.py:94: ValidationError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_literal_scalar_requirement_matches_registered_operation[2.5 * -4]" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan&#10;tasks.0.spec&#10;  Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat... * -4', 'variables': {}}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid">formula = '2.5 * -4'
+
+    @pytest.mark.parametrize('formula', ['(12 + 8) * 3', '(7 - 2) / 5', '2.5 * -4'])
+    def test_r10_literal_scalar_requirement_matches_registered_operation(formula):
+&gt;       state = scalar_state(formula)
+                ^^^^^^^^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\design\test_qwen_public_requirement_failures.py:107: in scalar_state
+    ledger = extract_plan(raw_plan, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_builder\design\requirement_ledger.py:252: in extract_plan
+    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw = {'tasks': [{'source_message': 0, 'description': '요청 업무', 'spec': {'kind': 'scalar_calculate', 'formula': '2.5 * -4', 'variables': {}}, 'id': 'r1', ...}], 'unresolved': []}
+state = {'session_id': 'd54be7c6-73fe-475e-aff9-8f4ecdd08be5', 'messages': [{'role': 'user', 'content': '2.5 * -4을 계산해서 결과를 보여줘.'}], 'resources': [], 'draft': None, ...}
+
+    def validate_plan(raw, state):
+&gt;       plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan
+E       tasks.0.spec
+E         Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat... * -4', 'variables': {}}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid
+
+agent_builder\design\requirement_ledger.py:94: ValidationError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_scalar_extraction_cannot_change_requested_arithmetic[(12 + 8) + 3]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_scalar_extraction_cannot_change_requested_arithmetic[12 + 8 * 3]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_scalar_extraction_cannot_change_requested_arithmetic[(12 + 8) * 4]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_scalar_extraction_cannot_invent_variable_assignments" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_table_column_calculation_is_not_a_scalar_requirement[\ud45c\uc758 qty * price\ub97c \uacc4\uc0b0\ud55c amount \uc5f4\uc744 \ub9cc\ub4e4\uc5b4\uc918.-qty * price-variables0]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_table_column_calculation_is_not_a_scalar_requirement[\ud45c\uc758 \uac01 \ud589\uc5d0 (12 + 8) * 3\uc744 \uacc4\uc0b0\ud55c result \uc5f4\uc744 \ub9cc\ub4e4\uc5b4\uc918.-(12 + 8) * 3-variables1]" time="0.001" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_coverage_rejects_valid_operation_with_wrong_arithmetic[(12 + 8) + 3]" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan&#10;tasks.0.spec&#10;  Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid">actual_formula = '(12 + 8) + 3'
+
+    @pytest.mark.parametrize('actual_formula', ['(12 + 8) + 3', '12 + 8 * 3'])
+    def test_r10_coverage_rejects_valid_operation_with_wrong_arithmetic(actual_formula):
+&gt;       state = scalar_state()
+                ^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:158: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\design\test_qwen_public_requirement_failures.py:107: in scalar_state
+    ledger = extract_plan(raw_plan, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_builder\design\requirement_ledger.py:252: in extract_plan
+    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw = {'tasks': [{'source_message': 0, 'description': '요청 업무', 'spec': {'kind': 'scalar_calculate', 'formula': '(12 + 8) * 3', 'variables': {}}, 'id': 'r1', ...}], 'unresolved': []}
+state = {'session_id': '3df5d3a3-550f-440c-b548-ad5fb296bf05', 'messages': [{'role': 'user', 'content': '(12 + 8) * 3을 계산해서 결과를 보여줘.'}], 'resources': [], 'draft': None, ...}
+
+    def validate_plan(raw, state):
+&gt;       plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan
+E       tasks.0.spec
+E         Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid
+
+agent_builder\design\requirement_ledger.py:94: ValidationError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_coverage_rejects_valid_operation_with_wrong_arithmetic[12 + 8 * 3]" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan&#10;tasks.0.spec&#10;  Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid">actual_formula = '12 + 8 * 3'
+
+    @pytest.mark.parametrize('actual_formula', ['(12 + 8) + 3', '12 + 8 * 3'])
+    def test_r10_coverage_rejects_valid_operation_with_wrong_arithmetic(actual_formula):
+&gt;       state = scalar_state()
+                ^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:158: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\design\test_qwen_public_requirement_failures.py:107: in scalar_state
+    ledger = extract_plan(raw_plan, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_builder\design\requirement_ledger.py:252: in extract_plan
+    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw = {'tasks': [{'source_message': 0, 'description': '요청 업무', 'spec': {'kind': 'scalar_calculate', 'formula': '(12 + 8) * 3', 'variables': {}}, 'id': 'r1', ...}], 'unresolved': []}
+state = {'session_id': '0499e3e4-33ee-4f7e-90e7-34ea32b34cc0', 'messages': [{'role': 'user', 'content': '(12 + 8) * 3을 계산해서 결과를 보여줘.'}], 'resources': [], 'draft': None, ...}
+
+    def validate_plan(raw, state):
+&gt;       plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan
+E       tasks.0.spec
+E         Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid
+
+agent_builder\design\requirement_ledger.py:94: ValidationError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_scalar_coverage_does_not_accept_a_table_compute_node" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan&#10;tasks.0.spec&#10;  Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid">def test_r10_scalar_coverage_does_not_accept_a_table_compute_node():
+&gt;       state = scalar_state()
+                ^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:167: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\design\test_qwen_public_requirement_failures.py:107: in scalar_state
+    ledger = extract_plan(raw_plan, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_builder\design\requirement_ledger.py:252: in extract_plan
+    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw = {'tasks': [{'source_message': 0, 'description': '요청 업무', 'spec': {'kind': 'scalar_calculate', 'formula': '(12 + 8) * 3', 'variables': {}}, 'id': 'r1', ...}], 'unresolved': []}
+state = {'session_id': 'db996c7b-1447-441e-87dc-7e5b06c87822', 'messages': [{'role': 'user', 'content': '(12 + 8) * 3을 계산해서 결과를 보여줘.'}], 'resources': [], 'draft': None, ...}
+
+    def validate_plan(raw, state):
+&gt;       plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan
+E       tasks.0.spec
+E         Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid
+
+agent_builder\design\requirement_ledger.py:94: ValidationError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_coverage_does_not_accept_additional_unused_scalar_values" time="0.001"><failure message="pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan&#10;tasks.0.spec&#10;  Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid">def test_r10_coverage_does_not_accept_additional_unused_scalar_values():
+&gt;       state = scalar_state()
+                ^^^^^^^^^^^^^^
+
+tests\design\test_qwen_public_requirement_failures.py:175: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\design\test_qwen_public_requirement_failures.py:107: in scalar_state
+    ledger = extract_plan(raw_plan, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_builder\design\requirement_ledger.py:252: in extract_plan
+    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw = {'tasks': [{'source_message': 0, 'description': '요청 업무', 'spec': {'kind': 'scalar_calculate', 'formula': '(12 + 8) * 3', 'variables': {}}, 'id': 'r1', ...}], 'unresolved': []}
+state = {'session_id': '1eb9f00f-69fd-43a8-a09a-856726ba1661', 'messages': [{'role': 'user', 'content': '(12 + 8) * 3을 계산해서 결과를 보여줘.'}], 'resources': [], 'draft': None, ...}
+
+    def validate_plan(raw, state):
+&gt;       plan=RequirementPlan.model_validate(raw).model_dump(mode='json')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for RequirementPlan
+E       tasks.0.spec
+E         Input tag 'scalar_calculate' found using 'kind' does not match any of the expected tags: 'read', 'extract_fields', 'receipt_items', 'compute', 'parse_dates', 'filter', 'sort', 'aggregate', 'join', 'export', 'receipt_workbook', 'policy', 'other', 'gmail_summary', 'document_analysis', 'human_review', 'rename', 'fill_missing', 'select_fields', 'gmail_scheduled_summary', 'schedule' [type=union_tag_invalid, input_value={'kind': 'scalar_calculat...) * 3', 'variables': {}}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.14/v/union_tag_invalid
+
+agent_builder\design\requirement_ledger.py:94: ValidationError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_current_valid_requirement_cache_skips_extraction" time="0.003" /><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_r10_previous_contract_cache_reextracts_wrong_table_requirement" time="0.004"><failure message="assert 0 == 1&#10; +  where 0 = len([])&#10; +    where [] = &lt;tests.design.test_qwen_public_requirement_failures.Responses object at 0x000001FAC47E7230&gt;.calls">def test_r10_previous_contract_cache_reextracts_wrong_table_requirement():
+        state = legacy_v5_scalar_as_table_state()
+        transport = Responses(extraction(dict(kind='scalar_calculate', formula='(12 + 8) * 3', variables={})))
+        result = make_requirement_check('fixture', transport, mode='enforce')(state)
+&gt;       assert len(transport.calls) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = &lt;tests.design.test_qwen_public_requirement_failures.Responses object at 0x000001FAC47E7230&gt;.calls
+
+tests\design\test_qwen_public_requirement_failures.py:213: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_public_requirement_failures" name="test_previous_contract_cache_cannot_constrain_generation_or_pass_coverage" time="0.004"><failure message="AssertionError: assert ([{'kind': 'c...result'}], []) == ([], [])&#10;  &#10;  At index 0 diff: [{'kind': 'compute', 'formula': '(12 + 8) * 3', 'output_column': 'result'}] != []&#10;  Use -v to get more diff">def test_previous_contract_cache_cannot_constrain_generation_or_pass_coverage():
+        state = legacy_v5_scalar_as_table_state()
+&gt;       assert generation_requirements(state) == ([], [])
+E       AssertionError: assert ([{'kind': 'c...result'}], []) == ([], [])
+E         
+E         At index 0 diff: [{'kind': 'compute', 'formula': '(12 + 8) * 3', 'output_column': 'result'}] != []
+E         Use -v to get more diff
+
+tests\design\test_qwen_public_requirement_failures.py:221: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_t02_raw_unread_is_rejected_even_when_the_model_claims_faithful" time="0.006"><failure message="AssertionError: assert {'tasks': [{'source': 'gmail', 'actions': ['read', 'summarize'], 'selection': {'order': 'newest_first', 'limit': None, 'limit_evidence': None, 'limit_source_message': None, ...}, 'schedule': None, ...}], 'unresolved': []} is None">def test_t02_raw_unread_is_rejected_even_when_the_model_claims_faithful():
+        current=request('Gmail에서 오늘 받은 메일을 요약해줘.')
+        transport=Extractor(deepcopy(T02_RAW),reviews=[{'faithful':True,'issues':[]}])
+        update=make_meaning_node('synthetic-test',transport=transport)(current)
+&gt;       assert update['request_meaning'] is None
+E       AssertionError: assert {'tasks': [{'source': 'gmail', 'actions': ['read', 'summarize'], 'selection': {'order': 'newest_first', 'limit': None, 'limit_evidence': None, 'limit_source_message': None, ...}, 'schedule': None, ...}], 'unresolved': []} is None
+
+tests\design\test_qwen_public_meaning_failures.py:48: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_t02_ungrounded_filter_is_invalid_before_model_review" time="0.001"><failure message="Failed: DID NOT RAISE ValueError">def test_t02_ungrounded_filter_is_invalid_before_model_review():
+&gt;       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\design\test_qwen_public_meaning_failures.py:55: Failed</failure></testcase><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_explicit_unread_condition_remains_compilable[\uc548 \uc77d\uc740]" time="0.004" /><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_explicit_unread_condition_remains_compilable[\uc77d\uc9c0 \uc54a\uc740]" time="0.004" /><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_explicit_unread_condition_remains_compilable[\ubbf8\uc77d\uc74c]" time="0.004" /><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_explicit_unread_condition_remains_compilable[unread]" time="0.004" /><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_followup_quantity_change_preserves_grounded_unread_and_original_day" time="0.007" /><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_cancelled_unread_condition_is_not_restored_from_an_earlier_user_turn" time="0.001"><failure message="Failed: DID NOT RAISE ValueError">def test_cancelled_unread_condition_is_not_restored_from_an_earlier_user_turn():
+        current=request('Gmail에서 오늘 안 읽은 메일을 요약해줘.')
+        current['messages'].append({'role':'user','content':'미읽음 필터는 빼고 읽음 여부와 관계없이 요약해줘.'})
+&gt;       with pytest.raises(ValueError):validate_meaning(deepcopy(T02_RAW),current)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\design\test_qwen_public_meaning_failures.py:83: Failed</failure></testcase><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_negated_unread_selection_does_not_ground_an_unread_filter" time="0.001"><failure message="Failed: DID NOT RAISE ValueError">def test_negated_unread_selection_does_not_ground_an_unread_filter():
+        current=request('Gmail에서 오늘 안 읽은 메일만 고르지는 말고 모든 메일을 요약해줘.')
+&gt;       with pytest.raises(ValueError):validate_meaning(deepcopy(T02_RAW),current)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\design\test_qwen_public_meaning_failures.py:91: Failed</failure></testcase><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_previously_reviewed_ungrounded_filter_cannot_compile_from_checkpoint" time="0.001"><failure message="AssertionError: assert {'tasks': [{'source': 'gmail', 'actions': ['read', 'summarize'], 'selection': {'order': 'newest_first', 'limit': None, 'limit_evidence': None, 'limit_source_message': None, ...}, 'schedule': None, ...}], 'unresolved': []} is None&#10; +  where {'tasks': [{'source': 'gmail', 'actions': ['read', 'summarize'], 'selection': {'order': 'newest_first', 'limit': None, 'limit_evidence': None, 'limit_source_message': None, ...}, 'schedule': None, ...}], 'unresolved': []} = sealed_meaning({'session_id': '6cee3669-5cdd-4c1a-8f17-af8e3e380411', 'messages': [{'role': 'user', 'content': 'Gmail에서 오늘 받은 메일을 요약해줘.'}], 'resources': [], 'draft': None, ...})">def test_previously_reviewed_ungrounded_filter_cannot_compile_from_checkpoint():
+        current=stale_reviewed_state()
+&gt;       assert sealed_meaning(current) is None
+E       AssertionError: assert {'tasks': [{'source': 'gmail', 'actions': ['read', 'summarize'], 'selection': {'order': 'newest_first', 'limit': None, 'limit_evidence': None, 'limit_source_message': None, ...}, 'schedule': None, ...}], 'unresolved': []} is None
+E        +  where {'tasks': [{'source': 'gmail', 'actions': ['read', 'summarize'], 'selection': {'order': 'newest_first', 'limit': None, 'limit_evidence': None, 'limit_source_message': None, ...}, 'schedule': None, ...}], 'unresolved': []} = sealed_meaning({'session_id': '6cee3669-5cdd-4c1a-8f17-af8e3e380411', 'messages': [{'role': 'user', 'content': 'Gmail에서 오늘 받은 메일을 요약해줘.'}], 'resources': [], 'draft': None, ...})
+
+tests\design\test_qwen_public_meaning_failures.py:109: AssertionError</failure></testcase><testcase classname="tests.design.test_qwen_public_meaning_failures" name="test_invalid_cached_filter_is_reinterpreted_without_aborting_worker" time="0.001"><failure message="AssertionError: assert ['unread'] == []&#10;  &#10;  Left contains one more item: 'unread'&#10;  Use -v to get more diff">def test_invalid_cached_filter_is_reinterpreted_without_aborting_worker():
+        current=stale_reviewed_state()
+        corrected=deepcopy(T02_RAW);corrected['tasks'][0]['selection']['filters']=[]
+        update=make_meaning_node('synthetic-test',transport=Extractor(corrected))(current)
+        restored={**current,**update}
+&gt;       assert restored['request_meaning']['tasks'][0]['selection']['filters']==[]
+E       AssertionError: assert ['unread'] == []
+E         
+E         Left contains one more item: 'unread'
+E         Use -v to get more diff
+
+tests\design\test_qwen_public_meaning_failures.py:119: AssertionError</failure></testcase><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_resource_identifier_sentence_points_to_existing_attachment_ui[\ubd84\uc11d\uc5d0 \uc0ac\uc6a9\ud560 \ubb38\uc11c\uc758 ID\ub97c \uc54c\ub824\uc8fc\uc138\uc694.]" time="0.002"><failure message="AssertionError: assert '자료 연결' in '분석에 사용할 문서의 ID를 알려주세요.'">question = '분석에 사용할 문서의 ID를 알려주세요.'
+
+    @pytest.mark.parametrize('question', [
+        '분석에 사용할 문서의 ID를 알려주세요.',
+        '사용할 file_id를 입력해 주세요.',
+        '처리할 자료 식별자가 무엇인가요?',
+        '연결된 표의 구체적인 ID를 알려주세요.',
+    ])
+    def test_resource_identifier_sentence_points_to_existing_attachment_ui(question):
+        shown = _question_text(question)
+&gt;       assert '자료 연결' in shown
+E       AssertionError: assert '자료 연결' in '분석에 사용할 문서의 ID를 알려주세요.'
+
+tests\capabilities\test_public_qwen_questions.py:15: AssertionError</failure></testcase><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_resource_identifier_sentence_points_to_existing_attachment_ui[\uc0ac\uc6a9\ud560 file_id\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.]" time="0.001"><failure message="AssertionError: assert '자료 연결' in '사용할 file_id를 입력해 주세요.'">question = '사용할 file_id를 입력해 주세요.'
+
+    @pytest.mark.parametrize('question', [
+        '분석에 사용할 문서의 ID를 알려주세요.',
+        '사용할 file_id를 입력해 주세요.',
+        '처리할 자료 식별자가 무엇인가요?',
+        '연결된 표의 구체적인 ID를 알려주세요.',
+    ])
+    def test_resource_identifier_sentence_points_to_existing_attachment_ui(question):
+        shown = _question_text(question)
+&gt;       assert '자료 연결' in shown
+E       AssertionError: assert '자료 연결' in '사용할 file_id를 입력해 주세요.'
+
+tests\capabilities\test_public_qwen_questions.py:15: AssertionError</failure></testcase><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_resource_identifier_sentence_points_to_existing_attachment_ui[\ucc98\ub9ac\ud560 \uc790\ub8cc \uc2dd\ubcc4\uc790\uac00 \ubb34\uc5c7\uc778\uac00\uc694?]" time="0.001"><failure message="AssertionError: assert '자료 연결' in '처리할 자료 식별자가 무엇인가요?'">question = '처리할 자료 식별자가 무엇인가요?'
+
+    @pytest.mark.parametrize('question', [
+        '분석에 사용할 문서의 ID를 알려주세요.',
+        '사용할 file_id를 입력해 주세요.',
+        '처리할 자료 식별자가 무엇인가요?',
+        '연결된 표의 구체적인 ID를 알려주세요.',
+    ])
+    def test_resource_identifier_sentence_points_to_existing_attachment_ui(question):
+        shown = _question_text(question)
+&gt;       assert '자료 연결' in shown
+E       AssertionError: assert '자료 연결' in '처리할 자료 식별자가 무엇인가요?'
+
+tests\capabilities\test_public_qwen_questions.py:15: AssertionError</failure></testcase><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_resource_identifier_sentence_points_to_existing_attachment_ui[\uc5f0\uacb0\ub41c \ud45c\uc758 \uad6c\uccb4\uc801\uc778 ID\ub97c \uc54c\ub824\uc8fc\uc138\uc694.]" time="0.001"><failure message="AssertionError: assert '자료 연결' in '연결된 표의 구체적인 ID를 알려주세요.'">question = '연결된 표의 구체적인 ID를 알려주세요.'
+
+    @pytest.mark.parametrize('question', [
+        '분석에 사용할 문서의 ID를 알려주세요.',
+        '사용할 file_id를 입력해 주세요.',
+        '처리할 자료 식별자가 무엇인가요?',
+        '연결된 표의 구체적인 ID를 알려주세요.',
+    ])
+    def test_resource_identifier_sentence_points_to_existing_attachment_ui(question):
+        shown = _question_text(question)
+&gt;       assert '자료 연결' in shown
+E       AssertionError: assert '자료 연결' in '연결된 표의 구체적인 ID를 알려주세요.'
+
+tests\capabilities\test_public_qwen_questions.py:15: AssertionError</failure></testcase><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_gmail_connection_prompt_does_not_ask_for_credentials_in_chat[Gmail \uc778\uc99d \uc815\ubcf4\ub098 API \ud0a4\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.]" time="0.001"><failure message="AssertionError: assert 'Gmail 연결' in 'Gmail 인증 정보나 API 키가 필요합니다.'">question = 'Gmail 인증 정보나 API 키가 필요합니다.'
+
+    @pytest.mark.parametrize('question', [
+        'Gmail 인증 정보나 API 키가 필요합니다.',
+        'Gmail access token을 알려주세요.',
+    ])
+    def test_gmail_connection_prompt_does_not_ask_for_credentials_in_chat(question):
+        shown = _question_text(question)
+&gt;       assert 'Gmail 연결' in shown
+E       AssertionError: assert 'Gmail 연결' in 'Gmail 인증 정보나 API 키가 필요합니다.'
+
+tests\capabilities\test_public_qwen_questions.py:25: AssertionError</failure></testcase><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_gmail_connection_prompt_does_not_ask_for_credentials_in_chat[Gmail access token\uc744 \uc54c\ub824\uc8fc\uc138\uc694.]" time="0.001"><failure message="AssertionError: assert 'Gmail 연결' in 'Gmail access token을 알려주세요.'">question = 'Gmail access token을 알려주세요.'
+
+    @pytest.mark.parametrize('question', [
+        'Gmail 인증 정보나 API 키가 필요합니다.',
+        'Gmail access token을 알려주세요.',
+    ])
+    def test_gmail_connection_prompt_does_not_ask_for_credentials_in_chat(question):
+        shown = _question_text(question)
+&gt;       assert 'Gmail 연결' in shown
+E       AssertionError: assert 'Gmail 연결' in 'Gmail access token을 알려주세요.'
+
+tests\capabilities\test_public_qwen_questions.py:25: AssertionError</failure></testcase><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_business_fields_and_required_recipient_questions_are_preserved[\uace0\uac1d ID \uc5f4\uc744 \uae30\uc900\uc73c\ub85c \uc9d1\uacc4\ud560\uae4c\uc694?]" time="0.001" /><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_business_fields_and_required_recipient_questions_are_preserved[\ud30c\uc77c ID \uc5f4\uc744 \uae30\uc900\uc73c\ub85c \uc911\ubcf5\uc744 \uc81c\uac70\ud560\uae4c\uc694?]" time="0.001" /><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_business_fields_and_required_recipient_questions_are_preserved[API \ud0a4 \uc5f4\uc740 \uacb0\uacfc\uc5d0\uc11c \uc81c\uc678\ud560\uae4c\uc694?]" time="0.001" /><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_business_fields_and_required_recipient_questions_are_preserved[\uc5b4\ub290 \uace0\uac1d\uc5d0\uac8c \uacb0\uacfc\ub97c \ubcf4\ub0bc\uae4c\uc694?]" time="0.001" /><testcase classname="tests.capabilities.test_public_qwen_questions" name="test_attachment_guidance_preserves_a_second_required_question" time="0.001"><failure message="AssertionError: assert ('자료 연결' in '자료 ID와 결과를 받을 수신자를 알려주세요.')">def test_attachment_guidance_preserves_a_second_required_question():
+        shown = _question_text('자료 ID와 결과를 받을 수신자를 알려주세요.')
+&gt;       assert '자료 연결' in shown and 'ID' not in shown
+E       AssertionError: assert ('자료 연결' in '자료 ID와 결과를 받을 수신자를 알려주세요.')
+
+tests\capabilities\test_public_qwen_questions.py:41: AssertionError</failure></testcase></testsuite></testsuites>

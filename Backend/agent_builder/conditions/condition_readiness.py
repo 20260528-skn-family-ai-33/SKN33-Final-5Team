@@ -497,7 +497,7 @@ def policy_clauses(text, columns):
             if re.search(_DUP_VAGUE, segment):
                 out.append((key, 'conflict', segment.strip())); continue
             found, negated = _acts(segment, _DUP_ORDER)
-            retention = re.search(r'남(?:겨|기|김)|유지|보존', segment)
+            retention = re.search(r'남(?:겨|기|김)|유지|보존|행(?:만|을)?\s*(?:CSV|JSON)?\s*(?:으로|로)?\s*저장(?!\s*(?:하지|안|못))', segment, re.I)
             if found and not retention:
                 if not re.search(r'삭제|제외|지우|지워|제거|빼', segment):
                     continue  # An incomplete/other verb is left to the model, not guessed.
@@ -661,6 +661,13 @@ def literal_condition_issues(state):
         stored=(ledger.get('slots') or {}).get(key)
         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
             issues.append(f'{key}: 저장된 조건이 사용자 원문과 달라 재판정이 필요합니다.')
+    for key, stored in (ledger.get('slots') or {}).items():
+        literal = literals.get(key, {})
+        if (stored.get('status') == 'specified'
+                and not (literal.get('status') == 'specified' and literal.get('value') == stored.get('value'))
+                and not _grounded_enum(key, stored.get('value'),
+                    '\n'.join(e['quote'] for e in stored.get('evidence', [])), state, stored.get('evidence', []))):
+            issues.append(f'{key}: 저장된 확정 값의 명시적 근거를 다시 확인해야 합니다.')
     return issues
 
 
@@ -749,6 +756,11 @@ def schedule_literals(text, follow_up=False):
             continue  # 08:00 or 20:00 is the user's decision
         add('schedule.hour', hour, m.group(0))
         add('schedule.minute', int(minute) if minute else 30 if half else 0, m.group(0))
+    for m in ([] if frequency == 'hourly' else re.finditer(r'(?<![\d:])(\d{2}):([0-5]\d)(?![\d:])', text)):
+        if int(m[1]) <= 23:
+            negated = bool(_SCHEDULE_NEGATED.match(text[m.end():m.end() + 12]))
+            add('schedule.hour', 'conflict' if negated else int(m[1]), m.group(0))
+            add('schedule.minute', 'conflict' if negated else int(m[2]), m.group(0))
     for pattern, zone in _TIMEZONES:
         m = re.search(pattern, text, re.I)
         if m:
@@ -941,7 +953,44 @@ def written_comparison_issues(state, draft):
     return list(dict.fromkeys(issue for _, _, issue in _draft_comparison_mismatches(state, draft)))
 
 
-def _grounded_enum(key, value, quote):
+def _scoped_answer(key, value, state, evidence):
+    """Short replies need an actual question/answer event, also after reopening."""
+    messages = state.get('messages', [])
+    for ref in evidence:
+        turn = ref.get('turn', -1)
+        if ref.get('source_id') != 'user' or not 0 <= turn < len(messages):
+            continue
+        text = messages[turn]['content'].strip().rstrip('.!?。')
+        if messages[turn]['role'] != 'user' or ref.get('quote', '') not in messages[turn]['content']:
+            continue
+        event = next((event for event in state.get('condition_answers', [])
+                      if event.get('turn') == turn and event.get('answer') == messages[turn]['content']
+                      and event.get('question_ids') and key in event.get('candidate_keys', [])), None)
+        pending = [q for q in state.get('pending_questions', []) if q.get('key') == key]
+        # Older callers do not record events; a current pending question still
+        # supplies context, but only for a new user turn after that ledger.
+        current = (turn == len(messages) - 1 and pending
+                   and turn > (state.get('condition_ledger') or {}).get('validated_user_turn', -1)
+                   and not any(e.get('turn') == turn for e in state.get('condition_answers', [])))
+        if not event and not current:
+            continue
+        if key == 'duplicate.policy':
+            labels = CHOICES[key]
+            if labels.get(text) == value:
+                return True
+            match = re.fullmatch(r'(첫|마지막)\s*행(?:만)?\s*(?:(?:으로|로)\s*)?(?:남겨(?:줘)?|남김|남기기|해줘)?', text)
+            if match and value == ('first' if match[1] == '첫' else 'last'):
+                return True
+        if key == 'schedule.minute':
+            match = re.fullmatch(r'(\d{1,2})\s*분(?:으로|에|요)?', text)
+            if match and int(match[1]) == value and 0 <= value <= 59:
+                return True
+            if text in ('정각', '정시') and value == 0:
+                return True
+    return False
+
+
+def _grounded_enum(key, value, quote, state=None, evidence=()):
     """Check narrow literal meanings, not just the existence of an evidence ID.
 
     Unknown paraphrases remain unresolved. The model may ask rather than turn
@@ -952,6 +1001,17 @@ def _grounded_enum(key, value, quote):
     if key == 'missing.policy':
         policy={'exclude':r'제외|빼|삭제','keep':r'유지|포함|그대로','error':r'오류|에러|중단'}[value]
         return bool(re.search(r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?).{0,20}(?:'+policy+r')',quote))
+    if key == 'duplicate.policy':
+        columns = {col for resource in (state or {}).get('resources', [])
+                   for col in resource.get('columns', []) if isinstance(col, str)}
+        # A named duplicate key may be supplied before a table is connected.
+        columns.update(re.findall(r'([\w]+?)(?:이|가)\s*(?:같(?:은|으면)|겹치)', quote))
+        written = [policy for slot, policy, _ in policy_clauses(quote, columns) if slot == key]
+        return (bool(written) and all(policy == value for policy in written)
+                or bool(state and _scoped_answer(key, value, state, evidence)))
+    if key in ('schedule.hour', 'schedule.minute'):
+        return (any(slot == key and written == value for slot, written, _ in schedule_literals(quote, follow_up=True))
+                or bool(state and _scoped_answer(key, value, state, evidence)))
     if key == 'schedule.frequency':
         # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
         # match; a monthly/yearly one never grounds daily or weekly.
@@ -967,6 +1027,35 @@ def _grounded_enum(key, value, quote):
             return False
         return bool(matches)
     return True
+
+
+def _duplicate_only_request(state, slots):
+    """Prove a narrow duplicate-only request; unexplained text keeps filter.
+
+    This repairs a mislabeled operation, not a missing semantic extraction.
+    Removing only bounded, understood instruction fragments leaves any other
+    selection clause visible, even when the model omitted every filter slot.
+    """
+    users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
+    field = slots.get('duplicate.field', {}).get('value')
+    policy = slots.get('duplicate.policy', {}).get('value')
+    if len(users) != 1 or not field or policy not in ('first', 'last'):
+        return False
+    order = '첫' if policy == 'first' else '마지막'
+    duplicate = (re.escape(field) + r'\s*(?:열\s*)?(?:이|가|은|는|의)?\s*중복\s*'
+                 r'(?:인\s*행\s*)?(?:이면|이라면|인\s*경우|이\s*있으면|은|을)?\s*' + order +
+                 r'\s*행\s*(?:만|을)?\s*(?:남겨|남기|유지)')
+    remainder, count = re.subn(duplicate, ' ', users[0])
+    if count != 1:
+        return False
+    fragments = [
+        r'(?:연결(?:한|된)|첨부(?:한|된))?\s*(?:표|자료|파일)\s*(?:에서|의|을|를)?',
+        r'(?:CSV|JSON)\s*(?:파일\s*)?(?:으로|로)\s*저장',
+        r'빈\s*(?:값|칸|셀|행)\s*(?:은|는|이|가|도)?\s*(?:오류|에러|유지|제외)\s*(?:으로|로)?\s*(?:처리)?',
+    ]
+    for pattern in fragments:
+        remainder = re.sub(pattern, ' ', remainder, flags=re.I)
+    return bool(re.fullmatch(r'(?:[\s.,;!?]|해주세요|해줘|해|줘|요|하고|해서|고|서)*', remainder))
 
 
 def validate_conditions(raw, state, catalog):
@@ -1001,7 +1090,7 @@ def validate_conditions(raw, state, catalog):
     by_id = {e['id']: e for e in catalog}
     previous = deepcopy(state.get('condition_ledger') or {})
     for key, old in previous.get('slots', {}).items():
-        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
+        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', [])), state, old.get('evidence', [])):
             old.update(status='missing', value=None, evidence_ids=[], evidence=[])
             invalid.append(f'{key}: 이전 확정 값의 원문 근거를 재검증')
     latest = max((i for i, m in enumerate(state.get('messages', [])) if m['role'] == 'user'), default=-1)
@@ -1020,7 +1109,7 @@ def validate_conditions(raw, state, catalog):
             try:
                 value = _value(key, condition['value'])
                 quote = '\n'.join(e['quote'] for e in evidence)
-                if not _grounded_enum(key, value, quote):
+                if not _grounded_enum(key, value, quote, state, evidence):
                     raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
                 if key.endswith('.field') and value not in quote:
                     raise ValueError('원문에 없는 열 이름입니다.')
@@ -1094,6 +1183,16 @@ def validate_conditions(raw, state, catalog):
         slots['filter.value'].update(status='missing', value=None)
         invalid.append(issue)
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
+    user_text = '\n'.join(m['content'] for m in state.get('messages', []) if m['role'] == 'user')
+    if ('filter' in operations and not any(key.startswith('filter.') for key in slots)
+            and 'duplicate.policy' in literals
+            and literals['duplicate.policy'].get('value') in ('first', 'last', 'error')
+            and _duplicate_only_request(state, slots)):
+        # A duplicate-only proposal can be mislabeled filter. Never remove a
+        # real, even incomplete filter or any filter retained in a checkpoint.
+        operations.remove('filter')
+        if 'deduplicate' not in operations:
+            operations.append('deduplicate')
     # A follow-up may focus on deduplication and omit the earlier filter from
     # the model's single-operation label. Preserve it whenever its three
     # individually grounded slots still exist; do not synthesize missing values.
@@ -1154,7 +1253,11 @@ def validate_conditions(raw, state, catalog):
     if slots.get('duplicate.policy',{}).get('value')=='keep':
         slots.pop('duplicate.field',None)
         operations=[op for op in operations if op!='deduplicate']
-    unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified']
+    policy_subjects = {'missing.policy': r'빈\s*(?:값|칸|셀|행)|빈\s+\S+|비어\s*있|결측|누락|값이\s*없',
+                       'duplicate.policy': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치'}
+    unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified'
+                  and not (slot['status'] == 'missing' and key in policy_subjects and key not in required
+                           and not re.search(policy_subjects[key], user_text))]
     needs_table = 'schedule' in operations and not any(r.get('kind') == 'table' for r in state.get('resources', []))
     if needs_table:
         unresolved.append('input.table')
@@ -1171,9 +1274,13 @@ def validate_conditions(raw, state, catalog):
                            'versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}, sort_keys=True, ensure_ascii=False)
     questions = []
     if decision in ('clarify', 'deferred'):
-        for key in unresolved[:3]:
+        grouped_time = {'schedule.hour', 'schedule.minute'} <= set(unresolved)
+        question_keys = list(dict.fromkeys('schedule.hour' if grouped_time and key == 'schedule.minute' else key
+                                          for key in unresolved))
+        for key in question_keys[:2]:
             text = ('예약에는 지금 관리 표 파일이 필요합니다. 자료 연결로 업로드해주세요.' if key == 'input.table' else
-                    ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') + QUESTIONS[key])
+                    ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') +
+                    ('몇 시 몇 분에 실행할까요? 오전·오후도 함께 알려주세요.' if grouped_time and key == 'schedule.hour' else QUESTIONS[key]))
             if key == 'filter.value' and amount and amount.get('issue'):
                 text = amount['issue']
             is_resolution = resolution and key in resolution['keys']

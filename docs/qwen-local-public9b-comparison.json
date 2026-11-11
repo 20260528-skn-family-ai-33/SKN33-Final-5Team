@@ -1,0 +1,956 @@
+{
+  "baseline": {
+    "measured": 52,
+    "worker_status_counts": {
+      "completed": 50,
+      "failed": 2
+    },
+    "model_cases": 50,
+    "code_only_ids": [
+      "R01",
+      "T08"
+    ],
+    "whole_request_success": {
+      "numerator": 23,
+      "denominator": 52,
+      "successful_ids": [
+        "R01",
+        "R02",
+        "R05",
+        "R08",
+        "C02",
+        "C04",
+        "C09",
+        "T01",
+        "T04",
+        "T07",
+        "T08",
+        "M01",
+        "M07",
+        "M08",
+        "M11",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X02",
+        "X04"
+      ]
+    },
+    "whole_request_success_live": {
+      "numerator": 21,
+      "denominator": 50,
+      "successful_ids": [
+        "R02",
+        "R05",
+        "R08",
+        "C02",
+        "C04",
+        "C09",
+        "T01",
+        "T04",
+        "T07",
+        "M01",
+        "M07",
+        "M08",
+        "M11",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X02",
+        "X04"
+      ]
+    },
+    "by_category": {
+      "ready": {
+        "numerator": 4,
+        "denominator": 10,
+        "successful_ids": [
+          "R01",
+          "R02",
+          "R05",
+          "R08"
+        ]
+      },
+      "clarify": {
+        "numerator": 3,
+        "denominator": 10,
+        "successful_ids": [
+          "C02",
+          "C04",
+          "C09"
+        ]
+      },
+      "temporal": {
+        "numerator": 4,
+        "denominator": 8,
+        "successful_ids": [
+          "T01",
+          "T04",
+          "T07",
+          "T08"
+        ]
+      },
+      "multiturn": {
+        "numerator": 4,
+        "denominator": 12,
+        "successful_ids": [
+          "M01",
+          "M07",
+          "M08",
+          "M11"
+        ]
+      },
+      "unsupported": {
+        "numerator": 5,
+        "denominator": 5,
+        "successful_ids": [
+          "U01",
+          "U02",
+          "U03",
+          "U04",
+          "U05"
+        ]
+      },
+      "composite": {
+        "numerator": 3,
+        "denominator": 7,
+        "successful_ids": [
+          "X01",
+          "X02",
+          "X04"
+        ]
+      }
+    },
+    "by_split": {
+      "development": {
+        "numerator": 21,
+        "denominator": 37,
+        "successful_ids": [
+          "R01",
+          "R02",
+          "R05",
+          "R08",
+          "C02",
+          "C04",
+          "T01",
+          "T04",
+          "T07",
+          "T08",
+          "M01",
+          "M07",
+          "M08",
+          "M11",
+          "U01",
+          "U02",
+          "U04",
+          "U05",
+          "X01",
+          "X02",
+          "X04"
+        ]
+      },
+      "holdout": {
+        "numerator": 2,
+        "denominator": 15,
+        "successful_ids": [
+          "C09",
+          "U03"
+        ]
+      }
+    },
+    "final_ready_target_whole_request_success": {
+      "numerator": 14,
+      "denominator": 35,
+      "successful_ids": [
+        "R01",
+        "R02",
+        "R05",
+        "R08",
+        "T01",
+        "T04",
+        "T07",
+        "T08",
+        "M01",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ]
+    },
+    "final_ready_target_whole_request_success_live": {
+      "numerator": 12,
+      "denominator": 33,
+      "successful_ids": [
+        "R02",
+        "R05",
+        "R08",
+        "T01",
+        "T04",
+        "T07",
+        "M01",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ]
+    },
+    "initial_routing_confusion_live": {
+      "READY": {
+        "READY": 12,
+        "CLARIFY": 7,
+        "UNSUPPORTED": 1,
+        "SYSTEM_ERROR": 3
+      },
+      "CLARIFY": {
+        "CLARIFY": 18,
+        "UNSUPPORTED": 2,
+        "SYSTEM_ERROR": 1
+      },
+      "UNSUPPORTED": {
+        "UNSUPPORTED": 6
+      }
+    },
+    "initial_routing_per_class_live": {
+      "READY": {
+        "tp": 12,
+        "fp": 0,
+        "fn": 11,
+        "f1": 0.6857142857142857
+      },
+      "CLARIFY": {
+        "tp": 18,
+        "fp": 7,
+        "fn": 3,
+        "f1": 0.782608695652174
+      },
+      "UNSUPPORTED": {
+        "tp": 6,
+        "fp": 3,
+        "fn": 0,
+        "f1": 0.8
+      }
+    },
+    "schema_final_draft_all": {
+      "valid": [
+        "R01",
+        "R02",
+        "R05",
+        "R08",
+        "T01",
+        "T02",
+        "T04",
+        "T06",
+        "T07",
+        "T08",
+        "M01",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ],
+      "invalid": [
+        "R10",
+        "C06",
+        "M06",
+        "M12"
+      ],
+      "null": [
+        "R03",
+        "R04",
+        "R06",
+        "R07",
+        "R09",
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "T03",
+        "T05",
+        "M02",
+        "M03",
+        "M04",
+        "M05",
+        "M09",
+        "M10",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X03",
+        "X05",
+        "X06",
+        "X07"
+      ]
+    },
+    "schema_final_draft_live": {
+      "valid": [
+        "R02",
+        "R05",
+        "R08",
+        "T01",
+        "T02",
+        "T04",
+        "T06",
+        "T07",
+        "M01",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ],
+      "invalid": [
+        "R10",
+        "C06",
+        "M06",
+        "M12"
+      ],
+      "null": [
+        "R03",
+        "R04",
+        "R06",
+        "R07",
+        "R09",
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "T03",
+        "T05",
+        "M02",
+        "M03",
+        "M04",
+        "M05",
+        "M09",
+        "M10",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X03",
+        "X05",
+        "X06",
+        "X07"
+      ]
+    },
+    "execution_eligible_ids": [
+      "R02",
+      "R03",
+      "R04",
+      "R05",
+      "M01",
+      "X02"
+    ],
+    "execution_attempted_ids": [
+      "R02",
+      "R05",
+      "M01",
+      "X02"
+    ],
+    "execution_success_ids": [
+      "R02",
+      "R05",
+      "M01",
+      "X02"
+    ],
+    "failed_whole_request_ids": [
+      "R03",
+      "R04",
+      "R06",
+      "R07",
+      "R09",
+      "R10",
+      "C01",
+      "C03",
+      "C05",
+      "C06",
+      "C07",
+      "C08",
+      "C10",
+      "T02",
+      "T03",
+      "T05",
+      "T06",
+      "M02",
+      "M03",
+      "M04",
+      "M05",
+      "M06",
+      "M09",
+      "M10",
+      "M12",
+      "X03",
+      "X05",
+      "X06",
+      "X07"
+    ],
+    "worker_failed_ids": [
+      "R09",
+      "M10"
+    ],
+    "confirmed_returned_responses_including_probe": 181,
+    "confirmed_returned_response_scope": {
+      "case": 180,
+      "probe": 1
+    },
+    "recorded_usage_case_calls": 161,
+    "recorded_prompt_tokens_subset": 963448,
+    "recorded_output_tokens_subset": 20513,
+    "case_calls_without_usage": 19,
+    "usage_scope": "Recorded native case responses only; excludes probe and SDK usage gaps. Not total server usage or cost."
+  },
+  "after": {
+    "measured": 52,
+    "worker_status_counts": {
+      "completed": 52
+    },
+    "model_cases": 50,
+    "code_only_ids": [
+      "R01",
+      "T08"
+    ],
+    "whole_request_success": {
+      "numerator": 28,
+      "denominator": 52,
+      "successful_ids": [
+        "R01",
+        "R02",
+        "R05",
+        "R07",
+        "R08",
+        "R10",
+        "C02",
+        "C04",
+        "C05",
+        "C07",
+        "C08",
+        "T02",
+        "T06",
+        "T07",
+        "T08",
+        "M01",
+        "M06",
+        "M07",
+        "M08",
+        "M11",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X02",
+        "X04"
+      ]
+    },
+    "whole_request_success_live": {
+      "numerator": 26,
+      "denominator": 50,
+      "successful_ids": [
+        "R02",
+        "R05",
+        "R07",
+        "R08",
+        "R10",
+        "C02",
+        "C04",
+        "C05",
+        "C07",
+        "C08",
+        "T02",
+        "T06",
+        "T07",
+        "M01",
+        "M06",
+        "M07",
+        "M08",
+        "M11",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X02",
+        "X04"
+      ]
+    },
+    "by_category": {
+      "ready": {
+        "numerator": 6,
+        "denominator": 10,
+        "successful_ids": [
+          "R01",
+          "R02",
+          "R05",
+          "R07",
+          "R08",
+          "R10"
+        ]
+      },
+      "clarify": {
+        "numerator": 5,
+        "denominator": 10,
+        "successful_ids": [
+          "C02",
+          "C04",
+          "C05",
+          "C07",
+          "C08"
+        ]
+      },
+      "temporal": {
+        "numerator": 4,
+        "denominator": 8,
+        "successful_ids": [
+          "T02",
+          "T06",
+          "T07",
+          "T08"
+        ]
+      },
+      "multiturn": {
+        "numerator": 5,
+        "denominator": 12,
+        "successful_ids": [
+          "M01",
+          "M06",
+          "M07",
+          "M08",
+          "M11"
+        ]
+      },
+      "unsupported": {
+        "numerator": 5,
+        "denominator": 5,
+        "successful_ids": [
+          "U01",
+          "U02",
+          "U03",
+          "U04",
+          "U05"
+        ]
+      },
+      "composite": {
+        "numerator": 3,
+        "denominator": 7,
+        "successful_ids": [
+          "X01",
+          "X02",
+          "X04"
+        ]
+      }
+    },
+    "by_split": {
+      "development": {
+        "numerator": 25,
+        "denominator": 37,
+        "successful_ids": [
+          "R01",
+          "R02",
+          "R05",
+          "R07",
+          "R08",
+          "R10",
+          "C02",
+          "C04",
+          "C05",
+          "C07",
+          "C08",
+          "T02",
+          "T07",
+          "T08",
+          "M01",
+          "M07",
+          "M08",
+          "M11",
+          "U01",
+          "U02",
+          "U04",
+          "U05",
+          "X01",
+          "X02",
+          "X04"
+        ]
+      },
+      "holdout": {
+        "numerator": 3,
+        "denominator": 15,
+        "successful_ids": [
+          "T06",
+          "M06",
+          "U03"
+        ]
+      }
+    },
+    "final_ready_target_whole_request_success": {
+      "numerator": 17,
+      "denominator": 35,
+      "successful_ids": [
+        "R01",
+        "R02",
+        "R05",
+        "R07",
+        "R08",
+        "R10",
+        "T02",
+        "T06",
+        "T07",
+        "T08",
+        "M01",
+        "M06",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ]
+    },
+    "final_ready_target_whole_request_success_live": {
+      "numerator": 15,
+      "denominator": 33,
+      "successful_ids": [
+        "R02",
+        "R05",
+        "R07",
+        "R08",
+        "R10",
+        "T02",
+        "T06",
+        "T07",
+        "M01",
+        "M06",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ]
+    },
+    "initial_routing_confusion_live": {
+      "READY": {
+        "READY": 11,
+        "SYSTEM_ERROR": 9,
+        "CLARIFY": 3
+      },
+      "CLARIFY": {
+        "CLARIFY": 18,
+        "SYSTEM_ERROR": 3
+      },
+      "UNSUPPORTED": {
+        "UNSUPPORTED": 6
+      }
+    },
+    "initial_routing_per_class_live": {
+      "READY": {
+        "tp": 11,
+        "fp": 0,
+        "fn": 12,
+        "f1": 0.6470588235294118
+      },
+      "CLARIFY": {
+        "tp": 18,
+        "fp": 3,
+        "fn": 3,
+        "f1": 0.8571428571428571
+      },
+      "UNSUPPORTED": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "f1": 1.0
+      }
+    },
+    "schema_final_draft_all": {
+      "valid": [
+        "R01",
+        "R02",
+        "R05",
+        "R07",
+        "R08",
+        "R10",
+        "T02",
+        "T06",
+        "T07",
+        "T08",
+        "M01",
+        "M06",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ],
+      "invalid": [
+        "C06",
+        "T01",
+        "T03",
+        "T04",
+        "T05",
+        "M04",
+        "M09",
+        "M12",
+        "X03",
+        "X05"
+      ],
+      "null": [
+        "R03",
+        "R04",
+        "R06",
+        "R09",
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "M02",
+        "M03",
+        "M05",
+        "M10",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X06",
+        "X07"
+      ]
+    },
+    "schema_final_draft_live": {
+      "valid": [
+        "R02",
+        "R05",
+        "R07",
+        "R08",
+        "R10",
+        "T02",
+        "T06",
+        "T07",
+        "M01",
+        "M06",
+        "M07",
+        "M08",
+        "M11",
+        "X02",
+        "X04"
+      ],
+      "invalid": [
+        "C06",
+        "T01",
+        "T03",
+        "T04",
+        "T05",
+        "M04",
+        "M09",
+        "M12",
+        "X03",
+        "X05"
+      ],
+      "null": [
+        "R03",
+        "R04",
+        "R06",
+        "R09",
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "M02",
+        "M03",
+        "M05",
+        "M10",
+        "U01",
+        "U02",
+        "U03",
+        "U04",
+        "U05",
+        "X01",
+        "X06",
+        "X07"
+      ]
+    },
+    "execution_eligible_ids": [
+      "R02",
+      "R03",
+      "R04",
+      "R05",
+      "M01",
+      "X02"
+    ],
+    "execution_attempted_ids": [
+      "R02",
+      "R05",
+      "M01",
+      "X02"
+    ],
+    "execution_success_ids": [
+      "R02",
+      "R05",
+      "M01",
+      "X02"
+    ],
+    "failed_whole_request_ids": [
+      "R03",
+      "R04",
+      "R06",
+      "R09",
+      "C01",
+      "C03",
+      "C06",
+      "C09",
+      "C10",
+      "T01",
+      "T03",
+      "T04",
+      "T05",
+      "M02",
+      "M03",
+      "M04",
+      "M05",
+      "M09",
+      "M10",
+      "M12",
+      "X03",
+      "X05",
+      "X06",
+      "X07"
+    ],
+    "worker_failed_ids": [],
+    "confirmed_returned_responses_including_probe": 193,
+    "confirmed_returned_response_scope": {
+      "case": 191,
+      "probe": 2
+    },
+    "recorded_usage_case_calls": 158,
+    "recorded_prompt_tokens_subset": 977006,
+    "recorded_output_tokens_subset": 20259,
+    "case_calls_without_usage": 34,
+    "usage_scope": "Recorded native case responses only; excludes probe and SDK usage gaps. Not total server usage or cost."
+  },
+  "transitions": {
+    "improved_ids": [
+      "R07",
+      "R10",
+      "C05",
+      "C07",
+      "C08",
+      "T02",
+      "T06",
+      "M06"
+    ],
+    "regressed_ids": [
+      "C09",
+      "T01",
+      "T04"
+    ],
+    "unchanged_success_ids": [
+      "R01",
+      "R02",
+      "R05",
+      "R08",
+      "C02",
+      "C04",
+      "T07",
+      "T08",
+      "M01",
+      "M07",
+      "M08",
+      "M11",
+      "U01",
+      "U02",
+      "U03",
+      "U04",
+      "U05",
+      "X01",
+      "X02",
+      "X04"
+    ],
+    "unchanged_failure_ids": [
+      "R03",
+      "R04",
+      "R06",
+      "R09",
+      "C01",
+      "C03",
+      "C06",
+      "C10",
+      "T03",
+      "T05",
+      "M02",
+      "M03",
+      "M04",
+      "M05",
+      "M09",
+      "M10",
+      "M12",
+      "X03",
+      "X05",
+      "X06",
+      "X07"
+    ]
+  },
+  "artifact_byte_hashes": {
+    "baseline": {
+      "run": {
+        "path": "docs\\qwen-local-public9b-baseline-v2.json",
+        "bytes_sha256": "187609496fbf1a9d9f2374848543fb1e10771a205bdb009b55ad617494f48290"
+      },
+      "review": {
+        "path": "docs\\qwen-local-public9b-baseline-v2-review.json",
+        "bytes_sha256": "f7b8c40a9cd8a090a5efa8a77cd95a0c58f091bfffaa8dff6b0d9dbc4f23c63b"
+      },
+      "accounting": {
+        "path": "docs\\qwen-local-public9b-baseline-v2-accounting.json",
+        "bytes_sha256": "ccbd42bf66d46b394090d8b659044f219dca35b170978bcd49c9cdf888bdb1be"
+      }
+    },
+    "after": {
+      "run": {
+        "path": "docs\\qwen-local-public9b-after-complete.json",
+        "bytes_sha256": "c85233a673876642c05e9304e0307a415e2b8df25ae48def2c343426aa8dd0b7"
+      },
+      "review": {
+        "path": "docs\\qwen-local-public9b-after-review.json",
+        "bytes_sha256": "1c816749511617726d2a656d68489b06d5e972f6c33e7a996a0a86633441b6b6"
+      },
+      "accounting": {
+        "path": "docs\\qwen-local-public9b-after-accounting.json",
+        "bytes_sha256": "5f9211f0ffc8adc0d31ddab9533f2fbbb78c483b0b1b3a495188cdb9cb29294f"
+      }
+    }
+  },
+  "comparison_scope": "Whole fixed local corpus; after repeat and abandoned/RunPod runs excluded. Labels are trace review, not independent human assessment."
+}

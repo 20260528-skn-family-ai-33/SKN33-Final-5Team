@@ -1,0 +1,235 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "review_scope": "T01-T08 persisted cases independently adjudicated from baseline-v2 raw responses, accepted state, actual workflow queries and frozen gold; exact dates checked using IANA zoneinfo. Code-only recipe cases separated from live-model quality.",
+  "cases": {
+    "T01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.period": "yesterday",
+        "gmail.date": "2026-11-09"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2의 실제 의미 추출은 Gmail read/summarize, period=yesterday, evidence=어제, filters=[]이며 faithfulness도 true다. 수용된 requirement와 mail workflow query는 after:1794150000 before:1794236400 -in:sent -in:drafts로 같다. zoneinfo로 계산한 기준시각 2026-11-10 10:00+09의 전날인 11-09 00:00+09부터 11-10 00:00+09까지 24시간과 일치한다. email.list/read_messages → compose_answer.documents 연결과 요약 지시가 맞고 질문·추가 업무 없이 READY/schema_valid=true다. 최대100건 기본 한도와 한도 초과 가능성을 draft가 안내한다. Gmail 실제 조회·요약 실행은 NOT_RUN이며 날짜 경계 설계의 검증이다."
+    },
+    "T02": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.period": "today",
+        "gmail.date": "2026-11-09"
+      },
+      "extra_unsupported_slots": [
+        "gmail.filters=unread"
+      ],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        "요청하지 않은 unread 선택 조건을 수용하여 최종 Gmail query에 is:unread를 추가함"
+      ],
+      "evidence": "v2 실제 의미 raw는 오늘 받은 메일 요청에 period=today와 근거 오늘을 추출하면서 filters=[unread]를 추가했고 faithfulness=true가 이를 통과시켰다. accepted meaning/requirement와 최종 query 모두 is:unread를 보존한다. after:1794200400 before:1794286800은 zoneinfo 기준 뉴욕 현지 2026-11-09 00:00-05부터 11-10 00:00-05까지 24시간으로 올바르므로 날짜 두 슬롯은 인정한다. 그러나 읽은 메일을 임의 제외하여 read 대상과 그 요약 범위가 틀리므로 두 task coverage 및 whole_request_success는 false다. READY/schema_valid=true를 의미 성공으로 보지 않으며 실제 Gmail 실행은 하지 않았다."
+    },
+    "T03": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.period": "yesterday"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 holdout: 첫 의미 후보의 unread 추가를 faithfulness가 거절했고, 재시도 accepted meaning은 Gmail read/summarize, period=yesterday, filters=[]를 보존했다. 다만 other_requirements에 원문을 반복한 후 generic 경로로 갔다. requirement는 read/file_ids=[]만 남기고 Gmail 계정 연결 또는 데이터 소스 ID를 필수 질문으로 노출했다. 설계에 필요한 업무 조건이 이미 있으므로 이 질문은 불필요하며 CLARIFY/workflow=null이다. 수용된 yesterday만 슬롯으로 인정하고 절대 날짜 query가 없으므로 gmail.date는 누락이다. zoneinfo 기대 경계는 1794063600–1794150000(서울 2026-11-08 하루)이지만 실제 생성되지 않았다. 거절된 unread 후보는 accepted 추가 슬롯/업무에 넣지 않는다. holdout은 판정만 한다."
+    },
+    "T04": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.period": "yesterday",
+        "gmail.date": "2026-12-31"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 실제 의미 추출은 Gmail read/summarize, yesterday/어제와 filters=[]이며 faithfulness=true다. accepted requirement와 최종 email.list/read_messages query의 after:1798642800 before:1798729200은 zoneinfo 기준 서울 2026-12-31 00:00+09부터 2027-01-01 00:00+09까지 24시간으로 연도 경계를 정확히 보존한다. mail.documents → compose_answer 연결과 요약 지시가 맞고 질문·추가 업무 없이 READY/schema_valid=true다. 100건 기본 한도를 안내하며 외부 Gmail 실제 실행은 NOT_RUN이다."
+    },
+    "T05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.period": "date_range"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 첫 의미 후보는 yesterday와 unread를 함께 반환했다. faithfulness가 unread는 올바르게 거절했으나 period_source_message=0을 상대 날짜와 혼동하는 비판도 추가했다. 재시도는 period를 date_range로 바꾸었고 그 값이 accepted meaning으로 수용됐다. Gmail read/summarize 의도는 유지되나 period 슬롯은 gold yesterday와 다르다. requirement는 read/file_ids=[]만 남기고 인증 정보나 API 키를 필요 조건으로 질문하여 CLARIFY/workflow=null이다. 이 질문은 실행 전 연결 전제를 설계 질문으로 잘못 요구한다. 뉴욕 DST 시작일의 실제 기대 범위는 zoneinfo로 1772946000–1773028800(2026-03-08 00:00-05 → 03-09 00:00-04, 23시간)이나 실제 query가 없으므로 날짜·23시간 보존 성공은 부여하지 않는다. 거절된 unread는 추가 accepted 슬롯으로 세지 않는다."
+    },
+    "T06": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.period": "yesterday"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false
+      ],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 holdout: 첫 raw unread 추가는 faithfulness가 거절했고 재시도 accepted meaning은 yesterday와 filters=[]를 보존한다. 이후 requirement는 document_analysis로만 표현되며 planner와 최종 email.list/read_messages 인자는 max_results=100,query=\"\"이다. draft의 period:yesterday 설명이나 요약 instructions는 실제 Gmail 검색 인자를 제한하지 못한다. 따라서 period 의미 슬롯은 인정하지만 절대 날짜 및 DST 종료일 25시간 경계는 누락이다. zoneinfo로 필요한 구간은 1793505600–1793595600(뉴욕 2026-11-01 00:00-04부터 11-02 00:00-05까지 25시간)인데 실제 query에 없었다. 잘못된 읽기 범위와 상위 입력을 받은 요약 모두 coverage=false이며 READY/schema_valid=true여도 전체 성공은 false다. rejected unread는 추가 accepted 업무로 세지 않는다. 외부 Gmail 실행은 하지 않았고 holdout 수정 제안은 하지 않는다."
+    },
+    "T07": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.limit": 5
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2는 request_meaning 추출과 faithfulness 두 응답이 모두 실제 model metadata와 returned 상태로 보존됐다. raw 및 accepted meaning은 다섯 통을 limit=5,limit_evidence=다섯 통,source_message=0으로 해석하고 newest_first/period=all/filters=[]를 유지한다. accepted gmail_summary.max_results=5와 최종 email.list/read_messages(max_results=5) → compose_answer.documents가 맞고 최대5건의 본문 요약 지시가 있다. 질문·추가 업무 없이 READY/schema_valid=true이며 실제 Gmail 실행은 NOT_RUN이다. 중단된 이전 run의 started-only 항목이나 판정을 재사용하지 않았다."
+    },
+    "T08": {
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "daily",
+        "schedule.hour": 9,
+        "schedule.minute": 0,
+        "schedule.timezone": "Asia/Seoul",
+        "gmail.query": "{{gmail.previous_day}}"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "v2 T08은 model_calls=[] 및 live_model_calls=0인 등록 코드 recipe다. accepted gmail_scheduled_summary와 최종 draft schedule이 daily/Asia/Seoul/09:00으로 일치하고 mail query={{gmail.previous_day}}를 보존한다. 전날 범위를 매 예약 실행일에 계산한다는 지시이며 특정 날짜 epoch를 고정하지 않았다. email.list/read_messages의 documents를 compose_answer로 연결하며 추가 업무·질문 없이 READY/schema_valid=true다. 100건 한도와 예약 별도 활성화 안내가 있다. 모델 추론 성공 분모에서 제외하고 실제 예약 실행·Gmail 조회·요약 실행 성공을 주장하지 않는다."
+    }
+  },
+  "source_case_sha256": {
+    "T01": "26bd5ea1a824d17f7feb5432fecfd540cd80e9bfe417c7059b143c45ca2e3d9f",
+    "T02": "18803b978363ff3aa4406edc632d88df77aa3f1869b30018d9e1d252eea0455d",
+    "T03": "c7ea604bf226b6cb2197ec443813dc4d562f35ee118640fd63cfa320e19b5990",
+    "T04": "972f8f92ab49442b7ced2ddfb0c1178763e58e759442269671f4ebc215af3100",
+    "T05": "cca776719d07dfb69c3fbae0d46513704c16fff9748679d5d954aa7d24d48061",
+    "T06": "314c257d8230c69cc135ce261794dceb66cb70a33d3ee2107e8d9f81c8b3f9ac",
+    "T07": "e03886934b1e693a5572e920c83a32d12b361c428b979279b472c71e3e7be464",
+    "T08": "1ec9b47c06bd14913b565eae2cd61d70336fd2d8d372e1668eee74593b8b83d7"
+  },
+  "status": "completed_for_T01_T08_only",
+  "temporal_query_checks": {
+    "T01": {
+      "expected_after": 1794150000,
+      "expected_before": 1794236400,
+      "expected_hours": 24,
+      "observed_after": 1794150000,
+      "observed_before": 1794236400,
+      "boundaries_match": true,
+      "extra_query_filters": []
+    },
+    "T02": {
+      "expected_after": 1794200400,
+      "expected_before": 1794286800,
+      "expected_hours": 24,
+      "observed_after": 1794200400,
+      "observed_before": 1794286800,
+      "boundaries_match": true,
+      "extra_query_filters": [
+        "is:unread"
+      ]
+    },
+    "T03": {
+      "expected_after": 1794063600,
+      "expected_before": 1794150000,
+      "expected_hours": 24,
+      "observed_after": null,
+      "observed_before": null,
+      "boundaries_match": null,
+      "reason": "No final workflow or absolute-date query"
+    },
+    "T04": {
+      "expected_after": 1798642800,
+      "expected_before": 1798729200,
+      "expected_hours": 24,
+      "observed_after": 1798642800,
+      "observed_before": 1798729200,
+      "boundaries_match": true,
+      "extra_query_filters": []
+    },
+    "T05": {
+      "expected_after": 1772946000,
+      "expected_before": 1773028800,
+      "expected_hours": 23,
+      "observed_after": null,
+      "observed_before": null,
+      "boundaries_match": null,
+      "reason": "No final workflow or absolute-date query; accepted period=date_range"
+    },
+    "T06": {
+      "expected_after": 1793505600,
+      "expected_before": 1793595600,
+      "expected_hours": 25,
+      "observed_after": null,
+      "observed_before": null,
+      "observed_query": "",
+      "boundaries_match": false,
+      "reason": "Final workflow has empty query; period exists only in semantic state/prose"
+    },
+    "T07": {
+      "observed_max_results": 5,
+      "observed_order": "newest_first",
+      "limit_matches": true
+    },
+    "T08": {
+      "expected_query": "{{gmail.previous_day}}",
+      "observed_query": "{{gmail.previous_day}}",
+      "schedule_matches": true,
+      "actual_scheduled_execution": "NOT_RUN",
+      "live_model_calls": 0
+    }
+  },
+  "case_hash_algorithm": "SHA256 UTF-8 json.dumps(case, ensure_ascii=False, sort_keys=True), default JSON separators",
+  "whole_request_success_definition": "Explicit manual judgement of correct route, requested tasks/arguments/time boundaries/dependencies and no unrequested accepted work; external or scheduled execution success is separate.",
+  "metrics_scope_note": "T08 is code-only. T05/T06 expected DST windows were computed independently but were not generated by their workflows; 23/25-hour live preservation did not pass. Raw rejected candidates are separated from accepted values. SDK trace response counters omit httpx2 and are not total inference counts."
+}

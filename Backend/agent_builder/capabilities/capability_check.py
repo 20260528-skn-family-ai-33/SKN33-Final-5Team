@@ -9,9 +9,24 @@ from agent_builder.conditions.condition_check import _pending_draft
 
 
 def _question_text(text):
-    import re
     text=text.strip()
-    if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
+    # Resource identifiers belong to the attachment UI. Business columns with
+    # names such as "파일 ID" remain valid user-selected fields.
+    def business_column(match):
+        return bool(re.match(r'''\s*["'`’”]?\s*(?:라는|란)?\s*(?:열|컬럼|칼럼|필드|column|field)''',
+                             text[match.end():],re.I))
+    resource=re.search(r'(?:파일|자료|문서|표)(?:\s*의)?\s*(?:(?:구체적인|고유한|실제)\s*)?'
+                       r'(?:ID|아이디|식별자)|file[_ ]?id',text,re.I)
+    if resource and not business_column(resource):
+        guidance='처리할 파일을 자료 연결에서 업로드해 주세요.'
+        # A combined question can also contain a genuinely missing recipient or
+        # business choice. Do not discard that second question when rendering UI guidance.
+        remaining=re.match(r'\s*(?:와|과|및|또는|나)\s*(.+)',text[resource.end():])
+        return guidance+(' '+_question_text(remaining[1]) if remaining else '')
+    credential=re.search(r'인증\s*정보|API\s*키|access[_ ]?token|비밀번호',text,re.I)
+    if (credential and not business_column(credential) and re.search(r'Gmail|지메일',text,re.I)
+            and re.search(r'알려|입력|제공|필요|보내',text[credential.end():])):
+        return 'Gmail 연결에서 계정 연결 상태를 확인해 주세요.'
     if text.endswith(('?', '？')):return text
     stem=text.rstrip('.').rstrip()
     if stem.endswith('해야 합니다'):
@@ -40,7 +55,7 @@ def _short_reply(state):
     return text in _PASSIVE_REPLIES
 
 
-def make_capability_check(model,transport=None,mode=None,error_observer=None):
+def make_capability_check(model,transport=None,mode=None,error_observer=None,api_key=''):
     setting=mode or os.getenv('A4B_CAPABILITY_MODE','off')
     if setting not in ('off','enforce'):raise ValueError('A4B_CAPABILITY_MODE는 off/enforce이어야 합니다.')
     def check(state):
@@ -82,8 +97,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
                 result={**previous,'model_calls':0,'answer_resolution':'short_reply'}
             else:
                 if transport is None:
-                    from agent_builder.design.nodes.direct_conversation import OllamaPlanner
-                    active=OllamaPlanner(os.getenv('A4B_CAPABILITY_MODEL') or model)
+                    from agent_builder.design.requirement_ledger import requirement_transport
+                    active=requirement_transport(os.getenv('A4B_CAPABILITY_MODEL') or model, api_key)
                 else:active=transport
                 result=assess_capability(state,active)
         except Exception as error:
@@ -118,9 +133,9 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
                             'key':'capability.condition.'+str(i),'source':'capability','text':_question_text(text),
                             'options':resolution_options(state)} for i,text in enumerate(texts)]
-            # AgentDraft supports 3 visible questions; preserve every question record.
-            grouped=questions[:2]+([{'text':'\n'.join(q['text'] for q in questions[2:]),'options':[]}] if len(questions)>2 else [])
-            ledger={'decision':'clarify','questions':grouped,'slots':{}}
+            # Match main's two-question UI contract; retain the full assessment.
+            questions=questions[:2]
+            ledger={'decision':'clarify','questions':questions,'slots':{}}
             reply=('미정 상태로 보류했습니다. 답변을 보내면 다시 확인합니다.\n' if deferred else '')+'\n'.join(q['text'] for q in questions)
             update.update(capability_route='supervisor' if decision=='manual_review' else 'await_capability',status='needs_clarification',confirmed=False,gap_condition_review=None,
                 saved_agent_id=None,draft=_pending_draft(state,ledger),pending_questions=questions,

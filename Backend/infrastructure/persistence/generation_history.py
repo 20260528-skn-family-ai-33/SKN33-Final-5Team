@@ -245,12 +245,13 @@ class GenerationHistory:
         record['result_revision']=revision
         self._write(record)
 
-    def saved_in_transaction(self, workflow_id):
+    def saved_in_transaction(self, workflow_id, workflow_version=None):
         """The workflow and its successful outcome commit together, before worker exit."""
         record = self.read()
         if record['status'] != 'running':
             raise ValueError('생성 요청이 이미 종료되어 저장할 수 없습니다.')
         stamp = now()
+        if workflow_version is not None:record['workflow_version']=workflow_version
         record.update(status='succeeded', stage='save', node='save', reason_code='workflow_saved',
                       reason='워크플로우 저장을 완료했습니다.', error_type=None, workflow_id=workflow_id,
                       updated_at=stamp, finished_at=stamp)

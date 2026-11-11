@@ -163,11 +163,25 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   try{
    // Read history first: a running worker may publish its session just afterwards.
    const history=await request<{requests:GenerationRequest[]}>('/api/agent-builder/generation_history?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
-   const latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
+   let latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
    if(token!==generation.current)return null;
-   remember(latest);
+   let repairActive=false;
    const outcome=history.requests.find(item=>item.request_id===attempt.requestId&&item.action===attempt.action
     &&item.session_revision===attempt.before.revision);
+   if(attempt.action==='confirm'&&outcome?.status==='succeeded'&&outcome.workflow_id&&latest.status!=='saved'){
+    const repair=await request<{recovered:boolean;reason?:string}>('/api/agent-builder/recover_generation',
+     {id:attempt.before.id,revision:latest.revision,generationRequestId:attempt.requestId},undefined,controller.signal);
+    repairActive=repair.reason==='active';
+    latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(attempt.before.id),undefined,undefined,controller.signal);
+    if(token!==generation.current)return null;
+    if(repair.reason==='changed'){
+     remember(latest);setRecovery({...attempt,running:false});
+     setError('다른 요청에서 대화가 변경됐습니다. 최신 대화를 확인하거나 다른 화면으로 이동하세요.');
+     return null;
+    }
+    if(!repair.recovered&&!repairActive)throw new Error('저장 결과 복구를 확인하지 못했습니다.');
+   }
+   remember(latest);
    const applied=latest.last_generation_request_id===attempt.requestId&&latest.revision>attempt.before.revision;
    const successful=!!outcome&&['waiting_input','waiting_confirmation','succeeded'].includes(outcome.status);
    const resultRevision=outcome?.result_revision;
@@ -179,7 +193,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
     ? latest.status==='saved'&&!!latest.saved_agent_id&&(published||successful&&outcome?.workflow_id===latest.saved_agent_id)
     : recorded||published;
    // Session publication can complete before the audit record is finalized.
-   if(!delivered&&outcome?.status==='running'){
+   if(!delivered&&(outcome?.status==='running'||repairActive)){
     const pollCount=(attempt.pollCount??0)+1;
     const running=pollCount<15;
     setRecovery({...attempt,running,pollCount:running?pollCount:0});
@@ -465,7 +479,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   <div className="as-shell"><WorkspaceSidebar active={screen==='nodes'?'workflows':'workflow'} disabled={!!busy||!!recovery?.running||libraryBusy} help={<WorkspaceHelp currentTourPanel={editorPanel} onTourPanelChange={setEditorPanel} deferAutoStart={loading||!!busy||libraryBusy}/>} onNavigate={next=>{if(next==='workflow')openDesignHome();else leave(next);}}>{screen!=='nodes'&&<><div className="as-sidebar-label">내 워크플로우 <span>{loading?'…':agents.length}</span></div><nav data-tour="saved-workflows" aria-label="저장한 워크플로우">{agents.map(a=><button key={a.id} disabled={!!busy||!!recovery||libraryBusy} onClick={()=>{if(canLeave())void openAgent(a);}} className={'as-agent-link '+(selected?.id===a.id?'active':'')}><span className="as-small-icon"><Workflow size={16}/></span><span><strong>{a.config.name}</strong><small>버전 {a.version} · {a.config.tool_ids.length}개 도구</small></span></button>)}</nav>{!agents.length&&!loading&&<p className="as-sidebar-empty">업무를 설명하면 첫 워크플로우를 만들 수 있습니다.</p>}</>}</WorkspaceSidebar>
   <div style={{display:screen==='nodes'?'contents':'none'}}>{libraryVisited&&<NodeLibrary loading={loading} unavailable={initialLoadFailed} header={<TaskLibraryHeader active="nodes" disabled={!!busy||!!recovery||libraryBusy} onNavigate={next=>{if(next==='workflows')leave(next);}} actions={window.history.state?.returnToDesign&&<button type="button" className="as-text-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>go('workflow',true)}><ArrowLeft size={15}/>설계로 돌아가기</button>}/>} onDirtyChange={setLibraryDirty} onBusyChange={setLibraryBusy} nodes={library} defaults={presets} catalog={catalog} onSaved={refreshLibrary} onUse={n=>{if(!canLeave())return;reset();setChosenRefs([n.ref]);setChosenSnapshots([n]);go('workflow');}} onToolUse={t=>{if(!canLeave())return;reset();setText(t.name+' 기능을 사용하는 워크플로우를 만들어줘. ');go('workflow');}}/>}</div>{screen!=='nodes'&&<main className="as-main">{pageNavigation}<div className="as-page-title"><div><h1>{selected?selected.config.name:session?.base_version?'워크플로우 수정':screen==='run'?'실행할 워크플로우를 선택하세요.':'워크플로우 설계'}</h1><p>{selected?.config.schedule?'저장한 작업·처리 규칙을 서버에서 실행하는 자동화입니다.':selected?'저장한 처리 순서와 설정을 확인하세요.':screen==='run'?'저장한 워크플로우를 선택하고 실제 요청·파일로 실행합니다.':'업무를 설명하고, 처리 순서와 조건을 확인한 뒤 저장하세요.'}</p></div>{selected&&<button data-tour="edit-workflow" className="as-button as-secondary" onClick={edit} disabled={!!busy||!!recovery||libraryBusy}><Settings2 size={16}/>설정 수정</button>}{screen==='workflow'&&!saved&&<div className="as-design-actions">
      <button type="button" className="as-button as-secondary" onClick={()=>go('nodes',true)} disabled={loading||!!busy||libraryBusy}>작업 찾아보기</button>
-     <button className="as-button as-primary" onClick={save} disabled={!ready||!!busy||libraryBusy}><Check size={17}/>{session?.base_version?'새 버전 저장':draft?.schedule?'자동화 저장':'초안 확인 · 저장'}</button>
+     <button className="as-button as-primary" onClick={save} disabled={!ready||!!busy||!!recovery||libraryBusy}><Check size={17}/>{session?.base_version?'새 버전 저장':draft?.schedule?'자동화 저장':'초안 확인 · 저장'}</button>
     </div>}</div>
    {screen==='workflow'&&!saved&&<div className="as-progress" aria-label="설계 진행">
     <span className={draft?'done':'current'}><i>{draft?<Check size={12}/>:'1'}</i>업무 설명</span>

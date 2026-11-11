@@ -56,9 +56,46 @@ def recover(c):
         from copy import copy
         context=copy(c);context.action='session'
         latest=_session_action(context)
+        if record['action']=='confirm' and record['status']=='succeeded' and record.get('workflow_id'):
+            return _restore_saved(c, audit, record, session, latest)
         if latest.get('last_generation_request_id') == request_id and latest.get('status') in ('ready','needs_clarification','saved'):
             audit.finish(latest, result_revision=latest['revision'])
         elif record['status'] == 'running':
             audit.change(status='failed', reason_code='generation_abandoned',
                          reason='이전 작업이 종료된 것을 확인했습니다. 보존된 입력으로 같은 대화에서 다시 요청할 수 있습니다.', error_type=None)
         return {'recovered':True, 'request_id':request_id}
+
+
+def _restore_saved(c, audit, record, session, latest):
+    """Reconstruct only the saved version committed by this confirmation request."""
+    request_id=record['request_id']
+    workflow_id=record['workflow_id']
+    if (latest.get('status')=='saved' and latest.get('saved_agent_id')==workflow_id
+            and session.get('last_generation_request_id')==request_id):
+        return {'recovered':True, 'request_id':request_id}
+    if session['revision'] != record['session_revision']:
+        return {'recovered':False, 'reason':'changed'}
+    # Legacy audit records lack a version. The unadvanced session still records
+    # the base version used by that confirmation, so resolve its next version.
+    version=record.get('workflow_version',session['base_version']+1)
+    if type(version) is not int or version<1:raise ValueError('저장된 워크플로우 버전을 확인하세요.')
+    saved=c.storage.agent_version(workflow_id, version)
+    if saved['session_id'] != session['id']:
+        raise ValueError('이 대화에서 저장한 워크플로우가 아닙니다.')
+    from agent_builder.design.graph import build_graph
+    graph,connection=build_graph(c.storage,model=session['model'],conversation=c.conversation)
+    try:
+        config={'configurable':{'thread_id':session['id']}}
+        state={**(graph.get_state(config).values or {}), 'status':'saved', 'saved_agent_id':workflow_id,
+               'confirmed':True,'draft':{key:value for key,value in saved['config'].items() if key!='node_snapshots'},
+               'issues':[],'semantic_issues':[],'pending_questions':[]}
+        # This publishes the completed save node without invoking save_agent again.
+        graph.update_state(config,state,as_node='save')
+        previous=getattr(c.storage,'generation_audit',None)
+        c.storage.generation_audit=audit
+        try:
+            c.storage.update_session({**session,'agent_id':workflow_id,'base_version':version,
+                                      'last_generation_request_id':request_id},session['revision'],state)
+        finally:c.storage.generation_audit=previous
+    finally:connection.close()
+    return {'recovered':True, 'request_id':request_id}

@@ -196,7 +196,7 @@ class Storage:
                     # Repair old partial saves on idempotent replays without pausing a healthy schedule.
                     if draft.get('schedule') and not schedules.get(old['id']):
                         schedules.configure(old['id'],commit=False)
-                    if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'])
+                    if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'],old['version'])
                     self.db.commit();return old['id']
             id=state.get('base_agent_id') or (session_id if self.business else uid())
             row=self.db.execute('SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=?',(id,)).fetchone()
@@ -212,7 +212,7 @@ class Storage:
             self._insert_agent_version(a)
             if draft.get('schedule'):schedules.configure(id,commit=False,previous_config=old['config'] if old else None)
             else:self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(id,))
-            if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id)
+            if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id,version+1)
             self.db.commit();return id
         except Exception:self.db.rollback();raise
     def write_test(self,run):

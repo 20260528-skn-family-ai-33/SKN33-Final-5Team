@@ -1966,3 +1966,27 @@ for(const recoveryResult of ['recovered','active','offline'])test('resume: a sto
   }
  }finally{await h.close();}
 });
+
+for(const repairResult of ['saved','active','changed'])test('save recovery: persisted workflow with an unadvanced session: '+repairResult,async()=>{
+ const own='00000000-0000-4000-8000-000000000081',before=readySession();
+ let repaired=false;
+ const saved={...before,revision:2,status:'saved',saved_agent_id:'A',last_generation_request_id:own};
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return repaired?saved:before;
+  if(path.endsWith('/confirm'))throw Error('저장 응답 유실');
+  if(path.includes('/generation_history'))return {requests:[{request_id:own,action:'confirm',session_revision:1,status:'succeeded',workflow_id:'A'}]};
+  if(path.endsWith('/recover_generation')){repaired=repairResult==='saved';return {recovered:repaired,reason:repaired?undefined:repairResult};}
+ });
+ try{
+  await click(button('초안 확인 · 저장'));
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/confirm')).length,1);
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/recover_generation'))?.body,{id:'ready',revision:1,generationRequestId:own});
+  if(repairResult==='saved'){
+   assert.equal(document.querySelector('main h1')?.textContent,'서비스 A');
+   assert.ok(document.querySelector('.screen-run'));assert.equal(document.querySelector('[role="alert"]'),null);
+  }else{
+   assert.equal(h.calls.some(call=>call.path.includes('/agent?id=A')),false);
+   assert.ok(document.querySelector('[role="alert"]'));assert.equal(button('초안 확인 · 저장').disabled,true);
+  }
+ }finally{await h.close();}
+});

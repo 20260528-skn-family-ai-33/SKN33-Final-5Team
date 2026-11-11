@@ -407,3 +407,68 @@ def test_recovery_preserves_a_completed_outcome(tmp_path):
                 generation_request_id=request_id)['recovered'] is True
     [record]=records(tmp_path, s['id'])
     assert record['status']=='waiting_input' and record['result_revision']==result['revision']
+
+
+def _committed_save_without_checkpoint(tmp_path, monkeypatch):
+    s=session(tmp_path)
+    first=call(tmp_path,'message',id=s['id'],revision=0,content=PROMPT,conversation=fake_conversation)
+    ready=call(tmp_path,'message',id=s['id'],revision=first['revision'],content='중복은 유지',conversation=fake_conversation)
+    original=Storage.save_agent
+    def save_then_exit(store,state):
+        original(store,state)
+        raise OSError('worker exited before checkpoint publication')
+    monkeypatch.setattr(Storage,'save_agent',save_then_exit)
+    request_id=uid()
+    with pytest.raises(OSError):
+        call(tmp_path,'confirm',id=s['id'],revision=ready['revision'],generation_request_id=request_id,conversation=fake_conversation)
+    record=next(item for item in records(tmp_path,s['id']) if item['request_id']==request_id)
+    assert record['status']=='succeeded' and record['workflow_id']
+    return s,ready,request_id,record
+
+
+@pytest.mark.parametrize('legacy',[False,True])
+@pytest.mark.parametrize('renamed',[False,True])
+def test_saved_workflow_is_restored_when_worker_exits_before_save_checkpoint(tmp_path, monkeypatch, legacy, renamed):
+    s,ready,request_id,record=_committed_save_without_checkpoint(tmp_path,monkeypatch)
+    if renamed:
+        store=Storage(tmp_path)
+        try:store.rename_agent(record['workflow_id'],'저장 후 이름 변경',1)
+        finally:store.close()
+    if legacy:
+        store=Storage(tmp_path)
+        try:
+            audit=GenerationHistory(store,request_id);old=audit.read();old.pop('workflow_version',None)
+            audit._write(old);store.db.commit()
+        finally:store.close()
+    assert call(tmp_path,'session',id=s['id'])['status']=='ready'
+    result=call(tmp_path,'recover_generation',id=s['id'],revision=ready['revision'],generation_request_id=request_id)
+    assert result['recovered'] is True
+    restored=call(tmp_path,'session',id=s['id'])
+    assert restored['status']=='saved'
+    assert restored['saved_agent_id']==record['workflow_id']
+    assert restored['last_generation_request_id']==request_id
+    assert restored['revision']==ready['revision']+1
+    again=call(tmp_path,'recover_generation',id=s['id'],revision=restored['revision'],generation_request_id=request_id)
+    assert again['recovered'] is True
+    assert call(tmp_path,'session',id=s['id'])['revision']==restored['revision']
+    store=Storage(tmp_path)
+    try:
+        assert store.agent(record['workflow_id'])['version']==(2 if renamed else 1)
+        assert restored['base_version']==1
+        assert len(store.agents())==1
+    finally:store.close()
+
+
+def test_saved_recovery_does_not_overwrite_a_newer_conversation(tmp_path, monkeypatch):
+    s,ready,request_id,record=_committed_save_without_checkpoint(tmp_path,monkeypatch)
+    store=Storage(tmp_path)
+    try:
+        current=store.session(s['id'])
+        updated=store.update_session({**current,'last_generation_request_id':uid()},current['revision'])
+    finally:store.close()
+    result=call(tmp_path,'recover_generation',id=s['id'],revision=updated['revision'],generation_request_id=request_id)
+    assert result=={'recovered':False,'reason':'changed'}
+    latest=call(tmp_path,'session',id=s['id'])
+    assert latest['status']=='ready' and latest['revision']==updated['revision']
+    assert latest['last_generation_request_id']!=request_id
+    assert next(item for item in records(tmp_path,s['id']) if item['request_id']==request_id)['status']=='succeeded'

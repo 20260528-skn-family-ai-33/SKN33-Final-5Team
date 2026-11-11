@@ -46,11 +46,14 @@ def _transport(api_key, model):
 
 def _pending_draft(state, ledger):
     from contracts.models import ExecutionPlan
+    from agent_builder.design.question_controls import complete_questions
+    questions=complete_questions(ledger.get('questions',[]),state)
     evidence = next((e for slot in ledger.get('slots', {}).values() for e in slot.get('evidence', []) if e['source_id'] == 'user'), None)
     requirements = [{'description': '사용자 요청의 확인 조건', 'source_id': 'user', 'quote': evidence['quote']}] if evidence else []
     return AgentDraft(name='업무 조건 확인', purpose='사용자 조건 확인 후 업무 설계', instructions='확정 조건과 사용자 답변을 보존합니다.',
         tool_ids=[], document_ids=[r['id'] for r in state.get('resources', [])], requirements=requirements,
-        questions=[q['text'] for q in ledger.get('questions', [])], question_options=[q.get('options', []) for q in ledger.get('questions', [])],
+        questions=[q['text'] for q in questions], question_options=[q.get('options', []) for q in questions],
+        question_responses=[q['response'] for q in questions],
         unsupported=ledger.get('unsupported_actions', []) if ledger['decision'] == 'unsupported' else [],
         explanation='필수 업무 조건을 확인합니다.' if ledger['decision'] == 'clarify' else '지원 범위 또는 입력 상태를 확인하세요.',
         execution_plan=ExecutionPlan(filters=[], sort=[], match='all', missing_policy='keep', duplicate_policy='keep', duplicate_field=None, output_format='json'),

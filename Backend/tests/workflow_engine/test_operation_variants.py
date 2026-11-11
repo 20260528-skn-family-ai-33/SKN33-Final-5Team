@@ -29,7 +29,7 @@ EXTRA_KEYS=[
  ('verify_content_requirements','check_expected'),('check_document_links','check_remote_targets'),
  ('text_statistics','measure_text'),('split_pdf','split'),('text_transform','split'),
  ('text_transform','combine'),('json_transform','parse'),('list_transform','select'),
- ('date_transform','format'),('url_transform','parse')]
+ ('date_transform','format'),('url_transform','parse'),('email.list','read_messages')]
 
 
 def extra_arguments(root):
@@ -72,6 +72,7 @@ def extra_arguments(root):
       ('list_transform','select'):{'items':[{'amount':10},{'amount':20}],'index':1},
       ('date_transform','format'):{'timestamp':'2026-11-03T10:00:00+09:00','format':'%Y-%m-%d'},
       ('url_transform','parse'):{'url':'https://example.invalid/a?x=1'},
+      ('email.list','read_messages'):{'query':'is:unread','max_results':2},
     }
 
 
@@ -92,7 +93,19 @@ def test_additional_operation_runs_with_declared_output_ports(tmp_path,business_
     calls=[]
     def head(op,arguments):
         calls.append((op,arguments));return {'reachable':True,'status_code':200}
-    store.workflow_connectors={'http_head':head}
+    def gmail(op,arguments):
+        calls.append((op,arguments))
+        if op=='email.list':
+            if arguments.get('page_token')=='older':return {'messages':[{'id':'mail-old'}]}
+            assert 'page_token' not in arguments
+            return {'messages':[{'id':'mail-new'}],'nextPageToken':'older'}
+        assert op=='email.get' and arguments['format']=='full'
+        identifier=arguments['message_id']
+        assert identifier in ('mail-new','mail-old')
+        body=base64.urlsafe_b64encode(('실제 본문 '+identifier).encode()).decode().rstrip('=')
+        return {'id':identifier,'payload':{'mimeType':'text/plain',
+                'headers':[{'name':'Subject','value':'제목 '+identifier}], 'body':{'data':body}}}
+    store.workflow_connectors={'http_head':head,'gmail':gmail}
     class Model:
         def invoke(self,messages):
             calls.append(messages)
@@ -113,4 +126,18 @@ def test_additional_operation_runs_with_declared_output_ports(tmp_path,business_
         if (tool,operation)==('aggregate_table','group_aggregate'):assert outputs['records']==[{'sum':30}]
         if (tool,operation)==('calculate_columns','cast_numbers'):assert outputs['records']==[{'amount':10}]
         if (tool,operation)==('json_transform','parse'):assert outputs['result']=={'amount':30}
+        if (tool,operation)==('email.list','read_messages'):
+            assert calls==[
+                ('email.list',{'query':'is:unread','max_results':2}),
+                ('email.list',{'query':'is:unread','max_results':1,'page_token':'older'}),
+                ('email.get',{'message_id':'mail-new','format':'full'}),
+                ('email.get',{'message_id':'mail-old','format':'full'}),
+            ]
+            documents=outputs['documents']
+            assert [doc['source_id'] for doc in documents]==['gmail:mail-new','gmail:mail-old']
+            assert all('실제 본문 '+identifier in doc['text']
+                       for identifier,doc in zip(('mail-new','mail-old'),documents))
+            assert outputs['result']['returned_count']==outputs['result']['requested_count']==2
+            assert outputs['result']['complete'] and outputs['result']['search_complete']
+            assert outputs['result']['pages_read']==2
     finally:store.close()

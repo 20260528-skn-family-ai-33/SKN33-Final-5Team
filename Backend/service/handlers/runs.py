@@ -2,7 +2,7 @@
 from infrastructure.persistence.ids import uid, now
 from workflow_engine.legacy_runtime import test_agent
 from workflow_engine.runner import run_workflow
-from workflow_engine.scheduling.schedules import Schedules
+from workflow_engine.scheduling.schedules import Schedules, scheduled_agent, preflight_schedule
 from agent_builder.conditions.input_requirements import preflight_execution, execution_request_required
 from workflow_engine.scheduling.library_sources import LibrarySources,source_tags
 
@@ -42,6 +42,12 @@ def run(c):return {'run':c.storage.test(c.data['id'])}
 def test(c):
     data=c.data;storage=c.storage;api_key=c.api_key
     agent=storage.agent(data['id'])
+    if data.get('use_schedule'):
+        if data.get('file_ids'):raise ValueError('예약 자료 실행에는 이번 실행 파일을 함께 지정할 수 없습니다.')
+        reservation=Schedules(storage).get(data['id'])
+        if not reservation:raise ValueError('예약 설정을 먼저 저장하세요.')
+        if reservation['agent_version']!=agent['version']:raise ValueError('워크플로우가 변경됐습니다. 예약 설정을 저장해 적용할 버전을 확인하세요.')
+        agent=scheduled_agent(agent,reservation['spec'])
     if LibrarySources(storage).get(data['id']) and not hasattr(storage,'bound') and not data.get('file_ids'):raise ValueError('자료함 파일 권한과 실행 스냅샷을 먼저 확인하세요.')
     if hasattr(storage,'bound') and data.get('file_ids'):raise ValueError('자료함 파일 선택과 이번 실행 파일 첨부를 동시에 사용할 수 없습니다.')
     request=data.get('content','')
@@ -54,7 +60,8 @@ def test(c):
     if agent['config'].get('workflow'):
         source=Schedules(storage).execution_source(agent)
         files=data.get('file_ids') or ([source['asset_id']] if source else [])
-        preflight_execution(agent['config'],storage,files,agent.get('workflow_dependencies'))
+        if data.get('use_schedule'):preflight_schedule(storage,agent,files)
+        else:preflight_execution(agent['config'],storage,files,agent.get('workflow_dependencies'))
         tags={'trigger':'manual',**source_tags(storage)}
         if source and not data.get('file_ids'):tags.update(source_version=source['version'],source_id=source['id'])
         result=run_workflow(storage,data['id'],request,api_key,files,agent_snapshot=agent,reply_draft=data.get('reply_draft'),forced_run_id=data.get('run_id'),execution_token=data.get('execution_token'),run_tags=tags)

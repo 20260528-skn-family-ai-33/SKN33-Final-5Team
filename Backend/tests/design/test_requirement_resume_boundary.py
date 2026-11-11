@@ -24,8 +24,18 @@ def test_answer_to_one_of_two_owners_is_bound_only_to_that_question(monkeypatch)
     monkeypatch.setattr(await_input, 'interrupt', lambda _: dict(type='message', content='net', question_id='req'))
     result = await_input.await_input_node(state)
     assert 'condition_answers' not in result
-    assert result['requirement_answers'] == [dict(question_ids=['req'], candidate_keys=['compute.output_column'],
-                                                  answer='net', turn=0)]
+    [event] = result['requirement_answers']
+    assert event['question_ids'] == ['req']
+    assert event['candidate_keys'] == ['compute.output_column']
+    assert event['answer'] == event['message_content'] == 'net' and event['turn'] == 0
+    [snapshot] = event['questions']
+    assert {key: snapshot[key] for key in requirement} == requirement
+    assert snapshot['response']['type'] == 'text'
+    # This was a free-text reply to the requirement owner, not an invented
+    # typed value or a response to the condition owner's pending question.
+    assert 'value' not in event
+    assert condition['id'] not in event['question_ids']
+    assert 'response' not in requirement
 
 
 def test_condition_judge_does_not_treat_unknown_requirement_answer_as_its_own(monkeypatch):

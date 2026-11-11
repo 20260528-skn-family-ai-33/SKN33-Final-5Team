@@ -3,7 +3,7 @@ import json
 from copy import deepcopy
 from types import SimpleNamespace
 import pytest
-from contracts.models import ExecutionPlan
+from contracts.models import ExecutionPlan, QuestionResponse
 from agent_builder.design.nodes.conversation import make_conversation
 from agent_builder.design.nodes.validation import validate_node
 from agent_builder.design.nodes.supervisor import supervisor_node
@@ -32,10 +32,12 @@ def test_overlong_requirement_is_retried_before_state_update(monkeypatch):
     assert '1000' in calls[-1]['messages'][-1]['content']
 
 
-def draft(questions=None,unsupported=None,workflow=None):
+def draft(questions=None,unsupported=None,workflow=None,question_responses=None):
+    responses = question_responses if question_responses is not None else [{'type':'text'} for _ in questions or []]
     return {'name':'업무 설계','purpose':'요청 처리','instructions':'사용자 조건 적용','tool_ids':[],
         'document_ids':[],'requirements':[{'description':'실제 사용자 요청','evidence_id':'e1'}],
         'questions':questions or [],'question_options':[[] for _ in questions or []],
+        'question_responses':[QuestionResponse.model_validate(response).model_dump() for response in responses],
         'unsupported':unsupported or [],'explanation':'요청을 확인했습니다.',
         'execution_plan':ExecutionPlan(filters=[],sort=[],match='all',missing_policy='keep',duplicate_policy='keep',duplicate_field=None,output_format='csv').model_dump(),
         'workflow':workflow,'schedule':None,'report_destination':None}

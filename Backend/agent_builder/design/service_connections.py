@@ -9,12 +9,16 @@ def service_connection_context(state):
     return {'gmail': {
         'connected': connected,
         'status': 'connected' if connected else 'not_connected' if connected is False else 'unknown',
+        'credentials_managed_by': 'server',
+        'credential_input_required': False,
         'instruction': ('서버에 Gmail 읽기 계정 연결 정보가 있습니다. 다시 연결하라는 질문을 하지 않습니다. '
                         if connected else
                         'Gmail 계정은 실행 전에 연결합니다. 연결되지 않아도 지원되는 설계 노드는 생성합니다. '
                         if connected is False else
                         '연결 상태를 전달받지 않았으므로 미연결이라고 추측하거나 단정하지 않습니다. ') +
-                       '이 값은 연결 정보의 존재 여부입니다. 토큰 유효성·실제 읽기 권한은 실행 직전에 서버가 확인합니다.'}}
+                       '이 값은 연결 정보의 존재 여부입니다. 토큰 유효성·실제 읽기 권한은 실행 직전에 서버가 확인합니다. '
+                       'Gmail 인증 토큰과 내부 계정 ID는 서버가 관리합니다. 사용자에게 값을 입력하거나 붙여 넣으라고 묻지 않습니다. '
+                       '계정 연결은 앱의 서비스 연결 화면에서 진행하며, 인증 정보의 부재를 업무 요구사항의 미정 조건으로 만들지 않습니다.'}}
 
 
 _GMAIL_CONNECT_QUESTION = re.compile(
@@ -36,5 +40,7 @@ def reconcile_connection_questions(draft, state):
     if len(keep) == len(questions):
         return draft
     options = draft.get('question_options') or []
+    responses = draft.get('question_responses') or []
     return {**draft, 'questions': [questions[index] for index in keep],
-            'question_options': [options[index] if index < len(options) else [] for index in keep]}
+            'question_options': [options[index] if index < len(options) else [] for index in keep],
+            'question_responses': [responses[index] if index < len(responses) else None for index in keep]}

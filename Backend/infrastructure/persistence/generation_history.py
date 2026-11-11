@@ -89,9 +89,15 @@ class GenerationHistory:
         request_id = str(UUID(data.get('generation_request_id') or uid()))
         audit = cls(storage, request_id, data.get('api_key', ''))
         stamp = now()
+        request_identity=str(data.get('content',''))
+        if data['action']=='confirm' and 'include_schedule' in data:
+            if type(data['include_schedule']) is not bool:
+                raise ValueError('예약을 함께 저장할지 선택해주세요.')
+            request_identity=json.dumps({'content':request_identity,'include_schedule':data['include_schedule']},
+                                        sort_keys=True,separators=(',',':'))
         record = dict(request_id=request_id, session_id=data['id'], action=data['action'],
                       session_revision=data.get('revision'),
-                      request_hash=hashlib.sha256(str(data.get('content','')).encode()).hexdigest(),
+                      request_hash=hashlib.sha256(request_identity.encode()).hexdigest(),
                       request_text=redact(data.get('content', ''), audit.api_key)[:4000],
                       status='running', stage='request_analysis', node='request',
                       reason_code=None, reason=None, error_type=None, workflow_id=None,

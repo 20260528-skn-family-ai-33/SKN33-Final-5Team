@@ -25,6 +25,10 @@ class AssessmentConflictError(ValueError):
         self.model_calls=model_calls
 
 
+class AssessmentLanguageError(ValueError):
+    """A model-written clarification needs one bounded Korean rewrite."""
+
+
 def validate_assessment_result(result,state,*,model_calls=0):
     # Check both model responses and persisted results reused after non-answers.
     # Runtime metadata is allowed on persisted results; core fields stay strict.
@@ -42,7 +46,30 @@ def validate_assessment_result(result,state,*,model_calls=0):
     user=[m['content'] for m in active_request_messages(state) if m.get('role')=='user']
     if any(not q.strip() or not any(q in text for text in user) for q in value['user_quotes']):
         raise ValueError('요청 원문 근거를 확인하지 못했습니다.')
-    return result
+    # Presentation quality must never invalidate an otherwise valid capability
+    # decision. Keep missing conditions/actions intact for the public language
+    # guard; an optional rewrite below cannot grant new capabilities.
+    from agent_builder.design.question_language import validate_question_language
+    rendered={**result};rendered.pop('question_language_rewrite_required',None)
+    blocked=False
+    for field in ('missing_conditions','missing_actions'):
+        records=[]
+        for text in value[field]:
+            record={'text':text}
+            try:validate_question_language([record],state)
+            except ValueError:blocked=True;record={'text':text}
+            records.append(record['text'])
+        rendered[field]=records
+    reason={'text':value['reason']}
+    try:validate_question_language([reason],state)
+    except ValueError:
+        reason={'text':{'existing_tools':'등록된 도구로 요청한 업무를 구성할 수 있습니다.',
+                        'clarify':'업무에 필요한 조건을 확인합니다.',
+                        'missing_capability':'등록된 도구에서 필요한 기능을 확인합니다.',
+                        'manual_review':'업무 지원 여부를 추가로 검토합니다.'}[decision]}
+    rendered['reason']=reason['text']
+    if blocked:rendered['question_language_rewrite_required']=True
+    return rendered
 
 # Native app capabilities are not tool IDs and do not grant runtime permission.
 APP_CAPABILITIES=[{
@@ -352,9 +379,13 @@ def assess_capability(state,transport):
         variants.append(branch)
     transport.schema={'anyOf':variants}
     directives = delivery_directives(state)
+    from agent_builder.design.execution_mode import execution_mode_context
+    execution_choice=execution_mode_context(state)
+    from agent_builder.design.question_language import KOREAN_QUESTION_INSTRUCTION
     from agent_builder.design.service_connections import service_connection_context
-    messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+TEMPORAL_INSTRUCTIONS}, {'role':'user','content':json.dumps({
+    messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+TEMPORAL_INSTRUCTIONS+'\n'+KOREAN_QUESTION_INSTRUCTION}, {'role':'user','content':json.dumps({
         'messages':state['messages'],'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
+        **({'execution_choice':execution_choice} if execution_choice else {}),
         'temporal_context':request_clock,
         'pending_questions':state.get('pending_questions', []),
         'service_connections':service_connection_context(state),
@@ -363,10 +394,30 @@ def assess_capability(state,transport):
         'app_capabilities':APP_CAPABILITIES,
         'tools':planner_catalog(TOOLS),
         'authoritative_request':user[-1],'active_delivery_directives':directives,'user_quote_catalog':user},ensure_ascii=False)}]
-    reply=transport.invoke(messages)
-    content=reply.get('content') if isinstance(reply,dict) else reply.content
-    result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=1)
-    calls=1
+    calls=0;language_repairs=0
+    def invoke_checked(history):
+        nonlocal calls,language_repairs
+        reply=transport.invoke(history);calls+=1
+        content=reply.get('content') if isinstance(reply,dict) else reply.content
+        original=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
+        if not original.get('question_language_rewrite_required') or language_repairs:return original
+        language_repairs+=1
+        frozen={key:original[key] for key in ('decision','tool_ids','user_quotes')}
+        repair=[*history,{'role':'assistant','content':content},
+                {'role':'user','content':KOREAN_QUESTION_INSTRUCTION+' 표시할 누락 항목과 이유의 언어만 고치세요. decision/tool_ids/user_quotes와 누락 목록 개수·순서는 변경하지 않습니다. 고정값: '+json.dumps(frozen,ensure_ascii=False)}]
+        try:
+            calls+=1;reply=transport.invoke(repair)
+            content=reply.get('content') if isinstance(reply,dict) else reply.content
+            rewritten=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
+            if (any(rewritten[key]!=original[key] for key in frozen)
+                    or any(len(rewritten[key])!=len(original[key]) for key in ('missing_conditions','missing_actions'))):
+                return original
+            return rewritten
+        except Exception:
+            # A wording repair failure preserves the real capability verdict;
+            # the public projection supplies a Korean retry control instead.
+            return original
+    result=invoke_checked(messages)
     if result['decision']=='missing_capability':
         review_prompt='''이전 지원 판단은 미검증 후보입니다. 요청과 실제 tools 및 app_capabilities를 모두 다시 대조하여 최종 Assessment JSON 하나를 반환합니다.
 가장 먼저 missing_actions 각 항목을 검토합니다. 앱의 hourly/daily/weekly/monthly 예약은 이미 구현된 지원 기능이므로 '주간 예약', '매주 ... 시각', '예약 활성화'를 부족 기능으로 적었다면 해당 항목을 제거합니다.
@@ -378,11 +429,8 @@ def assess_capability(state,transport):
 등록 도구로 요청의 모든 기능이 가능하면 existing_tools와 실제 tool_ids를 반환합니다. 필수 정책이 미정이면 clarify입니다.
 표 join은 join_tables의 실제 등록 operation·입출력·정책과 대조합니다. 이메일·캘린더처럼 등록된 외부 동작은 기능 지원과 계정 연결 전제를 구분하고, Slack처럼 등록되지 않은 전송은 미지원으로 유지합니다. calculate_columns의 명시적 사칙연산·열 이름 변경과 text_transform의 문자열 바꾸기는 등록된 지원 기능입니다. 그 밖의 임의 셀 변환은 지원한다고 가정하지 마세요. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
 user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 실행/제작 허가가 아닙니다.'''
-        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+TEMPORAL_INSTRUCTIONS+'\n'+review_prompt},
+        result=invoke_checked([{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+TEMPORAL_INSTRUCTIONS+'\n'+review_prompt+'\n'+KOREAN_QUESTION_INSTRUCTION},
             messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'authoritative_request':user[-1],'request_update_rule':REQUEST_UPDATE_RULE,'active_delivery_directives':directives,'task':'최신 사용자 변경을 먼저 적용한 뒤 남은 요청을 실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
-        content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
-        calls+=1
-        result=validate_assessment_result(Assessment.model_validate_json(content).model_dump(),state,model_calls=calls)
     result=registered_policy_claims(reconcile_native_schedule(normalize_native_claims(result),state),state)
     result=external_delivery_claims(guard_delivery_revision(result,state),state)
     return {**validate_assessment_result(result,state,model_calls=calls),'model_calls':calls,'allows_execution':False,'allows_generation':False,'scope':'catalog assessment only; not condition READY'}

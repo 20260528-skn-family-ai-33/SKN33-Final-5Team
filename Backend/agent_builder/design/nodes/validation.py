@@ -5,6 +5,11 @@ from workflow_engine.workflow import workflow_errors
 
 def validate_node(state):
     draft=AgentDraft.model_validate({k:v for k,v in state['draft'].items() if k!='node_snapshots'}).model_dump();issues=list(state.get('semantic_issues',[]))
+    from agent_builder.design.execution_mode import filter_draft_execution_questions
+    draft=filter_draft_execution_questions(draft,state)
+    from agent_builder.design.question_language import validate_draft_question_language
+    try:draft=validate_draft_question_language(draft,state)
+    except ValueError as error:issues.append(str(error))
     from agent_builder.conditions.condition_readiness import literal_condition_issues, written_comparison_issues
     issues.extend(literal_condition_issues(state))
     issues.extend(written_comparison_issues(state, draft))
@@ -54,6 +59,10 @@ def validate_node(state):
             issues.append('실행 조건을 적용할 filter_sort 노드가 워크플로우에 필요합니다.')
     tables=[r for r in state['resources'] if r.get('kind')=='table' and r['id'] in draft['document_ids']]
     questions=list(draft['questions'])
+    from agent_builder.design.execution_mode import validate_execution_mode
+    issues.extend(validate_execution_mode(state,draft,questions))
+    if draft.get('schedule') and not draft.get('report_destination'):
+        draft['report_destination']='reports'
     for plan in plans:
         transform=bool(plan['filters'] or plan['sort'] or plan['duplicate_policy'] not in ['keep','ask'] or plan['missing_policy']=='exclude')
         if transform and 'filter_sort' not in draft['tool_ids']:issues.append('실행 조건을 적용할 조건 처리 도구가 필요합니다.')

@@ -45,22 +45,24 @@ class Responses:
 
 
 @pytest.mark.parametrize('zone', ['UTC', 'America/New_York'])
-def test_c01_request_timezone_grounds_schedule_without_changing_wall_clock(zone):
+def test_c01_request_timezone_preserves_fixed_seoul_schedule_and_written_clock(zone):
     state = request_state('매일 오전 9시에 보고서를 만들어줘.')
     state['user_timezone'] = zone
     schedule = grounded_schedule(state)
-    assert (schedule['timezone'], schedule['hour'], schedule['minute']) == (zone, 9, 0)
+    assert (schedule['frequency'], schedule['timezone'], schedule['hour'], schedule['minute']) == ('daily', 'Asia/Seoul', 9, 0)
     plan = extract_plan(extraction({'kind': 'schedule', 'schedule': schedule}), state)
     assert plan['tasks'][0]['spec']['schedule'] == schedule
+    assert state['user_timezone'] == zone
 
 
 @pytest.mark.parametrize('zone', [None, '', 'invalid-zone'])
-def test_c01_unknown_request_timezone_does_not_use_process_default(monkeypatch, zone):
-    monkeypatch.setenv('A4B_DEFAULT_TIMEZONE', 'Asia/Seoul')
+def test_c01_unknown_request_timezone_uses_fixed_seoul_instead_of_process_default(monkeypatch, zone):
+    monkeypatch.setenv('A4B_DEFAULT_TIMEZONE', 'UTC')
     state = request_state('매일 오전 9시에 보고서를 만들어줘.')
     state['user_timezone'] = zone
-    with pytest.raises(ValueError):
-        grounded_schedule(state)
+    schedule = grounded_schedule(state)
+    assert (schedule['frequency'], schedule['timezone'], schedule['hour'], schedule['minute']) == ('daily', 'Asia/Seoul', 9, 0)
+    assert state['user_timezone'] == zone
 
 
 def test_c01_known_timezone_does_not_supply_an_unwritten_execution_time():
@@ -74,21 +76,24 @@ def test_c01_known_timezone_does_not_supply_an_unwritten_execution_time():
     '한국 시간과 UTC 기준으로 매일 오전 9시에 보고서를 만들어줘.',
     'Invalid/Zone 시간대로 매일 오전 9시에 보고서를 만들어줘.',
 ])
-def test_c01_request_timezone_does_not_override_conflicting_or_invalid_explicit_zone(user_request):
+def test_c01_conflicting_or_invalid_explicit_zone_preserves_fixed_seoul_and_written_clock(user_request):
     state = request_state(user_request)
     state['user_timezone'] = 'Asia/Seoul'
-    with pytest.raises(ValueError):
-        grounded_schedule(state)
+    schedule = grounded_schedule(state)
+    assert (schedule['frequency'], schedule['timezone'], schedule['hour'], schedule['minute']) == ('daily', 'Asia/Seoul', 9, 0)
+    assert state['messages'][0]['content'] == user_request
 
 
-def test_c01_invalid_timezone_change_does_not_keep_old_timezone_then_explicit_repair_wins():
+def test_c01_timezone_edits_preserve_fixed_seoul_and_written_execution_time():
     state = request_state('한국 시간으로 매일 오전 9시에 보고서를 만들어줘.')
     state['user_timezone'] = 'Asia/Seoul'
+    original = grounded_schedule(state)
     state['messages'].append(dict(role='user', content='Invalid/Zone 시간대로 바꿔줘.'))
-    with pytest.raises(ValueError):
-        grounded_schedule(state)
+    assert grounded_schedule(state) == original
     state['messages'].append(dict(role='user', content='UTC 시간대로 해줘.'))
-    assert grounded_schedule(state)['timezone'] == 'UTC'
+    schedule = grounded_schedule(state)
+    assert schedule == original
+    assert (schedule['frequency'], schedule['timezone'], schedule['hour'], schedule['minute']) == ('daily', 'Asia/Seoul', 9, 0)
 
 
 def test_r07_invalid_rename_formula_can_repair_to_column_rename():

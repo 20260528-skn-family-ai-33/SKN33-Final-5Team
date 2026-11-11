@@ -262,15 +262,16 @@ class LibrarySources:
             if not ordered:raise ValueError('선택한 폴더에 함께 읽을 파일이 없습니다. 파일을 올린 뒤 다시 실행하세요.')
             if len(ordered)>100:raise ValueError('폴더 전체 함께 읽기는 최대 100개 파일까지 지원합니다. 폴더를 나눈 뒤 다시 실행하세요.')
         return ordered[:1] if selection['mode']=='latest' else ordered
-    def resolve(self,action,id,candidates,lease_token=None,run_id=None,expected_selection=None):
+    def resolve(self,action,id,candidates,lease_token=None,run_id=None,expected_selection=None,use_schedule=False):
         plan=self.plan(action,id);selection=plan['selection']
         if expected_selection is not None and selection!=expected_selection:raise ValueError('자료함 설정이 변경됐습니다. 다시 실행하세요.')
         if not selection:return {'status':'resolved','selection':None,'refs':[]}
         chosen=plan['refs'] if plan['refs'] is not None else self.choose(selection,candidates)
         if selection['mode']!='new' or action in ('schedule','schedule_test'):
             return {'status':'resolved','selection':selection,'refs':chosen[:1] if selection['mode']=='new' else chosen,'run_id':run_id or plan['run_id'] or uid()}
+        if use_schedule:return self.expand(action,id,selection,chosen,lease_token,use_schedule=True)
         return self.expand(action,id,selection,chosen,lease_token)
-    def expand(self,action,id,selection,refs,lease_token):
+    def expand(self,action,id,selection,refs,lease_token,use_schedule=False):
         self.storage.begin_write()
         try:
             if action=='scheduled_run':
@@ -286,7 +287,15 @@ class LibrarySources:
                 # concurrent settings save may have replaced or removed it.
                 # Check again while holding the same workspace lock as save().
                 if self.get(id)!=selection:raise ValueError('자료함 설정이 변경됐습니다. 다시 실행하세요.')
-                agent=self.storage.agent(id);due=now();parent_id=uid()
+                agent=self.storage.agent(id)
+                if use_schedule:
+                    from workflow_engine.scheduling.schedules import scheduled_agent
+                    row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(id,)).fetchone()
+                    reservation=json.loads(row[0]) if row else None
+                    if not reservation or reservation.get('removed'):raise ValueError('예약 설정을 먼저 저장하세요.')
+                    if reservation['agent_version']!=agent['version']:raise ValueError('워크플로우가 변경됐습니다. 예약 설정을 저장해 적용할 버전을 확인하세요.')
+                    agent=scheduled_agent(agent,reservation['spec'])
+                due=now();parent_id=uid()
                 parent={'id':parent_id,'agent_id':id,'agent_snapshot':agent,'kind':'manual','due_at':due,'created_at':due}
             jobs=[]
             for ref in refs:

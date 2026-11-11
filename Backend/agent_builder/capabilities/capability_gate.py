@@ -32,6 +32,7 @@ def input_fingerprint(state):
              'user_timezone':state.get('user_timezone'),
              'resources':state.get('resources',[]),'source_health':state.get('source_health',{}),
              'tools':TOOLS,'app_capabilities':APP_CAPABILITIES}
+    if state.get('execution_mode'):payload['execution_mode']=state['execution_mode']
     return hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
 
 

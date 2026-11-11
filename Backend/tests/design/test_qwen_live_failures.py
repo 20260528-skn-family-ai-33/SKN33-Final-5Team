@@ -40,10 +40,12 @@ def test_c01_validated_request_timezone_can_ground_explicit_schedule():
 
 
 @pytest.mark.parametrize('zone',[None,'not-a-zone'])
-def test_schedule_never_guesses_invalid_request_timezone(zone):
+def test_schedule_uses_fixed_seoul_with_missing_or_invalid_request_timezone(zone):
     current=state('매일 오전 9시에 보고서를 만들어줘.')
     current['user_timezone']=zone
-    with pytest.raises(ValueError):grounded_schedule(current)
+    result=grounded_schedule(current)
+    assert (result['frequency'],result['hour'],result['minute'],result['timezone'])==('daily',9,0,'Asia/Seoul')
+    assert current['user_timezone']==zone
 
 
 def test_explicit_schedule_timezone_wins_over_browser_timezone():

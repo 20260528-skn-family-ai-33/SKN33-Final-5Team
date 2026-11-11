@@ -319,8 +319,11 @@ class Extraction:
         payload=json.loads(messages[-1]['content'])
         assert {'user_messages','resources'}<=set(payload)
         if 'temporal_context' in payload:
-            assert set(payload)=={'user_messages','resources','temporal_context','request_meaning',
-                                 'conversation','pending_questions','previous_requirements'}
+            assert {'user_messages','resources','temporal_context','request_meaning',
+                    'conversation','pending_questions','previous_requirements'}<=set(payload)
+            assert set(payload)<={'user_messages','resources','temporal_context','request_meaning',
+                                 'conversation','pending_questions','previous_requirements','service_connections',
+                                 'available_capabilities','clarification_answers','execution_choice','confirmed_conditions'}
             assert payload['user_messages']==[m['content'] for m in payload['conversation'] if m['role']=='user']
             assert payload['temporal_context']['reference_time']
             assert payload['request_meaning'] is None

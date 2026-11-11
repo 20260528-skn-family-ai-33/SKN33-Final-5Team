@@ -28,13 +28,14 @@ function harness({scheduled=false,current=run('running'),history=[current],pinne
  let cleanup:(()=>void)|undefined,deps:unknown[]|undefined;
  const requests:string[]=[];
  const context:any={
+  schedule:scheduled?{active:true,spec:{frequency:'daily'}}:null,
   selected:{id:'manual-agent',version:1,config:{schedule:scheduled?{frequency:'daily'}:null}},
   testRun:current,history,busy:'',inFlight:{current:false},generation:{current:0},pinnedRun:{current:pinned},
   shouldRefreshAgentRuns,refreshedAgentRun,startAgentRunRefresh,encodeURIComponent,setInterval,clearInterval,
   applyRunInputs:()=>{},setSchedule:()=>{},setSource:()=>{},setJobs:()=>{},
   queuedSourceRuns:[],
  };
- const snapshot=(tests:Run[],id=context.selected.id)=>({agent:{...context.selected,id},tests,resources:[],schedule:null,source:null,jobs:[]});
+ const snapshot=(tests:Run[],id=context.selected.id)=>({agent:{...context.selected,id},tests,resources:[],schedule:context.schedule,source:null,jobs:[]});
  let load:(path:string)=>Promise<ReturnType<typeof snapshot>|{run:Run}>=async()=>snapshot([completed]);
  context.request=(path:string)=>{requests.push(path);return load(path);};
  for(const [setter,key] of [['setSelected','selected'],['setTestRun','testRun'],['setHistory','history'],['setQueuedSourceRuns','queuedSourceRuns']])context[setter]=(value:any)=>{context[key]=typeof value==='function'?value(context[key]):value;};

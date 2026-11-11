@@ -144,6 +144,8 @@ def test_switching_to_nonfile_schedule_detaches_mapping_and_idempotent_save_pres
         store.save_agent(state)
         assert schedules.source(agent_id) is None
         assert store.asset(asset['id'])['name']=='table.csv'
+        with pytest.raises(ValueError,match='버전'):schedules.activate(agent_id,True)
+        schedules.configure(agent_id,spec=SPEC)
         schedules.activate(agent_id,True)
         before=schedules.get(agent_id)
         assert store.save_agent(state)==agent_id
@@ -259,6 +261,7 @@ def test_changing_single_table_to_saved_multiple_documents_ignores_the_old_mappi
                       workflow={'entry':'read','nodes':[node('read','read_document'),node('summary','compose_answer',[bind('documents','read','documents')])],'edges':[edge('read','summary')]})
         store.save_agent({**initial(),'base_agent_id':agent_id,'base_version':1,'confirmed':True,'draft':AgentDraft.model_validate(config).model_dump()})
         assert schedules.source(agent_id) is None and schedules.execution_source(store.agent(agent_id)) is None
+        schedules.configure(agent_id,spec=SPEC)
         assert schedules.activate(agent_id,True)['active']
         assert store.asset(asset['id'])['kind']=='table'
     finally:store.close()

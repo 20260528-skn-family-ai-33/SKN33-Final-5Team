@@ -237,13 +237,23 @@ def test_sqlite_corruption_is_not_converted_to_empty_user_context(tmp_path,monke
     assert calls==[]
 
 
-def test_timezone_cannot_be_invented_from_an_iana_valid_default():
+@pytest.mark.parametrize('proposed_timezone', ['Asia/Seoul', 'UTC'])
+def test_fixed_seoul_timezone_does_not_confirm_an_ambiguous_clock(proposed_timezone):
     s=state('매주 수요일 7시 0분에 실행해줘. 시간대는 아직 정하지 않았어.')
+    s['resources'] = [{'id': 'table', 'kind': 'table', 'columns': ['비용']}]
     raw=proposal(s,{'schedule.frequency':'weekly','schedule.hour':'7','schedule.minute':'0',
-                    'schedule.weekday':'2','schedule.timezone':'Asia/Seoul'},['schedule'])
+                    'schedule.weekday':'2','schedule.timezone':proposed_timezone},['schedule'])
     result=checked(s,raw)
     assert result['decision']=='clarify'
-    assert 'schedule.timezone' in result['unresolved']
+    assert result['unresolved']==['schedule.hour','schedule.minute']
+    assert [question['key'] for question in result['questions']]==['schedule.hour']
+    assert result['slots']['schedule.timezone']=={
+        'key':'schedule.timezone','status':'specified','value':'Asia/Seoul',
+        'evidence_ids':[],'evidence':[],'extraction':'application_setting'}
+    assert result['slots']['schedule.weekday']['value']==2
+    assert result['slots']['schedule.weekday']['evidence_ids']==['user:0:0']
+    assert result['slots']['schedule.hour']['status']=='missing'
+    assert result['slots']['schedule.minute']['status']=='missing'
 
 
 def test_literal_policies_cannot_be_silently_omitted_by_extractor():

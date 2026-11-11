@@ -42,13 +42,19 @@ def test_no_schedule_is_invented(text):
     assert schedule_literals(text) == []
 
 
-def test_schedule_omitted_by_the_model_is_restored_and_only_the_unwritten_value_is_asked():
+def test_schedule_omitted_by_the_model_is_restored_with_fixed_seoul_timezone():
     result = ledger('매주 월요일 오전 8시마다' + TAIL)
     assert 'schedule' in result['operations']
     slots = {k: (v['status'], v['value']) for k, v in result['slots'].items() if k.startswith('schedule')}
     assert slots['schedule.frequency'] == ('specified', 'weekly') and slots['schedule.weekday'] == ('specified', 0)
     assert slots['schedule.hour'] == ('specified', 8) and slots['schedule.minute'] == ('specified', 0)
-    assert result['decision'] == 'clarify' and [q['key'] for q in result['questions']] == ['schedule.timezone']
+    assert slots['schedule.timezone'] == ('specified', 'Asia/Seoul')
+    assert result['slots']['schedule.timezone']['extraction'] == 'application_setting'
+    assert result['slots']['schedule.timezone']['evidence_ids'] == []
+    assert result['decision'] == 'ready' and result['questions'] == [] and result['unresolved'] == []
+    for key in ('schedule.frequency', 'schedule.weekday', 'schedule.hour', 'schedule.minute'):
+        assert result['slots'][key]['evidence_ids'] == ['user:0:0']
+        assert result['slots'][key]['evidence'][0]['quote'] == '매주 월요일 오전 8시마다' + TAIL
 
 
 def test_fully_written_schedule_is_ready_with_its_schedule():
@@ -70,10 +76,19 @@ def test_ready_draft_without_the_schedule_is_rejected():
 def test_monthly_request_is_supported_and_never_rewritten_as_weekly():
     sched = {'schedule.frequency': 'weekly', 'schedule.hour': '9', 'schedule.minute': '0', 'schedule.weekday': None, 'schedule.timezone': None}
     result = ledger('매월 1일 오전 9시에' + TAIL, {**FILTER, **sched}, ('schedule',))
-    assert result['decision'] == 'clarify' and not result['unsupported_actions']
+    assert result['decision'] == 'ready' and not result['unsupported_actions']
     assert result['slots']['schedule.frequency']['value'] == 'monthly'
     assert result['slots']['schedule.monthday']['value'] == 1
-    assert 'schedule.timezone' in result['unresolved']
+    assert result['slots']['schedule.timezone']['value'] == 'Asia/Seoul'
+    assert result['slots']['schedule.timezone']['extraction'] == 'application_setting'
+    assert result['slots']['schedule.timezone']['evidence_ids'] == []
+    assert result['questions'] == [] and result['unresolved'] == []
+    assert result['slots']['schedule.hour']['value'] == 9
+    assert result['slots']['schedule.minute']['value'] == 0
+    assert 'schedule.weekday' not in result['slots']
+    for key in ('schedule.frequency', 'schedule.monthday', 'schedule.hour', 'schedule.minute'):
+        assert result['slots'][key]['evidence_ids'] == ['user:0:0']
+        assert result['slots'][key]['evidence'][0]['quote'] == '매월 1일 오전 9시에' + TAIL
     assert not _grounded_enum('schedule.frequency', 'weekly', '매월 1일 오전 9시에')
 
 

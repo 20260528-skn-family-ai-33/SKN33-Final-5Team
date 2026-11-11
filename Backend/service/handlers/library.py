@@ -1,6 +1,6 @@
 """Catalog, reusable node library and saved agent lookups."""
 from workflow_engine.catalog.registry import TOOLS
-from workflow_engine.scheduling.schedules import Schedules, source_required, required_connections
+from workflow_engine.scheduling.schedules import Schedules, source_required, required_connections, scheduled_agent
 from agent_builder.conditions.input_requirements import execution_requirements, execution_request_required
 from documents.resources.document_resources import available_inputs
 from workflow_engine.scheduling.library_sources import LibrarySources
@@ -21,8 +21,8 @@ def agents(c):return {'agents':c.storage.agents()}
 
 def schedules(c):
     schedules=Schedules(c.storage)
-    return {'workflows':[{'agent':agent,'schedule':schedules.get(agent['id'])}
-                         for agent in c.storage.agents() if agent['config'].get('schedule')]}
+    return {'workflows':[{'agent':agent,'schedule':reservation}
+                         for agent in c.storage.agents() if (reservation:=schedules.get(agent['id'])) is not None]}
 
 def rename_agent(c):
     data=c.data
@@ -31,7 +31,10 @@ def rename_agent(c):
 def agent(c):
     data=c.data;storage=c.storage
     agent=storage.agent(data['id']);schedules=Schedules(storage)
+    reservation=schedules.get(data['id'])
+    scheduled_config=scheduled_agent(agent,reservation['spec'] if reservation else {'timezone':'Asia/Seoul'})['config']
     source=schedules.execution_source(agent)
-    return {'agent':agent,'tests':storage.tests(data['id']),'resources':available_inputs(storage,agent['config']['document_ids']),'schedule':schedules.get(data['id']),'source':source,'library_source':LibrarySources(storage).get(data['id']),'source_required':bool(source) or source_required(agent['config'],storage,None,agent.get('workflow_dependencies')),'required_connections':required_connections(agent['config'],agent.get('workflow_dependencies')),'jobs':schedules.jobs(data['id']),
+    return {'agent':agent,'tests':storage.tests(data['id']),'resources':available_inputs(storage,agent['config']['document_ids']),'schedule':reservation,'source':source,'library_source':LibrarySources(storage).get(data['id']),'source_required':bool(source) or source_required(agent['config'],storage,None,agent.get('workflow_dependencies')),'required_connections':required_connections(agent['config'],agent.get('workflow_dependencies')),'jobs':schedules.jobs(data['id']),
             'input_requirements':execution_requirements(agent['config'],storage,[source['asset_id']] if source else [],agent.get('workflow_dependencies')),
+            'schedule_request_required':execution_request_required(scheduled_config,agent.get('workflow_dependencies')),
             'request_required':execution_request_required(agent['config'],agent.get('workflow_dependencies'))}

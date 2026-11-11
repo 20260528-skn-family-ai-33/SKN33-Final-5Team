@@ -5,6 +5,7 @@ Every action here loads the session's LangGraph conversation (build_graph) first
 from infrastructure.persistence.ids import uid, now
 from agent_builder.design.graph import build_graph
 from agent_builder.design.receipt_intake import current_receipt_questions, legacy_receipt_intake, receipt_upload_prompt
+from agent_builder.design.question_controls import project_question_controls
 from documents.resources.file_inspection import inspect_file
 from agent_builder.conditions.input_requirements import design_requirements
 from agent_builder.tool_gap.gap import describe_gap, export_gap
@@ -25,17 +26,27 @@ def public_state(storage,s,graph):
     if state.get('status') != 'saved' and any(r['id'] not in s['file_ids'] for r in state.get('resources', [])):
         state = {'messages':state.get('messages', []), 'status':'validation_failed',
                  'issues':['연결 자료가 삭제됐습니다. 업무 설명을 보내 남은 자료로 설정을 다시 확인하세요.']}
+    from workflow_engine.scheduling.policy import project_fixed_timezone
+    state=project_fixed_timezone(state)
+    from agent_builder.design.execution_mode import project_execution_questions
+    state=project_execution_questions(state)
+    from agent_builder.design.question_language import normalize_question_language
+    state=normalize_question_language(state)
     legacy = legacy_receipt_intake(state)
     if legacy:
         # Keep the recorded transcript; only adapt the controls for the interrupted turn.
         state = {**state, 'draft':legacy['draft'], 'pending_questions':legacy['pending_questions']}
+    from agent_builder.design.presentation import public_requirement_errors
+    state=public_requirement_errors(state)
     from agent_builder.capabilities.capability_gate import blocking_issue, capability_enforced
     issue=blocking_issue(state) if state.get('status')=='ready' else None
     resources=[storage.asset(id) for id in s['file_ids']]
     inspections=[inspect_file(asset) for asset in resources]
-    return {**s,'messages':state.get('messages',[]),'draft':state.get('draft'),'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
+    controls=project_question_controls(state,current_receipt_questions(state,resources,inspections))
+    return {**s,'messages':state.get('messages',[]),'draft':controls['draft'],'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
             'file_inspection':inspections,
-            'condition_ledger':state.get('condition_ledger'),'pending_questions':current_receipt_questions(state,resources,inspections),
+            'condition_ledger':state.get('condition_ledger'),'pending_questions':controls['pending_questions'],
+            'requirement_failure':state.get('requirement_failure'),
             'gap_condition_review':state.get('gap_condition_review'),
             'input_requirements':design_requirements(state) if state.get('condition_enforced') else [],
             'tool_gap':(export_gap(state,s) if describe_gap(state,s['id']) else None),
@@ -50,7 +61,7 @@ def public_state(storage,s,graph):
 
 def new_session(c):
     data=c.data
-    return c.storage.new_session(data['model'],data['credential_id'],data.get('agent_id'),data.get('node_refs'))
+    return c.storage.new_session(data['model'],data['credential_id'],data.get('agent_id'),data.get('node_refs'),data.get('execution_mode'))
 
 
 def _install_receipt_question(graph, config, prompt, resources):
@@ -164,11 +175,16 @@ def _session_action(c):
             from agent_builder.capabilities.capability_gate import require_ready
             require_ready(state)
             if not has_interrupt or state.get('status')!='ready':raise ValueError('필수 조건과 근거 검증을 완료한 뒤 저장할 수 있습니다.')
-            graph.invoke(Command(resume={'type':'confirm'}),config)
+            if data.get('include_schedule') is not None and type(data['include_schedule']) is not bool:
+                raise ValueError('예약을 함께 저장할지 선택해주세요.')
+            graph.invoke(Command(resume={'type':'confirm',**({'include_schedule':data['include_schedule']} if 'include_schedule' in data else {})}),config)
         else:
             content=data['content'].strip()
             if not content or len(content)>4000:raise ValueError('업무 설명은 1~4,000자로 입력하세요.')
             if state.get('status')=='saved':raise ValueError('저장한 설정을 바꾸려면 설정 수정 대화를 시작하세요.')
+            from agent_builder.design.question_answers import question_answers
+            answers=question_answers(data.get('question_answers'),state)
+            if answers and not has_interrupt:raise ValueError('질문이 변경되었습니다. 현재 질문을 확인한 뒤 다시 답변해주세요.')
             # Older uploads could leave await_input scheduled but not yet interrupted.
             # Install the projected control before deciding how to resume the graph.
             legacy = legacy_receipt_intake(state) if data.get('question_id') else None
@@ -186,7 +202,7 @@ def _session_action(c):
                 # An unqualified update here can restore the old node and its obsolete question IDs.
                 if not any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
                     graph.update_state(config,{'repair_count':0})
-                graph.invoke(Command(resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {})}),config)
+                graph.invoke(Command(resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {}),**({'question_answers':answers} if answers else {})}),config)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.
                 from agent_builder.capabilities.capability_gate import blocking_issue
@@ -200,6 +216,7 @@ def _session_action(c):
                 base=storage.agent(s['agent_id']) if s.get('agent_id') else None
                 base_messages=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}).get('messages',[]) if base else []
                 initial={**state,'session_id':s['id'],'messages':(state.get('messages',[]) or base_messages)+[{'role':'user','content':content}],'resources':[storage.asset(id) for id in s['file_ids']],'draft':state.get('draft') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'trace':state.get('trace',[]),'repair_count':0,'confirmed':False,'saved_agent_id':None,'verification_last_candidate':state.get('verification_last_candidate') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'base_agent_id':s.get('agent_id'),'base_version':s['base_version'],'model':s['model'],'credential_id':s['credential_id'],'node_library':s.get('node_library',[]),'required_node_refs':s.get('required_node_refs',[])}
+                initial['execution_mode']=s.get('execution_mode')
                 graph.invoke(initial,config)
         after=graph.get_state(config).values
         if after.get('saved_agent_id'):

@@ -15,7 +15,8 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
       ['home', '홈', House],
       ['workflow', '워크플로우', Workflow],
       ['workflows', '작업 라이브러리', Layers],
-      ['schedules', '예약 실행', CalendarClock],
+      ['schedules', '예약 관리', CalendarClock],
+
       ['history', '실행 기록', History],
       ['assets', '자료함', FolderOpen],
       ['connections', '서비스 연결', Unplug],

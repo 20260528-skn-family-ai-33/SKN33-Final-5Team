@@ -354,7 +354,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  const data=method==='GET'?{id:url.searchParams.get('id')}:await readBody(req,['upload','run_upload','source_upload'].includes(action)?12*1024*1024:100000);
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('요청 형식을 확인하세요.');
  const workerAction=action==='sessions'&&method==='POST'?'new_session':action;
- if(!['new_session','session','generation_history','recover_generation','agent','upload','attach_asset','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_test','schedule_cancel'].includes(workerAction)||(['session','generation_history','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
+ if(!['new_session','session','generation_history','recover_generation','agent','upload','attach_asset','message','confirm','test','run_upload','resume_run','retry_run','review_decision','run','source_upload','schedule','schedule_configure','schedule_remove','schedule_test','schedule_cancel'].includes(workerAction)||(['session','generation_history','agent','run'].includes(workerAction)?method!=='GET':method!=='POST')){json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
  if(workerAction!=='new_session'&&!idPattern.test(data.id||''))throw new Error('항목 ID를 확인하세요.');
  const lockKey=['session','generation_history','agent','run'].includes(workerAction)?undefined:builderLockKey(data.id,workerAction==='test');
  if(lockKey&&locks.has(lockKey)){json(res,409,{error:'이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.'});return true;}
@@ -369,12 +369,17 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    const local=localModelConnection();const credential=data.credentialId===LOCAL_MODEL_ID&&local?{...local.credential,data:{}}:store.getCredential(data.credentialId);if(credential.provider!=='openai')throw new Error('OpenAI 연결 계정을 선택하세요.');
    if(data.agentId&&!idPattern.test(data.agentId))throw new Error('에이전트 ID를 확인하세요.');
    if(data.nodeRefs!==undefined&&(!Array.isArray(data.nodeRefs)||data.nodeRefs.length>10||new Set(data.nodeRefs).size!==data.nodeRefs.length||data.nodeRefs.some((r:unknown)=>typeof r!=='string'||!/^[a-f0-9-]{36}:[1-9][0-9]{0,5}$/.test(r))))throw new Error('선택한 노드 버전을 확인하세요.');
-   payload={action:workerAction,model:credential.id===LOCAL_MODEL_ID?local!.model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs};
+   if(data.executionMode!==undefined&&!['manual','scheduled'].includes(data.executionMode))throw new Error('실행 방식은 직접 실행 또는 예약 실행으로 선택하세요.');
+   payload={action:workerAction,model:credential.id===LOCAL_MODEL_ID?local!.model:data.model,credential_id:credential.id,agent_id:data.agentId,node_refs:data.nodeRefs,execution_mode:data.executionMode};
   }
   if(['upload','attach_asset','message','confirm','recover_generation'].includes(workerAction)){if(!Number.isInteger(data.revision)||data.revision<0)throw new Error('대화 버전을 확인하세요.');payload.revision=data.revision;}
   if(workerAction==='recover_generation'){
    if(typeof data.generationRequestId!=='string'||!idPattern.test(data.generationRequestId))throw new Error('생성 요청 ID를 확인하세요.');
    payload.generation_request_id=data.generationRequestId;
+  }
+  if(workerAction==='confirm'&&data.includeSchedule!==undefined){
+   if(typeof data.includeSchedule!=='boolean')throw new Error('예약을 함께 저장할지 선택해주세요.');
+   payload.include_schedule=data.includeSchedule;
   }
   if(['message','confirm'].includes(workerAction)&&typeof store.gmailConnected==='function')payload.gmail_connected=store.gmailConnected();
   if(workerAction==='attach_asset'){
@@ -385,12 +390,29 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    const content=data.content===undefined?'':data.content;
    if(typeof content!=='string'||content.length>4000)throw new Error('실행 요청은 4,000자 이하의 텍스트로 입력하세요.');
    payload.content=content.trim()?content:'';
+   if(data.useSchedule!==undefined){
+    if(typeof data.useSchedule!=='boolean')throw new Error('예약 자료 실행 여부를 확인하세요.');
+    payload.use_schedule=data.useSchedule;
+   }
   }else if(['message','resume_run'].includes(workerAction)){
    if(typeof data.content!=='string'||!data.content.trim()||data.content.length>4000)throw new Error('설명은 1~4,000자로 입력하세요.');payload.content=data.content;
   }
   if(workerAction==='message'&&data.questionId!==undefined){
    if(typeof data.questionId!=='string'||!/^[a-f0-9]{24}$/.test(data.questionId))throw new Error('확인 질문 ID를 확인하세요.');
    payload.question_id=data.questionId;
+  }
+  if(workerAction==='message'&&data.answers!==undefined){
+   if(data.questionId!==undefined||!Array.isArray(data.answers)||data.answers.length<1||data.answers.length>10)throw new Error('질문별 답변을 확인하세요.');
+   const seen=new Set<string>();
+   payload.question_answers=data.answers.map((answer:any)=>{
+    if(!answer||typeof answer!=='object'||Array.isArray(answer)||Object.keys(answer).some(key=>!['questionId','value','custom','skip'].includes(key))||typeof answer.questionId!=='string'||!/^[a-f0-9]{24}$/.test(answer.questionId)||seen.has(answer.questionId))throw new Error('현재 질문의 답변을 확인하세요.');
+    seen.add(answer.questionId);
+    if(answer.custom!==undefined&&typeof answer.custom!=='boolean')throw new Error('직접 입력 여부를 확인하세요.');
+    if(answer.skip!==undefined&&typeof answer.skip!=='boolean')throw new Error('선택사항 건너뛰기 여부를 확인하세요.');
+    const value=answer.value;
+    if(!(answer.skip===true&&value===null||typeof value==='string'&&!!value.trim()&&value.length<=4000||typeof value==='number'&&Number.isFinite(value)||Array.isArray(value)&&value.length>0&&value.length<=40&&value.every(part=>typeof part==='string'&&!!part.trim()&&part.length<=2000)))throw new Error('선택하거나 입력한 답변을 확인하세요.');
+    return {question_id:answer.questionId,value,...(answer.custom!==undefined?{custom:answer.custom}:{}),...(answer.skip?{skip:true}:{})};
+   });
   }
   if(workerAction==='message'){
    const timezone=parseRequestTimezone(data.userTimezone);
@@ -409,7 +431,8 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     generationRequestId=payload.generation_request_id;
    }
    const current=await builderWorker({action:workerAction==='test'?'agent':['resume_run','retry_run'].includes(workerAction)?'run':'session',id:data.id});
-   if(workerAction==='test'&&!payload.content&&current.request_required)throw new Error('이 워크플로우에 필요한 실행 요청을 입력하세요.');
+   if(workerAction==='test'&&payload.use_schedule&&!current.schedule)throw new Error('예약 설정을 먼저 저장하세요.');
+   if(workerAction==='test'&&!payload.content&&(payload.use_schedule?current.schedule_request_required:current.request_required))throw new Error('이 워크플로우에 필요한 실행 요청을 입력하세요.');
    const config=workerAction==='test'?current.agent.config:['resume_run','retry_run'].includes(workerAction)?current.run.config_snapshot:null;
    const dependencies=workerAction==='test'?current.agent.workflow_dependencies:current.run?.workflow_dependencies;
    const needsModel=builderNeedsModel(config,dependencies);
@@ -441,6 +464,10 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   }
   if(workerAction==='schedule_cancel'){if(!idPattern.test(data.jobId||''))throw new Error('시험 예약 ID를 확인하세요.');payload.job_id=data.jobId;}
   if(workerAction==='schedule'){if(typeof data.active!=='boolean')throw new Error('예약 활성 상태를 확인하세요.');payload.active=data.active;}
+  if(workerAction==='schedule_configure'){
+   if(!data.spec||typeof data.spec!=='object'||Array.isArray(data.spec))throw new Error('예약 일정을 확인하세요.');
+   payload.spec=data.spec;
+  }
   if(workerAction==='test'&&data.fileIds!==undefined){if(!Array.isArray(data.fileIds)||data.fileIds.length>10||data.fileIds.some((id:unknown)=>typeof id!=='string'||!idPattern.test(id)))throw new Error('실행 자료 ID를 확인하세요.');payload.file_ids=data.fileIds;}
   json(res,200,await builderWorker(payload));return true;
  }catch(error){

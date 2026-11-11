@@ -110,13 +110,32 @@ class WorkflowDefinition(BaseModel):
 
 class ScheduleSpec(BaseModel):
     model_config=ConfigDict(extra='forbid')
+    @model_validator(mode='before')
+    @classmethod
+    def fixed_timezone(cls,value):
+        from workflow_engine.scheduling.policy import fixed_schedule
+        return fixed_schedule(value)
     frequency: Literal['hourly','daily','weekly','monthly']
-    timezone: str | None
+    timezone: Literal['Asia/Seoul'] = 'Asia/Seoul'
     hour: int | None = Field(ge=0,le=23)
     minute: int | None = Field(ge=0,le=59)
     weekday: int | None = Field(ge=0,le=6,description='월요일=0, 일요일=6. weekly 외에는 null.')
     monthday: int | None = Field(default=None,ge=1,le=31,description='monthly의 일자. 없는 일자는 해당 달을 건너뜁니다. month_end이면 null.')
     month_end: bool = Field(default=False,description='monthly에서 매달 마지막 날. monthday와 동시에 지정하지 않습니다.')
+
+class QuestionResponse(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    type: Literal['single_choice','multi_choice','number','time','text']
+    minimum: float | None = Field(default=None,allow_inf_nan=False)
+    maximum: float | None = Field(default=None,allow_inf_nan=False)
+    step: float | None = Field(default=None,gt=0,allow_inf_nan=False)
+    unit: str | None = Field(default=None,max_length=30)
+
+    @model_validator(mode='after')
+    def ordered_bounds(self):
+        if self.minimum is not None and self.maximum is not None and self.minimum>self.maximum:
+            raise ValueError('숫자 답변의 최솟값은 최댓값보다 클 수 없습니다.')
+        return self
 
 class AgentDraft(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -128,6 +147,8 @@ class AgentDraft(BaseModel):
     requirements: list[Requirement] = Field(max_length=30)
     questions: list[str] = Field(max_length=3)
     question_options: list[list[str]] = Field(default_factory=list,max_length=3,description='questions와 같은 순서. 선택 가능한 질문에는 짧은 선택지 2~4개, 자유 답변 질문은 빈 목록.')
+    question_responses: list[QuestionResponse | None] = Field(default_factory=list,max_length=3,
+        description='questions와 같은 순서의 답변 형식. 한 가지 선택은 single_choice, 여러 가지 선택은 multi_choice와 question_options, 수치는 number, 시각 HH:MM은 time, 자유 답변은 text. 숫자 범위·단위는 업무에 명시된 경우만 사용합니다. 질문이 없으면 빈 목록.')
     unsupported: list[str] = Field(max_length=10)
     explanation: str = Field(max_length=2000)
     execution_plan: ExecutionPlan
@@ -137,6 +158,8 @@ class AgentDraft(BaseModel):
 
 class BuilderState(TypedDict, total=False):
     session_id: str
+    execution_mode: Literal['manual', 'scheduled'] | None
+    include_schedule: bool | None
     messages: list[dict]
     resources: list[dict]
     draft: dict | None
@@ -197,3 +220,5 @@ class BuilderState(TypedDict, total=False):
     requirement_fingerprint: str | None
     requirement_digest: str | None
     requirement_coverage: dict
+    requirement_answers: list[dict]
+    requirement_failure: dict | None

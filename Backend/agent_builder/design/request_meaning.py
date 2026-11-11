@@ -7,6 +7,7 @@ Legacy exact recipes remain a zero-call optimization, never a vocabulary gate.
 from copy import deepcopy
 import hashlib
 import json
+import os
 import re
 from typing import Literal
 
@@ -48,9 +49,10 @@ class MeaningReview(Strict):
 
 
 class MeaningExtractionError(ValueError):
-    def __init__(self, message, model_calls):
+    def __init__(self, message, model_calls, failure_kind='model_output_error'):
         super().__init__(message)
         self.model_calls = model_calls
+        self.failure_kind = failure_kind
 
 
 # Aliases identify an available source, not a particular sentence or intent.
@@ -173,6 +175,61 @@ def _unread_grounded(users):
     return selected
 
 
+_IMPORTANCE_FILTERS = {'important': 'important', 'is:important': 'important',
+                       'starred': 'starred', 'is:starred': 'starred'}
+_GENERIC_IMPORTANCE = re.compile(
+    r'(?:중요한|중요도가\s*높은)\s*(?:이?메일|것|항목|편지)|중요\s*(?:이?메일|편지)|important\s+(?:e?mails?|messages?)', re.I)
+_EXPLICIT_FLAG = re.compile(
+    r'\bis:(important|starred)\b|(?P<star>별표|별\s*표시|starred)|'
+    r'(?:중요(?:함)?\s*(?:표시|마크|플래그|라벨)|marked\s+(?:as\s+)?important)', re.I)
+_MAIL_SELECTION = re.compile(r'요약|정리|조회|분류|검색|골라|고르|가져|찾아|읽어|선별|(?:find|select|summari[sz]e|read|fetch)', re.I)
+_CRITERION = re.compile(r'(?:발신자|보낸\s*사람|도메인|키워드|제목|본문)(?:가|는|에|이|으로|:|=)\s*'
+                        r'(?!미정|아직|무엇|뭔지|따라|대해)\S+'
+                        r'|[\w@.-]+(?:이|가|에서)\s*보낸\s*(?:메일|이메일|편지|것)'
+                        r'|(?:from|subject):\S+', re.I)
+IMPORTANCE_QUESTION = '중요한 메일을 구분할 기준은 무엇인가요?'
+
+
+def gmail_importance(state):
+    """Return the user's current importance criterion and its actual evidence."""
+    users = _users(state)
+    if not any(re.search(r'gmail|지메일', text, re.I) for text in users):
+        return None, None
+    result, evidence = None, None
+    for text in users:
+        # A literal value inside a message title/body is not adapter metadata.
+        selection = re.sub(r'''(?:제목|본문|subject|body)\s*(?:은|는|이|가|에|:|=)?\s*["'“‘][^"'”’]+["'”’]''',
+                           '제목 조건', text, flags=re.I)
+        flags = list(_EXPLICIT_FLAG.finditer(selection))
+        # Scope a rejected criterion to its own clause in a replacement such
+        # as "중요 표시는 말고 별표 표시". A later clause can supply the new flag.
+        if len(flags) > 1:
+            for earlier, later in zip(flags, flags[1:]):
+                if re.search(r'말고|대신|아니라', selection[earlier.end():later.start()]):
+                    selection = selection[later.start():]
+                    break
+        flag = _EXPLICIT_FLAG.search(selection)
+        generic = _GENERIC_IMPORTANCE.search(selection)
+        if flag or generic:
+            if result is None and not _MAIL_SELECTION.search(selection):
+                # Sending a message whose content is important is not a search.
+                continue
+            end = (flag or generic).end()
+            if re.search(r'(?:조건|필터|표시|메일|것)?\s*(?:은|는|을|를|만)?\s*(?:취소|해제|말고|상관없|무관|제외)', selection[end:]):
+                result, evidence = None, text
+            elif flag:
+                result = 'starred' if flag['star'] or (flag[1] or '').lower() == 'starred' else 'important'
+                evidence = text
+            else:
+                result = 'custom' if _CRITERION.search(selection) else 'ambiguous'
+                evidence = text
+        elif result == 'ambiguous' and _CRITERION.search(selection):
+            result, evidence = 'custom', text
+        elif re.search(r'(?:중요도|중요\s*여부).{0,12}(?:무관|상관\s*없)|(?:모든|전체)\s*(?:이?메일)', selection):
+            result, evidence = None, text
+    return result, evidence
+
+
 def validate_meaning(raw, state):
     result = RequestMeaning.model_validate(raw).model_dump()
     users = _users(state)
@@ -202,6 +259,13 @@ def validate_meaning(raw, state):
         selection['filters'] = sorted(set(selection['filters']))
         if task['source'] == 'gmail' and 'unread' in selection['filters'] and not _unread_grounded(users):
             raise ValueError('미읽음 필터의 명시적 사용자 근거가 없거나 이후에 취소되었습니다.')
+        if task['source'] == 'gmail':
+            choice, _ = gmail_importance(state)
+            for value in selection['filters']:
+                canonical = _IMPORTANCE_FILTERS.get(value.casefold())
+                if canonical and canonical != choice:
+                    raise ValueError('Gmail 중요 표시 또는 별표 기준을 원문에서 확인할 수 없습니다.')
+            selection['filters'] = sorted({_IMPORTANCE_FILTERS.get(f.casefold(), f) for f in selection['filters']})
     return result
 
 
@@ -243,7 +307,12 @@ def extract_meaning(state, transport):
         # each review before asking for a repaired meaning.
         transport.schema = schema
         calls += 1
-        response = transport.invoke(prompt)
+        try:
+            response = transport.invoke(prompt)
+        except (ValueError, TypeError, KeyError):
+            raise  # The provider may decode structured output inside invoke.
+        except Exception as error:
+            raise MeaningExtractionError(str(error), calls, 'system_error') from error
         if isinstance(response, dict):
             if response.get('metrics', {}).get('done_reason') not in (None, 'stop'):
                 raise ValueError('의미 해석 또는 검토 응답이 중간에 끝났습니다.')
@@ -270,18 +339,23 @@ def extract_meaning(state, transport):
                     'request_meaning_digest': digest,
                     'request_meaning_review': {**review, 'meaning_digest': digest, 'request_fingerprint': fingerprint},
                     'request_meaning_model_calls': calls}
+        except MeaningExtractionError:
+            raise
         except (ValueError, TypeError, KeyError) as error:
             if attempt:
                 raise MeaningExtractionError(str(error), calls) from error
             messages.append(dict(role='user', content='추출 계약 오류를 수정하고 전체 원문 업무를 보존하세요: ' + str(error)[:600]))
-        except (RuntimeError, OSError) as error:
-            raise MeaningExtractionError(str(error), calls) from error
 
 
-def make_meaning_node(model, api_key='', transport=None, enabled=True):
+def make_meaning_node(model, api_key='', transport=None, enabled=True, *, capability_mode=None):
+    checks_capability = (capability_mode or os.getenv('A4B_CAPABILITY_MODE', 'off')) == 'enforce'
+
     def interpret(state):
         if not enabled or not source_candidate(state) or sealed_meaning(state):
             return {}
+        from agent_builder.capabilities.capability_gate import capability_enforced
+        if (checks_capability or capability_enforced(state)) and gmail_importance(state)[0] == 'ambiguous':
+            return {}  # The next capability node already owns the criterion question.
         # Proven exact recipes need no extra model; every other wording has the
         # same semantic route instead of being declared unsupported by regex.
         from .gmail_summary import gmail_summary_request
@@ -296,7 +370,8 @@ def make_meaning_node(model, api_key='', transport=None, enabled=True):
             return {'request_meaning': None, 'request_meaning_fingerprint': None, 'request_meaning_digest': None,
                     'request_meaning_review': None, 'request_meaning_model_calls': getattr(error, 'model_calls', 0),
                     'trace': state.get('trace', []) + [dict(node='request_meaning', label='요청 의미 해석',
-                        status='needs_input', detail='구조화 해석을 완료하지 못해 일반 설계 경로에서 전체 요청을 검토합니다.',
+                        status='failed', detail='구조화 해석을 완료하지 못해 일반 설계 경로에서 전체 요청을 검토합니다.',
+                        failure_kind=getattr(error, 'failure_kind', 'system_error'),
                         error_type=type(error).__name__, model_calls=getattr(error, 'model_calls', 0))]}
         return {**update, 'trace': state.get('trace', []) + [dict(node='request_meaning', label='요청 의미 해석',
             status='completed', detail='출처·동작·수량·기간·추가 업무를 추출하고 원문 보존 여부를 별도로 검토했습니다.',
@@ -318,21 +393,27 @@ def gmail_selection(state):
             or task['summary_focus'] or task['other_requirements']):
         return None
     selection = task['selection']
-    if selection['order'] == 'oldest_first' or set(selection['filters']) - {'unread'}:
+    filters = set(selection['filters'])
+    criterion, _ = gmail_importance(state)
+    if (selection['order'] == 'oldest_first' or filters - {'unread', 'important', 'starred'}
+            or criterion == 'custom' or criterion == 'ambiguous' or criterion and criterion not in filters):
         return None
     period = selection['period']
     if period not in ('all', 'today', 'yesterday'):
         return None
     schedule = task['schedule']
     from .gmail_summary import PREVIOUS_DAY_QUERY, UNREAD_QUERY, _count_summary_instructions
-    query = UNREAD_QUERY if selection['filters'] else None
+    query = None
+    if filters:
+        terms = [f'is:{flag}' for flag in sorted(filters)]
+        query = ' '.join([*terms, '-in:sent', '-in:drafts'])
     if schedule:
         from workflow_engine.scheduling.recurrence import schedule_errors
         if schedule_errors(schedule):
             return None
         if period == 'yesterday' and not query:
             query = PREVIOUS_DAY_QUERY
-        elif period != 'all' or not query:
+        elif period != 'all' or query != UNREAD_QUERY:
             return None
     elif period != 'all':
         clock = state.get('temporal_context') or {}

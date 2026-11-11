@@ -597,7 +597,7 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
         in_schedule = 'schedule.frequency' in result or 'schedule' in (state.get('condition_ledger') or {}).get('operations', [])
-        for key, value, span in schedule_literals(text, follow_up=in_schedule):
+        for key, value, span in _schedule_evidence(text, follow_up=in_schedule):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
             if not refs: continue
             conflict = value == 'conflict'
@@ -770,6 +770,30 @@ def schedule_literals(text, follow_up=False):
         except (ZoneInfoNotFoundError, ValueError):continue
         add('schedule.timezone', m.group(0), m.group(0))
     return [(key, value, span) for key, (value, span) in found.items()]
+
+
+def _schedule_evidence(text, *, follow_up):
+    """An established schedule does not turn every subsequent date into an edit."""
+    if not follow_up:
+        return schedule_literals(text)
+    result = []
+    for clause in re.split(r'[.!?\n;]|,\s+|그리고\s+', text):
+        literals = schedule_literals(clause, follow_up=True)
+        if not literals:
+            continue
+        if (any(key == 'schedule.frequency' for key, _, _ in literals)
+                or re.search(r'(?:예약|실행\s*(?:시각|시간|일시|요일|일정)|실행해|실행하)', clause)):
+            result.extend(literals)
+            continue
+        # An elliptical date/time answer is meaningful on its own. An
+        # unrelated title, filename or filter containing that date is not.
+        rest = clause
+        for span in sorted({span for _, _, span in literals}, key=len, reverse=True):
+            rest = rest.replace(span, '')
+        if re.fullmatch(r'(?:\s|요일|시간대|시간|시각|주기|정각|정시|마다|부터|에|으로|로|은|는|을|를|'
+                        r'대신|말고|바꿔|바꾸|변경|수정|설정|하자|해|줘|주세요|할게요|이요|요|입니다)*', rest):
+            result.extend(literals)
+    return result
 
 
 def _excludes_named_range(text, end):
@@ -1058,6 +1082,26 @@ def _duplicate_only_request(state, slots):
     return bool(re.fullmatch(r'(?:[\s.,;!?]|해주세요|해줘|해|줘|요|하고|해서|고|서)*', remainder))
 
 
+def _amends_confirmed_slot(key, previous, state, latest):
+    messages = state.get('messages', [])
+    if latest < 0 or latest <= previous['validated_user_turn']:
+        return False
+    text = messages[latest]['content']
+    if any(event.get('turn') == latest and event.get('answer') == text
+           and key in event.get('candidate_keys', []) for event in state.get('condition_answers', [])):
+        return True
+    if key.startswith('schedule.'):
+        return any(slot == key for slot, _, _ in _schedule_evidence(text, follow_up=True))
+    if key == 'filter.value':
+        old_field = previous['slots'].get('filter.field', {}).get('value')
+        return bool(re.search(r'(?:기준(?:값|액|점)?|임계값|문턱값|선별|조건|필터)\s*(?:은|는|을|를|이|가)?\s*[-+]?\d|'
+                              r'\d[\d,.]*\s*(?:천|백|만|억)*\s*(?:원|점|건|명|개|kg|%)?\s*(?:초과|이상|미만|이하)|'
+                              r'(?:초과|이상|미만|이하)\s*[-+]?\d', text)
+                    or old_field and re.search(re.escape(old_field) + r'\s*(?:열|값|기준)?\s*(?:은|는|을|를|이|가)?\s*[-+]?\d', text)
+                    or re.fullmatch(r'\s*[-+]?\d[\d,.]*\s*(?:천|백|만|억)?\s*(?:원|점|건|명|개|kg|%)?\s*(?:으로|로)\s*(?:바꿔|변경|수정|해줘).*', text))
+    return True
+
+
 def validate_conditions(raw, state, catalog):
     scope_review=False
     outside_scope = raw.get("operation") == "other"
@@ -1176,6 +1220,23 @@ def validate_conditions(raw, state, catalog):
         else:
             slots['filter.value'] = {'key': 'filter.value', 'status': 'missing', 'value': None,
                                      'evidence_ids': [], 'evidence': []}
+    # A number in a different new instruction is not a threshold revision.
+    # Restore the validated evidence as well as the value.
+    if (previous.get('decision') == 'ready' and previous.get('validation_digest')
+            and previous['validation_digest'] == condition_digest(previous)):
+        for key, old in previous['slots'].items():
+            item = slots.get(key)
+            if (old.get('status') == 'specified' and item and
+                    (item.get('value'), item.get('status')) != (old['value'], 'specified')):
+                edit_turns = {e['turn'] for e in item.get('evidence', [])
+                              if e.get('source_id') == 'user' and e.get('turn', -1) > accepted_turn}
+                # A stale model citation cannot confirm a replacement value.
+                # An explicit new edit can nevertheless make the old value
+                # uncertain. A later generic retry may cite the real edit.
+                if item.get('status') == 'conflict' and (key == 'filter.value' or key.startswith('schedule.')):
+                    edit_turns.add(latest)
+                if not any(_amends_confirmed_slot(key, previous, state, turn) for turn in edit_turns):
+                    slots[key] = deepcopy(old)
     # The model may return filter.value before filter.field. Validate after
     # both slots are known so its proposal uses the executor's column unit.
     issue = _threshold_evidence_issue(slots, state)
@@ -1288,13 +1349,67 @@ def validate_conditions(raw, state, catalog):
                               'text': resolution_question(key, resolution, text) if is_resolution else text,
                               'options': (resolution_options(state) if not resolution['deferred'] else []) if is_resolution
                                          else [] if key == 'input.table' else choice_options(key, state)})
-    return {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
+    ledger = {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
             'outside_scope': outside_scope and decision == 'manual_review' and not cancelled and resolution is None,
             'unresolved': unresolved, 'questions': questions, 'issues': issues,
             'resolution': resolution,
             'validated_user_turn': accepted_turn if issues else latest,
             'invalid_values': invalid, 'unsupported_actions': proposal['unsupported_actions'],
             'resource_versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}
+    if decision == 'ready':
+        ledger['validation_digest'] = condition_digest(ledger)
+    return ledger
+
+
+def condition_digest(ledger):
+    """Seal the typed interpretation and its evidence in the existing checkpoint."""
+    fields = ('protocol', 'decision', 'operations', 'slots', 'validated_user_turn',
+              'resource_versions', 'unresolved', 'issues', 'unsupported_actions')
+    data = {field: ledger.get(field) for field in fields}
+    return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False,
+                                     allow_nan=False).encode()).hexdigest()
+
+
+def confirmed_condition_view(state):
+    """A read-only projection. Old v8 checkpoints can prove the same slots again."""
+    ledger = state.get('condition_ledger') or {}
+    if not state.get('condition_enforced') or ledger.get('decision') != 'ready':
+        return None
+    messages = state.get('messages', [])
+    user_turns = [index for index, message in enumerate(messages) if message['role'] == 'user']
+    if (not user_turns or ledger.get('protocol') != PROTOCOL or ledger.get('issues')
+            or ledger.get('unresolved') or ledger.get('unsupported_actions')
+            or ledger.get('validated_user_turn') != user_turns[-1]
+            or ledger.get('resource_versions') != {r['id']: resource_version(r) for r in state.get('resources', [])}):
+        return None
+    digest = condition_digest(ledger)
+    if ledger.get('validation_digest', digest) != digest:
+        return None
+    catalog = source_catalog(state)[0]
+    by_id = {entry['id']: entry for entry in catalog}
+    slots = {}
+    for key, item in ledger['slots'].items():
+        if item.get('status') != 'specified':
+            continue
+        ids = item.get('evidence_ids', [])
+        if not ids or any(ref not in by_id for ref in ids) or item.get('evidence') != [by_id[ref] for ref in ids]:
+            return None
+        # Resource evidence is linked to the initiating request if no user quotation
+        # is available. Retain all evidence IDs, including the resource version.
+        source = max((user_turns.index(e['turn']) for e in item['evidence'] if e.get('turn') in user_turns), default=0)
+        slots[key] = {'value': item['value'], 'source_message': source, 'evidence_ids': list(ids)}
+    if 'validation_digest' not in ledger:
+        # Legacy ledgers have no seal. Replay their typed values as candidates
+        # through the original validator. The original source catalog is authoritative.
+        candidates = [{'key': key, 'status': 'specified', 'evidence_ids': item['evidence_ids'],
+                       'value': str(item['value']).lower() if isinstance(item['value'], bool) else str(item['value'])}
+                      for key, item in slots.items()]
+        replay = validate_conditions({'operations': ledger['operations'], 'conditions': candidates, 'unsupported_actions': []},
+                                     {**state, 'condition_ledger': None}, catalog)
+        if (replay['decision'] != 'ready' or set(replay['operations']) != set(ledger['operations'])
+                or any(replay['slots'].get(k, {}).get('value') != v['value'] for k, v in slots.items())):
+            return None
+    return {'protocol': PROTOCOL, 'digest': digest, 'operations': list(ledger['operations']), 'slots': slots}
 
 
 def judge_conditions(state, transport, max_contract_repairs=0):
@@ -1336,7 +1451,7 @@ def judge_conditions(state, transport, max_contract_repairs=0):
                 'metrics': response.get('metrics', {}), 'attempts': attempts}
 
 
-def plan_issues(ledger, draft):
+def plan_issues(ledger, draft, *, state=None):
     """Check normalized conditions against generated execution settings."""
     if ledger.get('decision') != 'ready':
         return []
@@ -1361,7 +1476,19 @@ def plan_issues(ledger, draft):
         expected = {'field': slots.get('filter.field'), 'operator': slots.get('filter.operator'), 'value': value,
                     'value_type':'boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'text'}
         filters = [condition for plan in plans for condition in plan.get('filters', [])]
-        if len(filters) != 1:
+        from agent_builder.design.condition_requirements import additional_row_predicates
+        from agent_builder.design.requirement_coverage import _same_filters
+        try:
+            additions = additional_row_predicates(state, expected['field']) if state else []
+        except ValueError as error:
+            problems.append(str(error))
+            additions = []
+        if additions:
+            requested = [dict(expected, compare_field=None)] + [item for _, item in additions]
+            if (len(filters) != len(requested) or not any(_same_filters(
+                    plan.get('filters', []), requested, plan.get('match'), 'all') for plan in plans)):
+                problems.append('원문에 명시된 복합 선별 조건이 모두 같은 표의 행에 적용되어야 합니다.')
+        elif len(filters) != 1:
             problems.append('단일 선별 계약에 없는 추가 선별 조건이 있거나 조건이 누락됐습니다.')
         if not any(all(condition.get(k) == v for k, v in expected.items()) and not condition.get('compare_field') for condition in filters):
             problems.append('확정된 선별 열·비교·기준 값이 실행 설정과 다릅니다.')

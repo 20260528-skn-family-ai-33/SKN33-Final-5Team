@@ -12,10 +12,15 @@ def await_input_node(state):
         if not answer.get('question_id') or answer['question_id'] in [q['id'] for q in pending]:break
         payload={**payload,'error':'현재 대화의 확인 질문에 답변해주세요.'}
     result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False}
-    if pending and state.get('condition_enforced'):
-        result['condition_answers']=state.get('condition_answers',[])+[{'question_ids':[answer['question_id']] if answer.get('question_id') else [q['id'] for q in pending],
-            'candidate_keys':[q['key'] for q in pending if not answer.get('question_id') or q['id']==answer['question_id']],
-            'answer':answer['content'],'turn':len(state['messages'])}]
+    selected = [q for q in pending if not answer.get('question_id') or q['id'] == answer['question_id']]
+    # Older condition checkpoints have no source. A free-text answer spanning
+    # owners stays in the conversation until its meaning can be validated.
+    owners = {q.get('source', 'condition') for q in selected}
+    if owners == {'requirement'} or (owners == {'condition'} and state.get('condition_enforced')):
+        channel = 'requirement_answers' if owners == {'requirement'} else 'condition_answers'
+        event = {'question_ids': [q['id'] for q in selected], 'candidate_keys': [q['key'] for q in selected],
+                 'answer': answer['content'], 'turn': len(state['messages'])}
+        result[channel] = [*state.get(channel, []), event]
     return result
 
 def await_approval_node(state):

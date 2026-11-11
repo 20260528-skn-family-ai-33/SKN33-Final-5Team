@@ -39,7 +39,7 @@ def validate_assessment_result(result,state,*,model_calls=0):
         raise ValueError('지원 판단의 사유·누락 항목은 공백일 수 없습니다.')
     if len(set(value['tool_ids']))!=len(value['tool_ids']) or any(t not in {t['id'] for t in TOOLS} for t in value['tool_ids']):
         raise ValueError('등록되지 않았거나 중복된 도구 판단입니다.')
-    user=[m['content'] for m in _assessment_messages(state) if m.get('role')=='user']
+    user=[m['content'] for m in active_request_messages(state) if m.get('role')=='user']
     if any(not q.strip() or not any(q in text for text in user) for q in value['user_quotes']):
         raise ValueError('요청 원문 근거를 확인하지 못했습니다.')
     return result
@@ -211,7 +211,7 @@ def delivery_directives(state):
     """Replay explicit changes per channel. Other turns, including answers, leave them in force."""
     asked_to_send = set()
     directives = {}
-    for message in _assessment_messages(state):
+    for message in active_request_messages(state):
         if message['role'] != 'user':
             continue
         quote = message['content']
@@ -287,7 +287,7 @@ _COMPARISON_INPUT = re.compile(r'[^.!?\n]{1,60}?(?:와|과)\s*(?:비교|대조)'
 _REFERS_BACK = re.compile(r'거기|여기|원래|기존|다시|그대로|아까|앞서|이전|위의|대신|말고|바꿔|수정|취소|그리고|추가|이어서|함께|같이|그\s*(?:결과|자료|파일|표)|도(?=\s|$)')
 
 
-def _assessment_messages(state):
+def active_request_messages(state):
     """Replay task boundaries so quotes and delivery decisions keep the same scope after a reply."""
     messages = state.get('messages', [])
     start = 0
@@ -333,7 +333,7 @@ def assess_capability(state,transport):
     if registered:
         return validate_assessment_result(registered,state,model_calls=0)
     # The prompt, schema, initial decision and second-pass review must use the same evidence.
-    state = {**state, 'messages': _assessment_messages(state)}
+    state = {**state, 'messages': active_request_messages(state)}
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user:raise ValueError('사용자 요청이 필요합니다.')
     schema=Assessment.model_json_schema()

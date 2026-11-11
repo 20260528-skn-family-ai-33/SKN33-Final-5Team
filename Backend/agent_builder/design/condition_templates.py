@@ -17,9 +17,11 @@ def compile_conditions(state):
         duplicate_policy=slots.get('duplicate.policy','keep'),duplicate_field=slots.get('duplicate.field'),
         output_format=slots.get('output.format','json')).model_dump()
     if operation=='filter':
+        from .condition_requirements import additional_row_predicates
         value=slots['filter.value']
         plan['filters']=[{'field':slots['filter.field'],'operator':slots['filter.operator'],'value':value,
-            'compare_field':None,'value_type':'number' if isinstance(value,(int,float)) else 'text'}]
+            'compare_field':None,'value_type':'boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'text'}]
+        plan['filters'].extend(predicate for _, predicate in additional_row_predicates(state, slots['filter.field']))
     fields=[key for key in [slots.get('filter.field'),slots.get('duplicate.field')] if key]
     tables=[r for r in state.get('resources',[]) if r.get('kind')=='table']
     candidates=[r for r in tables if all(field in r.get('columns',[]) for field in fields)]

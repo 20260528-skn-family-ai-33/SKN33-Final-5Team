@@ -254,7 +254,8 @@ def gmail_summary_plan(state):
 
 def _semantic_scope(request, state):
     selection = request['semantic_selection']
-    scope = '안 읽은 메일' if 'unread' in selection['filters'] else '메일'
+    labels = {'unread':'안 읽은', 'important':'중요 표시된', 'starred':'별표 표시된'}
+    scope = ' '.join([*(label for key, label in labels.items() if key in selection['filters']), '메일'])
     if request.get('schedule'):
         return _schedule_description(request['schedule']) + (' 전날 ' if selection['period'] == 'yesterday' else ' ') + scope
     if selection['period'] in ('today', 'yesterday'):

@@ -8,7 +8,11 @@ from decimal import Decimal
 from copy import deepcopy
 from contracts.numeric_criteria import number_value
 
-from .requirement_contracts import RequirementPlan
+from agent_builder.conditions.condition_readiness import condition_digest, confirmed_condition_view
+from .condition_requirements import multiple_outputs, owned_specs, project_owned, validate_owned
+from .grouped_result_requirements import grouped_result_specs, reconcile_grouped_result, validate_grouped_result
+from .requirement_contracts import RequirementPlan, RequirementQuestion
+from .requirement_task_identity import merge_repeated_tasks
 
 
 SYSTEM = '''사용자의 최종 업무 요구사항을 추출해 JSON으로 반환한다. 각 task는 실제 요청된 업무 한 가지다.
@@ -41,19 +45,30 @@ previous_requirements는 이전 후보이며 사용자 원문보다 우선하지
 unresolved에는 사용자가 결정해야 하는 누락 조건만 구체적인 한국어 질문으로 적는다. 내부 오류·분류·스키마 설명은 넣지 않는다.
 필수 값이 모두 명시됐으면 unresolved=[]로 둔다. 이대로 진행·저장할지 같은 요청 재확인·승인은 생성 후 앱 검토 단계의 역할이며 누락 조건으로 넣지 않는다.
 명시된 값이나 temporal_context에서 계산된 날짜를 다시 묻지 않는다. 답변이 불명확하면 추측해 확정하지 않는다.'''
+SYSTEM += '''\nconfirmed_conditions.slots는 사용자 근거 검증을 마친 최종값이며 앱이 관련 업무를 자동으로 작성한다.
+확정 조건에서 파생된 업무는 tasks에 다시 작성하거나 other로 바꾸지 않는다. 추가 업무가 없으면 tasks=[]다.
+unresolved는 사용자 결정이 필요한 나머지 조건만 {"key":"업무.슬롯", "text":"질문"} 형태로 작성한다.
+key는 영문 소문자와 점으로 구성한다(예: delivery.recipient, compute.formula, compute.output_column).
+조건 장부와 같은 의미일 때는 동일한 키를 사용한다(예: duplicate.policy, missing.policy, schedule.weekday, output.format).'''
 
 
 def _clarification(state, plan, fingerprint, calls):
     """Keep the partial ledger, interrupt, then re-extract with the user's answer."""
     from agent_builder.conditions.condition_check import _pending_draft
     from agent_builder.capabilities.capability_check import _question_text
-    missing = list(dict.fromkeys(text.strip() for text in plan['unresolved'] if text.strip()))
+    missing = {}
+    for item in plan['unresolved']:
+        text = (item if isinstance(item, str) else item['text']).strip()
+        key = ('requirement.' + hashlib.sha256(text.encode()).hexdigest()[:16]
+               if isinstance(item, str) else item['key'])
+        if text:
+            missing.setdefault(key, text)
     if not missing:
         raise ValueError('누락 조건에 구체적인 내용이 필요합니다.')
-    questions = [{'id': hashlib.sha256((fingerprint + ':' + text).encode()).hexdigest()[:24],
-                  'key': 'requirement.' + hashlib.sha256(text.encode()).hexdigest()[:16],
+    questions = [{'id': hashlib.sha256((fingerprint + ':' + key).encode()).hexdigest()[:24],
+                  'key': key,
                   'source': 'requirement', 'text': _question_text(text), 'options': []}
-                 for text in missing[:2]]
+                 for key, text in list(missing.items())[:2]]
     return dict(requirement_route='await_input', requirement_required=True,
                 requirement_ledger=plan, requirement_fingerprint=fingerprint, requirement_digest=plan_digest(plan),
                 status='needs_clarification', confirmed=False, saved_agent_id=None,
@@ -68,7 +83,9 @@ def ledger_fingerprint(state):
     from agent_builder.capabilities.capability_gate import input_fingerprint
     # Version seals the interpretation contract as well as the input/catalog.
     meaning = state.get('request_meaning_digest') or ''
-    return hashlib.sha256(('a4b.requirements.v6.grounded-scalar-schedule:' + input_fingerprint(state) + meaning).encode()).hexdigest()
+    ledger = state.get('condition_ledger') or {}
+    authority = (condition_digest(ledger), ledger.get('validation_digest')) if state.get('condition_enforced') else None
+    return plan_digest(['a4b.requirements.v9.grouped-result', input_fingerprint(state), meaning, authority])
 
 
 def plan_digest(plan):
@@ -115,6 +132,16 @@ def validate_plan(raw, state):
     if len(set(ids))!=len(ids):raise ValueError('요구사항 ID가 중복됩니다.')
     all_ids=set(ids)
     text='\n'.join(users)
+    confirmed = confirmed_condition_view(state)
+    if state.get('condition_enforced') and state.get('condition_ledger') and not confirmed:
+        raise ValueError('확정 조건의 현재 턴·버전·근거를 다시 검증해야 합니다.')
+    expected = owned_specs(confirmed, state)
+    validate_owned(plan, expected, state)
+    if confirmed and any(isinstance(question, str) or question['key'] in confirmed['slots']
+                         for question in plan['unresolved']):
+        raise ValueError('확정 조건과 대조되지 않은 질문이 요구사항에 남아 있습니다.')
+    from .compute_grounding import validate_compute_grounding
+    validate_compute_grounding(plan, state)
     from agent_builder.conditions.condition_readiness import _amounts
     numbers=_amounts(text)
     for value in re.findall(r'(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?',text):
@@ -138,7 +165,7 @@ def validate_plan(raw, state):
             if len(set(spec['fields']))!=len(spec['fields']):raise ValueError('날짜 변환 대상 열이 중복됩니다.')
             try:ZoneInfo(spec['timezone'])
             except (ZoneInfoNotFoundError,ValueError) as error:raise ValueError('날짜 변환 시간대를 확인하세요.') from error
-        if spec['kind']=='schedule' and spec['schedule']!=grounded_schedule(state):
+        if spec['kind']=='schedule' and 'schedule' not in expected and spec['schedule']!=grounded_schedule(state):
             raise ValueError('예약 요구사항이 사용자가 명시한 주기·시각·일자와 다릅니다.')
         if spec['kind'] in ('gmail_summary', 'gmail_scheduled_summary'):
             from .gmail_summary import gmail_summary_request
@@ -187,6 +214,9 @@ def validate_plan(raw, state):
     from .explicit_date_criteria import validate_requested_dates
     from .explicit_table_criteria import validate_explicit_ledger
     validate_requested_dates(plan,state)
+    from .processing_guard import validate_group_aggregations
+    validate_group_aggregations(plan, state)
+    validate_grouped_result(plan, state)
     validate_explicit_ledger(plan,state)
     # Forward references are not a semantic error. Reorder an acyclic ledger
     # without dropping dependencies or rewriting any requested condition.
@@ -200,13 +230,21 @@ def validate_plan(raw, state):
     return plan
 
 
-def extraction_schema(user_count=None,asset_ids=None):
+def extraction_schema(user_count=None,asset_ids=None,*,owned_kinds=()):
     schema=RequirementPlan.model_json_schema()
     # The extractor chooses the action and source turn. The application copies
     # that complete request rather than asking a second model to paraphrase it.
     analysis=schema['$defs']['DocumentAnalysis']
     analysis['properties'].pop('request');analysis['required'].remove('request')
     task=schema['$defs']['RequiredTask']
+    if owned_kinds:
+        kinds = task['properties']['spec']['discriminator']['mapping']
+        refs = {kinds.pop(kind) for kind in owned_kinds}
+        branches = task['properties']['spec']['oneOf']
+        branches[:] = [branch for branch in branches if branch.get('$ref') not in refs]
+    # Legacy checkpoint questions may still be strings. New decoder responses
+    # identify which value is missing even when the wording changes.
+    schema['properties']['unresolved']['items'] = {'$ref': '#/$defs/RequirementQuestion'}
     for field in ('id','depends_on','quote'):
         task['properties'].pop(field)
         task['required'].remove(field)
@@ -250,25 +288,53 @@ def extract_plan(raw,state):
     This version verifies a single sequential processing chain. Independent
     branches/multiple chains require review rather than invented dependencies.
     """
-    if not isinstance(raw,dict) or set(raw)!={'tasks','unresolved'} or not isinstance(raw['tasks'],list):
+    if (not isinstance(raw,dict) or set(raw)!={'tasks','unresolved'} or not isinstance(raw['tasks'],list)
+            or not isinstance(raw['unresolved'], list) or len(raw['tasks']) > 30 or len(raw['unresolved']) > 10):
         raise ValueError('업무 목록 응답 형식을 확인하세요.')
-    tasks=[];previous=None
-    for index,item in enumerate(raw['tasks'],1):
-        if not isinstance(item,dict) or any(k in item for k in ('id','depends_on','quote')):
+    users=[m['content'] for m in state['messages'] if m['role']=='user']
+    for item in raw['tasks']:
+        if not isinstance(item,dict) or set(item) != {'source_message', 'description', 'spec'}:
             raise ValueError('업무 ID·선행 연결·원문 인용은 앱 코드가 부여합니다.')
-        users=[m['content'] for m in state['messages'] if m['role']=='user']
         source=item.get('source_message')
-        if type(source) is not int or not 0<=source<len(users):
+        if type(source) is not int or not 0<=source<len(users) or not isinstance(item['spec'], dict):
             raise ValueError('요구사항의 사용자 발화를 확인하지 못했습니다.')
+    from .compute_grounding import reconcile_compute
+    raw = reconcile_compute(raw, state)
+    confirmed = confirmed_condition_view(state)
+    expected = owned_specs(confirmed, state)
+    candidates = project_owned(raw['tasks'], expected, state)
+    unresolved = []
+    for question in raw['unresolved']:
+        if not isinstance(question, str):
+            question = RequirementQuestion.model_validate(question).model_dump()
+            if confirmed and question['key'] in confirmed['slots']:
+                continue
+        elif confirmed:
+            # A legacy free-text candidate cannot prove it is about a new slot.
+            # Ask the extractor to supply a key instead of hiding a real user need.
+            raise ValueError('확정 조건과 대조하려면 unresolved 항목에 key와 text가 필요합니다.')
+        unresolved.append(question)
+    candidates = merge_repeated_tasks(candidates,state)
+    grouped = grouped_result_specs(state) if not unresolved else None
+    if grouped:
+        candidates = reconcile_grouped_result(candidates, state, grouped)
+    tasks=[];previous=None
+    for index,item in enumerate(candidates,1):
+        source=item['source_message']
         kind=(item.get('spec') or {}).get('kind')
+        # Keep original task provenance for distinct artifacts. A materialized
+        # policy or schedule cites the user turn that actually confirmed it.
+        if kind in expected and (kind != 'export' or not multiple_outputs(state)):
+            source = expected[kind]['source_message']
         if kind=='document_analysis':
             if 'request' in item['spec']:raise ValueError('문서 분석 원문은 앱이 부여합니다.')
             item={**item,'spec':{**item['spec'],'request':users[source]}}
         dependency=[previous] if previous and kind not in ('read','policy') else []
-        task={**item,'id':'r'+str(index),'depends_on':dependency,'quote':users[source]}
+        task={**item,'source_message':source,'id':'r'+str(index),'depends_on':dependency,'quote':users[source]}
         tasks.append(task)
-        if kind not in ('read','policy','export'):previous=task['id']
-    return validate_plan(dict(tasks=tasks,unresolved=raw['unresolved']),state)
+        if kind not in ('read','policy','export') or (grouped and kind == 'read'):
+            previous=task['id']
+    return validate_plan(dict(tasks=tasks,unresolved=unresolved),state)
 
 
 def requirement_transport(model, api_key=''):
@@ -283,6 +349,15 @@ def requirement_transport(model, api_key=''):
             parsed=llm.with_structured_output(self.schema,method='json_schema').invoke(messages)
             return dict(content=parsed.model_dump_json() if hasattr(parsed,'model_dump_json') else json.dumps(parsed))
     return Structured()
+
+
+def _completed(state, target, plan, fingerprint, calls):
+    return dict(requirement_route=target, requirement_required=True, requirement_ledger=plan,
+                requirement_fingerprint=fingerprint, requirement_digest=plan_digest(plan),
+                pending_questions=[q for q in state.get('pending_questions', []) if q.get('source') != 'requirement'],
+                confirmed=False, saved_agent_id=None,
+                trace=state.get('trace', [])+[dict(node='requirements', label='요청 업무 목록', status='completed',
+                     detail=f"원문에서 {len(plan['tasks'])}개 요구사항을 생성 전에 별도로 기록했습니다.", model_calls=calls)])
 
 
 def make_requirement_check(model, transport=None, mode=None, *, api_key='', error_observer=None):
@@ -304,20 +379,43 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                             detail='원문의 Gmail 조회 건수와 본문 요약을 등록 계약으로 기록했습니다.',model_calls=0)])
         if setting=='off' and not state.get('requirement_required'):
             return dict(requirement_route=target,requirement_required=False)
-        fingerprint=ledger_fingerprint(state)
-        old=state.get('requirement_ledger')
-        if (old and state.get('requirement_fingerprint')==fingerprint
-                and state.get('requirement_digest')==plan_digest(old)):
-            if old.get('unresolved'):
-                return _clarification(state, old, fingerprint, 0)
-            return dict(requirement_route=target,requirement_required=True)
         calls=0
+        failure_kind = 'model_output_error'
         try:
+            fingerprint=ledger_fingerprint(state)
+            confirmed = confirmed_condition_view(state)
+            from .scheduled_table_request import scheduled_table_plan
+            scheduled = scheduled_table_plan(state, confirmed)
+            old=state.get('requirement_ledger')
+            if (old and state.get('requirement_fingerprint')==fingerprint
+                    and state.get('requirement_digest')==plan_digest(old)):
+                try:
+                    cached = validate_plan(old, state)
+                except (ValueError, KeyError, TypeError):
+                    cached = None
+                if cached and (scheduled is None or cached == scheduled):
+                    if cached['unresolved']:
+                        return _clarification(state, cached, fingerprint, 0)
+                    return dict(requirement_route=target,requirement_required=True)
+            if scheduled is not None:
+                # An old opaque task may pass schema checks but differs from this complete projection.
+                failure_kind = 'condition_state_error'
+                return _completed(state, target, validate_plan(scheduled, state), fingerprint, 0)
+            if state.get('condition_enforced') and state.get('condition_ledger') and not confirmed:
+                failure_kind = 'condition_state_error'
+                raise ValueError('확정 조건의 현재 턴·버전·근거를 다시 검증해야 합니다.')
+            from .compute_grounding import missing_compute_packet
+            packet = missing_compute_packet(state)
+            if packet is not None:
+                return _clarification(state, extract_plan(packet, state), fingerprint, 0)
+            owned = set(owned_specs(confirmed, state))
+            if multiple_outputs(state):
+                owned.discard('export')
             active=transport
             if active is None:
                 active=requirement_transport(model,api_key)
             active.schema=extraction_schema(len([m for m in state['messages'] if m['role']=='user']),
-                                            [a['id'] for a in state.get('resources',[])])
+                                            [a['id'] for a in state.get('resources',[])], owned_kinds=owned)
             from .temporal_context import temporal_context, TEMPORAL_INSTRUCTIONS
             from .request_meaning import sealed_meaning
             payload={'user_messages':[m['content'] for m in state['messages'] if m['role']=='user'],
@@ -327,16 +425,24 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                      'temporal_context':temporal_context(state), 'request_meaning':sealed_meaning(state),
                      'resources':[{k:a[k] for k in ('id','name','kind','columns') if k in a}
                                   for a in state.get('resources',[])]}
+            if confirmed:
+                payload['confirmed_conditions'] = confirmed
             messages=[dict(role='system',content=SYSTEM+'\n'+TEMPORAL_INSTRUCTIONS),dict(role='user',content=json.dumps(payload,ensure_ascii=False))]
             for attempt in range(2):
                 calls+=1
+                failure_kind = 'system_error'
                 response=active.invoke(messages)
-                if isinstance(response,dict):
-                    content=response['content']
-                    if response.get('metrics',{}).get('done_reason') not in (None,'stop'):
-                        raise ValueError('요구사항 추출 응답이 중간에 끝났습니다.')
-                else:content=response.content
-                try:plan=extract_plan(json.loads(content),state)
+                failure_kind = 'model_output_error'
+                try:
+                    if isinstance(response, dict):
+                        content = response.get('content')
+                        if (response.get('metrics') or {}).get('done_reason') not in (None, 'stop'):
+                            raise ValueError('요구사항 추출 응답이 중간에 끝났습니다.')
+                    else:
+                        content = getattr(response, 'content', None)
+                    if not isinstance(content, str):
+                        raise ValueError('요구사항 응답 본문이 올바른 문자열이 아닙니다.')
+                    plan=extract_plan(json.loads(content),state)
                 except (ValueError,TypeError,KeyError) as error:
                     if attempt:raise
                     messages=messages+[dict(role='user',content='앞선 추출은 무효입니다. 다음 응답 계약 오류를 해결하여 원래 사용자 요구만 새로 추출하세요. '
@@ -345,19 +451,16 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                 if plan['unresolved']:
                     return _clarification(state, plan, fingerprint, calls)
                 break
-        except (ValueError,TypeError,KeyError,RuntimeError,OSError) as error:
+        except Exception as error:
             if error_observer:error_observer(error)
             # Provider exceptions may contain headers, prompts or customer data.
             detail='요청 업무 목록을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.'
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,
                         status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],
+                        pending_questions=[], draft=None,
                         messages=state.get('messages',[])+[dict(role='assistant',content=detail)],
-                        trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='needs_input',detail=detail,error_type=type(error).__name__,model_calls=calls)])
-        return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
-                    requirement_fingerprint=fingerprint,requirement_digest=plan_digest(plan),
-                    pending_questions=[q for q in state.get('pending_questions', []) if q.get('source') != 'requirement'],
-                    confirmed=False,saved_agent_id=None,
-                    trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
-                          detail=f"원문에서 {len(plan['tasks'])}개 요구사항을 생성 전에 별도로 기록했습니다.",model_calls=calls)])
+                        trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='failed',detail=detail,
+                                                         failure_kind=failure_kind,error_type=type(error).__name__,model_calls=calls)])
+        return _completed(state, target, plan, fingerprint, calls)
     return check

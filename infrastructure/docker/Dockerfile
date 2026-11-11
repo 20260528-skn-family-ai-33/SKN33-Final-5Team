@@ -12,6 +12,7 @@ RUN if [ -n "$A4B_FRONTEND_COMMIT" ]; then printf '\n<!-- a4b-release=%s -->\n' 
 FROM build AS build-backend
 COPY shared/ ./shared/
 COPY Backend/api/ ./Backend/api/
+COPY scripts/model-environment.mjs ./scripts/model-environment.mjs
 RUN npm run build:server
 
 FROM node:24-bookworm-slim AS backend

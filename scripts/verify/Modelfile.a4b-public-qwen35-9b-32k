@@ -1,0 +1,8 @@
+# Public upstream Qwen 3.5 9B. This is NOT either private A4B fine-tuned model.
+# Register only as a4b-public-qwen35-9b-32k after explicitly selecting/downloaded qwen3.5:9b.
+FROM qwen3.5:9b
+PARAMETER num_ctx 32768
+PARAMETER num_predict 4096
+PARAMETER temperature 0
+PARAMETER top_p 0.8
+PARAMETER seed 42

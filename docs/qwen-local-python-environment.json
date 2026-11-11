@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "recorded_date": "2026-11-10",
+  "timezone": "Asia/Seoul",
+  "scope": "Local dependency readiness and a previously completed offline SVM connection probe. This is not a Qwen evaluation result.",
+  "status": "existing_environment_verified",
+  "changes_performed": {
+    "package_installations": 0,
+    "model_downloads": 0,
+    "environment_file_changes": 0,
+    "application_source_changes": 0,
+    "qwen_calls": 0
+  },
+  "python": {
+    "executable_repository_relative": "Backend/.venv-agent/Scripts/python.exe",
+    "version": "3.13.16",
+    "implementation": "CPython",
+    "platform": "Windows AMD64",
+    "include_system_site_packages": false,
+    "path_default_python_version": "3.14.0",
+    "selection_requirement": "Pass the repository venv executable explicitly; do not use the PATH-default Python for this evaluation.",
+    "selected_package_versions": {
+      "pytest": "9.1.1",
+      "langgraph": "1.2.14",
+      "langgraph-checkpoint-sqlite": "3.1.1",
+      "pydantic": "2.14.1",
+      "deepagents": "0.7.23",
+      "openai": "3.29.0",
+      "joblib": "1.5.0",
+      "numpy": "2.2.5",
+      "scipy": "1.15.2",
+      "scikit-learn": "1.6.1",
+      "threadpoolctl": "3.6.0"
+    },
+    "dependency_lock_check": {
+      "requirements": [
+        "Backend/requirements/agent-lock.txt",
+        "Backend/requirements/canonical-tools.txt",
+        "Backend/requirements/ml-svm56.txt"
+      ],
+      "method": "Recursively read -r includes, evaluate requirement markers for the current environment, compare installed importlib.metadata versions against packaging.requirements specifiers, and count unique package names.",
+      "unique_packages_checked": 81,
+      "mismatches": [],
+      "passed": true
+    },
+    "pip_check": {
+      "working_directory": "Backend",
+      "command": ".venv-agent/Scripts/python.exe -m pip check",
+      "exit_code": 0,
+      "output": "No broken requirements found."
+    }
+  },
+  "node": {
+    "version": "24.20.0",
+    "required_version": ">=22.13.0",
+    "existing_node_modules": true,
+    "package_lock_version": 3,
+    "npm_ls": {
+      "working_directory": ".",
+      "command": "npm ls --depth=0 --json",
+      "exit_code": 0,
+      "reported_dependency_problems": false
+    },
+    "installed_lock_comparison": {
+      "expected": "package-lock.json",
+      "installed": "node_modules/.package-lock.json",
+      "total_expected_lock_entries_including_root_and_optional": 599,
+      "non_optional_package_entries_checked": 505,
+      "optional_package_entries_excluded": 93,
+      "method": "For every non-root, non-optional package entry in the repository lock, compare its version against the same path in the installed lock. Optional platform-specific entries are excluded.",
+      "mismatches": [],
+      "passed": true,
+      "limitation": "This checks lock metadata and npm's direct dependency tree; it does not independently hash every installed package file."
+    }
+  },
+  "file_sha256": {
+    "Backend/requirements/agent-lock.txt": "73a73198845dc0d439d5971d252f2ab55b9d16acd8b20337c451f36506e392a3",
+    "Backend/requirements/canonical-tools.txt": "e4047a3c2444b33300a402ad82387c376133b54928f03b7d663ae024fe75d5e6",
+    "Backend/requirements/ml-svm56.txt": "65672afe1174560dba16a3d1c2b29faa27deada2845bbb1b8d1973389011f0e0",
+    "package.json": "ad9f96336c38802737ed46d3ce1fb0d57d0fd31fbdd78f7ca1d6d217f511c9a8",
+    "package-lock.json": "1ec3dbc15d3e6fc474673ba4afe331a7e038f0f18934fd3c8028b6db36f7f6a7",
+    "node_modules/.package-lock.json": "fe46fa8a9c2325b9f8fcc35d28f6d1c92770949d49f6309fd6465aa588bd7ca2"
+  },
+  "svm56": {
+    "model_variant": "pinned_baseline",
+    "mode": "hint",
+    "backend": "svm56",
+    "artifacts": [
+      {
+        "path": "runtime/ml-bundle/model/recommender_char_svm_5431.joblib",
+        "expected_sha256": "df14a313659394fcc9b9efda431da7643e692ad4b33ee923f02edc97cc1dbbea",
+        "actual_sha256": "df14a313659394fcc9b9efda431da7643e692ad4b33ee923f02edc97cc1dbbea",
+        "matched": true
+      },
+      {
+        "path": "runtime/ml-bundle/catalog/catalog_56.json",
+        "expected_sha256": "cd956b51658051ecd95c642b5738238b3ae7f819c89799668280ba6d96f5dd2a",
+        "actual_sha256": "cd956b51658051ecd95c642b5738238b3ae7f819c89799668280ba6d96f5dd2a",
+        "matched": true
+      }
+    ],
+    "offline_probe": {
+      "record_source": "Read-only environment investigation earlier in this chat; not rerun while writing this record.",
+      "working_directory": "Backend",
+      "command": ".venv-agent/Scripts/python.exe -m ml.svm56.bundle_cli check --probe",
+      "exit_code": 0,
+      "status": "svm_candidates_verified",
+      "ml_status": "candidates_available",
+      "error_type": null,
+      "observed_candidates": [
+        {
+          "tool_id": "filter_sort",
+          "source": "svm56",
+          "decision_score": 0.8668523723554209,
+          "selection_threshold": 0.0
+        },
+        {
+          "tool_id": "write_result",
+          "source": "service_contract"
+        },
+        {
+          "tool_id": "read_table",
+          "source": "service_contract"
+        }
+      ],
+      "scope": "One existing synthetic offline diagnostic request in this process only. No Qwen call, external data access, workflow execution, deployed-server verification, or recommendation-quality measurement."
+    }
+  },
+  "runpod_environment_differences": {
+    "source": "docs/qwen-live-handoff.md",
+    "previous_versions": {
+      "python": "3.12.14",
+      "pytest": "9.2.0",
+      "langgraph": "1.2.19",
+      "pydantic": "2.14.2",
+      "langgraph-checkpoint-sqlite": "3.1.3"
+    },
+    "previous_svm_status": {
+      "ml_status": "failed",
+      "error_type": "ModuleNotFoundError",
+      "missing_dependencies": ["joblib", "scikit-learn", "scipy"],
+      "note": "The previous failure was a missing-dependency failure, not a missing-model-file finding."
+    },
+    "local_svm_available": true,
+    "evaluation_policy": "Generate a separate local baseline for all 52 fixed cases. Keep local dependencies, model identity/configuration, SVM state and hardware conditions fixed between local baseline and after. Do not merge local results with the paused RunPod baseline or present environment changes as application-code improvement."
+  },
+  "not_established_by_this_record": [
+    "Local Qwen weights location or identity",
+    "Local Qwen serving readiness or inference quality",
+    "Full Python or TypeScript regression results",
+    "Frontend/browser or HTTP-server end-to-end behavior",
+    "SVM recommendation accuracy or its delivery to Qwen during a live evaluation"
+  ]
+}

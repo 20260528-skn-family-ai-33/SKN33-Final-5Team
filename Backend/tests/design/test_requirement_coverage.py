@@ -317,7 +317,13 @@ class Extraction:
     def __init__(self,plan):self.plan=plan;self.calls=0
     def invoke(self,messages):
         payload=json.loads(messages[-1]['content'])
-        assert set(payload)=={'user_messages','resources'}
+        assert {'user_messages','resources'}<=set(payload)
+        if 'temporal_context' in payload:
+            assert set(payload)=={'user_messages','resources','temporal_context','request_meaning',
+                                 'conversation','pending_questions','previous_requirements'}
+            assert payload['user_messages']==[m['content'] for m in payload['conversation'] if m['role']=='user']
+            assert payload['temporal_context']['reference_time']
+            assert payload['request_meaning'] is None
         assert 'current_draft' not in payload
         self.calls+=1
         wire={**self.plan,'tasks':[{k:v for k,v in t.items() if k not in ('id','depends_on','quote')} for t in self.plan['tasks']]}

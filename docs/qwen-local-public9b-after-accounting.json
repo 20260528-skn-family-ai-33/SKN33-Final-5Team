@@ -1,0 +1,514 @@
+{
+  "schema_version": 1,
+  "source_status": "completed",
+  "source_harness_sha256": "784bd2475a1fa7ccad3f85a6a17fe5d7e708f9b5a958ef25e09b317a9959aea6",
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "selected_models": [
+    "a4b-public-qwen35-9b-32k:latest"
+  ],
+  "trace_records_observed": 194,
+  "verified_returned_responses": 193,
+  "verified_returned_by_transport": {
+    "ollama_native": 160,
+    "existing_langchain_client": 33
+  },
+  "verified_returned_by_scope": {
+    "case": 191,
+    "probe": 2
+  },
+  "verified_case_ids": [
+    "R02",
+    "R03",
+    "R04",
+    "R05",
+    "R06",
+    "R07",
+    "R08",
+    "R09",
+    "R10",
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10",
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "T07",
+    "M01",
+    "M02",
+    "M03",
+    "M04",
+    "M05",
+    "M06",
+    "M07",
+    "M08",
+    "M09",
+    "M10",
+    "M11",
+    "M12",
+    "U01",
+    "U02",
+    "U03",
+    "U04",
+    "U05",
+    "X01",
+    "X02",
+    "X03",
+    "X04",
+    "X05",
+    "X06",
+    "X07"
+  ],
+  "live_filter_omitted_case_ids": [],
+  "failed_records": [
+    {
+      "location": "case:X06:5",
+      "error_type": "TimeoutError"
+    }
+  ],
+  "incomplete_records": [],
+  "returned_but_unverified": [],
+  "http_dispatch_attempts_lower_bound": 161,
+  "http_responses_received_lower_bound": 160,
+  "source_reported_inference_calls": null,
+  "total_server_inferences": null,
+  "total_cost": null,
+  "overlap_exclusions": [],
+  "limitations": [
+    "Verified response count is observed completed response evidence, not total server inference attempts, total token usage, or billing cost.",
+    "HTTP dispatch attempts are a recorded lower bound. Missing SDK attempts, retries, in-flight requests and interrupted unsaved calls cannot be reconstructed.",
+    "The frozen v2 harness patches httpx but this installed OpenAI client uses httpx2: SDK HTTP dispatch/response counters and same-origin API-path/redirect hooks are not covered.",
+    "The selected host/port DNS guard and synthetic execution allowlist remain separate protections; absence of a recorded redirect does not independently prove no redirect occurred.",
+    "A verified response proves recorded model output, not correctness or actual external connector execution. SDK output is assembled content, not original HTTP stream frames."
+  ],
+  "case_accounting": [
+    {
+      "id": "R01",
+      "status": "completed",
+      "original_live_model_calls": 0,
+      "verified_returned_response_count": 0,
+      "has_verified_model_response": false,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R02",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 4,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R03",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R04",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R05",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R06",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R07",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R08",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R09",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "R10",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C01",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C02",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C03",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C04",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C05",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C06",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C07",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C08",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C09",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C10",
+      "status": "completed",
+      "original_live_model_calls": 6,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T01",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T02",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T03",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T04",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T05",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T06",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T07",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 5,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "T08",
+      "status": "completed",
+      "original_live_model_calls": 0,
+      "verified_returned_response_count": 0,
+      "has_verified_model_response": false,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M01",
+      "status": "completed",
+      "original_live_model_calls": 5,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M02",
+      "status": "completed",
+      "original_live_model_calls": 5,
+      "verified_returned_response_count": 5,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M03",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 4,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M04",
+      "status": "completed",
+      "original_live_model_calls": 5,
+      "verified_returned_response_count": 7,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M05",
+      "status": "completed",
+      "original_live_model_calls": 6,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M06",
+      "status": "completed",
+      "original_live_model_calls": 5,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M07",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 4,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M08",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 4,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M09",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 5,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M10",
+      "status": "completed",
+      "original_live_model_calls": 6,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M11",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M12",
+      "status": "completed",
+      "original_live_model_calls": 4,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "U01",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "U02",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "U03",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "U04",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "U05",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "X01",
+      "status": "completed",
+      "original_live_model_calls": 6,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "X02",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "X03",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 4,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "X04",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "X05",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 5,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "X06",
+      "status": "completed",
+      "original_live_model_calls": 6,
+      "verified_returned_response_count": 5,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "X07",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    }
+  ],
+  "source_run": "docs\\qwen-local-public9b-after-complete.json",
+  "source_run_sha256": "c85233a673876642c05e9304e0307a415e2b8df25ae48def2c343426aa8dd0b7",
+  "accounting_script_sha256": "68f9354780e9c2dbcfd7b0cae59eb07f6037ed57a761e31fd25d110fc494a197"
+}

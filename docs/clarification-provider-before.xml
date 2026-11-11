@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.317" timestamp="2026-11-10T16:40:56.848694+09:00" hostname="mk"><testcase classname="tests.design.test_clarification_audit" name="test_capability_uses_configured_provider_instead_of_forcing_ollama" time="0.053"><failure message="AssertionError: assert 'system_error' == 'clarify'&#10;  &#10;  - clarify&#10;  + system_error">tests\design\test_clarification_audit.py:129: in test_capability_uses_configured_provider_instead_of_forcing_ollama
+    assert result['capability_assessment']['decision'] == 'clarify'
+E   AssertionError: assert 'system_error' == 'clarify'
+E     
+E     - clarify
+E     + system_error</failure></testcase></testsuite></testsuites>

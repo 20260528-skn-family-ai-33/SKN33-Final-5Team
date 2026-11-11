@@ -170,6 +170,7 @@ SYSTEM+='\n판정 범위는 앱 기능과 등록 도구의 조합입니다. 서�
 SYSTEM+='\napp_capabilities는 실제 구현·검증된 기능 목록입니다. 시뮬레이션 또는 미구현 계획이라고 추측하지 않습니다. 활성화·자료 연결·서버 기동은 지원 기능의 실행 전제이며 기능 부재가 아닙니다. 지원 기능과 미지원 동작이 섞이면 missing_actions에는 미지원 동작만 적습니다. 시·일·주·월 예약이나 활성화 자체를 부족 기능에 넣지 않습니다. 반면 yearly/cron은 현재 미지원으로 명시되어 있으므로 알려진 미지원이지 manual_review 대상이 아닙니다.'
 SYSTEM+='\n조건끼리 서로 모순되거나(예: 같은 대상에 두 가지 정책) 기준·값·단위가 미정인 것은 기능 부족이 아니라 사용자가 정할 조건이므로 clarify입니다. 모순 해결, 기준 선택, 값 명시, 정책 우선순위 결정을 missing_actions에 적지 않고 missing_conditions에 적습니다. 등록 도구가 지원하는 작업(상수 비교 선별, 빈 값 정책, 첫 행·마지막 행 중복 제거, 파일 저장)을 조건이 모순이라는 이유로 미지원이라 하지 않습니다.'
 SYSTEM+='\nGmail의 최근 메일 여러 건 요약은 email.list의 read_messages 동작으로 본문 documents를 읽고 compose_answer의 documents 입력에 연결합니다. 개별 ID·로컬 파일·read_document 단계가 필요하지 않습니다. 한국 시간 매일 오전 9시 전날 메일 요약은 등록된 gmail_previous_day_daily_summary.v1 조합으로 지원하며 query={{gmail.previous_day}}와 daily/Asia/Seoul/09:00 예약을 보존합니다. 전날 기간은 실행 시 계산하고 기본 조회 한도는 100건, 지정 가능한 최대치는 500건입니다. 제한을 넘는 메일은 포함되지 않을 수 있음을 안내합니다. 등록된 실제 동작 계약을 확인하며, Gmail 계정 연결 상태가 설계 입력에 없다는 이유로 기능을 missing_capability로 판정하지 않습니다. 연결은 실행 전 확인하며 사용자에게 모델이 연결 여부를 추측하거나 이미 연결됐다고 주장하지 않습니다. 메일 발송·다른 공급자·등록 범위 밖의 임의 자동 반복은 이 읽기 요약 조합에 포함되지 않습니다.'
+SYSTEM+='\n제목·본문·열 이름·치환 문자열처럼 사용자가 지정한 입력값은 도구의 인자입니다. 그 값에 들어 있는 단어를 별도의 검토·완성·분석 업무로 만들지 않습니다. 제목과 본문을 지정한 메일 발송은 email.send의 등록된 발송 동작과 대조합니다. 기존 메일을 읽거나 검색하라는 요청이 있을 때만 email.list가 필요하며, Gmail 공급자를 명시한 것만으로 조회 업무를 추가하지 않습니다. 입력값이 아직 없으면 필요한 값만 질문하고, 계정 인증정보나 API 키는 채팅으로 요청하지 않습니다. 계정 연결은 앱의 연결 화면에서 확인하는 실행 전제입니다.'
 DEMOS=[
  {'request':'매년 12월 31일 오전 10시 한국 시간에 표를 JSON 저장. 다른 주기로 바꾸지 마.', 'output':{'decision':'missing_capability','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':['연간 예약'],'reason':'표 저장은 지원하나 앱 예약은 hourly/daily/weekly/monthly만 지원하므로 연간 주기는 미지원.','user_quotes':['매년 12월 31일 오전 10시 한국 시간에 표를 JSON 저장. 다른 주기로 바꾸지 마.']}},
  {'request':'한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.', 'output':{'decision':'existing_tools','tool_ids':['read_table','write_result'],'missing_conditions':[],'missing_actions':[],'reason':'앱 주간 예약과 등록 표 읽기·저장 도구로 지원. 관리 자료 연결과 활성화는 후속 검사.','user_quotes':['한국 시간 매주 월요일 오전 10시에 표를 읽고 CSV로 저장해줘.']}},
@@ -323,14 +324,18 @@ def _assessment_messages(state):
 def assess_capability(state,transport):
     faults=input_issues(state)
     if faults:return {'decision':'system_error','issues':faults,'model_calls':0,'allows_execution':False,'allows_generation':False}
-    # The prompt, schema, initial decision and second-pass review must use the same evidence.
-    state = {**state, 'messages': _assessment_messages(state)}
-    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
-    if not user:raise ValueError('사용자 요청이 필요합니다.')
+    from agent_builder.design.temporal_context import temporal_context, TEMPORAL_INSTRUCTIONS
+    request_clock=temporal_context(state)
+    from agent_builder.design.request_meaning import sealed_meaning
+    request_meaning=sealed_meaning(state)
     from agent_builder.design.gmail_summary import gmail_summary_assessment
     registered=gmail_summary_assessment(state)
     if registered:
         return validate_assessment_result(registered,state,model_calls=0)
+    # The prompt, schema, initial decision and second-pass review must use the same evidence.
+    state = {**state, 'messages': _assessment_messages(state)}
+    user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
+    if not user:raise ValueError('사용자 요청이 필요합니다.')
     schema=Assessment.model_json_schema()
     schema['properties']['tool_ids']['items']['enum']=[t['id'] for t in TOOLS]
     schema['properties']['user_quotes']['items']['enum']=user
@@ -347,8 +352,13 @@ def assess_capability(state,transport):
         variants.append(branch)
     transport.schema={'anyOf':variants}
     directives = delivery_directives(state)
-    messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE}, {'role':'user','content':json.dumps({
+    from agent_builder.design.service_connections import service_connection_context
+    messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+TEMPORAL_INSTRUCTIONS}, {'role':'user','content':json.dumps({
         'messages':state['messages'],'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
+        'temporal_context':request_clock,
+        'pending_questions':state.get('pending_questions', []),
+        'service_connections':service_connection_context(state),
+        'request_meaning':request_meaning,
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,
         'app_capabilities':APP_CAPABILITIES,
         'tools':planner_catalog(TOOLS),
@@ -368,7 +378,7 @@ def assess_capability(state,transport):
 등록 도구로 요청의 모든 기능이 가능하면 existing_tools와 실제 tool_ids를 반환합니다. 필수 정책이 미정이면 clarify입니다.
 표 join은 join_tables의 실제 등록 operation·입출력·정책과 대조합니다. 이메일·캘린더처럼 등록된 외부 동작은 기능 지원과 계정 연결 전제를 구분하고, Slack처럼 등록되지 않은 전송은 미지원으로 유지합니다. calculate_columns의 명시적 사칙연산·열 이름 변경과 text_transform의 문자열 바꾸기는 등록된 지원 기능입니다. 그 밖의 임의 셀 변환은 지원한다고 가정하지 마세요. 새로운 정책을 만들거나 요청을 바꾸지 마세요.
 user_quotes는 원래 목록에서 정확히 선택합니다. 이 재검토도 실행/제작 허가가 아닙니다.'''
-        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+review_prompt},
+        reviewed=transport.invoke([{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+TEMPORAL_INSTRUCTIONS+'\n'+review_prompt},
             messages[1],{'role':'user','content':json.dumps({'unverified_assessment':result,'authoritative_request':user[-1],'request_update_rule':REQUEST_UPDATE_RULE,'active_delivery_directives':directives,'task':'최신 사용자 변경을 먼저 적용한 뒤 남은 요청을 실제 카탈로그로 최종 재검토'},ensure_ascii=False)}])
         content=reviewed.get('content') if isinstance(reviewed,dict) else reviewed.content
         calls+=1

@@ -1,0 +1,256 @@
+TAP version 13
+# Subtest: design gets current server Gmail metadata and ignores client claims or tokens
+ok 1 - design gets current server Gmail metadata and ignores client claims or tokens
+  ---
+  duration_ms: 61.751
+  type: 'test'
+  ...
+# Subtest: request timezone is optional and accepts user zones including DST regions
+ok 2 - request timezone is optional and accepts user zones including DST regions
+  ---
+  duration_ms: 29.2928
+  type: 'test'
+  ...
+# Subtest: explicit service overrides old conversation; persist selection only after successful load
+ok 3 - explicit service overrides old conversation; persist selection only after successful load
+  ---
+  duration_ms: 120.3441
+  type: 'test'
+  ...
+# Subtest: clarification reply sends the browser timezone and authoritative session revision
+ok 4 - clarification reply sends the browser timezone and authoritative session revision
+  ---
+  duration_ms: 35.719
+  type: 'test'
+  ...
+# Subtest: failed explicit link reports error and preserves conversation without fallback
+ok 5 - failed explicit link reports error and preserves conversation without fallback
+  ---
+  duration_ms: 33.8041
+  type: 'test'
+  ...
+# Subtest: delayed service restore cannot overwrite reset
+ok 6 - delayed service restore cannot overwrite reset
+  ---
+  duration_ms: 24.9986
+  type: 'test'
+  ...
+# Subtest: delayed service restore cannot overwrite openAgent
+ok 7 - delayed service restore cannot overwrite openAgent
+  ---
+  duration_ms: 33.4698
+  type: 'test'
+  ...
+# Subtest: delayed service restore cannot overwrite send
+ok 8 - delayed service restore cannot overwrite send
+  ---
+  duration_ms: 54.881
+  type: 'test'
+  ...
+# Subtest: reset before bootstrap finishes prevents remembered session restoration
+ok 9 - reset before bootstrap finishes prevents remembered session restoration
+  ---
+  duration_ms: 23.5637
+  type: 'test'
+  ...
+# Subtest: unmounted restoration cannot change state or storage
+ok 10 - unmounted restoration cannot change state or storage
+  ---
+  duration_ms: 17.7947
+  type: 'test'
+  ...
+# Subtest: unsaved conversation, saved conversation, and last selected service restore
+ok 11 - unsaved conversation, saved conversation, and last selected service restore
+  ---
+  duration_ms: 60.6824
+  type: 'test'
+  ...
+# Subtest: successful resume response (succeeded) clears submitted answer
+ok 12 - successful resume response (succeeded) clears submitted answer
+  ---
+  duration_ms: 13.5578
+  type: 'test'
+  ...
+# Subtest: successful resume response (running) clears submitted answer
+ok 13 - successful resume response (running) clears submitted answer
+  ---
+  duration_ms: 11.5839
+  type: 'test'
+  ...
+# Subtest: successful resume response (needs_input) clears submitted answer
+ok 14 - successful resume response (needs_input) clears submitted answer
+  ---
+  duration_ms: 15.2355
+  type: 'test'
+  ...
+# Subtest: successful resume response (failed) clears submitted answer
+ok 15 - successful resume response (failed) clears submitted answer
+  ---
+  duration_ms: 13.6276
+  type: 'test'
+  ...
+# Subtest: resume network failure preserves answer for retry
+ok 16 - resume network failure preserves answer for retry
+  ---
+  duration_ms: 11.3715
+  type: 'test'
+  ...
+# Subtest: delayed unsaved session response cannot replace a new conversation
+ok 17 - delayed unsaved session response cannot replace a new conversation
+  ---
+  duration_ms: 30.3893
+  type: 'test'
+  ...
+# Subtest: saved-session nested agent lookup cannot undo a reset
+ok 18 - saved-session nested agent lookup cannot undo a reset
+  ---
+  duration_ms: 19.5019
+  type: 'test'
+  ...
+# Subtest: obsolete restoration error cannot replace the current view error
+ok 19 - obsolete restoration error cannot replace the current view error
+  ---
+  duration_ms: 13.6831
+  type: 'test'
+  ...
+# Subtest: service-only link initially opens the run screen; explicit screen remains respected
+ok 20 - service-only link initially opens the run screen; explicit screen remains respected
+  ---
+  duration_ms: 7.4072
+  type: 'test'
+  ...
+# Subtest: edit removes the service URL while preserving the newly created editing session
+ok 21 - edit removes the service URL while preserving the newly created editing session
+  ---
+  duration_ms: 9.1993
+  type: 'test'
+  ...
+# Subtest: saving succeeds even if unrelated list refresh fails
+ok 22 - saving succeeds even if unrelated list refresh fails
+  ---
+  duration_ms: 9.8528
+  type: 'test'
+  ...
+# Subtest: failed detail load after save can recover without confirming twice
+ok 23 - failed detail load after save can recover without confirming twice
+  ---
+  duration_ms: 9.0575
+  type: 'test'
+  ...
+# Subtest: confirm failure preserves draft and unsent inputs
+ok 24 - confirm failure preserves draft and unsent inputs
+  ---
+  duration_ms: 12.0747
+  type: 'test'
+  ...
+# Subtest: scheduled execution never submits hidden transient files or review drafts
+ok 25 - scheduled execution never submits hidden transient files or review drafts
+  ---
+  duration_ms: 10.7666
+  type: 'test'
+  ...
+# Subtest: manual execution keeps explicit files and review draft
+ok 26 - manual execution keeps explicit files and review draft
+  ---
+  duration_ms: 10.8485
+  type: 'test'
+  ...
+# Subtest: edit clears previous run inputs after new session creation
+ok 27 - edit clears previous run inputs after new session creation
+  ---
+  duration_ms: 20.5949
+  type: 'test'
+  ...
+# Subtest: double save cannot duplicate a pending mutation
+ok 28 - double save cannot duplicate a pending mutation
+  ---
+  duration_ms: 8.5953
+  type: 'test'
+  ...
+# Subtest: double runTest cannot duplicate a pending mutation
+ok 29 - double runTest cannot duplicate a pending mutation
+  ---
+  duration_ms: 12.6035
+  type: 'test'
+  ...
+# Subtest: double resumeRun cannot duplicate a pending mutation
+ok 30 - double resumeRun cannot duplicate a pending mutation
+  ---
+  duration_ms: 11.7021
+  type: 'test'
+  ...
+# Subtest: double uploadRun cannot duplicate a pending mutation
+ok 31 - double uploadRun cannot duplicate a pending mutation
+  ---
+  duration_ms: 10.7759
+  type: 'test'
+  ...
+# Subtest: attachResource rejects oversized files before reading or sending
+ok 32 - attachResource rejects oversized files before reading or sending
+  ---
+  duration_ms: 9.6711
+  type: 'test'
+  ...
+# Subtest: uploadRun rejects oversized files before reading or sending
+ok 33 - uploadRun rejects oversized files before reading or sending
+  ---
+  duration_ms: 8.2158
+  type: 'test'
+  ...
+# Subtest: uploadSource rejects oversized files before reading or sending
+ok 34 - uploadSource rejects oversized files before reading or sending
+  ---
+  duration_ms: 8.6709
+  type: 'test'
+  ...
+# Subtest: obsolete openAgent error cannot replace current view error
+ok 35 - obsolete openAgent error cannot replace current view error
+  ---
+  duration_ms: 14.4494
+  type: 'test'
+  ...
+# Subtest: late historical-run failure is ignored after switching service
+ok 36 - late historical-run failure is ignored after switching service
+  ---
+  duration_ms: 11.2207
+  type: 'test'
+  ...
+# Subtest: out-of-order run details cannot replace the latest historical selection
+ok 37 - out-of-order run details cannot replace the latest historical selection
+  ---
+  duration_ms: 12.1656
+  type: 'test'
+  ...
+# Subtest: unpinning history or starting a mutation ignores pending detail errors
+ok 38 - unpinning history or starting a mutation ignores pending detail errors
+  ---
+  duration_ms: 17.4074
+  type: 'test'
+  ...
+# Subtest: starting a new workflow restores the page top without scrolling to the focused composer
+ok 39 - starting a new workflow restores the page top without scrolling to the focused composer
+  ---
+  duration_ms: 8.7961
+  type: 'test'
+  ...
+# Subtest: new-file expansion queues its own jobs and cannot reuse an older successful result
+ok 40 - new-file expansion queues its own jobs and cannot reuse an older successful result
+  ---
+  duration_ms: 8.8166
+  type: 'test'
+  ...
+# Subtest: a skipped new-file request shows the skip reason without treating old results as a new success
+ok 41 - a skipped new-file request shows the skip reason without treating old results as a new success
+  ---
+  duration_ms: 7.8137
+  type: 'test'
+  ...
+1..41
+# tests 41
+# suites 0
+# pass 41
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2073.7967

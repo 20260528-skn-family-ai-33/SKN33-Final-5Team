@@ -1,0 +1,54 @@
+{
+  "kind": "live_endpoint_probe",
+  "started_at": "2026-11-10T08:11:07.174Z",
+  "env_source": "C:\\Users\\munky\\OneDrive\\Desktop\\final\\SKN33-Final-5Team\\.env",
+  "alias_mapping": "scripts/run-configured.mjs:13-21",
+  "configured": {
+    "A4B_MAIN_PROVIDER": "ollama",
+    "A4B_MAIN_MODEL": "a4b-qwen35-4b-16k",
+    "A4B_CAPABILITY_MODEL": null,
+    "A4B_PLANNER_MODE": null,
+    "A4B_PLANNER_PROMPT": null,
+    "A4B_OLLAMA_NUM_CTX": null,
+    "A4B_OLLAMA_NUM_PREDICT": null,
+    "A4B_OLLAMA_TEMPERATURE": null,
+    "A4B_MAIN_TIMEOUT_S": null,
+    "A4B_DESIGN_TIMEOUT_MS": null,
+    "A4B_CAPABILITY_MODE": null,
+    "A4B_CONDITION_MODE": null,
+    "A4B_REQUIREMENT_MODE": null,
+    "A4B_VERIFIER_MODE": null,
+    "A4B_TOOL_ADVICE_MODE": null,
+    "A4B_TOOL_ADVICE_BACKEND": null
+  },
+  "auth_configured": true,
+  "probes": [
+    {
+      "path": "/v1/models",
+      "status": 200,
+      "content_type": "application/json",
+      "elapsed_ms": 1062,
+      "model_ids": [
+        "qwen3.5:4b",
+        "a4b-qwen35-9b-previous-pilot32k:latest",
+        "a4b-qwen35-9b-final664-pilot32k:latest"
+      ]
+    },
+    {
+      "path": "/api/tags",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "elapsed_ms": 1093,
+      "model_ids": [
+        "qwen3.5:4b",
+        "a4b-qwen35-9b-previous-pilot32k:latest",
+        "a4b-qwen35-9b-final664-pilot32k:latest"
+      ]
+    }
+  ],
+  "inference_calls": 0,
+  "status": "blocked_model_not_listed",
+  "actual_model_id": null,
+  "endpoint": "https://prfafjg2xk99cx-11434.proxy.runpod.net/v1",
+  "listed_model_id": null
+}

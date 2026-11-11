@@ -1,0 +1,46 @@
+{
+  "kind": "live_endpoint_probe",
+  "started_at": "2026-11-10T07:58:08.376Z",
+  "env_source": "C:\\Users\\munky\\OneDrive\\Desktop\\final\\SKN33-Final-5Team\\.env",
+  "alias_mapping": "scripts/run-configured.mjs:13-21",
+  "configured": {
+    "A4B_MAIN_PROVIDER": "ollama",
+    "A4B_MAIN_MODEL": "a4b-qwen35-4b-16k",
+    "A4B_CAPABILITY_MODEL": null,
+    "A4B_PLANNER_MODE": null,
+    "A4B_PLANNER_PROMPT": null,
+    "A4B_OLLAMA_NUM_CTX": null,
+    "A4B_OLLAMA_NUM_PREDICT": null,
+    "A4B_OLLAMA_TEMPERATURE": null,
+    "A4B_MAIN_TIMEOUT_S": null,
+    "A4B_DESIGN_TIMEOUT_MS": null,
+    "A4B_CAPABILITY_MODE": null,
+    "A4B_CONDITION_MODE": null,
+    "A4B_REQUIREMENT_MODE": null,
+    "A4B_VERIFIER_MODE": null,
+    "A4B_TOOL_ADVICE_MODE": null,
+    "A4B_TOOL_ADVICE_BACKEND": null
+  },
+  "auth_configured": true,
+  "probes": [
+    {
+      "path": "/v1/models",
+      "status": 404,
+      "content_type": null,
+      "elapsed_ms": 802,
+      "model_ids": null
+    },
+    {
+      "path": "/api/tags",
+      "status": 404,
+      "content_type": null,
+      "elapsed_ms": 453,
+      "model_ids": null
+    }
+  ],
+  "inference_calls": 0,
+  "status": "blocked_http_404",
+  "actual_model_id": null,
+  "endpoint": "https://pr0yhyflm3w9ur-11434.proxy.runpod.net/v1",
+  "listed_model_id": null
+}

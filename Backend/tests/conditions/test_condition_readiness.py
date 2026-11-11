@@ -86,10 +86,10 @@ def test_foreign_evidence_and_duplicate_slots_are_rejected():
 
 
 @pytest.mark.parametrize('text,frequency,weekday,expected', [
-    ('한국 시간 매일 8시 0분에 실행해줘.', 'daily', None, 'ready'),
+    ('한국 시간 매일 오전 8시 0분에 실행해줘.', 'daily', None, 'ready'),
     # The weekday is not written, so it must be asked (a written one is now read in code).
-    ('한국 시간 매주 8시 0분에 실행해줘.', 'weekly', None, 'clarify'),
-    ('한국 시간 매주 월요일 8시 0분에 실행해줘.', 'weekly', '0', 'ready')])
+    ('한국 시간 매주 오전 8시 0분에 실행해줘.', 'weekly', None, 'clarify'),
+    ('한국 시간 매주 월요일 오전 8시 0분에 실행해줘.', 'weekly', '0', 'ready')])
 def test_schedule_conditional_required_weekday(text, frequency, weekday, expected):
     s = state(text)
     # Isolate weekday validation from the separate managed-file prerequisite.
@@ -468,7 +468,7 @@ def test_latest_user_change_is_explicit_without_changing_original_history():
     assert s==before and original['messages'][0]==s['messages'][0]
 
 
-def test_condition_questions_are_limited_to_three_and_recomputed_after_answers():
+def test_condition_questions_are_limited_to_two_and_recomputed_after_answers():
     """Pure question selection; checkpoint persistence is tested separately below."""
     def judge(s, values):
         catalog, _ = source_catalog(s)
@@ -481,16 +481,16 @@ def test_condition_questions_are_limited_to_three_and_recomputed_after_answers()
              'profile': {'비용': {'types': ['string'], 'missing': 1, 'duplicateValues': 0, 'numericStrings': 5}}}
     s = state('비용 큰 것들만 골라서 파일로 만들어줘.'); s['resources'] = [table]
     first = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, ''), 'output.format': (None, '')})
-    assert first['decision'] == 'clarify' and len(first['unresolved']) == 4 and len(first['questions']) == 3
+    assert first['decision'] == 'clarify' and len(first['unresolved']) == 4 and len(first['questions']) == 2
     left = [k for k in first['unresolved'] if k not in {q['key'] for q in first['questions']}]
-    # The reply answers only the three visible questions; the deferred one stays unanswered.
+    # The reply answers only visible questions; deferred conditions stay unanswered.
     phrases = {'filter.operator': '초과로', 'filter.value': '100만원', 'missing.policy': '빈 값은 제외해.', 'output.format': 'CSV로 저장해.'}
     reply = ' '.join(phrases[q['key']] for q in first['questions'])
     s['messages'] += [{'role': 'assistant', 'content': '질문'}, {'role': 'user', 'content': reply}]
     answers = {'filter.field': ('비용', '비용'), 'filter.operator': ('gt', '초과'), 'filter.value': ('1000000', '100만원'),
                'missing.policy': ('exclude', '제외'), 'output.format': ('csv', 'CSV')}
     second = judge(s, {k: (answers[k] if k not in left else (None, '')) for k in answers})
-    assert second['unresolved'] == left and [q['key'] for q in second['questions']] == left
+    assert set(second['unresolved']) == set(left) and {q['key'] for q in second['questions']} == set(left)
 
 
 def test_deferred_condition_survives_checkpoint_restart_and_partial_answer(tmp_path):
@@ -510,7 +510,7 @@ def test_deferred_condition_survives_checkpoint_restart_and_partial_answer(tmp_p
         ledger = deepcopy(first['condition_ledger'])
         visible = first['pending_questions']
         deferred = [key for key in ledger['unresolved'] if key not in {q['key'] for q in visible}]
-        assert first['status'] == 'needs_clarification' and len(visible) == 3 and len(deferred) == 1
+        assert first['status'] == 'needs_clarification' and len(visible) == 2 and len(deferred) == 2
         assert ledger['slots'][deferred[0]]['status'] == 'missing'
     finally:
         conn.close(); store.close()
@@ -544,8 +544,8 @@ def test_deferred_condition_survives_checkpoint_restart_and_partial_answer(tmp_p
         second = graph.invoke(Command(resume={'type': 'message', 'content': reply}), cfg)
         assert transport.calls == 1
         assert second['status'] == 'needs_clarification', second['condition_ledger']
-        assert second['condition_ledger']['unresolved'] == deferred
-        assert [q['key'] for q in second['pending_questions']] == deferred
+        assert set(second['condition_ledger']['unresolved']) == set(deferred)
+        assert {q['key'] for q in second['pending_questions']} == set(deferred)
         assert second['condition_ledger']['slots']['filter.field'] == ledger['slots']['filter.field']
         assert second['condition_ledger']['slots'][deferred[0]]['status'] == 'missing'
         assert not store.agents()

@@ -165,7 +165,8 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   try{
    const s=await ensureSession();
    remember(s);
-   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,...(questionId?{questionId}:{})});
+   const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,...(questionId?{questionId}:{})});
    remember(result);
   }catch(e){
    if(fromComposer)setText(text);

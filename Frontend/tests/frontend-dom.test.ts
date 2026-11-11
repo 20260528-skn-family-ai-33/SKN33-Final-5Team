@@ -1860,3 +1860,42 @@ for(const status of ['waiting_input','waiting_confirmation','failed','running','
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
  }finally{await h.close();}
 });
+
+for(const status of ['failed','blocked'])test('fresh review: preserve input when a new user message was persisted but generation '+status,async()=>{
+ const prompt='매출이 10000을 초과하는 행만 골라줘';
+ const before=readySession();
+ const after={...before,revision:2,status:'validation_failed',messages:[...before.messages,{role:'user',content:prompt}]};
+ let sent=false;
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return sent?after:before;
+  if(path.endsWith('/message')){sent=true;throw Error('응답 연결 유실');}
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status,reason:'모델 검사를 완료하지 못했습니다.'}]};
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.closest('form')!);
+  assert.match(document.querySelector('[role="alert"]')!.textContent!,/모델 검사를 완료하지 못했습니다/);
+  assert.equal(composer.value,prompt,'failed generation must retain its input for retry');
+ }finally{await h.close();}
+});
+
+
+test('recovery: a published new message waits for running audit before clearing input',async()=>{
+ const prompt='매출을 내림차순으로 정렬해줘',before=readySession();
+ const after={...before,revision:2,messages:[...before.messages,{role:'user',content:prompt},{role:'assistant',content:'정렬 조건을 반영했습니다.'}]};
+ let sent=false,running=true;
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return sent?(running?{...after,status:'validation_failed',messages:[...before.messages,{role:'user',content:prompt}]}:after):before;
+  if(path.endsWith('/message')){sent=true;throw Error('응답 연결 유실');}
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:1,request_text:prompt,status:running?'running':'waiting_confirmation'}]};
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.closest('form')!);
+  assert.equal(composer.value,prompt);assert.equal(composer.disabled,true);
+  running=false;await click(button('대화 다시 불러오기'));
+  assert.equal(composer.value,'');assert.equal(composer.disabled,false);
+  assert.equal(document.querySelector('[role="alert"]'),null);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
+ }finally{await h.close();}
+});

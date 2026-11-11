@@ -168,12 +168,15 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    const outcome=matching.find(item=>item.action===attempt.action&&(attempt.action==='confirm'||item.request_text===attempt.content));
    const appended=latest.messages.slice(attempt.before.messages.length);
    const reusedInput=attempt.before.messages.at(-1)?.role==='user'&&attempt.before.messages.at(-1)?.content===attempt.content;
-   const completed=!!outcome&&['waiting_input','waiting_confirmation','succeeded'].includes(outcome.status);
+   // A completed session can be published just before its audit is finalized.
+   const publishedReply=!reusedInput&&outcome?.status==='running'&&['ready','needs_clarification'].includes(latest.status)
+    &&appended.some(message=>message.role==='assistant');
+   const completed=!!outcome&&(['waiting_input','waiting_confirmation','succeeded'].includes(outcome.status)||publishedReply);
    const delivered=attempt.action==='confirm'
     ? latest.status==='saved'&&!!latest.saved_agent_id
-    : latest.revision>attempt.before.revision&&(
+    : completed&&latest.revision>attempt.before.revision&&(
       appended.some(message=>message.role==='user'&&message.content===attempt.content)||
-      reusedInput&&completed&&appended.some(message=>message.role==='assistant'));
+      reusedInput&&appended.some(message=>message.role==='assistant'));
    // Session publication can complete before the audit record is finalized.
    if(!delivered&&outcome?.status==='running'){
     setRecovery({...attempt,running:true});

@@ -5,7 +5,7 @@ import hashlib,json
 from uuid import uuid5,NAMESPACE_URL
 from infrastructure.persistence.ids import uid,now
 from infrastructure.persistence.asset_library import AssetLibrary,identifier
-from documents.resources.document_resources import supports
+from documents.resources.document_resources import supports,chunks_for_asset
 
 SOURCE_SCHEMA='''
 CREATE TABLE IF NOT EXISTS builder_library_sources(agent_id TEXT PRIMARY KEY,revision INTEGER NOT NULL,json TEXT NOT NULL,updated_at TEXT NOT NULL);
@@ -29,7 +29,7 @@ def normalized(raw,agent):
     if not isinstance(raw,dict) or set(raw)-{'mode','space','team_id','folder_id','asset_ids','target_node_id'}:
         raise ValueError('자료함 읽기 설정을 확인하세요.')
     mode=raw.get('mode');space=raw.get('space')
-    if mode not in ('fixed','latest','new') or space not in ('personal','team'):raise ValueError('자료함 읽기 모드와 공간을 확인하세요.')
+    if mode not in ('fixed','latest','new','all') or space not in ('personal','team'):raise ValueError('자료함 읽기 모드와 공간을 확인하세요.')
     team=identifier(raw.get('team_id')) if space=='team' else None
     if space=='personal' and raw.get('team_id') is not None:raise ValueError('개인 자료함에는 팀 ID를 지정할 수 없습니다.')
     folder=identifier(raw.get('folder_id'),nullable=True)
@@ -79,10 +79,22 @@ def library_export(storage,selection,kind,refs=None,verify_only=False):
     eligible={}
     for asset_id,parent in rows:
         try:asset=storage.asset(asset_id)
-        except ValueError:continue
+        except ValueError as error:
+            if selection['mode']=='all':
+                raise ValueError(f'폴더의 자료 {asset_id}를 읽을 수 없습니다. 삭제 상태와 접근 권한을 확인한 뒤 다시 실행하세요.') from error
+            continue
         if not verify_only:
             from agent_builder.conditions.condition_readiness import input_issues
-            if not supports(asset,kind) or input_issues({'resources':[asset]}):continue
+            compatible=supports(asset,kind);issues=input_issues({'resources':[asset]})
+            if not compatible or issues:
+                if selection['mode']=='all':
+                    name=asset.get('name') or asset_id
+                    reason='선택한 읽기 작업과 파일 종류가 다릅니다.' if not compatible else '파일 분석이 완료되지 않았거나 누락 범위 확인이 필요합니다.'
+                    raise ValueError(f'폴더 전체 읽기에서 “{name}”을 처리할 수 없습니다. {reason} 파일을 확인하거나 다른 폴더로 옮긴 뒤 다시 실행하세요.')
+                continue
+            if selection['mode']=='all' and kind=='document' and next(chunks_for_asset(asset),None) is None:
+                name=asset.get('name') or asset_id
+                raise ValueError(f'폴더 전체 읽기에서 “{name}”에 읽을 본문이 없습니다. 파일의 분석 결과와 선택한 본문을 확인하거나 다른 폴더로 옮긴 뒤 다시 실행하세요.')
         ref=reference(asset,selection['space'],selection.get('team_id'),parent)
         # Metadata planning never retains every file's parsed body in memory.
         eligible[asset_id]=(asset if refs is not None else None,ref)
@@ -111,8 +123,16 @@ def library_export(storage,selection,kind,refs=None,verify_only=False):
 class SnapshotStorage:
     """A run-only parsed-input view. It never inserts into the personal library."""
     def __init__(self,storage,snapshot,agent):
-        self.storage=storage;self.snapshot=snapshot;self.bound=bind_agent(storage,agent,snapshot)
+        self.storage=storage;self.snapshot=snapshot
         self.items={input_id(snapshot['selection'],item):item for item in snapshot['assets']}
+        if is_table_batch(snapshot,agent):
+            from workflow_engine.executors.table_batch import merge_table_assets
+            merged=merge_table_assets(snapshot['assets']);id=table_batch_id(snapshot)
+            self.items[id]={'asset':{'id':id,'name':'폴더_통합표.csv','kind':'table','format':'csv',
+                'columns':merged['columns'],'row_count':merged['row_count'],'profile':{},'text':'',
+                'processing_status':'ready','hash':snapshot['source_key'],
+                'source_asset_ids':merged['source_asset_ids']},'rows':merged['rows']}
+        self.bound=bind_agent(storage,agent,snapshot)
         self.library_target_id=snapshot['selection']['target_node_id']
     def __getattr__(self,key):return getattr(self.storage,key)
     def agent(self,id):return deepcopy(self.bound) if id==self.bound['id'] else self.storage.agent(id)
@@ -128,8 +148,17 @@ def input_id(selection,item):
     return str(uuid5(NAMESPACE_URL,'a4b.source.input:'+encoded([selection['space'],selection.get('team_id'),identity['asset_id'],identity['version']])))
 
 
+def is_table_batch(snapshot,agent):
+    return snapshot['selection']['mode']=='all' and target_kind(agent,snapshot['selection'])=='table'
+
+
+def table_batch_id(snapshot):
+    return str(uuid5(NAMESPACE_URL,'a4b.source.table-batch:'+snapshot['source_key']))
+
+
 def bind_agent(storage,agent,snapshot):
-    result=deepcopy(agent);config=result['config'];selection=snapshot['selection'];ids=[input_id(selection,item) for item in snapshot['assets']]
+    result=deepcopy(agent);config=result['config'];selection=snapshot['selection']
+    ids=[table_batch_id(snapshot)] if is_table_batch(snapshot,agent) else [input_id(selection,item) for item in snapshot['assets']]
     from workflow_engine.executors.sources import source_file_ids
     replaced=set();retained=set()
     for node in (config.get('workflow') or {}).get('nodes',[]):
@@ -229,6 +258,9 @@ class LibrarySources:
             except (TypeError,ValueError):raise ValueError('자료 등록 시각을 확인할 수 없습니다.')
         ordered=sorted(unique.values(),key=registered,reverse=True)
         if selection['mode']=='latest' and not ordered:raise ValueError('선택한 폴더에 실행할 수 있는 최신 파일이 없습니다.')
+        if selection['mode']=='all':
+            if not ordered:raise ValueError('선택한 폴더에 함께 읽을 파일이 없습니다. 파일을 올린 뒤 다시 실행하세요.')
+            if len(ordered)>100:raise ValueError('폴더 전체 함께 읽기는 최대 100개 파일까지 지원합니다. 폴더를 나눈 뒤 다시 실행하세요.')
         return ordered[:1] if selection['mode']=='latest' else ordered
     def resolve(self,action,id,candidates,lease_token=None,run_id=None,expected_selection=None):
         plan=self.plan(action,id);selection=plan['selection']
@@ -294,6 +326,7 @@ class LibrarySources:
         kind=target_kind(agent,selection)
         if selection['mode']=='fixed' and [ref['id'] for ref in refs]!=selection['asset_ids']:raise ValueError('고정 파일 선택이 실행 설정과 다릅니다.')
         if selection['mode']=='latest' and len(refs)!=1 or selection['mode']=='new' and len(refs)>1:raise ValueError('최신·새 파일은 실행마다 파일 하나를 고정합니다.')
+        if selection['mode']=='all' and not 1<=len(refs)<=100:raise ValueError('폴더 전체 함께 읽기에는 1~100개 파일이 필요합니다.')
         if len(assets)!=len(refs):raise ValueError('선택한 자료의 고정 스냅샷이 필요합니다.')
         for item,ref in zip(assets,refs):
             identity=item.get('identity',{})
@@ -304,11 +337,15 @@ class LibrarySources:
             if not isinstance(item.get('rows'),list):raise ValueError('자료 스냅샷 형식을 확인하세요.')
             if not supports(item['asset'],kind):raise ValueError('선택한 자료와 읽기 작업의 종류가 다릅니다.')
         snapshot={'selection':selection,'refs':refs,'assets':assets,'source_key':source_key(selection,refs)}
+        # Validate a combined table before persisting a run snapshot, so an
+        # incompatible file cannot leave a pending report behind.
+        view=SnapshotStorage(self.storage,snapshot,agent)
         if run_id:
             self.db.execute("INSERT INTO builder_source_snapshots({wsc}run_id,agent_id,source_key,json,state,updated_at) VALUES({wsv}?,?,?,?,'pending',?) ON CONFLICT DO NOTHING",(run_id,agent['id'],snapshot['source_key'],encoded(snapshot),now()));self.db.commit()
-            snapshot=self.snapshot(run_id)
-            if snapshot['selection']!=selection or snapshot['source_key']!=source_key(selection,refs):raise ValueError('실행의 고정 자료가 다른 요청에서 변경됐습니다.')
-        return SnapshotStorage(self.storage,snapshot,agent)
+            persisted=self.snapshot(run_id)
+            if persisted['selection']!=selection or persisted['source_key']!=source_key(selection,refs):raise ValueError('실행의 고정 자료가 다른 요청에서 변경됐습니다.')
+            if persisted!=snapshot:return SnapshotStorage(self.storage,persisted,agent)
+        return view
     def execution_storage(self,data):
         action=data['action'];id=data['id'];plan=self.plan(action,id);payload=data['library_source_snapshot']
         if not plan['selection'] or payload.get('selection')!=plan['selection']:raise ValueError('자료함 설정이 실행 전에 변경됐습니다. 다시 실행하세요.')

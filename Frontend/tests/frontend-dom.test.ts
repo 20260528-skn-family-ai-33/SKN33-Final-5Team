@@ -1034,7 +1034,7 @@ test('navigation: internal back/forward preserves unsent workflow text and avoid
   await input(document.querySelector('textarea[aria-label="업무 설명"]')!,'탭 이동 후 유지할 업무');
   const loads=t.calls.filter(c=>c.path.endsWith('/catalog')).length;
   await click(button('작업 찾아보기'));assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
-  await click(button('설계로 돌아가기'));await click(button('실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
+  await click(button('설계로 돌아가기'));await click(button('직접 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
   await travel('back');assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement)?.value,'탭 이동 후 유지할 업무');
@@ -1523,7 +1523,7 @@ const sourceAssets=[{id:'asset-1',name:'매출.csv',kind:'table',format:'csv'}];
 const sourceReader=[{id:'read',label:'매출 표 읽기',kind:'table'}];
 function sourceLibraryResponse(){return {folders:sourceFolders,assets:sourceAssets,next:null};}
 
-for(const space of ['personal','team'] as const)for(const mode of ['fixed','latest','new'] as const)
+for(const space of ['personal','team'] as const)for(const mode of ['fixed','latest','new','all'] as const)
 test('schedule source: '+space+' '+mode+' submits the exact folder, reader and revision',async()=>{
  let saved=0;const writes:any[]=[];
  const h=await setup('?screen=run',{},(path,body,method)=>{
@@ -1541,11 +1541,187 @@ test('schedule source: '+space+' '+mode+' submits the exact folder, reader and r
   if(space==='team')await chooseSource('예약 자료 공간','team-1');
   await chooseSource('예약 자료 폴더','folder-1');await chooseSource('예약 자료 읽기 방식',mode);
   if(mode==='fixed'){const checkbox=document.querySelector('.schedule-source-files input');assert.ok(checkbox);await click(checkbox);}
+  if(mode==='all'){
+   assert.match(document.querySelector('.schedule-library-source')!.textContent!,/파일을 매번 모두 읽어 하나의 실행/);
+   assert.match(document.querySelector('.schedule-library-source')!.textContent!,/같은 열 구조의 표들을 합쳐/);
+   assert.match(document.querySelector('.schedule-library-source')!.textContent!,/하위 폴더 제외/);
+   assert.equal(document.querySelector('.schedule-source-files'),null);
+  }
   await click(button('자료함 연결 저장'));
   assert.deepEqual(writes,[{id:'flow',base_revision:0,selection:{mode,space,team_id:space==='team'?'team-1':null,folder_id:'folder-1',asset_ids:mode==='fixed'?['asset-1']:[],target_node_id:'read'}}]);
   assert.equal(saved,1);assert.match(document.querySelector('.schedule-source-notice')!.textContent!,/예약이 중지/);
   const expected=space==='team'?'/api/teams/team-1/library/library?folder_id=folder-1':'/api/agent-builder/library?folder_id=folder-1';
   assert.ok(h.calls.some(call=>call.path===expected));
+ }finally{await h.close();}
+});
+
+test('schedule source: saved folder-wide documents keep their mode and explain a single combined report',async()=>{
+ const selection={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:3};
+ const h=await setup('?screen=run',{},(path,_body,method)=>{
+  if(path.startsWith('/api/agent-builder/schedule_source')&&method==='GET')return {selection};
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[{id:'doc-1',name:'주간업무.txt',kind:'document'}],next:null};
+ },createElement(SourceSettings,{workflowId:'flow',readers:[{id:'read',label:'업무보고 읽기',kind:'document'}],disabled:false,onSaved:async()=>{}}));
+ try{
+  await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
+  assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')!.value,'all');
+  assert.match(document.querySelector('.schedule-source-saved')!.textContent!,/폴더 전체 함께 읽기/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/여러 문서를 함께 읽어.*종합 보고서/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/이미 처리한 파일도 다시 읽습니다/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/최대 100개 파일/);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/합계 45,000자/);
+  assert.equal(document.querySelector('.schedule-source-files'),null);
+  assert.equal(button('자료함 연결 저장').disabled,true);
+ }finally{await h.close();}
+});
+
+test('folder source: a manual workflow configures a folder and runs one report without a reservation',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ let selection:any=null;
+ const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.startsWith('/api/agent-builder/schedule_source')){
+   if(method==='GET')return {selection};
+   selection={...body.selection,revision:1};return {selection};
+  }
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+  if(path.endsWith('/test'))return {id:'combined-report',status:'succeeded',agent_version:1,answer:'두 업무보고를 합친 팀 보고서입니다.',steps:[],rows:[],artifact:null};
+ },createElement(EntryApp));
+ try{
+  await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
+  assert.equal(document.querySelectorAll('.schedule-library-source').length,1);
+  assert.equal(button('워크플로우 실행').disabled,true);
+  await chooseSource('예약 자료 폴더','folder-1');await chooseSource('예약 자료 읽기 방식','all');
+  await click(button('자료함 연결 저장'));
+  assert.equal(button('워크플로우 실행').disabled,false);
+  assert.match(document.querySelector('.as-run-files small')!.textContent!,/연결한 자료함에서 읽습니다/);
+  await click(button('워크플로우 실행'));
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/test'))!.body,{id:'manual-folder',content:'',fileIds:[]});
+  assert.equal(h.calls.some(call=>call.path.endsWith('/schedule_configure')),false);
+  assert.match(document.querySelector('.as-test-result')!.textContent!,/두 업무보고를 합친 팀 보고서/);
+ }finally{await h.close();}
+});
+
+test('folder source: manual attachments override the folder and still require the correct file kind',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ const selection={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
+ const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.startsWith('/api/agent-builder/schedule_source')&&method==='GET')return {selection};
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+  if(path.endsWith('/run_upload'))return {asset:{id:body.fileName,name:body.fileName,kind:body.fileName.endsWith('.csv')?'table':'document'}};
+  if(path.endsWith('/test'))return {id:'override-report',status:'succeeded',agent_version:1,answer:'이번 실행 문서 결과',steps:[],rows:[],artifact:null};
+ },createElement(EntryApp));
+ try{
+  const picker=document.querySelectorAll<HTMLInputElement>('input[type=file]')[2];
+  async function attach(name:string){
+   Object.defineProperty(picker,'files',{configurable:true,value:[new dom.window.File(['내용'],name)]});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+   await sourceSettles(()=>!!document.querySelector('[aria-label="'+name+' 제거"]'));
+  }
+  assert.equal(button('워크플로우 실행').disabled,false);
+  await attach('다른표.csv');assert.equal(button('워크플로우 실행').disabled,true);
+  assert.match(document.querySelector('.as-run-files small')!.textContent!,/문서를 첨부/);
+  await click(document.querySelector('[aria-label="다른표.csv 제거"]')!);
+  await attach('이번보고.txt');assert.equal(button('워크플로우 실행').disabled,false);
+  assert.match(document.querySelector('.as-run-files small')!.textContent!,/첨부한 파일을 사용.*자료함 연결은 유지/);
+  await click(button('워크플로우 실행'));
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/test'))!.body,{id:'manual-folder',content:'',fileIds:['이번보고.txt']});
+  assert.equal(h.calls.some(call=>call.path.endsWith('/schedule_source')&&call.body),false);
+ }finally{await h.close();}
+});
+
+test('folder source: unsaved manual settings block execution and survive cancelled navigation',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ const other=agent('other-folder','다른 보고서');
+ let selection:any={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
+ const h=await setup('?screen=workflow&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow,other]};
+  if(path.includes('/agent?id=other-folder'))return {...snapshot(other),request_required:false};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.startsWith('/api/agent-builder/schedule_source')){
+   if(method==='GET')return {selection};
+   selection={...body.selection,revision:selection.revision+1};return {selection};
+  }
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+ },createElement(EntryApp));
+ try{
+  const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
+  await click(tab('직접 실행'));
+  await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
+  await chooseSource('예약 자료 읽기 방식','latest');
+  assert.equal(button('워크플로우 실행').disabled,true);
+  assert.match(document.querySelector('.schedule-library-source')!.textContent!,/저장한 뒤 실행/);
+  await click(button('워크플로우 실행'));assert.equal(h.calls.some(call=>call.path.endsWith('/test')),false);
+  let prompts=0;window.confirm=()=>{prompts++;return false;};
+  for(const target of [tab('설계'),button('작업 라이브러리'),button('설정 수정'),button('홈'),button('워크플로우')]){
+   await click(target);assert.equal(new URL(location.href).searchParams.get('screen'),'run');
+   assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')!.value,'latest');
+  }
+  const otherLink=()=>Array.from(document.querySelectorAll<HTMLButtonElement>('.as-agent-link')).find(item=>item.querySelector('strong')?.textContent==='다른 보고서')!;
+  await click(otherLink());assert.equal(new URL(location.href).searchParams.get('service'),'manual-folder');
+  assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')!.value,'latest');
+  assert.equal(h.calls.some(call=>call.path.includes('/agent?id=other-folder')),false);
+  await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,100));});
+  assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.ok(prompts>=6);
+  const unload=new dom.window.Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
+  window.confirm=()=>{prompts++;return true;};
+  await click(tab('설계'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
+  await click(tab('직접 실행'));
+  await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='all');
+  assert.equal(button('워크플로우 실행').disabled,false);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/schedule_source')&&call.body),false);
+  await chooseSource('예약 자료 읽기 방식','latest');assert.equal(button('워크플로우 실행').disabled,true);
+  await click(button('자료함 연결 저장'));assert.equal(button('워크플로우 실행').disabled,false);
+  const count=prompts;await click(tab('설계'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(prompts,count);
+  await click(tab('직접 실행'));
+  await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='latest');
+  await chooseSource('예약 자료 읽기 방식','all');assert.equal(button('워크플로우 실행').disabled,true);
+  const beforeSwitch=prompts;await click(otherLink());
+  await sourceSettles(()=>document.querySelector('h1')?.textContent==='다른 보고서');
+  assert.equal(prompts,beforeSwitch+1,'Changing workflows asks once before discarding source edits');
+  assert.equal(new URL(location.href).searchParams.get('service'),'other-folder');
+  assert.equal(button('워크플로우 실행').disabled,false,'Old source edits must not disable another workflow');
+
+ }finally{await h.close();}
+});
+
+test('folder source: failed workflow selection preserves the source draft and execution block',async()=>{
+ const flow=agent('manual-folder','팀 보고서');flow.config.tool_ids=['read_document'];
+ flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
+ const other=agent('other-folder','다른 보고서');
+ let selection:any={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
+ const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
+  if(path.endsWith('/agents'))return {agents:[flow,other]};
+  if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
+  if(path.includes('/agent?id=other-folder'))return new Response(JSON.stringify({error:'다른 워크플로우 조회 실패'}),{status:503});
+  if(path.startsWith('/api/agent-builder/schedule_source')){
+   if(method==='GET')return {selection};
+   selection={...body.selection,revision:selection.revision+1};return {selection};
+  }
+  if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
+ },createElement(EntryApp));
+ try{
+  await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='all');
+  await chooseSource('예약 자료 읽기 방식','latest');
+  assert.equal(button('워크플로우 실행').disabled,true);
+  let prompts=0;window.confirm=()=>{prompts++;return true;};
+  const otherLink=Array.from(document.querySelectorAll<HTMLButtonElement>('.as-agent-link')).find(item=>item.querySelector('strong')?.textContent==='다른 보고서')!;
+  await click(otherLink);
+  await sourceSettles(()=>!!document.querySelector('.as-global-error'));
+  assert.equal(prompts,1);
+  assert.equal(document.querySelector('h1')?.textContent,'팀 보고서');
+  assert.equal(new URL(location.href).searchParams.get('service'),'manual-folder');
+  assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')!.value,'latest');
+  assert.equal(button('워크플로우 실행').disabled,true,'A failed switch must not permit running the saved source while its draft is unsaved');
+  assert.equal(button('자료함 연결 저장').disabled,false);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/test')),false);
+  await click(button('자료함 연결 저장'));
+  assert.equal(button('워크플로우 실행').disabled,false);
  }finally{await h.close();}
 });
 

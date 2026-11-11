@@ -66,6 +66,10 @@ def _compose_documents(node, state, storage, config, llm, docs, inputs, reviews)
                         '참석·불참·승인·약속을 대신 확정하지 마세요. 확인 후 회신하겠다는 초안을 작성하세요.'
                         if any(d.get('parser_engine')=='gmail' for d in docs) else '')
     if not gmail_reply_rule and sum((len(d['text']) for d in docs)) > 45000:
+        selection = (getattr(storage, 'snapshot', None) or {}).get('selection', {})
+        folder_inputs = getattr(storage, 'items', {})
+        if selection.get('mode') == 'all' and any(d.get('file_id') in folder_inputs for d in docs):
+            raise ValueError('폴더 전체 보고서에 사용할 문서 본문이 45,000자를 초과합니다. 일부 문서만 골라 처리하지 않았습니다. 폴더를 나누거나 문서 분량을 줄여 다시 실행하세요.')
         search = {'id': node['id'] + '_context', 'tool': 'search_document', 'settings': {**settings, 'query': None}, 'bindings': [{'input': 'documents', 'node_id': '_input', 'output': 'documents'}]}
         scoped = execute_node(search, {**state, 'outputs': {'_input': {'documents': docs}}}, storage, config, llm)
         docs = scoped['documents']

@@ -42,7 +42,7 @@ def run(c):return {'run':c.storage.test(c.data['id'])}
 def test(c):
     data=c.data;storage=c.storage;api_key=c.api_key
     agent=storage.agent(data['id'])
-    if LibrarySources(storage).get(data['id']) and not hasattr(storage,'bound'):raise ValueError('자료함 파일 권한과 실행 스냅샷을 먼저 확인하세요.')
+    if LibrarySources(storage).get(data['id']) and not hasattr(storage,'bound') and not data.get('file_ids'):raise ValueError('자료함 파일 권한과 실행 스냅샷을 먼저 확인하세요.')
     if hasattr(storage,'bound') and data.get('file_ids'):raise ValueError('자료함 파일 선택과 이번 실행 파일 첨부를 동시에 사용할 수 없습니다.')
     request=data.get('content','')
     if not isinstance(request,str):

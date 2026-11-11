@@ -93,4 +93,5 @@ export function ScheduledWorkflows({onOpen,onCreate,onCanLeaveChange}:{onOpen:(i
    </>:<div className="entry-empty"><CalendarClock size={28}/><h2>등록한 예약이 없습니다.</h2><p>기존 워크플로우에 일정을 추가하거나, 예약 실행할 새 워크플로우를 만드세요.</p>{!adding&&<button type="button" className="as-button" onClick={toggleAdding}>기존 워크플로우에 예약 추가</button>}</div>}
   </>}
  </section>;
+
 }

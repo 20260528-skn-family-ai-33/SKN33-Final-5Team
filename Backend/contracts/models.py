@@ -178,6 +178,13 @@ class BuilderState(TypedDict, total=False):
     credential_id: str
     # Server-supplied credential metadata only; never an access/refresh token.
     gmail_connected: bool | None
+    user_timezone: str | None
+    temporal_context: dict
+    request_meaning: dict | None
+    request_meaning_fingerprint: str | None
+    request_meaning_digest: str | None
+    request_meaning_review: dict | None
+    request_meaning_model_calls: int
     saved_workflows: list[dict]
     node_library: list[dict]
     required_node_refs: list[str]
@@ -208,6 +215,7 @@ class BuilderState(TypedDict, total=False):
     capability_generation_route: str
     requirement_required: bool
     requirement_route: str
+    requirement_answers: list[dict]
     requirement_ledger: dict | None
     requirement_fingerprint: str | None
     requirement_digest: str | None

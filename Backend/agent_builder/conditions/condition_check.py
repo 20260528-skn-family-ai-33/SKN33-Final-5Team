@@ -112,6 +112,10 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             # Build a transport lazily: a failed input never calls the model.
             from agent_builder.conditions.condition_readiness import input_issues
             from agent_builder.conditions.input_resolution import latest_resolution, option_answer, numeric_answer, pending_nonanswer
+            # The shared queue also carries questions about receipts and extended
+            # requirements. Only condition questions can resolve condition slots.
+            state = {**state, 'pending_questions': [q for q in state.get('pending_questions', [])
+                                                   if q.get('source', 'condition') == 'condition']}
             if input_issues(state) or latest_resolution(state) or option_answer(state) or numeric_answer(state) or pending_nonanswer(state):
                 result = judge_conditions(state, None)
             else:
@@ -190,7 +194,7 @@ def audit_conditions(state):
     if not ledger or ledger.get('decision') != 'ready':
         return update
     from agent_builder.design.planner_constraints import table_tool_issues
-    issues = literal_condition_issues(state) + plan_issues(ledger, state['draft']) + table_tool_issues(state)
+    issues = literal_condition_issues(state) + plan_issues(ledger, state['draft'], state=state) + table_tool_issues(state)
     update['trace'] = trace + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',
                'status': 'completed' if not issues else 'needs_input', 'detail': ' / '.join(issues) or '확정 조건이 실행 설정에 반영됐습니다.',
                'issues': issues, 'enforced': state.get('condition_enforced', False)}]

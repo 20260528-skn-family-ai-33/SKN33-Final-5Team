@@ -292,7 +292,7 @@ class LibrarySources:
                     from workflow_engine.scheduling.schedules import scheduled_agent
                     row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(id,)).fetchone()
                     reservation=json.loads(row[0]) if row else None
-                    if not reservation:raise ValueError('예약 설정을 먼저 저장하세요.')
+                    if not reservation or reservation.get('removed'):raise ValueError('예약 설정을 먼저 저장하세요.')
                     if reservation['agent_version']!=agent['version']:raise ValueError('워크플로우가 변경됐습니다. 예약 설정을 저장해 적용할 버전을 확인하세요.')
                     agent=scheduled_agent(agent,reservation['spec'])
                 due=now();parent_id=uid()

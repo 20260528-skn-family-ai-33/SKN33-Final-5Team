@@ -70,10 +70,23 @@ def _install_receipt_question(graph, config, prompt, resources):
 
 
 def session_action(c):
-    if c.action not in ('message','confirm'):
+    mutations={'message','confirm','upload','attach_asset','tool_gap_choice',
+               'tool_gap_replan_propose','tool_gap_replan_decide','tool_gap_job_recover',
+               'tool_gap_job_claim','tool_gap_job_finish'}
+    if c.action not in mutations:
         return _session_action(c)
+    from infrastructure.persistence.generation_lock import generation_session_lock
+    with generation_session_lock(c.storage, c.data['id']) as acquired:
+        if not acquired:raise ValueError('이 대화의 이전 요청을 처리 중입니다. 완료 후 다시 시도하세요.')
+        return _generation_action(c) if c.action in ('message','confirm') else _session_action(c)
+
+
+def _generation_action(c):
     from infrastructure.persistence.generation_history import GenerationHistory
     audit = GenerationHistory.start(c.storage,{**c.data,'action':c.action})
+    from copy import copy
+    c = copy(c)
+    c.data = {**c.data, 'generation_request_id': audit.id}
     c.storage.generation_audit = audit
     try:
         result = _session_action(c)
@@ -89,6 +102,11 @@ def session_action(c):
 def _session_action(c):
     storage=c.storage;data=c.data;action=c.action;api_key=c.api_key;conversation=c.conversation;connection=None
     storage.gmail_connected=data.get('gmail_connected') if type(data.get('gmail_connected')) is bool else None
+    if action == 'message' and 'user_timezone' in data:
+        from agent_builder.design.temporal_context import validate_user_timezone
+        storage.request_timezone = validate_user_timezone(data['user_timezone'])
+    else:
+        storage.request_timezone = None
     try:
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in STATE_ONLY else None)
         if action in {'message','confirm'}:
@@ -203,8 +221,10 @@ def _session_action(c):
         after=graph.get_state(config).values
         if after.get('saved_agent_id'):
             s['agent_id']=after['saved_agent_id'];s['base_version']=storage.agent(s['agent_id'])['version']
+        s={**s,'last_generation_request_id':data['generation_request_id']}
+        if getattr(storage,'generation_audit',None):storage.generation_audit.result_next_nodes=graph.get_state(config).next
         s=storage.update_session(s,data['revision'],after)
-        if getattr(storage,'generation_audit',None):storage.generation_audit.finish(after,graph.get_state(config).next)
+        if getattr(storage,'generation_audit',None):storage.generation_audit.finish(after,graph.get_state(config).next,result_revision=s['revision'])
         return public_state(storage,s,graph)
     finally:
         if connection:connection.close()

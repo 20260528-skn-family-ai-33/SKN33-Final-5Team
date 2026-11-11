@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "source_status": "completed",
+  "source_harness_sha256": "784bd2475a1fa7ccad3f85a6a17fe5d7e708f9b5a958ef25e09b317a9959aea6",
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "selected_models": [
+    "a4b-public-qwen35-9b-32k:latest"
+  ],
+  "trace_records_observed": 12,
+  "verified_returned_responses": 12,
+  "verified_returned_by_transport": {
+    "ollama_native": 11,
+    "existing_langchain_client": 1
+  },
+  "verified_returned_by_scope": {
+    "case": 11,
+    "probe": 1
+  },
+  "verified_case_ids": [
+    "R04",
+    "C05",
+    "M01"
+  ],
+  "live_filter_omitted_case_ids": [],
+  "failed_records": [],
+  "incomplete_records": [],
+  "returned_but_unverified": [],
+  "http_dispatch_attempts_lower_bound": 11,
+  "http_responses_received_lower_bound": 11,
+  "source_reported_inference_calls": 11,
+  "total_server_inferences": null,
+  "total_cost": null,
+  "overlap_exclusions": [],
+  "limitations": [
+    "Verified response count is observed completed response evidence, not total server inference attempts, total token usage, or billing cost.",
+    "HTTP dispatch attempts are a recorded lower bound. Missing SDK attempts, retries, in-flight requests and interrupted unsaved calls cannot be reconstructed.",
+    "The frozen v2 harness patches httpx but this installed OpenAI client uses httpx2: SDK HTTP dispatch/response counters and same-origin API-path/redirect hooks are not covered.",
+    "The selected host/port DNS guard and synthetic execution allowlist remain separate protections; absence of a recorded redirect does not independently prove no redirect occurred.",
+    "A verified response proves recorded model output, not correctness or actual external connector execution. SDK output is assembled content, not original HTTP stream frames."
+  ],
+  "case_accounting": [
+    {
+      "id": "R04",
+      "status": "completed",
+      "original_live_model_calls": 3,
+      "verified_returned_response_count": 3,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "C05",
+      "status": "completed",
+      "original_live_model_calls": 2,
+      "verified_returned_response_count": 2,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    },
+    {
+      "id": "M01",
+      "status": "completed",
+      "original_live_model_calls": 5,
+      "verified_returned_response_count": 6,
+      "has_verified_model_response": true,
+      "omitted_by_original_live_filter": false
+    }
+  ],
+  "source_run": "docs\\qwen-local-public9b-after-repeat.json",
+  "source_run_sha256": "172b61021bc488c20af60bd7565fc5f30aa465695f49344625b2c360551bfe49",
+  "accounting_script_sha256": "68f9354780e9c2dbcfd7b0cae59eb07f6037ed57a761e31fd25d110fc494a197"
+}

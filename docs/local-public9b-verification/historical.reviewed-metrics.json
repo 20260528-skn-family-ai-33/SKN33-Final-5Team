@@ -1,0 +1,81 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "status": "completed",
+  "frozen_cases": 52,
+  "measured_cases": 52,
+  "attempted_model_cases": 50,
+  "verified_response_cases": 50,
+  "backend_cases_without_model_dispatch": [
+    "R01",
+    "T08"
+  ],
+  "missing_case_ids": [],
+  "semantic_reviewed_cases": 52,
+  "ledger_reviewed_cases": 52,
+  "metrics": {
+    "whole_request_success": {
+      "numerator": 28,
+      "denominator": 52,
+      "value": 0.5384615384615384
+    },
+    "necessary_question_recall": {
+      "numerator": 23,
+      "denominator": 32,
+      "value": 0.71875
+    },
+    "unnecessary_repeated_followup_questions": {
+      "numerator": 2,
+      "denominator": 4,
+      "value": 0.5
+    },
+    "unnecessary_question_rate": {
+      "numerator": 13,
+      "denominator": 35,
+      "value": 0.37142857142857144
+    },
+    "answer_incorporation_accuracy": {
+      "numerator": 12,
+      "denominator": 12,
+      "value": 1.0
+    },
+    "requirement_coverage": {
+      "numerator": 56,
+      "denominator": 88,
+      "value": 0.6363636363636364
+    },
+    "confirmed_condition_conflict": {
+      "numerator": 6,
+      "denominator": 165,
+      "value": 0.03636363636363636
+    },
+    "duplicate_accepted_task_rate": {
+      "numerator": 3,
+      "denominator": 58,
+      "value": 0.05172413793103448
+    },
+    "validator_pass_per_generated_draft": {
+      "numerator": 18,
+      "denominator": 38,
+      "value": 0.47368421052631576
+    },
+    "final_draft_validation": {
+      "numerator": 17,
+      "denominator": 27,
+      "value": 0.6296296296296297
+    },
+    "verified_case_model_responses": 191,
+    "verified_probe_model_responses": 2,
+    "observed_case_model_call_records": 192,
+    "elapsed_seconds": {
+      "cases": 52,
+      "p50": 63.43330594999861,
+      "p95": 143.36386949999724
+    }
+  },
+  "source_bytes_sha256": {
+    "corpus": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de",
+    "run": "c85233a673876642c05e9304e0307a415e2b8df25ae48def2c343426aa8dd0b7",
+    "labels": "1c816749511617726d2a656d68489b06d5e972f6c33e7a996a0a86633441b6b6",
+    "ledger_labels": "0d8f84f07b3acf7803022558e09e07cab13443de8bbe12f2ff65fccc44ef194c"
+  }
+}

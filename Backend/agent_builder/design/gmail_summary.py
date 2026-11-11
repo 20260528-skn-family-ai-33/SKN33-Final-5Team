@@ -161,10 +161,13 @@ def gmail_summary_request(state):
     users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
     if not users:
         return None
-    settings = _edited_request(state, users) if state.get('base_agent_id') else _request_settings(users[-1])
+    from .request_meaning import gmail_selection, sealed_meaning
+    meaning = sealed_meaning(state)
+    settings = gmail_selection(state) if meaning else (_edited_request(state, users) if state.get('base_agent_id') else _request_settings(users[-1]))
     # Do not silently erase earlier independent work or a changed instruction.
-    if settings is None or (not state.get('base_agent_id') and any(_request_settings(text) != settings for text in users)):
+    if settings is None or (not meaning and not state.get('base_agent_id') and any(_request_settings(text) != settings for text in users)):
         return None
+    settings = {**settings, 'summary_instructions': settings.get('summary_instructions') or _count_summary_instructions(settings['count'])}
     from workflow_engine.catalog.canonical import operation_spec, arguments_spec, ports
     from workflow_engine.catalog.registry import TOOLS
     try:
@@ -182,6 +185,8 @@ def gmail_summary_request(state):
 
 
 def _recipe(request):
+    if request.get('semantic_selection'):
+        return 'source_summary.semantic.v1'
     schedule = request.get('schedule')
     if not schedule:
         return RECIPE
@@ -235,12 +240,29 @@ def gmail_summary_plan(state):
         spec['summary_instructions'] = request['summary_instructions']
     if scheduled:
         spec.update(schedule=scheduled, query=request['query'])
+    elif request.get('query'):
+        spec['query'] = request['query']
     scope = '안 읽은 수신 메일' if request.get('query') == UNREAD_QUERY else '전날 수신 메일'
     description = (f"{_schedule_description(scheduled)} {scope} 최대 {request['count']}건 읽기와 원문 요약"
                    if scheduled else f"최근 메일 최대 {request['count']}건 읽기와 원문 요약")
+    if request.get('semantic_selection'):
+        description = _semantic_scope(request, state) + f" 최대 {request['count']}건 읽기와 원문 요약"
     return dict(tasks=[dict(id='r1', source_message=request['source_message'], quote=request['request'],
                            description=description, depends_on=[], spec=spec)],
                 unresolved=[])
+
+
+def _semantic_scope(request, state):
+    selection = request['semantic_selection']
+    labels = {'unread':'안 읽은', 'important':'중요 표시된', 'starred':'별표 표시된'}
+    scope = ' '.join([*(label for key, label in labels.items() if key in selection['filters']), '메일'])
+    if request.get('schedule'):
+        return _schedule_description(request['schedule']) + (' 전날 ' if selection['period'] == 'yesterday' else ' ') + scope
+    if selection['period'] in ('today', 'yesterday'):
+        anchor = state['temporal_context']['user_message_anchors'][selection['period_source_message']]
+        date = anchor['relative_days'][selection['period']]['date']
+        return f"{anchor['timezone']} 기준 {date}에 받은 {scope}"
+    return '최근 ' + scope
 
 
 def gmail_summary_reply(state):
@@ -260,18 +282,24 @@ def gmail_summary_reply(state):
                     '보낸 메일과 임시보관함은 제외합니다. 읽음 상태를 바꾸지 않아 계속 안 읽은 메일은 다음 실행에도 포함될 수 있습니다. '
                     '조회 한도를 넘으면 일부 메일은 포함되지 않을 수 있습니다. '
                     '요약은 앱의 실행 기록에 저장하며 예약은 저장 후 별도로 켭니다. ')
-                   if unread else
+                   if unread and scheduled else
                    (f'{_schedule_description(scheduled)}에 전날 00:00부터 당일 00:00 직전까지 받은 메일 중 최대 {count}건을 읽습니다. '
                     '조회 기간은 매번 예약 실행일을 기준으로 계산합니다. 조회 한도를 넘으면 일부 메일은 포함되지 않을 수 있습니다. '
                     '요약은 앱의 실행 기록에 저장하며 예약은 저장 후 별도로 켭니다. ')
                    if scheduled else f'최근 메일을 최대 {count}건 읽고 ')
+    if request.get('semantic_selection'):
+        explanation = _semantic_scope(request, state) + f'을 최대 {count}건 읽도록 구성했습니다. '
+        if request.get('query'):
+            explanation += '조회 한도를 넘으면 일부 메일은 포함되지 않을 수 있습니다. '
+        if scheduled:
+            explanation += '조회 기간은 매번 실행일 기준으로 계산하며, 예약은 저장 후 별도로 켭니다. '
     explanation += ('제목·보낸 사람·본문의 핵심 내용을 메일별로 요약합니다. '
                    '메일이 적으면 실제 조회된 메일만 정리하고, 내용이 없는 경우에는 없다고 안내합니다. '
                    '실행할 때 서비스 연결의 Gmail 읽기 권한과 AI 사용 가능 상태를 확인합니다.')
     defaults = NodeSettings(file_ids=[], query=None, fields=[], instructions=None, format=None,
                             question=None, condition_field=None, condition_operator=None).model_dump()
     arguments = dict(max_results=count)
-    if scheduled:
+    if request.get('query'):
         arguments['query'] = request['query']
     nodes = [
         dict(id='mail', tool='email.list', label=f'안 읽은 메일 최대 {count}건 읽기' if unread else f'전날 메일 최대 {count}건 읽기' if scheduled else f'최근 메일 {count}건 읽기', bindings=[],
@@ -280,11 +308,15 @@ def gmail_summary_reply(state):
              bindings=[dict(input='documents', node_id='mail', output='documents')],
              settings={**defaults, 'instructions':request.get('summary_instructions') or quote}),
     ]
+    if request.get('semantic_selection') and (request.get('query') or scheduled):
+        nodes[0]['label'] = _semantic_scope(request, state) + f' 최대 {count}건 읽기'
     name = ((state.get('draft') or {}).get('name') if state.get('base_agent_id') else None)
     default_name = ('매시간 정각 안 읽은 메일 요약' if recipe == HOURLY_UNREAD_RECIPE else
                     '매일 오전 9시 전날 메일 요약' if recipe == SCHEDULED_RECIPE else
                     f"{_schedule_description(scheduled)} {'안 읽은' if unread else '전날'} 메일 요약" if scheduled else
                     f'최근 메일 {count}건 요약')
+    if request.get('semantic_selection'):
+        default_name = _semantic_scope(request, state) + f' {count}건 요약'
     draft = AgentDraft(name=name or default_name, purpose=quote, instructions=explanation,
                        tool_ids=['email.list', 'compose_answer'], document_ids=[],
                        requirements=[dict(description='안 읽은 메일 예약 조회와 요약' if unread else '전날 메일 예약 조회와 요약' if scheduled else '최근 메일 본문 조회와 요약', source_id='user', quote=quote)],

@@ -1,0 +1,192 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-baseline.json",
+  "review_scope": "R01-R10 completed or failed persisted cases only; independently reviewed against frozen gold, current local raw model calls, accepted states and workflow. Intent is the operative accepted task interpretation after the first user turn, not only capability prose. Slots are accepted first-turn values; task coverage requires an actual final workflow. Missing IDs remain unreviewed. No previous RunPod labels were copied.",
+  "cases": {
+    "R01": {
+      "intent_correct": true,
+      "observed_slots": {
+        "gmail.limit": 5,
+        "provider": "gmail"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "evidence": "현재 로컬 기록의 코드 recipe 사례이며 live_model_calls=0, model_calls=[]다. 첫 턴의 capability/requirement 상태는 Gmail 본문 조회와 요약을 인식하고, 최종 mail 노드는 email.list/read_messages와 max_results=5를 보존한다. summary 노드가 mail.documents를 입력받으며 Gmail 메일 최대 5건의 제목·보낸 사람·본문 요약 지시가 있다. questions/pending_questions는 비어 있고 READY, schema_valid=true다. 연결 권한은 실행 전 확인으로 안내하며 기능 부재로 처리하지 않았다. 외부 Gmail 실행은 NOT_RUN이므로 모델 품질·외부 실행 성공 근거로 세지 않는다."
+    },
+    "R02": {
+      "intent_correct": true,
+      "observed_slots": {
+        "filter.field": "amount",
+        "filter.operator": "gte",
+        "filter.value": 20,
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "evidence": "현재 로컬 raw 호출 1은 read_table/filter_sort/write_result 지원을 식별하고 호출 2는 amount/gte/20/json, missing=error, duplicate=keep을 원문 evidence_id로 추출했다. 수용된 condition ledger에서도 동일 값이 specified다. 호출 3의 requirement는 export/filter/policy/read 4개를 모두 기록하여 이 사례에는 read-only 중간 누락이 없다. 호출 4의 planner 원문에는 name=ask_user와 확인형 instructions, 빈 값 오류를 빈 행 제거로 설명한 문구가 있으나 실제 accepted workflow는 read_table_1→filter_sort_1→write_result_1, 올바른 table bindings, missing_policy=error, duplicate_policy=keep, JSON 출력이며 표시 questions/pending_questions는 없다. 원본 branch=yes는 accepted workflow에서 next로 정규화됐다. 최종 READY/validator 통과 후 허용된 합성 로컬 실행 rows가 gold의 id 2,3과 순서까지 일치했다. 원본 설명의 부정확성과 실제 실행 설정의 정확성을 구분한다."
+    },
+    "R03": {
+      "intent_correct": false,
+      "observed_slots": {
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "evidence": "Holdout을 수정 근거로 사용하지 않는다. 현재 로컬 capability raw는 정렬/JSON을 올바르게 설명했지만 condition raw 호출 2와 재시도 3은 operation=filter로 잘못 분류했다. 최초에는 sort.policy=desc와 none이 중복됐고, 재시도에도 허용 enum이 아닌 desc를 유지했다. accepted ledger는 operations=[filter], sort.policy=missing, filter.field/operator/value=missing이며 sort.field=amount와 sort.direction=descending은 확정되지 않았다. 실제 표시된 '입력 순서를 유지할까요, 정렬할까요?'는 이미 명시한 정렬을 재확인하고 '어느 열을 기준으로 선별할까요?'는 요청하지 않은 선별 조건을 묻는다. 둘 다 첫 턴의 불필요한 질문이며 후속 답변 재질문 지표에는 해당하지 않는다. output.format=json만 정답 슬롯으로 수용됐다. CLARIFY로 종료해 workflow=null이며 요구 3업무의 최종 coverage는 모두 false다."
+    },
+    "R04": {
+      "intent_correct": false,
+      "observed_slots": {
+        "duplicate.field": "customer_id",
+        "duplicate.policy": "first",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "evidence": "현재 로컬 capability raw는 customer_id 중복의 첫 행 유지와 JSON을 인식한다. condition raw는 duplicate.field=customer_id, duplicate.policy=first, output.format=json, missing.policy=error를 정확히 추출했지만 operation=filter를 선택했다. 코드가 deduplicate를 추가한 accepted ledger의 operations는 [filter,deduplicate]라서 요청하지 않은 filter.field/operator/value를 필수로 남겼다. operative intent는 중복 제거 외에 불필요한 필터를 포함해 false로 판정하지만 명시된 gold 슬롯 3개는 모두 맞다. 첫 턴 질문 '어느 열을 기준으로 선별할까요?'와 '기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.'는 중복 제거 요청에 필요하지 않다. CLARIFY에서 종료되어 workflow가 없고 실행하지 않았다. capability 이유의 연간 예약 언급은 원문에 없는 설명이지만 실제 예약 값이나 workflow로 수용되지는 않았다."
+    },
+    "R05": {
+      "intent_correct": true,
+      "observed_slots": {
+        "compute.formula": "qty * unit_price",
+        "compute.output_column": "total",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true,
+        true
+      ],
+      "evidence": "현재 로컬 capability raw는 곱셈 계산/새 total 열/JSON 저장을 인식한다. condition은 outside-scope이며 모델 호출 없이 requirement로 진행했다. requirement raw와 accepted ledger는 compute(qty * unit_price,total) 및 export(json) 2개를 보존하지만 별도 read/policy 업무는 목록에 없다. planner 원본과 최종 step_1/read_table→step_2/calculate_columns→step_3/write_result는 synthetic-sales를 읽고 정확한 수식과 total 열로 계산한 뒤 JSON을 출력하며 table bindings가 연속적이다. 최종 execution_plan도 missing_policy=error, duplicate_policy=keep이다. 질문 없이 READY, validator 통과. 실제 허용 로컬 합성 실행 결과 3행 및 total 10/30/20이 gold와 일치한다. 최종 성공과 중간 read/policy ledger 누락을 구분하며 빈 입력 행은 이 합성 자료에 없어 빈 값 정책의 별도 런타임 시험으로 주장하지 않는다."
+    },
+    "R06": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        },
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false
+        }
+      ],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "evidence": "Holdout을 수정 근거로 사용하지 않는다. 현재 로컬 capability와 requirement 설명은 region별 amount 합계 및 JSON 저장 의도를 식별했고 accepted action=aggregate_and_export이므로 intent는 true다. 그러나 requirement의 기계 사용 spec은 kind=other/action만 있고 group_by/sum_field/format의 검증 가능한 구조화 값은 없으므로 observed_slots는 비워 둔다. 원문/설명에 쓰인 값 자체를 확정 슬롯으로 승격하지 않는다. requirement raw가 이미 연결된 synthetic-sales의 자료 ID와 다른 결합/필터 조건, 이미 JSON인 출력의 경로·형식을 요구했고 이 두 unresolved 문장이 그대로 pending_questions/assistant에 노출됐다. 둘 다 gold에 없는 불필요한 질문이다. 내부 자료 ID 노출도 확인되며, CLARIFY 종료로 workflow=null이고 3개 최종 업무 coverage는 모두 false다."
+    },
+    "R07": {
+      "intent_correct": false,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false,
+        false,
+        false
+      ],
+      "evidence": "현재 로컬 capability는 rename_columns 지원을 올바르게 설명했으나 requirement raw 1은 rename을 compute formula=rename(source='synthetic-sales', target='revenue')로 표현하고 raw 2도 formula=rename(amount, revenue)로 재시도했다. 이는 등록된 열 이름 변경 작업의 구조화 표현이 아니라 실행 불가능한 계산식 제안이다. 재시도에는 요청하지 않은 최대 행 수 확인 unresolved도 추가됐다. 둘 다 accepted requirement로 수용되지 않아 requirement_ledger=null, validation_failed/SYSTEM_ERROR로 종료했고 operative intent/slots를 확정하지 못했다. raw에서만 제안된 수식과 unresolved는 accepted 추가 슬롯 또는 실제 표시 질문으로 세지 않는다. 화면에는 일반 오류 안내만 있고 pending_questions=[], workflow=null이며 read/rename/output 최종 coverage는 모두 false다."
+    },
+    "R08": {
+      "intent_correct": true,
+      "observed_slots": {
+        "source": "synthetic-policy",
+        "topic": "환불"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        true,
+        true
+      ],
+      "evidence": "현재 로컬 capability 원본은 연결된 synthetic-policy와 환불 규정 요약을 명시한다. requirement raw는 document_analysis 1개이며 accepted spec.request에 원문 요청을 보존했다. planner 원본과 accepted workflow의 step_1/read_document는 file_ids=[synthetic-policy], step_2/compose_answer는 step_1.documents를 받고 환불 규정을 요약해 화면에 보여주라는 instructions를 보존한다. source와 topic이 실제 최종 노드 설정에 반영됐다. 질문 없이 READY이고 service validator issues=[]다. 별도 불필요한 업무 노드는 없고 read→summary 의존성이 맞다. 실행은 gold에서 not_scheduled이므로 실제 문서 요약 내용의 정확도나 실행 성공은 측정하지 않았다."
+    },
+    "R09": {
+      "intent_correct": true,
+      "observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [
+        false
+      ],
+      "evidence": "Holdout을 수정 근거로 사용하지 않는다. 현재 로컬 capability는 base64_codec와 hello 인코딩을 식별한다. 최초 requirement는 compute formula=base64_encode('hello')/encoded_value로 잘못 제안했으나 거절됐고, 재시도는 kind=other/action=encode_string으로 수용되어 인코딩 의도 자체는 맞다. accepted spec에는 text/mode 구조화 인자가 없어 observed_slots는 비워 두며 설명·인용 원문만으로 슬롯을 확정하지 않는다. planner 원본 후보 2개는 finish를 first_step으로 만든 뒤 그 text 출력을 base64_codec에 연결하고 codec_mode=encode를 지정했다. 정상적인 hello 입력 바인딩과 gold의 convert operation을 충족하는 최종 workflow가 수용되지 못했다. worker ValueError로 status=failed, actual_route=SYSTEM_ERROR, turns=[], workflow=null, schema_valid=null이다. 원본 후보 2개가 실제로 존재하므로 null을 생성 전 미실시로 해석하면 안 된다. 실제 표시된 질문이나 후속 답변은 없고 실행하지 않았다."
+    },
+    "R10": {
+      "intent_correct": true,
+      "observed_slots": {
+        "formula": "(12 + 8) * 3"
+      },
+      "extra_unsupported_slots": [
+        "compute.output_column=result"
+      ],
+      "questions": [],
+      "task_coverage": [
+        true
+      ],
+      "evidence": "현재 로컬 capability 원본은 scalar_calculate 단일 수식 계산을 올바르게 선택한다. requirement는 formula=(12 + 8) * 3을 보존하지만 kind=compute와 요청하지 않은 output_column=result를 수용해 표 계산 계약으로 표현했다. 이 invented column을 추가 unsupported 슬롯으로 기록한다. planner 원본 두 후보와 최종 accepted draft는 scalar_calculate/operation=evaluate, arguments_json에 정확한 formula와 빈 variables를 가진 단일 노드이며 불필요한 추가 노드는 없다. 그러므로 gold의 calculate 업무 의미 coverage는 true이고 최종 수식도 맞다. 그러나 서비스 requirement coverage가 r1 compute에 맞는 표 계산 단계를 찾지 못해 validation_failed/SYSTEM_ERROR, schema_valid=false로 종료했다. 이는 올바른 scalar workflow와 잘못 표현된 requirement의 불일치이며 성공적인 READY나 실행으로 세지 않는다. gold의 not_scheduled에 따라 실제 계산 실행은 하지 않았다."
+    }
+  },
+  "status": "completed_for_R01_R10_only",
+  "source_case_sha256": {
+    "R01": "070d52bc14fe37e98ae1a40bf1060633c77f3ff3ac7fa70c1486ce321dc7faf8",
+    "R02": "19b09b0b34be10fdd1a40718b6bf49edccefa804c06257a5fef29761147cbee2",
+    "R03": "e8f941ad7f81d99e2ae443967447de55e6754349ba5d2b1cd40bf9e28794ea50",
+    "R04": "fa1d5a410f24ad6460f07e5cc7db49908c6f0d295a6ea723d74c42753d68cf3d",
+    "R05": "d5db070daf6cfb66ed234e7422e1a317574895c77074ad75656f8916ea188fae",
+    "R06": "3ff3f3de7f11394568ef9d2e2abe6cf3892b4174fb1ae5a6126eda2b88f978a3",
+    "R07": "d26dfb8bdaa280a01f0c7964b9d00e8b331f218d1da25ea9c4f31d95122a64e1",
+    "R08": "deadbbe9faec80df32e9cfc48b5808e32070588727bff27d64a6de487a7a57e9",
+    "R09": "5863d185655f46861ffaf2e16f72c7c59aaca5b8eb6171e3ab6faec82bda7375",
+    "R10": "9904299c9f4075e6ee4e93c6a853251e857043a4f0bed7840d2d487136a5ba45"
+  }
+}

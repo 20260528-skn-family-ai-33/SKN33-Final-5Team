@@ -40,7 +40,7 @@ export function AuthProvider({children}:{children:ReactNode}){
 }
 export function loginUrl(){
  const target=new URL(location.href),screen=target.searchParams.get('screen');
- if(!screen||['intro','preview'].includes(screen))target.searchParams.set('screen','workflows');
+ if(!screen||['intro','preview'].includes(screen))target.searchParams.set('screen','home');
  target.searchParams.delete('auth_error');
  return '/auth/login?returnTo='+encodeURIComponent(target.pathname+target.search);
 }

@@ -42,10 +42,10 @@ def create_chat_model(api_key, model, **limits):
         # /v1 uses reasoning_effort; think is retained for compatible Ollama versions.
         from infrastructure.llm.model_aliases import resolve_ollama_model
         options['model'] = resolve_ollama_model(model)
-        from infrastructure.llm.ollama_settings import temperature_setting, output_limit, bounded_output_limit
+        from infrastructure.llm.ollama_settings import temperature_setting, output_limit, bounded_output_limit, resident_options
         if os.getenv('A4B_OLLAMA_NUM_PREDICT', '').strip():
             options['max_tokens']=bounded_output_limit(options.get('max_tokens') or output_limit())
-        options.update(temperature=temperature_setting(options.get('temperature',0.7)), top_p=0.8, reasoning_effort='none', extra_body={'think': False},
+        options.update(temperature=temperature_setting(options.get('temperature',0.7)), top_p=0.8, reasoning_effort='none', extra_body={'think': False, **resident_options(options['model'])},
                        streaming=True, stream_usage=True, max_retries=0)
         from infrastructure.llm.ollama_chat_model import OllamaChatOpenAI
         return OllamaChatOpenAI(**options)

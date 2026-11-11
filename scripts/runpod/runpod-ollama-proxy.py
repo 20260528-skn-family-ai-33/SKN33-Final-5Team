@@ -3,6 +3,7 @@ import hmac
 import http.client
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from serving_request_policy import ensure_shift_support, pin_serving_request
 
 TOKEN = os.environ['A4B_GATEWAY_TOKEN']
 
@@ -23,6 +24,12 @@ class Gateway(BaseHTTPRequestHandler):
         upstream = http.client.HTTPConnection('127.0.0.1', 11435, timeout=600)
         try:
             body = self.rfile.read(int(self.headers.get('Content-Length', '0')))
+            if self.command == 'POST':
+                try:
+                    body = pin_serving_request(self.path, body)
+                except (ValueError, UnicodeError) as error:
+                    self.send_error(400, str(error))
+                    return
             upstream.request(self.command, self.path, body=body, headers={'Content-Type': 'application/json'})
             response = upstream.getresponse()
             self.send_response(response.status)
@@ -36,4 +43,6 @@ class Gateway(BaseHTTPRequestHandler):
         finally:
             upstream.close()
 
-ThreadingHTTPServer(('0.0.0.0', 11434), Gateway).serve_forever()
+if __name__ == '__main__':
+    ensure_shift_support()
+    ThreadingHTTPServer(('0.0.0.0', 11434), Gateway).serve_forever()

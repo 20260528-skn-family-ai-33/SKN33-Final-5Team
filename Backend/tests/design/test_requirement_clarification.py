@@ -37,7 +37,7 @@ def test_exact_gmail_request_asks_actual_schedule_questions_instead_of_internal_
     model=Extractor(raw(['gmail_access_token','gmail_account_id','summary_format_preference']))
     result=make_requirement_check('fixture',model,'enforce')(state)
     assert result['status']=='needs_clarification'
-    assert result['requirement_route']=='ask'
+    assert result['requirement_route']=='await_input'
     assert [q['key'] for q in result['pending_questions']]==['schedule.time']
     assert result['pending_questions'][0]['response']['type']=='time'
     assert all(q['source']=='requirements' and len(q['id'])==24 for q in result['pending_questions'])

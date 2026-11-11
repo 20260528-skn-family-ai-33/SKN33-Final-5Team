@@ -115,6 +115,27 @@ def test_removing_legacy_schedule_cancels_only_queued_automatic_jobs_and_does_no
     store.close()
 
 
+def test_missing_partial_save_is_repaired_but_explicit_removal_survives_a_restart(tmp_path):
+    store,id,state=seed(tmp_path,scheduled=True)
+    # An absent reservation without a removal record is an incomplete legacy save.
+    store.db.execute('DELETE FROM builder_schedules WHERE {ws} AND agent_id=?',(id,));store.db.commit()
+    assert store.save_agent(state)==id
+    assert Schedules(store).get(id) is not None
+    manager=Schedules(store)
+    manager.remove(id)
+    assert manager.was_removed(id) and manager.get(id) is None
+    store.close()
+    store=Storage(tmp_path)
+    try:
+        manager=Schedules(store)
+        assert manager.was_removed(id) and manager.get(id) is None
+        assert store.save_agent(state)==id
+        assert manager.get(id) is None
+        manager.configure(id,spec=SPEC)
+        assert manager.get(id) is not None and not manager.was_removed(id)
+    finally:store.close()
+
+
 def test_workflow_edits_preserve_separate_schedule_and_require_applying_new_version(tmp_path):
     store,id,state=seed(tmp_path,scheduled=True)
     manager=Schedules(store)

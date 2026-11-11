@@ -1,0 +1,136 @@
+{
+  "phase": "baseline",
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "source_review": "docs/qwen-local-public9b-baseline-v2-review-multiturn.json",
+  "classification_scope": "One exclusive primary_stage per unsuccessful whole request: earliest confirmed material error. direct_failure_stage identifies the final blocking stage; downstream labels are not extra failed cases.",
+  "cases": {
+    "M02": {
+      "primary_stage": "condition",
+      "primary_cause": "Condition ledger independently accepts first although no keep-first/last policy was specified.",
+      "answer_policy_limitation": true,
+      "evidence": [
+        "First and only response asks how duplicate customer_id rows should be handled. Wording lacks 첫/마지막/남길/보존; answer_stop_reason=unmatched_question.",
+        "condition_check raw proposes duplicate.policy=first and accepted ledger marks it specified before the appropriate requirement question is displayed.",
+        "No completed follow-up response exists. This cannot establish whether answering last would succeed, and the valid question is not counted as a model question failure."
+      ],
+      "source_case_sha256": "fe46f2283fc8454ca4a95599787f0a72146cc340b350d90ff72351e3dd8730b5",
+      "direct_failure_stage": "harness",
+      "direct_failure_cause": "Valid duplicate-retention question lacks frozen answer-policy matching terms; no follow-up answer is submitted.",
+      "system_result_after_gold_answer": "NOT_RUN"
+    },
+    "M03": {
+      "primary_stage": "condition",
+      "primary_cause": "Adds an unrequested filter operation to deduplicate, then repeats field/comparator questions after duplicate field was answered.",
+      "answer_policy_limitation": false,
+      "evidence": [
+        "Both accepted condition ledgers contain filter plus deduplicate. Initial policy first/json are explicit; no numeric/value filter was requested.",
+        "Second ledger accepts duplicate.field=customer_id but still requires filter.field/operator/value. repeated_question stop is downstream of these unneeded questions.",
+        "Holdout: evaluation only; no targeted implementation change was based on this case."
+      ],
+      "source_case_sha256": "601e7956c4f3a470cba6838f153c9728684bf9c7d9f9ab8023ae8e1cf612d85b",
+      "direct_failure_stage": "condition"
+    },
+    "M04": {
+      "primary_stage": "condition",
+      "primary_cause": "Model proposes an irrelevant missing.policy slot and unresolved scans all missing slots, blocking a pure scheduled read/export.",
+      "answer_policy_limitation": false,
+      "evidence": [
+        "Both raw condition responses have only operation=schedule yet add missing.policy(status=missing). It is already present before checkpoint merge.",
+        "After actual answer, daily09:00/Asia-Seoul/json are all grounded but the unnecessary missing-policy question remains. Initial minute=0 was also accepted without a time."
+      ],
+      "source_case_sha256": "030ed1f7de52264e063835462134fa175893201d0c74b44e352086b3938e8597",
+      "direct_failure_stage": "condition"
+    },
+    "M05": {
+      "primary_stage": "condition",
+      "primary_cause": "Model proposes an irrelevant duplicate.policy slot and unresolved scans all missing slots, blocking a pure scheduled read/export.",
+      "answer_policy_limitation": false,
+      "evidence": [
+        "Both raw condition responses have only operation=schedule yet add duplicate.policy(status=missing).",
+        "Monday answer is incorporated as weekday0 with prior09:00/Asia-Seoul/json preserved; unrequested duplicate policy still blocks READY."
+      ],
+      "source_case_sha256": "5f5f94f58e50da50db54e800a1c9250c0ce8507c4786a2fd0b8d138804e547b3",
+      "direct_failure_stage": "condition"
+    },
+    "M06": {
+      "primary_stage": "capability",
+      "primary_cause": "Capability tool list includes an unrequested filter_sort, causing validation to reject the semantically correct read/export draft.",
+      "downstream_stages": [
+        "workflow"
+      ],
+      "answer_policy_limitation": false,
+      "evidence": [
+        "Both capability assessments list read_table, filter_sort, write_result although only monthly table export was requested.",
+        "The monthday15 answer and monthly09:00/Asia-Seoul are preserved. Final read_table→write_result JSON draft is rejected because it omits capability's filter_sort, yielding SYSTEM_ERROR.",
+        "Holdout: evaluation only; task coverage is true but whole-request success is false."
+      ],
+      "source_case_sha256": "28df8c70d3b9c0a251bdadd0bcb05b79219803e2d23618795c741396bc8c23ee",
+      "direct_failure_stage": "workflow"
+    },
+    "M09": {
+      "primary_stage": "capability",
+      "primary_cause": "Asks for an unneeded definition of empty values after explicit error policy; requirement stage repeats it.",
+      "downstream_stages": [
+        "requirement"
+      ],
+      "answer_policy_limitation": false,
+      "evidence": [
+        "Initial capability asks both required sum column and unnecessary NaN/null/empty-string meaning. User already said 빈 값은 오류.",
+        "After amount answer, requirement retains the extra empty-value question and treats the answer as an additional update/re-execution task. No typed aggregate/export result or workflow exists.",
+        "Harness repeated_question stop is caused by the broad 열 matcher also present in 문자열; it is downstream of an unnecessary question, unlike M02's valid unmatched question.",
+        "Holdout: evaluation only."
+      ],
+      "source_case_sha256": "a4e800c497b5995e4da62c0df3966f15b710e3efd6a36bc5c00f90a21aaf6880",
+      "direct_failure_stage": "requirement"
+    },
+    "M10": {
+      "primary_stage": "meaning",
+      "primary_cause": "Interprets outgoing subject/body literals as existing-mail search conditions and checking actions.",
+      "downstream_stages": [
+        "capability",
+        "workflow"
+      ],
+      "answer_policy_limitation": false,
+      "evidence": [
+        "request_meaning raw repeatedly proposes read+send and subject_check/body_complete or search filters rather than a send-only literal message. Reviewer rejects but ordinary planning inherits the same interpretation.",
+        "Recipient question is valid and a real follow-up attempt is evidenced by requirement source_message1 and raw planner candidates using the synthetic recipient.",
+        "Both raw candidates add searches/content composition; worker ends in ValueError before second response is appended. Only one turn is persisted, schema_valid is null, and no email is executed. Exact ValueError text is unavailable."
+      ],
+      "source_case_sha256": "4033b07de939a32caff52830ff2d8fd55383baccf61413ed3d52f62bd1f31a60",
+      "direct_failure_stage": "workflow"
+    },
+    "M12": {
+      "primary_stage": "meaning",
+      "primary_cause": "Follow-up meaning has invalid quantity/period provenance, then fallback requirement reanchors yesterday to the next day and is rejected.",
+      "downstream_stages": [
+        "requirement"
+      ],
+      "answer_policy_limitation": false,
+      "evidence": [
+        "Initial yesterday query correctly covers 2026-11-09. Next-day maximum5 update first uses invalid quantity evidence and unread, then repair incorrectly places 어제 at user_message1.",
+        "Both fallback requirements produce Nov10 queries. Python rejects them, so no wrong-date workflow is accepted; final state is validation_failed with the stale prior100/Nov9 draft.",
+        "Holdout: evaluation only; old date retention does not establish successful count incorporation."
+      ],
+      "source_case_sha256": "25c6e7dfbd0547f7fcd791fba538a8a725f6ee8d15b8f19426e632393244bd19",
+      "direct_failure_stage": "requirement"
+    }
+  },
+  "primary_stage_case_counts": {
+    "meaning": 2,
+    "capability": 2,
+    "condition": 4,
+    "requirement": 0,
+    "workflow": 0,
+    "harness": 0
+  },
+  "counting_note": "Eight unsuccessful M cases, each counted once by earliest confirmed error. Direct-stage counts are a separate view of the same eight cases, not additive. M02 has an early condition grounding error and a final valid-question matcher limitation; its system outcome after the gold last-policy answer is NOT_RUN. Four M cases succeeded: M01/M07/M08/M11.",
+  "source_review_sha256": "854ab0b26f42c0c9979327ce92d93c2c3d7619ec060f27406391095ee2461232",
+  "direct_failure_stage_case_counts": {
+    "meaning": 0,
+    "capability": 0,
+    "condition": 3,
+    "requirement": 2,
+    "workflow": 2,
+    "harness": 1
+  }
+}

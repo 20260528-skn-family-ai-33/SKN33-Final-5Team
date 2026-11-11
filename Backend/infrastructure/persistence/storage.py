@@ -102,6 +102,8 @@ class Storage:
         result=self.db.execute('UPDATE builder_sessions SET json=?,revision=revision+1 WHERE {ws} AND id=? AND revision=?',(json.dumps({k:v for k,v in s.items() if k!='revision'},ensure_ascii=False),s['id'],expected))
         if not result.rowcount: raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
         if self.business and design_state is not None:self.business.update_design(s['id'],design_state)
+        if design_state is not None and getattr(self,'generation_audit',None):
+            self.generation_audit.published_in_transaction(design_state, expected+1)
         self.db.commit(); return self.session(s['id'])
     def add_asset(self,asset,rows,commit=True):
         self.db.execute('INSERT INTO builder_assets({wsc}id,json,rows_json) VALUES({wsv}?,?,?)',(asset['id'],json.dumps(asset,ensure_ascii=False),json.dumps(rows,ensure_ascii=False)))
@@ -196,7 +198,10 @@ class Storage:
             self.require_assets(draft.get('document_ids',[]))
             for old in self.agents():
                 if old['session_id']==session_id and {k:v for k,v in old['config'].items() if k!='node_snapshots'}==draft:
-                    if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'])
+                    # Repair old partial saves on idempotent replays without pausing a healthy schedule.
+                    if draft.get('schedule') and not schedules.get(old['id']) and not schedules.was_removed(old['id']):
+                        schedules.configure(old['id'],commit=False)
+                    if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(old['id'],old['version'])
                     self.db.commit();return old['id']
             id=state.get('base_agent_id') or (session_id if self.business else uid())
             row=self.db.execute('SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=?',(id,)).fetchone()
@@ -214,7 +219,7 @@ class Storage:
             # not overwrite an independent reservation or recreate a removed one.
             if not old and draft.get('schedule'):schedules.configure(id,commit=False)
             elif old:schedules.workflow_changed(id,old['config'])
-            if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id)
+            if getattr(self,'generation_audit',None):self.generation_audit.saved_in_transaction(id,version+1)
             self.db.commit();return id
         except Exception:self.db.rollback();raise
     def write_test(self,run):

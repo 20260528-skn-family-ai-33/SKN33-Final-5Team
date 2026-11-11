@@ -34,13 +34,15 @@ test('design gets current server Gmail metadata and ignores client claims or tok
   await withDataDirectory(join(tmpdir(),'gmail-design-context','users',randomUUID()),()=>handleAgentBuilder(
    {method:'POST'} as IncomingMessage,{} as ServerResponse,new URL('http://localhost/api/agent-builder/'+action),store,
    async()=>({id,revision:0,content:'매 정시마다 Gmail의 안 읽은 메일을 요약해줘',
-    gmail_connected:!connected,gmail_access_token:'untrusted-client-token',...extra}),
+    userTimezone:'America/New_York',gmail_connected:!connected,gmail_access_token:'untrusted-client-token',...extra}),
    (_response,code)=>{status=code;},async()=>{throw new Error('Design must not fetch or refresh Gmail tokens');}));
   assert.equal(status,200);
   return payloads.findLast(payload=>payload.action===action);
  }
  try{
-  assert.equal((await invoke('message')).gmail_connected,true);
+  const first=await invoke('message');
+  assert.equal(first.gmail_connected,true);
+  assert.equal(first.user_timezone,'America/New_York');
   connected=false;
   assert.equal((await invoke('message')).gmail_connected,false);
   assert.equal((await invoke('confirm')).gmail_connected,false);

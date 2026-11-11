@@ -1,0 +1,417 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+  "reviewer": "Codex trace/JSON review by python_environment subagent; not an independent human gold review",
+  "review_status": "completed",
+  "assigned_case_ids": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10"
+  ],
+  "pending_case_ids": [],
+  "case_hash_method": "SHA256 of the complete source case record serialized with json.dumps(ensure_ascii=False, sort_keys=True), matching qwen_live_support.digest",
+  "review_policy": {
+    "previous_labels_reused": false,
+    "observed_slots": "Only accepted structured semantic state or workflow settings; quoted input, raw rejected candidates and generic display defaults alone are not slot extraction evidence.",
+    "intent": "Judge understanding of the requested work separately from routing correctness, using accepted stage interpretations and resulting questions/workflow.",
+    "questions": "One label per actual visible question, in turn order. Match the question meaning to frozen missing slots; raw model suggestions not displayed do not count as questions asked.",
+    "whole_request_success": "Requires correct CLARIFY routing, coverage of all frozen required missing conditions by appropriate questions, preservation of supplied facts, no unsupported assumed values or unrequested work. Does not imply external execution.",
+    "holdout": "C03/C06/C09 are evaluation only. Development findings are reported separately as possible repair evidence."
+  },
+  "cases": {
+    "C01": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "source"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The sole visible requirement question asks where the sales data should come from. It mentions the known daily 09:00 schedule as context, not as a question, and does not ask for recipient or report scope."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C01 review: accepted capability describes daily scheduled email delivery. The first raw requirement candidate contained a daily/09:00/Asia-Seoul schedule plus recipient/scope questions, but it was not the accepted ledger. The accepted requirements stage has tasks=[] and one unresolved source question, also the sole visible pending question. Therefore accepted structured slot evidence is absent (0/3 frozen schedule slots), necessary questions cover source only (1/3), and routing is correctly CLARIFY. Raw rejected schedule fields and schedule prose in the question are not counted as accepted structured slots. No workflow was generated or executed. The visible source question also exposes implementation wording such as hourly/daily/weekly/monthly, data ID and file path. Missing recipient/scope questions and loss of the structured schedule make whole-request success false.",
+      "development_findings": [
+        "Requirement repair replaced a candidate schedule with tasks=[]; verify schedule grounding against validated request timezone after the full baseline.",
+        "The accepted question covers source but drops recipient and report-scope clarification.",
+        "A long internal explanation is exposed as the source question; preserve the real missing-data question while improving presentation."
+      ],
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "model_calls[2].raw_output",
+        "stages[4].parsed_state.requirement_ledger",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "c1c6c9751287d1f56ea186d7c82ac0adff454b4843d1a41926f01f5930694cdc"
+    },
+    "C02": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "source"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The first visible capability question asks for the customer-data file location or connection information."
+        },
+        {
+          "necessary_slots": [
+            "analysis_goal"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The second visible question asks which analysis criteria should drive the customer report, giving examples without fixing one."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C02 review: the first raw capability candidate incorrectly said missing_capability for absent customer data and unspecified report details, but the accepted second response is clarify with no missing_actions. The accepted interpretation describes customer-data analysis followed by report creation and exposes exactly two questions: data source and analysis goal. Both frozen missing slots are covered (2/2), with no assumed data/analysis values or extra work. The third missing_conditions item, output format, is not displayed and is not counted as an asked question. Frozen slots are empty, so slot F1 has no opportunities. The final route is CLARIFY and no workflow or external execution occurs; this satisfies the frozen whole-request clarification expectation.",
+      "development_findings": [
+        "Capability repair successfully corrected a rejected missing_capability candidate to CLARIFY; this rejected candidate is not treated as the final routing result."
+      ],
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "ad167c32ebefeac1ddebdd13980aacab702611b2e0f6b781ad22e93d128768fa"
+    },
+    "C03": {
+      "split": "holdout",
+      "intent_correct": true,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C03 holdout review: the accepted capability describes sales analysis and email delivery with registered tools, so the broad intent is understood. However it retains missing_capability with missing_actions for Gmail account and sales-source connection, and the visible result is UNSUPPORTED with no clarification questions. Frozen expectation is CLARIFY for source, recipient and analysis goal (0/3 questions). The dates 2026-11-02 to 2026-11-09 occur only in explanatory capability prose; there is no accepted structured date selection, requirement, or workflow, and exclusive-end semantics are not established. Both date slots therefore remain unobserved under the declared structural-slot scope. No workflow or external execution occurred. Whole-request failure is the unsupported classification and absent required clarification, not an invented external execution.",
+      "holdout_observations": [
+        "The accepted capability confuses unavailable connection metadata/data prerequisites with absent registered functionality.",
+        "Correct-looking date prose is not evidence of an executable or retained date selection."
+      ],
+      "evidence_paths": [
+        "model_calls[0].raw_output",
+        "model_calls[1].raw_output",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions",
+        "turns[0].response.draft.unsupported"
+      ],
+      "case_sha256": "697de65897936f7e36d1466979878530fdf364c31bee357bba500795a0050a9e"
+    },
+    "C04": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {
+        "filter.field": "amount",
+        "output.format": "json"
+      },
+      "final_observed_slots": {
+        "filter.field": "amount",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "operator"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The first displayed question asks whether the threshold is inclusive/exclusive and offers the comparison operators."
+        },
+        {
+          "necessary_slots": [
+            "threshold"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The second displayed question asks for the numeric selection threshold."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C04 review: accepted condition_ledger has operations=['filter'], specified filter.field=amount and output.format=json, and preserves the explicitly requested missing=error and duplicate=keep policies. It rejects the raw model's gt operator for lacking explicit evidence, leaves operator/value missing, and shows exactly the necessary operator and threshold questions (2/2). Supplied field and output format are not asked again. No raw rejected gt is counted as an invented accepted slot. Capability prose mentions sorting/top rows, but this was not adopted as a condition operation or workflow, so it is recorded as intermediate imprecision rather than an added executable action. Final route CLARIFY is correct and no workflow/external execution occurs.",
+      "development_findings": [
+        "The existing Python operator grounding correctly rejects the model guess and preserves the intended clarification path."
+      ],
+      "evidence_paths": [
+        "model_calls[1].raw_output",
+        "stages[3].parsed_state.condition_ledger",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "8ee89ca1ad714ccf83b3ea8e2c2d4af3e5c75eb056362115be61e06186241a7e"
+    },
+    "C05": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {
+        "output.format": "json"
+      },
+      "final_observed_slots": {
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [
+        {
+          "slot": "duplicate.policy",
+          "value": "error",
+          "evidence": "Accepted specified policy error is supported only by a full user quote whose error directive applies to missing values, not duplicate retention."
+        }
+      ],
+      "questions": [
+        {
+          "necessary_slots": [
+            "duplicate_field"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The only displayed question asks which column establishes duplicates."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C05 review: capability and condition operation correctly identify deduplication. The raw condition response chooses duplicate.policy=error using the entire request as evidence, although the original error instruction belongs only to missing values. Python accepts that duplicate policy as specified, adds grounded output.format=json and missing.policy=error, and leaves only duplicate.field unresolved. The visible question covers duplicate_field but omits duplicate_policy (1/2 required questions). The unsupported duplicate.policy=error is one explicit false-positive slot outside the frozen output-format key. Correct CLARIFY routing does not make the assumed retention/error policy correct; no workflow or external execution was produced.",
+      "development_findings": [
+        "Validate all duplicate.policy values against the correct subject/clause, including error/keep, rather than validating only first/last.",
+        "Preserve the grounded missing.policy=error while refusing to reuse it as duplicate-policy evidence."
+      ],
+      "evidence_paths": [
+        "model_calls[1].raw_output",
+        "stages[3].parsed_state.condition_ledger.slots.duplicate.policy",
+        "stages[3].parsed_state.condition_ledger.slots.missing.policy",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "18b82277ec0a01fa6cd1740767143fc507300ddf1ea891a94296f97ec24e2b0a"
+    },
+    "C06": {
+      "split": "holdout",
+      "intent_correct": true,
+      "observed_slots": {
+        "provider": "gmail"
+      },
+      "final_observed_slots": {
+        "provider": "gmail"
+      },
+      "extra_unsupported_slots": [
+        {
+          "slot": "importance",
+          "value": {
+            "filters": [
+              "important"
+            ]
+          },
+          "evidence": "Accepted request_meaning.tasks[0].selection fixes the unspecified importance criterion to filters=[important], with unresolved=[]."
+        }
+      ],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C06 holdout review: accepted request_meaning has source=gmail and actions read/summarize, proving the provider slot and broad intent. It also fixes selection.filters=['important'] and unresolved=[], although the frozen request requires an importance criterion question. Capability accepts that interpretation and requirement uses document_analysis. No visible question is asked (0/1 required). The stored draft wires email.list.read_messages(query='important') to compose_answer, but also contains unrelated table execution filters/sort and fails validator with a missing filter_sort-node issue. Final route is SYSTEM_ERROR, schema_valid=false, and external execution is NOT_RUN. The unsupported importance criterion is counted from accepted request_meaning, not from a rejected raw planner candidate; incidental table filter/sort in the rejected draft is reported here but not counted as additional accepted slots or executed actions. Whole-request success is false.",
+      "holdout_observations": [
+        "An unspecified importance criterion is assumed by semantic extraction and its faithful=true self-review; this self-review is not treated as gold.",
+        "No importance question is displayed; the generated candidate is rejected by the existing Python validator."
+      ],
+      "evidence_paths": [
+        "stages[1].parsed_state.request_meaning",
+        "stages[2].parsed_state.capability_assessment",
+        "stages[4].parsed_state.requirement_ledger",
+        "turns[0].response.pending_questions",
+        "turns[0].response.issues",
+        "workflow"
+      ],
+      "case_sha256": "69eef99cab1cf34512fd3bb79f738c58b4237a6e4474e3b4615b5ff7c654b0a4"
+    },
+    "C07": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "weekly",
+        "schedule.timezone": "Asia/Seoul",
+        "output.format": "json"
+      },
+      "final_observed_slots": {
+        "schedule.frequency": "weekly",
+        "schedule.timezone": "Asia/Seoul",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "hour"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The first question asks the hour component of the missing execution time."
+        },
+        {
+          "necessary_slots": [
+            "hour"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The second asks the minute component of the same missing execution-time condition. It is relevant, but consumes the second question position and does not cover weekday."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C07 review: accepted condition_ledger correctly preserves weekly, Asia/Seoul and json and leaves hour, minute and weekday missing. It displays separate hour and minute questions, so both concern the single frozen time slot (hour) while weekday is not asked (1/2 required slots). These questions are relevant components of an unspecified time, not invented conditions or repeated follow-up questions; the failure is incomplete coverage within the two-question display. No unsupported time is confirmed, and final CLARIFY routing is correct. No workflow or external execution exists. Whole-request success is false because the missing weekday is not covered.",
+      "development_findings": [
+        "Group missing hour/minute into one time question while retaining both unresolved keys and using the second question for weekday."
+      ],
+      "evidence_paths": [
+        "model_calls[1].raw_output",
+        "turns[0].response.condition_ledger",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "409925fc71ac396b6c1f29d0ac033b2f1258331785cd028d7261403f5362161a"
+    },
+    "C08": {
+      "split": "development",
+      "intent_correct": true,
+      "observed_slots": {
+        "schedule.frequency": "daily",
+        "schedule.timezone": "Asia/Seoul",
+        "output.format": "json"
+      },
+      "final_observed_slots": {
+        "schedule.frequency": "daily",
+        "schedule.timezone": "Asia/Seoul",
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [
+        {
+          "slot": "schedule.hour",
+          "value": 8,
+          "evidence": "Accepted specified hour=8 cites a request with no time of day."
+        },
+        {
+          "slot": "schedule.minute",
+          "value": 0,
+          "evidence": "Accepted specified minute=0 cites a request with no time of day or exact-hour instruction."
+        }
+      ],
+      "questions": [
+        {
+          "necessary_slots": [],
+          "unnecessary": true,
+          "repeated": false,
+          "evidence": "The only visible question asks duplicate retention policy, although the user requested only scheduled JSON output and did not request deduplication."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C08 review: the accepted schedule condition ledger preserves daily, Asia/Seoul and json, but also accepts model-invented hour=8 and minute=0 as specified. Both unsupported values are explicit slot false positives. The model additionally emits missing duplicate.policy; Python retains this unrelated missing slot and asks only how to handle duplicates. No missing execution-time question is displayed (0/1), and the sole question is unnecessary. CLARIFY routing alone is correct but represents the wrong uncertainty. No actual deduplication workflow was generated, so the extra duplicate-policy question is scored as an unnecessary question, not as an executed extra action. No workflow or external execution exists; whole-request success is false.",
+      "development_findings": [
+        "Revalidate hour/minute against explicit schedule evidence instead of accepting any quoted request.",
+        "A missing condition for an unrequested operation can create an unnecessary question even when operations=[schedule]; review condition-scope handling without dropping real combined requests."
+      ],
+      "evidence_paths": [
+        "model_calls[1].raw_output",
+        "turns[0].response.condition_ledger.slots",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "2b45fc1ca00d54796f09b5ce3d35e7d9b657799478d78e0015128681b0fcd226"
+    },
+    "C09": {
+      "split": "holdout",
+      "intent_correct": true,
+      "observed_slots": {
+        "output.format": "json"
+      },
+      "final_observed_slots": {
+        "output.format": "json"
+      },
+      "extra_unsupported_slots": [],
+      "questions": [
+        {
+          "necessary_slots": [
+            "formula",
+            "column"
+          ],
+          "unnecessary": false,
+          "repeated": false,
+          "evidence": "The one displayed question explicitly asks for both the new column name and its calculation formula."
+        }
+      ],
+      "task_coverage": [],
+      "whole_request_success": true,
+      "extra_unrequested_actions": [],
+      "evidence": "Fresh v2 C09 holdout review: the accepted requirement ledger represents the requested compute and export tasks and stores export.format=json. Its unresolved list explicitly asks for both the new column name and formula; the same combined question is visible (2/2 required slots), with no output-format re-question. The partial compute spec uses the literal strings 'null' for formula and output_column. These are recorded as a representation weakness, not confirmed usable values: the same accepted ledger marks both values unresolved, the clarification gate blocks generation, and no workflow exists. Accordingly they are not counted as invented resolved slots. Final CLARIFY routing, retained JSON format and the complete missing-condition question satisfy this frozen clarification case. No execution occurred.",
+      "holdout_observations": [
+        "The partial compute spec contains string placeholders rather than genuine nulls, but explicit unresolved conditions block generation and the correct combined question is displayed."
+      ],
+      "evidence_paths": [
+        "model_calls[1].raw_output",
+        "stages[4].parsed_state.requirement_ledger",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "b8df725c8c98e62ce4760b4f0216138b1b7e8eaa78385de15b6713cbf4cd0a17"
+    },
+    "C10": {
+      "split": "development",
+      "intent_correct": false,
+      "observed_slots": {},
+      "final_observed_slots": {},
+      "extra_unsupported_slots": [],
+      "questions": [],
+      "task_coverage": [],
+      "whole_request_success": false,
+      "extra_unrequested_actions": [
+        {
+          "action": "Analyze/review the title and generate or complete the body",
+          "scope": "Accepted capability interpretation and missing_actions only; no workflow generated or action executed",
+          "evidence": "The accepted capability reason treats the supplied literal subject 점검 and body 완료 as editing/review commands before email sending."
+        }
+      ],
+      "evidence": "Fresh v2 C10 review: the final accepted capability turns the literal subject '점검' and body '완료' into title-review/body-completion work and declares that invented task unsupported. This changes the requested intent; final route is UNSUPPORTED rather than the required recipient CLARIFY, and no recipient question is shown (0/1). A raw meaning candidate correctly placed the subject/body in other_requirements, but its following review returned faithful=false, the accepted request_meaning stage is null, and no accepted structured subject/body or workflow remains. Therefore neither raw literal value is credited as an observed slot. The added review/completion action is explicitly recorded at interpretation level only; no mail or other external operation was executed.",
+      "development_findings": [
+        "Preserve the distinction between supplied field contents and requested actions in capability/meaning interpretation; this development failure is not merely an account-connection problem.",
+        "The meaning self-review rejected a correct literal-content candidate; model self-review verdict is not independent semantic evidence."
+      ],
+      "evidence_paths": [
+        "model_calls[2].raw_output",
+        "model_calls[3].raw_output",
+        "model_calls[5].raw_output",
+        "stages[1].parsed_state.request_meaning",
+        "stages[2].parsed_state.capability_assessment",
+        "turns[0].response.pending_questions"
+      ],
+      "case_sha256": "00d08bf920991d9a2608f64f6e4469257bf8c3459702e64ef611087a35a28387"
+    }
+  },
+  "validation": {
+    "adjudicator_score_contract": "passed for all 10 cases without writing scored run",
+    "source_case_hashes_verified": 10,
+    "raw_source_modified": false
+  }
+}

@@ -89,9 +89,15 @@ class GenerationHistory:
         request_id = str(UUID(data.get('generation_request_id') or uid()))
         audit = cls(storage, request_id, data.get('api_key', ''))
         stamp = now()
+        request_identity=str(data.get('content',''))
+        if data['action']=='confirm' and 'include_schedule' in data:
+            if type(data['include_schedule']) is not bool:
+                raise ValueError('예약을 함께 저장할지 선택해주세요.')
+            request_identity=json.dumps({'content':request_identity,'include_schedule':data['include_schedule']},
+                                        sort_keys=True,separators=(',',':'))
         record = dict(request_id=request_id, session_id=data['id'], action=data['action'],
                       session_revision=data.get('revision'),
-                      request_hash=hashlib.sha256(str(data.get('content','')).encode()).hexdigest(),
+                      request_hash=hashlib.sha256(request_identity.encode()).hexdigest(),
                       request_text=redact(data.get('content', ''), audit.api_key)[:4000],
                       status='running', stage='request_analysis', node='request',
                       reason_code=None, reason=None, error_type=None, workflow_id=None,
@@ -220,8 +226,9 @@ class GenerationHistory:
             return result('waiting_confirmation', 'confirmation_required', '설계 검증을 마쳤고 사용자의 저장 확인을 기다립니다.', stage='validation')
         return result('failed', 'generation_incomplete', '생성 요청이 완료 상태에 도달하지 못했습니다.')
 
-    def finish(self, state, next_nodes=()):
-        return self.change(**self.outcome(state, next_nodes))
+    def finish(self, state, next_nodes=(), result_revision=None):
+        fields = {'result_revision': result_revision} if result_revision is not None else {}
+        return self.change(**self.outcome(state, next_nodes), **fields)
 
     def fail(self, error):
         self.db.rollback()  # A rejected save must not roll back its own diagnostic record.
@@ -229,12 +236,28 @@ class GenerationHistory:
             self.error(error)
         return self.change(status='failed', **self.failure)
 
-    def saved_in_transaction(self, workflow_id):
+    def published_in_transaction(self, state, revision):
+        """Publish the outcome and session revision in the same database transaction."""
+        record=self.read()
+        if record['status']=='running':
+            record.update(self.outcome(state, getattr(self,'result_next_nodes',())))
+            stamp=now()
+            record.update(updated_at=stamp, finished_at=stamp)
+            event=dict(at=stamp, stage=record['stage'], node=record['node'], status=record['status'])
+            event.update({key:record[key] for key in ('reason_code','reason','error_type') if record.get(key)})
+            record['events'].append(event)
+        elif record['status'] not in ('succeeded','waiting_input','waiting_confirmation'):
+            raise ValueError('종료된 생성 요청의 결과를 반영할 수 없습니다.')
+        record['result_revision']=revision
+        self._write(record)
+
+    def saved_in_transaction(self, workflow_id, workflow_version=None):
         """The workflow and its successful outcome commit together, before worker exit."""
         record = self.read()
         if record['status'] != 'running':
             raise ValueError('생성 요청이 이미 종료되어 저장할 수 없습니다.')
         stamp = now()
+        if workflow_version is not None:record['workflow_version']=workflow_version
         record.update(status='succeeded', stage='save', node='save', reason_code='workflow_saved',
                       reason='워크플로우 저장을 완료했습니다.', error_type=None, workflow_id=workflow_id,
                       updated_at=stamp, finished_at=stamp)

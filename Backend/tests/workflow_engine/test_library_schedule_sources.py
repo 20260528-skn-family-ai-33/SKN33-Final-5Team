@@ -74,6 +74,139 @@ def test_latest_is_direct_folder_registered_time_then_id_not_review_updated_time
     finally:store.close()
 
 
+def test_all_folder_is_one_report_with_all_direct_files_and_original_provenance(tmp_path):
+    from workflow_engine.runner import run_workflow
+    store=Storage(tmp_path)
+    try:
+        library=AssetLibrary(store);folder=library.create_folder('weekly');child=library.create_folder('nested',folder['id'])
+        first=upload(store,'first.csv',folder['id'],amount=11);second=upload(store,'second.csv',folder['id'],amount=22)
+        upload(store,'nested.csv',child['id'],amount=99);upload(store,'outside.csv',amount=88)
+        id=workflow(store);manager=LibrarySources(store);selection=manager.save(id,spec('all',folder=folder['id']),0)
+        candidates=library_export(store,selection,'table')['candidates']
+        resolved=manager.resolve('test',id,candidates)
+        assert resolved['status']=='resolved' and {ref['id'] for ref in resolved['refs']}=={first['id'],second['id']}
+        assert resolved['refs']==manager.resolve('test',id,list(reversed(candidates)))['refs']
+        assert store.db.execute('SELECT count(*) FROM builder_schedule_jobs WHERE {ws}').fetchone()[0]==0
+        view=manager.stage(resolved['run_id'],store.agent(id),snapshot(store,selection,resolved['refs']))
+        [merged_id]=view.bound['config']['workflow']['nodes'][0]['settings']['file_ids']
+        assert sorted(row['amount'] for row in view.rows(merged_id))==[11,22]
+        assert view.asset(merged_id)['columns']==['amount']
+        tags=source_tags(view)
+        assert {item['asset_id'] for item in tags['library_source_files']}=={first['id'],second['id']}
+        for item in tags['library_source_files']:
+            assert view.rows(item['execution_asset_id']) in ([{'amount':11}],[{'amount':22}])
+        run=run_workflow(view,id,'실행','unused',forced_run_id=resolved['run_id'],run_tags=tags)
+        assert run['status']=='succeeded',run.get('error')
+        assert sorted(row['amount'] for row in run['rows'])==[11,22]
+        assert json.loads(run['artifact']['content'])==run['rows']
+        assert len(store.tests(id))==1
+        assert store.db.execute('SELECT count(*) FROM builder_source_processed WHERE {ws}').fetchone()[0]==0
+    finally:store.close()
+
+
+def test_all_folder_reselects_new_files_but_retries_keep_the_original_snapshot(tmp_path):
+    store=Storage(tmp_path)
+    try:
+        library=AssetLibrary(store);folder=library.create_folder('selected');other=library.create_folder('other')
+        first=upload(store,'first.csv',folder['id'],amount=1);second=upload(store,'second.csv',folder['id'],amount=2)
+        id=workflow(store);manager=LibrarySources(store);selection=manager.save(id,spec('all',folder=folder['id']),0)
+        resolved=manager.resolve('test',id,library_export(store,selection,'table')['candidates'])
+        view=manager.stage(resolved['run_id'],store.agent(id),snapshot(store,selection,resolved['refs']))
+        [merged_id]=view.bound['config']['workflow']['nodes'][0]['settings']['file_ids']
+        third=upload(store,'third.csv',folder['id'],amount=3)
+        next_run=manager.resolve('test',id,library_export(store,selection,'table')['candidates'])
+        assert {ref['id'] for ref in next_run['refs']}=={first['id'],second['id'],third['id']}
+        changed=store.raw_asset(first['id']);changed['hash']='changed'
+        store.db.execute('UPDATE builder_assets SET json=?,rows_json=? WHERE {ws} AND id=?',(json.dumps(changed),'[{"amount":99}]',first['id']));store.db.commit()
+        library.move_asset(first['id'],other['id'])
+        verified=library_export(store,selection,'table',resolved['refs'],verify_only=True)
+        retried=manager.stage(resolved['run_id'],store.agent(id),{**verified,'selection':selection})
+        assert retried.bound['config']['workflow']['nodes'][0]['settings']['file_ids']==[merged_id]
+        assert sorted(row['amount'] for row in retried.rows(merged_id))==[1,2]
+        assert len(retried.snapshot['refs'])==2
+    finally:store.close()
+
+
+def test_all_documents_share_one_extraction_report_with_both_file_sources(tmp_path):
+    from tests.workflow_engine.test_workflow import flow,FakeLLM
+    from workflow_engine.runner import run_workflow
+    store=Storage(tmp_path)
+    try:
+        library=AssetLibrary(store);folder=library.create_folder('documents');nested=library.create_folder('nested',folder['id'])
+        for name,parent in [('first.txt',folder['id']),('second.txt',folder['id']),('nested.txt',nested['id'])]:
+            library.upload({'name':name,'kind':'document','format':'txt','text':'제목: 테스트\n작성일: 2026-10-12',
+                            'processing_status':'ready'},[],parent)
+        config={**draft(),'tool_ids':['read_document','extract_information','export_result'],'document_ids':[],
+                'workflow':flow()}
+        id=store.save_agent({**initial(),'confirmed':True,'draft':AgentDraft.model_validate(config).model_dump()})
+        manager=LibrarySources(store);selection=manager.save(id,spec('all',folder=folder['id']),0)
+        resolved=manager.resolve('test',id,library_export(store,selection,'document')['candidates'])
+        payload={**library_export(store,selection,'document',resolved['refs']),'selection':selection}
+        view=manager.stage(resolved['run_id'],store.agent(id),payload)
+        assert len(view.bound['config']['workflow']['nodes'][0]['settings']['file_ids'])==2
+        run=run_workflow(view,id,'추출','unused',llm=FakeLLM(),forced_run_id=resolved['run_id'],run_tags=source_tags(view))
+        assert run['status']=='succeeded',run.get('error')
+        records=json.loads(run['artifact']['content'])
+        assert len(records)==4 and {record['file_name'] for record in records}=={'first.txt','second.txt'}
+        assert len(store.tests(id))==1
+        assert len(run['library_source_files'])==2
+    finally:store.close()
+
+
+@pytest.mark.parametrize('content',[
+    {'text':'   '},
+    {'text':'사용할 수 없는 요약 본문','pages':['   ']},
+    {'text':'선택하지 않은 본문','parser_metadata':{'document_analysis':{
+        'contract_version':'a4b.document_analysis.v1','blocks':[{'selected':False,'text':'선택하지 않은 본문'}]}}},
+])
+def test_all_documents_reject_ready_files_without_readable_selected_content(tmp_path,content):
+    store=Storage(tmp_path)
+    try:
+        library=AssetLibrary(store)
+        asset=library.upload({'name':'blank-ready.txt','kind':'document','format':'txt',
+                              'processing_status':'ready',**content},[])
+        selection=spec('all')
+        with pytest.raises(ValueError,match='blank-ready.txt.*읽을 본문이 없습니다'):
+            library_export(store,selection,'document')
+        latest={**selection,'mode':'latest'}
+        assert library_export(store,latest,'document')['candidates'][0]['id']==asset['id']
+    finally:store.close()
+
+
+def test_all_folder_rejects_empty_and_oversized_batches_without_partial_selection(tmp_path):
+    store=Storage(tmp_path)
+    try:
+        id=workflow(store);manager=LibrarySources(store);selection=manager.save(id,spec('all'),0)
+        with pytest.raises(ValueError,match='함께 읽을 파일이 없습니다'):manager.resolve('test',id,[])
+        asset=upload(store);[ref]=library_export(store,selection,'table')['candidates']
+        candidates=[{**ref,'id':uid()} for _ in range(101)]
+        with pytest.raises(ValueError,match='최대 100개'):manager.resolve('test',id,candidates)
+        with pytest.raises(ValueError,match='1~100개'):manager.stage(uid(),store.agent(id),{'selection':selection,'refs':[],'assets':[]})
+        assert store.db.execute('SELECT count(*) FROM builder_source_snapshots WHERE {ws}').fetchone()[0]==0
+        assert store.db.execute('SELECT count(*) FROM builder_schedule_jobs WHERE {ws}').fetchone()[0]==0
+    finally:store.close()
+
+
+@pytest.mark.parametrize('problem',['partial','wrong_kind'])
+def test_all_folder_never_silently_skips_an_unreadable_file(tmp_path,problem):
+    store=Storage(tmp_path)
+    try:
+        upload(store,'good.csv');id=workflow(store);manager=LibrarySources(store)
+        selection=manager.save(id,spec('all'),0)
+        if problem=='partial':
+            asset=upload(store,'unfinished.csv');raw=store.raw_asset(asset['id']);raw['parser_status']='partial'
+            store.db.execute('UPDATE builder_assets SET json=? WHERE {ws} AND id=?',(json.dumps(raw),asset['id']));store.db.commit()
+            expected='unfinished.csv'
+        else:
+            AssetLibrary(store).upload({'name':'notes.txt','kind':'document','format':'txt','text':'업무 내용','processing_status':'ready'},[])
+            expected='notes.txt'
+        with pytest.raises(ValueError,match=expected):library_export(store,selection,'table')
+        # Other folder modes retain their existing eligible-file behavior.
+        latest={**selection,'mode':'latest'}
+        assert len(library_export(store,latest,'table')['candidates'])==1
+    finally:store.close()
+
+
 def test_new_reservations_skip_success_retry_failed_same_snapshot_and_accept_new_version(tmp_path):
     store=Storage(tmp_path)
     try:

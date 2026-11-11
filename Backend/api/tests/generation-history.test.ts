@@ -59,13 +59,14 @@ test('credential preparation failures are recorded before any design worker star
    queueMicrotask(()=>{child.stdout.end(JSON.stringify({ok:true,result:{credential_id:'missing-credential'}}));child.exitCode=0;child.emit('close');});done();
   }});return child;
  });syncBuiltinESMExports();
- const id=randomUUID();
+ const id=randomUUID(),generationRequestId=randomUUID();
  try{
   await assert.rejects(withDataDirectory(dir,()=>handleAgentBuilder(
    {method:'POST'} as IncomingMessage,{} as ServerResponse,new URL('http://localhost/api/agent-builder/message'),
    {getCredential(){throw new Error('계정을 찾을 수 없습니다.');}} as unknown as Store,
-   async()=>({id,revision:0,content:'워크플로우 생성'}),()=>{})),/계정을 찾을 수 없습니다/);
+   async()=>({id,revision:0,content:'워크플로우 생성',generationRequestId}),()=>{})),/계정을 찾을 수 없습니다/);
   assert.deepEqual(calls.map(c=>c.action),['begin_generation','session','interrupt_generation']);
+  assert.equal(calls[0].generation_request_id,generationRequestId);
   assert.equal(calls[0].generation_request_id,calls[2].generation_request_id);
   assert.equal(calls[2].reason_code,'request_rejected');
  }finally{
@@ -73,4 +74,10 @@ test('credential preparation failures are recorded before any design worker star
   if(previous===undefined)delete process.env.A4B_AGENT_PYTHON;else process.env.A4B_AGENT_PYTHON=previous;
   await rm(dir,{recursive:true,force:true});
  }
+});
+
+test('invalid client generation ids are rejected before a worker starts',async()=>{
+ await assert.rejects(()=>handleAgentBuilder(
+  {method:'POST'} as IncomingMessage,{} as ServerResponse,new URL('http://localhost/api/agent-builder/message'),
+  {} as Store,async()=>({id:randomUUID(),revision:0,content:'업무 생성',generationRequestId:'not-a-uuid'}),()=>{}),/생성 요청 ID/);
 });

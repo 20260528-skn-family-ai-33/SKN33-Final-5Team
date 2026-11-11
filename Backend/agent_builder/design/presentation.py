@@ -44,12 +44,103 @@ def canonical_table_draft(draft,messages,resources):
     return draft
 
 
+# These names describe registered operations, not model-authored labels or prose.
+_OPERATION_LABELS = {
+    ('email.list', 'read_messages'): '메일 본문 읽기',
+    ('compose_answer', 'summarize'): '근거 자료 요약',
+    ('filter_sort', 'filter'): '조건에 맞는 행 선별',
+    ('filter_sort', 'sort'): '행 정렬',
+    ('filter_sort', 'deduplicate'): '중복 행 정리',
+    ('filter_sort', 'handle_missing'): '빈 값 처리',
+    ('filter_sort', 'select_columns'): '출력 열 선택',
+}
+_OUTPUT_FORMATS = {'csv', 'json', 'md', 'xlsx', 'pdf', 'txt'}
+
+
+def _public_step(node, catalog):
+    """Expose only catalogue names and small, typed executable settings."""
+    tool = node.get('tool')
+    registered = catalog.get(tool)
+    if registered is None:
+        return '지원 확인이 필요한 단계'
+    settings = node.get('settings') or {}
+    operation = settings.get('operation')
+    label = registered['name']
+    arguments = {}
+    if operation:
+        from workflow_engine.catalog.canonical import operation_spec, arguments_spec
+        try:
+            spec = operation_spec(tool, operation)
+            allowed = arguments_spec(tool, spec)
+        except (TypeError, ValueError):
+            return label + ' (동작 확인 필요)'
+        label = _OPERATION_LABELS.get((tool, operation), label)
+        try:
+            raw = json.loads(settings.get('arguments_json') or '{}')
+        except (TypeError, ValueError):
+            return label + ' (설정 확인 필요)'
+        if not isinstance(raw, dict):
+            return label + ' (설정 확인 필요)'
+        arguments = {key: value for key, value in raw.items() if key in allowed}
+    details = []
+    count = arguments.get('max_results')
+    if type(count) is int and 0 < count <= 1000000:
+        details.append(f'최대 {count}건')
+    if isinstance(arguments.get('query'), str) and arguments['query'].strip():
+        # Search text may contain private addresses or model prose. Its presence
+        # is useful here; the full value remains in the detailed configuration.
+        details.append('검색 조건 적용')
+    output_format = arguments.get('format') if operation else settings.get('format')
+    if operation in ('write_csv', 'write_json'):
+        output_format = operation.removeprefix('write_')
+    if tool in ('write_result', 'export_result', 'create_spreadsheet') and output_format in _OUTPUT_FORMATS:
+        details.append(output_format.upper())
+    if not operation and tool == 'aggregate_table':
+        aggregate = {'count': '건수', 'sum': '합계'}.get(settings.get('aggregation'))
+        if aggregate:
+            details.append(aggregate)
+    if not operation and tool == 'filter_sort':
+        plan = settings.get('execution_plan') or {}
+        for key, name in [('filters', '선별 조건'), ('sort', '정렬 기준')]:
+            items = plan.get(key)
+            if isinstance(items, list) and items:
+                details.append(f'{name} {len(items)}개')
+    return label + (' (' + ', '.join(details) + ')' if details else '')
+
+
+def _public_workflow_summary(workflow):
+    from workflow_engine.catalog.registry import TOOLS
+    from workflow_engine.execution_path import execution_path
+    catalog = {tool['id']: tool for tool in TOOLS}
+    try:
+        path = execution_path(workflow)
+        if not path:
+            return ''
+        steps = [_public_step(node, catalog) for node in path[:6]]
+    except (KeyError, TypeError, ValueError):
+        return ''
+    result = '초안의 처리 순서: ' + ' → '.join(steps)
+    if len(path) > 6:
+        result += f' → 나머지 {len(path) - 6}단계'
+    if path[-1].get('tool') == 'condition':
+        result += '\n분기별 후속 단계는 처리 순서 화면에서 확인해 주세요.'
+    elif len(path) < len(workflow.get('nodes', [])):
+        result += '\n연결되지 않은 단계가 있어 처리 순서를 확인해야 합니다.'
+    return result
+
+
 def public_draft_explanation(draft):
-    """Only application-owned status text is rendered; model analysis stays private."""
-    result=dict(draft)
-    result['explanation']=('아래 항목을 확인해 주세요.' if result.get('questions') else
-        '요청한 작업의 지원 범위를 확인해 주세요.' if result.get('unsupported') else
-        '업무 조건과 처리 순서를 확인해 주세요.')
+    """Describe the actual draft without exposing analysis or claiming execution."""
+    result = dict(draft)
+    if result.get('unsupported'):
+        result['explanation'] = '요청한 작업의 지원 범위를 확인해 주세요.'
+        return result
+    summary = _public_workflow_summary(result['workflow']) if result.get('workflow') else ''
+    if result.get('questions'):
+        result['explanation'] = ('아래 항목을 확인해 주세요.' + ('\n' + summary if summary else ''))
+    else:
+        result['explanation'] = (summary + '\n업무 조건과 처리 순서를 확인해 주세요.' if summary else
+                                 '초안의 처리 순서를 확인하지 못했습니다. 업무 설정을 다시 확인해 주세요.')
     return result
 
 

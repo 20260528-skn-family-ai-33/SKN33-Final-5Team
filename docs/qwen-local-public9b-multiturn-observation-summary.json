@@ -1,0 +1,885 @@
+{
+  "gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "scope": "Only the 12 completed M measurements in each phase. Backend response question fields are observed; actual browser/UI display is unverified. Original scorer remains unchanged.",
+  "baseline": {
+    "source_run": "docs/qwen-local-public9b-baseline-v2.json",
+    "run_status_at_snapshot": "completed",
+    "source_review": "docs/qwen-local-public9b-baseline-v2-review-multiturn.json",
+    "source_review_file_sha256": "854ab0b26f42c0c9979327ce92d93c2c3d7619ec060f27406391095ee2461232",
+    "source_case_sha256": {
+      "M01": "0e423002880386226bf4727d7d9993c7f7018b25a36f2f4055ac803a71d1e652",
+      "M02": "fe46f2283fc8454ca4a95599787f0a72146cc340b350d90ff72351e3dd8730b5",
+      "M03": "601e7956c4f3a470cba6838f153c9728684bf9c7d9f9ab8023ae8e1cf612d85b",
+      "M04": "030ed1f7de52264e063835462134fa175893201d0c74b44e352086b3938e8597",
+      "M05": "5f5f94f58e50da50db54e800a1c9250c0ce8507c4786a2fd0b8d138804e547b3",
+      "M06": "28df8c70d3b9c0a251bdadd0bcb05b79219803e2d23618795c741396bc8c23ee",
+      "M07": "d36acbe4b76e37667a246f6de7ce4b75fdd557d7e4c89649eaac63ced96ddc22",
+      "M08": "0c713ac67a656b955218f413cec849b6e615e6c97f30366f95023cf961360106",
+      "M09": "a4e800c497b5995e4da62c0df3966f15b710e3efd6a36bc5c00f90a21aaf6880",
+      "M10": "4033b07de939a32caff52830ff2d8fd55383baccf61413ed3d52f62bd1f31a60",
+      "M11": "875d68c1198ffe4e6e6c4e785766ebe2b7e0eda793de7554699ddaf3d97e8680",
+      "M12": "25c6e7dfbd0547f7fcd791fba538a8a725f6ee8d15b8f19426e632393244bd19"
+    },
+    "measured_cases": 12,
+    "persisted_two_turn_cases": {
+      "numerator": 10,
+      "denominator": 12
+    },
+    "persisted_response_count": 22,
+    "observed_followup_transitions": 10,
+    "followup_attempts_without_persisted_response": [
+      "M10"
+    ],
+    "cases_without_second_persisted_response": {
+      "M02": "Valid duplicate-policy question unmatched by frozen vocabulary; no answer submitted.",
+      "M10": "Answer attempt visible in stages/raw, but worker ValueError prevented second response persistence."
+    },
+    "clarification_answer_transition_count": 8,
+    "ready_revision_transition_count": 2,
+    "session_thread_preserved": {
+      "numerator": 10,
+      "denominator": 10
+    },
+    "message_history_preserved": {
+      "numerator": 10,
+      "denominator": 10
+    },
+    "revision_increased": {
+      "numerator": 10,
+      "denominator": 10
+    },
+    "question_id_preserved": {
+      "numerator": 8,
+      "denominator": 8
+    },
+    "changed_slot_opportunities": {
+      "frozen_total": 14,
+      "eligible_with_persisted_followup": 12,
+      "excluded": 2
+    },
+    "backend_question_fields": {
+      "scorer_total": 20,
+      "pending_questions": 20,
+      "draft_fallback": 0,
+      "fallback_rows": [],
+      "pending_only_unnecessary_question_rate": {
+        "numerator": 9,
+        "denominator": 20
+      },
+      "pending_only_repeated_question_rate": {
+        "numerator": 1,
+        "denominator": 5
+      }
+    },
+    "transitions": [
+      {
+        "case_id": "M01",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "4500700d3ace1472271ba53b",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "d5c0564f3df512097d09ddec",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M04",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "d477591bb3d3c4e06e44a48c",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M05",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "fcc0345ce5a55e89a532e399",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M06",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "0d6f8321634c67e05aa6ff0a",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M07",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "279fbe5fba45a08465452d89",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M08",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "d7f550e66416aab3b50fc584",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M09",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "d3f82622b361a54f08e7e2e2",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M11",
+        "turn_index": 1,
+        "kind": "ready_revision",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": null,
+        "question_id_matches_previous_pending": null
+      },
+      {
+        "case_id": "M12",
+        "turn_index": 1,
+        "kind": "ready_revision",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": null,
+        "question_id_matches_previous_pending": null
+      }
+    ],
+    "questions": [
+      {
+        "case_id": "M01",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "4500700d3ace1472271ba53b",
+        "key": "filter.operator",
+        "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "operator"
+        ]
+      },
+      {
+        "case_id": "M01",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "fe4f24d85cf8f5e39ea9d0f0",
+        "key": "filter.value",
+        "text": "선별할 기준 값은 얼마인가요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "threshold"
+        ]
+      },
+      {
+        "case_id": "M02",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "837d011a0e866fb35adf6eb3",
+        "key": "requirement.1b5971e1d2da0654",
+        "text": "synthetic-sales.json 자료에서 customer_id 가 중복인 행을 어떻게 처리할지 구체적으로 명시해 주세요. (예: 중복된 행 중 하나만 유지, 모든 중복 행을 별도 파일로 분리, 빈 값이 있는 행은 제외 등)에 대해 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "duplicate_policy"
+        ]
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "d5c0564f3df512097d09ddec",
+        "key": "filter.field",
+        "text": "어느 열을 기준으로 선별할까요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "duplicate_field"
+        ]
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "fc2440e3cc5392fe2376ed65",
+        "key": "filter.operator",
+        "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "4df3c824ecb465369f16b005",
+        "key": "filter.field",
+        "text": "어느 열을 기준으로 선별할까요?",
+        "unnecessary": true,
+        "repeated": true,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "7c369b12acdc2171c948a816",
+        "key": "filter.operator",
+        "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M04",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "d477591bb3d3c4e06e44a48c",
+        "key": "schedule.hour",
+        "text": "몇 시에 실행할까요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "hour"
+        ]
+      },
+      {
+        "case_id": "M04",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "7ff0f5492301a593a03a9a80",
+        "key": "missing.policy",
+        "text": "빈 값은 유지·제외·오류 중 어떻게 처리할까요?",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M04",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "4373508b3941ba7bfd1eed15",
+        "key": "missing.policy",
+        "text": "빈 값은 유지·제외·오류 중 어떻게 처리할까요?",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M05",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "c42cc9151dd7e83a94b0ab26",
+        "key": "duplicate.policy",
+        "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M05",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "fcc0345ce5a55e89a532e399",
+        "key": "schedule.weekday",
+        "text": "매주 무슨 요일에 실행할까요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "weekday"
+        ]
+      },
+      {
+        "case_id": "M05",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "42e59f43f6bfac9e2e417dd1",
+        "key": "duplicate.policy",
+        "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M06",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "0d6f8321634c67e05aa6ff0a",
+        "key": "schedule.monthday",
+        "text": "매월 며칠에 실행할까요? 1~31일 또는 말일로 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "monthday"
+        ]
+      },
+      {
+        "case_id": "M07",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "279fbe5fba45a08465452d89",
+        "key": "capability.condition.0",
+        "text": "qty 에 곱할 배율 (multiplier) 값이 미정입니다.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "factor"
+        ]
+      },
+      {
+        "case_id": "M08",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "d7f550e66416aab3b50fc584",
+        "key": "capability.condition.0",
+        "text": "새 열 이름을 지정해주세요 (예: 'qty_doubled')에 대해 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "column"
+        ]
+      },
+      {
+        "case_id": "M09",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "d3f82622b361a54f08e7e2e2",
+        "key": "capability.condition.0",
+        "text": "금액 열의 이름 (amount 또는 다른 열)에 대해 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "sum_field"
+        ]
+      },
+      {
+        "case_id": "M09",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "5a95a685c2cfc0f6a0e69dfe",
+        "key": "capability.condition.1",
+        "text": "빈 값을 '오류'로 처리할 구체적인 기준 (예: NaN, null, 빈 문자열 등)에 대해 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M09",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "cceb869ede19b3f08ae3722a",
+        "key": "requirement.9770f36a396321f7",
+        "text": "빈 값을 '오류'로 처리할 구체적인 기준 (예: NaN, null, 빈 문자열 등) 을 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M10",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "33bec9deead4b3dff8f3abf8",
+        "key": "requirement.4fafc01d15928c73",
+        "text": "이메일 수신자 주소는 무엇인가요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "recipient"
+        ]
+      }
+    ],
+    "source_run_file_sha256": "187609496fbf1a9d9f2374848543fb1e10771a205bdb009b55ad617494f48290"
+  },
+  "after": {
+    "source_run": "docs/qwen-local-public9b-after.json",
+    "run_status_at_snapshot": "incomplete",
+    "source_review": "docs/qwen-local-public9b-after-review-multiturn.json",
+    "source_review_file_sha256": "d197cfc7da0130a23dda78ce673ac401ba6806f7e815349a7b6b5675f2fdec5a",
+    "source_case_sha256": {
+      "M01": "eeeb9b1ea4519d922adeeac26ecf6c5f7306b44b7ccc66597cd8eae733f03037",
+      "M02": "ace28a386c6e571ac93f7fab562a94902acd4130958c8950156bc454b68ca6d8",
+      "M03": "3348bf771bbae3c3966377a562248213bd011adee92c42d7dfe4c8bbc07f4586",
+      "M04": "e3ef49b1de58761ff5f5dfe097516991138f9d873f636eb3017d5409a22769cf",
+      "M05": "0bb5fbf96c7737f9350b9e293a28a5f029ef08d1e0b22a8d3dfef0ca54bca768",
+      "M06": "8b75ee9d8472a5a552f2b7846323bc688369b8f63b11b97d30792fbf11a1ae2e",
+      "M07": "39a773504162eaab4387e00fb3006682e9e0ef0677e7556d9d67b5fa9b76bd5b",
+      "M08": "8b9acc3032493f7ba7a7151606431d3d8387f36e3c465b14b56d2f8fb3d56e12",
+      "M09": "14f2320ebb2043993bbca18a346590a97a3ff9d9de11b074d293cd5a9f00376e",
+      "M10": "3aa330b9e66a85529508ecaad3ce81528fb9a8f62abcaa4e58353449c9dd88dd",
+      "M11": "57469ad382a3314938ce7f1f7aa9e18570065fe1c2cdc372521ccbf96df39a3c",
+      "M12": "19b9f6b2488ea96325aa5cf1df175264c5a018f2f435b60d4826d964f9d5fc21"
+    },
+    "measured_cases": 12,
+    "persisted_two_turn_cases": {
+      "numerator": 10,
+      "denominator": 12
+    },
+    "persisted_response_count": 22,
+    "observed_followup_transitions": 10,
+    "followup_attempts_without_persisted_response": [],
+    "cases_without_second_persisted_response": {
+      "M10": "Only invented title/body checking questions were exposed; no recipient answer submitted.",
+      "M12": "Initial route SYSTEM_ERROR; fixed next-day after_ready revision was not submitted."
+    },
+    "clarification_answer_transition_count": 9,
+    "ready_revision_transition_count": 1,
+    "session_thread_preserved": {
+      "numerator": 10,
+      "denominator": 10
+    },
+    "message_history_preserved": {
+      "numerator": 10,
+      "denominator": 10
+    },
+    "revision_increased": {
+      "numerator": 10,
+      "denominator": 10
+    },
+    "question_id_preserved": {
+      "numerator": 9,
+      "denominator": 9
+    },
+    "changed_slot_opportunities": {
+      "frozen_total": 14,
+      "eligible_with_persisted_followup": 12,
+      "excluded": 2
+    },
+    "backend_question_fields": {
+      "scorer_total": 17,
+      "pending_questions": 16,
+      "draft_fallback": 1,
+      "fallback_rows": [
+        {
+          "case_id": "M05",
+          "turn_index": 1,
+          "response_status": "validation_failed",
+          "source": "draft.questions_fallback",
+          "question_id": null,
+          "key": null,
+          "text": "매주 무슨 요일에 실행할까요?",
+          "unnecessary": true,
+          "repeated": true,
+          "necessary_slots": []
+        }
+      ],
+      "pending_only_unnecessary_question_rate": {
+        "numerator": 6,
+        "denominator": 16
+      },
+      "pending_only_repeated_question_rate": {
+        "numerator": 1,
+        "denominator": 3
+      }
+    },
+    "transitions": [
+      {
+        "case_id": "M01",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "560766d94b9b05dd7ff9f433",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M02",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "323c6708d438ab44ecca3ee2",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "3e160fdbd95085e7d8ccecb9",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M04",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "f1e34c6fc92787a52d4218ac",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M05",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "2f0dd04e3ea8d65922cb7d19",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M06",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "89f9c60af33e118567f88038",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M07",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "279fbe5fba45a08465452d89",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M08",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "766084a45332fdeb155b3953",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M09",
+        "turn_index": 1,
+        "kind": "clarification_answer",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": "83e82c9a34e6ba1e64c36de9",
+        "question_id_matches_previous_pending": true
+      },
+      {
+        "case_id": "M11",
+        "turn_index": 1,
+        "kind": "ready_revision",
+        "same_session_thread_response_id": true,
+        "prior_message_prefix_preserved": true,
+        "revision_increased": true,
+        "question_id": null,
+        "question_id_matches_previous_pending": null
+      }
+    ],
+    "questions": [
+      {
+        "case_id": "M01",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "560766d94b9b05dd7ff9f433",
+        "key": "filter.operator",
+        "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "operator"
+        ]
+      },
+      {
+        "case_id": "M01",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "01705483486ef684c3827f21",
+        "key": "filter.value",
+        "text": "선별할 기준 값은 얼마인가요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "threshold"
+        ]
+      },
+      {
+        "case_id": "M02",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "323c6708d438ab44ecca3ee2",
+        "key": "duplicate.policy",
+        "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "duplicate_policy"
+        ]
+      },
+      {
+        "case_id": "M02",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "44a32def8a1eab859b836f83",
+        "key": "requirement.28cbbf0fe92ec4ff",
+        "text": "synthetic-sales 자료에서 customer_id 기준으로 중복 행을 제거할 때 '마지막 행만 남긴다'는 조건이 적용됩니다. 빈 값 처리 시 오류로 간주하되, 구체적인 오류 발생 시나리오(예: 빈 값이 있는 행은 제외하는지, 오류 메시지가 포함된 JSON인지)를 명확히 하려면 추가 확인이 필요합니다.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "3e160fdbd95085e7d8ccecb9",
+        "key": "filter.field",
+        "text": "어느 열을 기준으로 선별할까요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "duplicate_field"
+        ]
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "02b7a4619363c0ebaf81b1da",
+        "key": "filter.operator",
+        "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "7ea753a9f951a4aa68d21813",
+        "key": "filter.field",
+        "text": "어느 열을 기준으로 선별할까요?",
+        "unnecessary": true,
+        "repeated": true,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M03",
+        "turn_index": 1,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "cb29f86ccebe5af2d5e4978a",
+        "key": "filter.operator",
+        "text": "기준 값을 포함할까요? 초과·이상·미만·이하 중 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M04",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "f1e34c6fc92787a52d4218ac",
+        "key": "schedule.hour",
+        "text": "몇 시 몇 분에 실행할까요? 오전·오후도 함께 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "hour"
+        ]
+      },
+      {
+        "case_id": "M05",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "2f0dd04e3ea8d65922cb7d19",
+        "key": "schedule.weekday",
+        "text": "매주 무슨 요일에 실행할까요?",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "weekday"
+        ]
+      },
+      {
+        "case_id": "M05",
+        "turn_index": 1,
+        "response_status": "validation_failed",
+        "source": "draft.questions_fallback",
+        "question_id": null,
+        "key": null,
+        "text": "매주 무슨 요일에 실행할까요?",
+        "unnecessary": true,
+        "repeated": true,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M06",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "89f9c60af33e118567f88038",
+        "key": "schedule.monthday",
+        "text": "매월 며칠에 실행할까요? 1~31일 또는 말일로 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "monthday"
+        ]
+      },
+      {
+        "case_id": "M07",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "279fbe5fba45a08465452d89",
+        "key": "capability.condition.0",
+        "text": "qty 에 곱할 배율 (multiplier) 값이 미정입니다.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "factor"
+        ]
+      },
+      {
+        "case_id": "M08",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "766084a45332fdeb155b3953",
+        "key": "capability.condition.0",
+        "text": "새 열 이름을 지정해주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "column"
+        ]
+      },
+      {
+        "case_id": "M09",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "83e82c9a34e6ba1e64c36de9",
+        "key": "capability.condition.0",
+        "text": "금액 열 이름 (amount 또는 다른 열명)에 대해 알려주세요.",
+        "unnecessary": false,
+        "repeated": false,
+        "necessary_slots": [
+          "sum_field"
+        ]
+      },
+      {
+        "case_id": "M10",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "8cc0aceb160724eaddff743c",
+        "key": "capability.condition.0",
+        "text": "제목 점검 기준 (예: 특정 키워드 포함 여부, 길이 제한 등)에 대해 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      },
+      {
+        "case_id": "M10",
+        "turn_index": 0,
+        "response_status": "needs_clarification",
+        "source": "pending_questions",
+        "question_id": "4b264cd2ef511813a61ba8c0",
+        "key": "capability.condition.1",
+        "text": "본문 완료 판단 기준 (예: 필수 문장 포함 여부, 특정 단락 존재 여부)에 대해 알려주세요.",
+        "unnecessary": true,
+        "repeated": false,
+        "necessary_slots": []
+      }
+    ],
+    "source_run_file_sha256": "94f1a4bd6e27177dd2c7821ccfe2b776e9647516810c5f521b9265454ab1dbd9",
+    "source_run_reason": "transport_or_model_failure_circuit_breaker",
+    "source_run_not_run_case_ids": [
+      "X07"
+    ],
+    "multiturn_subset_status": "all 12 M case measurements complete; this does not assert all 52 cases completed in the source shard",
+    "canonical_completed_run": {
+      "path": "docs/qwen-local-public9b-after-complete.json",
+      "file_sha256": "c85233a673876642c05e9304e0307a415e2b8df25ae48def2c343426aa8dd0b7",
+      "status": "completed",
+      "measured_unique_cases": 52,
+      "not_run_cases": 0,
+      "multiturn_case_hashes_unchanged": 12,
+      "source_shards": [
+        {
+          "path": "docs/qwen-local-public9b-after.json",
+          "file_sha256": "94f1a4bd6e27177dd2c7821ccfe2b776e9647516810c5f521b9265454ab1dbd9",
+          "status": "incomplete"
+        },
+        {
+          "path": "docs/qwen-local-public9b-after-part2.json",
+          "file_sha256": "fd0f15400b951db584c6515e4de9aa69e303043822278bee77a323efd968690a",
+          "status": "completed"
+        }
+      ],
+      "note": "Canonical full measurement includes main X06 failure and supplemental X07. Original incomplete main shard, its byte hash and M observations remain preserved above. Repeated trials are not included."
+    }
+  },
+  "separate_repeat": {
+    "run": "docs/qwen-local-public9b-after-repeat.json",
+    "review": "docs/qwen-local-public9b-after-repeat-review-m01.json",
+    "M01_whole_request_success": true,
+    "scope": "Independent repeat diagnostic only; excluded from baseline/after observation and main success denominators."
+  }
+}

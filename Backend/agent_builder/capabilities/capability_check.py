@@ -9,9 +9,24 @@ from agent_builder.conditions.condition_check import _pending_draft
 
 
 def _question_text(text):
-    import re
     text=text.strip()
-    if re.fullmatch(r'파일\s*ID|file[_ ]?id',text,re.I):return '처리할 파일을 자료 연결에서 업로드해 주세요.'
+    # Resource identifiers belong to the attachment UI. Business columns with
+    # names such as "파일 ID" remain valid user-selected fields.
+    def business_column(match):
+        return bool(re.match(r'''\s*["'`’”]?\s*(?:라는|란)?\s*(?:열|컬럼|칼럼|필드|column|field)''',
+                             text[match.end():],re.I))
+    resource=re.search(r'(?:파일|자료|문서|표)(?:\s*의)?\s*(?:(?:구체적인|고유한|실제)\s*)?'
+                       r'(?:ID|아이디|식별자)|file[_ ]?id',text,re.I)
+    if resource and not business_column(resource):
+        guidance='처리할 파일을 자료 연결에서 업로드해 주세요.'
+        # A combined question can also contain a genuinely missing recipient or
+        # business choice. Do not discard that second question when rendering UI guidance.
+        remaining=re.match(r'\s*(?:와|과|및|또는|나)\s*(.+)',text[resource.end():])
+        return guidance+(' '+_question_text(remaining[1]) if remaining else '')
+    credential=re.search(r'인증\s*정보|API\s*키|access[_ ]?token|비밀번호',text,re.I)
+    if (credential and not business_column(credential) and re.search(r'Gmail|지메일',text,re.I)
+            and re.search(r'알려|입력|제공|필요|보내',text[credential.end():])):
+        return 'Gmail 연결에서 계정 연결 상태를 확인해 주세요.'
     if text.endswith(('?', '？')):return text
     stem=text.rstrip('.').rstrip()
     if stem.endswith('해야 합니다'):
@@ -40,7 +55,7 @@ def _short_reply(state):
     return text in _PASSIVE_REPLIES
 
 
-def make_capability_check(model,transport=None,mode=None,error_observer=None):
+def make_capability_check(model,transport=None,mode=None,error_observer=None,api_key=''):
     setting=mode or os.getenv('A4B_CAPABILITY_MODE','off')
     if setting not in ('off','enforce'):raise ValueError('A4B_CAPABILITY_MODE는 off/enforce이어야 합니다.')
     def check(state):
@@ -50,11 +65,24 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
         deferred=False;reuse_questions=False
         try:
             from agent_builder.conditions.condition_readiness import input_issues
+            from agent_builder.design.request_meaning import gmail_importance, IMPORTANCE_QUESTION
             faults=input_issues(state)
             events=state.get('capability_answers',[])
             event=events[-1] if events and events[-1]['turn']==len(state.get('messages',[]))-1 else None
             previous=state.get('capability_assessment') or {}
+            criterion, evidence = gmail_importance(state)
             if faults:result=assess_capability(state,None)
+            elif criterion == 'ambiguous':
+                result = {'decision':'clarify', 'tool_ids':[], 'missing_actions':[],
+                          'missing_conditions':[IMPORTANCE_QUESTION], 'user_quotes':[evidence],
+                          'reason':'사용자가 선택할 메일의 중요도 기준이 미정입니다.',
+                          'model_calls':0, 'allows_execution':False, 'allows_generation':False}
+                # Retain the question ID when a reply defers the same decision.
+                if event and previous.get('missing_conditions') == [IMPORTANCE_QUESTION]:
+                    reuse_questions = True
+                    deferred = event['kind'] == 'defer' or sum(
+                        e['kind'] == 'unknown' and set(e['question_ids']).intersection(event['question_ids'])
+                        != set() for e in events) >= 2
             elif (previous.get('decision')=='existing_tools' and (latest_resolution(state) or option_answer(state) or numeric_answer(state) or pending_nonanswer(state))
                   and state.get('messages', [])[-1].get('role')=='user'
                   and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
@@ -82,8 +110,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
                 result={**previous,'model_calls':0,'answer_resolution':'short_reply'}
             else:
                 if transport is None:
-                    from agent_builder.design.nodes.direct_conversation import OllamaPlanner
-                    active=OllamaPlanner(os.getenv('A4B_CAPABILITY_MODEL') or model)
+                    from agent_builder.design.requirement_ledger import requirement_transport
+                    active=requirement_transport(os.getenv('A4B_CAPABILITY_MODEL') or model, api_key)
                 else:active=transport
                 result=assess_capability(state,active)
         except Exception as error:
@@ -113,13 +141,15 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
             questions=filter_execution_questions(questions,state)
             if not questions:
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
-                            'key':'capability.condition.'+str(i),'source':'capability','text':_question_text(text),
+                            'key':'gmail.importance_criteria' if text == IMPORTANCE_QUESTION else 'capability.condition.'+str(i),
+                            'source':'capability','text':_question_text(text),
                             'options':[]} for i,text in enumerate(result['missing_conditions'])]
             from agent_builder.design.question_controls import complete_questions
             questions=complete_questions(questions,state)
-            # AgentDraft supports 3 visible questions; preserve every question record.
-            grouped=questions[:2]+([{'text':'\n'.join(q['text'] for q in questions[2:]),'options':[]}] if len(questions)>2 else [])
-            ledger={'decision':'clarify','questions':grouped,'slots':{}}
+            # Keep the full missing list in the assessment; controls and answer IDs
+            # describe only this turn's two questions. Reassess remaining items after the answer.
+            questions=questions[:2]
+            ledger={'decision':'clarify','questions':questions,'slots':{}}
             reply=('미정 상태로 보류했습니다. 답변을 보내면 다시 확인합니다.\n' if deferred else '')+'\n'.join(q['text'] for q in questions)
             update.update(capability_route='await_capability',status='needs_clarification',confirmed=False,gap_condition_review=None,
                 saved_agent_id=None,draft=_pending_draft(state,ledger),pending_questions=questions,

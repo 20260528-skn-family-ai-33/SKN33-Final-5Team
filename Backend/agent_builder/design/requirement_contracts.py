@@ -26,6 +26,12 @@ class Compute(Strict):
     output_column: str = Field(min_length=1, max_length=100)
 
 
+class ScalarCalculate(Strict):
+    kind: Literal['scalar_calculate']
+    formula: str = Field(min_length=1, max_length=500)
+    variables: dict[str, int | float] = Field(max_length=20)
+
+
 class ParseDates(Strict):
     kind: Literal['parse_dates']
     fields: list[str] = Field(min_length=1, max_length=20)
@@ -115,7 +121,7 @@ class GmailSummary(Strict):
     max_results: int = Field(ge=1, le=500)
     request: str = Field(min_length=1, max_length=2000)
     summary_instructions: str | None = Field(default=None, min_length=1, max_length=2000)
-    query: Literal['{{gmail.previous_day}}', 'is:unread -in:sent -in:drafts'] | None = None
+    query: str | None = Field(default=None, max_length=2000)
 
 
 class GmailScheduledSummary(GmailSummary):
@@ -129,7 +135,7 @@ class ScheduledExecution(Strict):
     schedule: ScheduleSpec
 
 
-Spec = Annotated[Read | ExtractFields | Compute | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
+Spec = Annotated[Read | ExtractFields | Compute | ScalarCalculate | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
                  Field(discriminator='kind')]
 
 
@@ -145,7 +151,7 @@ class RequiredTask(Strict):
 class RequirementQuestion(Strict):
     """A customer decision, independent of a particular workflow or service."""
     key: str = Field(min_length=1, max_length=120)
-    text: str = Field(min_length=1, max_length=500,
+    text: str = Field(min_length=1, max_length=1000,
         description='고객에게 표시할 완전한 질문. 내부 필드명이나 구현 상세는 표시하지 않습니다.')
     group: str | None = Field(default=None, max_length=120,
         description='어떤 요청사항에 대한 질문인지 보여줄 짧은 제목. 예: 실행 일정, 결과 형식.')
@@ -197,7 +203,7 @@ class RequirementPlan(Strict):
 
     @model_validator(mode='after')
     def task_or_question(self):
-        if not self.tasks and not self.unresolved:
+        if not self.tasks and not any((q if isinstance(q,str) else q.text).strip() for q in self.unresolved):
             raise ValueError('요청한 업무나 확인할 조건이 하나 이상 필요합니다.')
         keys=[question.key for question in self.unresolved if isinstance(question,RequirementQuestion)]
         if len(set(keys))!=len(keys):

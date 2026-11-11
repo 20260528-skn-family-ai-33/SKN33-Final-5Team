@@ -11,10 +11,11 @@ import type {CredentialPublic, Provider} from '@/lib/api-contracts';
 export type {CredentialPublic} from '@/lib/api-contracts';
 export type CredentialProvider = Provider;
 
-export async function request<T = any>(path: string, body?: unknown, method?: string): Promise<T> {
+export async function request<T = any>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
   const hasBody = body !== undefined;
   const response = await fetch(path, {
     credentials:'same-origin',
+    signal,
     method: method || (hasBody ? 'POST' : 'GET'),
     headers: hasBody ? {'Content-Type': 'application/json'} : undefined,
     body: hasBody ? JSON.stringify(body) : undefined,

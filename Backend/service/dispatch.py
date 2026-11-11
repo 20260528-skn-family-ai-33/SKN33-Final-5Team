@@ -24,6 +24,7 @@ ACTIONS={
     'begin_generation':generation.begin,
     'interrupt_generation':generation.interrupt,
     'generation_history':generation.listing,
+    'recover_generation':generation.recover,
     'recover_runs':runs.recover_runs,
     'interrupt_run':runs.interrupt_run,
     'heartbeat_run':runs.heartbeat_run,

@@ -1,0 +1,210 @@
+{
+  "status": "completed",
+  "requested": 52,
+  "attempted": 52,
+  "live_scenarios": 50,
+  "code_only_scenarios": [
+    "R01",
+    "T08"
+  ],
+  "not_run": [],
+  "live_call_count_excluding_probe": 180,
+  "actual_models": {
+    "a4b-public-qwen35-9b-32k": 180
+  },
+  "routing_accuracy_live": {
+    "numerator": 36,
+    "denominator": 50
+  },
+  "routing_accuracy_all_backend": {
+    "numerator": 38,
+    "denominator": 52
+  },
+  "initial_routes": {
+    "READY": 14,
+    "CLARIFY": 25,
+    "SYSTEM_ERROR": 4,
+    "UNSUPPORTED": 9
+  },
+  "local_execution": {
+    "success": 4,
+    "attempted": 4
+  },
+  "external_connector_executions": 0,
+  "http_browser_observed": false,
+  "multi_turn_persistence": [
+    {
+      "id": "M01",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M03",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M04",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M05",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M06",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M07",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M08",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M09",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M11",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    },
+    {
+      "id": "M12",
+      "turn_count": 2,
+      "same_session_thread": true,
+      "history_preserved": true,
+      "revision_increases": true,
+      "answered_question_id_valid": true
+    }
+  ],
+  "gmail_query_evidence": [
+    {
+      "id": "R01",
+      "turn": 0,
+      "max_results": 5,
+      "query": null,
+      "interval_hours": null
+    },
+    {
+      "id": "C06",
+      "turn": 0,
+      "max_results": 100,
+      "query": "important",
+      "interval_hours": null
+    },
+    {
+      "id": "T01",
+      "turn": 0,
+      "max_results": 100,
+      "query": "after:1794150000 before:1794236400 -in:sent -in:drafts",
+      "interval_hours": 24.0
+    },
+    {
+      "id": "T02",
+      "turn": 0,
+      "max_results": 100,
+      "query": "after:1794200400 before:1794286800 is:unread -in:sent -in:drafts",
+      "interval_hours": 24.0
+    },
+    {
+      "id": "T04",
+      "turn": 0,
+      "max_results": 100,
+      "query": "after:1798642800 before:1798729200 -in:sent -in:drafts",
+      "interval_hours": 24.0
+    },
+    {
+      "id": "T06",
+      "turn": 0,
+      "max_results": 100,
+      "query": "",
+      "interval_hours": null
+    },
+    {
+      "id": "T07",
+      "turn": 0,
+      "max_results": 5,
+      "query": null,
+      "interval_hours": null
+    },
+    {
+      "id": "T08",
+      "turn": 0,
+      "max_results": 100,
+      "query": "{{gmail.previous_day}}",
+      "interval_hours": null
+    },
+    {
+      "id": "M11",
+      "turn": 0,
+      "max_results": 5,
+      "query": null,
+      "interval_hours": null
+    },
+    {
+      "id": "M11",
+      "turn": 1,
+      "max_results": 10,
+      "query": null,
+      "interval_hours": null
+    },
+    {
+      "id": "M12",
+      "turn": 0,
+      "max_results": 100,
+      "query": "after:1794150000 before:1794236400 -in:sent -in:drafts",
+      "interval_hours": 24.0
+    },
+    {
+      "id": "M12",
+      "turn": 1,
+      "max_results": 100,
+      "query": "after:1794150000 before:1794236400 -in:sent -in:drafts",
+      "interval_hours": 24.0
+    }
+  ],
+  "ml_stage_status": {
+    "candidates_available": 9,
+    "needs_review": 1,
+    "conversation_requires_planner": 5
+  },
+  "transport_failures": [],
+  "call_count_note": "trace record count, not total server inferences; use separate accounting for verified returned responses"
+}

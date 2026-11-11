@@ -68,11 +68,12 @@ class Schedules:
         # Adapt legacy reservations once, before entering any execution/save transaction.
         from workflow_engine.scheduling.policy import WORKFLOW_TIMEZONE, fixed_schedule
         rows=self.db.execute('SELECT agent_id,json FROM builder_schedules WHERE {ws}').fetchall()
-        if any(json.loads(body).get('spec',{}).get('timezone')!=WORKFLOW_TIMEZONE for _,body in rows):
+        if any(not json.loads(body).get('removed') and json.loads(body).get('spec',{}).get('timezone')!=WORKFLOW_TIMEZONE for _,body in rows):
             self.storage.begin_write()
             try:
                 for agent_id,body in self.db.execute('SELECT agent_id,json FROM builder_schedules WHERE {ws}').fetchall():
                     reservation=json.loads(body)
+                    if reservation.get('removed'):continue
                     if reservation.get('spec',{}).get('timezone')==WORKFLOW_TIMEZONE:continue
                     reservation['spec']=fixed_schedule(reservation['spec'])
                     next_at=next_occurrence(reservation['spec'])
@@ -168,7 +169,9 @@ class Schedules:
         self.storage.agent(agent_id)
         self.storage.begin_write()
         try:
-            self.db.execute('DELETE FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,))
+            marker={'agent_id':agent_id,'removed':True,'removed_at':now()}
+            self.db.execute('INSERT INTO builder_schedules({wsc}agent_id,json,next_at,active) VALUES({wsv}?,?,NULL,0) ON CONFLICT({wsc}agent_id) DO UPDATE SET json=excluded.json,next_at=NULL,active=0',
+                            (agent_id,json.dumps(marker,ensure_ascii=False)))
             self.db.execute('DELETE FROM builder_data_sources WHERE {ws} AND agent_id=?',(agent_id,))
             for job_id,body in self.db.execute("SELECT id,json FROM builder_schedule_jobs WHERE {ws} AND agent_id=? AND state='queued'",(agent_id,)).fetchall():
                 job=json.loads(body)
@@ -182,12 +185,18 @@ class Schedules:
     def get(self,agent_id):
         row=self.db.execute('SELECT json,next_at,active FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
         if not row:return None
-        return {**json.loads(row[0]),'next_run_at':row[1],'active':bool(row[2])}
+        data=json.loads(row[0])
+        if data.get('removed'):return None
+        return {**data,'next_run_at':row[1],'active':bool(row[2])}
+    def was_removed(self,agent_id):
+        row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
+        return bool(row and json.loads(row[0]).get('removed'))
     def advance_version(self,agent_id,previous_version,version):
         """Move a schedule to a name-only revision without changing its next slot."""
         row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
         if row:
             data=json.loads(row[0])
+            if data.get('removed'):return
             if data['agent_version']==previous_version:
                 data['agent_version']=version
                 self.db.execute('UPDATE builder_schedules SET json=? WHERE {ws} AND agent_id=?',

@@ -50,7 +50,7 @@ def _timed_node(name, fn):
         return {**result, 'trace': trace}
     return run
 
-def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None,requirement_transport=None,requirement_mode=None):
+def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None,requirement_transport=None,requirement_mode=None,meaning_transport=None):
     connection=checkpoint_connection(storage)
     saver=checkpointer(connection)
     graph=StateGraph(BuilderState)
@@ -89,20 +89,29 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         from agent_builder.design.receipt_intake import receipt_intake
         return receipt_intake(state) or missing_attachment_reply(state) or document_rows_cancel_reply(state)
     def attachment_gate(state):
+        from agent_builder.design.temporal_context import ensure_temporal_context
+        zone = getattr(storage, 'request_timezone', None)
+        incoming = {'user_timezone': zone} if zone is not None else {}
+        clock = {**incoming, **ensure_temporal_context({**state, **incoming})}
+        state = {**state, **clock}
         quick=quick_reply(state)
         if quick:
-            return {'status':'needs_clarification','issues':[],'semantic_issues':[],'pending_questions':[],
+            return {**clock,'status':'needs_clarification','issues':[],'semantic_issues':[],'pending_questions':[],
                     'condition_enforced':False,'attachment_route':'ask',**quick}
         if any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
             from agent_builder.design.receipt_workbook import receipt_workbook
             workbook=receipt_workbook(state)
             if workbook:
-                return {**workbook, 'attachment_route':'validate'}
-            return {'pending_questions':[],'attachment_route':'continue'}
-        return {'attachment_route':'continue'}
+                return {**clock, **workbook, 'attachment_route':'validate'}
+            return {**clock,'pending_questions':[],'attachment_route':'continue'}
+        return {**clock,'attachment_route':'continue'}
     add('attachment_gate',attachment_gate)
-    graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'capability_check','validate':'validate'})
-    add('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode,error_observer=observed_error)))
+    from agent_builder.design.request_meaning import make_meaning_node
+    add('request_meaning',_timed_node('request_meaning',make_meaning_node(model,api_key,meaning_transport,
+        enabled=conversation is None or meaning_transport is not None, capability_mode=capability_mode)))
+    graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'request_meaning','validate':'validate'})
+    graph.add_edge('request_meaning','capability_check')
+    add('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode,error_observer=observed_error,api_key=api_key)))
     add('await_capability',await_capability_node)
     add('generation_gate',generation_gate)
     add('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode,error_observer=observed_error)))
@@ -124,6 +133,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         from agent_builder.conditions.condition_readiness import literal_condition_issues, explicit_policies, source_catalog
         from copy import deepcopy
         if literal_condition_issues(state):
+            if state.get('requirement_required'):
+                raise ValueError('확정 조건과 사용자 원문이 달라 업무 요구사항을 다시 검증해야 합니다.')
             ledger=deepcopy(state['condition_ledger'])
             literals=explicit_policies(state,source_catalog(state)[0])
             for key,item in literals.items():
@@ -153,7 +164,7 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_edge('await_capability','attachment_gate')
     graph.add_conditional_edges('generation_gate',lambda s:s['capability_generation_route'],{'generate':'conversation','recheck':'capability_check'})
     graph.add_conditional_edges('condition_check',lambda s:s['condition_route'],{'conversation':'requirements','template_plan':'requirements','supervisor':'supervisor','stop':END})
-    graph.add_conditional_edges('requirements',lambda s:s['requirement_route'],{'plan':'generation_gate','template':'template_plan','ask':'await_input','stop':END})
+    graph.add_conditional_edges('requirements',lambda s:s['requirement_route'],{'plan':'generation_gate','template':'template_plan','ask':'await_input','await_input':'await_input','stop':END})
     graph.add_conditional_edges('template_plan',lambda s:s['condition_route'],{'audit':'condition_audit','stop':END})
     graph.add_edge('conversation','condition_audit');graph.add_edge('condition_audit','validate');graph.add_edge('validate','verification');graph.add_edge('verification','supervisor')
     graph.add_conditional_edges('supervisor',lambda s:s['route'],{'unsupported':'tool_gap','invalid':END,'repair':'generation_gate','await_input':'await_input','await_approval':'await_approval','save':'save'})

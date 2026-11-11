@@ -130,6 +130,13 @@ def _matches(spec,node,draft,sources):
             formula=settings.get('calculation_formula');column=settings.get('output_column')
         else:return False
         return column==spec['output_column'] and _formula(formula)==_formula(spec['formula'])
+    if kind=='scalar_calculate':
+        if tool!='scalar_calculate' or operation!='evaluate' or node['bindings']:return False
+        if set(args)!={'formula','variables'}:return False
+        variables=args.get('variables')
+        if (not isinstance(variables,dict) or set(variables)!=set(spec['variables'])
+                or any(type(v) not in (int,float) for v in variables.values())):return False
+        return variables==spec['variables'] and _formula(args.get('formula'))==_formula(spec['formula'])
     if kind=='parse_dates':
         if tool!='calculate_columns':return False
         if operation=='parse_dates':
@@ -198,8 +205,12 @@ def _matches(spec,node,draft,sources):
     return False
 
 
+def coverage_enabled(state):
+    return bool(state.get('requirement_required') or os.getenv('A4B_REQUIREMENT_MODE', 'off') == 'enforce')
+
+
 def coverage_report(state,draft):
-    if not state.get('requirement_required') and os.getenv('A4B_REQUIREMENT_MODE','off')!='enforce':
+    if not coverage_enabled(state):
         return dict(enabled=False,issues=[],tasks=[])
     problems=[]
     ledger=state.get('requirement_ledger')
@@ -210,8 +221,8 @@ def coverage_report(state,draft):
             raise ValueError('요구사항 목록이 추출 후 변경됐습니다.')
         plan=validate_plan(ledger,state)
         if plan['unresolved']:
-            raise ValueError(' / '.join(question['text'] if isinstance(question,dict) else question
-                                       for question in plan['unresolved']))
+            questions = [item['text'] if isinstance(item, dict) else item for item in plan['unresolved']]
+            raise ValueError(' / '.join(questions))
     except (ValueError,TypeError,KeyError) as error:
         return dict(enabled=True,tasks=[],issues=['요구사항 검증: 원문·자료에 맞는 업무 목록을 다시 확인해야 합니다. '+str(error)])
     workflow=draft.get('workflow') or {};nodes={n['id']:n for n in workflow.get('nodes',[])}
@@ -287,5 +298,4 @@ def requirement_issues(state,draft):
     # executable configuration, even when semantic ledger checking is disabled.
     if draft.get('questions') or draft.get('unsupported'):
         return ['요구사항 검증: 질문·미지원이 남은 초안은 승인하거나 저장할 수 없습니다.']
-    if not state.get('requirement_required') and os.getenv('A4B_REQUIREMENT_MODE','off')!='enforce':return []
     return coverage_report(state,draft)['issues']

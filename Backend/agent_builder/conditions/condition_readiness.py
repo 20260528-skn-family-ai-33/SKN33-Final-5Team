@@ -499,7 +499,7 @@ def policy_clauses(text, columns):
             if re.search(_DUP_VAGUE, segment):
                 out.append((key, 'conflict', segment.strip())); continue
             found, negated = _acts(segment, _DUP_ORDER)
-            retention = re.search(r'남(?:겨|기|김)|유지|보존', segment)
+            retention = re.search(r'남(?:겨|기|김)|유지|보존|행(?:만|을)?\s*(?:CSV|JSON)?\s*(?:으로|로)?\s*저장(?!\s*(?:하지|안|못))', segment, re.I)
             if found and not retention:
                 if not re.search(r'삭제|제외|지우|지워|제거|빼', segment):
                     continue  # An incomplete/other verb is left to the model, not guessed.
@@ -599,7 +599,7 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
                                  'value': None if conflict else value, 'evidence_ids': [refs[0]['id']],
                                  'evidence': [refs[0]], 'extraction': 'literal_policy_rule'}
         in_schedule = 'schedule.frequency' in result or 'schedule' in (state.get('condition_ledger') or {}).get('operations', [])
-        for key, value, span in schedule_literals(text, follow_up=in_schedule):
+        for key, value, span in _schedule_evidence(text, follow_up=in_schedule):
             refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user' and span in e['quote']]
             if not refs: continue
             conflict = value == 'conflict'
@@ -666,6 +666,13 @@ def literal_condition_issues(state):
         stored=(ledger.get('slots') or {}).get(key)
         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
             issues.append(f'{key}: 저장된 조건이 사용자 원문과 달라 재판정이 필요합니다.')
+    for key, stored in (ledger.get('slots') or {}).items():
+        literal = literals.get(key, {})
+        if (stored.get('status') == 'specified'
+                and not (literal.get('status') == 'specified' and literal.get('value') == stored.get('value'))
+                and not _grounded_enum(key, stored.get('value'),
+                    '\n'.join(e['quote'] for e in stored.get('evidence', [])), state, stored.get('evidence', []))):
+            issues.append(f'{key}: 저장된 확정 값의 명시적 근거를 다시 확인해야 합니다.')
     return issues
 
 
@@ -771,7 +778,9 @@ def schedule_literals(text, follow_up=False):
             if period and hour>12:continue
             if period in ('오후','저녁','밤') and hour<12:hour+=12
             elif period in ('오전','아침','새벽') and hour==12:hour=0
-            add('schedule.hour',hour,m.group(0));add('schedule.minute',minute,m.group(0))
+            negated=bool(_SCHEDULE_NEGATED.match(text[m.end():m.end()+12]))
+            add('schedule.hour','conflict' if negated else hour,m.group(0))
+            add('schedule.minute','conflict' if negated else minute,m.group(0))
         for m in re.finditer(r'정오|자정',text):
             if task_clock(m):continue
             add('schedule.hour',12 if m.group(0)=='정오' else 0,m.group(0))
@@ -785,6 +794,30 @@ def schedule_literals(text, follow_up=False):
         except (ZoneInfoNotFoundError, ValueError):continue
         add('schedule.timezone', m.group(0), m.group(0))
     return [(key, value, span) for key, (value, span) in found.items()]
+
+
+def _schedule_evidence(text, *, follow_up):
+    """An established schedule does not turn every subsequent date into an edit."""
+    if not follow_up:
+        return schedule_literals(text)
+    result = []
+    for clause in re.split(r'[.!?\n;]|,\s+|그리고\s+', text):
+        literals = schedule_literals(clause, follow_up=True)
+        if not literals:
+            continue
+        if (any(key == 'schedule.frequency' for key, _, _ in literals)
+                or re.search(r'(?:예약|실행\s*(?:시각|시간|일시|요일|일정)|실행해|실행하)', clause)):
+            result.extend(literals)
+            continue
+        # An elliptical date/time answer is meaningful on its own. An
+        # unrelated title, filename or filter containing that date is not.
+        rest = clause
+        for span in sorted({span for _, _, span in literals}, key=len, reverse=True):
+            rest = rest.replace(span, '')
+        if re.fullmatch(r'(?:\s|요일|시간대|시간|시각|주기|정각|정시|마다|부터|에|으로|로|은|는|을|를|'
+                        r'대신|말고|바꿔|바꾸|변경|수정|설정|하자|해|줘|주세요|할게요|이요|요|입니다)*', rest):
+            result.extend(literals)
+    return result
 
 
 def _excludes_named_range(text, end):
@@ -968,7 +1001,44 @@ def written_comparison_issues(state, draft):
     return list(dict.fromkeys(issue for _, _, issue in _draft_comparison_mismatches(state, draft)))
 
 
-def _grounded_enum(key, value, quote):
+def _scoped_answer(key, value, state, evidence):
+    """Short replies need an actual question/answer event, also after reopening."""
+    messages = state.get('messages', [])
+    for ref in evidence:
+        turn = ref.get('turn', -1)
+        if ref.get('source_id') != 'user' or not 0 <= turn < len(messages):
+            continue
+        text = messages[turn]['content'].strip().rstrip('.!?。')
+        if messages[turn]['role'] != 'user' or ref.get('quote', '') not in messages[turn]['content']:
+            continue
+        event = next((event for event in state.get('condition_answers', [])
+                      if event.get('turn') == turn and event.get('answer') == messages[turn]['content']
+                      and event.get('question_ids') and key in event.get('candidate_keys', [])), None)
+        pending = [q for q in state.get('pending_questions', []) if q.get('key') == key]
+        # Older callers do not record events; a current pending question still
+        # supplies context, but only for a new user turn after that ledger.
+        current = (turn == len(messages) - 1 and pending
+                   and turn > (state.get('condition_ledger') or {}).get('validated_user_turn', -1)
+                   and not any(e.get('turn') == turn for e in state.get('condition_answers', [])))
+        if not event and not current:
+            continue
+        if key == 'duplicate.policy':
+            labels = CHOICES[key]
+            if labels.get(text) == value:
+                return True
+            match = re.fullmatch(r'(첫|마지막)\s*행(?:만)?\s*(?:(?:으로|로)\s*)?(?:남겨(?:줘)?|남김|남기기|해줘)?', text)
+            if match and value == ('first' if match[1] == '첫' else 'last'):
+                return True
+        if key == 'schedule.minute':
+            match = re.fullmatch(r'(\d{1,2})\s*분(?:으로|에|요)?', text)
+            if match and int(match[1]) == value and 0 <= value <= 59:
+                return True
+            if text in ('정각', '정시') and value == 0:
+                return True
+    return False
+
+
+def _grounded_enum(key, value, quote, state=None, evidence=()):
     """Check narrow literal meanings, not just the existence of an evidence ID.
 
     Unknown paraphrases remain unresolved. The model may ask rather than turn
@@ -979,6 +1049,17 @@ def _grounded_enum(key, value, quote):
     if key == 'missing.policy':
         policy={'exclude':r'제외|빼|삭제','keep':r'유지|포함|그대로','error':r'오류|에러|중단'}[value]
         return bool(re.search(r'(?:빈\s*(?:값|[가-힣A-Za-z_][가-힣A-Za-z0-9_]*?)|결측(?:치|값)?).{0,20}(?:'+policy+r')',quote))
+    if key == 'duplicate.policy':
+        columns = {col for resource in (state or {}).get('resources', [])
+                   for col in resource.get('columns', []) if isinstance(col, str)}
+        # A named duplicate key may be supplied before a table is connected.
+        columns.update(re.findall(r'([\w]+?)(?:이|가)\s*(?:같(?:은|으면)|겹치)', quote))
+        written = [policy for slot, policy, _ in policy_clauses(quote, columns) if slot == key]
+        return (bool(written) and all(policy == value for policy in written)
+                or bool(state and _scoped_answer(key, value, state, evidence)))
+    if key in ('schedule.hour', 'schedule.minute'):
+        return (any(slot == key and written == value for slot, written, _ in schedule_literals(quote, follow_up=True))
+                or bool(state and _scoped_answer(key, value, state, evidence)))
     if key == 'schedule.frequency':
         # Live 2026-11-03: "매월 1일 오전 9시에…" was confirmed as weekly. The written recurrence must
         # match; a monthly/yearly one never grounds daily or weekly.
@@ -993,6 +1074,55 @@ def _grounded_enum(key, value, quote):
         if value in ('gt', 'gte', 'lt', 'lte') and any(_excludes_named_range(quote, m.end()) for m in matches):
             return False
         return bool(matches)
+    return True
+
+
+def _duplicate_only_request(state, slots):
+    """Prove a narrow duplicate-only request; unexplained text keeps filter.
+
+    This repairs a mislabeled operation, not a missing semantic extraction.
+    Removing only bounded, understood instruction fragments leaves any other
+    selection clause visible, even when the model omitted every filter slot.
+    """
+    users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
+    field = slots.get('duplicate.field', {}).get('value')
+    policy = slots.get('duplicate.policy', {}).get('value')
+    if len(users) != 1 or not field or policy not in ('first', 'last'):
+        return False
+    order = '첫' if policy == 'first' else '마지막'
+    duplicate = (re.escape(field) + r'\s*(?:열\s*)?(?:이|가|은|는|의)?\s*중복\s*'
+                 r'(?:인\s*행\s*)?(?:이면|이라면|인\s*경우|이\s*있으면|은|을)?\s*' + order +
+                 r'\s*행\s*(?:만|을)?\s*(?:남겨|남기|유지)')
+    remainder, count = re.subn(duplicate, ' ', users[0])
+    if count != 1:
+        return False
+    fragments = [
+        r'(?:연결(?:한|된)|첨부(?:한|된))?\s*(?:표|자료|파일)\s*(?:에서|의|을|를)?',
+        r'(?:CSV|JSON)\s*(?:파일\s*)?(?:으로|로)\s*저장',
+        r'빈\s*(?:값|칸|셀|행)\s*(?:은|는|이|가|도)?\s*(?:오류|에러|유지|제외)\s*(?:으로|로)?\s*(?:처리)?',
+    ]
+    for pattern in fragments:
+        remainder = re.sub(pattern, ' ', remainder, flags=re.I)
+    return bool(re.fullmatch(r'(?:[\s.,;!?]|해주세요|해줘|해|줘|요|하고|해서|고|서)*', remainder))
+
+
+def _amends_confirmed_slot(key, previous, state, latest):
+    messages = state.get('messages', [])
+    if latest < 0 or latest <= previous['validated_user_turn']:
+        return False
+    text = messages[latest]['content']
+    if any(event.get('turn') == latest and event.get('answer') == text
+           and key in event.get('candidate_keys', []) for event in state.get('condition_answers', [])):
+        return True
+    if key.startswith('schedule.'):
+        return any(slot == key for slot, _, _ in _schedule_evidence(text, follow_up=True))
+    if key == 'filter.value':
+        old_field = previous['slots'].get('filter.field', {}).get('value')
+        return bool(re.search(r'(?:기준(?:값|액|점)?|임계값|문턱값|선별|조건|필터)\s*(?:은|는|을|를|이|가)?\s*[-+]?\d|'
+                              r'\d[\d,.]*\s*(?:천|백|만|억)*\s*(?:원|점|건|명|개|kg|%)?\s*(?:초과|이상|미만|이하)|'
+                              r'(?:초과|이상|미만|이하)\s*[-+]?\d', text)
+                    or old_field and re.search(re.escape(old_field) + r'\s*(?:열|값|기준)?\s*(?:은|는|을|를|이|가)?\s*[-+]?\d', text)
+                    or re.fullmatch(r'\s*[-+]?\d[\d,.]*\s*(?:천|백|만|억)?\s*(?:원|점|건|명|개|kg|%)?\s*(?:으로|로)\s*(?:바꿔|변경|수정|해줘).*', text))
     return True
 
 
@@ -1041,7 +1171,7 @@ def validate_conditions(raw, state, catalog):
         previous['slots'] = {key:item for key,item in previous.get('slots', {}).items()
                              if not key.startswith('schedule.')}
     for key, old in previous.get('slots', {}).items():
-        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', []))):
+        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', [])), state, old.get('evidence', [])):
             old.update(status='missing', value=None, evidence_ids=[], evidence=[])
             invalid.append(f'{key}: 이전 확정 값의 원문 근거를 재검증')
     latest = max((i for i, m in enumerate(state.get('messages', [])) if m['role'] == 'user'), default=-1)
@@ -1060,7 +1190,7 @@ def validate_conditions(raw, state, catalog):
             try:
                 value = _value(key, condition['value'])
                 quote = '\n'.join(e['quote'] for e in evidence)
-                if not _grounded_enum(key, value, quote):
+                if not _grounded_enum(key, value, quote, state, evidence):
                     raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
                 if key.endswith('.field') and value not in quote:
                     raise ValueError('원문에 없는 열 이름입니다.')
@@ -1129,6 +1259,23 @@ def validate_conditions(raw, state, catalog):
         else:
             slots['filter.value'] = {'key': 'filter.value', 'status': 'missing', 'value': None,
                                      'evidence_ids': [], 'evidence': []}
+    # A number in a different new instruction is not a threshold revision.
+    # Restore the validated evidence as well as the value.
+    if (previous.get('decision') == 'ready' and previous.get('validation_digest')
+            and previous['validation_digest'] == condition_digest(previous)):
+        for key, old in previous['slots'].items():
+            item = slots.get(key)
+            if (old.get('status') == 'specified' and item and
+                    (item.get('value'), item.get('status')) != (old['value'], 'specified')):
+                edit_turns = {e['turn'] for e in item.get('evidence', [])
+                              if e.get('source_id') == 'user' and e.get('turn', -1) > accepted_turn}
+                # A stale model citation cannot confirm a replacement value.
+                # An explicit new edit can nevertheless make the old value
+                # uncertain. A later generic retry may cite the real edit.
+                if item.get('status') == 'conflict' and (key == 'filter.value' or key.startswith('schedule.')):
+                    edit_turns.add(latest)
+                if not any(_amends_confirmed_slot(key, previous, state, turn) for turn in edit_turns):
+                    slots[key] = deepcopy(old)
     # The model may return filter.value before filter.field. Validate after
     # both slots are known so its proposal uses the executor's column unit.
     issue = _threshold_evidence_issue(slots, state)
@@ -1136,6 +1283,16 @@ def validate_conditions(raw, state, catalog):
         slots['filter.value'].update(status='missing', value=None)
         invalid.append(issue)
     operations = list(dict.fromkeys(proposal['operations'] + previous.get('operations', [])))
+    user_text = '\n'.join(m['content'] for m in state.get('messages', []) if m['role'] == 'user')
+    if ('filter' in operations and not any(key.startswith('filter.') for key in slots)
+            and 'duplicate.policy' in literals
+            and literals['duplicate.policy'].get('value') in ('first', 'last', 'error')
+            and _duplicate_only_request(state, slots)):
+        # A duplicate-only proposal can be mislabeled filter. Never remove a
+        # real, even incomplete filter or any filter retained in a checkpoint.
+        operations.remove('filter')
+        if 'deduplicate' not in operations:
+            operations.append('deduplicate')
     # A follow-up may focus on deduplication and omit the earlier filter from
     # the model's single-operation label. Preserve it whenever its three
     # individually grounded slots still exist; do not synthesize missing values.
@@ -1201,7 +1358,11 @@ def validate_conditions(raw, state, catalog):
     if slots.get('duplicate.policy',{}).get('value')=='keep':
         slots.pop('duplicate.field',None)
         operations=[op for op in operations if op!='deduplicate']
-    unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified']
+    policy_subjects = {'missing.policy': r'빈\s*(?:값|칸|셀|행)|빈\s+\S+|비어\s*있|결측|누락|값이\s*없',
+                       'duplicate.policy': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치'}
+    unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified'
+                  and not (slot['status'] == 'missing' and key in policy_subjects and key not in required
+                           and not re.search(policy_subjects[key], user_text))]
     needs_table = 'schedule' in operations and not any(r.get('kind') == 'table' for r in state.get('resources', []))
     if needs_table:
         unresolved.append('input.table')
@@ -1221,9 +1382,13 @@ def validate_conditions(raw, state, catalog):
                            'versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}, sort_keys=True, ensure_ascii=False)
     questions = []
     if decision in ('clarify', 'deferred'):
-        for key in unresolved[:3]:
+        grouped_time = {'schedule.hour', 'schedule.minute'} <= set(unresolved)
+        question_keys = list(dict.fromkeys('schedule.hour' if grouped_time and key == 'schedule.minute' else key
+                                          for key in unresolved))
+        for key in question_keys[:2]:
             text = ('예약에는 지금 관리 표 파일이 필요합니다. 자료 연결로 업로드해주세요.' if key == 'input.table' else
-                    ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') + QUESTIONS[key])
+                    ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') +
+                    ('몇 시 몇 분에 실행할까요? 오전·오후도 함께 알려주세요.' if grouped_time and key == 'schedule.hour' else QUESTIONS[key]))
             if key == 'filter.value' and amount and amount.get('issue'):
                 text = amount['issue']
             is_resolution = resolution and key in resolution['keys']
@@ -1231,13 +1396,71 @@ def validate_conditions(raw, state, catalog):
                               'text': resolution_question(key, resolution, text) if is_resolution else text,
                               'options': (resolution_options(state) if not resolution['deferred'] else []) if is_resolution
                                          else [] if key == 'input.table' else choice_options(key, state)})
-    return {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
+    ledger = {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
             'outside_scope': outside_scope and decision == 'manual_review' and not cancelled and resolution is None,
             'unresolved': unresolved, 'questions': questions, 'issues': issues,
             'resolution': resolution,
             'validated_user_turn': accepted_turn if issues else latest,
             'invalid_values': invalid, 'unsupported_actions': proposal['unsupported_actions'],
             'resource_versions': {r['id']: resource_version(r) for r in state.get('resources', [])}}
+    if decision == 'ready':
+        ledger['validation_digest'] = condition_digest(ledger)
+    return ledger
+
+
+def condition_digest(ledger):
+    """Seal the typed interpretation and its evidence in the existing checkpoint."""
+    fields = ('protocol', 'decision', 'operations', 'slots', 'validated_user_turn',
+              'resource_versions', 'unresolved', 'issues', 'unsupported_actions')
+    data = {field: ledger.get(field) for field in fields}
+    return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False,
+                                     allow_nan=False).encode()).hexdigest()
+
+
+def confirmed_condition_view(state):
+    """A read-only projection. Old v8 checkpoints can prove the same slots again."""
+    ledger = state.get('condition_ledger') or {}
+    if not state.get('condition_enforced') or ledger.get('decision') != 'ready':
+        return None
+    messages = state.get('messages', [])
+    user_turns = [index for index, message in enumerate(messages) if message['role'] == 'user']
+    if (not user_turns or ledger.get('protocol') != PROTOCOL or ledger.get('issues')
+            or ledger.get('unresolved') or ledger.get('unsupported_actions')
+            or ledger.get('validated_user_turn') != user_turns[-1]
+            or ledger.get('resource_versions') != {r['id']: resource_version(r) for r in state.get('resources', [])}):
+        return None
+    digest = condition_digest(ledger)
+    if ledger.get('validation_digest', digest) != digest:
+        return None
+    catalog = source_catalog(state)[0]
+    by_id = {entry['id']: entry for entry in catalog}
+    slots = {}
+    for key, item in ledger['slots'].items():
+        if item.get('status') != 'specified':
+            continue
+        ids = item.get('evidence_ids', [])
+        if (key=='schedule.timezone' and item.get('extraction')=='application_setting'
+                and item.get('value')=='Asia/Seoul' and ids==[] and item.get('evidence')==[]):
+            slots[key]={'value':'Asia/Seoul','source_message':0,'evidence_ids':[]}
+            continue
+        if not ids or any(ref not in by_id for ref in ids) or item.get('evidence') != [by_id[ref] for ref in ids]:
+            return None
+        # Resource evidence is linked to the initiating request if no user quotation
+        # is available. Retain all evidence IDs, including the resource version.
+        source = max((user_turns.index(e['turn']) for e in item['evidence'] if e.get('turn') in user_turns), default=0)
+        slots[key] = {'value': item['value'], 'source_message': source, 'evidence_ids': list(ids)}
+    if 'validation_digest' not in ledger:
+        # Legacy ledgers have no seal. Replay their typed values as candidates
+        # through the original validator. The original source catalog is authoritative.
+        candidates = [{'key': key, 'status': 'specified', 'evidence_ids': item['evidence_ids'],
+                       'value': str(item['value']).lower() if isinstance(item['value'], bool) else str(item['value'])}
+                      for key, item in slots.items() if item['evidence_ids']]
+        replay = validate_conditions({'operations': ledger['operations'], 'conditions': candidates, 'unsupported_actions': []},
+                                     {**state, 'condition_ledger': None}, catalog)
+        if (replay['decision'] != 'ready' or set(replay['operations']) != set(ledger['operations'])
+                or any(replay['slots'].get(k, {}).get('value') != v['value'] for k, v in slots.items())):
+            return None
+    return {'protocol': PROTOCOL, 'digest': digest, 'operations': list(ledger['operations']), 'slots': slots}
 
 
 def judge_conditions(state, transport, max_contract_repairs=0):
@@ -1279,7 +1502,7 @@ def judge_conditions(state, transport, max_contract_repairs=0):
                 'metrics': response.get('metrics', {}), 'attempts': attempts}
 
 
-def plan_issues(ledger, draft):
+def plan_issues(ledger, draft, *, state=None):
     """Check normalized conditions against generated execution settings."""
     if ledger.get('decision') != 'ready':
         return []
@@ -1304,7 +1527,19 @@ def plan_issues(ledger, draft):
         expected = {'field': slots.get('filter.field'), 'operator': slots.get('filter.operator'), 'value': value,
                     'value_type':'boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'text'}
         filters = [condition for plan in plans for condition in plan.get('filters', [])]
-        if len(filters) != 1:
+        from agent_builder.design.condition_requirements import additional_row_predicates
+        from agent_builder.design.requirement_coverage import _same_filters
+        try:
+            additions = additional_row_predicates(state, expected['field']) if state else []
+        except ValueError as error:
+            problems.append(str(error))
+            additions = []
+        if additions:
+            requested = [dict(expected, compare_field=None)] + [item for _, item in additions]
+            if (len(filters) != len(requested) or not any(_same_filters(
+                    plan.get('filters', []), requested, plan.get('match'), 'all') for plan in plans)):
+                problems.append('원문에 명시된 복합 선별 조건이 모두 같은 표의 행에 적용되어야 합니다.')
+        elif len(filters) != 1:
             problems.append('단일 선별 계약에 없는 추가 선별 조건이 있거나 조건이 누락됐습니다.')
         if not any(all(condition.get(k) == v for k, v in expected.items()) and not condition.get('compare_field') for condition in filters):
             problems.append('확정된 선별 열·비교·기준 값이 실행 설정과 다릅니다.')

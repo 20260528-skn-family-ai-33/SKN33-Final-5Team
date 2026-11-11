@@ -78,6 +78,12 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
 
  const [agents,setAgents]=useState<Agent[]>([]),[credentialId,setCredentialId]=useState(''),[model,setModel]=useState('');
  const [session,setSession]=useState<Session|null>(null),[selected,setSelected]=useState<Agent|null>(null),[agentResources,setAgentResources]=useState<Resource[]>([]),[text,setText]=useState(initialPrompt ?? ''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+ useEffect(()=>{
+  if(initialPrompt!==undefined&&window.history.state?.initialPrompt===initialPrompt){
+   const {initialPrompt:consumed,...state}=window.history.state;
+   window.history.replaceState(state,'',location.href);
+  }
+ },[initialPrompt]);
  const [pendingMessage,setPendingMessage]=useState('');
  const [recovery,setRecovery]=useState<ConversationRecovery|null>(null);
  const [initialLoadFailed,setInitialLoadFailed]=useState(false);
@@ -159,17 +165,21 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    if(token!==generation.current)return null;
    remember(latest);
    const matching=history.requests.filter(item=>item.session_revision===attempt.before.revision);
+   const outcome=matching.find(item=>item.action===attempt.action&&(attempt.action==='confirm'||item.request_text===attempt.content));
+   const appended=latest.messages.slice(attempt.before.messages.length);
+   const reusedInput=attempt.before.messages.at(-1)?.role==='user'&&attempt.before.messages.at(-1)?.content===attempt.content;
+   const completed=!!outcome&&['waiting_input','waiting_confirmation','succeeded'].includes(outcome.status);
    const delivered=attempt.action==='confirm'
     ? latest.status==='saved'&&!!latest.saved_agent_id
-    : latest.revision>attempt.before.revision&&latest.messages.slice(attempt.before.messages.length)
-      .some(message=>message.role==='user'&&message.content===attempt.content);
+    : latest.revision>attempt.before.revision&&(
+      appended.some(message=>message.role==='user'&&message.content===attempt.content)||
+      reusedInput&&completed&&appended.some(message=>message.role==='assistant'));
    // Session publication can complete before the audit record is finalized.
-   if(latest.revision<=attempt.before.revision&&!delivered&&matching.some(item=>item.status==='running')){
+   if(!delivered&&outcome?.status==='running'){
     setRecovery({...attempt,running:true});
     setError('서버에서 이전 요청을 처리하고 있습니다. 완료되면 대화를 갱신합니다.');
     return null;
    }
-   const outcome=matching.find(item=>item.action===attempt.action&&(attempt.action==='confirm'||item.request_text===attempt.content));
    if(attempt.fromComposer)setText(delivered?'':attempt.draftText??attempt.content??'');
    setRecovery(null);
    setError(outcome&&['failed','blocked'].includes(outcome.status)?outcome.reason||attempt.error:delivered?'':attempt.error);
@@ -384,7 +394,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  useEffect(()=>{onCanLeaveChange?.(canLeave);});
  function openDesignHome(){
   if(screen==='workflow'&&!selected)return;
-  if(canLeave())reset();
+  if(canLeave()){if(session&&!selected)go('workflow',true);else reset();}
  }
  function leave(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'){if(canLeave())onNavigate?.(next);}
  useEffect(()=>{

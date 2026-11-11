@@ -54,7 +54,7 @@ export default function EntryApp(){
  if(['nodes','workflow','run'].includes(route))return <AgentStudio key={navigationKey} initialPrompt={window.history.state?.initialPrompt} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('home')} onPreview={preview} onRoute={next=>navigate(next)}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
-  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next==='workflow')newFlow();else if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
+  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
    <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onOpen={id=>navigate('run',id)} onCreate={newFlow}/>:
     <WorkspaceHome route={route as 'home'|'workflows'|'history'} startExample={startExample} memberName={auth.user?.name?.trim()} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId)=>navigate(next,service,false,runId)} newFlow={newFlow}/>}
    </main>

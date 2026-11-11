@@ -700,7 +700,9 @@ test('DOM: startup API failure is visible on the node-library screen too',async(
  try{assert.match(document.querySelector('[role=alert]')?.textContent||'',/카탈로그 연결 오류/);}finally{await h.close();}
 });
 function readySession(){return {id:'ready',revision:1,status:'ready',base_version:0,messages:[{role:'user',content:'합계를 계산해줘'},{role:'assistant',content:'설정 확인'}],draft:{...A.config,explanation:'설정 확인'},resources:[],trace:[],issues:[]};}
-test('DOM: receipt clarification uploads a file and submits only chosen fields to its pending question',async()=>{
+const receiptBrowserOptions=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul'}).resolvedOptions();
+test('DOM: receipt clarification uploads a file and submits only chosen fields to its pending question',async t=>{
+ t.mock.method(Intl.DateTimeFormat.prototype,'resolvedOptions',()=>receiptBrowserOptions);
  const attach={id:'a'.repeat(24),key:'receipt.attachment',text:'영수증을 첨부해 주세요.',action:{type:'attach_receipt'}};
  const fields={id:'b'.repeat(24),key:'receipt.fields',text:'어떤 항목을 추출할까요?',action:{type:'select_fields',options:['날짜','상호명','결제 금액']}};
  function waiting(question:typeof attach,revision:number){
@@ -740,12 +742,13 @@ test('DOM: receipt clarification uploads a file and submits only chosen fields t
   await click(field('날짜'));await click(field('결제 금액'));await input(field('다른 항목 추가'),'승인번호');
   await click(button('선택한 항목으로 계속'));
   const answers=h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body);
-  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id,userTimezone:Intl.DateTimeFormat().resolvedOptions().timeZone}]);
+  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id,userTimezone:'Asia/Seoul'}]);
  }finally{await h.close();}
 });
 for(const [name,withSummary,itemColumns] of [
  ['items only',false,['상품코드','금액']],['summary only',true,[]],['summary and items',true,['상품코드','상품명','단가','수량','금액']],
-] as const) test('DOM: grounded Excel receipt submits '+name+' to the current question',async()=>{
+] as const) test('DOM: grounded Excel receipt submits '+name+' to the current question',async t=>{
+ t.mock.method(Intl.DateTimeFormat.prototype,'resolvedOptions',()=>receiptBrowserOptions);
  const columns=['상품코드','상품명','단가','수량','금액'];
  const question={id:'c'.repeat(24),key:'receipt.fields',text:'엑셀에 담을 항목을 선택해 주세요.',
   action:{type:'select_fields',options:['날짜','결제 금액','승인번호'],detected_fields:[{label:'날짜',value:'2010-03-24'},{label:'승인번호'}],
@@ -770,7 +773,7 @@ for(const [name,withSummary,itemColumns] of [
   await click(next);
   const lines=[...(withSummary?['영수증에서 추출할 항목: 날짜, 부가세']:[]),...(itemColumns.length?['영수증 품목 시트: '+itemColumns.join(', ')]:[])];
   assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body),
-   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n'),userTimezone:Intl.DateTimeFormat().resolvedOptions().timeZone}]);
+   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n'),userTimezone:'Asia/Seoul'}]);
  }finally{await h.close();}
 });
 test('DOM: reopened receipt session replaces only superseded question lines on the active turn',async()=>{
@@ -1325,7 +1328,8 @@ test('schedules: management opens the chosen workflow and leaving a pending list
   await click(button('예약 실행'));assert.match(document.body.textContent!,/불러오고/);
   await click(button('워크플로우'));
   await act(async()=>{waiting.resolve({workflows:scheduleFixtures()});await tick();});
-  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(document.querySelector('h1')?.textContent,'워크플로우 설계');
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(document.querySelector('h1')?.textContent,'일일 보고서');
+  assert.equal(localStorage.getItem('a4b-selected-agent'),'A');
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,0);assert.equal(h.calls.some(call=>call.body),false);
  }finally{waiting.resolve({workflows:[]});await h.close();}
 });
@@ -1656,7 +1660,7 @@ test('home: all sidebar destinations return to home and recent entries retain th
   assert.equal(location.search,'?screen=nodes');
   await goHome();
   const pages = {
-   workflow:'워크플로우 설계',workflows:'작업 라이브러리',schedules:'예약 실행',
+   workflow:'서비스 A',workflows:'작업 라이브러리',schedules:'예약 실행',
    history:'실행 기록',assets:'자료함',connections:'서비스 연결',
   };
   for (const [page,title] of Object.entries(pages)){
@@ -1794,6 +1798,65 @@ test('DOM: recovery polls a running request and enables the next answer after co
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,2200));await tick();});
   assert.match(document.body.textContent||'',/실행할 요일을 알려주세요/);
   assert.equal(composer.disabled,false);assert.equal(document.querySelector('[role="alert"]'),null);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
+ }finally{await h.close();}
+});
+
+
+test('review: workspace menu restores the conversation after visiting assets',async()=>{
+ const session=readySession();
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined,createElement(EntryApp));
+ try{
+  assert.match(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
+  await click(button('자료함'));await click(button('워크플로우'));
+  assert.equal(localStorage.getItem('a4b-builder-session'),'ready');
+  assert.match(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,0);
+ }finally{await h.close();}
+});
+
+test('review: home prompt is consumed once and does not reappear after remount',async()=>{
+ const prompt='매출 합계를 계산해줘';
+ const h=await setup('?screen=home',{},undefined,createElement(StrictMode,null,createElement(EntryApp)));
+ try{
+  localStorage.setItem('a4b-builder-session','previous-session');
+  localStorage.setItem('a4b-selected-agent','A');
+  await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,prompt);
+  await submit(document.querySelector('.overview-composer')!);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,prompt);
+  assert.equal(localStorage.getItem('a4b-builder-session'),null);
+  assert.equal(localStorage.getItem('a4b-selected-agent'),null);
+  assert.equal(window.history.state.initialPrompt,undefined);
+  assert.equal(typeof window.history.state.a4bIndex,'number');
+  window.confirm=()=>true;
+  await click(button('자료함'));await click(button('워크플로우'));
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,'');
+ }finally{await h.close();}
+});
+
+for(const status of ['waiting_input','waiting_confirmation','failed','running','unrelated','stale'])test('review: reused input recovery checks audit and revision: '+status,async()=>{
+ const prompt='마지막 행만 남겨줘';
+ const before={...readySession(),revision:2,status:'validation_failed',messages:[{role:'user',content:prompt}]};
+ const after={...before,revision:status==='stale'?2:3,status:'ready',messages:[...before.messages,{role:'assistant',content:'중복 처리 조건을 반영했습니다.'}]};
+ let committed=false,auditRunning=true;
+ const h=await setup('',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return committed?after:before;
+  if(path.endsWith('/message')){committed=true;throw Error('응답 연결 유실');}
+  if(path.includes('/generation_history'))return {requests:[{action:'message',session_revision:2,request_text:status==='unrelated'?'다른 요청':prompt,status:status==='stale'||status==='unrelated'?'waiting_confirmation':status==='running'&&!auditRunning?'waiting_confirmation':status}]};
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.closest('form')!);
+  assert.match(document.body.textContent||'',/중복 처리 조건을 반영했습니다/);
+  const delivered=['waiting_input','waiting_confirmation'].includes(status);
+  assert.equal(composer.value,delivered?'':prompt);
+  assert.equal(document.querySelector('[role="alert"]')===null,delivered);
+  if(status==='running'){
+   assert.equal(composer.disabled,true);
+   auditRunning=false;await click(button('대화 다시 불러오기'));
+   assert.equal(composer.value,'');assert.equal(composer.disabled,false);
+   assert.equal(document.querySelector('[role="alert"]'),null);
+  }
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
  }finally{await h.close();}
 });

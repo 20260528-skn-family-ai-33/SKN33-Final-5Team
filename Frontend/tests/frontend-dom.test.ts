@@ -740,7 +740,7 @@ test('DOM: receipt clarification uploads a file and submits only chosen fields t
   await click(field('날짜'));await click(field('결제 금액'));await input(field('다른 항목 추가'),'승인번호');
   await click(button('선택한 항목으로 계속'));
   const answers=h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body);
-  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id}]);
+  assert.deepEqual(answers,[{id:'ready',revision:2,content:'영수증에서 추출할 항목: 날짜, 결제 금액, 승인번호',questionId:fields.id,userTimezone:Intl.DateTimeFormat().resolvedOptions().timeZone}]);
  }finally{await h.close();}
 });
 for(const [name,withSummary,itemColumns] of [
@@ -770,7 +770,7 @@ for(const [name,withSummary,itemColumns] of [
   await click(next);
   const lines=[...(withSummary?['영수증에서 추출할 항목: 날짜, 부가세']:[]),...(itemColumns.length?['영수증 품목 시트: '+itemColumns.join(', ')]:[])];
   assert.deepEqual(h.calls.filter(c=>c.path.endsWith('/message')).map(c=>c.body),
-   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n')}]);
+   [{id:'ready',revision:1,questionId:question.id,content:lines.join('\n'),userTimezone:Intl.DateTimeFormat().resolvedOptions().timeZone}]);
  }finally{await h.close();}
 });
 test('DOM: reopened receipt session replaces only superseded question lines on the active turn',async()=>{

@@ -22,7 +22,7 @@ class Trace:
         self.policy=endpoint_policy(endpoint,allow_local_endpoint)
         self.host=self.policy['host'];self.provider=provider
         self.models={canonical_model(model,provider) for model in models}
-        self.max_calls=max_calls; self.calls=[]; self.stages=[]; self.stage='probe'
+        self.max_calls=max_calls; self.calls=[]; self.stages=[]; self.stage='probe'; self.turn_index=None
         self.on_change=lambda:None
         self.active_call=None;self.instrumentation_error=None
         self.secrets=[v for k,v in os.environ.items() if v and any(t in k.upper() for t in ('API_KEY','ACCESS_TOKEN','REFRESH_TOKEN','PASSWORD'))]
@@ -41,7 +41,7 @@ class Trace:
         if len(self.calls)>=self.max_calls: raise BudgetExceeded('Evaluation call budget exhausted')
         if self.models and canonical_model(model,self.provider) not in self.models:
             raise ValueError('Evaluation blocks an unselected model')
-        item={'stage':self.stage,'transport':transport,'requested_model':model,'actual_model':None,
+        item={'stage':self.stage,'turn_index':self.turn_index,'transport':transport,'requested_model':model,'actual_model':None,
               'kind':'live','status':'started','started_monotonic':time.monotonic(),
               'dispatch_state':'not_dispatched','http_dispatch_attempts':0,'http_responses_received':0,
               'model_response_observed':False,'request_settings':request_settings or {}}
@@ -79,13 +79,15 @@ class Trace:
     def installed(self):
         from langchain_core.language_models.chat_models import BaseChatModel
         import httpx
+        from openai import _base_client as sdk_client
         import agent_builder.design.graph as graph_module
         original_resolve=socket.getaddrinfo
         original_urlopen=urllib.request.urlopen
         original_generate=BaseChatModel._generate_with_cache
         original_timed=graph_module._timed_node
-        original_httpx_send=httpx.Client._send_single_request
-        original_async_send=httpx.AsyncClient._send_single_request
+        sdk_http = getattr(sdk_client, 'httpx2', None) or getattr(sdk_client, 'httpx', None)
+        if sdk_http is None:
+            raise RuntimeError('Cannot observe the installed OpenAI SDK HTTP transport')
         tracer=self
 
         def resolve(host,port,*args,**kwargs):
@@ -96,31 +98,44 @@ class Trace:
         def redirect(*args,**kwargs):
             raise OSError('Evaluation blocks HTTP redirects')
 
-        def httpx_send(client,request):
+        def sdk_call(request):
             assert_model_url(request.url,tracer.policy)
-            item=tracer.active_call if request.url.path.endswith('/chat/completions') else None
-            if item:tracer.dispatch(item)
-            response=original_httpx_send(client,request)
-            if item:item['http_responses_received']+=1
-            if response.is_redirect:
-                response.close()
-                raise OSError('Evaluation blocks HTTP redirects')
-            return response
+            if request.url.path == '/api/chat':
+                raise OSError('Native chat requires the observed Ollama transport')
+            if request.url.path != '/v1/chat/completions':
+                return None
+            if tracer.active_call is None:
+                raise OSError('SDK chat requires an active model call record')
+            tracer.dispatch(tracer.active_call)
+            return tracer.active_call
 
-        async def async_send(client,request):
-            assert_model_url(request.url,tracer.policy)
-            item=tracer.active_call if request.url.path.endswith('/chat/completions') else None
-            if item:tracer.dispatch(item)
-            response=await original_async_send(client,request)
-            if item:item['http_responses_received']+=1
-            if response.is_redirect:
-                await response.aclose()
-                raise OSError('Evaluation blocks HTTP redirects')
-            return response
+        def sync_hook(send):
+            def guarded(client, request):
+                item = sdk_call(request)
+                response = send(client, request)
+                if item: item['http_responses_received'] += 1
+                if response.is_redirect:
+                    response.close()
+                    raise OSError('Evaluation blocks HTTP redirects')
+                return response
+            return guarded
+
+        def async_hook(send):
+            async def guarded(client, request):
+                item = sdk_call(request)
+                response = await send(client, request)
+                if item: item['http_responses_received'] += 1
+                if response.is_redirect:
+                    await response.aclose()
+                    raise OSError('Evaluation blocks HTTP redirects')
+                return response
+            return guarded
 
         def urlopen(request,*args,**kwargs):
             url=request.full_url if hasattr(request,'full_url') else str(request)
             assert_model_url(url,tracer.policy)
+            if urlsplit(url).path == '/v1/chat/completions':
+                raise OSError('SDK chat requires the observed OpenAI transport')
             is_chat=urlsplit(url).path.endswith('/api/chat')
             body=json.loads(request.data) if is_chat else {}
             item=tracer.start('ollama_native',body.get('model'),{k:body[k] for k in ('think','stream','options') if k in body}) if is_chat else None
@@ -165,12 +180,22 @@ class Trace:
             def run(state):
                 previous=tracer.stage;tracer.stage=name
                 started=time.monotonic()
+                calls_before = len(tracer.calls)
+                ledger_keys = ('condition_ledger','condition_enforced','condition_required','condition_route',
+                               'requirement_ledger','requirement_fingerprint','requirement_digest','pending_questions')
+                observes_ledger = name in ('condition_check','requirements','condition_audit','validate')
+                before = sanitize({k:state[k] for k in ledger_keys if k in state},tracer.secrets) if observes_ledger else None
                 try:
                     result=wrapped(state)
                     fields=('request_meaning','capability_assessment','condition_ledger','requirement_ledger',
                             'pending_questions','status','draft','issues','semantic_issues','trace')
-                    tracer.stages.append(sanitize({'stage':name,'elapsed_seconds':time.monotonic()-started,
-                        'parsed_state':{k:result[k] for k in fields if isinstance(result,dict) and k in result}},tracer.secrets))
+                    observation={'stage':name,'turn_index':tracer.turn_index,'elapsed_seconds':time.monotonic()-started,
+                        'model_call_indices':list(range(calls_before,len(tracer.calls))),
+                        'parsed_state':{k:result[k] for k in fields if isinstance(result,dict) and k in result}}
+                    if observes_ledger:
+                        observation['ledger_before']=before
+                        observation['ledger_after']={**before,**{k:result[k] for k in ledger_keys if isinstance(result,dict) and k in result}}
+                    tracer.stages.append(sanitize(observation,tracer.secrets))
                     return result
                 finally:tracer.stage=previous
             return run
@@ -178,8 +203,12 @@ class Trace:
             stack.enter_context(patch.object(socket,'getaddrinfo',resolve))
             stack.enter_context(patch.object(urllib.request,'urlopen',urlopen))
             stack.enter_context(patch.object(urllib.request.HTTPRedirectHandler,'redirect_request',redirect))
-            stack.enter_context(patch.object(httpx.Client,'_send_single_request',httpx_send))
-            stack.enter_context(patch.object(httpx.AsyncClient,'_send_single_request',async_send))
+            # The installed SDK can use a distinct httpx2 module. Guard the
+            # actual SDK classes as well as application HTTPX clients, once each.
+            for cls in dict.fromkeys((httpx.Client, sdk_http.Client)):
+                stack.enter_context(patch.object(cls, '_send_single_request', sync_hook(cls._send_single_request)))
+            for cls in dict.fromkeys((httpx.AsyncClient, sdk_http.AsyncClient)):
+                stack.enter_context(patch.object(cls, '_send_single_request', async_hook(cls._send_single_request)))
             stack.enter_context(patch.object(BaseChatModel,'_generate_with_cache',generate))
             stack.enter_context(patch.object(graph_module,'_timed_node',timed))
             yield self

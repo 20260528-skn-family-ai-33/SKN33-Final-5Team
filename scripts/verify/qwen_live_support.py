@@ -34,16 +34,26 @@ def sanitize(value, secrets=()):
     return str(type(value).__name__)
 
 
-def validate_corpus(corpus, catalog):
+ORIGINAL_GOLD_SHA256 = 'e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da'
+
+
+def validate_corpus(corpus, catalog, profile='original-52', expected_gold_sha=None):
     copy = dict(corpus); claimed = copy.pop('gold_sha256')
     if digest(copy) != claimed: raise ValueError('Frozen gold digest mismatch')
-    minimum = dict(ready=10, clarify=10, temporal=8, multiturn=10, unsupported=5, composite=7)
     cases = corpus['cases']; ids = [c['id'] for c in cases]
     if len(ids) != len(set(ids)): raise ValueError('Duplicate case ID')
-    for group, count in minimum.items():
-        if sum(c['category']==group and c['eligible'] for c in cases)<count: raise ValueError('Insufficient category: '+group)
-    if sum(bool(c['answer_policy']) for c in cases if c['category']=='multiturn')<10:
-        raise ValueError('Ten clarification loops are required, not only revisions')
+    if profile == 'original-52':
+        if claimed != ORIGINAL_GOLD_SHA256 or len(cases) != 52:
+            raise ValueError('Original 52-case frozen gold digest mismatch')
+    elif profile == 'runpod-rebuild':
+        if not expected_gold_sha or claimed != expected_gold_sha or claimed == ORIGINAL_GOLD_SHA256:
+            raise ValueError('New corpus must match its independently frozen --expected-gold-sha')
+        if len(cases) < 30 or any(not c['eligible'] for c in cases):
+            raise ValueError('New corpus requires at least 30 eligible cases')
+        if any(c['split'] not in ('development', 'holdout') for c in cases):
+            raise ValueError('Unknown corpus split')
+    else:
+        raise ValueError('Unknown corpus profile')
     for case in cases:
         if not case['resource_state']['synthetic_only']: raise ValueError('Non-synthetic resource')
         if case['gold']['execution']['external_execution_allowed']: raise ValueError('External execution prohibited')

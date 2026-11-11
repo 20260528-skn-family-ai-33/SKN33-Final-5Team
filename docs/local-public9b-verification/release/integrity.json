@@ -1,0 +1,65 @@
+{
+  "application_sha256": "9bf4e43f381bee62e859d7bb9cb9ef7200b086df4ce883d940bbe734f3030b85",
+  "evaluation_harness_sha256": "b13dba529d7438fc8528e010f4afbc187240208b90a3ba44ecd6257b856f5fb3",
+  "frozen_corpora_rubrics_and_scorer_unchanged": true,
+  "cohorts": {
+    "legacy52": {
+      "measured_cases": 52,
+      "semantic_and_ledger_digest_checked": 52,
+      "aggregate_sha256": "6af36471b657ad2076c1dda4e4d84df2c94c92cae8b0135b2efedb1b7b5fcb15",
+      "code_only_cases": [
+        "R01",
+        "C06",
+        "T08"
+      ],
+      "verified_model_response_cases": 49,
+      "case_model_responses": 179,
+      "probe_model_responses": 1,
+      "gpu_residency_by_shard": [
+        [
+          {
+            "name": "a4b-public-qwen35-9b-32k:latest",
+            "digest": "dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df",
+            "context_length": 32768,
+            "size": 6914677142,
+            "size_vram": 5604082973
+          }
+        ]
+      ],
+      "synthetic_execution_eligible": 6,
+      "synthetic_execution_attempted": 5,
+      "synthetic_execution_exact_match": 5,
+      "terminal_statuses": {
+        "completed": 52
+      },
+      "external_executions": 0
+    },
+    "independent35": {
+      "measured_cases": 35,
+      "semantic_and_ledger_digest_checked": 35,
+      "aggregate_sha256": "228da82e93418a18d8b6865f49997a40da5a1f469c94059ce6e38172077eb18e",
+      "code_only_cases": [],
+      "verified_model_response_cases": 35,
+      "case_model_responses": 136,
+      "probe_model_responses": 1,
+      "gpu_residency_by_shard": [
+        [
+          {
+            "name": "a4b-public-qwen35-9b-32k:latest",
+            "digest": "dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df",
+            "context_length": 32768,
+            "size": 6914677142,
+            "size_vram": 5604082973
+          }
+        ]
+      ],
+      "synthetic_execution_eligible": 11,
+      "synthetic_execution_attempted": 2,
+      "synthetic_execution_exact_match": 2,
+      "terminal_statuses": {
+        "completed": 35
+      },
+      "external_executions": 0
+    }
+  }
+}

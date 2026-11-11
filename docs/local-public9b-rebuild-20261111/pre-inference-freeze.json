@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-11-11T06:53:31.797264+00:00",
+  "original_frozen_gold_sha256": "e939c051a940915c4061b45221e7f1353b8ce2157677d379ae193de13b1300da",
+  "holdout_frozen_gold_sha256": "93c821ded55570fda569ceb983f22fd2ebf8d6b8c7d395d445e68e4931bc7e35",
+  "historical_source_git": "75d46e20f239858f77e8db97571da07b6bdc4fac",
+  "cases": {
+    "original": 52,
+    "independent_holdout": 35
+  },
+  "eligible_holdout_routes": {
+    "READY": 20,
+    "CLARIFY": 11,
+    "UNSUPPORTED": 4
+  },
+  "independent_gold_origin": "docs\\runpod-custom-rebuild-20261111\\independent-evaluation-freeze.json",
+  "request_and_id_overlap": 0,
+  "catalog_validation": "passed",
+  "holdout_live_result_files_in_docs_before_implementation": [],
+  "corpora_and_rubric_bytes_sha256": {
+    "docs/qwen-live-evaluation-cases.json": "6c30fdf38df87452cc23ff6b5edbe6fe1e0e5bcacab5926610af392f7debc0de",
+    "docs/runpod-custom-rebuild-20261111/independent-evaluation-cases.json": "05924e51ed4df625b3b171a3dff6545d1ce04a222448e43765ba217052c0bb4e",
+    "docs/runpod-custom-rebuild-20261111/independent-evaluation-freeze.json": "048c8040444082a089d6befa361a00e7bf2ed6477c5bfe286801479b813cfbbc",
+    "docs/runpod-custom-rebuild-20261111/independent-evaluation-rubric.md": "45d95bba7c30f114cf9733d0e1786cc7c9743b99a5a7ca4c46de4c7c4c96a213",
+    "docs/runpod-custom-rebuild-20261111/metric-contract.md": "d2b116c094498eee1d8f175da3902f2442772e2a3f6c5569fa2fa5183cf2bf3b",
+    "docs/local-public9b-rebuild-20261111/evaluation-protocol.md": "c7f8fefce8ae514ab06b90df1843e8f8da9babdb3b52f2f57fa22b281446b78f",
+    "scripts/verify/score-qwen-reassessment.py": "3fba6ab6e2c2ab0afa32c79db7a8ba716ae359465a16a011b8f37de400757862"
+  },
+  "harness": {
+    "source_sha256": "8e9957a689103215497bfb8e718bedeed597b29f166a42519651388b7145b6c7",
+    "files": {
+      "verify-qwen-live-evaluation.py": "fc43b9ee9ea90d86a14b58faf602561c0ca4f8915febafe754c48535e0929a53",
+      "run-qwen-live-evaluation.mjs": "dcd6eec011851ac8d137316d6337581e326cb6b520cff377f7df096f7b145af9",
+      "qwen_live_trace.py": "40770af4b108ff4551e9703223369b2403a04411ec75af52689173f33891ab4d",
+      "qwen_live_support.py": "96db10ffb15fa3974fbd947b0ffaab223363857db681e1c269af1cfe52a25ca0",
+      "qwen_live_policy.py": "7a627aaf9df1bc54835eb35a602283233b04a5ee2dd47ed8724702d2068c7994",
+      "qwen_live_storage.py": "1d9f7edb427f6d7f44f123b6741b404221b05bcb88596a4dc54edae42a85d424",
+      "qwen-live-profiles.mjs": "13724b54b8212236ef84fb15c95fe1a29998ff874fb27d764601430ec78e1271",
+      "qwen-live-policy.mjs": "c303d066dba04919924356e6f7950bcb5257692606c0c661dc31ebd5cf1583e4"
+    }
+  }
+}

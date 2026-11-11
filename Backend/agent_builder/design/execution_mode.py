@@ -193,6 +193,12 @@ def validate_execution_mode(state, draft, questions):
         return []
     intent=infer_execution_intent(state)
     mode=intent['mode']
+    if ('execution_mode' not in state and 'include_schedule' not in state
+            and intent['source']=='default' and draft.get('schedule')):
+        # Saved configurations and source replacement predate creation-intent
+        # metadata. Their already persisted reservation is not a new model claim.
+        # New design sessions always include execution_mode, including None.
+        return []
     if mode == 'manual' and draft.get('schedule'):
         return ['현재 요청에는 실행 예약이 없습니다. schedule을 비우세요. 예약은 저장 후 예약 관리에서 추가할 수 있습니다.']
     if mode=='scheduled':

@@ -142,6 +142,14 @@ def test_native_schedule_uses_evidence_instead_of_a_model_default():
     assert not questions
 
 
+def test_legacy_saved_schedule_validation_preserves_the_persisted_configuration():
+    current=state('첨부 자료를 정리해줘.')
+    draft={'unsupported':[],'schedule':{'frequency':'daily','hour':10,'minute':30,'timezone':'Asia/Seoul','weekday':None}}
+    before=deepcopy(draft)
+    assert validate_execution_mode(current,draft,[])==[] and draft==before
+    assert validate_execution_mode({**current,'execution_mode':None},deepcopy(draft),[])
+
+
 def test_a_legacy_scheduled_choice_still_requests_only_missing_values():
     current=state('자료를 정리해줘.',execution_mode='scheduled')
     draft={'unsupported':[],'schedule':None};questions=[]

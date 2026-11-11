@@ -27,7 +27,15 @@ def test_literal_frequency_slots_match_written_hourly_and_monthly_requests(text,
     assert {key:value for key,value,_ in schedule_literals(text)} == expected
     result = ledger(text)
     assert result['decision'] == 'ready' and not result['unsupported_actions']
-    assert {key:slot['value'] for key,slot in result['slots'].items() if slot['status']=='specified'} == expected
+    assert {key:slot['value'] for key,slot in result['slots'].items() if slot['status']=='specified'} == {
+        **expected, 'schedule.timezone':'Asia/Seoul'}
+    assert result['questions'] == [] and result['unresolved'] == []
+    assert result['slots']['schedule.timezone'] == {
+        'key':'schedule.timezone','status':'specified','value':'Asia/Seoul',
+        'evidence_ids':[],'evidence':[],'extraction':'application_setting'}
+    for key in expected.keys() - {'schedule.timezone'}:
+        assert result['slots'][key]['evidence_ids'] == ['user:0:0']
+        assert result['slots'][key]['evidence'][0]['quote'] == text
 
 
 def test_hourly_asks_for_minute_but_never_for_an_hour():

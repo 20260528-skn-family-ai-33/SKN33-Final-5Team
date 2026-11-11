@@ -25,7 +25,8 @@ def graph():
 
 @pytest.mark.parametrize('preview', [False, True])
 def test_strict_clarification_accepts_a_preview_or_no_graph_without_mutation(preview):
-    raw = draft(questions=['기준은 얼마인가요?'], workflow=graph() if preview else None)
+    raw = draft(questions=['기준은 얼마인가요?'], workflow=graph() if preview else None,
+                question_responses=[{'type': 'number'}])
     raw['requirements'] = []
     before = deepcopy(raw)
     validate_generated_outcome(raw)
@@ -40,7 +41,8 @@ def test_strict_clarification_accepts_a_preview_or_no_graph_without_mutation(pre
     (None, ['기준은 얼마인가요?'], ['전송 도구가 없습니다.']),
 ])
 def test_preview_support_does_not_accept_empty_or_conflicting_outcomes(workflow, questions, unsupported):
-    raw = draft(questions=questions, unsupported=unsupported, workflow=workflow)
+    raw = draft(questions=questions, unsupported=unsupported, workflow=workflow,
+                question_responses=[{'type': 'number'} for _ in questions])
     raw['requirements'] = []
     with pytest.raises(DraftOutcomeError):
         validate_generated_outcome(raw)
@@ -50,7 +52,8 @@ def test_preview_support_does_not_accept_empty_or_conflicting_outcomes(workflow,
 def test_a_preview_keeps_graph_bounds_and_requires_a_real_question():
     source = AgentDraft.model_json_schema()
     source['$defs']['WorkflowDefinition']['properties']['nodes']['maxItems'] = 1
-    raw = draft(questions=['기준은 얼마인가요?'], workflow=graph())
+    raw = draft(questions=['기준은 얼마인가요?'], workflow=graph(),
+                question_responses=[{'type': 'number'}])
     raw['requirements'] = []
     schema = outcome_schema(source)
     assert Draft202012Validator(schema).is_valid(raw)
@@ -93,7 +96,8 @@ def test_ollama_preview_passes_actual_wire_schema_but_cannot_approve_or_save(mon
     first = {'tool': 'read_table', 'label': '표 읽기', 'settings': {'file_ids': [], 'node_ref': None}}
     workflow = ({'first_step': first, 'next_steps': []} if ordered else
                 {'entry': 'read', 'nodes': [{'id': 'read', **first, 'bindings': []}], 'edges': []})
-    raw = draft(questions=['기준은 얼마인가요?'], workflow=workflow)
+    raw = draft(questions=['기준은 얼마인가요?'], workflow=workflow,
+                question_responses=[{'type': 'number'}])
     calls = []
 
     def factory(**options):

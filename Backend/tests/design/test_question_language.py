@@ -19,7 +19,7 @@ def test_mixed_clock_wording_becomes_korean(text,expected):
 
 def test_existing_question_copies_are_corrected_without_changing_user_text_or_answer_identity():
     text='매일 몇 시几分에 실행할까요? (예: 09:00)'
-    state={'messages':[{'role':'user','content':'한자 열 時間도 원문으로 보존해줘.'},{'role':'assistant','content':'조건을 확인할게요.\n'+text}],
+    state={'execution_mode':'scheduled','messages':[{'role':'user','content':'한자 열 時間도 원문으로 보존해줘.'},{'role':'assistant','content':'조건을 확인할게요.\n'+text}],
            'draft':{'questions':[text],'question_options':[[]],'question_responses':[{'type':'time'}]},
            'pending_questions':[{'id':'1'*24,'key':'schedule.time','text':text,'response':{'type':'time'},'options':[]}]}
     original=deepcopy(state);projected=normalize_question_language(state)

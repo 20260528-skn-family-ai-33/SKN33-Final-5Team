@@ -577,7 +577,7 @@ def test_other_document_work_reaches_existing_item_clarification_in_enforce_mode
 
 
 @pytest.mark.parametrize(('operation', 'unsupported', 'text', 'expected'), [
-    ('mixed', [], '문서 요약과 표 선별을 함께 해줘.', 'validation_failed'),
+    ('mixed', [], '문서 요약과 표 선별을 함께 해줘.', 'needs_clarification'),
     ('other', ['외부 발송 도구 없음'], '문서를 외부로 발송해줘.', 'unsupported'),
     ('other', [], '작업 취소해줘.', 'validation_failed'),
 ])

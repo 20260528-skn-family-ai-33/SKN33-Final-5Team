@@ -9,7 +9,8 @@ from workflow_engine.catalog.output_contracts import ensure_requested_output
 
 def test_ready_invalid_graph_still_cannot_save():
     result=supervisor_node({'status':'needs_clarification','draft':{'questions':[]},'issues':['잘못된 포트'],'repair_count':2})
-    assert result['route']=='invalid';assert result['status']=='validation_failed'
+    assert result['route']=='await_input';assert result['status']=='needs_clarification'
+    assert result['draft']['questions'] and not result['confirmed']
 
 
 def test_output_is_appended_to_extract_terminal():

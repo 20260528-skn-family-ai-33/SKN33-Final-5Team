@@ -118,9 +118,9 @@ def test_validation_exhausted_after_repairs_is_blocked(tmp_path):
     s = session(tmp_path)
     result = call(tmp_path, 'message', id=s['id'], revision=0, content=PROMPT,
                   conversation=lambda state: {'draft': {**draft(), 'tool_ids': []}, 'repair_count':state.get('repair_count',0)+1})
-    assert result['status'] == 'validation_failed'
+    assert result['status'] == 'needs_clarification' and result['draft']['questions']
     [blocked] = records(tmp_path, s['id'])
-    assert (blocked['status'], blocked['stage'], blocked['reason_code']) == ('blocked', 'validation', 'verification_failed')
+    assert blocked['status']=='waiting_input'
     assert blocked['reason']
 
 

@@ -105,17 +105,24 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None):
                           issues=[],semantic_issues=[])
             if result.get('native_schedule_reconciled'):
                 update['condition_required']=True  # schedule slots must be grounded before any draft
-        elif decision=='clarify':
+        elif decision=='clarify' or decision=='manual_review' and not result.get('request_revision_conflict'):
             questions=(state.get('capability_questions',[]) if reuse_questions else [])
             if not questions:
+                texts=list(result['missing_conditions'])
+                if decision=='manual_review':
+                    if result.get('missing_actions'):
+                        texts.append('지원 여부를 확정하지 못한 기능이 있습니다: '+' / '.join(result['missing_actions'])+
+                                     '. 이 기능을 제외하고 진행할지, 변경할 요청을 알려주세요.')
+                    if not texts:
+                        texts=['처리할 업무와 반드시 필요한 결과를 구체적으로 알려주세요.']
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
                             'key':'capability.condition.'+str(i),'source':'capability','text':_question_text(text),
-                            'options':resolution_options(state)} for i,text in enumerate(result['missing_conditions'])]
+                            'options':resolution_options(state)} for i,text in enumerate(texts)]
             # AgentDraft supports 3 visible questions; preserve every question record.
             grouped=questions[:2]+([{'text':'\n'.join(q['text'] for q in questions[2:]),'options':[]}] if len(questions)>2 else [])
             ledger={'decision':'clarify','questions':grouped,'slots':{}}
             reply=('미정 상태로 보류했습니다. 답변을 보내면 다시 확인합니다.\n' if deferred else '')+'\n'.join(q['text'] for q in questions)
-            update.update(capability_route='await_capability',status='needs_clarification',confirmed=False,gap_condition_review=None,
+            update.update(capability_route='supervisor' if decision=='manual_review' else 'await_capability',status='needs_clarification',confirmed=False,gap_condition_review=None,
                 saved_agent_id=None,draft=_pending_draft(state,ledger),pending_questions=questions,
                 capability_questions=questions,issues=[],semantic_issues=[],verification_enforced=False,
                 messages=state.get('messages',[])+[{'role':'assistant','content':reply}])

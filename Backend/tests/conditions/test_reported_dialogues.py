@@ -119,7 +119,8 @@ def test_planner_refusal_cannot_override_current_supported_assessment(tmp_path):
     s.update(draft={**draft(),'tool_ids':[],'unsupported':['사용자 입력이 없어 미지원입니다.']},repair_count=2,confirmed=True)
     checked=validate_node(s)
     assert checked['status']=='validation_failed' and any('충돌' in i for i in checked['issues'])
-    assert supervisor_node({**s,**checked})['route']=='invalid'
+    reviewed=supervisor_node({**s,**checked})
+    assert reviewed['route']=='await_input' and not reviewed['confirmed']
     store=Storage(tmp_path)
     try:
         with pytest.raises(ValueError):make_save_node(store)(s)

@@ -69,7 +69,8 @@ def test_two_bad_drafts_are_blocked(monkeypatch):
     fake=Fake(bad,bad);s=state();run=planner(monkeypatch,fake)
     for _ in range(2):
         s.update(run(s));s.update(validate_node(s))
-    assert supervisor_node(s)['route']=='invalid'
+    reviewed=supervisor_node(s)
+    assert reviewed['route']=='await_input' and not reviewed['confirmed']
     assert len(fake.calls)==2
 
 
@@ -229,7 +230,9 @@ def test_v3_forged_citation_stays_blocked_without_substitution(monkeypatch,versi
     second=run({**original,**first,**checked});final=validate_node({**original,**second})
     assert any('인용 원문' in e for e in final['issues'])
     assert second['draft']['requirements'][0]['quote']==bad['requirements'][0]['quote']
-    assert supervisor_node({**original,**second,**final})['route']=='invalid'
+    reviewed=supervisor_node({**original,**second,**final})
+    assert reviewed['route']=='await_input' and not reviewed['confirmed']
+    assert reviewed['draft']['requirements'][0]['quote']==bad['requirements'][0]['quote']
     assert second['trace'][-1]['prompt_version']==version
     assert len(fake.calls)==2
 

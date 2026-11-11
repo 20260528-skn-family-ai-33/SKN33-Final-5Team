@@ -238,6 +238,17 @@ def requirement_transport(model, api_key=''):
     return Structured()
 
 
+def _clarify_requirements(state, plan, fingerprint, calls):
+    from .clarification import clarification_pause
+    questions=list(dict.fromkeys(q.strip() for q in plan['unresolved'] if q.strip()))
+    if not questions:
+        raise ValueError('미정 조건의 확인 질문이 비어 있습니다.')
+    update=clarification_pause(state,'requirements',questions,detail='업무 설계에 필요한 조건을 확인합니다.')
+    update['trace'][-1].update(node='requirements',label='요청 업무 조건 확인',model_calls=calls)
+    return dict(**update,requirement_route='clarify',requirement_required=True,requirement_ledger=plan,
+                requirement_fingerprint=fingerprint,requirement_digest=plan_digest(plan))
+
+
 def make_requirement_check(model, transport=None, mode=None, *, api_key='', error_observer=None):
     setting=mode or os.getenv('A4B_REQUIREMENT_MODE','off')
     if setting not in ('off','enforce'):
@@ -251,6 +262,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             plan=validate_plan(gmail_plan,state)
             return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
                         requirement_fingerprint=ledger_fingerprint(state),requirement_digest=plan_digest(plan),
+                        pending_questions=[q for q in state.get('pending_questions',[]) if q.get('source')!='requirements'],
                         confirmed=False,saved_agent_id=None,
                         trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
                             detail='원문의 Gmail 조회 건수와 본문 요약을 등록 계약으로 기록했습니다.',model_calls=0)])
@@ -258,7 +270,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             return dict(requirement_route=target,requirement_required=False)
         fingerprint=ledger_fingerprint(state)
         old=state.get('requirement_ledger')
-        if (old and state.get('requirement_fingerprint')==fingerprint
+        if (old and not old.get('unresolved') and state.get('requirement_fingerprint')==fingerprint
                 and state.get('requirement_digest')==plan_digest(old)):
             return dict(requirement_route=target,requirement_required=True)
         calls=0
@@ -286,18 +298,20 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                     messages=messages+[dict(role='user',content='앞선 추출은 무효입니다. 다음 응답 계약 오류를 해결하여 원래 사용자 요구만 새로 추출하세요. '
                         '조건 값을 추측하거나 사용자 업무를 삭제하지 마세요. 오류: '+str(error)[:400])]
                     continue
-                if plan['unresolved']:raise ValueError(' / '.join(plan['unresolved']))
+                if plan['unresolved']:return _clarify_requirements(state,plan,fingerprint,calls)
                 break
         except (ValueError,TypeError,KeyError,RuntimeError,OSError) as error:
             if error_observer:error_observer(error)
             detail='요청 업무 목록을 확정하지 못했습니다. '+str(error)[:400]
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,
+                        pending_questions=[q for q in state.get('pending_questions',[]) if q.get('source')!='requirements'],
                         status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],
                         messages=state.get('messages',[])+[dict(role='assistant',content=detail)],
                         trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='needs_input',detail=detail,model_calls=calls)])
         return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,
                     requirement_fingerprint=fingerprint,requirement_digest=plan_digest(plan),
+                    pending_questions=[q for q in state.get('pending_questions',[]) if q.get('source')!='requirements'],
                     confirmed=False,saved_agent_id=None,
                     trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
                           detail=f"원문에서 {len(plan['tasks'])}개 요구사항을 생성 전에 별도로 기록했습니다.",model_calls=calls)])

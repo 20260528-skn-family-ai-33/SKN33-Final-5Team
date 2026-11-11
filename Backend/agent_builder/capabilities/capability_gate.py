@@ -53,6 +53,8 @@ def require_ready(state):
 
 
 def require_save_ready(state):
+    if (state.get('draft') or {}).get('questions'):
+        raise ValueError('확인 질문에 답변하고 다시 검증한 뒤 저장할 수 있습니다.')
     require_ready(state)
     issue = draft_delivery_issue(state, state.get('draft') or {})
     if issue:

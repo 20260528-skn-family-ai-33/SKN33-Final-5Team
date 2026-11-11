@@ -94,7 +94,9 @@ def test_blocking_decisions_never_generate_or_save_even_after_restart(tmp_path,d
         assert first['pending_questions'][0]['source']=='capability'
         import re
         assert re.fullmatch(r'[a-f0-9]{24}',first['pending_questions'][0]['id'])
-    else:assert first['status']=='validation_failed' and not first.get('__interrupt__')
+    else:
+        assert first['status']=='needs_clarification' and first.get('__interrupt__')
+        assert first['capability_questions']
     conn.close();store.close()
     store=Storage(tmp_path);graph,conn=setup(store,s,calls,Fake([]),mode='off')
     before=graph.get_state(cfg).values
@@ -222,7 +224,8 @@ def test_condition_question_resume_also_rechecks_capability(tmp_path):
                           condition_mode='enforce',condition_transport=Fake([raw]),verifier_mode='off')
     current=graph.invoke(s,cfg);assert current['__interrupt__'][0].value['kind']=='clarification'
     current=graph.invoke(Command(resume={'type':'message','content':'100만원 초과로 해줘.'}),cfg)
-    assert cap.calls==2 and current['status']=='validation_failed' and not calls and not store.agents()
+    assert cap.calls==2 and current['status']=='needs_clarification' and not calls and not store.agents()
+    assert current['__interrupt__'][0].value['scope']=='capability'
     conn.close();store.close()
 
 
@@ -290,7 +293,8 @@ def test_worker_pending_generation_retry_checks_new_input(tmp_path,monkeypatch,c
     if changed:request['content']='요청 변경: 아직 검토가 필요한 작업입니다.'
     result=handle(request,conversation=complete(calls))
     if changed:
-        assert result['status']=='validation_failed' and calls==['failed'] and cap.calls==2
+        assert result['status']=='needs_clarification' and calls==['failed'] and cap.calls==2
+        assert result['pending_questions']
     else:
         assert result['status']=='ready' and calls==['failed','existing_tools'] and cap.calls==1
     store=Storage(tmp_path);assert not store.agents();store.close()
@@ -364,7 +368,8 @@ def test_worker_upload_invalidates_ready_support_and_requires_recheck(tmp_path,m
     s=act('upload',asset={'name':'new.csv','kind':'table','columns':['비용'],'profile':{}},rows=[{'비용':1}])
     with pytest.raises(ValueError):act('confirm')
     s=act('message',content='새 자료를 기준으로 다시 검토해줘.')
-    assert s['status']=='validation_failed' and cap.calls==2 and calls==['existing_tools']
+    assert s['status']=='needs_clarification' and cap.calls==2 and calls==['existing_tools']
+    assert s['pending_questions']
     store=Storage(tmp_path);assert not store.agents();store.close()
 
 

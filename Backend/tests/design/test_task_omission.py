@@ -41,7 +41,9 @@ def test_reading_or_saving_original_table_does_not_fulfil_calculation(save_copy)
     assert result['status'] != 'ready'
     assert any('처리 단계' in issue for issue in result['issues'])
     assert supervisor_node({**state, **result})['route'] == 'repair'
-    assert supervisor_node({**state, **result, 'repair_count': 2})['route'] == 'invalid'
+    reviewed=supervisor_node({**state, **result, 'repair_count': 2})
+    assert reviewed['route']=='await_input' and reviewed['draft']['questions']
+    assert not reviewed['confirmed']
 
 
 def test_confirming_an_old_incomplete_draft_cannot_bypass_the_guard(tmp_path):

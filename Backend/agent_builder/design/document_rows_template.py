@@ -99,9 +99,17 @@ DEFAULT_FIELDS_NOTE = ('항목을 따로 정하지 않아 영수증 기본 항�
 def requested_fields(text):
     fields = [part.strip(' .:;"\'') for part in _SPLIT.split(text or '')]
     fields = [f for f in fields if f]
-    if not fields or len(fields) > 12 or any(len(f) > 20 for f in fields):
+    if not fields or len(fields) > 12 or any(len(f) > 20 for f in fields) or _processing_in_fields(fields):
         return []
     return list(dict.fromkeys(fields))
+
+
+def _processing_in_fields(fields):
+    """A list segment is removable from scope checks only if it names fields."""
+    return any(re.search(r'오름차순|내림차순|(?:^|\s)(?:정렬|필터|선별|집계|그룹화)(?:\s|$)|'
+                         r'[<>=]|\d[\d,.]*\s*(?:이상|이하|초과|미만)|'
+                         r'\b(?:asc|desc|sort|filter|group\s+by)\b', field, re.I)
+               for field in fields)
 
 
 def wants_all_fields(text):
@@ -305,6 +313,8 @@ def document_rows_applies(state):
     if _awaiting_fields(state):
         # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
         answer = _field_answer(messages[-1]['content'])
+        if _processing_in_fields(_SPLIT.split(answer)):
+            return False
         return wants_all_fields(answer) or not is_request_change(answer)
     request = messages[-1]['content'] if _TABLE_INTENT.search(messages[-1]['content']) else _upload_followup_request(messages)
     return bool(request) and not _extra_processing(request, _listed_segment(request))
@@ -338,6 +348,8 @@ def document_rows_reply(state):
     asked = _awaiting_fields(state)
     if asked:
         answer = _field_answer(users[-1]['content'])
+        if _processing_in_fields(_SPLIT.split(answer)):
+            return None
         request = next((m['content'] for m in users[:-1][::-1] if _TABLE_INTENT.search(m['content'])), users[0]['content'])
         explanation = EXPLANATION
         # Checked before is_request_change: "다 뽑아줘" ends like a command but still answers the question.

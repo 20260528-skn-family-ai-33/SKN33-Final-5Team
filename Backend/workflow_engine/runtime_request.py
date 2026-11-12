@@ -16,16 +16,64 @@ HELP = ('추가 실행 조건을 적용하지 못했습니다. 열 이름을 포
         '기존 조건 변경·계산·출력 열 변경은 설정 수정에서 저장한 뒤 실행하세요.')
 
 
-def _criteria(text, columns):
+def _normalized_request(text):
     text = re.sub(r'^(?:이번에는|이번 실행에만|추가로)\s*', '', text.strip())
     text = re.sub(r'\s*(?:만\s*)?(?:추출|골라|정리|실행|필터링|저장|정렬)(?:해)?\s*(?:줘|주세요)[.!\s]*$', '', text)
-    text = text.strip(' .!')
+    return text.strip(' .!')
+
+
+def _completed_orders(text):
+    return bool(re.fullmatch(r'완료\s+주문(?:만)?', text))
+
+
+def _quote_end(text, start):
+    quote, index = text[start], start + 1
+    while index < len(text):
+        if text[index] == '\\' and index + 1 < len(text) and text[index + 1] in (quote, '\\'):
+            index += 2
+        elif text[index] == quote:
+            return index
+        else:
+            index += 1
+    raise ValueError(HELP)
+
+
+def _split_criteria(text):
+    """Split separators outside quoted comparison values; keep their contents exact."""
+    parts, start, index = [], 0, 0
+    while index < len(text):
+        if text[index] in ('"', "'") and re.search(r'[<>=!]\s*$', text[start:index]):
+            index = _quote_end(text, index) + 1
+        elif text[index] in ';\n':
+            parts.append(text[start:index])
+            while index < len(text) and text[index] in ';\n':
+                index += 1
+            start = index
+        else:
+            index += 1
+    return [*parts, text[start:]]
+
+
+def _comparison_value(value):
+    if not value or value[0] not in ('"', "'"):
+        return value, False
+    if _quote_end(value, 0) != len(value) - 1:
+        raise ValueError(HELP)
+    quote, result, index = value[0], [], 1
+    while index < len(value) - 1:
+        if value[index] == '\\' and value[index + 1] in (quote, '\\'):
+            index += 1
+        result.append(value[index])
+        index += 1
+    return ''.join(result), True
+
+
+def _criteria(text, columns):
+    text = _normalized_request(text)
     statuses = [c for c in columns if c in ('상태', '주문상태', '주문 상태')]
-    if text in ('완료 주문', '완료 주문만') and len(statuses) == 1:
+    if _completed_orders(text) and len(statuses) == 1:
         text = statuses[0] + ' = 완료'
-    # Semicolons/newlines avoid confusing quoted values or thousands separators
-    # with conjunctions. Nothing unparsed is allowed to reach execution.
-    parts = re.split(r'[;\n]+', text)
+    parts = _split_criteria(text)
     filters, sorts = [], []
     fields = '|'.join(re.escape(c) for c in sorted(columns, key=len, reverse=True))
     if not fields:
@@ -36,7 +84,7 @@ def _criteria(text, columns):
             sorts.append(dict(field=match[1], direction='ascending' if match[3] == '오름차순' else 'descending',
                               value_type='number' if match[2] == '숫자' else 'text'))
             continue
-        match = re.fullmatch(rf'\s*({fields})\s*(>=|<=|!=|=|>|<)\s*(.+?)\s*', part)
+        match = re.fullmatch(rf'\s*({fields})\s*(>=|<=|!=|=|>|<)\s*([\s\S]+?)\s*', part)
         if match:
             field, operator, value = match.groups()
             op = {'=':'eq', '!=':'ne', '>=':'gte', '<=':'lte', '>':'gt', '<':'lt'}[operator]
@@ -46,9 +94,7 @@ def _criteria(text, columns):
                 raise ValueError(HELP)
             field, value, word = match.groups()
             op = {'이상':'gte', '이하':'lte', '초과':'gt', '미만':'lt'}[word]
-        quoted = len(value) >= 2 and value[0] in ('"', "'") and value[-1] == value[0]
-        if quoted:
-            value = value[1:-1]
+        value, quoted = _comparison_value(value)
         numeric = re.fullmatch(r'[-+]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?', value)
         if op not in ('eq', 'ne') and (not numeric or quoted):
             raise ValueError(HELP)
@@ -72,7 +118,8 @@ def apply_table_request(agent, request, storage, file_ids):
         return agent, False
     # Old clients send descriptive launch text. Continue to report that such
     # text is not a condition; explicit modification requests must be parsed.
-    if not re.search(r'[<>=]|필터|정렬|오름차순|내림차순|이상|이하|초과|미만|만\b|추가|계산|변경', request):
+    if not (_completed_orders(_normalized_request(request))
+            or re.search(r'[<>=]|필터|정렬|오름차순|내림차순|이상|이하|초과|미만|만\b|추가|계산|변경', request)):
         return agent, False
     workflow = config.get('workflow') or {}
     from workflow_engine.execution_path import execution_path

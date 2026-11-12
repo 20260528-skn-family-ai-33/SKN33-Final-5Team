@@ -89,21 +89,29 @@ def unary_filter_issue(rule, text):
         return None
     if rule.get('value') is not None or rule.get('compare_field'):
         return '빈값 선별에는 비교 값을 넣을 수 없습니다. 값과 비교하려면 비교 조건을 사용하세요.'
-    # A literal column named "빈값" is not itself a request to select empty rows.
-    text = text.replace(rule.get('field') or '\0', '대상열')
-    if re.search(r'\b' + operator + r'\b', text, re.I):
-        return None
     empty = r'빈\s*(?:값|칸|행|셀)|비어\s*있|비었|결측|누락|공백|값(?:이|은)?\s*없|\b(?:null|empty|blank|missing)\b'
+    nonempty = r'비어\s*있지\s*않|빈\s*값이\s*아닌|값(?:이)?\s*있는|채워진|입력된|\bnon[- ]?empty\b'
     selection = r'골라|선별|필터|추려|남겨|남기|제외|제거|삭제|(?:행|주문|항목|것)만|\b(?:select|filter|keep|drop|remove)\b'
+    field = rule.get('field') or '\0'
+    # The predicate must immediately describe this exact column, not another
+    # column elsewhere in the sentence (or a suffix such as 상태 in 주문상태).
+    target = (r'(?<!\w)["\x27`“]?' + re.escape(field) + r'["\x27`”]?'
+              r'(?:\s*(?:열|컬럼|필드))?(?:\s*(?:이|가|은|는|의))?\s*'
+              rf'(?=(?:값(?:이|은|는)?\s*)?(?:{nonempty}|{empty}|\b{operator}\b))')
     for clause in re.split(r'[.\n;,。]', text):
         # A missing-value error/keep policy authorizes no additional row selection.
         cleaned = re.sub(r'(?:빈\s*값|결측(?:값)?|누락(?:값)?)\s*(?:은|는|을|를)?\s*(?:오류|유지|에러)', '', clause)
-        nonempty = re.search(r'비어\s*있지\s*않|빈\s*값이\s*아닌|값(?:이)?\s*있는|채워진|입력된|\bnon[- ]?empty\b', cleaned, re.I)
-        if nonempty and re.search(selection, cleaned, re.I):
+        bound = re.search(target, cleaned, re.I)
+        if not bound:
+            continue
+        cleaned = cleaned[bound.end():]
+        if re.match(r'\b' + operator + r'\b', cleaned, re.I):
+            return None
+        if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{nonempty})', cleaned, re.I) and re.search(selection, cleaned, re.I):
             if operator == 'not_empty':
                 return None
             continue
-        if re.search(empty, cleaned, re.I) and re.search(selection, cleaned, re.I):
+        if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{empty})', cleaned, re.I) and re.search(selection, cleaned, re.I):
             removing_empty = bool(re.search(r'(?:제외|제거|삭제|\b(?:drop|remove)\b)', cleaned, re.I))
             if (operator == 'not_empty') == removing_empty:
                 return None

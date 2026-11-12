@@ -5,6 +5,7 @@ import {buildSync} from 'esbuild';
 import {JSDOM} from 'jsdom';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {folderInputMode, libraryQuestion} from '../lib/design-folder-intent';
 const FRONTEND_ROOT=resolve(fileURLToPath(new URL('..',import.meta.url)));
 
 const require=createRequire(new URL('../../package.json',import.meta.url));
@@ -701,6 +702,98 @@ test('DOM: startup API failure is visible on the node-library screen too',async(
  try{assert.match(document.querySelector('[role=alert]')?.textContent||'',/카탈로그 연결 오류/);}finally{await h.close();}
 });
 function readySession(){return {id:'ready',revision:1,status:'ready',base_version:0,messages:[{role:'user',content:'합계를 계산해줘'},{role:'assistant',content:'설정 확인'}],draft:{...A.config,explanation:'설정 확인'},resources:[],trace:[],issues:[]};}
+
+for(const ambiguous of [false,true])test('design folder: '+(ambiguous?'duplicate names require a path and support a subset':'unique name attaches all files before generation'),async()=>{
+ const parent={id:'p',name:'회계',parent_id:null};
+ const folders=[parent,{id:'one',name:'영수증',parent_id:'p'},...(ambiguous?[{id:'two',name:'영수증',parent_id:null}]:[])];
+ const files=[{id:'a',name:'카드.pdf'},{id:'b',name:'현금.pdf'}];
+ const s={...readySession(),status:'empty',draft:null,messages:[]};
+ const h=await setup('',{},path=>{
+  if(path.endsWith('/library'))return {folders,assets:[],next:null};
+  if(path.endsWith('folder_id=one'))return {folders,assets:files,next:null};
+  if(path.endsWith('/sessions'))return s;
+  if(path.endsWith('/attach_asset'))return {...s,revision:2,resources:files};
+  if(path.endsWith('/message'))return readySession();
+ });
+ try{
+  const prompt='자료함에서 영수증 폴더 전체를 읽어줘';
+  const composer=document.querySelector<HTMLTextAreaElement>('[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.form!);
+  if(ambiguous){
+   assert.equal(h.calls.some(call=>call.path.endsWith('/attach_asset')||call.path.endsWith('/message')),false);
+   const selector=document.querySelector<HTMLSelectElement>('[role="dialog"] select')!;
+   assert.match(selector.textContent!,/회계 \/ 영수증/);
+   await act(async()=>{selector.value='one';selector.dispatchEvent(new Event('change',{bubbles:true}));await tick();});
+   await click(field('현금.pdf'));await click(button('1개 파일 사용'));
+  }
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/attach_asset'))?.body.assetIds,ambiguous?['b']:['a','b']);
+  const message=h.calls.find(call=>call.path.endsWith('/message'))!.body;
+  assert.equal(message.revision,2);assert.ok(message.content.includes(prompt));
+ }finally{await h.close();}
+});
+
+for(const [key,text,expected] of [
+ ['source','자료함에서 영수증 폴더에 있는 파일 ID를 알려주세요.','asset-1'],
+ ['source','어느 폴더의 자료를 사용할까요?','내 자료함 / 분기 회의록'],
+ ['input.folder_id','분석할 자료의 위치를 선택해주세요.','one'],
+ ['source','해당 디렉터리에서 어떤 문서를 검토할까요?','asset-1'],
+])test('design folder: reopened source question — '+text,async()=>{
+ const q={id:'a'.repeat(24),key,text,response:{type:'text'}};
+ const folderName=text.includes('영수증')?'영수증':'분기 회의록';
+ const session={...readySession(),messages:[{role:'user',content:folderName+' 폴더 안의 자료를 검토해줘'}],status:'needs_clarification',pending_questions:[q]};
+ const folders=[{id:'one',name:folderName,parent_id:null}],file={id:'asset-1',name:'기록.pdf'};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/library'))return {folders,assets:[],next:null};
+  if(path.endsWith('folder_id=one'))return {folders,assets:[file],next:null};
+  if(path.endsWith('/attach_asset'))return {...session,revision:2,resources:[file]};
+  if(path.endsWith('/message'))return readySession();
+ });
+ try{
+  assert.equal(document.querySelector('.clarification-form textarea'),null);
+  await click(button('폴더와 파일 선택'));await click(button('이 폴더 전체 선택'));await click(button('1개 파일 사용'));
+  assert.ok(document.querySelector('.clarification-form')!.textContent!.includes(file.name));
+  await click(button('답변 적용'));
+  const message=h.calls.find(call=>call.path.endsWith('/message'))!.body;
+  assert.deepEqual(message.answers,[{questionId:q.id,value:expected}]);
+  assert.equal(message.revision,2);assert.ok(message.content.includes(file.name));assert.ok(!message.content.includes(file.id));
+ }finally{await h.close();}
+});
+test('design folder: input selection keeps destination and format questions separate',()=>{
+ assert.equal(folderInputMode('회의록을 요약해서 결과 폴더에 저장해줘'),undefined);
+ assert.equal(libraryQuestion({text:'결과를 어느 폴더에 저장할까요?'}),undefined);
+ assert.equal(libraryQuestion({text:'보고서 폴더에서 어떤 파일 형식을 읽을까요?'}),undefined);
+ assert.equal(folderInputMode('계약 검토 폴더 자료로 보고서를 만들어줘'),'pick');
+ assert.equal(folderInputMode('월간 보고서 폴더',true),'pick');
+});
+
+for(const [prompt,automatic] of [
+ ['분기 회의록 디렉터리의 문서를 전부 요약해줘',true],
+ ['분기 회의록 폴더에서 PDF만 검토해줘',false],
+ ['분기 회의록 폴더를 기준으로 보고서를 작성해줘',false],
+] as const)test('design folder: '+prompt,async()=>{
+ const folders=[{id:'minutes',name:'분기 회의록',parent_id:null}];
+ const files=[{id:'a',name:'회의.pdf'},{id:'b',name:'표.csv'}];
+ const s={...readySession(),status:'empty',draft:null,messages:[]};
+ const h=await setup('',{},path=>{
+  if(path.endsWith('/library'))return {folders,assets:[],next:null};
+  if(path.endsWith('folder_id=minutes'))return {folders,assets:files,next:null};
+  if(path.endsWith('/sessions'))return s;
+  if(path.endsWith('/attach_asset'))return {...s,revision:2,resources:files};
+  if(path.endsWith('/message'))return readySession();
+ });
+ try{
+  const composer=document.querySelector<HTMLTextAreaElement>('[aria-label="업무 설명"]')!;
+  await input(composer,prompt);await submit(composer.form!);
+  if(!automatic){
+   assert.equal(h.calls.some(c=>c.path.endsWith('/message')||c.path.endsWith('/attach_asset')),false);
+   assert.equal(document.querySelector<HTMLSelectElement>('[role="dialog"] select')?.value,'minutes');
+   await click(field('회의.pdf'));await click(button('1개 파일 사용'));
+  }
+  assert.deepEqual(h.calls.find(call=>call.path.endsWith('/attach_asset'))?.body.assetIds,automatic?['a','b']:['a']);
+  assert.ok(h.calls.find(call=>call.path.endsWith('/message'))?.body.content.includes(prompt));
+ }finally{await h.close();}
+});
 const receiptBrowserOptions=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul'}).resolvedOptions();
 test('DOM: receipt clarification uploads a file and submits only chosen fields to its pending question',async t=>{
  t.mock.method(Intl.DateTimeFormat.prototype,'resolvedOptions',()=>receiptBrowserOptions);

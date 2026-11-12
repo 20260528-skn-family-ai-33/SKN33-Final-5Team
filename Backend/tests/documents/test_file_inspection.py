@@ -118,3 +118,24 @@ def test_upload_library_attach_and_reopen_return_the_same_grounded_inventory(tmp
     relinked = call('attach_asset',id=second['id'],revision=second['revision'],asset_id=inventory['id'])
     assert relinked['file_inspection'] == [inventory]
     assert call('session',id=second['id'])['file_inspection'] == [inventory]
+
+
+def test_batch_attachment_is_atomic_and_reopens_all_selected_files(tmp_path):
+    from infrastructure.persistence.ids import uid
+    from service.worker import handle
+
+    def call(action, **data):
+        return handle({'action':action,'directory':str(tmp_path),**data})
+
+    session = call('new_session', model='test', credential_id=uid())
+    folder = call('folder_create', name='영수증')['folder']
+    ids = [call('library_upload', folder_id=folder['id'], rows=[],
+                asset={'name':name,'kind':'document','format':'txt','text':'내용'})['asset']['id']
+           for name in ('카드.txt','현금.txt')]
+    target = {'id':session['id'],'revision':session['revision']}
+    with pytest.raises(ValueError):
+        call('attach_asset', **target, asset_ids=[ids[0],uid()])
+    assert call('session', id=session['id'])['file_ids'] == []
+    linked = call('attach_asset', **target, asset_ids=ids)
+    assert linked['revision'] == session['revision'] + 1
+    assert [file['id'] for file in call('session', id=session['id'])['resources']] == ids

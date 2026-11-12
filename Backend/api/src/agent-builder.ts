@@ -383,8 +383,15 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   }
   if(['message','confirm'].includes(workerAction)&&typeof store.gmailConnected==='function')payload.gmail_connected=store.gmailConnected();
   if(workerAction==='attach_asset'){
-   if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
-   payload.asset_id=data.assetId;
+   if(data.assetIds!==undefined){
+    const ids=data.assetIds;
+    if(data.assetId!==undefined||!Array.isArray(ids)||!ids.length||ids.length>10||new Set(ids).size!==ids.length||
+       ids.some(id=>typeof id!=='string'||!idPattern.test(id)))throw new Error('연결할 자료를 최대 10개 선택하세요.');
+    payload.asset_ids=ids;
+   }else{
+    if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
+    payload.asset_id=data.assetId;
+   }
   }
   if(workerAction==='test'){
    const content=data.content===undefined?'':data.content;

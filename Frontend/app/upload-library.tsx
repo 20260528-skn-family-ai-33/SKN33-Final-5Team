@@ -14,8 +14,8 @@ type Upload = {
   usages: Usage[];
 };
 type Page = {assets: Upload[]; next: string | null};
-type LibraryFolder = {id: string; name: string; parent_id: string | null};
-type LibraryPage = Page & {space: {id: string; kind: 'personal' | 'team'; name: string}; folder_id: string | null; folders: LibraryFolder[]};
+export type LibraryFolder = {id: string; name: string; parent_id: string | null};
+export type LibraryPage = Page & {space: {id: string; kind: 'personal' | 'team'; name: string}; folder_id: string | null; folders: LibraryFolder[]};
 type Preview = {text: string; columns: string[]; rows: Record<string, string>[]};
 const base = '/api/agent-builder/';
 
@@ -119,9 +119,10 @@ function UploadChoices({connected, formats, onSelect}: {connected: string[]; for
   </>;
 }
 
-export function AttachUploadDialog({mode, onLibrary, onClose, onNew, onSelect, connected, formats}: {
+export function AttachUploadDialog({mode, onLibrary, onFolder, onClose, onNew, onSelect, connected, formats}: {
   mode: 'choose' | 'library'; onLibrary: () => void; onClose: () => void; onNew: () => void;
   onSelect: (id: string) => void; connected: string[]; formats?: string;
+  onFolder?: () => void;
 }) {
   return <Dialog open onOpenChange={open => {if (!open) onClose();}}>
     <DialogContent className="as-dialog"><DialogHeader><DialogTitle>{mode === 'choose' ? '자료 연결' : '자료함에서 선택'}</DialogTitle>
@@ -131,6 +132,7 @@ export function AttachUploadDialog({mode, onLibrary, onClose, onNew, onSelect, c
         ? <div className="as-run-actions">
           <button type="button" className="as-button" onClick={onNew}><UploadIcon size={16}/>새 파일 올리기</button>
           <button type="button" className="as-button" onClick={onLibrary}><FolderOpen size={16}/>자료함에서 선택</button>
+          {onFolder && <button type="button" className="as-button" onClick={onFolder}><Folder size={16}/>폴더와 파일 선택</button>}
         </div> : <UploadChoices connected={connected} formats={formats} onSelect={onSelect}/>)}
     </DialogContent>
   </Dialog>;
@@ -140,7 +142,7 @@ const usageLabels: Record<Usage['kind'], string> = {
   draft: '설계 중', workflow: '저장된 워크플로우', run: '실행 기록', running: '실행 중', schedule: '예약에 사용하는 파일',
 };
 
-function useLibrary(endpoint: string, folderId: string | null, query: string) {
+export function useLibrary(endpoint: string, folderId: string | null, query: string) {
   const [items, setItems] = useState<Upload[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -167,7 +169,7 @@ function useLibrary(endpoint: string, folderId: string | null, query: string) {
   return {items, setItems, folders, next, loading, error, setError, load};
 }
 
-function folderTrail(id: string | null, folders: LibraryFolder[]) {
+export function folderTrail(id: string | null, folders: LibraryFolder[]) {
   const trail: LibraryFolder[] = [], seen = new Set<string>();
   while (id && !seen.has(id)) {
     seen.add(id);

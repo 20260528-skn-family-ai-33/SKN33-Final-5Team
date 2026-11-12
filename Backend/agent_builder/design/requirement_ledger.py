@@ -34,6 +34,8 @@ join=양쪽 자료 ID와 keys/how/cardinality/null_keys/max_rows. 오른쪽 키 
 왼쪽 결합의 left_sources는 모든 행을 유지하라고 한 기준 자료다. 집계된 자료를 오른쪽에 붙일 때도 이 방향을 바꾸지 않는다. 최대 행 수가 미정이면 unresolved에 적는다.
 policy=일반 표의 빈값/중복 행 처리. 결합의 키 유일성·null 키·최대 행 수는 join의 필드값이다.
 export=요청한 파일 형식. read=명시적으로 읽는 자료 한 개. 자료 ID는 실제 목록에서 선택한다.
+자료함에서 읽을 파일이 이미 연결되어 있으면 해당 자료의 ID를 사용한다. 사용자가 폴더 전체를 요청하면 연결된 대상 파일을 모두 반영한다.
+입력 자료 선택이 더 필요하면 폴더를 고르는 질문은 key=input.folder_path, 파일을 고르는 질문은 key=input.file_ids로 작성한다. 둘 다 response.type=text를 사용하며 화면에서 실제 자료함 목록을 제공한다. 사용자가 내부 ID를 찾아 입력하도록 요구하지 않는다.
 후속 답변에서 바꾸지 않은 조건도 유지한다. 필요한 값이 미정이면 unresolved에 적고 추측하지 않는다.
 schedule=hourly/daily/weekly/monthly 실행 메타데이터. schedule에 실제 주기·시간대·분을 넣고 daily/weekly/monthly에는 시, weekly에는 요일, monthly에는 일자 또는 말일을 기록한다. 미정이면 unresolved에 남긴다.
 document_analysis=문서 원문을 읽고 요약·누락·모순 분석·근거와 수정 제안 같은 서술형 결과를 작성하는 업무. 원래 분석 요청 전체가 실행 지침으로 전달된다. 필드만 추출하는 extract_fields와 구분한다.

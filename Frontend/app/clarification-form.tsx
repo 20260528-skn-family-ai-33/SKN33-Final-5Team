@@ -1,11 +1,13 @@
 import {useEffect,useId,useRef,useState,type FormEvent} from 'react';
 import type {ClarificationQuestionData} from './clarification-question';
+import type {DesignFile, FilePickerRequest} from './design-folder-picker';
+import {libraryQuestion} from '../lib/design-folder-intent';
 import './clarification-question.css';
 import './clarification-form.css';
 import {normalizeTimeInput} from '../lib/time-input';
 
-export type ClarificationAnswer={questionId?:string;key?:string;text:string;value:string|string[]|number|null;custom?:boolean;skip?:boolean};
-type InputValue={text:string;selected:string[];custom:string;customSelected:boolean;type:string};
+export type ClarificationAnswer={questionId?:string;key?:string;text:string;value:string|string[]|number|null;custom?:boolean;skip?:boolean;files?:DesignFile[];folderPath?:string};
+type InputValue={text:string;selected:string[];custom:string;customSelected:boolean;type:string;files?:DesignFile[];folder?:{id:string|null;path:string}};
 const emptyValue=(type:string):InputValue=>({text:'',selected:[],custom:'',customSelected:false,type});
 function responseType(question:ClarificationQuestionData){return question.response?.type??(question.options?.length?'single_choice':'text');}
 function rowKey(question:ClarificationQuestionData,index:number,questions:ClarificationQuestionData[]){
@@ -13,11 +15,12 @@ function rowKey(question:ClarificationQuestionData,index:number,questions:Clarif
  return question.id||question.text+'-'+index;
 }
 
-export function ClarificationForm({questions,disabled=false,onSubmit,onDirtyChange}:{
+export function ClarificationForm({questions,disabled=false,onSubmit,onDirtyChange,onPickFiles}:{
  questions:ClarificationQuestionData[];
  disabled?:boolean;
  onSubmit:(answers:ClarificationAnswer[])=>void|Promise<void>;
  onDirtyChange?:(dirty:boolean)=>void;
+ onPickFiles?:(request:FilePickerRequest)=>void;
 }) {
  const formId=useId(),inFlight=useRef(false),dirtyCallback=useRef(onDirtyChange);dirtyCallback.current=onDirtyChange;
  const [values,setValues]=useState<Record<string,InputValue>>({}),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -35,6 +38,13 @@ export function ClarificationForm({questions,disabled=false,onSubmit,onDirtyChan
  function change(key:string,question:ClarificationQuestionData,patch:Partial<InputValue>){setValues(prior=>({...prior,[key]:{...(prior[key]||emptyValue(responseType(question))),...patch}}));setError('');}
  function answerFor(key:string,question:ClarificationQuestionData):ClarificationAnswer|undefined {
   const value=valueFor(key,question),type=responseType(question),base={questionId:question.id,key:question.key,text:question.text};
+  const source=onPickFiles&&libraryQuestion(question);
+  if(source){
+   if(!value.files?.length)return;
+   const folder=value.folder;
+   const values=source==='folder'&&folder?[/[._]id$/i.test(question.key||'')&&folder.id?folder.id:folder.path]:value.files.map(file=>file.id);
+   return {...base,files:value.files,folderPath:folder?.path,value:type==='multi_choice'?values:values.join(', '),...(['multi_choice','single_choice'].includes(type)?{custom:true}:{})};
+  }
   if((type==='single_choice'||type==='multi_choice')&&question.options?.length){
    const custom=value.customSelected?value.custom.trim():'';
    const selected=value.customSelected&&type==='single_choice'?[]:value.selected;
@@ -73,10 +83,13 @@ export function ClarificationForm({questions,disabled=false,onSubmit,onDirtyChan
    const type=responseType(question),value=valueFor(key,question),fieldId=formId+'-'+index;
    const options=Array.from(new Set(question.options??[])).filter(option=>option.trim()&&option.trim()!=='직접 입력');
    const choices=(type==='single_choice'||type==='multi_choice')&&!!question.options?.length;
+   const fileQuestion=onPickFiles&&libraryQuestion(question);
    return <fieldset key={key} className="clarification-form-question" disabled={locked}>
-    <legend>{question.group&&<span className="clarification-question-group">{question.group}</span>}<span>{question.text}</span></legend>
-    {question.reason&&<p className="clarification-form-reason">{question.reason}</p>}
-    {choices?<>
+    <legend>{question.group&&<span className="clarification-question-group">{question.group}</span>}<span>{fileQuestion==='folder'?'자료를 읽을 폴더를 선택해주세요.':fileQuestion?'자료함에서 읽을 파일을 선택해주세요.':question.text}</span></legend>
+    {question.reason&&!fileQuestion&&<p className="clarification-form-reason">{question.reason}</p>}
+    {fileQuestion?<><button type="button" className="as-button" onClick={()=>onPickFiles!({
+      hint:question.text,initialFiles:value.files,apply:(files,folder)=>change(key,question,{files,folder}),
+     })}>폴더와 파일 선택</button>{value.files?.length?<p>{value.folder?.path} · {value.files.map(file=>file.name).join(', ')}</p>:null}</>:choices?<>
      <div className="clarification-choice-control"><div className="clarification-options">{options.map((option,optionIndex)=>{
       const checked=value.selected.includes(option)&&!(type==='single_choice'&&value.customSelected);
       return <label key={option} className={'clarification-option'+(checked?' selected':'')} htmlFor={fieldId+'-'+optionIndex}>

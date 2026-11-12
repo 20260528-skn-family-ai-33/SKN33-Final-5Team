@@ -18,6 +18,8 @@ import './agent-studio.css';
 import './run-workflow-diagram.css';
 import {TaskLibraryHeader,WorkspaceSidebar} from './workspace-nav';
 import {AttachUploadDialog} from './upload-library';
+import {DesignFolderPicker, resolveDesignFolder, type DesignFile, type FilePickerRequest} from './design-folder-picker';
+import {folderInputMode, folderWord, libraryQuestion} from '../lib/design-folder-intent';
 import {WorkspaceHeader,WorkspaceHelp} from './workspace-header';
 import {ReplyReviewPanel,type ReplyReview} from './reply-review-panel';
 import {GmailConnection} from './gmail-connection';
@@ -137,6 +139,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  const fileInput=useRef<HTMLInputElement>(null),end=useRef<HTMLDivElement>(null),input=useRef<HTMLTextAreaElement>(null),inFlight=useRef(false),generation=useRef(0);
  useEffect(()=>()=>{generation.current++;},[]);
  const [attachMode,setAttachMode]=useState<'choose'|'library'|null>(null);
+ const [filePicker,setFilePicker]=useState<FilePickerRequest|null>(null);
  const [saveReviewOpen,setSaveReviewOpen]=useState(false),[includeSchedule,setIncludeSchedule]=useState(true);
  async function refresh(){const [a,n,t,l]=await Promise.all([request('/api/agent-builder/agents'),request('/api/agent-builder/nodes'),request('/api/agent-builder/catalog'),request('/api/agent-builder/connection?profile=1')]);setLibrary(n.nodes);setPresets(n.defaults);setCatalog(t.tools.map((tool:ToolInfo)=>({...tool,description:toolDescription(tool.id,tool.description)})));setAgents(a.agents);setModel(l.connection?.model||'');setCredentialId(l.connection?.credential.id||'');}
 
@@ -184,6 +187,21 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  useEffect(()=>{const messages=end.current?.closest<HTMLElement>('.as-messages');if(messages&&(session?.messages.length||pendingMessage))messages.scrollTo?.({top:messages.scrollHeight,behavior:'smooth'});},[session?.messages.length,pendingMessage,busy]);
  function clearRunInputs(){setRunFiles([]);setReplyDraft('');setTestText('');setScheduleNotice('');pinnedRun.current=false;}
  function remember(s:Session){setSession(s);localStorage.setItem('a4b-builder-session',s.id);}
+ async function connectDesignFiles(s:Session,files:DesignFile[]){
+  const connected=new Set(s.resources.map(file=>file.id));
+  const assetIds=[...new Set(files.map(file=>file.id))].filter(id=>!connected.has(id));
+  if(!assetIds.length)return s;
+  try{
+   const linked=await request<Session>('/api/agent-builder/attach_asset',{id:s.id,revision:s.revision,assetIds});
+   remember(linked);
+   return linked;
+  }catch(error){
+   // A lost response can still have advanced the session revision.
+   const latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(s.id)).catch(()=>null);
+   if(latest)remember(latest);
+   throw error;
+  }
+ }
  async function recoverConversation(attempt:ConversationRecovery):Promise<Session|null>{
   const token=generation.current;
   if(attempt.fromComposer)setText(attempt.draftText??attempt.content??'');
@@ -285,10 +303,10 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  function reset(){if(inFlight.current||recovery?.running)return;setRecovery(null);go('workflow');window.scrollTo({top:0,behavior:'instant'});setChosenRefs([]);setChosenSnapshots([]);setSelectedNodeId(null);setEditorPanel('conversation');generation.current++;setSelected(null);setSession(null);setHistory([]);pinnedRun.current=false;setRunFiles([]);setSchedule(null);setSource(null);setJobs([]);setQueuedSourceRuns([]);setSaveReviewOpen(false);setScheduleSourceDirty(false);setScheduleSettingsDirty(false);setClarificationDirty(false);setScheduleNotice('');setText('');setTestText('');setTestRun(null);setAgentResources([]);setError('');localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');const url=new URL(location.href);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('executionMode');window.history.replaceState(window.history.state,'',url);setReplyDraft('');requestAnimationFrame(()=>input.current?.focus({preventScroll:true}));}
 
  async function ensureSession(){generation.current++;if(session)return session;if(!credentialId)throw new Error('설계 서비스를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.');const s=await request('/api/agent-builder/sessions',{credentialId,model,nodeRefs:chosenRefs});return {...s,messages:[],draft:null,status:'empty',issues:[],trace:[],resources:[]} as Session;}
- async function send(event?:FormEvent,choice?:string,questionId?:string,answers?:ClarificationAnswer[]){
+ async function send(event?:FormEvent,choice?:string,questionId?:string,answers?:ClarificationAnswer[],selectedFiles?:DesignFile[]){
   event?.preventDefault();
   const draftText=text;
-  const content=(choice??draftText).trim();
+  let content=(choice??draftText).trim();
   if(inFlight.current||recovery||!content)return;
   const requestId=crypto.randomUUID();
   inFlight.current=true;
@@ -299,9 +317,28 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   setError('');
   let sentSession:Session|null=null;
   try{
-   const s=await ensureSession();
-   sentSession=s;
+   let files=selectedFiles||answers?.flatMap(answer=>answer.files||[]);
+   const folderMode=fromComposer&&!files&&folderInputMode(content,clarificationQuestions.some(q=>!!libraryQuestion(q)));
+   if(folderMode){
+    const match=await resolveDesignFolder(content,session?.resources||[],folderMode);
+    if(!match.files){
+     setText(draftText);
+     setFilePicker({hint:content,initialFolder:match.folder?.id,notice:match.notice,apply:picked=>{void send(undefined,undefined,undefined,undefined,picked);}});
+     return;
+    }
+    files=match.files;
+   }
+   let s=await ensureSession();
    remember(s);
+   if(files?.length){
+    if(fromComposer&&(selectedFiles||s.resources.some(resource=>!files.some(file=>file.id===resource.id)))){
+     content+='\n이번에 읽을 파일: '+files.map(file=>file.name).join(', ');
+     if(content.length>4000)throw new Error('선택한 파일명을 포함해 업무 설명을 4,000자 이내로 줄여주세요.');
+     setPendingMessage(content);
+    }
+    s=await connectDesignFiles(s,files);
+   }
+   sentSession=s;
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
    const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
    remember(result);
@@ -323,20 +360,21 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   void send();
  },[loading,initialLoadFailed,credentialId,screen]);
  async function answerQuestions(answers:ClarificationAnswer[]){
-  const content=answers.map(answer=>answer.text+' → '+(answer.skip?'선택사항 건너뛰기':Array.isArray(answer.value)?answer.value.join(', '):String(answer.value))).join('\n');
+  const content=answers.map(answer=>answer.files?[answer.folderPath,...answer.files.map(file=>file.name)].filter(Boolean).join(' · '):answer.text+' → '+(answer.skip?'선택사항 건너뛰기':Array.isArray(answer.value)?answer.value.join(', '):String(answer.value))).join('\n');
   if(content.length>4000)throw new Error('답변은 전체 4,000자까지 보낼 수 있습니다. 내용을 줄여주세요.');
   await send(undefined,content,undefined,answers);
  }
- async function attachResource(source:File|string) {
+ async function attachResource(source:File|string|DesignFile[]) {
   if(inFlight.current||recovery)return;
-  if(typeof source!=='string' && source.size>8*1024*1024){setError('자료는 8MB 이하로 연결하세요.');return;}
-  if(typeof source!=='string' && receiptQuestion && !receiptFileTypes.split(',').some(ext => source.name.toLowerCase().endsWith(ext))) {
+  if(source instanceof File && source.size>8*1024*1024){setError('자료는 8MB 이하로 연결하세요.');return;}
+  if(source instanceof File && receiptQuestion && !receiptFileTypes.split(',').some(ext => source.name.toLowerCase().endsWith(ext))) {
    setError('영수증 사진이나 PDF 파일을 선택해 주세요.');
    return;
   }
   inFlight.current=true;setBusy(typeof source==='string'?'기존 자료를 설계에 연결하고 있습니다.':'파일의 열과 내용을 확인하고 있습니다.');setError('');
   try {
    const s=await ensureSession();remember(s);
+   if(Array.isArray(source)){await connectDesignFiles(s,source);return;}
    const sessionRef={id:s.id,revision:s.revision};
    const result=typeof source==='string'
      ? await request('/api/agent-builder/attach_asset',{...sessionRef,assetId:source})
@@ -547,8 +585,10 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  const pageNavigation=<div className="workspace-context"><button className="as-text-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>leave(screen==='schedule'?'schedules':'workflows')}><ArrowLeft size={15}/>목록으로</button><nav className="studio-tabs" aria-label="워크플로우 작업"><button aria-current={screen==='workflow'?'page':undefined} className={screen==='workflow'?'active':''} onClick={()=>switchScreen('workflow')} disabled={!!busy||!!recovery||libraryBusy}>설계</button><button data-tour="run-tab" aria-current={screen==='run'?'page':undefined} className={screen==='run'?'active':''} onClick={()=>switchScreen('run')} disabled={!!busy||!!recovery||libraryBusy}>직접 실행</button>{selected&&<button aria-current={screen==='schedule'?'page':undefined} className={screen==='schedule'?'active':''} onClick={()=>switchScreen('schedule')} disabled={!!busy||!!recovery||libraryBusy}>예약 관리</button>}</nav></div>;
 
  return <div className={"as-app screen-"+screen+(selected?" has-service":"")}>
+  {filePicker && !saved && screen==='workflow' && <DesignFolderPicker picker={{...filePicker,apply:(files,folder)=>{setFilePicker(null);filePicker.apply(files,folder);}}} connected={resources} close={()=>setFilePicker(null)}/>}
   {attachMode && !saved && screen==='workflow' && <AttachUploadDialog mode={attachMode} onClose={()=>setAttachMode(null)}
     connected={resources.map(r=>r.id)} formats={receiptQuestion ? receiptFileTypes : undefined}
+    onFolder={receiptQuestion?undefined:()=>{setAttachMode(null);setFilePicker({hint:'',apply:files=>void attachResource(files)});}}
     onLibrary={()=>setAttachMode('library')} onNew={()=>{setAttachMode(null);fileInput.current?.click();}}
     onSelect={id=>{setAttachMode(null);void attachResource(id);}}/>}
   <WorkspaceHeader onHome={()=>leave('home')} disabled={loading||!!busy||!!recovery||libraryBusy}/>
@@ -615,7 +655,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
         setText(next);input.current?.focus();
       }}/> : null}
     {receiptQuestion?.action ? <ReceiptQuestion key={receiptQuestion.id} text={receiptQuestion.text} action={receiptQuestion.action}
-      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onSubmit={answerQuestions}/>}{session?.requirement_failure?.retryable&&<div className="as-requirement-retry"><p>입력하신 조건은 보존되어 있습니다. 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,'앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.')}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy" role="status"><Loader2 size={17} className="as-spin"/>{busy}</div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}><textarea ref={input} aria-label="업무 설명" placeholder={collecting?'확인 질문에 답해주세요.':draft?'추가하거나 바꿀 조건을 설명하세요.':'예: 여러 자료에서 필요한 내용을 찾아 정리하는 기능이 필요해요.'} value={text} onChange={e=>setText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||saved} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div className="as-composer-footer"><button data-tour="attach" type="button" className="as-text-button" onClick={()=>setAttachMode('choose')} disabled={!!busy||!!recovery||saved||!credentialId&&!session}><Paperclip size={16}/>자료 연결</button><small>Enter 전송 · Shift+Enter 줄바꿈</small><button type="submit" className="as-send" disabled={!!busy||!text.trim()||saved||!credentialId&&!session} aria-label="업무 설명 보내기"><ArrowUp size={19}/></button></div></form></>}
+      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onSubmit={answerQuestions} onPickFiles={picker=>setFilePicker({...picker,contextHint:session?.messages.filter(m=>m.role==='user'&&folderWord.test(m.content)).at(-1)?.content})}/>}{session?.requirement_failure?.retryable&&<div className="as-requirement-retry"><p>입력하신 조건은 보존되어 있습니다. 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,'앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.')}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy" role="status"><Loader2 size={17} className="as-spin"/>{busy}</div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}><textarea ref={input} aria-label="업무 설명" placeholder={collecting?'확인 질문에 답해주세요.':draft?'추가하거나 바꿀 조건을 설명하세요.':'예: 여러 자료에서 필요한 내용을 찾아 정리하는 기능이 필요해요.'} value={text} onChange={e=>setText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||saved} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div className="as-composer-footer"><button data-tour="attach" type="button" className="as-text-button" onClick={()=>setAttachMode('choose')} disabled={!!busy||!!recovery||saved||!credentialId&&!session}><Paperclip size={16}/>자료 연결</button><small>Enter 전송 · Shift+Enter 줄바꿈</small><button type="submit" className="as-send" disabled={!!busy||!text.trim()||saved||!credentialId&&!session} aria-label="업무 설명 보내기"><ArrowUp size={19}/></button></div></form></>}
 
    </section>
    {screen==='workflow'&&<section data-tour="canvas" className="as-workspace" aria-label="워크플로우 캔버스"><WorkflowPreview workflow={draft?.workflow} selectedId={selectedNodeId} onSelect={n=>{setSelectedNodeId(n.id);setEditorPanel('settings');settingsPanel.current?.scrollIntoView?.({block:'nearest'});}}/></section>}

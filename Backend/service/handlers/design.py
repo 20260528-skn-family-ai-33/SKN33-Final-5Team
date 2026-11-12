@@ -140,23 +140,30 @@ def _session_action(c):
             return {'tool_gap':export_gap(state,s)}
         if action in ('upload','attach_asset'):
             if s['revision']!=data['revision']:raise ValueError('대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
-            if len(s['file_ids'])>=10:raise ValueError('자료는 최대 10개 연결할 수 있습니다.')
+            ids=data.get('asset_ids',[data.get('asset_id')]) if action=='attach_asset' else []
+            if action=='attach_asset' and (not isinstance(ids,list) or not ids or
+                    any(not isinstance(id,str) for id in ids) or len(ids)!=len(set(ids))):
+                raise ValueError('연결할 자료를 확인하세요.')
+            if len(s['file_ids'])+(len(ids) if ids else 1)>10:raise ValueError('자료는 최대 10개 연결할 수 있습니다.')
             config={'configurable':{'thread_id':s['id']}}
-            state=graph.get_state(config).values or {}
+            checkpoint=graph.get_state(config)
+            state=checkpoint.values or {}
             if state.get('status')=='saved':raise ValueError('저장된 에이전트의 자료를 바꾸려면 설정 수정 대화를 시작하세요.')
             storage.begin_write()
             try:
                 resources=[storage.asset(id) for id in s['file_ids']]
                 if action=='attach_asset':
-                    a=storage.asset(data['asset_id'])
-                    if a['id'] in s['file_ids']:raise ValueError('이미 이 설계에 연결된 자료입니다.')
+                    if any(id in s['file_ids'] for id in ids):raise ValueError('이미 이 설계에 연결된 자료입니다.')
+                    additions=[storage.asset(id) for id in ids]
                 else:
                     a={**data['asset'],'id':uid(),'created_at':now()}
-                prompt=receipt_upload_prompt({**state,'resources':resources},a)
-                if action=='upload':storage.add_asset(a,data['rows'],commit=False)
-                s['file_ids'].append(a['id'])
+                    storage.add_asset(a,data['rows'],commit=False)
+                    additions=[a]
+                for asset in additions:
+                    prompt=receipt_upload_prompt({**state,'resources':resources},asset)
+                    resources.append(asset)
+                    s['file_ids'].append(asset['id'])
                 if state.get('draft'):s['draft_name']=state['draft'].get('name')
-                resources.append(a)
                 s=storage.update_session(s,data['revision'],prompt)
             except Exception:
                 storage.db.rollback()
@@ -164,7 +171,15 @@ def _session_action(c):
             if prompt:
                 _install_receipt_question(graph,config,prompt,resources)
             elif state:
-                graph.update_state(config,{'resources':resources,'status':'needs_clarification','issues':['자료 연결이 변경됐습니다. 업무 설명을 보내 새 자료와 설정을 확인하세요.']})
+                update={'resources':resources,'status':'needs_clarification','issues':['자료 연결이 변경됐습니다. 업무 설명을 보내 새 자료와 설정을 확인하세요.']}
+                if checkpoint.next==('await_input',) and state.get('pending_questions'):
+                    graph.update_state(config,{**update,'attachment_route':'ask'},as_node='attachment_gate')
+                    graph.invoke(None,config)
+                elif checkpoint.next==('await_capability',) and state.get('pending_questions'):
+                    graph.update_state(config,{**update,'capability_route':'await_capability'},as_node='capability_check')
+                    graph.invoke(None,config)
+                else:
+                    graph.update_state(config,update)
             return public_state(storage,s,graph)
         if action not in ['message','confirm']:raise ValueError('지원하지 않는 요청입니다.')
         if s['revision']!=data['revision']:raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
@@ -198,11 +213,9 @@ def _session_action(c):
             if has_interrupt:
                 if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:
                     raise ValueError('현재 대화의 확인 질문에 답변해주세요.')
-                # A migrated receipt checkpoint moved from await_capability to await_input.
-                # An unqualified update here can restore the old node and its obsolete question IDs.
-                if not any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
-                    graph.update_state(config,{'repair_count':0})
-                graph.invoke(Command(resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {}),**({'question_answers':answers} if answers else {})}),config)
+                # Reset repairs on the resumed turn without rescheduling its interrupt.
+                update={} if any(q.get('source')=='receipt' for q in state.get('pending_questions',[])) else {'repair_count':0}
+                graph.invoke(Command(update=update,resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {}),**({'question_answers':answers} if answers else {})}),config)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.
                 from agent_builder.capabilities.capability_gate import blocking_issue

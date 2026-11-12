@@ -4,6 +4,39 @@ from agent_builder.design.question_answers import question_answers
 from agent_builder.design.nodes.await_input import await_input_node
 
 
+def test_library_selection_resumes_the_persisted_file_question(tmp_path):
+    from agent_builder.design.graph import build_graph
+    from infrastructure.persistence.storage import Storage
+    from infrastructure.persistence.ids import uid
+    from service.worker import handle
+    from tests.design.test_builder import draft, initial
+
+    question = dict(id='a'*24, key='input.file_ids', text='영수증 폴더의 파일 ID를 알려주세요.',
+                    source='requirements', response={'type':'text'}, options=[])
+    store = Storage(tmp_path)
+    session = store.new_session('test',uid())
+    graph, connection = build_graph(store,conversation=lambda _: {})
+    config = {'configurable':{'thread_id':session['id']}}
+    asset_id = uid()
+    try:
+        store.add_asset(dict(id=asset_id,name='카드.txt',kind='document',format='txt',text='금액 300원'),[])
+        graph.update_state(config,{**initial(),'session_id':session['id'],'pending_questions':[question],
+                           'draft':draft([question['text']]),'issues':[],'status':'needs_clarification',
+                           'requirement_route':'ask'},as_node='requirements')
+        graph.invoke(None,config)
+    finally:
+        connection.close()
+        store.close()
+    target = {'directory':str(tmp_path),'id':session['id']}
+    attached = handle({**target,'action':'attach_asset','revision':session['revision'],'asset_ids':[asset_id]})
+    reply = '읽을 파일 → 카드.txt'
+    answered = handle({**target,'action':'message','revision':attached['revision'],'content':reply,
+                       'question_answers':[{'question_id':question['id'],'value':asset_id}]},
+                      conversation=lambda _: {'draft':draft(['결과 형식을 선택해주세요.'])})
+    assert any(m['content']==reply for m in answered['messages'])
+    assert [r['id'] for r in answered['resources']] == [asset_id]
+
+
 def state():
     questions=[
         dict(id='1'*24,key='quantity',text='몇 건을 처리할까요?',source='requirements',options=[],response={'type':'number','minimum':0,'maximum':20,'step':1}),

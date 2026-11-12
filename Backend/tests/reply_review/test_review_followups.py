@@ -88,7 +88,9 @@ def test_worker_edit_session_gives_the_verifier_the_saved_draft(tmp_path,monkeyp
         return verify(data,mode='fixture',fixture=output)
     monkeypatch.setattr(verification_module,'verify',recording_verify)
     monkeypatch.setenv('A4B_VERIFIER_MODE','shadow')
-    plan=dict(filters=[dict(field='stock',operator='lt',value=10,compare_field=None,value_type='number')],sort=[],
+    # The fixture planner must not invent a threshold (PROMPT names no constant); planner values
+    # without evidence are asked since 2026-11-11. This test only needs a saved, valid draft.
+    plan=dict(filters=[],sort=[dict(field='stock',direction='ascending',value_type='number')],
               match='all',missing_policy='keep',duplicate_policy='keep',duplicate_field=None,output_format='csv')
     def conversation(name):
         def run(state):

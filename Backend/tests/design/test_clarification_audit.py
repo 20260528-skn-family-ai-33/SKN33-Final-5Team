@@ -146,7 +146,9 @@ def test_requirement_interrupt_restart_answer_and_save(tmp_path):
     for key in ('requirement_ledger', 'requirement_fingerprint', 'requirement_digest'):
         current.pop(key)
     first_plan = deepcopy(plan)
-    first_plan['unresolved'] = ['결과 파일 형식']
+    # The request already says JSON, so the open item must be one the user has not settled
+    # (an already-answered format is screened out and never asked again).
+    first_plan['unresolved'] = ['결과 파일 이름']
     called = []
     def planner(s):
         called.append(s)
@@ -168,11 +170,11 @@ def test_requirement_interrupt_restart_answer_and_save(tmp_path):
     store = Storage(tmp_path)
     graph, conn = build(store, Extraction(plan))
     try:
-        result = graph.invoke(Command(resume={'type': 'message', 'content': 'JSON으로 해줘', 'question_id': question_id}), config)
+        result = graph.invoke(Command(resume={'type': 'message', 'content': 'result.json으로 해줘', 'question_id': question_id}), config)
         assert result['status'] == 'ready'
         assert result['pending_questions'] == []
         assert result['requirement_ledger']['unresolved'] == []
-        assert called[-1]['messages'][-1]['content'] == 'JSON으로 해줘'
+        assert called[-1]['messages'][-1]['content'] == 'result.json으로 해줘'
         assert result['draft']['execution_plan']['filters'][0]['value'] == 20
         assert result['__interrupt__'][0].value['kind'] == 'review'
         saved = graph.invoke(Command(resume={'type': 'confirm'}), config)

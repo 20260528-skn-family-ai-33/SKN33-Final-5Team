@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b187f747a4e063dd5f74a7e58cf3217203aa09a974f4f982e17cb5a34f286c37",
+  "fingerprint": "64be4385637a39fd220fe379df0b36a6f01de3fe10281cf52d5feffd63eefc96",
   "tools": [
     {
       "id": "read_table",
@@ -961,7 +961,7 @@
         "documents": "documents"
       },
       "native_settings": [],
-      "operation_contract_fingerprint": "37b20c9224e11a2f289101ce4604429e2d1204aeb8f017636f091f5cf493e97e"
+      "operation_contract_fingerprint": "d43fa3817f5b1119bde24a41b43f9e739e1ede544722fa6fb41529f848999a8d"
     },
     {
       "id": "email.get",

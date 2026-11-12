@@ -383,6 +383,56 @@ def _extract_amounts(text, field):
     return result - {None}
 
 
+_COMPARATOR_SPAN = re.compile(
+    r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?'
+    r'\s*(?:을|를|이|가)?\s*(?:초과|이상|미만|이하)')
+
+
+# Sort directions and selection words are closed sets checked around the proposed column only.
+_SORT_DIRECTION = re.compile(r'^\s*(?:값\s*)?(?:숫자|문자|날짜)?\s*(?:기준\s*)?(?:으로\s*)?(?:내림차순|오름차순|큰\s*순|작은\s*순|높은\s*순|낮은\s*순|최신\s*순|오래된\s*순)')
+_SELECTION = re.compile(r'이상|이하|초과|미만|보다|같은|아닌|인\s*(?:행|것|항목)|만\s|만$|골라|선별|추려|걸러|필터|제외|빼고')
+
+
+def _sort_key_only(slots, literals, user_text):
+    """The proposed filter column is only ever written as a sort key, with no comparator or value."""
+    if any(slots.get(k, {}).get('status') == 'specified' for k in ('filter.operator', 'filter.value')):
+        return False
+    if 'filter.operator' in literals or 'filter.value' in literals:
+        return False
+    field = slots.get('filter.field', {}).get('value')
+    if not isinstance(field, str) or not field.strip():
+        return False
+    mentions = [m.end() for m in re.finditer(re.escape(field), user_text)]
+    if not mentions:
+        return False
+    for end in mentions:
+        tail = user_text[end:end + 24]
+        clause = re.split(r'[,.\n]|하고|한\s*뒤|한\s*후', tail, maxsplit=1)[0]
+        if not _SORT_DIRECTION.match(tail) or _SELECTION.search(clause):
+            return False
+    return True
+
+
+def _literal_threshold(state, catalog, field):
+    """The single amount written next to a comparator in the latest turn that states one."""
+    messages = state.get('messages', [])
+    turn = max((i for i, m in enumerate(messages) if m.get('role') == 'user'), default=-1)
+    if turn >= 0:  # the latest user turn only: it is the answer to the pending question
+        spans = [m.group(0) for m in _COMPARATOR_SPAN.finditer(messages[turn]['content'])]
+        if not spans:
+            return None
+        amounts = {a for span in spans for a in _amounts(span, field)}
+        evidence = [e for e in catalog if e['source_id'] == 'user' and e.get('turn') == turn][:1]
+        if len(spans) != 1 or len(amounts) != 1 or not evidence:
+            return None  # two thresholds or an unconvertible unit: ask instead of guessing
+        value = next(iter(amounts))
+        if not executable_number(value):
+            return None
+        return {'key': 'filter.value', 'status': 'specified', 'value': float(value),
+                'evidence_ids': [evidence[0]['id']], 'evidence': evidence, 'extraction': 'literal_comparator_span'}
+    return None
+
+
 def _threshold_evidence_issue(slots, state):
     threshold = slots.get('filter.value', {})
     if threshold.get('status') != 'specified':
@@ -438,11 +488,14 @@ _NEG = r'[^\s.,]{0,3}\s*(?:하)?지\s*(?:마|말|않)|[^\s.,]{0,3}\s*(?:않|아�
 _MISSING_ACTS = {'exclude': r'제외|빼|삭제|지우|지워|제거|걸러|거르|버려|버리',
                  'keep': r'유지|그대로|남겨|남기|포함(?!된|되|돼|한)|(?<![가-힣])(?:두세요|둬|놔두|놔둬)',
                  'error': r'오류|에러|중단|멈춰|멈추|실패'}
-_MISSING_VAGUE = r'알아서|적당히|나중에\s*정|모르|상관\s*없|확인만|무시|채워|채우|대체|평균|0으로'
+_MISSING_VAGUE = r'나중에\s*정|모르|확인만|무시|채워|채우|대체|평균|0으로'
+# Indifference ("상관없으니", "알아서") is not a policy, but it does not cancel an explicit
+# one in the same clause: "빈 값은 상관없으니 그대로 유지해줘" keeps the rows.
+_INDIFFERENT = r'알아서|적당히|상관\s*없|아무래도\s*좋'
 _DUP_ORDER = {'first': r'첫|처음|맨\s*위|먼저\s*나온', 'last': r'마지막|맨\s*아래|나중에\s*나온|끝\s*행'}
 _DUP_OTHER = {'error': r'오류|에러|중단|멈춰|멈추|실패',
               'keep': r'유지|그대로|지우지\s*(?:마|말)|삭제하지\s*(?:마|말)|(?:다|모두|전부)\s*남'}
-_DUP_VAGUE = r'알아서|나중에\s*정|상관\s*없|확인만|합쳐|합치|최신|최근|큰\s*행|작은\s*행|높은|낮은'
+_DUP_VAGUE = r'나중에\s*정|확인만|합쳐|합치|최신|최근|큰\s*행|작은\s*행|높은|낮은'
 _KEEP_AS_IS = r'지우지\s*(?:마|말)|삭제하지\s*(?:마|말)'
 _CANCEL_DEDUP = re.compile(
     r'중복\s*(?:제거|처리)?(?:\s*(?:과|와|이랑|랑|및|·)\s*(?:슬랙|이메일|메일)(?:\s*전송)?)?'
@@ -489,6 +542,8 @@ def policy_clauses(text, columns):
             # missing rows ("빈 값은 제외하고 나머지는 유지").
             action_segment = re.split(r'나머지|그\s*외', segment, maxsplit=1)[0]
             found, negated = _acts(action_segment, _MISSING_ACTS)
+            if re.search(_INDIFFERENT, segment) and not (len(found) == 1 and not negated):
+                out.append((key, 'conflict', segment.strip())); continue
         else:
             cancelled = _CANCEL_DEDUP.match(segment)
             if cancelled:
@@ -498,6 +553,7 @@ def policy_clauses(text, columns):
                 continue
             if re.search(_DUP_VAGUE, segment):
                 out.append((key, 'conflict', segment.strip())); continue
+            indifferent = bool(re.search(_INDIFFERENT, segment))
             found, negated = _acts(segment, _DUP_ORDER)
             retention = re.search(r'남(?:겨|기|김)|유지|보존|행(?:만|을)?\s*(?:CSV|JSON)?\s*(?:으로|로)?\s*저장(?!\s*(?:하지|안|못))', segment, re.I)
             if found and not retention:
@@ -511,6 +567,8 @@ def policy_clauses(text, columns):
                 if 'error' in other:found.add('error')
             if not found and not negated:
                 found, negated = _acts(segment, _DUP_OTHER)
+        if key == 'duplicate.policy' and indifferent and not (len(found) == 1 and not negated):
+            out.append((key, 'conflict', segment.strip())); continue
         if len(found) == 1:
             out.append((key, found.pop(), segment.strip()))
         elif found or negated:
@@ -716,6 +774,23 @@ _TIMEZONES = [(r'한국\s*(?:시간|표준시)|서울\s*시간|KST', 'Asia/Seoul
 
 def last_user_request(state):
     return next((m['content'] for m in reversed(state.get('messages', [])) if m.get('role') == 'user'), '')
+
+
+# Removal = a recurrence concept + a negation, not a list of example phrases.
+# "매일 말고 매주로" names another recurrence and is a change, not a removal.
+_RECURRENCE = r'(?:예약|스케줄|스케쥴|반복\s*실행|반복|자동\s*실행|정기\s*실행|정기|주기적\s*실행|주기\s*실행|매일|매주|매월|매달|매시간)'
+_REMOVAL_NEGATION = (r'\s*(?:은|는|을|를|도|이|가)?\s*(?:없이|빼|제외|취소|해제|말고|필요\s*없|안\s*(?:해|할|함|돼)|'
+                     r'하지\s*(?:마|말|않)|없어도|없어요|없습니다|원하지\s*않)')
+_ANOTHER_RECURRENCE = r'(?![^.,!?\n]{0,20}(?:매일|매주|매월|매달|매시간|[월화수목금토일]요일|\d+\s*시))'
+_SCHEDULE_REMOVAL = re.compile(
+    _RECURRENCE + _REMOVAL_NEGATION + _ANOTHER_RECURRENCE +
+    r'|(?:한\s*번만|1회만|수동으로|그때그때)\s*(?:실행|돌|할)')
+
+
+def schedule_removed_turn(state):
+    """Index of the last user message that removes the schedule, or -1."""
+    return max((i for i, m in enumerate(state.get('messages', []))
+                if m.get('role') == 'user' and _SCHEDULE_REMOVAL.search(m.get('content', ''))), default=-1)
 
 
 def schedule_literals(text, follow_up=False):
@@ -1270,6 +1345,17 @@ def validate_conditions(raw, state, catalog):
         else:
             slots['filter.value'] = {'key': 'filter.value', 'status': 'missing', 'value': None,
                                      'evidence_ids': [], 'evidence': []}
+    # "금액이 50만원 초과인 행이야" states the threshold next to its comparator. When the model
+    # leaves the value missing, the comparator's own span is the evidence (one amount only);
+    # the threshold validator below still checks it against the quote and column unit.
+    # Only for the answer to a pending threshold question, and only when the model left the value
+    # empty: an invalid, invented or conflicting model value is still asked again, not overwritten.
+    asked_value = any(q.get('key') == 'filter.value' for q in state.get('pending_questions', []) or [])
+    proposed_value = any(c.get('key') == 'filter.value' and c.get('value') is not None for c in proposal.get('conditions', []))
+    if asked_value and not proposed_value and slots.get('filter.value', {}).get('status') == 'missing':
+        literal = _literal_threshold(state, catalog, slots.get('filter.field', {}).get('value'))
+        if literal:
+            slots['filter.value'] = literal
     # A number in a different new instruction is not a threshold revision.
     # Restore the validated evidence as well as the value.
     if (previous.get('decision') == 'ready' and previous.get('validation_digest')
@@ -1335,12 +1421,30 @@ def validate_conditions(raw, state, catalog):
     # written is asked. A monthly/yearly recurrence is a known unsupported schedule.
     if native_schedule and 'schedule.frequency' in literals and 'schedule' not in operations:
         operations.append('schedule')
+    # A later explicit removal ("예약 없이", "예약은 취소", "한 번만 실행") drops only the
+    # schedule; the rest of the work keeps its grounded conditions.
+    removed_at = schedule_removed_turn(state)
+    schedule_turn = max((e.get('turn', -1) for key, slot in slots.items() if key.startswith('schedule.')
+                         for e in slot.get('evidence', [])), default=-1)
+    if removed_at > schedule_turn:
+        for key in [k for k in slots if k.startswith('schedule.')]:
+            slots.pop(key)
+        operations = [op for op in operations if op != 'schedule']
+        invalid.append('schedule: 사용자가 이후 차례에 예약을 제거')
     if native_schedule and unsupported_schedule_requested(last_user_request(state)) and '연간·cron 예약' not in proposal['unsupported_actions']:
         proposal['unsupported_actions'].append('연간·cron 예약')
     if 'filter.operator' in literals and not all(k in slots for k in REQUIRED['filter']):
         # Do not lose a requested filter simply because the model labelled the
         # request as deduplication; ask for absent conditions rather than guess.
         if 'filter' not in operations:operations.insert(0,'filter')
+    if 'filter' in operations and _sort_key_only(slots, literals, user_text):
+        # The column is a sort key ("amount 숫자 내림차순으로 정렬"), not a selection: no
+        # comparator or value was written for it, so there is no threshold to ask
+        # (2026-11-11 RunPod R03). Sorting itself is planned and validated downstream.
+        for key in [k for k in slots if k.startswith('filter.')]:
+            slots.pop(key)
+        operations.remove('filter')
+        invalid.append('filter: 정렬 기준 열을 선별 조건으로 제안')
     required = list(dict.fromkeys(key for operation in operations for key in REQUIRED[operation]))
     frequency = slots.get('schedule.frequency', {}).get('value')
     if 'schedule' in operations:

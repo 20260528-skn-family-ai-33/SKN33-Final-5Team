@@ -120,6 +120,14 @@ def validated_draft_response(result, evidence, state=None, *, strict_outcome=Fal
     from agent_builder.design.runtime_inputs import runtime_file_question_issues
     issues = runtime_file_question_issues(candidate, state or {})
     if issues:raise DraftResponseError('invalid_runtime_input', ' / '.join(issues))
+    # Same settled-question contract as the capability check and Direct planner.
+    from agent_builder.conditions.question_contract import drop_settled, settled_question_issue
+    settled = settled_question_issue(candidate.get('questions', []), state or {})
+    if settled:
+        if not raw.get('workflow'):
+            # A question-only response is not a draft; redesign once with the evidence.
+            raise DraftResponseError('settled_question', settled)
+        raw = drop_settled(raw, state or {})[0]
     from agent_builder.design.question_controls import complete_draft_question_controls
     return complete_draft_question_controls(raw,state or {})
 
@@ -613,6 +621,8 @@ def make_conversation(api_key,model,model_factory=None):
             except ValueError as error:
                 from agent_builder.design.graph import _timing_event
                 _timing_event({'event':'draft_parse_error','attempt':'retry','code':getattr(error,'code','other'),'error_type':type(error).__name__})
+                if getattr(error,'code',None)=='settled_question':
+                    raise ValueError('이미 정한 조건을 다시 묻는 응답만 반복돼 질문을 표시하지 않고 초안 생성을 멈췄습니다. 대화는 보존되며 다시 시도할 수 있습니다.') from error
                 raise ValueError('모델 응답을 읽을 수 없어 한 번 다시 생성했지만 완료하지 못했습니다. 요청을 확인한 뒤 다시 시도해주세요.') from error
             raw=reconcile_connection_questions(raw,state)
             if not raw.get('workflow') and not raw.get('questions') and not raw.get('unsupported'):

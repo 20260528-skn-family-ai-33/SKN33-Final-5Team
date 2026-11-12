@@ -48,9 +48,13 @@ def runtime_file_context(state):
         file_request = file_request or bool(_FILE.search(text))
         if not file_request:
             continue
-        if _NOW.search(text) or _NEGATIVE.search(text):
+        # Same per-clause timing as the upload precheck, so a paraphrase such as
+        # "작업을 돌리는 시점에 자료를 넘기겠습니다" is not accepted by one and rejected by the other.
+        from agent_builder.design.file_timing import delivery_choice
+        choice = delivery_choice(text)
+        if choice in ('now', 'negative'):
             selected = None
-        elif _DEFER.search(text):
+        elif choice == 'execution':
             selected = text
     if selected is None or state.get('resources'):
         return None

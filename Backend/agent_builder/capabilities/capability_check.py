@@ -56,6 +56,121 @@ def _short_reply(state):
     return text in _PASSIVE_REPLIES
 
 
+class _FeedbackTransport:
+    """Re-ask the same assessment once with code evidence about settled conditions."""
+    def __init__(self,inner,feedback):
+        object.__setattr__(self,'inner',inner);object.__setattr__(self,'feedback',feedback)
+    def __setattr__(self,name,value):
+        setattr(self.inner,name,value)  # assess_capability sets the decoder schema
+    def invoke(self,messages):
+        return self.inner.invoke([*messages,{'role':'user','content':self.feedback}])
+
+
+def _without_settled_conditions(state,transport,result,retried=False):
+    """Never show or register a capability question the user already settled.
+
+    Removing every question does not make the request supported: the same evidence is
+    returned to the assessment once, and a repeated settled-only answer stays in review.
+    """
+    if result.get('decision')!='clarify':return result
+    # Clarification core: settled questions and design-time file requests are not capability questions.
+    from agent_builder.conditions.clarification_core import screen
+    from agent_builder.conditions.question_contract import settled_question_issue
+    _,settled=screen(result['missing_conditions'],state)
+    if not settled:return result
+    names={q for q,_ in settled}
+    record=list(result.get('settled_conditions',[]))+[{'question':q,'reason':r} for q,r in settled]
+    remaining=[c for c in result['missing_conditions'] if c not in names]
+    if remaining:
+        return {**result,'missing_conditions':remaining,'settled_conditions':record}
+    if not retried and transport is not None:
+        calls=result.get('model_calls') or 0
+        feedback=(settled_question_issue(result['missing_conditions'],state) or '')+' '+' / '.join(f'{q} ({r})' for q,r in settled)
+        again=assess_capability(state,_FeedbackTransport(transport,'다음 질문은 사용자에게 물을 조건이 아닙니다. 빼고 다시 판단하세요: '+feedback.strip()))
+        again={**again,'model_calls':calls+(again.get('model_calls') or 0),'settled_conditions':record}
+        return _without_settled_conditions(state,transport,again,retried=True)
+    return {**result,'decision':'manual_review','missing_conditions':[],'settled_conditions':record,
+            'reason':'지원 판정이 물을 필요가 없는 조건(이미 정한 조건·설계 단계 파일 요구)만 다시 물어 질문을 표시하지 않고 검토 상태로 두었습니다.'}
+
+
+# A missing *action* names something the user asked the workflow to do. A request to the user
+# ("…확인해 주세요") or a check with no link to the request is not a missing capability; a live
+# 9B pilot returned exactly such sentences for supported requests (2026-11-11 RunPod eval).
+_TO_USER = re.compile(r'(?:주세요|주십시오|바랍니다|하세요|해야\s*합니다)\s*[.!]?$')
+
+
+def _ungrounded_action(action,state):
+    from agent_builder.design.turn_intent import _stems
+    text=action.strip()
+    if _TO_USER.search(text):return True
+    users=' '.join(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')
+    return '확인' in text and not (_stems(text) & _stems(users))
+
+
+def _without_ungrounded_actions(state,transport,result,retried=False):
+    """Re-assess once when every missing action is a request to the user, then keep the verdict.
+
+    The wording of missing_actions does not decide support. A supported request re-judged
+    with this evidence changes its verdict (2026-11-11 RunPod C03); a truly unsupported one
+    (Teams, Notion, PostgreSQL: U02/U04/X01) keeps missing_capability, and that verdict is
+    kept instead of being turned into a review state. Only the sentences are recorded.
+    """
+    if result.get('decision')!='missing_capability':return result
+    invalid=[a for a in result.get('missing_actions',[]) if _ungrounded_action(a,state)]
+    if not invalid:return result
+    record={'invalid_missing_actions':invalid}
+    if len(invalid)<len(result['missing_actions']):
+        return {**result,'missing_actions':[a for a in result['missing_actions'] if a not in invalid],**record}
+    if retried or transport is None:
+        return {**result,**record}
+    calls=result.get('model_calls') or 0
+    feedback=('다음 missing_actions는 사용자 요청의 실제 동작이 아니라 확인 요청 문장이므로 부족 기능이 아닙니다: '
+              +' / '.join(invalid)+'. 요청의 각 동작을 등록 도구와 다시 대조해 판단하세요.')
+    again=assess_capability(state,_FeedbackTransport(transport,feedback))
+    again={**again,'model_calls':calls+(again.get('model_calls') or 0),**record}
+    return _without_ungrounded_actions(state,transport,again,retried=True)
+
+
+def _generic_question(question,state):
+    """A check request with no link to the request ("처리 단계와 조건을 확인해 주세요."), not a question.
+
+    All three must hold, so real questions ("몇 시에 실행할까요?", "…조건을 알려주세요.") stay.
+    """
+    from agent_builder.design.turn_intent import _stems
+    text=question.strip()
+    users=' '.join(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')
+    # The sentence tells the user to check something ("확인해 주세요"); asking for information
+    # ("확인 항목을 알려주세요", "기준을 알려주세요") is a question and is never matched.
+    return bool(_CHECK_REQUEST.search(text)) and not (_stems(text) & _stems(users))
+
+
+_CHECK_REQUEST = re.compile(r'확인(?:해|하여|하시어)?\s*(?:주세요|주십시오|바랍니다)\s*[.!]?$|확인하세요\s*[.!]?$|확인해야\s*합니다\s*[.!]?$')
+
+
+def _without_generic_questions(state,transport,result,retried=False):
+    """Re-assess once when every clarify question is a generic check request; then keep the verdict.
+
+    2026-11-11 RunPod M08: two copies of "처리 단계와 조건을 확인해 주세요." were the only
+    questions, while the real missing item was the new column name. Duplicates are merged.
+    """
+    if result.get('decision')!='clarify':return result
+    questions=list(dict.fromkeys(q.strip() for q in result.get('missing_conditions',[]) if q.strip()))
+    generic=[q for q in questions if _generic_question(q,state)]
+    result={**result,'missing_conditions':questions}
+    if not generic:return result
+    record={'generic_questions':generic}
+    if len(generic)<len(questions):
+        return {**result,'missing_conditions':[q for q in questions if q not in generic],**record}
+    if retried or transport is None:
+        return {**result,**record}
+    calls=result.get('model_calls') or 0
+    feedback=('다음 질문은 사용자가 답할 수 있는 구체적인 질문이 아니라 요청과 무관한 확인 문장입니다: '+' / '.join(generic)+
+              '. 사용자 요청에서 실제로 정해지지 않은 값만 구체적인 질문으로 적거나, 모두 정해졌으면 질문 없이 판단하세요.')
+    again=assess_capability(state,_FeedbackTransport(transport,feedback))
+    again={**again,'model_calls':calls+(again.get('model_calls') or 0),**record}
+    return _without_generic_questions(state,transport,again,retried=True)
+
+
 def _question_key(text, fallback, state=None):
     """Carry a downstream slot only when the displayed question identifies it."""
     from agent_builder.conditions.condition_readiness import CHOICES, QUESTIONS, policy_clauses
@@ -177,7 +292,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                     from agent_builder.design.requirement_ledger import requirement_transport
                     active=requirement_transport(os.getenv('A4B_CAPABILITY_MODEL') or model, api_key)
                 else:active=transport
-                result=assess_capability(state,active)
+                result=_without_ungrounded_actions(state,active,_without_settled_conditions(state,active,
+                    _without_generic_questions(state,active,assess_capability(state,active))))
             if result['decision'] == 'clarify':
                 missing = result['missing_conditions']
                 source_quotes = result.get('user_quotes', [])
@@ -197,7 +313,7 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
         result=reconcile_manual_capability(result,state)
         fingerprint=input_fingerprint(state)
         decision=result['decision']
-        update={'capability_route':'conditions','capability_assessment':result,'capability_enforced':True,
+        update={'capability_route':'conditions','capability_assessment':result,'capability_enforced':True,'system_failure':None,
             'capability_fingerprint':fingerprint,'capability_deferred':deferred,
             'trace':state.get('trace',[])+[{'node':'capability_check','label':'등록 도구 지원 검토',
                 'status':'completed' if decision=='existing_tools' else 'needs_input',
@@ -244,9 +360,12 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                 messages=state.get('messages',[])+[{'role':'assistant','content':'등록 도구에 부족한 기능이 있는지 확인했습니다. 제작·재설계·보류 중 선택할 수 있습니다.'}])
         else:
             issues=(result.get('issues') if decision=='system_error' else None) or ['지원 여부의 검토가 필요합니다. 요청을 보완한 뒤 다시 확인해주세요.']
+            # A model/contract failure (error_type set) is retryable and is not a user decision.
+            from agent_builder.conditions.clarification_core import system_failure, RETRY_NOTICE
+            failure=system_failure('capability_check',result['error_type'],' '.join(issues)) if decision=='system_error' and result.get('error_type') else None
             update.update(capability_route='stop',status='validation_failed',confirmed=False,saved_agent_id=None,gap_condition_review=None,
-                pending_questions=[],capability_questions=[],issues=issues,semantic_issues=[],
-                messages=state.get('messages',[])+[{'role':'assistant','content':' '.join(issues)}])
+                pending_questions=[],capability_questions=[],issues=issues,semantic_issues=[],system_failure=failure,
+                messages=state.get('messages',[])+[{'role':'assistant','content':' '.join(issues)+(RETRY_NOTICE if failure else '')}])
         return update
     return check
 

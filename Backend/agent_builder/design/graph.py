@@ -50,7 +50,7 @@ def _timed_node(name, fn):
         return {**result, 'trace': trace}
     return run
 
-def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None,requirement_transport=None,requirement_mode=None,meaning_transport=None):
+def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifier=None,verifier_mode=None,condition_transport=None,condition_mode=None,capability_transport=None,capability_mode=None,requirement_transport=None,requirement_mode=None,orchestration_transport=None,gmail_transport=None,meaning_transport=None):
     connection=checkpoint_connection(storage)
     saver=checkpointer(connection)
     graph=StateGraph(BuilderState)
@@ -114,6 +114,9 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_edge('request_meaning','capability_check')
     add('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode,error_observer=observed_error,api_key=api_key)))
     add('await_capability',await_capability_node)
+    # Orchestration stage 2: code decides required selection criteria (no-op when mode is off).
+    from agent_builder.orchestration.criteria import make_orchestration_node
+    add('orchestration',_timed_node('orchestration',make_orchestration_node(model,orchestration_transport,error_observer=observed_error)))
     add('generation_gate',generation_gate)
     add('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode,error_observer=observed_error)))
     from agent_builder.design.requirement_ledger import make_requirement_check
@@ -128,6 +131,11 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         from agent_builder.design.gmail_summary import gmail_summary_reply
         gmail=gmail_summary_reply(state)
         if gmail:return gmail
+        # Orchestration: a one-off Gmail summary assembled from verified extracted slots
+        # (enforce mode only; any failure falls through to the regular planner).
+        from agent_builder.orchestration.gmail_slots import gmail_slot_reply
+        slotted=gmail_slot_reply(state,gmail_transport or orchestration_transport,model)
+        if slotted:return slotted
         from agent_builder.design.document_rows_template import document_rows_reply
         fixed=document_rows_reply(state)
         if fixed:return fixed
@@ -145,8 +153,17 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
                         raise ValueError('이전 조건이 사용자 원문과 충돌합니다. 조건을 다시 확인해주세요.')
                     ledger['slots'][key]=item
             refreshed={**state,'condition_ledger':ledger,'confirmed':False}
-            return {**planner(refreshed),'condition_ledger':ledger,'confirmed':False}
-        return planner(state)
+            return {**_ask_ungrounded(refreshed,planner(refreshed)),'condition_ledger':ledger,'confirmed':False}
+        return _ask_ungrounded(state,planner(state))
+    def _ask_ungrounded(state,result):
+        # A threshold, formula or column name the model planner filled in without evidence is
+        # asked, not assumed. Code templates above build drafts from literals and are not checked.
+        draft=(result or {}).get('draft')
+        if not draft or draft.get('unsupported'):return result
+        from agent_builder.design.grounded_values import ungrounded_value_questions
+        asked=ungrounded_value_questions({**state,**{k:v for k,v in result.items() if k!='draft'}},draft)
+        if not asked:return result
+        return {**result,'draft':{**draft,'questions':list(dict.fromkeys(list(draft.get('questions') or [])+asked))}}
     def guarded_template(state):
         require_ready(state)
         return template_node(state)
@@ -161,7 +178,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     add('save',make_save_node(storage))
     add('tool_gap',tool_gap_node)
     graph.add_edge(START,'resources');graph.add_edge('resources','attachment_gate')
-    graph.add_conditional_edges('capability_check',lambda s:s['capability_route'],{'conditions':'condition_check','supervisor':'supervisor','stop':END,'await_capability':'await_capability'})
+    graph.add_conditional_edges('capability_check',lambda s:s['capability_route'],{'conditions':'orchestration','supervisor':'supervisor','stop':END,'await_capability':'await_capability'})
+    graph.add_conditional_edges('orchestration',lambda s:s['orchestration_route'],{'continue':'condition_check','ask':'await_input'})
     graph.add_edge('await_capability','attachment_gate')
     graph.add_conditional_edges('generation_gate',lambda s:s['capability_generation_route'],{'generate':'conversation','recheck':'capability_check'})
     graph.add_conditional_edges('condition_check',lambda s:s['condition_route'],{'conversation':'requirements','template_plan':'requirements','supervisor':'supervisor','stop':END})

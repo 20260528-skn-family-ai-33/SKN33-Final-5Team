@@ -45,7 +45,7 @@ export function TaskLibraryHeader({active, onNavigate, actions, disabled = false
     <nav className="task-library-tabs" aria-label="라이브러리 보기">
       {([
         ['workflows', '저장한 워크플로우', Workflow],
-        ['nodes', '재사용 작업', Layers],
+        ['nodes', '작업 템플릿', Layers],
       ] as const).map(([destination,label,Icon])=>
         <button className="as-button" key={destination} type="button" aria-current={active===destination?'page':undefined}
           disabled={disabled} onClick={()=>onNavigate(destination)}>

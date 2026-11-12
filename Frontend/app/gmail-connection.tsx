@@ -175,7 +175,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
           <button type="button" className="as-button" disabled={disabled || busy} onClick={() => void manage('test')} aria-label="Gmail 연결 확인">연결 확인</button>
           <button type="button" className="as-text-button service-connection-disconnect" disabled={disabled || busy} onClick={() => void manage('disconnect')} aria-label="Gmail 연결 해제">연결 해제</button>
         </>}
-        <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled || busy} aria-label="Gmail 연결 관리">연결 관리</button></DialogTrigger>
+        {status?.connected && <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled || busy} aria-label="Gmail 연결 관리">연결 관리</button></DialogTrigger>}
       </div>
     </article> : <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled}>
       <Mail size={16} aria-hidden="true"/>Gmail

@@ -35,7 +35,7 @@ class ReleaseSelectionTests(unittest.TestCase):
         self.git('init', '-q', '--initial-branch=main')
         self.git('config', 'user.name', 'A4B release test')
         self.git('config', 'user.email', 'test@example.invalid')
-        for path in (MODEL, CATALOG, 'Frontend/app.ts', 'docs/note.md'):
+        for path in (MODEL, CATALOG, 'Frontend/app.ts', 'docs/note.md', 'scripts/model-environment.mjs'):
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text('baseline\n')
@@ -66,6 +66,21 @@ class ReleaseSelectionTests(unittest.TestCase):
     def test_frontend_only_does_not_restart_backend(self):
         (self.repo / 'Frontend/app.ts').write_text('new frontend\n')
         self.assertEqual(self.select(self.commit()), 'frontend')
+
+    def test_model_environment_only_deploys_backend(self):
+        (self.repo / 'scripts/model-environment.mjs').write_text('updated model configuration\n')
+        revision = self.commit()
+        self.assertEqual(self.select(revision), 'backend')
+        self.assertEqual(self.select(revision, backend=revision), 'none')
+
+    def test_model_environment_and_frontend_track_separate_releases(self):
+        (self.repo / 'scripts/model-environment.mjs').write_text('updated model configuration\n')
+        backend_revision = self.commit()
+        (self.repo / 'Frontend/app.ts').write_text('new frontend\n')
+        revision = self.commit()
+        self.assertEqual(self.select(revision), 'all')
+        self.assertEqual(self.select(revision, frontend=revision), 'backend')
+        self.assertEqual(self.select(revision, backend=backend_revision), 'frontend')
 
     def test_mixed_release_tracks_each_live_revision(self):
         (self.repo / MODEL).write_text('new model\n')

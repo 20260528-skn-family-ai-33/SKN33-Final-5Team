@@ -178,3 +178,14 @@ def test_explicit_xlsx_request_delegates_to_registered_spreadsheet_planner():
            'messages':[{'role':'user','content':'영수증 상품을 xlsx 파일로 만들어줘'}]}
     assert not document_rows_applies(state)
     assert document_rows_reply(state) is None
+
+
+def test_document_rows_accepts_answer_form_field_list():
+    from agent_builder.design.document_rows_template import document_rows_applies, document_rows_reply
+
+    fields = ['품목코드', '품명', '발주', '실입고', '파손']
+    state = asked_state(QUESTION + ' → ' + ', '.join(fields))
+    assert document_rows_applies(state)
+    settings = document_rows_reply(state)['draft']['workflow']['nodes'][1]['settings']
+    assert settings['extraction_mode'] == 'rows'
+    assert settings['fields'] == fields

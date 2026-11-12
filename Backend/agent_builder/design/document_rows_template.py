@@ -147,6 +147,11 @@ def _ask(state, request, note=None):
                                                 'detail': '고정 흐름(문서 읽기 → 목록 추출 → CSV 저장)에 쓸 항목을 모델 호출 없이 묻습니다.', 'model_calls': 0}]}
 
 
+def _field_answer(content):
+    # The answer form includes the question in the displayed chat message.
+    return content.removeprefix(QUESTION + ' → ').strip()
+
+
 def document_rows_applies(state):
     """True when this turn is handled by the fixed flow below (its request or its field answer).
 
@@ -169,7 +174,8 @@ def document_rows_applies(state):
         return False
     if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'].endswith(QUESTION):
         # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
-        return wants_all_fields(messages[-1]['content']) or not is_request_change(messages[-1]['content'])
+        answer = _field_answer(messages[-1]['content'])
+        return wants_all_fields(answer) or not is_request_change(answer)
     return bool(_TABLE_INTENT.search(messages[-1]['content']) or _upload_followup_request(messages))
 
 
@@ -193,7 +199,7 @@ def document_rows_reply(state):
     asked = len(messages) >= 2 and messages[-1]['role'] == 'user' and messages[-2]['role'] == 'assistant' \
         and messages[-2]['content'].endswith(QUESTION)
     if asked:
-        answer = users[-1]['content']
+        answer = _field_answer(users[-1]['content'])
         request = next((m['content'] for m in users[:-1][::-1] if _TABLE_INTENT.search(m['content'])), users[0]['content'])
         explanation = EXPLANATION
         # Checked before is_request_change: "다 뽑아줘" ends like a command but still answers the question.

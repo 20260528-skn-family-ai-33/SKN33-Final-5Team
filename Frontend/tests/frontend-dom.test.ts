@@ -1095,11 +1095,11 @@ test('redesign: library hides manual creation and preserves saved-node edits',as
  try{assert.equal(document.querySelector('form'),null);assert.ok(!document.body.textContent?.includes('지원 기능'));await click(button('설정 수정'));await input(field('작업 이름'),'보존할 이름');window.confirm=()=>false;await click(button('설정 수정'));assert.equal(field('작업 이름').value,'보존할 이름');assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('역할과 목적')));assert.equal(document.querySelector('[aria-label="작업 종류"]'),null);}finally{await h.close();}
 });
 
-test('workspace shell: only the workflow designer exposes the header create action',async()=>{
+test('workspace shell: only the workflow designer exposes the page create action',async()=>{
  let header='';
  for(const screen of ['home','workflows','schedules','history','nodes','workflow','run','assets','connections']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{const chrome=document.querySelector('.workspace-header')!.cloneNode(true) as HTMLElement;chrome.querySelector('[data-tour="create-workflow"]')?.remove();const current=chrome.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(document.querySelector('.workspace-brand')?.tagName,'BUTTON');assert.equal(document.querySelector('.workspace-header [data-tour="help"]'),null);assert.ok(document.querySelector('.workspace-sidebar-footer [data-tour="help"]'));assert.doesNotMatch(document.querySelector('.workspace-sidebar-footer')!.textContent!,/서비스 소개/);assert.equal(document.querySelectorAll('.workspace-header [data-tour="create-workflow"]').length,screen==='workflow'?1:0);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
+  try{const chrome=document.querySelector('.workspace-header')!.cloneNode(true) as HTMLElement;const current=chrome.innerHTML.replace(/radix-[^" ]+/g,'radix-id');if(header)assert.equal(current,header);else header=current;assert.equal(document.querySelectorAll('.workspace-brand').length,1);assert.equal(document.querySelector('.workspace-brand')?.tagName,'BUTTON');assert.equal(document.querySelector('.workspace-header [data-tour="help"]'),null);assert.ok(document.querySelector('.workspace-sidebar-footer [data-tour="help"]'));assert.doesNotMatch(document.querySelector('.workspace-sidebar-footer')!.textContent!,/서비스 소개/);assert.equal(document.querySelectorAll('.workspace-context [data-tour="create-workflow"]').length,screen==='workflow'?1:0);assert.equal(document.querySelectorAll('.workspace-nav [aria-current=page]').length,1);await click(button('사용 안내'));assert.ok(document.querySelector('[role=dialog]')?.textContent?.includes('화면 둘러보기'));}finally{await h.close();}
  }
 });
 test('workspace library: pending startup does not show zero counts or an editable empty form',async()=>{
@@ -2336,17 +2336,17 @@ test('home automatic submission waits for the design connection and preserves in
 });
 
 
-test('designer header new workflow protects unsent input and clears the old conversation after confirmation',async()=>{
+test('designer page new workflow protects unsent input and clears the old conversation after confirmation',async()=>{
  const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?readySession():undefined);
  try{
   const composer=()=>document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
   await input(composer(),'보존할 입력');
   window.confirm=()=>false;
-  await click(document.querySelector('.workspace-header [data-tour="create-workflow"]')!);
+  await click(document.querySelector('.workspace-context [data-tour="create-workflow"]')!);
   assert.equal(composer().value,'보존할 입력');
   assert.equal(localStorage.getItem('a4b-builder-session'),'ready');
   window.confirm=()=>true;
-  await click(document.querySelector('.workspace-header [data-tour="create-workflow"]')!);
+  await click(document.querySelector('.workspace-context [data-tour="create-workflow"]')!);
   assert.equal(composer().value,'');
   assert.equal(localStorage.getItem('a4b-builder-session'),null);
   assert.equal(localStorage.getItem('a4b-selected-agent'),null);

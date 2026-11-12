@@ -64,3 +64,6 @@
 
 .task-library-tabs button>span{white-space:nowrap}
 @media(max-width:420px){.task-library-tabs{grid-template-columns:minmax(0,1fr);width:190px}}
+
+.workspace-context{flex-wrap:wrap}
+.workspace-context>.as-new-workflow{margin-inline-start:auto;white-space:nowrap}

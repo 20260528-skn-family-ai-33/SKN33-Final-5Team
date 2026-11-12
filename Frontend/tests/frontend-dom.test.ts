@@ -799,7 +799,7 @@ test('DOM: workflow save still enters execution when the list refresh alone fail
   if(path.endsWith('/confirm'))return {...readySession(),status:'saved',saved_agent_id:'A'};
   if(path.endsWith('/catalog')&&catalogReads++>0)return new Response(JSON.stringify({error:'목록 갱신 오류'}),{status:503});
  });
- try{await click(button('초안 확인 · 저장'));assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.ok(document.querySelector('.screen-run'));assert.match(document.querySelector('[role=alert]')?.textContent||'',/저장은 완료/);}finally{await h.close();}
+ try{await click(button('저장'));assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.ok(document.querySelector('.screen-run'));assert.match(document.querySelector('[role=alert]')?.textContent||'',/저장은 완료/);}finally{await h.close();}
 });
 test('DOM: service-detail failure after saving offers reload without another confirm',async()=>{
  let details=0;
@@ -808,7 +808,7 @@ test('DOM: service-detail failure after saving offers reload without another con
   if(path.endsWith('/confirm'))return {...readySession(),status:'saved',saved_agent_id:'A'};
   if(path.includes('/agent?')&&details++===0)return new Response(JSON.stringify({error:'서비스 조회 오류'}),{status:503});
  });
- try{await click(button('초안 확인 · 저장'));await click(button('저장한 워크플로우 다시 불러오기'));assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.equal(h.calls.filter(c=>c.path.endsWith('/confirm')).length,1);}finally{await h.close();}
+ try{await click(button('저장'));await click(button('저장한 워크플로우 다시 불러오기'));assert.equal(document.querySelector('h1')?.textContent,'서비스 A');assert.equal(h.calls.filter(c=>c.path.endsWith('/confirm')).length,1);}finally{await h.close();}
 });
 test('DOM: validation error preserves the node form for correction and retry',async()=>{
  let writes=0;
@@ -954,10 +954,10 @@ test('entry: fresh editor starts from the list and browser history returns to th
   await click(button('목록으로'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
   const libraryTitle=document.querySelector('.task-library-title > div')?.textContent;
-  await click(button('재사용 작업'));await t.flush();
+  await click(button('작업 템플릿'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
   assert.equal(document.querySelector('.task-library-title > div')?.textContent,libraryTitle);
-  assert.equal(document.querySelector('.task-library-tabs [aria-current="page"]')?.textContent,'재사용 작업');
+  assert.equal(document.querySelector('.task-library-tabs [aria-current="page"]')?.textContent,'작업 템플릿');
   assert.ok(!buttons().some(b=>b.textContent?.trim()==='설계로 돌아가기'));
   await click(button('저장한 워크플로우'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
@@ -1595,6 +1595,10 @@ test('folder source: a manual workflow configures a folder and runs one report w
  try{
   await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
   assert.equal(document.querySelectorAll('.schedule-library-source').length,1);
+  const sourceSettings = document.querySelector('.schedule-library-source')!.closest('details')!;
+  assert.equal(sourceSettings.open,false);
+  assert.ok(button('워크플로우 실행').compareDocumentPosition(sourceSettings)&dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+  sourceSettings.open=true;
   assert.equal(button('워크플로우 실행').disabled,true);
   await chooseSource('예약 자료 폴더','folder-1');await chooseSource('예약 자료 읽기 방식','all');
   await click(button('자료함 연결 저장'));
@@ -1836,7 +1840,7 @@ for(const includeSchedule of [true,false])test('request-led scheduling: save rev
  });
  try{
   assert.equal(document.querySelector('input[name="execution-mode"]'),null);
-  await click(button('초안 확인 · 저장'));
+  await click(button('저장'));
   assert.match(document.querySelector('[role="dialog"]')?.textContent||'',/매일 09:00/);
   assert.match(document.querySelector('[role="dialog"]')?.textContent||'',/서울 표준시/);
   assert.match(document.querySelector('[role="dialog"]')?.textContent||'',/꺼진 상태로 저장/);
@@ -1858,7 +1862,7 @@ for(const sample of [
  const session={id:'generic-review',revision:2,messages:[],draft:{...A.config,name:sample.name,schedule:sample.spec},status:'ready',issues:[],trace:[],resources:[]};
  const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.includes('/session?')?session:undefined);
  try{
-  await click(button('초안 확인 · 저장'));
+  await click(button('저장'));
   assert.match(document.querySelector('[role="dialog"]')?.textContent||'',new RegExp(sample.label));
   assert.equal(document.querySelectorAll('[role="dialog"] input').length,2,'review has save choices only');
   await click(button('돌아가기'));
@@ -1990,7 +1994,7 @@ test('home: all sidebar destinations return to home and recent entries retain th
    assert.equal(nav('home').getAttribute('aria-current'),'page');
    await click(nav(page));
    if (page==='workflows'){
-    await click(button('재사용 작업'));
+    await click(button('작업 템플릿'));
     assert.equal(location.search,'?screen=nodes');
     assert.equal(nav(page).getAttribute('aria-current'),'page');
     await click(button('저장한 워크플로우'));
@@ -2299,7 +2303,7 @@ for(const repairResult of ['saved','active','changed'])test('save recovery: pers
   if(path.endsWith('/recover_generation')){repairRequested=true;repaired=repairResult==='saved';return {recovered:repaired,reason:repaired?undefined:repairResult};}
  });
  try{
-  await click(button('초안 확인 · 저장'));
+  await click(button('저장'));
   assert.equal(h.calls.filter(call=>call.path.endsWith('/confirm')).length,1);
   assert.deepEqual(h.calls.find(call=>call.path.endsWith('/recover_generation'))?.body,{id:'ready',revision:1,generationRequestId:own});
   if(repairResult==='saved'){
@@ -2307,7 +2311,7 @@ for(const repairResult of ['saved','active','changed'])test('save recovery: pers
    assert.ok(document.querySelector('.screen-run'));assert.equal(document.querySelector('[role="alert"]'),null);
   }else{
    assert.equal(h.calls.some(call=>call.path.includes('/agent?id=A')),false);
-   assert.ok(document.querySelector('[role="alert"]'));assert.equal(button('초안 확인 · 저장').disabled,true);
+   assert.ok(document.querySelector('[role="alert"]'));assert.equal(button('저장').disabled,true);
    assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.disabled,repairResult==='active');
   }
 

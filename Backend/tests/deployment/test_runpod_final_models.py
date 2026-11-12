@@ -37,7 +37,7 @@ def test_missing_or_invalid_9b_receipt_fails_closed(tmp_path, value):
         required_models(path)
 
 
-def run_warmup(monkeypatch, *, extra=False, bad_digest=False):
+def run_warmup(monkeypatch, *, extra=False, bad_digest=False, failure=None):
     expected = {k: v for k, v in receipt().items() if k in SERVING_MODELS}
     calls = []
     monkeypatch.setattr('final_model_profile.required_models', lambda *a: expected)
@@ -50,10 +50,18 @@ def run_warmup(monkeypatch, *, extra=False, bad_digest=False):
                 loaded.append(dict(name='qwen3.5:4b'))
             if bad_digest:
                 loaded[0]['digest'] = '0' * 64
+            if failure == 'cpu_offload':
+                loaded[0]['size_vram'] = 50
+            if failure == 'context':
+                loaded[0]['context_length'] = 16384
             return io.BytesIO(json.dumps({'models': loaded}).encode())
         body = json.loads(request.data)
         calls.append(body)
         assert body['model'] in SERVING_MODELS
+        if failure == 'incomplete':
+            return io.BytesIO(b'{"done":false}')
+        if failure == 'error':
+            return io.BytesIO(b'{"done":true,"error":"synthetic failure"}')
         return io.BytesIO(b'{"done":true}')
 
     monkeypatch.setattr('urllib.request.urlopen', urlopen)
@@ -68,12 +76,19 @@ def test_warmup_never_calls_4b(monkeypatch):
     assert all(c['options']['num_ctx'] == 32768 and c['keep_alive'] == -1 for c in calls)
     assert all(c['shift'] is False for c in calls)
     assert all(c['truncate'] is False for c in calls)
+    assert all(c['think'] is False for c in calls)
 
 
 @pytest.mark.parametrize('case', ['extra', 'bad_digest'])
 def test_warmup_rejects_wrong_loaded_inventory(monkeypatch, case):
-    with pytest.raises(AssertionError):
+    with pytest.raises(RuntimeError):
         run_warmup(monkeypatch, **{case: True})
+
+
+@pytest.mark.parametrize('failure', ['incomplete', 'error', 'cpu_offload', 'context'])
+def test_warmup_rejects_failed_load_or_incompatible_runner(monkeypatch, failure):
+    with pytest.raises(RuntimeError):
+        run_warmup(monkeypatch, failure=failure)
 
 
 def test_ready_does_not_require_4b_but_requires_parser(monkeypatch):

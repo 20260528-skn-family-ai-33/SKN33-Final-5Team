@@ -5,7 +5,7 @@
 .entry-app :is(h1,h2,h3,p) {margin:0}.entry-app button {font:inherit}.entry-app button:focus-visible,.entry-app a:focus-visible,.entry-app input:focus-visible {outline:2px solid var(--a4b-blue-ink);outline-offset:3px}
 
 
-.entry-landing {max-width:1440px;margin:auto;padding:48px 48px 72px}.entry-hero {padding-bottom:48px}.entry-label {display:inline-block;padding:5px 12px;border-radius:20px;background:var(--a4b-blue-soft);color:var(--a4b-blue-ink);font-size:11px;font-weight:600}.entry-hero h1 {font-size:clamp(32px,4.1vw,58px);line-height:1.42;letter-spacing:-1.8px;font-weight:750;margin:26px 0}.entry-hero>p {font-size:14px;line-height:1.9;color:var(--a4b-muted)}.entry-actions {display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
+.entry-landing {max-width:1440px;margin:auto;padding:48px 48px 72px}.entry-hero {padding-bottom:48px}.entry-label {display:inline-block;padding:5px 12px;border-radius:20px;background:var(--a4b-blue-soft);color:var(--a4b-blue-ink);font-size:11px;font-weight:600}.entry-hero h1 {font-size:clamp(32px,4.1vw,58px);line-height:1.42;letter-spacing:-1.8px;font-weight:750;margin:26px 0}.entry-hero>p {font-size:14px;line-height:1.9;color:var(--a4b-muted)}.entry-actions {display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
 /* Static D01 composition; the document scrolls normally. */
 
 .entry-hero h1 {font-size:clamp(34px,4.45vw,64px);line-height:1.25;margin:28px 0 24px}

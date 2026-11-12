@@ -81,7 +81,7 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
         </button></li>
         <li><button type="button" className="overview-row" onClick={()=>onNavigate('nodes')}>
           <span className="overview-icon"><Layers size={17} aria-hidden="true"/></span>
-          <span className="overview-item"><strong>재사용 작업</strong></span>
+          <span className="overview-item"><strong>작업 템플릿</strong></span>
           <ArrowRight size={15} aria-hidden="true"/>
         </button></li>
       </ul>

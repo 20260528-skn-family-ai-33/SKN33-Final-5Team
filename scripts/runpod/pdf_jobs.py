@@ -51,7 +51,10 @@ class PdfJobs:
             if any(v.response is None for v in self.jobs.values()):
                 return 429, {'error': 'pdf_router_busy'}
             if len(self.jobs) >= 8:
-                evict = next((k for k, v in self.jobs.items() if v.delivered), None)
+                # Preserve unread ZIPs. A cancelled/failed client may never GET
+                # its terminal error, so that record must not block admission.
+                evict = next((k for k, v in self.jobs.items()
+                              if v.response is not None and (v.delivered or v.response[0] != 200)), None)
                 if evict is None:
                     return 429, {'error': 'pdf_router_busy'}
                 self.jobs.pop(evict)

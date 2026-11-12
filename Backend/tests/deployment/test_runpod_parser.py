@@ -33,7 +33,7 @@ KEY = 'synthetic-parser-test-key-0123456789'
 
 
 @pytest.fixture
-def server(monkeypatch, tmp_path):
+def service(monkeypatch, tmp_path):
     monkeypatch.setenv('A4B_PDF_ROUTER_PYTHON', sys.executable)
     monkeypatch.delenv('A4B_API_AUTH_REQUIRED', raising=False)
     monkeypatch.delenv('A4B_MINERU_PYTHON', raising=False)
@@ -47,11 +47,16 @@ def server(monkeypatch, tmp_path):
     service = ThreadingHTTPServer(('127.0.0.1', 0), handler)
     thread = threading.Thread(target=service.serve_forever, daemon=True)
     thread.start()
-    yield service.server_port
+    yield service
     handler.pdf_jobs.close()
     service.shutdown()
     service.server_close()
     thread.join(timeout=2)
+
+
+@pytest.fixture
+def server(service):
+    return service.server_port
 
 
 def request(port, method, path, body=None, *, key=KEY, content_type='application/pdf', **headers):
@@ -224,6 +229,80 @@ def test_authenticated_http_cancel_releases_pdf_slot(server, monkeypatch, tmp_pa
     wait_for(lambda: request(server, 'GET', path)[0] != 202)
     assert json.loads(request(server, 'GET', path)[2])['error'] == 'pdf_job_cancelled'
     assert request(server, 'POST', '/v1/pdf', b'%PDF-next')[0] == 202
+
+
+@pytest.mark.parametrize('ending', ['cancel', 'lease', 'failure'])
+def test_repeated_terminal_jobs_without_get_do_not_block_admission(service, monkeypatch, tmp_path, ending):
+    marker = tmp_path / 'worker.pid'
+    install_worker(monkeypatch, tmp_path,
+                   f'Path({str(marker)!r}).write_text(str(os.getpid()))\n'
+                   + ('raise SystemExit(1)\n' if ending == 'failure' else 'time.sleep(60)\n'))
+    port, jobs = service.server_port, service.RequestHandlerClass.pdf_jobs
+    if ending == 'lease':
+        jobs.lease_seconds = .4
+    expected = {'cancel': (410, 'pdf_job_cancelled'), 'lease': (410, 'pdf_job_lease_expired'),
+                'failure': (422, 'pdf_gpu_processing_failed')}[ending]
+    # Cross the eight-result capacity twice, using only POST and DELETE.
+    for index in range(16):
+        marker.unlink(missing_ok=True)
+        status, _, body = request(port, 'POST', '/v1/pdf', b'%PDF-test')
+        assert status == 202, f'{ending}: submission {index + 1} returned {status}'
+        identifier = json.loads(body)['job_id']
+        job = jobs.jobs[identifier]
+        wait_for(lambda: marker.exists() and marker.read_text())
+        pid = int(marker.read_text())
+        if ending == 'cancel':
+            assert request(port, 'DELETE', '/v1/pdf/' + identifier)[0] == 202
+        # Observe worker completion directly so a GET cannot mark it delivered
+        # or renew the lease and mask the admission bug.
+        job.thread.join(timeout=3)
+        assert not job.thread.is_alive() and not alive(pid)
+        assert job.response == (expected[0], {'error': expected[1]})
+        assert not job.delivered
+        assert len(jobs.jobs) <= 8
+    assert request(port, 'POST', '/v1/pdf', b'%PDF-next')[0] == 202
+
+
+def test_unread_success_is_preserved_when_terminal_result_is_evicted(service, monkeypatch, tmp_path):
+    install_worker(monkeypatch, tmp_path, "(Path(sys.argv[1]) / 'result.zip').write_bytes(b'PK-success')\n")
+    port, jobs = service.server_port, service.RequestHandlerClass.pdf_jobs
+    status, _, body = request(port, 'POST', '/v1/pdf', b'%PDF-success')
+    assert status == 202
+    success = json.loads(body)['job_id']
+    jobs.jobs[success].thread.join(timeout=3)
+    assert jobs.jobs[success].response == (200, b'PK-success')
+    assert not jobs.jobs[success].delivered
+    install_worker(monkeypatch, tmp_path, 'time.sleep(60)\n')
+    for _ in range(7):
+        status, _, body = request(port, 'POST', '/v1/pdf', b'%PDF-cancel')
+        assert status == 202
+        identifier = json.loads(body)['job_id']
+        assert request(port, 'DELETE', '/v1/pdf/' + identifier)[0] == 202
+        jobs.jobs[identifier].thread.join(timeout=3)
+        assert jobs.jobs[identifier].response == (410, {'error': 'pdf_job_cancelled'})
+    assert request(port, 'POST', '/v1/pdf', b'%PDF-next')[0] == 202
+    # The oldest entry was a successful ZIP; only a terminal error may be evicted.
+    assert request(port, 'GET', '/v1/pdf/' + success) == (200, 'application/zip', b'PK-success')
+    # Capacity recovery must not evict or overlap the still-running worker.
+    assert request(port, 'POST', '/v1/pdf', b'%PDF-overlap')[0] == 429
+
+
+def test_full_unread_success_cache_is_protected_until_delivery(service, monkeypatch, tmp_path):
+    install_worker(monkeypatch, tmp_path, "(Path(sys.argv[1]) / 'result.zip').write_bytes(b'PK-success')\n")
+    port, jobs, identifiers = service.server_port, service.RequestHandlerClass.pdf_jobs, []
+    for _ in range(8):
+        status, _, body = request(port, 'POST', '/v1/pdf', b'%PDF-success')
+        assert status == 202
+        identifier = json.loads(body)['job_id']
+        identifiers.append(identifier)
+        jobs.jobs[identifier].thread.join(timeout=3)
+        assert jobs.jobs[identifier].response == (200, b'PK-success')
+        assert not jobs.jobs[identifier].delivered
+    assert request(port, 'POST', '/v1/pdf', b'%PDF-next')[0] == 429
+    assert request(port, 'GET', '/v1/pdf/' + identifiers[0])[0] == 200
+    assert request(port, 'POST', '/v1/pdf', b'%PDF-after-delivery')[0] == 202
+    for identifier in identifiers[1:]:
+        assert request(port, 'GET', '/v1/pdf/' + identifier)[2] == b'PK-success'
 
 
 def test_pod_preview_bundle_is_accepted_by_local_client(tmp_path):

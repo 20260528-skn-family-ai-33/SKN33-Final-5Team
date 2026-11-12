@@ -135,7 +135,12 @@ def grounded_schedule(state):
     if spec['frequency'] != 'weekly':spec['weekday'] = None
     if spec['frequency'] != 'monthly':spec.update(monthday=None, month_end=False)
     elif spec['month_end']:spec['monthday'] = None
-    if schedule_errors(spec):raise ValueError('예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.')
+    if schedule_errors(spec):
+        from .requirement_clarification import MissingSchedule, missing_schedule_questions
+        missing = missing_schedule_questions(state)
+        if missing:
+            raise MissingSchedule(missing)
+        raise ValueError('예약 주기·시각·시간대·월간 일자의 원문 조건이 충분하지 않습니다.')
     return ScheduleSpec.model_validate(spec).model_dump()
 
 
@@ -474,7 +479,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                 failure_kind = 'system_error'
                 response=active.invoke(messages)
                 failure_kind = 'model_output_error'
-                from .gmail_requirement_grounding import MissingGmailSchedule
+                from .requirement_clarification import MissingSchedule
                 try:
                     if isinstance(response, dict):
                         content = response.get('content')
@@ -485,7 +490,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                     if not isinstance(content, str):
                         raise ValueError('요구사항 응답 본문이 올바른 문자열이 아닙니다.')
                     plan=extract_plan(json.loads(content),state)
-                except MissingGmailSchedule as error:
+                except MissingSchedule as error:
                     from .requirement_clarification import clarification_reply
                     return {**clarification_reply(state,error.questions,calls),'requirement_route':'await_input'}
                 except (ValueError,TypeError,KeyError) as error:

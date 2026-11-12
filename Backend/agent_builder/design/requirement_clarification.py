@@ -15,6 +15,12 @@ _BOUNDS = {'schedule.hour':(0,23,'시'), 'schedule.minute':(0,59,'분'),
            'schedule.weekday':(0,6,None), 'schedule.monthday':(1,31,'일')}
 
 
+class MissingSchedule(ValueError):
+    def __init__(self, questions):
+        super().__init__('예약 실행에 필요한 조건을 확인해주세요.')
+        self.questions = questions
+
+
 def _skipped_optional_keys(state):
     latest={};messages=state.get('messages',[])
     for event in state.get('requirement_answers',[]):

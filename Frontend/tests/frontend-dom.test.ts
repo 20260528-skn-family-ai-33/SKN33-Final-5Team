@@ -2358,3 +2358,19 @@ test('designer page new workflow protects unsent input and clears the old conver
   assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')||call.path.endsWith('/message')).length,0);
  }finally{await h.close();}
 });
+
+test('direct run shows a retained optional request after returning from design',async()=>{
+ const h=await setup('?screen=run&service=A',{},path=>{
+  if(path.includes('/agent?'))return {...snapshot(A),request_required:false};
+ });
+ try{
+  const requestField=()=>document.querySelector<HTMLTextAreaElement>('textarea[data-tour="run-input"]')!;
+  assert.equal(requestField().closest('details')?.open,false);
+  requestField().closest('details')!.open=true;
+  await input(requestField(),'이번 실행의 추가 요청');
+  await click(button('설계'));
+  await click(button('직접 실행'));
+  assert.equal(requestField().value,'이번 실행의 추가 요청');
+  assert.equal(requestField().closest('details')?.open,true);
+ }finally{await h.close();}
+});

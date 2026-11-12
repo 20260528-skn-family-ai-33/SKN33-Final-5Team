@@ -42,8 +42,34 @@ def test_values_written_by_the_user_are_not_asked(request_text, draft):
 def test_a_threshold_from_an_attached_document_or_settled_answer_is_grounded():
     policy = {'id': 'p', 'kind': 'document', 'text': '비용 기준은 300000원 이상이다.', 'pages': []}
     assert ungrounded_value_questions(state('규정의 비용 기준으로 선별해줘.', resources=[policy]), filter_draft(300000.0, field='비용')) == []
-    ledger = {'slots': {'filter.value': {'status': 'specified', 'value': 50}}}
+    ledger = {'slots': {'filter.field': {'status': 'specified', 'value': 'amount'},
+                        'filter.value': {'status': 'specified', 'value': 50}}}
     assert ungrounded_value_questions(state('금액 기준은 위에서 정한 대로', ledger=ledger), filter_draft(50)) == []
+
+
+@pytest.mark.parametrize('value', [0, 9])
+def test_other_ledger_slots_do_not_ground_a_filter_threshold(value):
+    ledger = {'slots': {'filter.field': {'status': 'specified', 'value': 'amount'},
+                        'schedule.hour': {'status': 'specified', 'value': 9},
+                        'schedule.minute': {'status': 'specified', 'value': 0}}}
+    assert ungrounded_value_questions(state('amount가 큰 행만 선별해줘.', ledger=ledger),
+                                      filter_draft(value, operator='gt')) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
+
+
+def test_settled_filter_threshold_must_belong_to_the_same_field():
+    ledger = {'slots': {'filter.field': {'status': 'specified', 'value': 'cost'},
+                        'filter.value': {'status': 'specified', 'value': 10}}}
+    assert ungrounded_value_questions(state('amount가 큰 행만 선별해줘.', ledger=ledger),
+                                      filter_draft(10, operator='gt')) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
+
+
+def test_ascii_field_name_must_not_match_a_longer_identifier():
+    for other_field in ('total_amount', 'amount_total'):
+        request = f'{other_field}가 10 이상이고 amount는 큰 행만 골라줘.'
+        assert ungrounded_value_questions(state(request), filter_draft(10, operator='gt')) == \
+            ['amount 열을 선별할 기준 값은 얼마인가요?']
 
 
 def test_a_relative_date_from_the_calendar_context_is_grounded():
@@ -64,6 +90,58 @@ def test_calendar_context_numbers_do_not_ground_an_invented_threshold():
     s = state('연결한 표에서 amount가 큰 행만 선별한 뒤 region별 amount 합계를 JSON으로 저장해줘.', temporal=temporal)
     assert ungrounded_value_questions(s, filter_draft(0.0, operator='gt')) == ['amount 열을 선별할 기준 값은 얼마인가요?']
     assert ungrounded_value_questions(s, filter_draft(2.0, operator='gt')) != []
+
+
+@pytest.mark.parametrize('value', [0.0, '0'])
+def test_schedule_time_does_not_ground_an_invented_threshold(value):
+    s = state('매일 09:00에 연결한 표에서 amount가 큰 행만 선별해줘.')
+    assert ungrounded_value_questions(s, filter_draft(value, operator='gt')) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
+
+
+def test_numeric_string_requires_a_whole_number_in_the_request():
+    s = state('결과는 10건만 저장하고 amount가 큰 행만 선별해줘.')
+    assert ungrounded_value_questions(s, filter_draft('0', operator='gt')) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
+    assert ungrounded_value_questions(state('amount가 0 이상인 행만 남겨줘.'), filter_draft('0')) == []
+
+
+@pytest.mark.parametrize('request_text', [
+    '결과를 10건만 저장하고 amount가 큰 행만 선별해줘.',
+    'amount가 큰 행 10개만 저장해줘.',
+    '비용은 10 이상이고 amount는 큰 행만 골라줘.',
+])
+def test_an_unrelated_number_does_not_ground_the_filter_threshold(request_text):
+    assert ungrounded_value_questions(state(request_text), filter_draft(10, operator='gt')) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
+
+
+def test_count_of_output_rows_is_not_a_filter_threshold():
+    s = state('amount 10건만 정렬해서 저장해줘.')
+    assert ungrounded_value_questions(s, filter_draft(10)) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
+    assert ungrounded_value_questions(state('qty가 10개 이상인 행만 남겨줘.'),
+                                      filter_draft(10, field='qty')) == []
+
+
+@pytest.mark.parametrize('value', [-5, '-5'])
+def test_signed_negative_threshold_keeps_its_sign(value):
+    s = state('amount가 -5 이하인 행만 남겨줘.')
+    assert ungrounded_value_questions(s, filter_draft(value, operator='lte')) == []
+    assert ungrounded_value_questions(s, filter_draft(5, operator='lte')) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
+
+
+def test_a_threshold_tied_to_the_filter_field_or_a_short_answer_is_grounded():
+    for request_text in ('amount가 10 이상인 행만 남겨줘.', '10 이상인 amount만 남겨줘.'):
+        assert ungrounded_value_questions(state(request_text), filter_draft(10)) == []
+    assert ungrounded_value_questions(state('amount가 큰 행만 남겨줘.', '10'), filter_draft(10)) == []
+
+
+def test_date_components_do_not_ground_a_numeric_threshold():
+    s = state('2020-01-01 이후의 amount가 큰 행만 선별해줘.')
+    assert ungrounded_value_questions(s, filter_draft(2020.0, operator='gt')) == \
+        ['amount 열을 선별할 기준 값은 얼마인가요?']
 
 
 # 2026-11-12 Aside AI S5: "완료 주문" became 주문상태 is_empty.
@@ -91,3 +169,4 @@ def test_computed_columns_are_left_to_compute_grounding():
     # Korean wording for English columns ("수량에 단가를 곱한 합계 열") must not be asked again here.
     s = state('수량에 단가를 곱한 합계 열을 만들어줘.')
     assert ungrounded_value_questions(s, compute_draft('qty*unit_price', 'total')) == []
+

@@ -5,8 +5,8 @@ A draft can pass every structural check while holding a threshold the user never
 the user instead of a ready workflow. This is a verification over closed values, not a decision
 from the request's wording:
 
-- a filter's constant value must appear in the evidence (numbers compared by value, with
-  Korean units such as 만/천/억, written Korean numerals such as 십만, and thousands separators);
+- a numeric filter value must be tied to its field or an explicit comparison in the
+  evidence (Korean units, written numerals and thousands separators are normalized);
 - an emptiness filter (is_empty / not_empty) needs the user to have spoken about empty values;
   otherwise "완료 주문" could become 주문상태 is_empty (2026-11-12 Aside AI S5).
 
@@ -17,23 +17,42 @@ Computed columns are checked by main's compute_grounding, not here.
 import json
 import re
 
-_NUMBER = re.compile(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(억|만|천|백)?')
+_NUMBER = re.compile(r'(?<![\w.+-])([+-]?\d[\d,]*(?:\.\d+)?)\s*(억|만|천|백)?')
+_SCALAR_NUMBER = re.compile(r'[+-]?\d[\d,]*(?:\.\d+)?')
+_CLOCK_TIME = re.compile(r'(?<!\d)\d{1,2}:\d{2}(?::\d{2})?(?!\d)')
+_ISO_DATE = re.compile(r'(?<!\d)\d{4}-\d{1,2}-\d{1,2}(?!\d)')
+_CLAUSE_BREAK = re.compile(r'(?<!\d)[,，;；。!?]|[,，;；。!?](?!\d)|\n')
+_FIELD_TO_VALUE = re.compile(r'\s*(?:(?:이|가|은|는|을|를|의|값|기준|약)\s*)*[:=<>]*\s*')
+_VALUE_TO_FIELD = re.compile(r'\s*(?:원\s*)?(?:이상|초과|이하|미만)(?:인|의)?\s*')
+_COMPARISON_AFTER = re.compile(r'\s*(?:(?:원|건|개|명|행|회|번)\s*)?(?:이상|초과|이하|미만|보다|넘|같|동일|부터|까지|인(?:\s|$))')
+_COMPARISON_BEFORE = re.compile(r'(?:최소|최대|>=|<=|>|<|=)\s*$')
+_COUNT_UNIT = re.compile(r'\s*(?:건|개|명|행|회|번)')
+_BARE_NUMBER = re.compile(r'\s*(?:[+-]?\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?|[일이삼사오육칠팔구십백천만억]+)\s*원?\s*')
 _UNIT = {'억': 100_000_000, '만': 10_000, '천': 1_000, '백': 100}
 # Words that speak about empty values (closed set); checked in the user's own messages only.
 _EMPTY_WORDS = re.compile(r'빈\s*(?:값|칸|셀|행|문자)?|비어|비었|공백|공란|없는|없음|없으면|없을|누락|결측|'
                           r'미입력|미기재|미작성|미등록|null|none|nan|empty|blank|missing', re.I)
 
 
-def _evidence(state):
+def _source_texts(state):
     parts = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
     for resource in state.get('resources', []) or []:
         if resource.get('kind') == 'document':
             parts.append(resource.get('text') or '')
             parts.extend(resource.get('pages') or [])
+    return [p for p in parts if isinstance(p, str)]
+
+
+def _settled_values(state):
+    values = []
     for slot in ((state.get('condition_ledger') or {}).get('slots') or {}).values():
         if slot.get('status') == 'specified' and slot.get('value') is not None:
-            parts.append(str(slot['value']))
-    return '\n'.join(p for p in parts if isinstance(p, str))
+            values.append(str(slot['value']))
+    return values
+
+
+def _evidence(state):
+    return '\n'.join(_source_texts(state) + _settled_values(state))
 
 
 def _calendar_dates(state):
@@ -67,25 +86,92 @@ def _korean_number(word):
     return total + section + digit
 
 
-def _numbers(text):
-    values = set()
-    for digits, unit in _NUMBER.findall(text):
+def _number_mentions(text):
+    # Schedule times and dates are not filter thresholds. Date strings are checked
+    # separately as whole values in _grounded_value / _calendar_dates.
+    text = _ISO_DATE.sub(lambda m: ' ' * len(m.group()),
+                         _CLOCK_TIME.sub(lambda m: ' ' * len(m.group()), text))
+    for match in _NUMBER.finditer(text):
+        digits, unit = match.groups()
         try:
             value = float(digits.replace(',', ''))
         except ValueError:
             continue
-        values.add(value)
         if unit:
-            values.add(value * _UNIT[unit])
-    values.update(float(_korean_number(w)) for w in _KO_NUMBER.findall(text))
-    return values
+            value *= _UNIT[unit]
+        yield value, match.start(), match.end()
+    for match in _KO_NUMBER.finditer(text):
+        yield float(_korean_number(match.group())), match.start(), match.end()
+
+
+def _numbers(text):
+    return {value for value, _, _ in _number_mentions(text)}
+
+
+def _field_pattern(field):
+    escaped = re.escape(field)
+    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', field):
+        escaped = rf'(?<![A-Za-z0-9_]){escaped}(?![A-Za-z0-9_])'
+    return re.compile(escaped, re.I)
+
+
+def _field_linked(clause, start, end, field_pattern):
+    for match in field_pattern.finditer(clause):
+        if match.end() <= start:
+            between = clause[match.end():start]
+            count_without_comparison = (_COUNT_UNIT.match(clause[end:]) and
+                                        not _COMPARISON_AFTER.match(clause[end:]) and
+                                        not _COMPARISON_BEFORE.search(clause[:start]))
+            if len(between) <= 16 and _FIELD_TO_VALUE.fullmatch(between) and not count_without_comparison:
+                return True
+        elif end <= match.start():
+            between = clause[end:match.start()]
+            if len(between) <= 20 and _VALUE_TO_FIELD.fullmatch(between):
+                return True
+    return False
+
+
+def _numeric_grounded(value, state, field):
+    slots = ((state.get('condition_ledger') or {}).get('slots') or {})
+    settled_field = slots.get('filter.field') or {}
+    settled_value = slots.get('filter.value') or {}
+    if (settled_field.get('status') == 'specified' and settled_value.get('status') == 'specified' and
+            isinstance(field, str) and isinstance(settled_field.get('value'), str) and
+            settled_field['value'].strip().casefold() == field.strip().casefold() and
+            value in _numbers(str(settled_value.get('value')))):
+        return True
+    sources = _source_texts(state)
+    field_pattern = _field_pattern(field) if isinstance(field, str) and field else None
+    field_mentioned = bool(field_pattern and any(field_pattern.search(source) for source in sources))
+    for source in sources:
+        for clause in _CLAUSE_BREAK.split(source):
+            for number, start, end in _number_mentions(clause):
+                if number != value:
+                    continue
+                if _BARE_NUMBER.fullmatch(clause):  # A short answer to a threshold question.
+                    return True
+                if field_mentioned:
+                    if _field_linked(clause, start, end, field_pattern):
+                        return True
+                elif (_COMPARISON_AFTER.match(clause[end:]) or
+                      _COMPARISON_BEFORE.search(clause[:start])):
+                    return True
+    return False
+
+
+def _scalar_number(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and _SCALAR_NUMBER.fullmatch(value.strip()):
+        return float(value.replace(',', ''))
+    return None
 
 
 def _grounded_value(value, text, numbers):
     if isinstance(value, bool) or value is None:
         return True
-    if isinstance(value, (int, float)):
-        return float(value) in numbers
     written = str(value).strip()
     if not written:
         return True
@@ -123,9 +209,13 @@ def ungrounded_value_questions(state, draft):
             value = f.get('value')
             if isinstance(value, str) and value.strip()[:10] in dates:
                 continue
-            if not _grounded_value(value, text, numbers):
+            scalar = _scalar_number(value)
+            grounded = (_numeric_grounded(scalar, state, f.get('field')) if scalar is not None
+                        else _grounded_value(value, text, numbers))
+            if not grounded:
                 questions.append(f"{f.get('field') or '선별'} 열을 선별할 기준 값은 얼마인가요?")
     # Computed columns (formula and name) are grounded by main's compute_grounding, which knows
     # the request's own expression and Korean column wording; a second, stricter check here asked
     # again for "수량에 단가를 곱한 합계 열" because the columns are named qty/unit_price.
     return list(dict.fromkeys(questions))
+

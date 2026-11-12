@@ -113,17 +113,27 @@ def awaited(state):
             if state.get('condition_enforced') or q.get('source') in ('receipt',) + CORE_SOURCES]
 
 
-def record_answer(state, answer, question_id=None):
+def record_answer(state, answer, question_id=None, question_answers=None):
     """One answer event for core records; condition/capability events keep their own lists."""
     from agent_builder.conditions.input_resolution import answer_kind
     records = [q for q in state.get('pending_questions', []) or [] if q.get('source') in CORE_SOURCES]
     if not records:
         return None
-    ids = [question_id] if question_id else [q['id'] for q in records]
+    if question_answers is not None:
+        from agent_builder.design.question_answers import answer_text
+        ids = [item['question_id'] for item in question_answers
+               if not item.get('skip') and answer_kind(answer_text(item['value'])) == 'answer']
+    else:
+        ids = [question_id] if question_id else [q['id'] for q in records]
+    selected = [q for q in records if q['id'] in ids]
+    if question_answers is not None and not selected:
+        return None
     # explicit: the user chose this question (question_id). A free message may be a new request
     # rather than an answer, so only explicit answers may later close a planner's repeated question.
-    return {'turn': len(state.get('messages', [])), 'answer': answer, 'kind': answer_kind(answer),
-            'question_ids': [i for i in ids if any(q['id'] == i for q in records)], 'explicit': bool(question_id)}
+    return {'turn': len(state.get('messages', [])), 'answer': answer,
+            'kind': 'answer' if question_answers is not None else answer_kind(answer),
+            'questions': selected, 'question_ids': [q['id'] for q in selected],
+            'explicit': bool(question_id) or question_answers is not None}
 
 
 def open_required(state):
@@ -138,3 +148,4 @@ def system_failure(stage, error, message):
 
 
 RETRY_NOTICE = ' 일시적인 처리 오류라 질문으로 바꾸지 않았습니다. 같은 메시지를 다시 보내면 이 단계부터 다시 시도합니다.'
+

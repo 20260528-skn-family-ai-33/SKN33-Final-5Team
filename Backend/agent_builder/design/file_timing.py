@@ -54,21 +54,60 @@ NEW_OR_IMMEDIATE_UPLOAD = re.compile(
     r'(?:새(?:로운)?|다른|추가)\s*(?:파일|자료|문서|PDF|CSV|XLSX|엑셀|영수증|사진|이미지)', re.IGNORECASE)
 _IMMINENT = re.compile(r'올려\s*줄\s*(?:게|테)|올릴\s*테|첨부해\s*줄\s*(?:게|테)')
 _IMMINENT_LATER = re.compile(r'실행\s*(?:할\s*때|시(?![간작각]))|나중에|예약')
-_CLAUSE = re.compile(r'[.!?？。;\n]+|,\s*|(?<=하)고\s+|(?<=해)서\s+|(?<=한)\s*(?:뒤|후)(?:에)?\s+')
+_CLAUSE = re.compile(r'\.(?!\w)|[!?？。;\n]+|,\s*|(?<=하)고\s+|(?<=해)서\s+|(?<=한)\s*(?:뒤|후)(?:에)?\s+')
 _PARTICLE = re.compile(r'(?:은|는|이|가|을|를|도|의|와|과|로|으로|만|에서|에)$')
+_FILE_NAME = re.compile(r'[\w\s.-]+\.(?:pdf|csv|xlsx|docx|hwp|txt)\Z', re.IGNORECASE)
+_FILE_QUALIFIERS = re.compile(
+    r'\s*(?:(?:최신|최근|새(?:로운)?|기존|이전|최종|수정(?:된)?|원본|참고용|비교용|'
+    r'지난주|어제|오늘|현재|새로|방금|파일|자료|문서|버전(?:의)?)\s+){1,3}\Z')
 
 
 def strip_quotes(text):
     return _QUOTED.sub(' ', text or '')
 
 
+def _timing_text(text):
+    """Retain quoted upload names, but ignore quoted instructions and other data."""
+    text = text or ''
+    parts = []
+    cursor = 0
+    for quote in _QUOTED.finditer(text):
+        outside = text[cursor:quote.start()]
+        upload_cue = False
+        for pattern in (UPLOADED, _IMMINENT):
+            for marker in pattern.finditer(outside):
+                gap = outside[marker.end():]
+                if not gap.strip() or _FILE_QUALIFIERS.fullmatch(gap):
+                    upload_cue = True
+                    if gap.strip():
+                        # Qualifiers locate the file; they are not part of its name.
+                        outside = outside[:marker.end()] + ' '
+                    break
+            if upload_cue:
+                break
+        parts.append(outside)
+        if upload_cue:
+            name = quote.group()[1:-1].strip()
+            if _FILE_NAME.fullmatch(name) and not any(pattern.search(name) for pattern in
+                                                        (_LATER, DELIVERY, NEGATIVE, NOW_DELIVERY,
+                                                         NEW_OR_IMMEDIATE_UPLOAD)):
+                parts.append(name.replace('.', ' '))
+            else:
+                parts.append('파일')
+        else:
+            parts.append(' ')
+        cursor = quote.end()
+    parts.append(text[cursor:])
+    return ''.join(parts)
+
+
 def clauses(text):
-    text = EMAIL_ATTACHMENT.sub('메일', strip_quotes(text))
+    text = EMAIL_ATTACHMENT.sub('메일', _timing_text(text))
     return [c for c in (part.strip() for part in _CLAUSE.split(text)) if c]
 
 
 def _compact(value):
-    return re.sub(r'\s+', '', value).casefold()
+    return re.sub(r'[\s.]+', '', value).casefold()
 
 
 def upload_references(text):
@@ -203,7 +242,7 @@ def deferred_subjects(users):
     previous_refs = []
     deferred = set()
     for text in users:
-        refs = upload_references(text) or [s for c, subjects in clause_choices(text) if c != 'execution' for s in subjects]
+        refs = upload_references(_timing_text(text)) or [s for c, subjects in clause_choices(text) if c != 'execution' for s in subjects]
         if NEW_OR_IMMEDIATE_UPLOAD.search(strip_quotes(text)) and not any(c == 'execution' for c, _ in clause_choices(text)):
             deferred = set()
             previous_refs = []
@@ -226,3 +265,4 @@ def deferred_subjects(users):
         if refs:
             previous_refs = refs
     return deferred
+

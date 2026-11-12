@@ -30,7 +30,7 @@ def await_input_node(state):
         payload={**payload,'error':'현재 대화의 확인 질문에 답변해주세요.'}
     result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False,'system_failure':None}
     from agent_builder.conditions.clarification_core import record_answer
-    event=record_answer(state,answer['content'],answer.get('question_id'))
+    event=record_answer(state,answer['content'],answer.get('question_id'),answer.get('question_answers'))
     if event:result['clarification_answers']=state.get('clarification_answers',[])+[event]
     if answer.get('question_answers'):
         from agent_builder.design.question_answers import answer_text
@@ -82,3 +82,4 @@ def await_approval_node(state):
         if answer.get('type')=='message' and str(answer.get('content','')).strip():
             return {'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False}
         payload={**payload,'error':'설정을 확인하거나 변경할 내용을 입력해주세요.'}
+

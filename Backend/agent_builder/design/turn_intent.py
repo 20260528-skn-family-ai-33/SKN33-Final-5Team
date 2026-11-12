@@ -22,7 +22,8 @@ import re
 
 from agent_builder.design.file_timing import strip_quotes
 
-_SENTENCE = re.compile(r'[^.!?？。\n]+[.!?？。]*')
+# A dot inside a decimal, address or filename is part of the token, not a sentence end.
+_SENTENCE = re.compile(r'(?:[^.!?？。\n]|\.(?=\w))+[.!?？。]*')
 # Phatic expressions only (a closed class, matched as a whole sentence).
 _GREETINGS = {
     '안녕', '안녕하세요', '안녕하십니까', '반가워', '반가워요', '반갑습니다', '고마워', '고마워요', '감사해요',
@@ -225,3 +226,4 @@ def side_reply(turn, pending_texts, pending=None, failure=False):
     if pending_texts and not turn['work']:
         lines.append('진행 중인 확인 질문에는 아직 답변하지 않았습니다:\n' + '\n'.join('• ' + t for t in pending_texts))
     return '\n'.join(lines)
+

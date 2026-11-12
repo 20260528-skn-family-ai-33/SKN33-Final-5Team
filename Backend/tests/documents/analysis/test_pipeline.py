@@ -161,7 +161,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(remote_request_body(sources), body)
         with patch('documents.analysis.adapters.REMOTE_MAX_BODY', len(body) - 1), \
                 patch('urllib.request.urlopen') as remote, self.assertRaises(AnalysisError) as error:
-            remote_engine('http://gpu.invalid', 'paddleocr', sources)
+            remote_request_body(sources)
         remote.assert_not_called()
         self.assertEqual(error.exception.code, REMOTE_TOO_LARGE)
 

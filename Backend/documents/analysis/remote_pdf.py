@@ -47,8 +47,12 @@ def remote_timeout():
 def submit(opener, request, deadline):
     """Posts the PDF; while the Pod's short queue is full (429), waits and tries again."""
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining < 1:
+            raise AnalysisError('timeout', 'GPU PDF 작업 제한 시간을 초과했습니다.')
+        request.add_header('X-A4B-PDF-Timeout', str(int(remaining)))
         try:
-            with opener.open(request, timeout=60) as response:
+            with opener.open(request, timeout=min(60, remaining)) as response:
                 if response.status != 202:
                     raise AnalysisError('invalid_pdf_result', 'GPU PDF 파서가 작업 ID를 반환하지 않았습니다.')
                 return str(uuid.UUID(json.loads(response.read(1024))['job_id']))
@@ -78,21 +82,24 @@ def parse_remote_pdf(source, work):
     # Stay inside the app's document worker timeout (A4B_DOCUMENT_TIMEOUT_MS, 300 s by default),
     # so this process reports its own error instead of being killed mid-poll.
     deadline = time.monotonic() + remote_timeout()
+    job, finished = None, False
     try:
         job = submit(opener, urllib.request.Request(url, data=source.read_bytes(), headers={**headers, 'Content-Type': 'application/pdf'}), deadline)
         # Polling avoids keeping one proxy connection open throughout model loading and inference.
         # The Pod drops a job that stops being polled, so leaving early frees its GPU slot.
         request = urllib.request.Request(url + '/' + job, headers=headers)
         while time.monotonic() < deadline:
-            with opener.open(request, timeout=60) as response:
+            with opener.open(request, timeout=max(.001, min(60, deadline - time.monotonic()))) as response:
                 if response.status == 200 and response.headers.get_content_type() == 'application/zip':
                     data = response.read(MAX_BUNDLE + 1)
                     if len(data) > MAX_BUNDLE:
                         raise AnalysisError('result_limit', 'GPU PDF 결과가 크기 제한을 넘었습니다.')
-                    return unpack(data, work, sha256(source))
+                    result = unpack(data, work, sha256(source))
+                    finished = True
+                    return result
                 if response.status != 202:
                     raise AnalysisError('invalid_pdf_result', 'GPU PDF 파서가 올바른 결과를 반환하지 않았습니다.')
-            time.sleep(1)
+            time.sleep(max(0, min(1, deadline - time.monotonic())))
         raise AnalysisError('timeout', 'GPU PDF 작업 제한 시간을 초과했습니다.')
     except urllib.error.HTTPError as exc:
         try:
@@ -105,3 +112,13 @@ def parse_remote_pdf(source, work):
         raise
     except (OSError, ValueError, TypeError, KeyError, zipfile.BadZipFile) as exc:
         raise AnalysisError('remote_pdf_error', 'RunPod PDF 파서 연결 또는 응답을 확인하세요.') from exc
+    finally:
+        if job and not finished:
+            # Best effort on errors/timeouts; the server's polling lease also
+            # covers a killed client or a lost submit response with no job ID.
+            try:
+                cancel = urllib.request.Request(url + '/' + job, headers=headers, method='DELETE')
+                with opener.open(cancel, timeout=2):
+                    pass
+            except (OSError, ValueError):
+                pass

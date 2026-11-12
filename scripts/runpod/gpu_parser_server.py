@@ -15,6 +15,7 @@ import hmac
 import importlib.metadata
 import json
 import os
+import signal
 import sys
 import tempfile
 import threading
@@ -88,13 +89,15 @@ def run(engine, payload, models, device, version, lock):
 
 
 def make_handler(key, models, device, version):
-    from pdf_jobs import MAX_PDF, PdfJobs
+    from pdf_jobs import DEFAULT_TIMEOUT, MAX_PDF, PdfJobs
+    from parser_readiness import pdf_readiness
     pdf_python = os.environ.get('A4B_PDF_ROUTER_PYTHON')
     jobs = PdfJobs(pdf_python)
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = 'A4BParser/1'
+        pdf_jobs = jobs
 
         def reply(self, status, value):
             binary = isinstance(value, bytes)
@@ -108,7 +111,9 @@ def make_handler(key, models, device, version):
 
         def do_GET(self):
             if self.path == '/health':
-                return self.reply(200, {'ok': True, 'device': device, 'engines': list(ENGINES), 'pdf_jobs': bool(pdf_python)})
+                readiness = pdf_readiness(pdf_python)
+                return self.reply(200, {'ok': True, 'device': device, 'engines': list(ENGINES),
+                                       'pdf_jobs': readiness['ready'], 'pdf_readiness': readiness})
             if self.path.startswith('/v1/pdf/'):
                 if not self.authenticated():
                     return self.reply(401, {'error': 'unauthorized'})
@@ -120,6 +125,13 @@ def make_handler(key, models, device, version):
                 return True
             given = self.headers.get('Authorization', '')
             return hmac.compare_digest(given.encode(), ('Bearer ' + key).encode())
+
+        def do_DELETE(self):
+            if not self.authenticated():
+                return self.reply(401, {'error': 'unauthorized'})
+            if self.path.startswith('/v1/pdf/'):
+                return self.reply(*jobs.cancel(self.path[len('/v1/pdf/'):]))
+            self.reply(404, {'error': 'not_found'})
 
         def do_POST(self):
             if not self.authenticated():
@@ -138,7 +150,12 @@ def make_handler(key, models, device, version):
                 policy = self.headers.get('X-A4B-PDF-Policy')
                 if policy not in (None, 'docling-paddle-fixed-v1'):
                     return self.reply(400, {'error': 'invalid_policy'})
-                return self.reply(*jobs.submit(self.rfile.read(length), policy))
+                raw_timeout = self.headers.get('X-A4B-PDF-Timeout', str(DEFAULT_TIMEOUT))
+                if not raw_timeout.isdigit() or not 1 <= int(raw_timeout) <= 1800:
+                    return self.reply(400, {'error': 'invalid_pdf_timeout'})
+                if not pdf_readiness(pdf_python)['ready']:
+                    return self.reply(503, {'error': 'pdf_router_not_ready'})
+                return self.reply(*jobs.submit(self.rfile.read(length), policy, int(raw_timeout)))
             if not 0 < length <= MAX_BODY:
                 return self.reply(413, {'error': 'request_too_large'})
             try:
@@ -169,7 +186,15 @@ def main():
     port = int(os.environ.get('A4B_PARSER_PORT', '8100'))
     server = ThreadingHTTPServer((os.environ.get('A4B_PARSER_BIND', '0.0.0.0'), port), make_handler(key, models, device, version))
     print(f'A4B GPU parser on :{port} ({device}, paddleocr {version})', flush=True)
-    server.serve_forever()
+    def stop(signum, frame):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        server.serve_forever()
+    finally:
+        server.RequestHandlerClass.pdf_jobs.close()
+        server.server_close()
 
 
 if __name__ == '__main__':

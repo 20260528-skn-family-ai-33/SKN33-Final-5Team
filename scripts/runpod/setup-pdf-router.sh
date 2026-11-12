@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # Prepare the dedicated Docling worker on a RunPod PyTorch image.
 set -euo pipefail
-repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-venv=${A4B_PDF_VENV:-/opt/a4b-pdf-router/venv}
-models=${A4B_PDF_MODELS:-/workspace/a4b-pdf-models}
+source "$(dirname -- "${BASH_SOURCE[0]}")/parser-paths.sh"
+repo=$A4B_PARSER_SOURCE_ROOT
+venv=$A4B_PDF_VENV
+models=$A4B_PDF_MODELS
+# The downloader creates docling/EasyOcr beneath --output. Reject inconsistent
+# overrides before installing into a location the server would never use.
+if [[ "$A4B_PDF_ROUTER_PYTHON" != "$venv/bin/python" || "$A4B_PDF_ARTIFACTS_DIR" != "$models/docling" || "$A4B_PDF_OCR_MODEL_DIR" != "$models/docling/EasyOcr" ]]; then
+  echo 'Set A4B_PDF_VENV and A4B_PDF_MODELS consistently with the PDF runtime paths.' >&2
+  exit 1
+fi
 mkdir -p "$(dirname "$venv")" "$models"
 if [[ ! -x "$venv/bin/python" ]]; then
   python -m venv --system-site-packages "$venv"

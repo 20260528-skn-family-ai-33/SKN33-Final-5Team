@@ -2,7 +2,10 @@
 # RunPod /post_start.sh entry point. Everything durable lives on the network disk.
 set -euo pipefail
 umask 077
-base=/workspace/a4b
+runpod_scripts=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+source "$runpod_scripts/parser-paths.sh"
+base=$A4B_BASE_DIR
+parser_server=$A4B_PARSER_SOURCE_ROOT/scripts/runpod/gpu_parser_server.py
 mountpoint -q /workspace
 mkdir -p "$base/logs" /run/a4b-final
 exec 9>/run/a4b-final/start.lock
@@ -10,6 +13,11 @@ flock -n 9 || exit 0
 rm -f /run/a4b-final/ready
 exec >>"$base/logs/startup.log" 2>&1
 echo "$(date -u +%FT%TZ) starting a4b-final-gpu"
+# Fail closed instead of silently selecting a historical copy outside this checkout.
+if [[ ! -f "$parser_server" || ! -f "$A4B_PARSER_SOURCE_ROOT/scripts/runpod/pod_pdf_worker.py" ]]; then
+  printf 'Missing parser source in %s\n' "$A4B_PARSER_SOURCE_ROOT" >&2
+  exit 1
+fi
 until [[ -f "$base/receipts/models-registered.json" && -f "$base/receipts/pdf-prepared" && -f "$base/receipts/parser-prepared" && -f "$base/receipts/runtimes-packed" ]]; do sleep 5; done
 mkdir -p /opt/a4b-envs
 for runtime in parser mineru; do
@@ -52,9 +60,6 @@ export A4B_PADDLE_DEVICE=gpu:0
 export PADDLE_PDX_CACHE_HOME=$base/models/paddle
 export PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 export FLAGS_allocator_strategy=auto_growth
-export A4B_PDF_ROUTER_PYTHON=$base/envs/pdf/bin/python
-export A4B_PDF_ARTIFACTS_DIR=$base/models/pdf/docling
-export A4B_PDF_OCR_MODEL_DIR=$base/models/pdf/docling/EasyOcr
 export A4B_MINERU_PYTHON=/opt/a4b-envs/mineru/bin/python
 # FlashInfer invokes Ninja by name when compiling GPU kernels on a fresh host.
 export PATH=/opt/a4b-envs/mineru/bin:/usr/local/cuda/bin:$PATH
@@ -88,18 +93,18 @@ trap cleanup EXIT
 while true; do
   setsid "$base/ollama/bin/ollama" serve 9>&- >>"$base/logs/ollama.log" 2>&1 &
   pids+=("$!")
-  setsid /opt/a4b-envs/parser/bin/python "$base/app/legacy-pdf/scripts/runpod/gpu_parser_server.py" 9>&- >>"$base/logs/parser.log" 2>&1 &
+  setsid /opt/a4b-envs/parser/bin/python "$parser_server" 9>&- >>"$base/logs/parser.log" 2>&1 &
   pids+=("$!")
   ready=0
   for ((attempt=0; attempt<180; attempt++)); do
     if ! all_alive "${pids[@]}"; then break; fi
-    if python3 "$base/app/scripts/runpod/check-final-ready.py"; then ready=1; break; fi
+    if python3 "$runpod_scripts/check-final-ready.py"; then ready=1; break; fi
     sleep 2
   done
   if ((ready)); then
     # Track warmup in its own process group so cleanup can cancel model requests
     # along with required services instead of waiting for their 900s timeout.
-    setsid python3 "$base/app/scripts/runpod/warm-final.py" 9>&- &
+    setsid python3 "$runpod_scripts/warm-final.py" 9>&- &
     warm_pid=$!
     pids+=("$warm_pid")
     # Watch required services during warmup too. A bounded poll also handles
@@ -109,12 +114,12 @@ while true; do
     done
     if all_alive "${pids[0]}" "${pids[1]}" && wait "$warm_pid"; then
       pids=("${pids[@]:0:2}")
-      setsid python3 "$base/app/scripts/runpod/runpod-ollama-proxy.py" 9>&- >>"$base/logs/gateway.log" 2>&1 &
+      setsid python3 "$runpod_scripts/runpod-ollama-proxy.py" 9>&- >>"$base/logs/gateway.log" 2>&1 &
       pids+=("$!")
       gateway_ready=0
       for ((attempt=0; attempt<60; attempt++)); do
         if ! all_alive "${pids[@]}"; then break; fi
-        if python3 "$base/app/scripts/runpod/check-gateway-ready.py"; then gateway_ready=1; break; fi
+        if python3 "$runpod_scripts/check-gateway-ready.py"; then gateway_ready=1; break; fi
         sleep 2
       done
       if ((gateway_ready)) && all_alive "${pids[@]}"; then

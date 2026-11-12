@@ -1174,7 +1174,7 @@
       {
         "id": "email.list",
         "version": 1,
-        "description": "List Gmail message IDs, search query and pagination token. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "description": "Gmail 메일 ID 검색. read_messages는 기본100개·최대500개의 본문을 페이지 순회로 읽고 실제 출처 documents를 요약에 연결합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
         "input_ports": {
           "query": "json",
           "max_results": "json",
@@ -1182,10 +1182,11 @@
         },
         "output_ports": {
           "result": "json",
-          "text": "text"
+          "text": "text",
+          "documents": "documents"
         },
         "native_settings": [],
-        "operation_contract_fingerprint": "bc736fd60d505498ce86bd6a4a76abb4dddae50d47b24e07ce1b684f2aeadb20"
+        "operation_contract_fingerprint": "d43fa3817f5b1119bde24a41b43f9e739e1ede544722fa6fb41529f848999a8d"
       },
       {
         "id": "email.get",
@@ -1197,10 +1198,11 @@
         },
         "output_ports": {
           "result": "json",
-          "text": "text"
+          "text": "text",
+          "documents": "documents"
         },
         "native_settings": [],
-        "operation_contract_fingerprint": "e56a5ace75661e5e74e483ca80268c33ff8edeec10397d72abd0556b9a215474"
+        "operation_contract_fingerprint": "8a24209424d3b139c8051cf86ddc3445ad7a71b77acda2a9420a6bdbd453e70c"
       },
       {
         "id": "email.attachment.get",
@@ -1311,7 +1313,7 @@
         "operation_contract_fingerprint": "d193f0a71192f993c76ac953639e5e29bc78267a1f4edc595f563953e67a415b"
       }
     ],
-    "tool_catalog_fingerprint": "f26038943d468aa38ea5c8a84db76417da14a81a9a98e711e9ff771e369d7dcd",
+    "tool_catalog_fingerprint": "64be4385637a39fd220fe379df0b36a6f01de3fe10281cf52d5feffd63eefc96",
     "ml_advice": {
       "status": "not_requested",
       "ml_candidates": [],

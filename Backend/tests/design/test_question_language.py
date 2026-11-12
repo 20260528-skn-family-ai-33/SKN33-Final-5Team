@@ -81,7 +81,8 @@ def test_direct_planner_rewrites_a_non_time_question_within_its_existing_retry_b
     bad={**draft(),'questions':['어떤 文件 형식으로 만들까요?']}
     good={**draft(),'questions':['어떤 파일 형식으로 만들까요?']}
     fake=Fake(bad,good)
-    result=planner(monkeypatch,fake)(state())
+    # The request must leave the format open: a format the user already wrote is never asked again.
+    result=planner(monkeypatch,fake)({**state(),'messages':[{'role':'user','content':'입력 표를 파일로 저장해줘'}]})
     assert result['draft']['questions']==good['questions']
     assert len(fake.calls)==2
 

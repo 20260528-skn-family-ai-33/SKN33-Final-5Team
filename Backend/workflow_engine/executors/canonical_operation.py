@@ -146,11 +146,10 @@ def execute(node, state, storage, config, llm):
     args.update({k:v for k,v in bound.items() if k not in args and k not in nested_inputs})
     gmail_period=None
     if node['tool']=='email.list' and spec['id']=='read_messages':
-        from workflow_engine.scheduling.gmail_schedule import resolve_gmail_query
-        from workflow_engine.scheduling.gmail_schedule import PREVIOUS_DAY_QUERY,previous_day_window
-        if args.get('query')==PREVIOUS_DAY_QUERY:
-            start,end=previous_day_window(config)
-            gmail_period={'start':start.isoformat(),'end':end.isoformat(),'timezone':config['schedule']['timezone']}
+        from workflow_engine.scheduling.gmail_schedule import resolve_gmail_query,query_period
+        # "{{gmail.previous_day}}" / "{{gmail.today}}" (optionally "|<IANA zone>") are local calendar
+        # days of this run, for scheduled and one-off runs alike.
+        gmail_period=query_period(args.get('query'),config)
         args['query']=resolve_gmail_query(args.get('query'),config)
     context = execution_context(storage)
     args = resolve_assets(args, storage, context, ids)

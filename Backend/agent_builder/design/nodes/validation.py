@@ -5,6 +5,12 @@ from workflow_engine.workflow import workflow_errors
 
 def validate_node(state):
     draft=AgentDraft.model_validate({k:v for k,v in state['draft'].items() if k!='node_snapshots'}).model_dump();issues=list(state.get('semantic_issues',[]))
+    # Shared final guard for every planner/template: a question the user already settled
+    # is not shown. Removing it never makes a question-only draft ready.
+    from agent_builder.conditions.question_contract import drop_settled
+    draft,settled=drop_settled(draft,state)
+    if settled and not draft.get('workflow') and not draft['questions'] and not draft['unsupported']:
+        issues.append('이미 사용자가 정한 조건만 다시 물은 응답이라 초안을 다시 설계해야 합니다.')
     from agent_builder.design.execution_mode import filter_draft_execution_questions
     draft=filter_draft_execution_questions(draft,state)
     from agent_builder.design.question_language import validate_draft_question_language

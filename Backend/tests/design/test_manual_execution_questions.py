@@ -69,7 +69,8 @@ def test_capability_removes_only_trigger_gaps_and_never_invents_tools():
 def test_direct_planner_does_not_reask_schedule_in_manual_mode(monkeypatch):
     from tests.design.test_direct_conversation import Fake,draft,planner,state
     fake=Fake({**draft(),'questions':['실행 시각은 몇 시인가요?','파일 형식은 CSV 또는 JSON 중 무엇으로 만들까요?']})
-    result=planner(monkeypatch,fake)({**state(),'execution_mode':'manual'})
+    # The request must leave the format open: a format the user already wrote is never asked again.
+    result=planner(monkeypatch,fake)({**{**state(),'messages':[{'role':'user','content':'입력 표를 파일로 저장해줘'}]},'execution_mode':'manual'})
     assert len(fake.calls)==1
     assert result['draft']['questions']==['파일 형식은 CSV 또는 JSON 중 무엇으로 만들까요?']
     assert result['draft']['question_options']==[['CSV','JSON']]

@@ -23,6 +23,63 @@ _ALL_FIELDS = re.compile(r'^(?:(?:영수증|문서|사진)?에?있는(?:거|것|
                          r'(?:전체|전부|모두|모든(?:항목|것|거|내용)?|다|알아서|아무거나|all|everything)'
                          r'(?:다)?(?:항목|내용)?(?:다)?'
                          r'(?:요|뽑아|뽑아줘|뽑아주세요|해줘|해주세요|정리해줘|정리해주세요|넣어줘|넣어주세요)?$', re.IGNORECASE)
+# The fixed flow only does "read document -> extract listed rows -> CSV". It is used only when
+# every word of the request belongs to that job (allow-list); any other word (a filter, sort,
+# top-N, grouping, comparison ...) goes to the full planner. Unknown wording therefore costs a
+# planner call instead of silently dropping a requested step.
+_EXTRACTION_ONLY = (
+    '문서', '파일', '자료', '영수증', '계약서', '견적서', '회의록', '보고서', '송장', '전표', '이미지', '사진', '스캔',
+    'pdf', 'png', 'jpg', '첨부', '업로드', '올려', '올린', '올리', '올렸', '내용', '항목', '정보', '데이터', '값', '표', '엑셀',
+    'excel', 'csv', '스프레드시트', '목록', '한', '줄씩', '줄', '행', '형태', '형식', '정리', '뽑아', '뽑기', '뽑을', '뽑은', '뽑아서', '추출', '모아', '만들',
+    '저장', '변환', '해', '해줘', '해주', '해서', '줘', '주세요', '줄래', '주실', '주면', '좋겠', '부탁', '그리고', '및', '좀', '다', '모두', '전부',
+    '각', '여기', '이', '그', '내', '제', '있는', '거', '것', '같이', '깔끔', '알아서', '그냥', '음', '잘', '모르겠')
+_PARTICLES = ('으로', '에서', '이랑', '에', '로', '을', '를', '은', '는', '이', '가', '의', '도', '만', '과', '와', '랑')
+
+
+def _extra_processing(text, fields=''):
+    """True when the request has words outside the extraction-only job."""
+    if fields:
+        text = text.replace(fields, ' ')
+    for token in re.findall(r'[가-힣A-Za-z0-9_.]+', text or ''):
+        word = token.casefold()
+        if word in _PARTICLES:
+            continue  # a particle left after removing the listed fields
+        # Stems are matched by prefix ("엑셀로", "정리해줘"), so particles need no stripping,
+        # and a noun ending in a particle-like syllable ("문서") is never cut.
+        if not any(_allowed(word, allowed) for allowed in _EXTRACTION_ONLY):
+            return True
+    return False
+
+
+def _allowed(word, allowed):
+    # One-syllable entries must match whole ("이", "표로"), never as a prefix of
+    # "이상인", "내림차순", "제외", "그룹".
+    if len(allowed) == 1:
+        return word == allowed or word[1:] in _PARTICLES and word[0] == allowed
+    return word.startswith(allowed)
+
+
+_FIELDS_IN_REQUEST = re.compile(r'(?:에서|의)\s*([^.?!\n]+?)\s*(?:을|를)\s*[^.?!\n,]{0,16}?(?:뽑|추출|정리|모아)')
+
+
+def _listed_segment(request):
+    match = _FIELDS_IN_REQUEST.search(request or '')
+    return match.group(1) if match and _fields_in_request(request) else ''
+
+
+def _fields_in_request(request):
+    """Fields the request already lists ("품목, 금액을 뽑아"); a single noun is not a list."""
+    match = _FIELDS_IN_REQUEST.search(request or '')
+    if not match:
+        return []
+    # "날짜와 금액" is a list too; a two-letter stem before 와/과 avoids words such as 결과.
+    listed = re.sub(r'(?<=[가-힣A-Za-z0-9]{2})(?:와|과)\s+', ', ', match.group(1))
+    if not re.search(r',|，|、|\s및\s', listed):
+        return []
+    fields = requested_fields(listed)
+    return fields if len(fields) >= 2 and not reserved_field_issue(fields) else []
+
+
 _RECEIPT = re.compile(r'(영수증|전표|receipt)', re.IGNORECASE)
 RECEIPT_FIELDS = ['상품명', '단가', '수량', '금액']
 
@@ -176,7 +233,8 @@ def document_rows_applies(state):
         # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
         answer = _field_answer(messages[-1]['content'])
         return wants_all_fields(answer) or not is_request_change(answer)
-    return bool(_TABLE_INTENT.search(messages[-1]['content']) or _upload_followup_request(messages))
+    request = messages[-1]['content'] if _TABLE_INTENT.search(messages[-1]['content']) else _upload_followup_request(messages)
+    return bool(request) and not _extra_processing(request, _listed_segment(request))
 
 
 def document_rows_reply(state):
@@ -222,7 +280,17 @@ def document_rows_reply(state):
                 'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
                                                     'detail': '문서 읽기 → 목록 추출(' + ', '.join(fields) + ') → CSV 저장을 코드로 구성했습니다.', 'model_calls': 0}]}
     request=users[-1]['content'] if _TABLE_INTENT.search(users[-1]['content']) else _upload_followup_request(messages)
+    if request and _extra_processing(request, _listed_segment(request)):
+        return None  # the full planner must implement the filter/sort/aggregate step
     if request:
+        fields = _fields_in_request(request)
+        if fields:
+            # Already listed: do not ask again (clarification core: settled questions are not asked).
+            draft = _draft(request, request, fields, documents)
+            return {'messages': messages + [{'role': 'assistant', 'content': EXPLANATION}], 'draft': draft,
+                    'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
+                    'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
+                                                        'detail': '요청에 적힌 항목(' + ', '.join(fields) + ')으로 문서 읽기 → 목록 추출 → CSV 저장을 구성했습니다.', 'model_calls': 0}]}
         return _ask(state, request)
     return None
 

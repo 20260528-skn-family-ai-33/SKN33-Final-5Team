@@ -1,0 +1,1746 @@
+[
+ {
+  "id": "D01",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서 해지 조항을 요약해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "D02",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서를 검토하고 위험한 조항만 근거를 붙여 답해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "D03",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "회의록 PDF에서 결정 사항만 뽑아서 표로 정리해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "D04",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "보고서에서 중요한 내용만 요약해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "D05",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "견적서에서 품목, 수량, 단가를 뽑아서 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "D06",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서에서 위약금 조항이 있는 부분만 찾아서 원문 근거와 함께 알려줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "D07",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "제안서를 영어로 번역해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "D08",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "문서에서 이상한 부분을 찾아줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "D09",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "규정 문서에서 개인정보 관련 조항만 뽑아 표로 정리해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "D10",
+  "cat": "단순-문서",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서에서 불리한 조건이 있으면 알려줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "T01",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 CSV에서 금액 열을 지역별로 합계해서 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T02",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 금액이 큰 행만 남겨서 저장해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "금액",
+       "얼마",
+       "이상",
+       "초과",
+       "미만",
+       "이하",
+       "값"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "T03",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 금액이 100만원 초과인 행만 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T04",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "고객 목록에서 오래된 고객만 골라줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "T05",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "주문 표에서 수량 열에 단가 열을 곱한 금액 열을 만들어 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T06",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "직원 표를 부서별로 인원수 세서 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T07",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "재고 표에서 재고가 부족한 품목만 알려줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "T08",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 금액 큰 순서로 정렬해서 상위 10개만 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "E01",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "받은 메일 중 최근 10개의 제목과 본문을 요약해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "E02",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "중요한 메일만 골라서 요약해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "E03",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "요약 결과를 슬랙 채널로 보내줘",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "E04",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매년 12월 31일에 표를 JSON으로 저장해줘",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "E05",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "다음 주 화요일 오후 3시에 팀 회의 일정을 캘린더에 만들어줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "E06",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매주 월요일 오전 9시 한국 시간에 매출 표를 읽어서 지역별 합계를 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "E07",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매일 매출 표를 저장해줘",
+    "gold": {
+     "ask": [
+      [
+       "시",
+       "시간",
+       "몇"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C01",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "방금 첨부한 계약서 PDF를 분석해줘. 비교용 견적서는 실행할 때 첨부할게요.",
+    "gold": {
+     "ask": [
+      [
+       "올려",
+       "파일",
+       "첨부"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C02",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 CSV에서 서울 지역만 골라 금액에 1.1을 곱한 열을 만들고 품목별로 합계해서 큰 순서로 정렬해 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C03",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서에서 해지 조항을 찾고, 위약금이 있으면 금액을 뽑아서 표로 정리한 다음 검토 의견을 작성해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C04",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "견적서 두 개를 비교해서 총액이 더 싼 쪽과 차이를 알려주고, 결과를 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C05",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 빈 금액은 제외하고, 중복 주문번호는 첫 행만 남긴 다음, 지역별 합계를 내서 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C06",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "문서에서 위험한 조항을 찾고 각 조항의 근거를 표로 정리해서 담당자 확인을 받은 뒤 저장해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C07",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "주문 CSV와 고객 CSV를 고객ID로 합쳐서 지역별 매출을 계산하고 금액 큰 순서로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C08",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "보고서를 요약하고 중요한 부분은 따로 표로 정리해서 메일로 보내줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "K01",
+  "cat": "한국어변형",
+  "group": "해지요약",
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서 해지 조항을 요약해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "K02",
+  "cat": "한국어변형",
+  "group": "해지요약",
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서에 있는 해지 관련 조항들 요약 부탁해요",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "K03",
+  "cat": "한국어변형",
+  "group": "해지요약",
+  "turns": [
+   {
+    "action": "message",
+    "text": "해지 조항만 계약서에서 간단히 정리해 줄래요?",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "K04",
+  "cat": "한국어변형",
+  "group": "해지요약",
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서의 해지 조항 요약 좀 해주세요",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "K11",
+  "cat": "한국어변형",
+  "group": "위험조항",
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서를 검토하고 위험한 조항만 근거를 붙여 답해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "K12",
+  "cat": "한국어변형",
+  "group": "위험조항",
+  "turns": [
+   {
+    "action": "message",
+    "text": "위험해 보이는 계약 조항만 골라서 근거랑 같이 알려줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "K13",
+  "cat": "한국어변형",
+  "group": "위험조항",
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서에서 리스크 있는 조항만 근거 달아서 뽑아줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "K21",
+  "cat": "한국어변형",
+  "group": "지역합계",
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 CSV에서 금액 열을 지역별로 합계해서 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "K22",
+  "cat": "한국어변형",
+  "group": "지역합계",
+  "turns": [
+   {
+    "action": "message",
+    "text": "지역별로 금액 합계 내서 CSV 파일로 뽑아줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "K23",
+  "cat": "한국어변형",
+  "group": "지역합계",
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 파일 지역마다 금액 더해서 csv로 저장 부탁",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "I01",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "안녕하세요",
+    "gold": {
+     "no_draft": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I02",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "오늘 날씨 어때?",
+    "gold": {
+     "no_draft": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I03",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "고마워요!",
+    "gold": {
+     "no_draft": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I04",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "이 서비스는 뭘 할 수 있어?",
+    "gold": {
+     "no_draft": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I05",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매일 아침 9시에 받은 메일을 요약해서 보고서로 저장해줘",
+    "gold": {
+     "must_reach_model": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I06",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "안녕하세요! 매주 월요일 오전 9시 한국 시간에 매출 표 합계를 저장해줘",
+    "gold": {
+     "must_reach_model": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "F01",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "방금 올린 PDF를 분석해줘",
+    "gold": {
+     "ask": [
+      [
+       "올려",
+       "파일",
+       "첨부"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "F02",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "워크플로우 입력은 계약서 PDF 1개로 설정하고, 업로드된 파일 도구로 해지 조항을 정리해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "F03",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "실행할 때 PDF 계약서를 넣을 테니 해지 조항을 요약해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "F04",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "워크플로우를 돌리는 시점에 견적서 PDF를 넘길게요. 총액만 뽑아줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "F05",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "첨부파일 없이 계약서 요약 워크플로우 만들어줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "F06",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "첨부한 계약서 PDF를 검토해줘",
+    "gold": {
+     "ask": [
+      [
+       "올려",
+       "파일",
+       "첨부"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "작업을 돌리는 시점에 자료를 넘기겠습니다",
+    "gold": {
+     "ask": []
+    }
+   },
+   {
+    "action": "message",
+    "text": "첨부한 계약서 PDF의 해지 조건도 검토해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "M01",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서를 검토하고 위험한 조항만 근거를 붙여 답해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "오늘 날씨 어때?",
+    "gold": {
+     "side": true
+    }
+   },
+   {
+    "action": "confirm",
+    "gold": {
+     "must_not_save": true
+    }
+   },
+   {
+    "action": "message",
+    "text": "위약금이 있는 조항을 위험으로 봐줘",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "어떤",
+      "무엇",
+      "정의",
+      "조건"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M02",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 금액이 큰 행만 남겨서 저장해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "금액",
+       "얼마",
+       "이상",
+       "초과",
+       "미만",
+       "이하",
+       "값"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "고마워요",
+    "gold": {
+     "side": true
+    }
+   },
+   {
+    "action": "message",
+    "text": "금액이 50만원 초과인 행이야",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "금액",
+      "얼마",
+      "이상",
+      "초과",
+      "미만",
+      "이하",
+      "값"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M03",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서를 검토하고 위험한 조항만 근거를 붙여 답해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "위약금이 있는 조항을 위험으로 봐줘. 그런데 오늘 날씨 어때?",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "어떤",
+      "무엇",
+      "정의",
+      "조건"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M04",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "중요한 메일만 골라서 요약해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "지금 몇 시야?",
+    "gold": {
+     "side": true
+    }
+   },
+   {
+    "action": "message",
+    "text": "대표님이 보낸 메일만 중요한 메일로 봐줘",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "어떤",
+      "무엇",
+      "정의",
+      "조건"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M05",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 금액이 큰 행만 남겨서 저장해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "금액",
+       "얼마",
+       "이상",
+       "초과",
+       "미만",
+       "이하",
+       "값"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "잘 모르겠어요",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "금액",
+       "얼마",
+       "이상",
+       "초과",
+       "미만",
+       "이하",
+       "값"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "100만원 이상으로 해줘",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "금액",
+      "얼마",
+      "이상",
+      "초과",
+      "미만",
+      "이하",
+      "값"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M06",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "보고서에서 중요한 내용만 요약해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "그냥 알아서 해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M07",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매일 오전 9시 한국 시간에 비용이 100만원 초과인 행을 JSON으로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   },
+   {
+    "action": "message",
+    "text": "예약 없이 한 번만 실행할게요",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "M08",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 금액이 100만원 초과인 행만 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   },
+   {
+    "action": "message",
+    "text": "빈 값은 상관없으니 그대로 유지해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "M09",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "고객 목록에서 오래된 고객만 골라줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "마지막 주문일이 1년 넘은 고객이요",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "어떤",
+      "무엇",
+      "정의",
+      "조건"
+     ]
+    }
+   },
+   {
+    "action": "confirm",
+    "gold": {
+     "must_not_save": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "M10",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "재고 표에서 재고가 부족한 품목만 알려줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "재고 수량이 10개 미만이면 부족한 거예요",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "어떤",
+      "무엇",
+      "정의",
+      "조건"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "T09",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "직원 표에서 입사일이 2020년 이전인 사람만 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T10",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 표에서 매출이 높은 지역만 보여줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "T11",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "주문 표에서 같은 주문번호가 있으면 마지막 행만 남겨서 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T12",
+  "cat": "단순-표",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "설문 결과 표에서 점수가 낮은 응답만 골라줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "E08",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "받은 메일에서 첨부파일만 모아서 목록으로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "E09",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "급한 메일만 골라서 알려줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "E10",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "이번 주 캘린더 일정을 목록으로 정리해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "E11",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "결과를 카카오톡으로 보내줘",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "E12",
+  "cat": "메일·일정",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매주 금요일에 주간 매출 합계를 저장해줘",
+    "gold": {
+     "ask": [
+      [
+       "시",
+       "시간",
+       "몇"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C09",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "계약서 두 개를 비교해서 달라진 조항을 표로 정리하고 위험한 변경만 따로 표시해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C10",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "영수증에서 날짜, 상호명, 금액을 뽑아 금액 큰 순서로 정렬해서 CSV로 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C11",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "회의록에서 결정 사항과 담당자를 뽑고, 마감일이 이번 달인 항목만 표로 정리해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C12",
+  "cat": "복합",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "고객 문의 메일을 읽고 답장 초안을 쓴 다음 내가 확인하면 보내줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "I07",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "반가워요",
+    "gold": {
+     "no_draft": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I08",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "점심 뭐 먹지?",
+    "gold": {
+     "no_draft": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I09",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "지금 몇 시야?",
+    "gold": {
+     "no_draft": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I10",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "고마워요. 그럼 매일 오전 9시 한국 시간에 매출 표 합계를 저장해줘",
+    "gold": {
+     "must_reach_model": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "I11",
+  "cat": "의도",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "오늘 환율 알려줘",
+    "gold": {
+     "must_reach_model": true
+    }
+   }
+  ]
+ },
+ {
+  "id": "F07",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "파일은 실행할 때마다 다른 걸 넣을 거라서 매번 받아서 요약해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "F08",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "아까 드린 계약서 요약해줘",
+    "gold": {
+     "ask": [
+      [
+       "올려",
+       "파일",
+       "첨부"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "F09",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "첨부한 견적서 PDF에서 총액만 뽑아줘",
+    "gold": {
+     "ask": [
+      [
+       "올려",
+       "파일",
+       "첨부"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "실행할 때 말고 지금 올릴게요",
+    "gold": {
+     "ask": [
+      [
+       "올려",
+       "파일",
+       "첨부"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "F10",
+  "cat": "파일시점",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "PDF 계약서를 실행할 때 넣을게요. 해지 조항만 요약해줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "M11",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "중요한 메일만 골라서 요약해줘",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "나중에 정할게요",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "제목에 [긴급]이 들어간 메일만이요",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "어떤",
+      "무엇",
+      "정의",
+      "조건"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M12",
+  "cat": "여러턴",
+  "group": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매일 오전 9시 한국 시간에 매출 표 합계를 저장해줘",
+    "gold": {
+     "ask": []
+    }
+   },
+   {
+    "action": "message",
+    "text": "매일 말고 매주 월요일로 바꿔줘",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ }
+]

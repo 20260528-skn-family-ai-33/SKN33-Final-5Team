@@ -114,7 +114,7 @@ def unary_filter_issue(rule, text):
         return '빈값 선별에는 비교 값을 넣을 수 없습니다. 값과 비교하려면 비교 조건을 사용하세요.'
     empty = r'빈\s*(?:값|칸|행|셀)|비어\s*있|비었|결측|누락|공백|값(?:이|은)?\s*없|\b(?:null|empty|blank|missing)\b'
     nonempty = r'비어\s*있지\s*않|빈\s*값이\s*아닌|값(?:이)?\s*있는|채워진|입력된|\bnon[- ]?empty\b'
-    selection = r'골라|선별|필터|추려|남겨|남기|제외|제거|삭제|(?:행|주문|항목|것)만|\b(?:select|filter|keep|drop|remove)\b'
+    selection = r'골라|선별|필터|추려|남겨|남기|제외|제거|삭제|\b(?:select|filter|keep|drop|remove)\b'
     field = rule.get('field') or '\0'
     # The predicate must immediately describe this exact column, not another
     # column elsewhere in the sentence (or a suffix such as 상태 in 주문상태).
@@ -128,16 +128,19 @@ def unary_filter_issue(rule, text):
         if not bound:
             continue
         cleaned = cleaned[bound.end():]
+        # The first selection verb belongs to this predicate. A later column's
+        # removal verb must not invert an earlier keep operation (and vice versa).
+        action = re.search(selection, cleaned, re.I)
+        removing = bool(action and re.fullmatch(r'제외|제거|삭제|drop|remove', action[0], re.I))
+        selected = action or re.search(r'(?:행|주문|항목|것)만', cleaned)
         if re.match(r'\b' + operator + r'\b', cleaned, re.I):
             return None
-        if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{nonempty})', cleaned, re.I) and re.search(selection, cleaned, re.I):
-            removing = bool(re.search(r'(?:제외|제거|삭제|\b(?:drop|remove)\b)', cleaned, re.I))
+        if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{nonempty})', cleaned, re.I) and selected:
             if (operator == 'is_empty') == removing:
                 return None
             continue
-        if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{empty})', cleaned, re.I) and re.search(selection, cleaned, re.I):
-            removing_empty = bool(re.search(r'(?:제외|제거|삭제|\b(?:drop|remove)\b)', cleaned, re.I))
-            if (operator == 'not_empty') == removing_empty:
+        if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{empty})', cleaned, re.I) and selected:
+            if (operator == 'not_empty') == removing:
                 return None
     return f"'{rule.get('field', '')}'의 빈값 선별 근거가 없습니다. 원래 요청의 비교 값과 조건을 다시 확인하세요."
 
@@ -146,6 +149,8 @@ def request_guard_issues(state, draft):
     issues = review_workflow_issues(state, draft)
     if draft.get('questions') or draft.get('unsupported'):
         return issues
+    from .output_selection_request import output_selection_issues
+    issues.extend(output_selection_issues(state, draft))
     text = '\n'.join(m['content'] for m in active_request_messages(state) if m.get('role') == 'user')
     plans = [] if draft.get('workflow') else [draft.get('execution_plan')]
     for node in (draft.get('workflow') or {}).get('nodes', []):

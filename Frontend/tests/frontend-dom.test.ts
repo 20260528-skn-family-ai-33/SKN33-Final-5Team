@@ -2359,7 +2359,7 @@ test('designer page new workflow protects unsent input and clears the old conver
  }finally{await h.close();}
 });
 
-test('direct run shows a retained optional request after returning from design',async()=>{
+test('direct run keeps an optional request editor open while clearing and after navigation',async()=>{
  const h=await setup('?screen=run&service=A',{},path=>{
   if(path.includes('/agent?'))return {...snapshot(A),request_required:false};
  });
@@ -2368,6 +2368,9 @@ test('direct run shows a retained optional request after returning from design',
   assert.equal(requestField().closest('details')?.open,false);
   requestField().closest('details')!.open=true;
   await input(requestField(),'이번 실행의 추가 요청');
+   await input(requestField(),'');
+   assert.equal(requestField().closest('details')?.open,true);
+   await input(requestField(),'이번 실행의 추가 요청');
   await click(button('설계'));
   await click(button('직접 실행'));
   assert.equal(requestField().value,'이번 실행의 추가 요청');

@@ -69,13 +69,47 @@ function InspectedSource({file,open,readOnly,disabled,onUse,details}:{
   </details>;
 }
 
-export function FileInspection({files,initial,readOnly,disabled,onUse,detailsFor}:{
-  files:InspectedFile[];initial:boolean;readOnly:boolean;disabled:boolean;onUse:(message:string)=>void;detailsFor:(id:string)=>FileDetails|undefined
+export type FileFacts = {row_count?:number; page_count?:number};
+
+function listed(names:string[]) {
+  return names.slice(0,3).join(', ')+(names.length>3?' 등':'');
+}
+
+/** One sentence per file from what the parser actually read; nothing is guessed or inferred. */
+export function describeFile(file:InspectedFile, facts:FileFacts={}):string {
+  const label='「'+file.name+'」';
+  const tables=file.tables || [];
+  if (!file.has_readable_text && !file.columns.length && !tables.length)
+    return label+'에서 읽어 낸 글자가 없어요. 원본을 확인하거나 더 선명한 파일을 연결해 주세요.';
+  const parts:string[]=[];
+  if (file.kind==='table' || file.columns.length || tables.length) {
+    parts.push(label+' 파일은 표 자료예요.');
+    if (tables.length>1) parts.push('시트 '+tables.length+'개('+listed(tables.map(table=>table.name))+')가 있어요.');
+    const columns=file.columns.length ? file.columns : (tables[0]?.columns || []);
+    const read=[columns.length ? '열 '+columns.length+'개('+listed(columns)+')' : '', facts.row_count ? facts.row_count+'행' : ''].filter(Boolean);
+    // "120행을" / "열 5개(…)를": the object particle follows the last item read.
+    if (read.length) parts.push(read.join(', ')+(facts.row_count?'을':'를')+' 읽었어요.');
+  } else {
+    parts.push(label+' 파일은 문서 자료예요.');
+    if (facts.page_count) parts.push(facts.page_count+'쪽을 읽었어요.');
+  }
+  const fields=file.fields.map(field=>field.label);
+  if (fields.length) parts.push('찾은 항목: '+listed(fields)+'.');
+  if (file.partial) parts.push('일부 내용은 원본과 대조가 필요해요.');
+  return parts.join(' ');
+}
+
+export function FileInspection({files,initial,readOnly,disabled,onUse,detailsFor,factsFor}:{
+  files:InspectedFile[];initial:boolean;readOnly:boolean;disabled:boolean;onUse:(message:string)=>void;detailsFor:(id:string)=>FileDetails|undefined;
+  factsFor?:(id:string)=>FileFacts|undefined
 }) {
   if(!files.length)return null;
   return <section className="as-file-inspection" aria-label="연결 파일 확인">
     <h3>연결한 파일에서 확인한 내용</h3>
-    {initial&&!readOnly&&<p>미리보기를 보고 필요한 항목을 선택하거나, 아래 입력창에 원하는 작업을 적어 주세요.</p>}
+    {initial&&!readOnly&&<div className="as-file-summary" role="status">
+      {files.map(file=><p key={file.id}>{describeFile(file,factsFor?.(file.id))}</p>)}
+      <p>{files.length>1?'이 파일들로':'이 파일로'} 어떤 작업을 할까요? 미리보기에서 항목을 골라 요청을 만들거나, 아래 입력창에 원하는 작업을 적어 주세요.</p>
+    </div>}
     {files.map(file=><InspectedSource key={file.id} file={file} open={initial&&!readOnly} readOnly={readOnly} disabled={disabled} onUse={onUse} details={detailsFor(file.id)}/>)}
   </section>;
 }

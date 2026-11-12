@@ -164,7 +164,12 @@ def _session_action(c):
             if prompt:
                 _install_receipt_question(graph,config,prompt,resources)
             elif state:
-                graph.update_state(config,{'resources':resources,'status':'needs_clarification','issues':['자료 연결이 변경됐습니다. 업무 설명을 보내 새 자료와 설정을 확인하세요.']})
+                # Attaching a file is not a request: the assistant says nothing until the user's next
+                # message, which re-reads every attached resource. A verdict reached without this file
+                # (ready, unsupported/tool gap, failure) no longer applies, so it is withdrawn silently.
+                update={'resources':resources}
+                if state.get('status') not in (None,'empty','needs_clarification'):update['status']='needs_clarification'
+                graph.update_state(config,update)
             return public_state(storage,s,graph)
         if action not in ['message','confirm']:raise ValueError('지원하지 않는 요청입니다.')
         if s['revision']!=data['revision']:raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')

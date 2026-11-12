@@ -608,7 +608,8 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
         if(!asset)return;
         const full=asset.text?.trim() || (asset.kind==='table' && asset.row_count<=asset.preview.length);
         return {label:full?'읽은 내용 전체 보기':'자료 상세 보기',open:()=>setResource(asset)};
-      }} initial={!session.messages.some(message=>message.role==='user')} readOnly={!!receiptQuestion} disabled={!!busy||!!recovery||libraryBusy||saved}
+      }} factsFor={id=>{const asset=session.resources.find(resource=>resource.id===id);return asset?{row_count:asset.kind==='table'?asset.row_count:undefined,page_count:asset.page_count}:undefined;}}
+      initial={!session.messages.some(message=>message.role==='user')} readOnly={!!receiptQuestion} disabled={!!busy||!!recovery||libraryBusy||saved}
       onUse={message=>{
         const next=text.trim()?text.trimEnd()+'\n'+message:message;
         if(next.length>4000){setError('업무 설명은 4,000자까지 입력할 수 있어요. 내용을 줄인 뒤 다시 추가해 주세요.');return;}

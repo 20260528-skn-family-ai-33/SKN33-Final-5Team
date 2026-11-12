@@ -599,6 +599,9 @@ test('DOM: a first upload offers observed file values before the first chat mess
   const deadline=Date.now()+3000;
   while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
   const card=document.querySelector('.as-inspected-source') as HTMLDetailsElement;assert.ok(card.open);
+  // The upload itself only describes what was read and asks what to do; no model call, no question.
+  assert.match(document.querySelector('.as-file-summary')?.textContent||'',/「접수.txt」 파일은 문서 자료예요\. 찾은 항목: 접수번호\..*이 파일로 어떤 작업을 할까요\?/);
+  assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
   assert.match(card.textContent||'',/접수번호: A-120/);await click(field('접수번호'));await click(button('요청에 추가'));
   assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement).value,'접수.txt에서 접수번호 항목을 추출해 주세요.');
   assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);

@@ -91,6 +91,7 @@ export async function prepareScheduleSource(payload:Record<string,unknown>,worke
   if(!Array.isArray(metadata.candidates))throw new Error('자료 목록을 확인하지 못했습니다.');
   await authorizeScheduleSource(selection);
   const resolved=await worker({action:'library_source_resolve',source_action:payload.action,id:payload.id,selection,
+   ...(payload.action==='test'?{content:payload.content??''}:{}),
    ...(payload.lease_token?{lease_token:payload.lease_token}:{}),...(payload.use_schedule?{use_schedule:true}:{}),candidates:metadata.candidates,...(run_id?{run_id}:{})});
   if(resolved.status==='expanded'||resolved.status==='skipped'){await authorizeScheduleSource(selection);return {payload,result:resolved,selection};}
   if(!Array.isArray(resolved.refs))throw new Error('실행할 자료를 선택하지 못했습니다.');

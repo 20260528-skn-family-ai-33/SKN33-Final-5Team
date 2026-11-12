@@ -10,7 +10,8 @@ from agent_builder.capabilities.capability_judgement import active_request_messa
 
 _REVIEW = re.compile(r'(?:사람\s*검토|사람(?:이|의)\s*(?:직접\s*)?(?:검토|확인))(?:\s*\(human\s+review\))?|human\s+review', re.I)
 _FINAL = re.compile(r'최종\s*(?:메모|보고서)')
-_CANCEL = re.compile(r'\s*(?:단계|노드)?\s*(?:은|는|을|를)?\s*(?:없이|생략|제외|취소|하지\s*마|하지\s*않|빼)')
+_CANCEL = re.compile(r'\s*(?:단계|노드)?\s*(?:은|는|을|를|가|이)?\s*(?:없이|생략|제외|취소|하지\s*마|하지\s*않|빼|필요\s*(?:없|하지\s*않))')
+_REVIEWED = re.compile(r'\s*(?:한|된|완료된|했던)\s+(?:주문|행|계약|문서|자료|항목|결과)')
 _QUESTION = re.compile(r'(?:뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요)')
 
 
@@ -27,6 +28,8 @@ def review_request(state):
         text = re.sub(r'["“][^"”]*["”]|\x27[^\x27]*\x27', ' ', text)
         for pattern, kind in ((_REVIEW, 'review'), (_FINAL, 'final')):
             for match in pattern.finditer(text):
+                if kind == 'review' and _REVIEWED.match(text[match.end():]):
+                    continue
                 wanted = not bool(_CANCEL.match(text[match.end():]))
                 if kind == 'review':
                     review = wanted
@@ -41,15 +44,35 @@ def review_workflow_issues(state, draft):
         return []
     if not draft.get('workflow'):
         return ['요청한 사람 검토가 빠졌습니다. 검토 의견을 기다리는 워크플로우를 연결하세요.']
-    from workflow_engine.execution_path import execution_path
+    workflow = draft['workflow']
+    by = {n['id']: n for n in workflow['nodes']}
+    paths = []
+    def visit(identifier, prefix):
+        if identifier not in by or identifier in {n['id'] for n in prefix} or len(paths) >= 256:
+            raise ValueError('Invalid or excessive review paths')
+        path = prefix + [by[identifier]]
+        edges = [e for e in workflow['edges'] if e['source'] == identifier]
+        if not edges or by[identifier]['tool'] == 'finish':
+            paths.append(path)
+        else:
+            for e in edges: visit(e['target'], path)
     try:
-        path = execution_path(draft['workflow'])
+        visit(workflow['entry'], [])
     except ValueError:
         return ['사람 검토 단계의 실행 경로를 확인하지 못했습니다.']
-    # Conditional review contracts are validated by requirement_coverage.
-    # The unresolved execution prefix cannot establish their downstream order.
-    if any(n['tool'] == 'condition' for n in path):
-        return []
+    text = '\n'.join(m['content'] for m in active_request_messages(state) if m.get('role') == 'user')
+    conditional = bool(re.search(r'(?:경우(?:에만|만)?|때(?:만)?|이면|하면)\s*(?:사람\s*검토|human\s+review)', text, re.I))
+    issues = [_review_path_issues(path, final, text) for path in paths]
+    if conditional:
+        # Conditional review may skip a branch, but at least one reachable path
+        # must actually wait and every path containing a review must be valid.
+        reviewed = [i for p, i in zip(paths, issues) if any(n['tool']=='ask_user' for n in p)]
+        if reviewed:
+            return list(dict.fromkeys(i for group in reviewed for i in group))
+    return list(dict.fromkeys(i for group in issues for i in group))
+
+
+def _review_path_issues(path, final, text):
     reviews = []
     for node in path:
         settings = node.get('settings', {})
@@ -60,8 +83,7 @@ def review_workflow_issues(state, draft):
             reviews.append(node)
     if not reviews:
         return ['요청한 사람 검토가 빠졌습니다. 분석 결과를 보여주고 실제 검토 의견을 기다리는 단계를 연결하세요.']
-    text = '\n'.join(m['content'] for m in active_request_messages(state) if m.get('role') == 'user')
-    if re.search(r'(?:한\s*번|1\s*번)만\s*(?:멈|대기|검토|받)', text) and sum(n['tool']=='ask_user' for n in path) != 1:
+    if re.search(r'(?:한\s*번|1\s*번)만\s*(?:멈|대기|검토|받)|정확히\s*(?:한\s*번|1\s*번)', text) and sum(n['tool']=='ask_user' for n in path) != 1:
         return ['한 번만 요청한 사람 검토가 여러 번 연결됐습니다. 검토 의견은 한 번만 받도록 연결하세요.']
     if final:
         positions = {node['id']: i for i, node in enumerate(path)}
@@ -73,12 +95,13 @@ def review_workflow_issues(state, draft):
                     continue
                 bindings = node.get('bindings', [])
                 answer = any(b['input']=='answer' and b['output']=='answer' and b['node_id']==reviewed['id'] for b in bindings)
-                preview = next((b for b in reviewed['bindings'] if b['input']=='text'), None)
-                analysis = not preview or any(b['input']=='text' and b['output']=='text'
-                    and b['node_id'] in (preview['node_id'], reviewed['id']) for b in bindings)
+                preview = next(b for b in reviewed['bindings'] if b['input'] in ('text','records'))
+                analysis = any(b['input']==preview['input'] and
+                    (b['node_id'], b['output']) in ((preview['node_id'],preview['output']), (reviewed['id'],preview['input']))
+                    for b in bindings)
                 if answer and analysis:
                     return []
-        return ['최종 메모에 분석 결과와 사람 검토 의견이 연결되지 않았습니다. 분석 결과(text)와 검토 답변(answer)을 이후 답변 작성 단계의 입력으로 연결하세요.']
+        return ['최종 메모에 분석 결과와 사람 검토 의견이 연결되지 않았습니다. 검토한 분석 결과(text 또는 records)와 검토 답변(answer)을 이후 답변 작성 단계의 입력으로 연결하세요.']
     return []
 
 
@@ -108,7 +131,8 @@ def unary_filter_issue(rule, text):
         if re.match(r'\b' + operator + r'\b', cleaned, re.I):
             return None
         if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{nonempty})', cleaned, re.I) and re.search(selection, cleaned, re.I):
-            if operator == 'not_empty':
+            removing = bool(re.search(r'(?:제외|제거|삭제|\b(?:drop|remove)\b)', cleaned, re.I))
+            if (operator == 'is_empty') == removing:
                 return None
             continue
         if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{empty})', cleaned, re.I) and re.search(selection, cleaned, re.I):

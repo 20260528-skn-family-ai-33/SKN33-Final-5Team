@@ -14,6 +14,7 @@ from tests.design.test_document_rows_template import DOC, asked_state
     '영수증을 표로 정리해줘. 추출 항목: 품명, 실입고, 수량 내림차순 정렬',
     '영수증을 표로 정리해줘. 추출 항목: 품명, 실입고, 수량 오름차순',
     '영수증을 표로 정리해줘. 추출 항목: 품명, 실입고, 수량 10 이상',
+    '첨부한 문서를 표로 정리해줘. 추출 항목: 품명, 금액; 금액 내림차순 정렬',
 ])
 def test_inline_processing_instructions_reach_planner_not_ready_extraction(tmp_path, text):
     state = request(text, resources=[DOC])
@@ -55,9 +56,10 @@ def test_followup_field_answer_does_not_consume_a_sort_instruction():
     assert document_rows_reply(state) is None
 
 
-def test_field_addition_does_not_rename_a_sort_instruction_into_a_column():
+@pytest.mark.parametrize('addition',['수량 내림차순 정렬도 추가해줘','정렬 단계를 추가해줘'])
+def test_field_addition_does_not_rename_a_sort_instruction_into_a_column(addition):
     state = request('영수증을 표로 정리해줘. 추출 항목: 품명, 실입고',resources=[DOC])
     state.update(document_rows_reply(state))
-    state['messages'].append(dict(role='user',content='수량 내림차순 정렬도 추가해줘'))
+    state['messages'].append(dict(role='user',content=addition))
     assert not document_rows_applies(state)
     assert document_rows_reply(state) is None

@@ -491,7 +491,8 @@
           "reviews": "reviews",
           "documents": "documents",
           "answer": "text",
-          "text": "text"
+          "text": "text",
+          "records": "records"
         },
         "output_ports": {
           "text": "text"
@@ -1314,7 +1315,7 @@
         "operation_contract_fingerprint": "d193f0a71192f993c76ac953639e5e29bc78267a1f4edc595f563953e67a415b"
       }
     ],
-    "tool_catalog_fingerprint": "af99084951a1c483e00ff8e01376208e7f60ddb7dfc7fac205a011547fe9b79c",
+    "tool_catalog_fingerprint": "8ade920787a4437f358c8ec0f4f5200d1ea1aa60dba49501235681ad3f81cd02",
     "ml_advice": {
       "status": "not_requested",
       "ml_candidates": [],

@@ -55,7 +55,8 @@ def order_specs(identifier):
 
 
 @pytest.mark.parametrize('no_matches',[False,True])
-def test_order_clarification_reopen_save_and_csv_result(tmp_path, monkeypatch, no_matches):
+@pytest.mark.parametrize('miss_compute',[False,True])
+def test_order_clarification_reopen_save_and_csv_result(tmp_path, monkeypatch, no_matches, miss_compute):
     import service.handlers.design as worker
     real = worker.build_graph
     extracted = []
@@ -63,7 +64,7 @@ def test_order_clarification_reopen_save_and_csv_result(tmp_path, monkeypatch, n
     class Capabilities:
         def invoke(self,messages):
             return {'content':json.dumps(dict(decision='existing_tools',reason='표 계산 및 CSV 저장',
-                tool_ids=['read_table','calculate_columns','filter_sort','json_transform','export_result'],
+                tool_ids=['read_table','filter_sort','write_result'] if miss_compute and extracted else ['read_table','calculate_columns','filter_sort','json_transform','export_result'],
                 missing_conditions=[],missing_actions=[],user_quotes=[ORDER_REQUEST]))}
     class Requirements:
         def invoke(self,messages):

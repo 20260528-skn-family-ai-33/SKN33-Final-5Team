@@ -262,10 +262,13 @@ class LibrarySources:
             if not ordered:raise ValueError('선택한 폴더에 함께 읽을 파일이 없습니다. 파일을 올린 뒤 다시 실행하세요.')
             if len(ordered)>100:raise ValueError('폴더 전체 함께 읽기는 최대 100개 파일까지 지원합니다. 폴더를 나눈 뒤 다시 실행하세요.')
         return ordered[:1] if selection['mode']=='latest' else ordered
-    def resolve(self,action,id,candidates,lease_token=None,run_id=None,expected_selection=None,use_schedule=False):
+    def resolve(self,action,id,candidates,lease_token=None,run_id=None,expected_selection=None,use_schedule=False,request=''):
         plan=self.plan(action,id);selection=plan['selection']
         if expected_selection is not None and selection!=expected_selection:raise ValueError('자료함 설정이 변경됐습니다. 다시 실행하세요.')
         if not selection:return {'status':'resolved','selection':None,'refs':[]}
+        if action=='test' and selection['mode']=='new':
+            if not isinstance(request,str):raise ValueError('실행 요청은 텍스트로 입력하세요.')
+            if request.strip():raise ValueError('새 파일마다 실행에는 추가 실행 조건을 적용할 수 없습니다. 조건을 워크플로우에 저장하거나 파일을 직접 선택해 실행하세요.')
         chosen=plan['refs'] if plan['refs'] is not None else self.choose(selection,candidates)
         if selection['mode']!='new' or action in ('schedule','schedule_test'):
             return {'status':'resolved','selection':selection,'refs':chosen[:1] if selection['mode']=='new' else chosen,'run_id':run_id or plan['run_id'] or uid()}

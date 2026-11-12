@@ -21,4 +21,4 @@ def export(c):return library_export(c.storage,c.data['selection'],c.data['target
 def resolve(c):
     data=c.data
     if 'selection' not in data:raise ValueError('확인한 자료함 설정을 함께 전달하세요.')
-    return LibrarySources(c.storage).resolve(data['source_action'],data['id'],data.get('candidates',[]),data.get('lease_token'),data.get('run_id'),data['selection'],use_schedule=data.get('use_schedule',False))
+    return LibrarySources(c.storage).resolve(data['source_action'],data['id'],data.get('candidates',[]),data.get('lease_token'),data.get('run_id'),data['selection'],use_schedule=data.get('use_schedule',False),request=data.get('content',''))

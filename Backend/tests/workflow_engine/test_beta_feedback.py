@@ -208,15 +208,16 @@ def test_empty_csv_notice_uses_literal_argument_not_unrelated_empty_binding(oper
     assert bool(empty_table_notice(workflow,outputs)) == (actual == [])
 
 
-def test_memo_model_and_grounding_check_both_receive_bound_analysis_and_opinion(monkeypatch):
+@pytest.mark.parametrize('port,value',[('text','중요 조항 5개 분석'),('records',[{'조항':'위약금','위험':'재확인'}]),('records',[])])
+def test_memo_model_and_grounding_check_both_receive_bound_analysis_and_opinion(monkeypatch,port,value):
     import json
     from types import SimpleNamespace
     from workflow_engine.executors.document.compose_answer import execute
-    context = dict(text='중요 조항 5개 분석',answer='위약금 조항 재확인')
+    context = {port:value,'answer':'위약금 조항 재확인'}
     checked = []
     def compose(payload, *args):
         message = payload['messages'][0]['content']
-        assert context['text'] in message and context['answer'] in message
+        assert json.dumps(context,ensure_ascii=False) in message
         checked.append('compose')
         return {'structured_response':dict(text='최종 검토 메모',citations=[])}
     monkeypatch.setattr('workflow_engine.executors.agent_factory.create_deep_agent',
@@ -228,10 +229,10 @@ def test_memo_model_and_grounding_check_both_receive_bound_analysis_and_opinion(
             assert payload['bound_context'] == context
             checked.append('verify')
             return payload['draft']
-    memo = node('memo','compose_answer',[bind('documents','read','documents'),bind('text','analysis','text'),
+    memo = node('memo','compose_answer',[bind('documents','read','documents'),bind(port,'analysis',port),
                                        bind('answer','review','answer')],instructions='최종 메모')
     state = dict(request='계약 검토',messages=[],outputs={
         'read':{'documents':[dict(source_id='doc:1',file_name='계약서',page=1,text='계약 조항 원문')]},
-        'analysis':{'text':context['text']},'review':{'answer':context['answer']}})
+        'analysis':{port:value},'review':{'answer':context['answer']}})
     result = execute(memo,state,None,{'instructions':'문서 사실과 검토 의견을 구분하세요.'},Reviewer())
     assert result['text'] == '최종 검토 메모' and checked == ['compose','verify']

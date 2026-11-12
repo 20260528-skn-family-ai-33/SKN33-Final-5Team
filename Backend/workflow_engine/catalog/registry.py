@@ -53,7 +53,7 @@ PORTS = {
  'search_document':({'documents':'documents'}, {'documents':'documents'}),
  'extract_information':({'documents':'documents'}, {'records':'records'}),
  'reply_review':({'documents':'documents','text':'text','table':'table'}, {'reviews':'reviews'}),
- 'compose_answer':({'reviews':'reviews','documents':'documents','answer':'text','text':'text'}, {'text':'text'}),
+ 'compose_answer':({'reviews':'reviews','documents':'documents','answer':'text','text':'text','records':'records'}, {'text':'text'}),
  'export_result':({'records':'records','text':'text','answer':'text'}, {'artifact':'artifact'}),
  'condition':({'table':'table','reviews':'reviews','records':'records','text':'text','answer':'text','documents':'documents'}, {'table':'table','reviews':'reviews','records':'records','text':'text','answer':'text','documents':'documents','decision':'boolean'}),
  'ask_user':({'records':'records','text':'text','documents':'documents'}, {'records':'records','text':'text','documents':'documents','answer':'text'}),

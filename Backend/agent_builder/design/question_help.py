@@ -38,10 +38,12 @@ def question_help(state, content):
     keys = _KEYS.get(subject)
     selected = [q for q in questions if q.get('key') in keys] if keys else questions
     if not selected:
-        return None
+        selected = [q for q in questions if not q.get('key') and subject in re.sub(r'\s', '', q['text'])]
+        if not selected:
+            return '어떤 질문의 설명이 필요한지 알려주세요.\n' + '\n'.join(q['text'] for q in questions) + '\n현재 질문과 기존 조건은 그대로 유지했습니다.'
     paragraphs = []
     for question in selected:
-        details = _EXPLANATIONS.get(question.get('key')) or question.get('reason') or '이 항목의 원하는 조건을 입력해주세요.'
+        details = _EXPLANATIONS.get(question.get('key') or (keys[0] if keys and subject in re.sub(r'\s','',question['text']) else '')) or question.get('reason') or '이 항목의 원하는 조건을 입력해주세요.'
         if question.get('options'):
             details += ' 선택지: ' + ', '.join(question['options']) + '.'
         paragraphs.append(question['text'] + '\n' + details)

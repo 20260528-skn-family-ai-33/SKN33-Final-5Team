@@ -187,6 +187,25 @@ def decoder_schema(version=None):
     return schema
 
 
+def _ollama_body(body):
+    """One Ollama /api/chat result from a single JSON body or a streamed NDJSON body."""
+    text = body.decode('utf-8') if isinstance(body, bytes) else body
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    parts, last = [], {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        chunk = json.loads(line)
+        if chunk.get('error'):
+            return chunk
+        parts.append((chunk.get('message') or {}).get('content', ''))
+        last = chunk
+    return {**last, 'message': {**(last.get('message') or {}), 'content': ''.join(parts)}}
+
+
 class OllamaPlanner:
     """Native local transport sets context explicitly, without changing weights."""
     def __init__(self, model, thinking=False, *, temperature=0.7):
@@ -215,7 +234,16 @@ class OllamaPlanner:
 
     def invoke(self, messages):
         from infrastructure.llm.ollama_settings import resident_options
-        payload = {'model': self.model, 'messages': messages, 'stream': False,
+        # Single-response requests by default, as on main and as the team's evaluation harness
+        # reads them. A4B_OLLAMA_STREAM=on streams NDJSON so a proxy's ~100 s response limit
+        # (RunPod HTTP 524) does not cut a long generation; the 524s seen on 2026-11-11 came
+        # from model reloads, which the resident-model policy (PR #86) removed.
+        stream = os.getenv('A4B_OLLAMA_STREAM', 'off') == 'on'
+        keep_alive = os.getenv('A4B_OLLAMA_KEEP_ALIVE', '').strip()
+        # Ollama accepts a number of seconds (-1 = keep loaded) or a duration such as "30m";
+        # the string "-1" is rejected, so integer values are sent as numbers.
+        if keep_alive.lstrip('-').isdigit():keep_alive = int(keep_alive)
+        payload = {'model': self.model, 'messages': messages, 'stream': stream, **({'keep_alive': keep_alive} if keep_alive != '' else {}),
                    'think': self.thinking, 'truncate': False, 'shift': False, 'format': self.schema,
                    **resident_options(self.model),
                    'options': {'num_ctx': self.num_ctx, 'num_predict': self.num_predict,
@@ -228,10 +256,19 @@ class OllamaPlanner:
         request = urllib.request.Request(self.url, data=json.dumps(payload).encode(),
                                          headers=headers)
         started = time.perf_counter()
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:raw = json.load(response)
-        except (urllib.error.URLError, TimeoutError) as error:
-            raise ValueError('로컬 모델 호출에 실패했습니다. '+str(error)[:300]) from error
+        # A proxy gateway error (RunPod 524) usually means the model was being loaded when the
+        # proxy gave up; the server keeps loading, so the same idempotent request is retried.
+        retries = int(os.getenv('A4B_OLLAMA_GATEWAY_RETRIES', '2') or 0)
+        for attempt in range(retries + 1):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:raw = _ollama_body(response.read())
+                break
+            except urllib.error.HTTPError as error:
+                if error.code in (502, 503, 504, 524) and attempt < retries:
+                    continue
+                raise ValueError('로컬 모델 호출에 실패했습니다. '+str(error)[:300]) from error
+            except (urllib.error.URLError, TimeoutError) as error:
+                raise ValueError('로컬 모델 호출에 실패했습니다. '+str(error)[:300]) from error
         if raw.get('error'):raise ValueError('로컬 모델 오류: '+str(raw['error'])[:300])
         if raw.get('done_reason') == 'length':
             raise ValueError('로컬 모델 응답이 출력 길이 제한으로 중단되었습니다. 잘린 응답은 처리하지 않습니다.')
@@ -252,6 +289,12 @@ def _normalize(raw, state):
     draft = reconcile_connection_questions(draft, state)
     issues = runtime_file_question_issues(draft, state)
     if issues:raise ValueError(' / '.join(issues))
+    # Same settled-question contract as the capability check and DeepAgent planner.
+    from agent_builder.conditions.question_contract import drop_settled, settled_question_issue, SettledQuestionError
+    settled = settled_question_issue(draft['questions'], state)
+    if settled:
+        if not draft['workflow']:raise SettledQuestionError(settled)  # bounded retry below
+        draft = drop_settled(draft, state)[0]
     if draft['unsupported']:
         draft['questions'] = [];draft['question_options'] = [];draft['question_responses'] = []
         draft['workflow'] = None;draft['tool_ids'] = []
@@ -481,7 +524,12 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 draft, pool, semantic_issues = _normalize(raw,state)
                 break
             except (ValueError, ValidationError) as error:
-                if attempt == budget-1:raise ValueError('초안 생성의 재시도 한도에서 JSON·스키마 계약을 만족하지 못했습니다.') from error
+                if attempt == budget-1:
+                    from agent_builder.conditions.question_contract import SettledQuestionError
+                    if isinstance(error, SettledQuestionError):
+                        # Same notice as the DeepAgent path: the question is not shown and nothing is saved.
+                        raise ValueError('이미 정한 조건을 다시 묻는 응답만 반복돼 질문을 표시하지 않고 초안 생성을 멈췄습니다. 대화는 보존되며 다시 시도할 수 있습니다.') from error
+                    raise ValueError('초안 생성의 재시도 한도에서 JSON·스키마 계약을 만족하지 못했습니다.') from error
                 detail = json.dumps(error.errors(include_input=False,include_url=False),ensure_ascii=False,default=str) if isinstance(error,ValidationError) else str(error)
                 messages += [{'role':'assistant','content':content},
                              {'role':'user','content':'다음 코드 검증 오류만 수정하여 JSON 하나를 반환하세요. 사용자 조건을 바꾸지 마세요: '+detail[:4000]}]

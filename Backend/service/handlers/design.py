@@ -17,6 +17,43 @@ from langgraph.types import Command
 STATE_ONLY={'session','upload','attach_asset','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'}
 
 
+def _last_user(state):
+    return next((m.get('content') for m in reversed(state.get('messages',[]) or []) if m.get('role')=='user'),None)
+
+
+def _work_messages(storage,s,graph):
+    state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
+    if not state and s.get('agent_id'):
+        base=storage.agent(s['agent_id'])
+        return (graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}).get('messages',[])
+    return state.get('messages',[])
+
+
+def _with_side_messages(messages,s):
+    """Display-only merge. Side remarks never enter graph messages, answers or fingerprints."""
+    side=s.get('side_messages') or []
+    if not side:return messages
+    merged=[]
+    for index in range(len(messages)+1):
+        merged+=[{k:v for k,v in m.items() if k!='after'} for m in side if min(m['after'],len(messages))==index]
+        if index<len(messages):merged.append(messages[index])
+    return merged
+
+
+def _requirement_state(state):
+    """The single requirement state, shown when orchestration is on (shadow/enforce).
+
+    The projection itself never feeds a decision; with the default 'off' the response is unchanged.
+    """
+    from agent_builder.orchestration.criteria import mode as orchestration_mode
+    if orchestration_mode()=='off':return {}
+    try:
+        from agent_builder.orchestration.state import shadow_view
+        return {'requirement_state':shadow_view(state)}
+    except Exception as error:  # a projection bug must not break the conversation
+        return {'requirement_state':{'error':type(error).__name__,'detail':str(error)[:300]}}
+
+
 def public_state(storage,s,graph):
     snapshot=graph.get_state({'configurable':{'thread_id':s['id']}})
     state=snapshot.values or {}
@@ -43,7 +80,7 @@ def public_state(storage,s,graph):
     resources=[storage.asset(id) for id in s['file_ids']]
     inspections=[inspect_file(asset) for asset in resources]
     controls=project_question_controls(state,current_receipt_questions(state,resources,inspections))
-    return {**s,'messages':state.get('messages',[]),'draft':controls['draft'],'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
+    return {**s,'messages':_with_side_messages(state.get('messages',[]),s),'draft':controls['draft'],'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
             'file_inspection':inspections,
             'condition_ledger':state.get('condition_ledger'),'pending_questions':controls['pending_questions'],
             'requirement_failure':state.get('requirement_failure'),
@@ -55,6 +92,8 @@ def public_state(storage,s,graph):
             'capability_assessment':state.get('capability_assessment'),
             'capability_enforced':capability_enforced(state),
             'capability_deferred':state.get('capability_deferred',False),
+            'system_failure':state.get('system_failure'),
+            **_requirement_state(state),
             'redesign_proposal':tool_gap_redesign.view(state,s),
             'redesign_generation':tool_gap_redesign.generation_handoff(state,s)}
 
@@ -181,6 +220,8 @@ def _session_action(c):
             if state.get('status')=='saved':return public_state(storage,s,graph)
             from agent_builder.capabilities.capability_gate import require_ready
             require_ready(state)
+            from agent_builder.conditions.clarification_core import open_required
+            if open_required(state):raise ValueError('답하지 않은 확인 질문이 남아 있어 저장할 수 없습니다.')
             if not has_interrupt or state.get('status')!='ready':raise ValueError('필수 조건과 근거 검증을 완료한 뒤 저장할 수 있습니다.')
             if data.get('include_schedule') is not None and type(data['include_schedule']) is not bool:
                 raise ValueError('예약을 함께 저장할지 선택해주세요.')
@@ -189,6 +230,34 @@ def _session_action(c):
             content=data['content'].strip()
             if not content or len(content)>4000:raise ValueError('업무 설명은 1~4,000자로 입력하세요.')
             if state.get('status')=='saved':raise ValueError('저장한 설정을 바꾸려면 설정 수정 대화를 시작하세요.')
+            # Classify the turn before resuming: a greeting or one-off side question is not an
+            # answer, task change or fingerprint input, and must not resume the pending checkpoint.
+            from agent_builder.design.turn_intent import split_turn, side_reply
+            # A structured answer from the question controls already names its question; it is
+            # never re-read as a side remark or a question about the question.
+            structured=bool(data.get('question_answers'))
+            pending=state.get('pending_questions') or []
+            draft=state.get('draft') or {}
+            # Planner questions live only in the draft (with their declared answer controls).
+            planner=[{'text':text,'options':(draft.get('question_options') or [[]]*len(draft.get('questions') or []))[i] if i<len(draft.get('question_options') or []) else [],
+                      'response':(draft.get('question_responses') or [])[i] if i<len(draft.get('question_responses') or []) else {}}
+                     for i,text in enumerate(draft.get('questions') or [])] if has_interrupt else []
+            waiting=pending or planner
+            pending_texts=[q['text'] for q in waiting if q.get('text')]
+            failure=bool(state.get('system_failure') or (state.get('requirement_failure') or {}).get('retryable'))
+            turn=split_turn(content,state,waiting) if not structured else {'work':content,'side':[],'kinds':[]}
+            if turn['side']:
+                shown=len(state.get('messages') or _work_messages(storage,s,graph))
+                reply=side_reply(turn,pending_texts if has_interrupt or pending else [],waiting if has_interrupt or pending else [],failure=failure)
+                s={**s,'side_messages':s.get('side_messages',[])+[
+                    {'after':shown,'role':'user','content':' '.join(turn['side']),'scope':'side'},
+                    *([{'after':shown,'role':'assistant','content':reply,'scope':'side'}] if reply else [])]}
+                if not turn['work']:
+                    # Recorded like any other request so a lost response can be recovered by its id.
+                    s={**s,'last_generation_request_id':data.get('generation_request_id')}
+                    s=storage.update_session(s,data['revision'])
+                    return public_state(storage,s,graph)
+                content=turn['work']
             from agent_builder.design.question_answers import question_answers
             answers=question_answers(data.get('question_answers'),state)
             if answers and not has_interrupt:raise ValueError('질문이 변경되었습니다. 현재 질문을 확인한 뒤 다시 답변해주세요.')
@@ -220,6 +289,15 @@ def _session_action(c):
                 if not any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
                     graph.update_state(config,{'repair_count':0})
                 graph.invoke(Command(resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {}),**({'question_answers':answers} if answers else {})}),config)
+            elif (state.get('system_failure') or (state.get('requirement_failure') or {}).get('retryable')) and _last_user(state)==content:
+                # A retryable processing failure (clarification core system_failure or main's
+                # requirement_failure): rerun from the gates with the same request instead of
+                # appending a duplicate message.
+                messages=state.get('messages',[])
+                last=max(i for i,m in enumerate(messages) if m.get('role')=='user')
+                graph.update_state(config,{'messages':messages[:last+1],'system_failure':None,'requirement_failure':None,'confirmed':False,
+                                           'repair_count':0,'issues':[]},as_node='resources')
+                graph.invoke(None,config)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.
                 from agent_builder.capabilities.capability_gate import blocking_issue

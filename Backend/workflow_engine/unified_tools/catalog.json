@@ -3416,7 +3416,7 @@
           "runtime_id": "email.list.read_messages",
           "status": "external_connection_required",
           "implementation": "runtime.invoke",
-          "inputs": "query=None, max_results=100 (integer 1..500)",
+          "inputs": "query=None, max_results=100 (integer 1..500). For a calendar day relative to the run, set query to exactly {{gmail.previous_day|<IANA timezone>}} (yesterday) or {{gmail.today|<IANA timezone>}} (today), e.g. {{gmail.previous_day|Asia/Seoul}}; the app resolves it at execution time. Use the timezone the user stated; omit |<zone> when none was stated (the schedule timezone or the server default is used). Do not write literal dates or newer_than for yesterday/today.",
           "outputs": "documents:Document[] messages:MessageMetadata[] requested_count:int returned_count:int",
           "requirements": "Context 및 Gmail 읽기 권한 연결. 페이지 순회·조회 상한·본문 생략 메타데이터를 반환하며 선택된 본문 조회 실패 시 중단.",
           "side_effect": false,

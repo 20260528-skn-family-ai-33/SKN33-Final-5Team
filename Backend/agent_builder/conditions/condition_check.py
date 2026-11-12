@@ -179,6 +179,11 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         else:
             update.update(condition_route='stop', status='validation_failed',
                           issues=(ledger.get('issues') or ['대표 업무의 지원 범위를 벗어났거나 작업 변경·취소 확인이 필요합니다.'])+detail)
+            if ledger['decision'] == 'system_error' and ledger.get('error_type'):
+                # Model/contract failure: retryable, not a user decision (clarification core).
+                from agent_builder.conditions.clarification_core import system_failure, RETRY_NOTICE
+                update['system_failure'] = system_failure('condition_check', ledger['error_type'], reply)
+                update['messages'] = state.get('messages', []) + [{'role': 'assistant', 'content': reply + RETRY_NOTICE}]
         return update
     return check
 

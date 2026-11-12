@@ -212,6 +212,12 @@ class BuilderState(TypedDict, total=False):
     capability_fingerprint: str | None
     capability_questions: list[dict]
     capability_answers: list[dict]
+    # Clarification core: answers to core-registered questions, and retryable processing failures.
+    clarification_answers: list[dict]
+    system_failure: dict | None
+    # Orchestration stage 2: verified selection criteria and their questions.
+    orchestration: dict | None
+    orchestration_route: str
     capability_deferred: bool
     capability_generation_route: str
     requirement_required: bool

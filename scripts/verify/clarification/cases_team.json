@@ -1,0 +1,1228 @@
+[
+ {
+  "id": "R01",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 최근 5개 메일을 요약 정리해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R02",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결된 표에서 amount가 20 이상인 행만 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R03",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표를 amount 숫자 내림차순으로 정렬하고 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R04",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 customer_id가 중복이면 첫 행만 남겨 JSON으로 저장해줘. 빈 값은 오류.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R05",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표의 qty에 unit_price를 곱한 total 열을 만들고 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R06",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표를 region별 amount 합계로 집계하고 JSON으로 저장해줘. 빈 금액은 오류로 처리해.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R07",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표의 amount 열 이름을 revenue로 바꾸고 JSON으로 저장해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R08",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [
+   "policy"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 정책 문서의 환불 규정을 요약해서 화면에 보여줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R09",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "문자열 hello를 UTF-8 Base64로 인코딩해서 보여줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "R10",
+  "cat": "조건충분",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "(12 + 8) * 3을 계산해서 결과를 보여줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "C01",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매일 오전 9시에 매출 보고서를 이메일로 보내줘.",
+    "gold": {
+     "ask": [
+      [
+       "수신",
+       "받는",
+       "주소",
+       "누구",
+       "받을",
+       "보고서",
+       "자료",
+       "어떤",
+       "시간대"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C02",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "고객 데이터를 분석해서 보고서를 만들어줘.",
+    "gold": {
+     "ask": [
+      [
+       "어떤",
+       "무엇",
+       "분석",
+       "항목",
+       "기준",
+       "자료",
+       "데이터"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C03",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "지난주 매출을 분석해서 이메일로 보내줘.",
+    "gold": {
+     "ask": [
+      [
+       "수신",
+       "받는",
+       "주소",
+       "누구",
+       "받을",
+       "어떤",
+       "자료",
+       "데이터",
+       "분석"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C04",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 amount가 큰 행만 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "얼마",
+       "이상",
+       "초과",
+       "미만",
+       "이하",
+       "값"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C05",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 중복을 제거하고 JSON으로 저장해줘. 빈 값은 오류로 처리해.",
+    "gold": {
+     "ask": [
+      [
+       "중복",
+       "열",
+       "기준",
+       "어떤",
+       "행"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C06",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 중요한 메일만 요약해줘.",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "어떤",
+       "무엇",
+       "정의",
+       "조건"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C07",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "한국 시간으로 매주 표를 JSON으로 저장해줘.",
+    "gold": {
+     "ask": [
+      [
+       "요일",
+       "시",
+       "시간",
+       "몇"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C08",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "한국 시간으로 매일 표를 JSON으로 저장해줘.",
+    "gold": {
+     "ask": [
+      [
+       "시",
+       "시간",
+       "몇"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C09",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에 새 계산 열을 만들고 JSON으로 저장해줘.",
+    "gold": {
+     "ask": [
+      [
+       "식",
+       "계산",
+       "열",
+       "이름",
+       "어떤"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "C10",
+  "cat": "정보부족",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail로 제목 점검, 본문 완료라는 이메일을 보내줘.",
+    "gold": {
+     "ask": [
+      [
+       "수신",
+       "받는",
+       "주소",
+       "누구",
+       "받을"
+      ]
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "T01",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "서울, 2026-11-10 기준",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 어제 온 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T02",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "뉴욕, 2026-11-10 01:00 UTC",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 오늘 받은 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T03",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "서울 2026-11-09 23:59:59",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 어제 받은 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T04",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "서울, 2027-01-01",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 어제 받은 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T05",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "뉴욕, 2026-03-09 12:00 UTC",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 어제 받은 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T06",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "뉴욕, 2026-11-02 12:00 UTC",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 어제 받은 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T07",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "한글 수량 다섯 통",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 최신 메일 다섯 통의 내용을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "T08",
+  "cat": "날짜수량",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "예약+조회 기간",
+  "turns": [
+   {
+    "action": "message",
+    "text": "한국 시간으로 매일 오전 9시에 Gmail의 전날 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "M01",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 amount가 큰 행만 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "얼마",
+       "이상",
+       "초과",
+       "미만",
+       "이하",
+       "값"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "20 이상으로 해줘.",
+    "gold": {
+     "answer_of": [
+      "기준",
+      "얼마",
+      "이상",
+      "초과",
+      "미만",
+      "이하",
+      "값"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M02",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 customer_id가 중복인 행을 정리해서 JSON으로 저장해줘. 빈 값은 오류.",
+    "gold": {
+     "ask": [
+      [
+       "첫",
+       "마지막",
+       "어떤",
+       "행",
+       "중복"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "중복은 마지막 행만 남겨줘.",
+    "gold": {
+     "answer_of": [
+      "첫",
+      "마지막",
+      "어떤 행"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M03",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 중복이면 첫 행만 남기고 JSON으로 저장해줘. 빈 값은 오류.",
+    "gold": {
+     "ask": [
+      [
+       "열",
+       "기준",
+       "어떤"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "중복 기준 열은 customer_id야.",
+    "gold": {
+     "answer_of": [
+      "열",
+      "기준"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M04",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "한국 시간으로 매일 표를 JSON으로 저장해줘.",
+    "gold": {
+     "ask": [
+      [
+       "시",
+       "시간",
+       "몇"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "매일 오전 9시 정각으로 해줘.",
+    "gold": {
+     "answer_of": [
+      "몇 시",
+      "시간"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M05",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "한국 시간으로 매주 오전 9시에 표를 JSON으로 저장해줘.",
+    "gold": {
+     "ask": [
+      [
+       "요일"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "매주 월요일로 해줘.",
+    "gold": {
+     "answer_of": [
+      "요일"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M06",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "한국 시간으로 매월 오전 9시에 표를 JSON으로 저장해줘.",
+    "gold": {
+     "ask": [
+      [
+       "일",
+       "날짜",
+       "며칠"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "매월 15일로 해줘.",
+    "gold": {
+     "answer_of": [
+      "며칠",
+      "날짜"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M07",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표의 qty에 곱할 배율을 아직 정하지 못했어. scaled라는 열을 만들고 JSON으로 저장해줘.",
+    "gold": {
+     "ask": [
+      [
+       "배율",
+       "곱",
+       "식",
+       "계산",
+       "값"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "qty에 2를 곱해줘.",
+    "gold": {
+     "answer_of": [
+      "배율",
+      "곱할"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M08",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표의 qty에 2를 곱한 새 열을 만들어 JSON으로 저장해줘. 새 열 이름은 아직 미정이야.",
+    "gold": {
+     "ask": [
+      [
+       "이름"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "새 열 이름은 doubled로 해줘.",
+    "gold": {
+     "answer_of": [
+      "이름"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M09",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표를 region별로 금액 합계 집계해 JSON으로 저장해줘. 금액 열은 아직 정하지 않았어. 빈 값은 오류로 처리해.",
+    "gold": {
+     "ask": [
+      [
+       "열",
+       "금액",
+       "어떤"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "합계할 금액 열은 amount야.",
+    "gold": {
+     "answer_of": [
+      "어떤 열",
+      "금액 열"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M10",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail로 제목 점검, 본문 완료인 이메일을 보내줘.",
+    "gold": {
+     "ask": [
+      [
+       "수신",
+       "받는",
+       "주소",
+       "누구",
+       "받을"
+      ]
+     ]
+    }
+   },
+   {
+    "action": "message",
+    "text": "수신자는 audit@example.invalid야.",
+    "gold": {
+     "answer_of": [
+      "수신",
+      "받는"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "M11",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "READY 이후 변경: 10개 반영",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 최근 5개 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   },
+   {
+    "action": "message",
+    "text": "아니, 10개로 바꿔줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "M12",
+  "cat": "답변변경",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "'어제' 기준 유지 + 5개",
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 어제 온 메일을 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   },
+   {
+    "action": "message",
+    "text": "최대 5개만 요약해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "U01",
+  "cat": "미지원",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "결과를 Slack 채널로 보내줘.",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "U02",
+  "cat": "미지원",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "매출 데이터를 분석해서 이메일로 보내줘.",
+    "gold": {}
+   },
+   {
+    "action": "message",
+    "text": "연결된 고객 PostgreSQL 데이터베이스에서 직접 가져와.",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "U03",
+  "cat": "미지원",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "한국 시간으로 매년 12월 31일 오전 9시에 표를 JSON으로 저장해줘. 다른 주기는 안 돼.",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "U04",
+  "cat": "미지원",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "결과를 Microsoft Teams 채널로 보내줘.",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "U05",
+  "cat": "미지원",
+  "group": null,
+  "resources": [],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "WhatsApp으로 고객에게 알림을 발송해줘.",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "X01",
+  "cat": "복합",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": "Notion 미지원(평가 당시 기준)",
+  "turns": [
+   {
+    "action": "message",
+    "text": "매일 오후 6시에 Gmail로 받은 고객 문의를 분석해서 중요 내용을 요약하고 Notion에 정리해줘.",
+    "gold": {
+     "expect_decision": "missing_capability"
+    }
+   }
+  ]
+ },
+ {
+  "id": "X02",
+  "cat": "복합",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 qty * unit_price로 total 열을 만들고 total이 20 이상인 행만 total 숫자 내림차순으로 정렬해서 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "X03",
+  "cat": "복합",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표를 region별 amount 합계로 집계하고 sum이 25 이상인 결과만 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "X04",
+  "cat": "복합",
+  "group": null,
+  "resources": [
+   "policy"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 정책 문서를 요약하고 Markdown 파일로 저장해줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "X05",
+  "cat": "복합",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 customer_id 중복은 첫 행만 남긴 후 amount가 15 이상인 행을 JSON으로 저장해줘. 빈 값은 오류.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "X06",
+  "cat": "복합",
+  "group": null,
+  "resources": [],
+  "gmail": true,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "Gmail에서 최근 3개 메일을 요약하고 audit@example.invalid로 제목 요약 결과인 이메일을 보내줘.",
+    "gold": {
+     "ask": []
+    }
+   }
+  ]
+ },
+ {
+  "id": "X07",
+  "cat": "복합",
+  "group": null,
+  "resources": [
+   "table"
+  ],
+  "gmail": false,
+  "note": null,
+  "turns": [
+   {
+    "action": "message",
+    "text": "연결한 표에서 amount가 큰 행만 선별한 뒤 region별 amount 합계를 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.",
+    "gold": {
+     "ask": [
+      [
+       "기준",
+       "얼마",
+       "이상",
+       "초과",
+       "미만",
+       "이하",
+       "값"
+      ]
+     ]
+    }
+   }
+  ]
+ }
+]

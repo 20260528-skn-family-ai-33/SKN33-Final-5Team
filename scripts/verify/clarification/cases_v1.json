@@ -1,0 +1,34 @@
+[
+ {"id":"S1","cat":"단순","turns":[{"action":"message","text":"계약서 해지 조항을 요약해줘","gold":{"ask":[]}}]},
+ {"id":"S2","cat":"단순","turns":[{"action":"message","text":"계약서를 검토하고 위험한 조항만 근거를 붙여 답해줘","gold":{"ask":[["위험","기준"]]}}]},
+ {"id":"S3","cat":"단순","turns":[{"action":"message","text":"매출 CSV에서 금액 열을 지역별로 합계해서 CSV로 저장해줘","gold":{"ask":[]}}]},
+ {"id":"S4","cat":"단순","turns":[{"action":"message","text":"매출 표에서 금액이 큰 행만 남겨서 저장해줘","gold":{"ask":[["기준","금액","얼마","이상","초과"]]}}]},
+ {"id":"S5","cat":"단순","turns":[{"action":"message","text":"회의록 PDF에서 결정 사항만 뽑아서 표로 정리해줘","gold":{"ask":[]}}]},
+ {"id":"S6","cat":"단순","turns":[{"action":"message","text":"중요한 메일만 골라서 요약해줘","gold":{"ask":[["중요","기준"]]}}]},
+ {"id":"K1","cat":"한국어변형","turns":[{"action":"message","text":"계약서에 있는 해지 관련 조항들 요약 부탁해요","gold":{"ask":[]}}]},
+ {"id":"K2","cat":"한국어변형","turns":[{"action":"message","text":"지역별로 금액 합계 내서 CSV 파일로 뽑아줘","gold":{"ask":[]}}]},
+ {"id":"K3","cat":"한국어변형","turns":[{"action":"message","text":"실행할 때 PDF 계약서를 넣을 테니 해지 조항을 요약해줘","gold":{"ask":[]}}]},
+ {"id":"K4","cat":"한국어변형","turns":[{"action":"message","text":"워크플로우를 돌리는 시점에 견적서 PDF를 넘길게요. 총액만 뽑아줘","gold":{"ask":[]}}]},
+ {"id":"C1","cat":"복합","turns":[{"action":"message","text":"방금 첨부한 계약서 PDF를 분석해줘. 비교용 견적서는 실행할 때 첨부할게요.","gold":{"ask":[["계약서","파일","올려"]]}}]},
+ {"id":"C2","cat":"복합","turns":[{"action":"message","text":"매출 CSV에서 서울 지역만 골라 금액에 1.1을 곱한 열을 만들고 품목별로 합계해서 큰 순서로 정렬해 CSV로 저장해줘","gold":{"ask":[]}}]},
+ {"id":"I1","cat":"의도","turns":[{"action":"message","text":"안녕하세요","gold":{"no_draft":true}}]},
+ {"id":"I2","cat":"의도","turns":[{"action":"message","text":"오늘 날씨 어때?","gold":{"no_draft":true}}]},
+ {"id":"I3","cat":"의도","turns":[{"action":"message","text":"매일 아침 9시에 날씨를 메일로 보내줘","gold":{"must_reach_model":true}}]},
+ {"id":"I4","cat":"의도","turns":[{"action":"message","text":"안녕하세요! 매일 아침 9시에 받은 계약서를 요약해서 메일로 보내줘","gold":{"must_reach_model":true}}]},
+ {"id":"M1","cat":"여러턴","turns":[
+   {"action":"message","text":"계약서를 검토하고 위험한 조항만 근거를 붙여 답해줘","gold":{"ask":[["위험","기준"]]}},
+   {"action":"message","text":"오늘 날씨 어때?","gold":{"side":true}},
+   {"action":"confirm","gold":{"must_not_save":true}},
+   {"action":"message","text":"위약금이 있는 조항을 위험으로 봐줘","gold":{"answer_of":["위험","기준"]}}]},
+ {"id":"M2","cat":"여러턴","turns":[
+   {"action":"message","text":"매출 표에서 금액이 큰 행만 남겨서 저장해줘","gold":{"ask":[["기준","금액","얼마","이상","초과"]]}},
+   {"action":"message","text":"고마워요","gold":{"side":true}},
+   {"action":"message","text":"금액이 50만원 초과인 행이야","gold":{"answer_of":["기준","금액","얼마","이상","초과"]}}]},
+ {"id":"M3","cat":"여러턴","turns":[
+   {"action":"message","text":"계약서를 검토하고 위험한 조항만 근거를 붙여 답해줘","gold":{"ask":[["위험","기준"]]}},
+   {"action":"message","text":"위약금이 있는 조항을 위험으로 봐줘. 그런데 오늘 날씨 어때?","gold":{"answer_of":["위험","기준"]}}]},
+ {"id":"M4","cat":"여러턴","turns":[
+   {"action":"message","text":"중요한 메일만 골라서 요약해줘","gold":{"ask":[["중요","기준"]]}},
+   {"action":"message","text":"지금 몇 시야?","gold":{"side":true}},
+   {"action":"message","text":"대표님이 보낸 메일만 중요한 메일로 봐줘","gold":{"answer_of":["중요","기준"]}}]}
+]

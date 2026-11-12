@@ -3,8 +3,10 @@
 ## 범위와 기준
 
 - 저장소: https://github.com/20260528-skn-family-ai-33/SKN33-Final-5Team.git
-- 브랜치: `feedback`, 최종 main 기준 `0a13ff3e47635d7dccfd743621439306a1d04fdc`.
+- 브랜치: `feedback`, 최종 main 기준 `33db4e455fe110718dcf5cdfe5905de87c8ca4c3`.
 - 작업 중 main에 병합된 #100 파서 통합·#102 화면 개선을 fast-forward로 반영했다. 우리의 백엔드 수정과 파일 충돌은 없었으며 팀원 변경을 수정하지 않았다.
+- PR 생성 중 #101 되묻기·답변 검증 개선이 추가 병합되어 이를 feedback에 통합했다. 문서 추출의 추가 처리 판별·기존 항목 목록 인식과 우리 항목 추가 기능을 결합했고, 답변 기록 전 설명 질문 분기를 유지했다. 도구 카탈로그 예제는 통합된 코드로 다시 생성했다.
+- #101에 포함된 서비스 계층 설명 질문 처리는 그대로 유지한다. 이 PR의 설명 질문 처리는 그래프를 직접 재개하는 경로에서도 기존 질문과 답변 기록을 보존하는 보완이다.
 - 이전 로컬 서비스 코드·사용자 DB 대신 현재 main의 구현을 기준으로 검토했다.
 - 원본: `C:/Users/suhoo/Downloads/베타테스터 피드백.xlsx`의 `피드백 작성` 시트. 번호는 원본 행 번호다.
 - OCR/parser, 프런트, 동작 대기 화면·로딩 표시는 팀원 담당으로 제외했다. 추출 항목 안내는 설계 대화의 백엔드 처리만 변경한다.
@@ -62,14 +64,14 @@ S5의 로컬 합성 주문 데이터에서는 ORD-001(100000), ORD-003(150000) �
 
 ## 검증
 
-- Python: `tests/design tests/conditions tests/workflow_engine tests/infrastructure tests/capabilities`.
+- Python: `tests/design tests/conditions tests/workflow_engine tests/infrastructure tests/capabilities tests/orchestration`.
 - Windows에서 `PYTHONUTF8=1`로 실행한다. 초기 CP949 실행에서 발생한 한글 fixture 읽기 실패는 UTF-8 재실행으로 구분했다.
 - 현재 main에 맞춘 ML/Babel 등의 의존성은 별도 테스트 폴더에 준비했으며 실제 서비스 환경을 변경하지 않았다.
 - 자동 검사의 모델·Gmail 응답은 fixture/mock을 사용한다. 별도로 로그인한 실서비스에서 합성 파일로 S5/S7을 수동 확인했다. 실제 Gmail 연결 장애 테스트는 미실시다.
-- TypeScript: 최신 main 반영 후 `npm run check` 성공. `Frontend/tests/frontend-dom.test.ts`도 성공했다. 프런트 소스는 이번 브랜치에서 수정하지 않았다.
-- 최종 Python: 최신 main `0a13ff3` 반영 후 **3,504 passed, 26 skipped, 0 failed** (97.23초). PostgreSQL 환경 관련 25개와 Linux 배포 스크립트 1개가 제외됐다.
+- TypeScript: #101 통합 후 `npm run check` 성공. `Frontend/tests/frontend-dom.test.ts`는 #100·#102 반영 후 성공했고 이후 프런트 소스 변경은 없다. 프런트 소스는 이번 브랜치에서 수정하지 않았다.
+- 최종 Python: 최신 main `33db4e4`(#101) 통합 후 **3,762 passed, 26 skipped, 0 failed** (129.32초). PostgreSQL 환경 관련 25개와 Linux 배포 스크립트 1개가 제외됐다. 이전 기준 `0a13ff3`에서는 3,504개가 통과했고, 최종 검사에는 새로 추가된 설계·오케스트레이션 검사 등을 포함했다.
 - 기존 모델 이전 fixture의 Pydantic 직렬화 경고 10개가 있으며 테스트 실패는 없다.
-- `git diff --check` 성공. 브랜치가 `feedback`이고 HEAD와 원격 main 기준 해시가 같은지 마지막으로 확인했다.
+- 기준 main 대비 `git diff --cached --check origin/main` 성공. 충돌 표시가 남지 않은 것을 확인했다.
 - 결과 XML: `C:/SKN_AI/A4B_gpt/.tmp/feedback-backend-latest.xml`.
 
 ## 로그인 후 실서비스 확인

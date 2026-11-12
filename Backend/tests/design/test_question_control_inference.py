@@ -176,7 +176,8 @@ def test_direct_planner_persists_completed_controls_without_an_extra_model_call(
     response = {**draft(), 'questions': [text], 'question_options': [[]],
                 'question_responses': [{'type': 'text'}]}
     fake = Fake(response)
-    result = planner(monkeypatch, fake)(state())
+    # The request must leave the format open: a format the user already wrote is never asked again.
+    result = planner(monkeypatch, fake)({**state(),'messages':[{'role':'user','content':'입력 표를 파일로 저장해줘'}]})
     assert result['draft']['question_options'] == [['CSV', 'JSON']]
     assert result['draft']['question_responses'][0]['type'] == 'single_choice'
     assert len(fake.calls) == 1

@@ -41,7 +41,7 @@ def test_add_run_remove_and_readd_reservation_preserves_the_workflow(tmp_path):
     assert not schedule['active'] and schedule['agent_version']==1
     public=request(tmp_path,'agent',id=id)
     assert public['agent']==before
-    assert public['request_required'] and not public['schedule_request_required']
+    assert not public['request_required'] and not public['schedule_request_required']
     now=request(tmp_path,'test',id=id,use_schedule=True)
     assert now['status']=='succeeded' and now['config_snapshot']['schedule']['hour']==9
     assert request(tmp_path,'schedules')['workflows'][0]['agent']['id']==id

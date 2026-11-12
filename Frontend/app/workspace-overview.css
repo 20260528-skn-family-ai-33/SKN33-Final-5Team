@@ -116,3 +116,8 @@
   .overview-welcome { margin-bottom: 28px; }
   .overview-composer textarea { font-size: 16px; }
 }
+
+.overview-composer-actions { align-items:center; gap:10px; flex-wrap:wrap; }
+.overview-composer-actions > small { margin-left:auto; font-size:11px; color:var(--as-muted); }
+.overview-attachment { display:flex; align-items:center; gap:8px; padding:8px 12px; overflow-wrap:anywhere; }
+.overview-attachment button { display:grid; place-items:center; border:0; background:transparent; cursor:pointer; }

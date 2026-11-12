@@ -2409,3 +2409,60 @@ test('direct run keeps an optional request editor open while clearing and after 
   assert.equal(requestField().closest('details')?.open,true);
  }finally{await h.close();}
 });
+
+test('home attachment is uploaded before the initial design message',async()=>{
+ const prompt='첨부 문서를 요약해줘';
+ const h=await setup('?screen=home',{},(path,body)=>{
+  if(path.endsWith('/sessions'))return {...readySession(),revision:1,status:'empty',draft:null,resources:[]};
+  if(path.endsWith('/upload'))return {...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'home-file',name:'문서.txt',kind:'document'}]};
+  if(path.endsWith('/message'))return {...readySession(),messages:[{role:'user',content:prompt}]};
+ },createElement(EntryApp));
+ try{
+  await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,prompt);
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type="file"]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['내용'],'문서.txt')]});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  assert.match(document.querySelector('.overview-attachment')?.textContent||'',/문서.txt/);
+  await submit(document.querySelector('.overview-composer')!);await h.flush();
+  const calls=h.calls.filter(call=>/\/(upload|message)$/.test(call.path));
+  assert.deepEqual(calls.map(call=>call.path.split('/').pop()),['upload','message']);
+  assert.equal(calls[1].body.revision,2);
+  assert.equal(window.history.state.initialFile,undefined);
+ }finally{await h.close();}
+});
+
+test('home upload failure retains text and does not send a design request',async()=>{
+ const prompt='첨부 파일을 정리해줘';
+ const h=await setup('?screen=home',{},path=>{
+  if(path.endsWith('/sessions'))return {...readySession(),status:'empty',draft:null,resources:[]};
+  if(path.endsWith('/upload'))return new Response(JSON.stringify({error:'업로드 실패'}),{status:500});
+ },createElement(StrictMode,null,createElement(EntryApp)));
+ try{
+  await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,prompt);
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type="file"]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['내용'],'문서.txt')]});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  await submit(document.querySelector('.overview-composer')!);await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/upload')).length,1);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="업무 설명"]')?.value,prompt);
+  assert.match(document.body.textContent||'',/업로드 실패/);
+ }finally{await h.close();}
+});
+
+test('home allows a file without a prompt and uploads it once in StrictMode',async()=>{
+ const h=await setup('?screen=home',{},path=>{
+  if(path.endsWith('/sessions'))return {...readySession(),revision:1,status:'empty',draft:null,resources:[]};
+  if(path.endsWith('/upload'))return {...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'home-file',name:'문서.txt',kind:'document'}]};
+ },createElement(StrictMode,null,createElement(EntryApp)));
+ try{
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type="file"]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['내용'],'문서.txt')]});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="업무 입력 확인"]')!.disabled,false);
+  await submit(document.querySelector('.overview-composer')!);await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/upload')).length,1);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  assert.match(document.body.textContent||'',/문서.txt/);
+ }finally{await h.close();}
+});

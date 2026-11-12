@@ -174,3 +174,48 @@ def test_run_now_uses_saved_schedule_instructions_without_fabricating_a_customer
     assert persisted['request'] == ''
     assert not [message for message in persisted['messages'] if message['role'] == 'user']
     assert '총액 15,000원' in persisted['artifact']['content']
+
+
+def test_saved_analysis_instructions_do_not_require_retyping():
+    from agent_builder.conditions.input_requirements import execution_request_required
+    workflow = {'entry': 'read', 'nodes': [
+        node('read', 'read_document'),
+        node('summary', 'compose_answer', [bind('documents', 'read', 'documents')]),
+    ], 'edges': [edge('read', 'summary')]}
+    config = {'workflow': workflow, 'instructions': '문서의 주요 내용을 요약하세요.'}
+    assert not execution_request_required(config)
+    config['instructions'] = ''
+    assert execution_request_required(config)
+    workflow['nodes'][1]['settings']['instructions'] = '문서의 주요 내용을 요약하세요.'
+    assert not execution_request_required(config)
+    workflow['nodes'][1] = node('review', 'reply_review', [bind('documents', 'read', 'documents')])
+    assert execution_request_required(config)
+
+
+def test_saved_analysis_runs_without_new_text_and_receives_saved_instructions(tmp_path, monkeypatch):
+    from workflow_engine import runner
+    workflow = {'entry': 'read', 'nodes': [
+        node('read', 'read_document'),
+        node('summary', 'compose_answer', [bind('documents', 'read', 'documents')],
+             instructions='주요 내용을 요약하세요.'),
+    ], 'edges': [edge('read', 'summary')]}
+    store, identifier, doc = saved(tmp_path, workflow)
+    expected = store.agent(identifier)['config']['instructions']
+    original = runner.execute_node
+    prompts = []
+    def execute(current, state, *args, **kwargs):
+        if current['id'] == 'summary':
+            prompts.append(state['request'])
+            return {'text': '제목은 테스트입니다.', 'evidence': []}
+        return original(current, state, *args, **kwargs)
+    from service.handlers import runs
+    def run_saved(*args, **kwargs):
+        return runner.run_workflow(*args, **kwargs, executor=execute, llm=object())
+    monkeypatch.setattr(runs, 'run_workflow', run_saved)
+    store.close()
+    job = dict(directory=str(tmp_path), id=identifier)
+    assert handle({**job, 'action':'agent'})['request_required'] is False
+    run = handle({**job, 'action':'test', 'content':'', 'file_ids':[doc['id']]})
+    assert run['status'] == 'succeeded', run.get('error')
+    assert prompts == [expected]
+    assert run['answer'] == '제목은 테스트입니다.'

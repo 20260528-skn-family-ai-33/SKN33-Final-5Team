@@ -67,7 +67,7 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange,initialPrompt}:{initialPrompt?:string;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void}={}){
+export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange,initialPrompt,initialFile}:{initialPrompt?:string;initialFile?:File;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'|'schedule'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'||initialScreen==='schedule'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const screenRef=useRef(screen);screenRef.current=screen;
@@ -108,6 +108,8 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    window.history.replaceState(state,'',location.href);
   }
  },[initialPrompt]);
+ const initialFilePending=useRef(initialFile);
+ const [initialFileReady,setInitialFileReady]=useState(!initialFile);
  const initialPromptPending=useRef(!!initialPrompt?.trim());
  const [pendingMessage,setPendingMessage]=useState('');
  const [recovery,setRecovery]=useState<ConversationRecovery|null>(null);
@@ -319,9 +321,16 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   }
  }
  useEffect(()=>{
-  if(!initialPromptPending.current||loading||initialLoadFailed||!credentialId||screen!=='workflow')return;
+  if(!initialFileReady||!initialPromptPending.current||loading||initialLoadFailed||!credentialId||screen!=='workflow')return;
   initialPromptPending.current=false;
   void send();
+ },[loading,initialLoadFailed,credentialId,screen,initialFileReady,session]);
+ useEffect(()=>{
+  if(!initialFilePending.current||loading||initialLoadFailed||!credentialId||screen!=='workflow')return;
+  const file=initialFilePending.current;initialFilePending.current=undefined;
+  const {initialFile:consumed,...historyState}=window.history.state||{};
+  window.history.replaceState(historyState,'',window.location.href);
+  void attachResource(file).then(()=>setInitialFileReady(true));
  },[loading,initialLoadFailed,credentialId,screen]);
  async function answerQuestions(answers:ClarificationAnswer[]){
   const content=answers.map(answer=>answer.text+' → '+(answer.skip?'선택사항 건너뛰기':Array.isArray(answer.value)?answer.value.join(', '):String(answer.value))).join('\n');
@@ -348,7 +357,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    remember(result);
    const added=((result.resources||[]) as Resource[]).map(resource=>resource.id).filter(id=>!before.has(id));
    setFreshFiles(prior=>({session:result.id,ids:[...(prior.session===result.id?prior.ids:[]),...added]}));
-  } catch(e){setError((e as Error).message);}
+  } catch(e){initialPromptPending.current=false;setError((e as Error).message);}
   finally{inFlight.current=false;setBusy('');}
  }
  function reviewSave(){if(session?.draft?.schedule){setIncludeSchedule(true);setSaveReviewOpen(true);}else void save(false);}
@@ -555,7 +564,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   ['canvas', '처리 흐름'],
   ['settings', '설정'],
  ] as const;
- const runRequestField=<label className="as-field">{testRun?.question?'확인 질문에 답변':reviewCapable?(requestRequired?'고객 문의':'고객 문의 (선택 · 표의 문의 열 사용)'):requestRequired?'실행 요청':'추가 요청 (선택)'}<textarea placeholder={testRun?.question?"확인 질문에 답변하세요.":requestRequired?"저장한 워크플로우에 맡길 요청이나 질문을 입력하세요.":"비워 두면 저장한 설정으로 실행합니다."} data-tour="run-input" value={testText} onChange={e=>setTestText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||libraryBusy}/></label>;
+ const runRequestField=<label className="as-field">{testRun?.question?'확인 질문에 답변':reviewCapable?(requestRequired?'고객 문의':'고객 문의 (선택 · 표의 문의 열 사용)'):requestRequired?'실행 요청':'추가 요청 (선택)'}<textarea placeholder={testRun?.question?"확인 질문에 답변하세요.":requestRequired?"저장한 워크플로우에 맡길 요청이나 질문을 입력하세요.":"비워 두면 저장한 설정으로 실행합니다."} data-tour="run-input" value={testText} onChange={e=>setTestText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||libraryBusy}/>{requestRequired&&!testRun?.question&&<small>이 워크플로우는 이번에 처리할 {reviewCapable?'고객 문의':'질문이나 요청'}가 필요합니다.</small>}</label>;
  const pageNavigation=<div className="workspace-context"><button className="as-text-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>leave(screen==='schedule'?'schedules':'workflows')}><ArrowLeft size={15}/>목록으로</button><nav className="studio-tabs" aria-label="워크플로우 작업"><button aria-current={screen==='workflow'?'page':undefined} className={screen==='workflow'?'active':''} onClick={()=>switchScreen('workflow')} disabled={!!busy||!!recovery||libraryBusy}>설계</button><button data-tour="run-tab" aria-current={screen==='run'?'page':undefined} className={screen==='run'?'active':''} onClick={()=>switchScreen('run')} disabled={!!busy||!!recovery||libraryBusy}>직접 실행</button>{selected&&<button aria-current={screen==='schedule'?'page':undefined} className={screen==='schedule'?'active':''} onClick={()=>switchScreen('schedule')} disabled={!!busy||!!recovery||libraryBusy}>예약 관리</button>}</nav>{screen==='workflow'&&<button type="button" data-tour="create-workflow" className="as-button as-primary as-new-workflow" disabled={loading||!!busy||!!recovery||libraryBusy} onClick={()=>{if(canLeave())reset();}}><Plus size={16}/>새 워크플로우</button>}</div>;
 
  return <div className={"as-app screen-"+screen+(selected?" has-service":"")}>

@@ -40,20 +40,20 @@ export default function EntryApp(){
   if(remount){guard.current=()=>true;setNavigationKey(n=>n+1);}historyIndex.current=targetIndex;
   context.current=location.search;setRoute(next);
  };window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
- function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false,initialPrompt?:string){
+ function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false,initialPrompt?:string,initialFile?:File){
   if((routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current())return false;
   guard.current=()=>true;
   if(fresh){localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');}
   const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('previewNode');url.searchParams.delete('executionMode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);
-  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current,initialPrompt},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});return true;
+  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current,initialPrompt,initialFile},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});return true;
 
  }
  if(!['intro','preview'].includes(route)&&(auth.loading||auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
  if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('home')}/>;
  const newFlow=()=>navigate('workflow',undefined,true);
- const startExample=(prompt:string)=>navigate('workflow',undefined,true,undefined,false,prompt);
- if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} initialPrompt={window.history.state?.initialPrompt} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
+ const startExample=(prompt:string,file?:File)=>navigate('workflow',undefined,true,undefined,false,prompt,file);
+ if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} initialPrompt={window.history.state?.initialPrompt} initialFile={window.history.state?.initialFile} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('home')} onPreview={preview} onRoute={next=>navigate(next)}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
@@ -64,7 +64,7 @@ export default function EntryApp(){
   </div>
  </div>;
 }
-function WorkspaceHome({route,historyService,navigate,newFlow,startExample,memberName}:{memberName?:string;route:'home'|'workflows'|'history';startExample:(prompt:string)=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string)=>void;newFlow:()=>void}){
+function WorkspaceHome({route,historyService,navigate,newFlow,startExample,memberName}:{memberName?:string;route:'home'|'workflows'|'history';startExample:(prompt:string,file?:File)=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string)=>void;newFlow:()=>void}){
  const [agents,setAgents]=useState<AgentSummary[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[query,setQuery]=useState('');
  const [runRows,setRunRows]=useState<{agent:AgentSummary;run:RunSummary}[]>([]),[historyErrors,setHistoryErrors]=useState<string[]>([]);
  const [renaming,setRenaming]=useState<AgentSummary|null>(null);

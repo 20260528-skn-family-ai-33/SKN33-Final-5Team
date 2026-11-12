@@ -36,8 +36,10 @@ def _request_inputs(config, dependencies, supplied_prompt, depth=0):
             return file_reader, True
         elif tool == 'reply_review' and not any(b['input'] == 'table' for b in node.get('bindings', [])):
             return file_reader, True  # A customer's message cannot come from saved schedule instructions.
-        elif not supplied_prompt and (tool in ('agent_node', 'compose_answer') or
-                (tool == 'search_document' and not (settings.get('query') or '').strip())):
+        elif tool == 'search_document' and not supplied_prompt and not (settings.get('query') or '').strip():
+            return file_reader, True
+        elif tool in ('agent_node', 'compose_answer') and not supplied_prompt and not (
+                settings.get('instructions') or config.get('instructions') or '').strip():
             return file_reader, True
         # ask_user collects its own answer after the workflow starts.
     return file_reader, False
@@ -46,7 +48,7 @@ def _request_inputs(config, dependencies, supplied_prompt, depth=0):
 def execution_request_required(config, dependencies=None):
     scheduled_prompt = bool(config.get('schedule') and (config.get('instructions') or '').strip())
     file_reader, needs_text = _request_inputs(config, dependencies or {}, scheduled_prompt)
-    return needs_text or not (file_reader or scheduled_prompt)
+    return needs_text or not (file_reader or scheduled_prompt or (config.get('instructions') or '').strip())
 
 
 def _prefix(workflow):

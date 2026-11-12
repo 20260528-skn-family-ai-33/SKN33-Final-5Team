@@ -1,5 +1,6 @@
 """Use sealed request criteria as decoder constraints, without repairing raw output silently."""
 from copy import deepcopy
+import json
 import os
 
 from .requirement_ledger import ledger_fingerprint, plan_digest
@@ -9,7 +10,7 @@ TOOLS={'compute':'calculate_columns','parse_dates':'calculate_columns','filter':
        'policy':'filter_sort','aggregate':'aggregate_table','join':'join_tables',
        'export':'write_result','read':'read_table','rename':'calculate_columns',
        'fill_missing':'filter_sort','select_fields':'filter_sort',
-       'document_analysis':'compose_answer','human_review':'ask_user'}
+       'document_analysis':'compose_answer','human_review':'ask_user','email_send':'email.send'}
 
 
 def required_operation_variants(specs,node_schema,binding_schema,variable_names,available=()):
@@ -85,10 +86,102 @@ def _literal(value):
     return {'type':kind,'enum':[value]}
 
 
+def _constrain_email_send(schema, state, specs):
+    sends = [s for s in specs if s['kind'] == 'email_send']
+    ledger = state['requirement_ledger']
+    if len(sends) != 1 or ledger['unresolved']:
+        return
+    send = sends[0]
+    from_summary = send['body'] is None
+    if not from_summary and len(specs) != 1:
+        return
+
+    # Both literal delivery and a summary dependency are grounded by the
+    # existing ledger validator, including the source turn and producer task.
+    from .requirement_ledger import validate_plan
+    try:
+        validate_plan(ledger, state)
+    except (ValueError, KeyError, TypeError):
+        return
+    variants = schema['$defs']['WorkflowNode']['anyOf']
+    choices = [v for v in variants if v['properties']['tool'].get('enum') == ['email.send']
+               and v['properties']['settings']['properties'].get('operation', {}).get('enum') == ['execute']]
+    if len(choices) != 1:
+        return
+    properties = choices[0]['properties']
+    arguments = properties['settings']['properties']['arguments_json']
+    if arguments.get('type') != 'object':
+        return
+    body = {'$binding': 'body'} if from_summary else send['body']
+    properties['settings']['properties']['arguments_json'] = _literal(
+        {'to': send['to'], 'subject': send['subject'], 'body': body})
+    bindings = properties['bindings']
+    if from_summary:
+        bindings.update(minItems=1, maxItems=1)
+        # node_id (step in ordered decoding) is chosen by the generator.
+        # Coverage checks its actual producer before approval or saving.
+        bindings['items']['properties'].update(input=_literal('body'), output=_literal('text'))
+    else:
+        bindings.update(maxItems=0)
+        schema['$defs']['WorkflowNode']['anyOf'] = choices
+        schema['$defs']['WorkflowDefinition']['properties']['nodes'].update(minItems=1, maxItems=1)
+
+
+def bind_confirmed_summary(state, draft):
+    """Keep the proposed text producer; move its reference to the confirmed body input."""
+    if not state.get('requirement_required') or draft.get('questions') or draft.get('unsupported'):
+        return None
+    tasks = (state.get('requirement_ledger') or {}).get('tasks', [])
+    sends = [t['spec'] for t in tasks if t.get('spec', {}).get('kind') == 'email_send']
+    if (len(sends) != 1 or sends[0].get('body') is not None
+            or not isinstance(sends[0].get('to'), str) or not isinstance(sends[0].get('subject'), str)):
+        return None
+    nodes = (draft.get('workflow') or {}).get('nodes', [])
+    mail = [i for i, node in enumerate(nodes) if node['tool'] == 'email.send']
+    if len(mail) != 1:
+        return None
+    send = nodes[mail[0]]
+    if send['settings'].get('operation') != 'execute':
+        return None
+    from workflow_engine.catalog.canonical import parse_arguments
+    try:
+        args = parse_arguments(send['settings'])
+    except (ValueError, TypeError):
+        return None
+    spec = sends[0]
+    body_ref = {'$binding': 'body'}
+    if (args.get('to') not in (spec['to'], [spec['to']]) or args.get('subject') != spec['subject']
+            or args.get('body') not in ('$binding', body_ref)
+            or any(key not in ('cc', 'bcc', 'attachments') or args[key] is not None
+                   for key in args.keys() - {'to', 'subject', 'body'})):
+        return None
+    bindings = send.get('bindings', [])
+    sources = {b['node_id'] for b in bindings}
+    if (len(sources) != 1 or any(b['input'] not in ('to', 'subject', 'body') or b['output'] != 'text'
+                                 for b in bindings)
+            or not any(n['id'] in sources and n['tool'] == 'compose_answer' for n in nodes)):
+        return None
+    bound = [dict(input='body', node_id=bindings[0]['node_id'], output='text')]
+    literal = dict(to=args['to'], subject=args['subject'], body=body_ref)
+    if args == literal and bindings == bound:
+        return None
+    revised = deepcopy(draft)
+    target = revised['workflow']['nodes'][mail[0]]
+    target['bindings'] = bound
+    target['settings']['arguments_json'] = json.dumps(literal, ensure_ascii=False)
+    # A stale ledger, mismatched file/producer, or disconnected consumer must
+    # still fail. Only adopt this projection if all requested effects match.
+    from agent_builder.design.requirement_coverage import coverage_report
+    if coverage_report(state, revised)['issues']:
+        return None
+    return revised
+
+
 def constrain_request_settings(schema,state):
     """Carry sealed criteria to matching native settings, never create nodes."""
     result=deepcopy(schema);specs,order=generation_requirements(state)
     if not specs:return result
+    _constrain_email_send(result, state, specs)
     analyses=list(dict.fromkeys(s['request'] for s in specs if s['kind']=='document_analysis'))
     human=any(s['kind']=='human_review' for s in specs)
     for variant in result['$defs']['WorkflowNode']['anyOf']:

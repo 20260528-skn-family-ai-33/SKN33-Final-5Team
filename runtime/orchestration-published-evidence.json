@@ -1,0 +1,467 @@
+{
+  "scope": "Original SHA-256 identifies exact local evidence bytes; publication hashes refer to copied or privacy-filtered artifacts. Frozen corpus and measured code/harness hashes inside reports are unchanged.",
+  "files": [
+    {
+      "path": "runtime/a4b-final-integration-20261111/h21-capability.xml",
+      "source_sha256": "852cdec4d525d25277abe968ed6110c0d6d3ae526feecd132bb9708e99d1b202",
+      "published_sha256": "e20da3864574947bad893d4f638b6455703fb557f561d2ebd3139efc81f8c766",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/h21-recovered-prefix.jsonl",
+      "source_sha256": "22bdfd0604eec74633124cbdbee6c980ee990d2bfcac2423ad2aa9494352e162",
+      "published_sha256": "22bdfd0604eec74633124cbdbee6c980ee990d2bfcac2423ad2aa9494352e162",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/post-H21.jsonl",
+      "source_sha256": "b8793b568ebf68eb2e9d17a758496b54ee18bece6825c643e1004009affcc5dc",
+      "published_sha256": "b8793b568ebf68eb2e9d17a758496b54ee18bece6825c643e1004009affcc5dc",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/post-identity.jsonl",
+      "source_sha256": "7ab6c65a8fb65f4f0efb85b9c484411b2b96f304dc86e98d0c12ad16224936cf",
+      "published_sha256": "7ab6c65a8fb65f4f0efb85b9c484411b2b96f304dc86e98d0c12ad16224936cf",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-calendar.jsonl",
+      "source_sha256": "857142423431978a008de2a5b7e4e3152b80ff8871dcf478f0b62759981f952f",
+      "published_sha256": "857142423431978a008de2a5b7e4e3152b80ff8871dcf478f0b62759981f952f",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-fast.xml",
+      "source_sha256": "29d05869881b624934570812f7f7ab08548f62a70ae5ff8025c4b9ef82ce518a",
+      "published_sha256": "6a36b7797eada66c1e6c12d3a0ccd0613d3a40bcaf58dc805a0e508511527c09",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-frozen-H20.jsonl",
+      "source_sha256": "4a96479d32a953a12c9354d82d25e9756bf9303b7db468920a567fac3dcf4e6f",
+      "published_sha256": "4a96479d32a953a12c9354d82d25e9756bf9303b7db468920a567fac3dcf4e6f",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-frozen-H21.jsonl",
+      "source_sha256": "076ebce929795992cbdf6a10dfefe1ce5a01ec9d51064c14f9830d1f5afeb6f2",
+      "published_sha256": "076ebce929795992cbdf6a10dfefe1ce5a01ec9d51064c14f9830d1f5afeb6f2",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-frozen-H24.jsonl",
+      "source_sha256": "a7c3eee5829023ad6fa15d341797e76acb7915305f2568350585ac82ce270bd5",
+      "published_sha256": "a7c3eee5829023ad6fa15d341797e76acb7915305f2568350585ac82ce270bd5",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-frozen-H32-session.jsonl",
+      "source_sha256": "12f37cf6c9439d626df52f20ae63a93d8ec169faa7f595b466807f3a43dc0208",
+      "published_sha256": "12f37cf6c9439d626df52f20ae63a93d8ec169faa7f595b466807f3a43dc0208",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-frozen-identity.jsonl",
+      "source_sha256": "4c1861922d2a6b04a3ad3db5cda4457e3a197febb2e821bc26680da05011221c",
+      "published_sha256": "4c1861922d2a6b04a3ad3db5cda4457e3a197febb2e821bc26680da05011221c",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-h32.jsonl",
+      "source_sha256": "bc8c8bf272153c53588454598bc36fb1c5ab31203331118d105a582e67d20994",
+      "published_sha256": "bc8c8bf272153c53588454598bc36fb1c5ab31203331118d105a582e67d20994",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-normal.jsonl",
+      "source_sha256": "e61cde644f3f9a3f7c5b43a7bbc59debfdbc6f109e132ec8d0462adde241a90a",
+      "published_sha256": "e61cde644f3f9a3f7c5b43a7bbc59debfdbc6f109e132ec8d0462adde241a90a",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/pre-tables.jsonl",
+      "source_sha256": "7ff5b9729c276252a7d860934b856dfcc38242f9faa0caa2f68ed0f1e2ca960d",
+      "published_sha256": "7ff5b9729c276252a7d860934b856dfcc38242f9faa0caa2f68ed0f1e2ca960d",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-calendar.jsonl",
+      "source_sha256": "857142423431978a008de2a5b7e4e3152b80ff8871dcf478f0b62759981f952f",
+      "published_sha256": "857142423431978a008de2a5b7e4e3152b80ff8871dcf478f0b62759981f952f",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-H20.jsonl",
+      "source_sha256": "4a96479d32a953a12c9354d82d25e9756bf9303b7db468920a567fac3dcf4e6f",
+      "published_sha256": "4a96479d32a953a12c9354d82d25e9756bf9303b7db468920a567fac3dcf4e6f",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-H21-prefix.jsonl",
+      "source_sha256": "5acab7cffe46de4bdc968691dd0d0f60e6148de3ab5c0dacd99488a2eaef24f8",
+      "published_sha256": "5acab7cffe46de4bdc968691dd0d0f60e6148de3ab5c0dacd99488a2eaef24f8",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-H21.jsonl",
+      "source_sha256": "d05c3b1563d8eedcc3bda422808d9d673f05f16adfb90fdffd31f6312c56d99d",
+      "published_sha256": "d05c3b1563d8eedcc3bda422808d9d673f05f16adfb90fdffd31f6312c56d99d",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-H24.jsonl",
+      "source_sha256": "a7c3eee5829023ad6fa15d341797e76acb7915305f2568350585ac82ce270bd5",
+      "published_sha256": "a7c3eee5829023ad6fa15d341797e76acb7915305f2568350585ac82ce270bd5",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-H32-session.jsonl",
+      "source_sha256": "ad88d579b77268b6554e64b47e535b6ac082d141dd1c7fe0ad97916a5551404b",
+      "published_sha256": "ad88d579b77268b6554e64b47e535b6ac082d141dd1c7fe0ad97916a5551404b",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-h32.jsonl",
+      "source_sha256": "bc8c8bf272153c53588454598bc36fb1c5ab31203331118d105a582e67d20994",
+      "published_sha256": "bc8c8bf272153c53588454598bc36fb1c5ab31203331118d105a582e67d20994",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-identity.jsonl",
+      "source_sha256": "020ca178c793ba722c1c8f4dd3e77454147cb1effb3acfb2183339a2bbcc5288",
+      "published_sha256": "020ca178c793ba722c1c8f4dd3e77454147cb1effb3acfb2183339a2bbcc5288",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-manifest.jsonl",
+      "source_sha256": "3a57e1471cc0d16c683ca81ab86fcf86b4444ed60f248bb97393fb953b696432",
+      "published_sha256": "3a57e1471cc0d16c683ca81ab86fcf86b4444ed60f248bb97393fb953b696432",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-normal.jsonl",
+      "source_sha256": "e61cde644f3f9a3f7c5b43a7bbc59debfdbc6f109e132ec8d0462adde241a90a",
+      "published_sha256": "e61cde644f3f9a3f7c5b43a7bbc59debfdbc6f109e132ec8d0462adde241a90a",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/a4b-final-integration-20261111/verified-tables.jsonl",
+      "source_sha256": "7ff5b9729c276252a7d860934b856dfcc38242f9faa0caa2f68ed0f1e2ca960d",
+      "published_sha256": "7ff5b9729c276252a7d860934b856dfcc38242f9faa0caa2f68ed0f1e2ca960d",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/final-qwen-performance/after-four-9b.json",
+      "source_sha256": "764ca96d9e5e55060314fcc82ffbe64ff73a5a19cb350a0bc219ec415fe939ac",
+      "published_sha256": "f5e30a308c171481b75cf805b92507f20f4b036bf0cb44429460da365a328c06",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/final-qwen-performance/after-four-release.json",
+      "source_sha256": "af8e24202a8e44cbe1b9d864a7cf487aa9cfa5c8339951535f41039077f5d339",
+      "published_sha256": "af8e24202a8e44cbe1b9d864a7cf487aa9cfa5c8339951535f41039077f5d339",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/final-qwen-performance/after-four.json",
+      "source_sha256": "24254dd8e9f4faa51ab83ffe2adf45d977a88eed026e5705bd7f932f3d4b4e7f",
+      "published_sha256": "24254dd8e9f4faa51ab83ffe2adf45d977a88eed026e5705bd7f932f3d4b4e7f",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/final-qwen-performance/before-four.json",
+      "source_sha256": "1b041f94169e5f064842929c055ea738110eb19f166fb38cbb14333b4d26dfdb",
+      "published_sha256": "13d8fba4531e5be72b72f68cec4af91146c83f13f765cdbac8b8744165d03572",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/final-qwen-performance/cache-alias-final.xml",
+      "source_sha256": "8f709e5450ce6057898f3fe6821fbc01efde2cd7a9e3965bb0a10c4972ea13a8",
+      "published_sha256": "624a691c30b3b884117d77bdbc5334c15ff14823f87c504f9298837bcbcad4ac",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/cache-before.xml",
+      "source_sha256": "0860dad5901d5afa6ab345eb61259cb9c210ae80efc5028d746746c8760c085b",
+      "published_sha256": "ad20035aff481499554dda9bff824dce0f2ed00958f9a1d7425bc7f544fd973e",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/cache-final.xml",
+      "source_sha256": "06028c8b21a49a10124a5ded80262125632fc8e7ae473e192f7f8f0c0dc0568f",
+      "published_sha256": "cf0a4198e760d112943cbe3f1ed064f1ecc93330473dcf797ccaf7bce8b01d78",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/candidate-work/prompt-shapes.json",
+      "source_sha256": "58d951b90022334c4d47735da5f0927bf7ef15b0946960f49ac330e55a45a4b6",
+      "published_sha256": "58d951b90022334c4d47735da5f0927bf7ef15b0946960f49ac330e55a45a4b6",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/final-qwen-performance/capability-fast.xml",
+      "source_sha256": "a9f1d03bc3dfd1d1f76b3cf931817cf58c37f6d93fc3918e43fbb31a75d29dc4",
+      "published_sha256": "57566c56a0fb4be4acac7a3bac08bd231836e2c4975999bac47e44b72d0e88bd",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/meaning-fast.xml",
+      "source_sha256": "7bc403a1c46e2182e76ba6bb2824c4f035684086d00fb2d4889960f1945fae63",
+      "published_sha256": "dc0476dcf2eeec5a894103a77e76704d7d783714a6ff8e93826900a93c1a7cce",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/meaning-only-h32.json",
+      "source_sha256": "8bcb959eeb06263e1c1e5adc85de0489a8bdcc6b401e70a343618aa2f0d2a8a0",
+      "published_sha256": "3905b55da500235bf20410a6ba4be781864c7ffca737134c404d6729a55d677d",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/final-qwen-performance/regression-verified.xml",
+      "source_sha256": "65e893a87b580faf7de71137560b1cbd1802ef178dbd54ad9d9e2df2c3de4721",
+      "published_sha256": "74e7465d5e2600b3635d317eed38d7447958ab09d029d668b6369dd4758da3ad",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/repair-checkpoint-replay.json",
+      "source_sha256": "cb6dd2435698ffb0c73e1447c2973154f48a656c6738c0cf3bf75160e37ff9d3",
+      "published_sha256": "cb6dd2435698ffb0c73e1447c2973154f48a656c6738c0cf3bf75160e37ff9d3",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/final-qwen-performance/repair-regression.xml",
+      "source_sha256": "7f047420e9fdfe9c9c3c19f85890a292b1c3c075c61ef6a9ff298f9bc95c74dd",
+      "published_sha256": "ba5593c614ad1cb1099fd0068144405d5add5cda630fdf5834e5e2d8b0999247",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/session-regressions-now.xml",
+      "source_sha256": "16bc2d30cc12dc6e19a397a050ddec02d425432fa9516307b56448f71c7faabf",
+      "published_sha256": "728cdc94098afe16bafa8acc51071409c8daa990bd4eb5f69fcb80dbb54dd3c9",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/final-qwen-performance/verified-9b-only.json",
+      "source_sha256": "3701c0983b96e4a58d5e30037b2f1da426778e08328a791636a9638320751387",
+      "published_sha256": "e3d978d414b0f34f9989c521ff7d67d535b174dd077b4b7da26f1fbfd4762565",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/final-qwen-performance/verified-comparison.json",
+      "source_sha256": "af312117350dcef8480dab0e0d9998ac78aabbffad623a3ce6c431057a1706c5",
+      "published_sha256": "af312117350dcef8480dab0e0d9998ac78aabbffad623a3ce6c431057a1706c5",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/final-qwen-performance/verified-four.json",
+      "source_sha256": "091c243fb28c6867dd1d5979aa40dd01e205a2f652ba63b01dfdce302d4245c6",
+      "published_sha256": "091c243fb28c6867dd1d5979aa40dd01e205a2f652ba63b01dfdce302d4245c6",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/generalization-focused/answers-focused.json",
+      "source_sha256": "c9ba74ef2ae219832a62caccec50e39b45deb8a3b89b3616f25a958de480021b",
+      "published_sha256": "c464099b23464c2ddcddb217b48550f24ad121c34ea54a53c1d2b6b443a401dc",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/generalization-focused/core-final.xml",
+      "source_sha256": "31130cbaf8bcd5fd0b9bb5d1501da74803234ca5352584b4f479ef3bdb2608f3",
+      "published_sha256": "3b3ba16ac35cd071bb641d4144c8eb10d1fb264f6bc9adb257950395c960716e",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/generalization-focused/h20-final.json",
+      "source_sha256": "23ab8eff84387cda9925b52bf160c6ed6d70f56feb552926c335419f0e2dcd1f",
+      "published_sha256": "3b698368b5ead5bdc7f719ac9f2f18128db17aaef53dcda1e3019d5d1f344fd6",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/generalization-focused/h21-first.json",
+      "source_sha256": "f40cccf0cb2e4945bfb8a8e99c49d6e4d7a5ca5e26345c5e5b3a68a921414c3b",
+      "published_sha256": "3b1c75a9b1a5ca28f2eaabc09bdd8be5ed15e384482aee3f6ba50a71e75d4902",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/generalization-focused/h24-send-focused.json",
+      "source_sha256": "94d0c9a4e6ef4ff1e00cbedef0169adfd10e09f5cef22f81b6eb229406605f8b",
+      "published_sha256": "03e50728b159cc39e2c057d799927b396e918de397d635a95f4796a3182e4be7",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/generalization-focused/h32-binding-regression.xml",
+      "source_sha256": "f9ee0f3b5600b12a91d4a34225304927c749c6f638b39c6dd9cf41ea97aa0d93",
+      "published_sha256": "563de994817d85efeb0d7cb9f1bd0d396fadabebef209c114e552b90e79e8279",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/generalization-focused/h32-binding-replay.json",
+      "source_sha256": "dd65d04bb4a1ef082284d9436ea268b189b12092e32d0593af0a0894a16b5c62",
+      "published_sha256": "dd65d04bb4a1ef082284d9436ea268b189b12092e32d0593af0a0894a16b5c62",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/generalization-focused/h32-compound-after.json",
+      "source_sha256": "13a96f917f45ec2c91c1f01d2441934a8e9a9ded12e4bd39ea40a4a54ccc8924",
+      "published_sha256": "91e1a0ce1da40d3f6f5adfa3b6f677074bbc1a41e12aafc52ebe3e6b689c9b3b",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/generalization-focused/h32-focused.json",
+      "source_sha256": "d85e5099e073c17d8bd323311f7b3a99f0fb69c226d0dfbeb75d0ebfe3635fef",
+      "published_sha256": "a1df9ff76dc2ae841d0db30f221985fd366e37792ea4a4949d62c229f0a5627b",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/generalization-focused/identity-focused.json",
+      "source_sha256": "89e2a9cf2256ad6654fb682a3eb60a9c8fed4da742ae9b26bd21976a2a054702",
+      "published_sha256": "156e50e8df01363257edd5bbad3cb2d729f938322dfe504eb9d6f8a7a32ed86c",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/BASE.json",
+      "source_sha256": "5166f900b3930c1f28313d45ef0f8a247517786d4d4b3c87e0224c568736d53b",
+      "published_sha256": "39c8544da6a01eca34c38224a92aa8d3d4b6ff5424b41181c9587ff1ffd03cf0",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/capability-comparison.json",
+      "source_sha256": "e16c422a617cec4a487c60051bb8755073f7f35de91717503b365f181bdde733",
+      "published_sha256": "e16c422a617cec4a487c60051bb8755073f7f35de91717503b365f181bdde733",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/capability-export-formats.json",
+      "source_sha256": "33ff8a288bdf895245ec95e6f9d986313a6363b7f069bd20f8f18eb125001942",
+      "published_sha256": "33ff8a288bdf895245ec95e6f9d986313a6363b7f069bd20f8f18eb125001942",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/capability-session-replay.jsonl",
+      "source_sha256": "9549b24cf99946b2828078e1cf8984fc5f3085487ddfa423bd1c7d047972fa6a",
+      "published_sha256": "9549b24cf99946b2828078e1cf8984fc5f3085487ddfa423bd1c7d047972fa6a",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/CAPABILITY.json",
+      "source_sha256": "3f4cb98d197c4d1cc075ed04faa17024ce33f4add556eb022190105b11121b9c",
+      "published_sha256": "b9512c0ceedcead7da83a03ced73e22f186e499ad6acd0fe4b1baa5447ffac84",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/combined-comparison.json",
+      "source_sha256": "e6b418a85d7ffe22013b0a4bdf0e34c69f4285ea5026ebe2958093bcb53d5006",
+      "published_sha256": "e6b418a85d7ffe22013b0a4bdf0e34c69f4285ea5026ebe2958093bcb53d5006",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/COMBINED.json",
+      "source_sha256": "601218ac65c17a414d7d9baeb50ab6404d9f89c7c60c299d91374b9057e44927",
+      "published_sha256": "ae1876631f22c7be9792d3b7febeaac728508219be9bdef9a569a9409e32e8cb",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/compare.py",
+      "source_sha256": "fb2d27cbfc19f1bd1bbfc5dd42ed96c5edd3b353a134757e5425537d127f3a70",
+      "published_sha256": "fb2d27cbfc19f1bd1bbfc5dd42ed96c5edd3b353a134757e5425537d127f3a70",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/final-regression.xml",
+      "source_sha256": "faac5ca1e6904b96a3b15cebfb4975433fc9def632eebbd3dd6bd9cb04062b81",
+      "published_sha256": "172178c1d66330ba4cbabf7d0a265835a8437d26f2ea53f575776bb9ad29a069",
+      "treatment": "JUnit runner hostname anonymized"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/H21-FIRST-BASE.json",
+      "source_sha256": "1f9f4524c08a79c43a07d126aa6d9bd7ea3e18b758e082e167bfb084e2a0bc89",
+      "published_sha256": "8453b8059a18547170d12492b9a6ca3e9c3e678a375b86f161b337ab12e8a6c1",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/h21-first-comparison.json",
+      "source_sha256": "c4bc19c0008ed8a2641a17a6da899d4175cb8da964a11f4a0957343b8c61606b",
+      "published_sha256": "c4bc19c0008ed8a2641a17a6da899d4175cb8da964a11f4a0957343b8c61606b",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/H21-FIRST-FINAL.json",
+      "source_sha256": "b46e587157d0e7ba767427fb2d85f6a8817b5f1f3945f76b0aeadd76f5e7212e",
+      "published_sha256": "8c12f52202b87e45de68a23960d29eb17ee81cf5bcd0172cde33c70437a08cb3",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/measured-results.md",
+      "source_sha256": "55fda0f616809aac735f7cbb178d9ee026be8f3fc26d3602033dce8c0bf1a7c0",
+      "published_sha256": "55fda0f616809aac735f7cbb178d9ee026be8f3fc26d3602033dce8c0bf1a7c0",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/normal-replay.jsonl",
+      "source_sha256": "e61cde644f3f9a3f7c5b43a7bbc59debfdbc6f109e132ec8d0462adde241a90a",
+      "published_sha256": "e61cde644f3f9a3f7c5b43a7bbc59debfdbc6f109e132ec8d0462adde241a90a",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/planner-comparison.json",
+      "source_sha256": "d3b6824f5297f4ff2efb11bc59539b15a35a96ce25ea88a85e45f716c31a6ede",
+      "published_sha256": "d3b6824f5297f4ff2efb11bc59539b15a35a96ce25ea88a85e45f716c31a6ede",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/planner-table-boundary.json",
+      "source_sha256": "8cd6fed9e41264dc6dd681cd008d54b3694f3c71f994bd9555c2662f4a65521f",
+      "published_sha256": "8cd6fed9e41264dc6dd681cd008d54b3694f3c71f994bd9555c2662f4a65521f",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/planner-table-replay.jsonl",
+      "source_sha256": "16fa96e03713ff2174c7d5ba482762b97f3123971c541c26cc41650ff1d18e16",
+      "published_sha256": "16fa96e03713ff2174c7d5ba482762b97f3123971c541c26cc41650ff1d18e16",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/PLANNER.json",
+      "source_sha256": "6b7c0c9f5cc5394d7c83953034fed0ced583de7c651cf8d6fb90946fbb7285c6",
+      "published_sha256": "0667931df510d29e33b87407b95d93a4ad7544a83d7daf366c101d980132f866",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/protocol.md",
+      "source_sha256": "63385e70b42913c9a5868d04f6c1316eaa27abb1e9b56bba8d9d62d40008249b",
+      "published_sha256": "63385e70b42913c9a5868d04f6c1316eaa27abb1e9b56bba8d9d62d40008249b",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/render-results.py",
+      "source_sha256": "66f36bcc6726627a4a7834251a4e2b802937a25cca4308c01b3dcc07f7232bba",
+      "published_sha256": "66f36bcc6726627a4a7834251a4e2b802937a25cca4308c01b3dcc07f7232bba",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/table-comparison.json",
+      "source_sha256": "b805fdf4dd4978b73f9e4688d265f0f73c0d3e69cf01a6a8529e8eb097343228",
+      "published_sha256": "b805fdf4dd4978b73f9e4688d265f0f73c0d3e69cf01a6a8529e8eb097343228",
+      "treatment": "byte-identical"
+    },
+    {
+      "path": "runtime/planner-capability-9b-experiment/TABLE.json",
+      "source_sha256": "57822a027e928c0c04f1f2a70eea610eb343d3ca5c4bd6c4350ce4a4ffa8cfea",
+      "published_sha256": "a4e87c3635bea568c0f9b6699067cc0f4dcfd7c165dddf6641103ddefa55dcc7",
+      "treatment": "unrelated local Ollama model tags omitted"
+    },
+    {
+      "path": "runtime/generalization-focused/replay-fixtures/legacy52.selected.json",
+      "source_sha256": "6af36471b657ad2076c1dda4e4d84df2c94c92cae8b0135b2efedb1b7b5fcb15",
+      "published_sha256": "b33d2e11691f37ea8c69698c7d2ff2d8c02c3d149a653b57997f14d0c42a9272",
+      "treatment": "selected synthetic cases: R02,R04,R05"
+    },
+    {
+      "path": "runtime/generalization-focused/replay-fixtures/independent35.selected.json",
+      "source_sha256": "228da82e93418a18d8b6865f49997a40da5a1f469c94059ce6e38172077eb18e",
+      "published_sha256": "c79e5b7f282a6c468c0355a2fae305e78d5c64a491575823c0ac51c8edff4d1b",
+      "treatment": "selected synthetic cases: H01,H13,H14,H15,H16,H18,H20,H29,H32"
+    }
+  ]
+}

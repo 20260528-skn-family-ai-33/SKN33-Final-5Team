@@ -1,6 +1,7 @@
 """Resolve copies of the same requested output or schedule before assigning task IDs."""
 import re
 from collections import defaultdict
+from pathlib import PurePath
 
 from agent_builder.conditions.condition_readiness import schedule_literals
 
@@ -80,6 +81,76 @@ def _schedule_answer(state, turn, answer):
     for span in sorted({span for _, _, span in literals}, key=len, reverse=True):
         remaining = remaining.replace(span, "")
     return not remaining or bool(_SCHEDULE_REPLY_WORDS.fullmatch(remaining))
+
+
+def restates_table_export(candidate, expected, state):
+    """Compare a fully described operation chain with the projection from one source table."""
+    from .condition_requirements import _covered_filter_clause, ordered_row_steps
+    from .scheduled_table_request import _temporal_clause
+
+    spec = candidate['spec']
+    if set(spec) != {'kind', 'action'} or not isinstance(spec['action'], str) or 'export' not in expected:
+        return False
+    # A model label can name the catalog operation or file type. Any unknown
+    # operation, destination, or reversed operation order still needs review.
+    label = spec['action'].casefold().replace('-', '_').removesuffix('_from_table')
+    action = re.fullmatch(r'(?:(.+?)_)?(?:export|write|save)(?:_([a-z0-9]+))?', label)
+    description = candidate.get('description')
+    fmt = expected['export']['spec']['format']
+    if (not action or not isinstance(description, str) or not 1 <= len(description) <= 300
+            or (action[2] and action[2].lower() != fmt) or candidate['source_message'] != expected['export']['source_message']):
+        return False
+    # Requiring the final file clause also checks direction: exporting an original
+    # before filtering or delivering the artifact elsewhere has a different effect.
+    output = re.search(rf'(?<![\w]){re.escape(fmt)}\s*(?:파일|형식)?\s*(?:으로|로)?\s*(?:저장(?:한다)?|내보내기)[.\s]*$', description, re.I)
+    if not output:
+        return False
+    inputs = description[:output.start()].strip()
+    prefix = (action[1] or '').removesuffix('_and').removesuffix('_then')
+    operations = tuple(re.split(r'_(?:and|then)_', prefix)) if prefix else ()
+    if 'filter' in expected and expected['filter']['source_message'] == candidate['source_message']:
+        bound = _covered_filter_clause(inputs, expected['filter']['spec']['filters'])
+        if operations in ((), ('filter',)) and bound != inputs and re.fullmatch(r'\s*필터\s*(?:및|후)?\s*', bound):
+            return True
+        if len(operations) == 2 and set(operations) == {'filter', 'deduplicate'} and bound != inputs:
+            order = tuple('policy' if kind == 'deduplicate' else kind for kind in operations)
+            if (ordered_row_steps(state) == order and 'policy' in expected
+                    and expected['policy']['source_message'] == candidate['source_message']):
+                return _matches_ordered_rows(bound, expected['policy']['spec'], order)
+    if operations not in ((), ('schedule',)) or 'schedule' not in expected or expected['schedule']['source_message'] != candidate['source_message']:
+        return False
+    table = state['resources'][0]
+    name = PurePath(table.get('name') or '').stem
+    table_phrase = (rf'(?:{re.escape(name)}\s*)?' if name else '') + r'표(?:를|을)?$'
+    source = re.search(table_phrase, inputs)
+    if source:
+        inputs = inputs[:source.start()].strip()
+    trigger = _temporal_clause(inputs, follow_up=False)
+    schedule = expected['schedule']['spec']['schedule']
+    complete = {'schedule.' + key: value for key, value in schedule.items()
+                if value is not None and (key != 'month_end' or value or schedule['frequency'] == 'monthly')}
+    if not trigger or trigger != complete:
+        return False
+    # The fixed application timezone can override a literal in the projection.
+    # A candidate matching that default still needs to match its cited request.
+    user_messages = [m['content'] for m in state['messages'] if m['role'] == 'user']
+    cited = user_messages[candidate['source_message']]
+    return all(value == complete[key] for key, value, _ in schedule_literals(cited) if key in complete)
+
+
+def _matches_ordered_rows(bound, policy, order):
+    """Consume both descriptions in order; preserve any unexplained operation or modifier."""
+    from agent_builder.conditions.condition_readiness import _DUP_ORDER
+
+    field = policy.get('duplicate_field')
+    retention = _DUP_ORDER.get(policy.get('duplicate_policy'))
+    if not field or not retention:
+        return False
+    same_rows = rf'{re.escape(field)}\s*(?:이|가)?\s*(?:같은|중복된)\s*행\s*(?:중|은|에서)?'
+    keep = rf'(?:{retention})\s*(?:번째|행)?\s*(?:행)?(?:만|을)?\s*(?:유지|보존|남기)'
+    terms = {'filter': r'필터', 'policy': same_rows + r'\s*' + keep}
+    join = r'\s*(?:하고|한\s*(?:뒤|후)|고|및)?\s*'
+    return bool(re.fullmatch(r'\s*' + join.join(terms[k] for k in order) + join, bound))
 
 
 def merge_repeated_tasks(candidates, state):

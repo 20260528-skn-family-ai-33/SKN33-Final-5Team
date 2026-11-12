@@ -29,15 +29,20 @@ class AssessmentLanguageError(ValueError):
     """A model-written clarification needs one bounded Korean rewrite."""
 
 
-def validate_assessment_result(result,state,*,model_calls=0):
-    # Check both model responses and persisted results reused after non-answers.
-    # Runtime metadata is allowed on persisted results; core fields stay strict.
-    value=Assessment.model_validate({key:result.get(key) for key in Assessment.model_fields},strict=True).model_dump()
+def validate_assessment_decision(value, model_calls=0):
+    """An internally contradictory decision is invalid even if its source is stale."""
     decision=value['decision'];conditions=value['missing_conditions'];actions=value['missing_actions']
     if ((decision=='existing_tools' and (not value['tool_ids'] or conditions or actions))
         or (decision=='clarify' and (not conditions or actions))
         or (decision=='missing_capability' and (not actions or conditions))):
         raise AssessmentConflictError(value,model_calls)
+
+
+def validate_assessment_result(result,state,*,model_calls=0):
+    # Check both model responses and persisted results reused after non-answers.
+    # Runtime metadata is allowed on persisted results; core fields stay strict.
+    value=Assessment.model_validate({key:result.get(key) for key in Assessment.model_fields},strict=True).model_dump()
+    validate_assessment_decision(value, model_calls)
     if (not value['reason'].strip()
         or any(not text.strip() for key in ('missing_conditions','missing_actions') for text in value[key])):
         raise ValueError('지원 판단의 사유·누락 항목은 공백일 수 없습니다.')
@@ -66,12 +71,16 @@ def validate_assessment_result(result,state,*,model_calls=0):
         reason={'text':{'existing_tools':'등록된 도구로 요청한 업무를 구성할 수 있습니다.',
                         'clarify':'업무에 필요한 조건을 확인합니다.',
                         'missing_capability':'등록된 도구에서 필요한 기능을 확인합니다.',
-                        'manual_review':'업무 지원 여부를 추가로 검토합니다.'}[decision]}
+                        'manual_review':'업무 지원 여부를 추가로 검토합니다.'}[value['decision']]}
     rendered['reason']=reason['text']
     if blocked:rendered['question_language_rewrite_required']=True
     return rendered
 
 # Native app capabilities are not tool IDs and do not grant runtime permission.
+RUN_RESULT_DOWNLOAD = {
+    'id': 'run_result_download', 'max_download_links_per_run': 1,
+    'selection': 'the final artifact on the executed path; intermediate artifacts are not separate download links',
+}
 APP_CAPABILITIES=[{
     'id':'workflow_schedule','implementation_status':'implemented and verified on this server; not a simulation',
     'supported_frequencies':['hourly','daily','weekly','monthly'],
@@ -84,7 +93,52 @@ APP_CAPABILITIES=[{
     'defaults':{'start':'next future occurrence after activation','end':'continues until stopped; no end date required'},
     'limitations':['server must be running','external requests require registered operation contracts and connected credentials',
                    'no yearly, cron or arbitrary external trigger in AgentBuilder']
-}]
+}, RUN_RESULT_DOWNLOAD]
+
+
+def _download_publication_gap(request):
+    """Compare a positively requested number of result links to the runner's published result."""
+    from typing import get_args
+    from agent_builder.design.request_meaning import _quantity
+    from agent_builder.design.requirement_contracts import Export
+
+    formats = get_args(Export.model_fields['format'].annotation)
+    format_pattern = r'(?<![a-z0-9_.])(' + '|'.join(formats) + r')(?![a-z0-9_])'
+    text = re.sub(r'''(["'“‘]).*?["'”’]''', '', request)
+    formats_in_request = list(dict.fromkeys(value.upper() for value in re.findall(format_pattern, text, re.I)))
+    if len(formats_in_request) < 2:
+        return None
+    link = r'(?:다운로드|내려받기)\s*(?:가능한\s*)?링크'
+    unit = r'(?P<number>[\d가-힣]{1,8}?)\s*개'
+    for clause in reversed(re.split(r'[.!?\n;]', text)):
+        # A subsequent request to publish one file, or a negation/uncertain
+        # instruction concerning the links, needs ordinary capability review.
+        if re.search(r'(?:링크|파일)\s*(?:하나|한\s*개|1\s*개)\s*(?:만|로|를)?\s*(?:줘|주세요|제공해)', clause):
+            return None
+        if not re.search(link, clause):
+            # Do not return an older publication verdict across an edit. The
+            # ordinary assessor sees the whole request and the publication limit.
+            if _REFERS_BACK.search(clause) or re.search(format_pattern + r'\s*(?:형식|파일)?\s*만', clause, re.I):
+                return None
+            continue
+        if not re.search(r'실행\s*(?:결과\s*)?화면(?:에|에서)', clause):
+            return None
+        # The count belongs to the link noun in either order. User data, a
+        # link used as an input, or a request to cancel/delete is not publication.
+        match = re.search(link + r'\s*' + unit, clause) or re.search(unit + r'의?\s*' + link, clause)
+        if match:
+            count = _quantity(match['number'])
+        elif re.search(link + r'(?:를)?\s*하나씩', clause):
+            count = len(formats_in_request)
+        else:
+            return None
+        action = r'(?:(?:제공|표시|게시)해\s*(?:줘|주세요)?|(?:만|로|를)\s*(?:줘|주세요))\s*$'
+        if not re.search(action, clause) or re.search(r'(?:는지|인지|한지|말고|하지\s*말|필요\s*없)', clause):
+            return None
+        if not count or count <= RUN_RESULT_DOWNLOAD['max_download_links_per_run']:
+            return None
+        return f"{'·'.join(formats_in_request)} 결과를 한 실행 화면에서 다운로드 링크 {count}개로 개별 제공"
+    return None
 
 def _native_schedule_label(action):
     """Recognize only standalone native recurrence labels, never arbitrary tasks.
@@ -348,21 +402,82 @@ def active_request_messages(state):
     return messages[start:]
 
 
+def _bound_summary_assessment(state):
+    # The same enforced requirement owner verifies the entire request again at
+    # validation. A new clause, another recipient, or a different body has no
+    # complete contract and takes the ordinary model assessment.
+    import os
+    from agent_builder.design.requirement_contracts import EmailSend
+    from agent_builder.design.requirement_ledger import summary_delivery_spec
+    from documents.resources.document_resources import supports
+    from workflow_engine.workflow import NATIVE_TEXT_EXPORT_FORMATS
+    from workflow_engine.catalog.canonical import arguments_spec, operation_spec, ports
+
+    if not (state.get('requirement_required') or os.getenv('A4B_REQUIREMENT_MODE') == 'enforce'):
+        return None
+    delivery = summary_delivery_spec(state)
+    if not delivery or not supports(state['resources'][0], 'document') or 'markdown' not in NATIVE_TEXT_EXPORT_FORMATS:
+        return None
+    tools = {tool['id']: tool for tool in TOOLS}
+    ids = ['read_document', 'compose_answer', 'export_result', 'email.send']
+    if ('email.send' not in tools
+            or any(tools.get(identifier, {}).get('execution_status') != 'native_ready' for identifier in ids[:-1])):
+        return None
+    try:
+        EmailSend.model_validate(delivery)
+        send = operation_spec('email.send', 'execute')
+        if send.get('runtime_id') != 'email.send' or not send.get('code_implemented'):
+            return None
+        required = {key for key, needed in arguments_spec('email.send', send).items() if needed}
+        send_inputs, _ = ports('email.send', send)
+    except ValueError:
+        return None
+    if (tools['read_document']['output_ports'].get('documents') != 'documents'
+            or tools['compose_answer']['input_ports'].get('documents') != 'documents'
+            or tools['compose_answer']['output_ports'].get('text') != 'text'
+            or tools['export_result']['input_ports'].get('text') != 'text'
+            or tools['export_result']['output_ports'].get('artifact') != 'artifact'
+            or required != {'to', 'subject', 'body'} or send_inputs.get('to') not in ('text','json')
+            or send_inputs.get('subject') != 'text' or send_inputs.get('body') != 'text'):
+        return None
+    request = next(m['content'] for m in state['messages'] if m['role'] == 'user')
+    return dict(decision='existing_tools', tool_ids=ids, missing_conditions=[], missing_actions=[],
+                user_quotes=[request], reason='문서 읽기와 요약, 같은 텍스트의 Markdown 저장 및 Gmail 본문 연결을 등록 계약에서 확인했습니다.',
+                model_calls=0, allows_execution=False, allows_generation=False,
+                scope='catalog assessment only; not condition READY')
+
+
 def assess_capability(state,transport):
     faults=input_issues(state)
     if faults:return {'decision':'system_error','issues':faults,'model_calls':0,'allows_execution':False,'allows_generation':False}
     from agent_builder.design.temporal_context import temporal_context, TEMPORAL_INSTRUCTIONS
     request_clock=temporal_context(state)
-    from agent_builder.design.request_meaning import sealed_meaning
+    from agent_builder.design.request_meaning import answered_mail_spec, sealed_meaning
     request_meaning=sealed_meaning(state)
+    send = answered_mail_spec(state)
+    if send:
+        from workflow_engine.catalog.canonical import arguments_spec, operation_spec
+        operation = operation_spec('email.send', 'execute')
+        if {k for k, required in arguments_spec('email.send', operation).items() if required} == {'to', 'subject', 'body'}:
+            quote = next(m['content'] for m in state['messages'] if m['role'] == 'user')
+            result = dict(decision='existing_tools', tool_ids=['email.send'], missing_conditions=[], missing_actions=[],
+                          user_quotes=[quote], reason='확인된 단일 발송 업무의 수신자·제목·본문을 등록 계약과 대조했습니다.',
+                          model_calls=0, allows_execution=False, allows_generation=False)
+            return validate_assessment_result(result, state)
     from agent_builder.design.gmail_summary import gmail_summary_assessment
-    registered=gmail_summary_assessment(state)
+    registered=gmail_summary_assessment(state) or _bound_summary_assessment(state)
     if registered:
         return validate_assessment_result(registered,state,model_calls=0)
     # The prompt, schema, initial decision and second-pass review must use the same evidence.
     state = {**state, 'messages': active_request_messages(state)}
     user=[m['content'] for m in state.get('messages',[]) if m.get('role')=='user']
     if not user:raise ValueError('사용자 요청이 필요합니다.')
+    gap = _download_publication_gap(user[-1])
+    if gap:
+        result = dict(decision='missing_capability', tool_ids=[], missing_actions=[gap], missing_conditions=[],
+                      user_quotes=[user[-1]], reason='한 실행 화면에는 마지막 결과 파일의 다운로드 링크 한 개만 게시됩니다.',
+                      model_calls=0, allows_execution=False, allows_generation=False)
+        return validate_assessment_result(result, state)
     schema=Assessment.model_json_schema()
     schema['properties']['tool_ids']['items']['enum']=[t['id'] for t in TOOLS]
     schema['properties']['user_quotes']['items']['enum']=user
@@ -374,6 +489,11 @@ def assess_capability(state,transport):
             props['tool_ids']['minItems']=1;props['missing_conditions']['maxItems']=0;props['missing_actions']['maxItems']=0
         elif decision=='clarify':
             props['missing_conditions']['minItems']=1;props['missing_actions']['maxItems']=0
+            # A known owner can ask its own canonical question, independent of
+            # model wording. Free text remains available for every other slot.
+            props['missing_conditions']['items']['description']=(
+                '중복 보존 정책이면 duplicate.policy, 메일 수신자면 delivery.recipient. '
+                '그 밖의 누락 조건은 구체적인 한국어 설명. 한 항목은 한 조건입니다.')
         elif decision=='missing_capability':
             props['missing_actions']['minItems']=1;props['missing_conditions']['maxItems']=0
         variants.append(branch)
@@ -382,12 +502,23 @@ def assess_capability(state,transport):
     from agent_builder.design.execution_mode import execution_mode_context
     execution_choice=execution_mode_context(state)
     from agent_builder.design.question_language import KOREAN_QUESTION_INSTRUCTION
+    # Reuse the condition owner's current unresolved IDs and bounded options.
+    # The assessment may select an ID or describe an unrelated missing input.
+    known_slots = {q['key']: {'question': q['text'], 'options': q.get('options', [])}
+                   for q in state.get('pending_questions', []) if q.get('key') in ('duplicate.policy','delivery.recipient')}
+    if any(r.get('kind') == 'table' for r in state.get('resources', [])):
+        from agent_builder.conditions.condition_readiness import QUESTIONS, choice_options
+        known_slots.setdefault('duplicate.policy', dict(question=QUESTIONS['duplicate.policy'],
+                                                        options=choice_options('duplicate.policy', state)))
+    if request_meaning and any(t['source'] == 'gmail' and 'send' in t['actions'] for t in request_meaning['tasks']):
+        known_slots.setdefault('delivery.recipient', dict(question='이메일을 받을 수신자 주소는 무엇인가요?', options=[]))
     from agent_builder.design.service_connections import service_connection_context
     messages=[{'role':'system','content':SYSTEM+'\n'+REQUEST_UPDATE_RULE+'\n'+TEMPORAL_INSTRUCTIONS+'\n'+KOREAN_QUESTION_INSTRUCTION}, {'role':'user','content':json.dumps({
         'messages':state['messages'],'resources':[{k:r[k] for k in ['id','kind','columns','text','pages','parser_status'] if k in r} for r in state.get('resources',[])],
         **({'execution_choice':execution_choice} if execution_choice else {}),
         'temporal_context':request_clock,
         'pending_questions':state.get('pending_questions', []),
+        **({'known_missing_condition_ids': known_slots} if known_slots else {}),
         'service_connections':service_connection_context(state),
         'request_meaning':request_meaning,
         'independent_examples':DEMOS,'phase':'design_not_execution','input_files_required_now':False,

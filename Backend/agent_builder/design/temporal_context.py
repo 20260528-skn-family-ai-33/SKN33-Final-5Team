@@ -11,6 +11,8 @@ from datetime import datetime, time, timedelta, timezone
 import hashlib
 import json
 import os
+import re
+from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -128,3 +130,48 @@ def temporal_context(state, *, now=None):
 def ensure_temporal_context(state, *, now=None):
     """Graph update emitted before the first interpretation stage of a turn."""
     return {'temporal_context': temporal_context(state, now=now)}
+
+
+def selected_day(state, selection):
+    """Resolve a reviewed relative day against its originating turn's clock."""
+    anchors = (state.get('temporal_context') or {}).get('user_message_anchors', [])
+    index = selection.get('period_source_message')
+    if type(index) is not int or not 0 <= index < len(anchors):
+        return None
+    anchor = anchors[index]
+    zone = selection.get('calendar_timezone') or anchor.get('timezone')
+    if not zone or not anchor.get('reference_time'):
+        return None
+    calendar = anchor if zone == anchor.get('timezone') else _calendar(anchor['reference_time'], zone)
+    return calendar.get('relative_days', {}).get(selection['period'])
+
+
+@lru_cache(maxsize=128)
+def _zone_names(zone):
+    from babel.dates import get_timezone_location
+    location = ZoneInfo(zone)
+    return (zone, *(get_timezone_location(location, locale=locale, return_city=True) for locale in ('ko', 'en')))
+
+
+def calendar_qualifier(value, zone):
+    """A date qualifier must name exactly the supplied IANA zone or its CLDR city."""
+    if not zone or not isinstance(value, str):
+        return False
+    names = '|'.join(re.escape(name) for name in _zone_names(zone))
+    return bool(re.fullmatch(rf'(?:{names})\s*(?:의\s*)?(?:현지\s*)?(?:시간대?|시각|달력)?\s*'
+                             r'(?:기준(?:으로)?|으로|로|에서)?', value.strip(), re.I))
+
+
+def source_calendar_zone(state, index):
+    """Ground a location which directly qualifies a single relative receipt day."""
+    anchors = (state.get('temporal_context') or {}).get('user_message_anchors', [])
+    users = [m['content'] for m in state.get('messages', []) if m['role']=='user']
+    if type(index) is not int or not 0 <= index < min(len(anchors), len(users)):
+        return None
+    zone = anchors[index].get('timezone')
+    days = list(re.finditer(r'오늘|어제|전날|\b(?:today|yesterday)\b', users[index], re.I))
+    if len(days) != 1:
+        return None
+    prefix = users[index][:days[0].start()].strip()
+    prefix = re.sub(r'^(?:(?:내|제)\s*)?(?:Gmail|지메일)(?:에서|의)?\s*', '', prefix, flags=re.I)
+    return (zone, prefix) if calendar_qualifier(prefix, zone) else None

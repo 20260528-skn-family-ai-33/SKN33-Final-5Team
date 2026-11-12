@@ -237,8 +237,15 @@ def test_reopened_capability_questions_resume_with_selected_fields(tmp_path, mon
     ])
     with monkeypatch.context() as old:
         old.setenv('A4B_ATTACHMENT_PRECHECK', 'off')
+        # Recreate the old chat's two capability questions, including the stale
+        # attachment question that receipt migration is responsible for replacing.
+        # A file added between answers requires another assessment on today's graph.
+        decisions = [decision]
+        if len(prior_choices) > 2:
+            decisions.append(decision)
+        old_assessor = Fake(decisions)
         graph, connection = build_graph(store, conversation=lambda _: pytest.fail('awaiting clarification'),
-                                        capability_mode='enforce', capability_transport=Fake([decision]),
+                                        capability_mode='enforce', capability_transport=old_assessor,
                                         condition_mode='off', verifier_mode='off')
         try:
             config = {'configurable': {'thread_id': session['id']}}
@@ -252,6 +259,7 @@ def test_reopened_capability_questions_resume_with_selected_fields(tmp_path, mon
                 result = graph.invoke(Command(resume={'type': 'message', 'content': choice,
                                      'question_id': result['pending_questions'][0]['id']}), config)
             assert {q['source'] for q in result['pending_questions']} == {'capability'}
+            assert old_assessor.calls == len(decisions)
             session = store.update_session(session, session['revision'], result)
         finally:
             connection.close()

@@ -77,6 +77,42 @@ def multiple_outputs(state):
     return bool(re.search(r'각각|각자|별도|따로|두\s*(?:개|파일)|둘\s*다|모두|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
 
 
+def ordered_row_steps(state):
+    """Identify an explicit handoff between two confirmed operations on one table."""
+    if not state or multiple_outputs(state):
+        return ()
+    ledger = state.get('condition_ledger') or {}
+    if set(ledger.get('operations', [])) != {'filter', 'deduplicate'}:
+        return ()
+    resources = state.get('resources', [])
+    if len(resources) != 1 or resources[0].get('kind') != 'table':
+        return ()
+    slots = ledger.get('slots', {})
+    fields = {kind: slots.get(key, {}).get('value') for kind, key in
+              [('filter', 'filter.field'), ('policy', 'duplicate.field')]}
+    if (not all(f in resources[0].get('columns', []) for f in fields.values())
+            or len(set(fields.values())) != 2):
+        return ()
+    users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
+    # A bare acknowledgement carries no new row or order evidence. For
+    # substantive later instructions the source relation must be re-established.
+    if not users or any(not re.fullmatch(r'\s*(?:네|예|응|확인(?:했어|했습니다)?|yes|ok)[.!\s]*', reply, re.I)
+                        for reply in users[1:]):
+        return ()
+    text = users[0].casefold()
+    positions = {}
+    for kind, field in fields.items():
+        mentions = list(re.finditer(r'(?<![a-z0-9_])' + re.escape(field.casefold()) + r'(?![a-z0-9_])', text))
+        if len(mentions) != 1:
+            return ()
+        positions[kind] = mentions[0].span()
+    before, after = sorted(positions, key=positions.get)
+    connector = text[positions[before][1]:positions[after][0]]
+    if re.search(r'(?:한|긴|된|낸|친|른)\s*(?:후|뒤|다음)|그\s*결과(?:에서|에|\s*안에서)|\bthen\b', connector):
+        return (before, after)
+    return ()
+
+
 _BOUND_OPERATORS = {'초과':'gt', '>':'gt', '이상':'gte', '>=':'gte', '≥':'gte',
                     '미만':'lt', '<':'lt', '이하':'lte', '<=':'lte', '≤':'lte',
                     '같음':'eq', '==':'eq', '=':'eq', '!=':'ne'}
@@ -218,6 +254,8 @@ def _answered_filter_export(candidate, expected, state):
 
 
 def project_owned(candidates, expected, state):
+    from .requirement_task_identity import restates_table_export
+
     result = []
     seen = set()
     multi = multiple_outputs(state)
@@ -231,7 +269,8 @@ def project_owned(candidates, expected, state):
         spec = candidate['spec']
         kind = spec.get('kind')
         if (kind == 'other' and single_table and not multi and
-                (_owned_other(candidate, expected) or len(candidates) == 1 and _answered_filter_export(candidate, expected, state))):
+                (_owned_other(candidate, expected) or restates_table_export(candidate, expected, state)
+                 or len(candidates) == 1 and _answered_filter_export(candidate, expected, state))):
             continue
         if kind in expected:
             if kind == 'filter' and len(spec.get('filters', [])) > 1:
@@ -262,3 +301,8 @@ def validate_owned(plan, expected, state):
         if candidate['spec'] not in matching or (not (multi and kind == 'export')
                 and any(spec != candidate['spec'] for spec in matching)):
             raise ValueError('검증된 업무 조건과 요구사항 설정이 다릅니다: ' + kind)
+    order = ordered_row_steps(state) if expected else ()
+    if order:
+        pair = {t['spec']['kind']: t for t in plan['tasks'] if t['spec']['kind'] in order}
+        if not all(kind in pair for kind in order) or pair[order[0]]['id'] not in pair[order[1]]['depends_on']:
+            raise ValueError('요청한 선별·중복 제거 순서를 선행 업무에 반영해야 합니다.')

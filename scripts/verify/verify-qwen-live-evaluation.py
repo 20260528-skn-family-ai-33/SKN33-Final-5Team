@@ -13,7 +13,6 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import time
 from unittest.mock import patch
 import urllib.request
 from urllib.parse import urlsplit
@@ -128,7 +127,7 @@ def run_case(case,model,tracer,directory):
     from service.worker import handle
     from infrastructure.persistence.storage import Storage
     from agent_builder.design.graph import build_graph
-    start=time.monotonic();call_start=len(tracer.calls);stage_start=len(tracer.stages)
+    start=tracer.clock_sample();call_start=len(tracer.calls);stage_start=len(tracer.stages)
     record={'id':case['id'],'status':'started','kind':'live_backend_session_e2e','expected_route':case['gold']['routing'],
             'request':case['request'],'turns':[],'turn_attempts':[],'model_call_offset':call_start,
             'external_execution':'NOT_RUN','frontend_browser_observed':False,
@@ -161,6 +160,7 @@ def run_case(case,model,tracer,directory):
                      'question_id':question_id,'reference_time':reference,'prior_revision':session['revision'],
                      'prior_pending_question_ids':[q.get('id') for q in (session.get('pending_questions') or [])]}
             record['turn_attempts'].append(attempt);tracer.turn_index=turn
+            turn_started = tracer.clock_sample()
             try:
                 with patch('agent_builder.design.temporal_context._utc_now',lambda:datetime.fromisoformat(reference.replace('Z','+00:00'))):
                     session=handle(request)
@@ -168,8 +168,10 @@ def run_case(case,model,tracer,directory):
                 attempt.update(status='worker_error',error_type=type(error).__name__)
                 raise
             finally:
+                attempt.update(tracer.elapsed(turn_started))
                 tracer.turn_index=None
-            attempt.update(status='returned',response_id=session['id'],result_revision=session['revision'])
+            attempt.update(status='returned',response_id=session['id'],result_revision=session['revision'],
+                           response_route=route(session))
             record['turns'].append(sanitize({'user':content,'question_id':question_id,'reference_time':reference,
                                            'response':session},tracer.secrets))
             if turn==0:record['actual_route']=route(session)
@@ -201,7 +203,7 @@ def run_case(case,model,tracer,directory):
         record['status']='completed'
     except Exception as error:
         record.update(status='failed',error_type=type(error).__name__,actual_route=record.get('actual_route','SYSTEM_ERROR'))
-    record.update(elapsed_seconds=time.monotonic()-start,
+    record.update(**tracer.elapsed(start),
                   live_model_calls=sum(c['http_dispatch_attempts'] for c in tracer.calls[call_start:]),
                   model_call_records=len(tracer.calls)-call_start,
                   model_responses_received=sum(c['model_response_observed'] for c in tracer.calls[call_start:]),

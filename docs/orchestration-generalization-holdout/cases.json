@@ -1,0 +1,6326 @@
+{
+  "version": 1,
+  "corpus_id": "orchestration-generalization-holdout-v1",
+  "source": "새로 저작한 합성 입력 및 독립적인 사례별 판정값",
+  "catalog_fingerprint": "b187f747a4e063dd5f74a7e58cf3217203aa09a974f4f982e17cb5a34f286c37",
+  "categories": {
+    "ready": 8,
+    "composite": 6,
+    "multiturn": 4,
+    "clarify": 2,
+    "temporal": 6,
+    "unsupported": 4
+  },
+  "execution_policy": "합성 표에 대한 로컬 실행만 허용. 실제 메일, 연결, 물리 장치 호출 금지.",
+  "question_policy": "누락된 값만 질문하고 동결된 답변은 실제 질문에 대응할 때 제공.",
+  "cases": [
+    {
+      "id": "GNH-01",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "소성기록.csv에서 heat가 910인 기록만 원래 순서 그대로 CSV로 받을게요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-ceramics",
+            "kind": "table",
+            "name": "소성기록.csv",
+            "columns": [
+              "lot",
+              "glaze",
+              "heat",
+              "cracks"
+            ],
+            "rows": [
+              {
+                "lot": "도1",
+                "glaze": "백유",
+                "heat": 880,
+                "cracks": 2
+              },
+              {
+                "lot": "도2",
+                "glaze": "흑유",
+                "heat": 910,
+                "cracks": 0
+              },
+              {
+                "lot": "도3",
+                "glaze": "백유",
+                "heat": 910,
+                "cracks": 1
+              },
+              {
+                "lot": "도4",
+                "glaze": "철유",
+                "heat": 925,
+                "cracks": 0
+              },
+              {
+                "lot": "도5",
+                "glaze": "흑유",
+                "heat": 899,
+                "cracks": 2
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "910과 같은 소성 기록만 CSV로 반환",
+        "slots": {
+          "source": "소성기록.csv",
+          "filter.field": "heat",
+          "filter.operator": "eq",
+          "filter.value": 910,
+          "output.format": "csv"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "source",
+          "filter.field",
+          "filter.operator",
+          "filter.value",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "filter",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "filter"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "filter",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "filter"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "filter"
+            ],
+            [
+              "filter",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "source": "소성기록.csv",
+          "filter.field": "heat",
+          "filter.operator": "eq",
+          "filter.value": 910,
+          "output.format": "csv"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "lot": "도2",
+              "glaze": "흑유",
+              "heat": 910,
+              "cracks": 0
+            },
+            {
+              "lot": "도3",
+              "glaze": "백유",
+              "heat": 910,
+              "cracks": 1
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "910과 같은 소성 기록만 CSV로 반환",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "filter",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "source": "소성기록.csv",
+              "filter.field": "heat",
+              "filter.operator": "eq",
+              "filter.value": 910,
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "source": "소성기록.csv",
+              "filter.field": "heat",
+              "filter.operator": "eq",
+              "filter.value": 910,
+              "output.format": "csv"
+            },
+            "dependencies": [
+              [
+                "read",
+                "filter"
+              ],
+              [
+                "filter",
+                "export"
+              ]
+            ]
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-02",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "온실묘목.csv를 sprouts 큰 순, 같으면 tray 작은 순으로 정렬해 JSON으로 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-herbs",
+            "kind": "table",
+            "name": "온실묘목.csv",
+            "columns": [
+              "tray",
+              "species",
+              "sprouts"
+            ],
+            "rows": [
+              {
+                "tray": "묘3",
+                "species": "세이지",
+                "sprouts": 4
+              },
+              {
+                "tray": "묘1",
+                "species": "타임",
+                "sprouts": 7
+              },
+              {
+                "tray": "묘4",
+                "species": "세이지",
+                "sprouts": 8
+              },
+              {
+                "tray": "묘7",
+                "species": "차이브",
+                "sprouts": 7
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "두 정렬 키의 순서 및 방향과 JSON 결과",
+        "slots": {
+          "source": "온실묘목.csv",
+          "sort.fields": [
+            "sprouts",
+            "tray"
+          ],
+          "sort.directions": [
+            "desc",
+            "asc"
+          ],
+          "output.format": "json"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "source",
+          "sort.fields",
+          "sort.directions",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "sort",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "sort"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "sort",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "sort"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "sort"
+            ],
+            [
+              "sort",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "source": "온실묘목.csv",
+          "sort.fields": [
+            "sprouts",
+            "tray"
+          ],
+          "sort.directions": [
+            "desc",
+            "asc"
+          ],
+          "output.format": "json"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "tray": "묘4",
+              "species": "세이지",
+              "sprouts": 8
+            },
+            {
+              "tray": "묘1",
+              "species": "타임",
+              "sprouts": 7
+            },
+            {
+              "tray": "묘7",
+              "species": "차이브",
+              "sprouts": 7
+            },
+            {
+              "tray": "묘3",
+              "species": "세이지",
+              "sprouts": 4
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "두 정렬 키의 순서 및 방향과 JSON 결과",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "sort",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "source": "온실묘목.csv",
+              "sort.fields": [
+                "sprouts",
+                "tray"
+              ],
+              "sort.directions": [
+                "desc",
+                "asc"
+              ],
+              "output.format": "json"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "source": "온실묘목.csv",
+              "sort.fields": [
+                "sprouts",
+                "tray"
+              ],
+              "sort.directions": [
+                "desc",
+                "asc"
+              ],
+              "output.format": "json"
+            },
+            "dependencies": [
+              [
+                "read",
+                "sort"
+              ],
+              [
+                "sort",
+                "export"
+              ]
+            ]
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-03",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "방직검사.csv에서 tag마다 마지막으로 적힌 줄 하나씩만 살려서 CSV로요. 살아남은 줄의 원래 순서를 유지해 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-looms",
+            "kind": "table",
+            "name": "방직검사.csv",
+            "columns": [
+              "tag",
+              "loom",
+              "length"
+            ],
+            "rows": [
+              {
+                "tag": "라1",
+                "loom": "동틀",
+                "length": 13
+              },
+              {
+                "tag": "라1",
+                "loom": "서틀",
+                "length": 17
+              },
+              {
+                "tag": "라2",
+                "loom": "동틀",
+                "length": 19
+              },
+              {
+                "tag": "라3",
+                "loom": "서틀",
+                "length": 11
+              },
+              {
+                "tag": "라2",
+                "loom": "서틀",
+                "length": 23
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "원래 행 순서에서 각 tag의 마지막 행 유지",
+        "slots": {
+          "duplicate.field": "tag",
+          "duplicate.policy": "last",
+          "output.format": "csv"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "duplicate.field",
+          "duplicate.policy",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "last",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "deduplicate"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "last",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "deduplicate"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "last"
+            ],
+            [
+              "last",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "duplicate.field": "tag",
+          "duplicate.policy": "last",
+          "output.format": "csv"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "tag": "라1",
+              "loom": "서틀",
+              "length": 17
+            },
+            {
+              "tag": "라3",
+              "loom": "서틀",
+              "length": 11
+            },
+            {
+              "tag": "라2",
+              "loom": "서틀",
+              "length": 23
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "원래 행 순서에서 각 tag의 마지막 행 유지",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "last",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "duplicate.field": "tag",
+              "duplicate.policy": "last",
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "duplicate.field": "tag",
+              "duplicate.policy": "last",
+              "output.format": "csv"
+            },
+            "dependencies": [
+              [
+                "read",
+                "last"
+              ],
+              [
+                "last",
+                "export"
+              ]
+            ]
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-04",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "암초관찰.csv의 reef별 관찰 행 수를 세 주세요. 건수 열 이름은 count, 결과는 CSV면 돼요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-shoal",
+            "kind": "table",
+            "name": "암초관찰.csv",
+            "columns": [
+              "mark",
+              "reef",
+              "dives",
+              "samples"
+            ],
+            "rows": [
+              {
+                "mark": "T2",
+                "reef": "초록",
+                "dives": 3,
+                "samples": 7
+              },
+              {
+                "mark": "T1",
+                "reef": "산호",
+                "dives": 1,
+                "samples": 9
+              },
+              {
+                "mark": "T6",
+                "reef": "초록",
+                "dives": 2,
+                "samples": 8
+              },
+              {
+                "mark": "T9",
+                "reef": "산호",
+                "dives": 0,
+                "samples": 6
+              },
+              {
+                "mark": "T4",
+                "reef": "자갈",
+                "dives": 4,
+                "samples": 2
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "암초별 행 전체를 건수로 집계",
+        "slots": {
+          "aggregate.group_by": [
+            "reef"
+          ],
+          "aggregate.operation": "count",
+          "aggregate.mode": "rows",
+          "aggregate.column_name": "count",
+          "output.format": "csv"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "aggregate.group_by",
+          "aggregate.operation",
+          "aggregate.mode",
+          "aggregate.column_name",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "count",
+            "alternatives": [
+              {
+                "tool": "aggregate_table",
+                "operation": null
+              },
+              {
+                "tool": "aggregate_table",
+                "operation": "count"
+              },
+              {
+                "tool": "aggregate_table",
+                "operation": "group_aggregate"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "count",
+              "alternatives": [
+                {
+                  "tool": "aggregate_table",
+                  "operation": null
+                },
+                {
+                  "tool": "aggregate_table",
+                  "operation": "count"
+                },
+                {
+                  "tool": "aggregate_table",
+                  "operation": "group_aggregate"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "count"
+            ],
+            [
+              "count",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "aggregate.group_by": [
+            "reef"
+          ],
+          "aggregate.operation": "count",
+          "aggregate.mode": "rows",
+          "aggregate.column_name": "count",
+          "output.format": "csv"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "reef": "초록",
+              "count": 2
+            },
+            {
+              "reef": "산호",
+              "count": 2
+            },
+            {
+              "reef": "자갈",
+              "count": 1
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "암초별 행 전체를 건수로 집계",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "count",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "aggregate.group_by": [
+                "reef"
+              ],
+              "aggregate.operation": "count",
+              "aggregate.mode": "rows",
+              "aggregate.column_name": "count",
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "aggregate.group_by": [
+                "reef"
+              ],
+              "aggregate.operation": "count",
+              "aggregate.mode": "rows",
+              "aggregate.column_name": "count",
+              "output.format": "csv"
+            },
+            "dependencies": [
+              [
+                "read",
+                "count"
+              ],
+              [
+                "count",
+                "export"
+              ]
+            ]
+          },
+          "row_order": "unordered; compare complete typed rows as a multiset"
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-05",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "종료 기호를 덧붙이지 말고 문자열 \"연못🍀\"의 UTF-8 SHA-256 값을 16진수로 화면에 보여줘.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "명시된 유니코드 한 줄의 SHA-256을 표시",
+        "slots": {
+          "text": "연못🍀",
+          "encoding": "UTF-8",
+          "hash.algorithm": "sha256",
+          "output.format": "hex"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "text",
+          "encoding",
+          "hash.algorithm",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "hash",
+            "alternatives": [
+              {
+                "tool": "text_hash",
+                "operation": "sha256"
+              },
+              {
+                "tool": "text_hash",
+                "operation": null
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "hash",
+              "alternatives": [
+                {
+                  "tool": "text_hash",
+                  "operation": "sha256"
+                },
+                {
+                  "tool": "text_hash",
+                  "operation": null
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "text": "연못🍀",
+          "encoding": "UTF-8",
+          "hash.algorithm": "sha256",
+          "output.format": "hex"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "명시된 유니코드 한 줄의 SHA-256을 표시",
+          "ledger_units": {
+            "requested_steps": [
+              "hash"
+            ],
+            "explicit_slot_values": {
+              "text": "연못🍀",
+              "encoding": "UTF-8",
+              "hash.algorithm": "sha256",
+              "output.format": "hex"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "text": "연못🍀",
+              "encoding": "UTF-8",
+              "hash.algorithm": "sha256",
+              "output.format": "hex"
+            },
+            "dependencies": []
+          },
+          "expected_text": "470fc3663b2e358f3cbd958fb0bff85243aa8533ceffbb329f78b56d2cf00fc8"
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-06",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "입장권 11장에 장당 450원, 묶음 할인 250원 한 번을 적용한 최종 금액을 계산해줘. 파일은 필요 없어.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "한 번만 적용한 정액 할인 후 금액 표시",
+        "slots": {
+          "scalar.formula": "tickets * unit - rebate",
+          "scalar.variables": {
+            "tickets": 11,
+            "unit": 450,
+            "rebate": 250
+          },
+          "output.format": "number"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "scalar.formula",
+          "scalar.variables",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "amount",
+            "alternatives": [
+              {
+                "tool": "scalar_calculate",
+                "operation": "evaluate"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "amount",
+              "alternatives": [
+                {
+                  "tool": "scalar_calculate",
+                  "operation": "evaluate"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "scalar.formula": "tickets * unit - rebate",
+          "scalar.variables": {
+            "tickets": 11,
+            "unit": 450,
+            "rebate": 250
+          },
+          "output.format": "number"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "한 번만 적용한 정액 할인 후 금액 표시",
+          "ledger_units": {
+            "requested_steps": [
+              "amount"
+            ],
+            "explicit_slot_values": {
+              "scalar.formula": "tickets * unit - rebate",
+              "scalar.variables": {
+                "tickets": 11,
+                "unit": 450,
+                "rebate": 250
+              },
+              "output.format": "number"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "scalar.formula": "tickets * unit - rebate",
+              "scalar.variables": {
+                "tickets": 11,
+                "unit": 450,
+                "rebate": 250
+              },
+              "output.format": "number"
+            },
+            "dependencies": []
+          },
+          "expected_number": 4700
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-07",
+      "category": "composite",
+      "split": "holdout",
+      "eligible": true,
+      "request": "조명대여.csv의 issued에서 returned를 뺀 나머지를 open 열에 넣어 주세요. open이 2 이상인 대여만 골라 open 큰 순으로 CSV를 만들어 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-lamps",
+            "kind": "table",
+            "name": "조명대여.csv",
+            "columns": [
+              "ticket",
+              "room",
+              "issued",
+              "returned"
+            ],
+            "rows": [
+              {
+                "ticket": "L5",
+                "room": "남관",
+                "issued": 7,
+                "returned": 2
+              },
+              {
+                "ticket": "L2",
+                "room": "북관",
+                "issued": 4,
+                "returned": 4
+              },
+              {
+                "ticket": "L8",
+                "room": "남관",
+                "issued": 5,
+                "returned": 1
+              },
+              {
+                "ticket": "L3",
+                "room": "별관",
+                "issued": 3,
+                "returned": 1
+              },
+              {
+                "ticket": "L9",
+                "room": "북관",
+                "issued": 8,
+                "returned": 8
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "잔여 대수를 계산한 후 그 열로 필터·정렬한 CSV",
+        "slots": {
+          "compute.output_column": "open",
+          "compute.formula": "issued - returned",
+          "filter.field": "open",
+          "filter.operator": "gte",
+          "filter.value": 2,
+          "sort.fields": [
+            "open"
+          ],
+          "sort.directions": [
+            "desc"
+          ],
+          "output.format": "csv"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "compute.output_column",
+          "compute.formula",
+          "filter.field",
+          "filter.operator",
+          "filter.value",
+          "sort.fields",
+          "sort.directions",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "compute",
+            "alternatives": [
+              {
+                "tool": "calculate_columns",
+                "operation": null
+              },
+              {
+                "tool": "calculate_columns",
+                "operation": "compute"
+              },
+              {
+                "tool": "calculate_columns",
+                "operation": "calculate_records"
+              }
+            ]
+          },
+          {
+            "id": "filter",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "filter"
+              }
+            ]
+          },
+          {
+            "id": "sort",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "sort"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "compute",
+              "alternatives": [
+                {
+                  "tool": "calculate_columns",
+                  "operation": null
+                },
+                {
+                  "tool": "calculate_columns",
+                  "operation": "compute"
+                },
+                {
+                  "tool": "calculate_columns",
+                  "operation": "calculate_records"
+                }
+              ]
+            },
+            {
+              "id": "filter",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "filter"
+                }
+              ]
+            },
+            {
+              "id": "sort",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "sort"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "compute"
+            ],
+            [
+              "compute",
+              "filter"
+            ],
+            [
+              "filter",
+              "sort"
+            ],
+            [
+              "sort",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "compute.output_column": "open",
+          "compute.formula": "issued - returned",
+          "filter.field": "open",
+          "filter.operator": "gte",
+          "filter.value": 2,
+          "sort.fields": [
+            "open"
+          ],
+          "sort.directions": [
+            "desc"
+          ],
+          "output.format": "csv"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "ticket": "L5",
+              "room": "남관",
+              "issued": 7,
+              "returned": 2,
+              "open": 5
+            },
+            {
+              "ticket": "L8",
+              "room": "남관",
+              "issued": 5,
+              "returned": 1,
+              "open": 4
+            },
+            {
+              "ticket": "L3",
+              "room": "별관",
+              "issued": 3,
+              "returned": 1,
+              "open": 2
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "잔여 대수를 계산한 후 그 열로 필터·정렬한 CSV",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "compute",
+              "filter",
+              "sort",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "compute.output_column": "open",
+              "compute.formula": "issued - returned",
+              "filter.field": "open",
+              "filter.operator": "gte",
+              "filter.value": 2,
+              "sort.fields": [
+                "open"
+              ],
+              "sort.directions": [
+                "desc"
+              ],
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "compute.output_column": "open",
+              "compute.formula": "issued - returned",
+              "filter.field": "open",
+              "filter.operator": "gte",
+              "filter.value": 2,
+              "sort.fields": [
+                "open"
+              ],
+              "sort.directions": [
+                "desc"
+              ],
+              "output.format": "csv"
+            },
+            "dependencies": [
+              [
+                "read",
+                "compute"
+              ],
+              [
+                "compute",
+                "filter"
+              ],
+              [
+                "filter",
+                "sort"
+              ],
+              [
+                "sort",
+                "export"
+              ]
+            ]
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-08",
+      "category": "composite",
+      "split": "holdout",
+      "eligible": true,
+      "request": "암초관찰.csv에서 dives가 0보다 큰 기록만 남긴 뒤 reef별 samples 합계를 sum 열에 담아 주세요. 합계 큰 순서로 JSON을 내려받고 싶어요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-shoal",
+            "kind": "table",
+            "name": "암초관찰.csv",
+            "columns": [
+              "mark",
+              "reef",
+              "dives",
+              "samples"
+            ],
+            "rows": [
+              {
+                "mark": "T2",
+                "reef": "초록",
+                "dives": 3,
+                "samples": 7
+              },
+              {
+                "mark": "T1",
+                "reef": "산호",
+                "dives": 1,
+                "samples": 9
+              },
+              {
+                "mark": "T6",
+                "reef": "초록",
+                "dives": 2,
+                "samples": 8
+              },
+              {
+                "mark": "T9",
+                "reef": "산호",
+                "dives": 0,
+                "samples": 6
+              },
+              {
+                "mark": "T4",
+                "reef": "자갈",
+                "dives": 4,
+                "samples": 2
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "0회 잠수 행을 뺀 뒤 집계하고 집계 결과를 정렬",
+        "slots": {
+          "filter.field": "dives",
+          "filter.operator": "gt",
+          "filter.value": 0,
+          "aggregate.group_by": [
+            "reef"
+          ],
+          "aggregate.operation": "sum",
+          "aggregate.field": "samples",
+          "aggregate.column_name": "sum",
+          "sort.fields": [
+            "sum"
+          ],
+          "sort.directions": [
+            "desc"
+          ],
+          "output.format": "json"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "filter.field",
+          "filter.operator",
+          "filter.value",
+          "aggregate.group_by",
+          "aggregate.operation",
+          "aggregate.field",
+          "aggregate.column_name",
+          "sort.fields",
+          "sort.directions",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "filter",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "filter"
+              }
+            ]
+          },
+          {
+            "id": "total",
+            "alternatives": [
+              {
+                "tool": "aggregate_table",
+                "operation": null
+              },
+              {
+                "tool": "aggregate_table",
+                "operation": "sum"
+              },
+              {
+                "tool": "aggregate_table",
+                "operation": "group_aggregate"
+              }
+            ]
+          },
+          {
+            "id": "sort",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "sort"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "filter",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "filter"
+                }
+              ]
+            },
+            {
+              "id": "total",
+              "alternatives": [
+                {
+                  "tool": "aggregate_table",
+                  "operation": null
+                },
+                {
+                  "tool": "aggregate_table",
+                  "operation": "sum"
+                },
+                {
+                  "tool": "aggregate_table",
+                  "operation": "group_aggregate"
+                }
+              ]
+            },
+            {
+              "id": "sort",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "sort"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "filter"
+            ],
+            [
+              "filter",
+              "total"
+            ],
+            [
+              "total",
+              "sort"
+            ],
+            [
+              "sort",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "filter.field": "dives",
+          "filter.operator": "gt",
+          "filter.value": 0,
+          "aggregate.group_by": [
+            "reef"
+          ],
+          "aggregate.operation": "sum",
+          "aggregate.field": "samples",
+          "aggregate.column_name": "sum",
+          "sort.fields": [
+            "sum"
+          ],
+          "sort.directions": [
+            "desc"
+          ],
+          "output.format": "json"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "reef": "초록",
+              "sum": 15
+            },
+            {
+              "reef": "산호",
+              "sum": 9
+            },
+            {
+              "reef": "자갈",
+              "sum": 2
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "0회 잠수 행을 뺀 뒤 집계하고 집계 결과를 정렬",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "filter",
+              "total",
+              "sort",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "filter.field": "dives",
+              "filter.operator": "gt",
+              "filter.value": 0,
+              "aggregate.group_by": [
+                "reef"
+              ],
+              "aggregate.operation": "sum",
+              "aggregate.field": "samples",
+              "aggregate.column_name": "sum",
+              "sort.fields": [
+                "sum"
+              ],
+              "sort.directions": [
+                "desc"
+              ],
+              "output.format": "json"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "filter.field": "dives",
+              "filter.operator": "gt",
+              "filter.value": 0,
+              "aggregate.group_by": [
+                "reef"
+              ],
+              "aggregate.operation": "sum",
+              "aggregate.field": "samples",
+              "aggregate.column_name": "sum",
+              "sort.fields": [
+                "sum"
+              ],
+              "sort.directions": [
+                "desc"
+              ],
+              "output.format": "json"
+            },
+            "dependencies": [
+              [
+                "read",
+                "filter"
+              ],
+              [
+                "filter",
+                "total"
+              ],
+              [
+                "total",
+                "sort"
+              ],
+              [
+                "sort",
+                "export"
+              ]
+            ]
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-09",
+      "category": "composite",
+      "split": "holdout",
+      "eligible": true,
+      "request": "조명대여.csv 각 행 옆에 전시구역.csv의 color를 room으로 연결해 주세요. 조명 기록은 전부 남기고 대응이 없으면 color는 null로 둔 JSON 다운로드 하나가 필요해요. 원래 대여 순서를 유지해 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-lamps",
+            "kind": "table",
+            "name": "조명대여.csv",
+            "columns": [
+              "ticket",
+              "room",
+              "issued",
+              "returned"
+            ],
+            "rows": [
+              {
+                "ticket": "L5",
+                "room": "남관",
+                "issued": 7,
+                "returned": 2
+              },
+              {
+                "ticket": "L2",
+                "room": "북관",
+                "issued": 4,
+                "returned": 4
+              },
+              {
+                "ticket": "L8",
+                "room": "남관",
+                "issued": 5,
+                "returned": 1
+              },
+              {
+                "ticket": "L3",
+                "room": "별관",
+                "issued": 3,
+                "returned": 1
+              },
+              {
+                "ticket": "L9",
+                "room": "북관",
+                "issued": 8,
+                "returned": 8
+              }
+            ]
+          },
+          {
+            "id": "fixture-labels",
+            "kind": "table",
+            "name": "전시구역.csv",
+            "columns": [
+              "room",
+              "color"
+            ],
+            "rows": [
+              {
+                "room": "북관",
+                "color": "청록"
+              },
+              {
+                "room": "남관",
+                "color": "진홍"
+              },
+              {
+                "room": "서관",
+                "color": "황토"
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "대여가 왼쪽인 다대일 외부 조인 결과를 JSON 한 개로 제공",
+        "slots": {
+          "join.left": "조명대여.csv",
+          "join.right": "전시구역.csv",
+          "join.key": "room",
+          "join.type": "left",
+          "join.cardinality": "many_to_one",
+          "output.format": "json"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "join.left",
+          "join.right",
+          "join.key",
+          "join.type",
+          "join.cardinality",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "rentals",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "zones",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "label",
+            "alternatives": [
+              {
+                "tool": "join_tables",
+                "operation": "join"
+              },
+              {
+                "tool": "join_tables",
+                "operation": "join_records"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "rentals",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "zones",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "label",
+              "alternatives": [
+                {
+                  "tool": "join_tables",
+                  "operation": "join"
+                },
+                {
+                  "tool": "join_tables",
+                  "operation": "join_records"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "rentals",
+              "label"
+            ],
+            [
+              "zones",
+              "label"
+            ],
+            [
+              "label",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "join.left": "조명대여.csv",
+          "join.right": "전시구역.csv",
+          "join.key": "room",
+          "join.type": "left",
+          "join.cardinality": "many_to_one",
+          "output.format": "json"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "대여가 왼쪽인 다대일 외부 조인 결과를 JSON 한 개로 제공",
+          "ledger_units": {
+            "requested_steps": [
+              "rentals",
+              "zones",
+              "label",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "join.left": "조명대여.csv",
+              "join.right": "전시구역.csv",
+              "join.key": "room",
+              "join.type": "left",
+              "join.cardinality": "many_to_one",
+              "output.format": "json"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "join.left": "조명대여.csv",
+              "join.right": "전시구역.csv",
+              "join.key": "room",
+              "join.type": "left",
+              "join.cardinality": "many_to_one",
+              "output.format": "json"
+            },
+            "dependencies": [
+              [
+                "rentals",
+                "label"
+              ],
+              [
+                "zones",
+                "label"
+              ],
+              [
+                "label",
+                "export"
+              ]
+            ]
+          },
+          "expected_semantic_rows": [
+            {
+              "ticket": "L5",
+              "room": "남관",
+              "issued": 7,
+              "returned": 2,
+              "color": "진홍"
+            },
+            {
+              "ticket": "L2",
+              "room": "북관",
+              "issued": 4,
+              "returned": 4,
+              "color": "청록"
+            },
+            {
+              "ticket": "L8",
+              "room": "남관",
+              "issued": 5,
+              "returned": 1,
+              "color": "진홍"
+            },
+            {
+              "ticket": "L3",
+              "room": "별관",
+              "issued": 3,
+              "returned": 1,
+              "color": null
+            },
+            {
+              "ticket": "L9",
+              "room": "북관",
+              "issued": 8,
+              "returned": 8,
+              "color": "청록"
+            }
+          ],
+          "required_assets": [
+            "fixture-lamps",
+            "fixture-labels"
+          ],
+          "disallow_same_native_node_for": [
+            "rentals",
+            "zones"
+          ],
+          "required_user_visible_downloads": 1
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-10",
+      "category": "composite",
+      "split": "holdout",
+      "eligible": true,
+      "request": "소성기록.csv에서 cracks가 0인 행과 1 이상인 행을 나눠 주세요. 첫 번째는 CSV, 두 번째는 JSON으로 각각 받을게요. 각 파일 안의 순서는 원본대로예요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-ceramics",
+            "kind": "table",
+            "name": "소성기록.csv",
+            "columns": [
+              "lot",
+              "glaze",
+              "heat",
+              "cracks"
+            ],
+            "rows": [
+              {
+                "lot": "도1",
+                "glaze": "백유",
+                "heat": 880,
+                "cracks": 2
+              },
+              {
+                "lot": "도2",
+                "glaze": "흑유",
+                "heat": 910,
+                "cracks": 0
+              },
+              {
+                "lot": "도3",
+                "glaze": "백유",
+                "heat": 910,
+                "cracks": 1
+              },
+              {
+                "lot": "도4",
+                "glaze": "철유",
+                "heat": 925,
+                "cracks": 0
+              },
+              {
+                "lot": "도5",
+                "glaze": "흑유",
+                "heat": 899,
+                "cracks": 2
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "원본에서 별도 조건의 두 분기, 각 분기에 다른 다운로드",
+        "slots": {
+          "branch.intact": "cracks == 0",
+          "branch.damaged": "cracks >= 1",
+          "output.formats": [
+            "csv",
+            "json"
+          ],
+          "output.link_count": 2
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "branch.intact",
+          "branch.damaged",
+          "output.formats",
+          "output.link_count"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "intact",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "filter"
+              }
+            ]
+          },
+          {
+            "id": "damaged",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "filter"
+              }
+            ]
+          },
+          {
+            "id": "intact_csv",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          },
+          {
+            "id": "damaged_json",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "intact",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "filter"
+                }
+              ]
+            },
+            {
+              "id": "damaged",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "filter"
+                }
+              ]
+            },
+            {
+              "id": "intact_csv",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            },
+            {
+              "id": "damaged_json",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "intact"
+            ],
+            [
+              "read",
+              "damaged"
+            ],
+            [
+              "intact",
+              "intact_csv"
+            ],
+            [
+              "damaged",
+              "damaged_json"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "branch.intact": "cracks == 0",
+          "branch.damaged": "cracks >= 1",
+          "output.formats": [
+            "csv",
+            "json"
+          ],
+          "output.link_count": 2
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "원본에서 별도 조건의 두 분기, 각 분기에 다른 다운로드",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "intact",
+              "damaged",
+              "intact_csv",
+              "damaged_json"
+            ],
+            "explicit_slot_values": {
+              "branch.intact": "cracks == 0",
+              "branch.damaged": "cracks >= 1",
+              "output.formats": [
+                "csv",
+                "json"
+              ],
+              "output.link_count": 2
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "branch.intact": "cracks == 0",
+              "branch.damaged": "cracks >= 1",
+              "output.formats": [
+                "csv",
+                "json"
+              ],
+              "output.link_count": 2
+            },
+            "dependencies": [
+              [
+                "read",
+                "intact"
+              ],
+              [
+                "read",
+                "damaged"
+              ],
+              [
+                "intact",
+                "intact_csv"
+              ],
+              [
+                "damaged",
+                "damaged_json"
+              ]
+            ]
+          },
+          "required_user_visible_downloads": 2,
+          "distinct_deliverables": [
+            {
+              "id": "intact_csv",
+              "format": "csv",
+              "source": "intact",
+              "user_visible": "download"
+            },
+            {
+              "id": "damaged_json",
+              "format": "json",
+              "source": "damaged",
+              "user_visible": "download"
+            }
+          ],
+          "expected_rows_per_download": {
+            "intact_csv": [
+              {
+                "lot": "도2",
+                "glaze": "흑유",
+                "heat": 910,
+                "cracks": 0
+              },
+              {
+                "lot": "도4",
+                "glaze": "철유",
+                "heat": 925,
+                "cracks": 0
+              }
+            ],
+            "damaged_json": [
+              {
+                "lot": "도1",
+                "glaze": "백유",
+                "heat": 880,
+                "cracks": 2
+              },
+              {
+                "lot": "도3",
+                "glaze": "백유",
+                "heat": 910,
+                "cracks": 1
+              },
+              {
+                "lot": "도5",
+                "glaze": "흑유",
+                "heat": 899,
+                "cracks": 2
+              }
+            ]
+          },
+          "require_distinct_consumers": true
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-11",
+      "category": "composite",
+      "split": "holdout",
+      "eligible": true,
+      "request": "목록 텍스트 \"모루|노을|새벽|솔\"을 |로 나눈 다음 조각의 개수만 화면에 표시해 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "구분자를 사용한 분할 결과를 세어 화면에 표시",
+        "slots": {
+          "text": "모루|노을|새벽|솔",
+          "separator": "|",
+          "output.format": "number"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "text",
+          "separator",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "split",
+            "alternatives": [
+              {
+                "tool": "text_transform",
+                "operation": "split"
+              }
+            ]
+          },
+          {
+            "id": "count_parts",
+            "alternatives": [
+              {
+                "tool": "list_transform",
+                "operation": "count"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "split",
+              "alternatives": [
+                {
+                  "tool": "text_transform",
+                  "operation": "split"
+                }
+              ]
+            },
+            {
+              "id": "count_parts",
+              "alternatives": [
+                {
+                  "tool": "list_transform",
+                  "operation": "count"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "split",
+              "count_parts"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "text": "모루|노을|새벽|솔",
+          "separator": "|",
+          "output.format": "number"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "구분자를 사용한 분할 결과를 세어 화면에 표시",
+          "ledger_units": {
+            "requested_steps": [
+              "split",
+              "count_parts"
+            ],
+            "explicit_slot_values": {
+              "text": "모루|노을|새벽|솔",
+              "separator": "|",
+              "output.format": "number"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "text": "모루|노을|새벽|솔",
+              "separator": "|",
+              "output.format": "number"
+            },
+            "dependencies": [
+              [
+                "split",
+                "count_parts"
+              ]
+            ]
+          },
+          "expected_number": 4,
+          "expected_intermediate": [
+            "모루",
+            "노을",
+            "새벽",
+            "솔"
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-12",
+      "category": "composite",
+      "split": "holdout",
+      "eligible": true,
+      "request": "아래 JSON 문자열을 해석해서 lights 배열을 읽고 두 번째 값을 출력해줘. 문자열은 {\"lights\":[\"황색\",\"남색\",\"청록\"],\"fallback\":\"회색\"} 이야.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "주어진 직렬화 문자열에서 lights의 인덱스 1 값을 표시",
+        "slots": {
+          "json.text": "{\"lights\":[\"황색\",\"남색\",\"청록\"],\"fallback\":\"회색\"}",
+          "json.path": "lights",
+          "list.index": 1
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "json.text",
+          "json.path",
+          "list.index"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "decode",
+            "alternatives": [
+              {
+                "tool": "json_transform",
+                "operation": "parse"
+              }
+            ]
+          },
+          {
+            "id": "lights",
+            "alternatives": [
+              {
+                "tool": "json_transform",
+                "operation": "lookup"
+              }
+            ]
+          },
+          {
+            "id": "second",
+            "alternatives": [
+              {
+                "tool": "list_transform",
+                "operation": "select"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "decode",
+              "alternatives": [
+                {
+                  "tool": "json_transform",
+                  "operation": "parse"
+                }
+              ]
+            },
+            {
+              "id": "lights",
+              "alternatives": [
+                {
+                  "tool": "json_transform",
+                  "operation": "lookup"
+                }
+              ]
+            },
+            {
+              "id": "second",
+              "alternatives": [
+                {
+                  "tool": "list_transform",
+                  "operation": "select"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "decode",
+              "lights"
+            ],
+            [
+              "lights",
+              "second"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "json.text": "{\"lights\":[\"황색\",\"남색\",\"청록\"],\"fallback\":\"회색\"}",
+          "json.path": "lights",
+          "list.index": 1
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "주어진 직렬화 문자열에서 lights의 인덱스 1 값을 표시",
+          "ledger_units": {
+            "requested_steps": [
+              "decode",
+              "lights",
+              "second"
+            ],
+            "explicit_slot_values": {
+              "json.text": "{\"lights\":[\"황색\",\"남색\",\"청록\"],\"fallback\":\"회색\"}",
+              "json.path": "lights",
+              "list.index": 1
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "json.text": "{\"lights\":[\"황색\",\"남색\",\"청록\"],\"fallback\":\"회색\"}",
+              "json.path": "lights",
+              "list.index": 1
+            },
+            "dependencies": [
+              [
+                "decode",
+                "lights"
+              ],
+              [
+                "lights",
+                "second"
+              ]
+            ]
+          },
+          "expected_text": "남색",
+          "equivalent_composed_lookup": "한 lookup이 경로 lights[1] 전체를 구현하면 두 의미 단계 모두 허용. 파싱된 데이터 의존성이 있어야 한다."
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-13",
+      "category": "multiturn",
+      "split": "holdout",
+      "eligible": true,
+      "request": "온실묘목.csv에서 sprouts가 내가 정한 기준보다 작은 트레이만 JSON으로 만들어줘. 기준값은 물어봐 줘.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-herbs",
+            "kind": "table",
+            "name": "온실묘목.csv",
+            "columns": [
+              "tray",
+              "species",
+              "sprouts"
+            ],
+            "rows": [
+              {
+                "tray": "묘3",
+                "species": "세이지",
+                "sprouts": 4
+              },
+              {
+                "tray": "묘1",
+                "species": "타임",
+                "sprouts": 7
+              },
+              {
+                "tray": "묘4",
+                "species": "세이지",
+                "sprouts": 8
+              },
+              {
+                "tray": "묘7",
+                "species": "차이브",
+                "sprouts": 7
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "미정 임계값 질문 후 엄격한 미만 비교",
+        "slots": {
+          "filter.field": "sprouts",
+          "filter.operator": "lt",
+          "output.format": "json"
+        },
+        "missing_required_slots": [
+          "threshold"
+        ],
+        "routing": "CLARIFY",
+        "allowed_questions": {
+          "threshold": [
+            "기준",
+            "몇",
+            "임계",
+            "수치"
+          ]
+        },
+        "forbidden_questions": [
+          "filter.field",
+          "filter.operator",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "filter",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "filter"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "filter",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "filter"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "filter"
+            ],
+            [
+              "filter",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "filter.field": "sprouts",
+          "filter.operator": "lt",
+          "output.format": "json",
+          "filter.value": 7
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "tray": "묘3",
+              "species": "세이지",
+              "sprouts": 4
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "미정 임계값 질문 후 엄격한 미만 비교",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "filter",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "filter.field": "sprouts",
+              "filter.operator": "lt",
+              "output.format": "json"
+            },
+            "unresolved_user_inputs": [
+              "threshold"
+            ],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "filter.field": "sprouts",
+              "filter.operator": "lt",
+              "output.format": "json",
+              "filter.value": 7
+            },
+            "dependencies": [
+              [
+                "read",
+                "filter"
+              ],
+              [
+                "filter",
+                "export"
+              ]
+            ]
+          }
+        }
+      },
+      "answer_policy": [
+        {
+          "slot": "threshold",
+          "question_terms": [
+            "기준",
+            "몇",
+            "임계",
+            "수치"
+          ],
+          "text": "7로 해 주세요. 7인 행은 빼요."
+        }
+      ],
+      "revision_after_ready": null,
+      "restart_between_turns": true,
+      "max_user_answers": 1,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-14",
+      "category": "multiturn",
+      "split": "holdout",
+      "eligible": true,
+      "request": "방직검사.csv에서 tag가 겹치면 하나만 남겨 CSV로 주세요. 첫 행을 쓸지 마지막 행을 쓸지는 제게 확인해 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-looms",
+            "kind": "table",
+            "name": "방직검사.csv",
+            "columns": [
+              "tag",
+              "loom",
+              "length"
+            ],
+            "rows": [
+              {
+                "tag": "라1",
+                "loom": "동틀",
+                "length": 13
+              },
+              {
+                "tag": "라1",
+                "loom": "서틀",
+                "length": 17
+              },
+              {
+                "tag": "라2",
+                "loom": "동틀",
+                "length": 19
+              },
+              {
+                "tag": "라3",
+                "loom": "서틀",
+                "length": 11
+              },
+              {
+                "tag": "라2",
+                "loom": "서틀",
+                "length": 23
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "명시된 tag를 유지하고 답변으로 첫 행 정책 확정",
+        "slots": {
+          "duplicate.field": "tag",
+          "output.format": "csv"
+        },
+        "missing_required_slots": [
+          "keep_policy"
+        ],
+        "routing": "CLARIFY",
+        "allowed_questions": {
+          "keep_policy": [
+            "처음",
+            "먼저",
+            "첫",
+            "마지막",
+            "중복 처리"
+          ]
+        },
+        "forbidden_questions": [
+          "duplicate.field",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "dedup",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "deduplicate"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "dedup",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "deduplicate"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "dedup"
+            ],
+            [
+              "dedup",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "duplicate.field": "tag",
+          "output.format": "csv",
+          "duplicate.policy": "first"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "tag": "라1",
+              "loom": "동틀",
+              "length": 13
+            },
+            {
+              "tag": "라2",
+              "loom": "동틀",
+              "length": 19
+            },
+            {
+              "tag": "라3",
+              "loom": "서틀",
+              "length": 11
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "명시된 tag를 유지하고 답변으로 첫 행 정책 확정",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "dedup",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "duplicate.field": "tag",
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [
+              "keep_policy"
+            ],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "duplicate.field": "tag",
+              "output.format": "csv",
+              "duplicate.policy": "first"
+            },
+            "dependencies": [
+              [
+                "read",
+                "dedup"
+              ],
+              [
+                "dedup",
+                "export"
+              ]
+            ]
+          }
+        }
+      },
+      "answer_policy": [
+        {
+          "slot": "keep_policy",
+          "question_terms": [
+            "처음",
+            "먼저",
+            "첫",
+            "마지막",
+            "중복 처리"
+          ],
+          "text": "처음 나온 행으로 할게요. 출력 행은 원래 순서로요."
+        }
+      ],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 1,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-15",
+      "category": "multiturn",
+      "split": "holdout",
+      "eligible": true,
+      "request": "조명대여.csv의 숫자 열 하나를 room별로 더해서 sum 열에 넣고 JSON을 만들어 주세요. 더할 열은 질문으로 정할게요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-lamps",
+            "kind": "table",
+            "name": "조명대여.csv",
+            "columns": [
+              "ticket",
+              "room",
+              "issued",
+              "returned"
+            ],
+            "rows": [
+              {
+                "ticket": "L5",
+                "room": "남관",
+                "issued": 7,
+                "returned": 2
+              },
+              {
+                "ticket": "L2",
+                "room": "북관",
+                "issued": 4,
+                "returned": 4
+              },
+              {
+                "ticket": "L8",
+                "room": "남관",
+                "issued": 5,
+                "returned": 1
+              },
+              {
+                "ticket": "L3",
+                "room": "별관",
+                "issued": 3,
+                "returned": 1
+              },
+              {
+                "ticket": "L9",
+                "room": "북관",
+                "issued": 8,
+                "returned": 8
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "집계 그룹과 파일 형식 보존, 합산 대상만 사용자에게 확인",
+        "slots": {
+          "aggregate.operation": "sum",
+          "aggregate.group_by": [
+            "room"
+          ],
+          "aggregate.column_name": "sum",
+          "output.format": "json"
+        },
+        "missing_required_slots": [
+          "sum_field"
+        ],
+        "routing": "CLARIFY",
+        "allowed_questions": {
+          "sum_field": [
+            "어느 열",
+            "어떤 열",
+            "합산",
+            "합계",
+            "더할",
+            "합칠"
+          ]
+        },
+        "forbidden_questions": [
+          "aggregate.operation",
+          "aggregate.group_by",
+          "aggregate.column_name",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "total",
+            "alternatives": [
+              {
+                "tool": "aggregate_table",
+                "operation": null
+              },
+              {
+                "tool": "aggregate_table",
+                "operation": "sum"
+              },
+              {
+                "tool": "aggregate_table",
+                "operation": "group_aggregate"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "total",
+              "alternatives": [
+                {
+                  "tool": "aggregate_table",
+                  "operation": null
+                },
+                {
+                  "tool": "aggregate_table",
+                  "operation": "sum"
+                },
+                {
+                  "tool": "aggregate_table",
+                  "operation": "group_aggregate"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "total"
+            ],
+            [
+              "total",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "aggregate.operation": "sum",
+          "aggregate.group_by": [
+            "room"
+          ],
+          "aggregate.column_name": "sum",
+          "output.format": "json",
+          "aggregate.field": "returned"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "room": "남관",
+              "sum": 3
+            },
+            {
+              "room": "북관",
+              "sum": 12
+            },
+            {
+              "room": "별관",
+              "sum": 1
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "집계 그룹과 파일 형식 보존, 합산 대상만 사용자에게 확인",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "total",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "aggregate.operation": "sum",
+              "aggregate.group_by": [
+                "room"
+              ],
+              "aggregate.column_name": "sum",
+              "output.format": "json"
+            },
+            "unresolved_user_inputs": [
+              "sum_field"
+            ],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "aggregate.operation": "sum",
+              "aggregate.group_by": [
+                "room"
+              ],
+              "aggregate.column_name": "sum",
+              "output.format": "json",
+              "aggregate.field": "returned"
+            },
+            "dependencies": [
+              [
+                "read",
+                "total"
+              ],
+              [
+                "total",
+                "export"
+              ]
+            ]
+          },
+          "row_order": "unordered; compare complete typed rows as a multiset"
+        }
+      },
+      "answer_policy": [
+        {
+          "slot": "sum_field",
+          "question_terms": [
+            "어느 열",
+            "어떤 열",
+            "합산",
+            "합계",
+            "더할",
+            "합칠"
+          ],
+          "text": "returned를 더해 주세요."
+        }
+      ],
+      "revision_after_ready": null,
+      "restart_between_turns": true,
+      "max_user_answers": 1,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-16",
+      "category": "clarify",
+      "split": "holdout",
+      "eligible": true,
+      "request": "조명대여.csv를 CSV로 줄 때, 제가 아직 고르지 않은 방 하나의 대여만 남겨 주세요. 선택은 물어봐 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-lamps",
+            "kind": "table",
+            "name": "조명대여.csv",
+            "columns": [
+              "ticket",
+              "room",
+              "issued",
+              "returned"
+            ],
+            "rows": [
+              {
+                "ticket": "L5",
+                "room": "남관",
+                "issued": 7,
+                "returned": 2
+              },
+              {
+                "ticket": "L2",
+                "room": "북관",
+                "issued": 4,
+                "returned": 4
+              },
+              {
+                "ticket": "L8",
+                "room": "남관",
+                "issued": 5,
+                "returned": 1
+              },
+              {
+                "ticket": "L3",
+                "room": "별관",
+                "issued": 3,
+                "returned": 1
+              },
+              {
+                "ticket": "L9",
+                "room": "북관",
+                "issued": 8,
+                "returned": 8
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "대상 방이 결정되기 전에는 구체적인 조건을 만들 수 없음",
+        "slots": {
+          "filter.field": "room",
+          "filter.operator": "eq",
+          "output.format": "csv"
+        },
+        "missing_required_slots": [
+          "room_name"
+        ],
+        "routing": "CLARIFY",
+        "allowed_questions": {
+          "room_name": [
+            "방",
+            "장소",
+            "room",
+            "관"
+          ]
+        },
+        "forbidden_questions": [
+          "filter.field",
+          "filter.operator",
+          "output.format"
+        ],
+        "tools_and_operations": [],
+        "workflow": {
+          "tasks": [],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "CLARIFY",
+        "final_slots": {
+          "filter.field": "room",
+          "filter.operator": "eq",
+          "output.format": "csv"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "대상 방이 결정되기 전에는 구체적인 조건을 만들 수 없음",
+          "ledger_units": {
+            "requested_steps": [
+              "연결 표 읽기",
+              "응답할 방으로 행 필터링",
+              "CSV 제공"
+            ],
+            "explicit_slot_values": {
+              "filter.field": "room",
+              "filter.operator": "eq",
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [
+              "room_name"
+            ],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "filter.field": "room",
+              "filter.operator": "eq",
+              "output.format": "csv"
+            },
+            "dependencies": []
+          },
+          "unresolved_criterion": "남관·북관·별관 중 어떤 방인지 확인할 때까지 정답은 CLARIFY."
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-17",
+      "category": "multiturn",
+      "split": "holdout",
+      "eligible": true,
+      "request": "소성기록.csv에서 heat가 900 미만인 행을 CSV로 만들어 주세요. 순서는 원본대로요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-ceramics",
+            "kind": "table",
+            "name": "소성기록.csv",
+            "columns": [
+              "lot",
+              "glaze",
+              "heat",
+              "cracks"
+            ],
+            "rows": [
+              {
+                "lot": "도1",
+                "glaze": "백유",
+                "heat": 880,
+                "cracks": 2
+              },
+              {
+                "lot": "도2",
+                "glaze": "흑유",
+                "heat": 910,
+                "cracks": 0
+              },
+              {
+                "lot": "도3",
+                "glaze": "백유",
+                "heat": 910,
+                "cracks": 1
+              },
+              {
+                "lot": "도4",
+                "glaze": "철유",
+                "heat": 925,
+                "cracks": 0
+              },
+              {
+                "lot": "도5",
+                "glaze": "흑유",
+                "heat": 899,
+                "cracks": 2
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "초안 뒤 답변에서 비교 방향과 파일 형식만 교체",
+        "slots": {
+          "filter.field": "heat",
+          "filter.operator": "lt",
+          "filter.value": 900,
+          "output.format": "csv"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "filter.field",
+          "filter.operator",
+          "filter.value",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "filter",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "filter"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "filter",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "filter"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "filter"
+            ],
+            [
+              "filter",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "filter.field": "heat",
+          "filter.operator": "gte",
+          "filter.value": 900,
+          "output.format": "json"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "lot": "도2",
+              "glaze": "흑유",
+              "heat": 910,
+              "cracks": 0
+            },
+            {
+              "lot": "도3",
+              "glaze": "백유",
+              "heat": 910,
+              "cracks": 1
+            },
+            {
+              "lot": "도4",
+              "glaze": "철유",
+              "heat": 925,
+              "cracks": 0
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "초안 뒤 답변에서 비교 방향과 파일 형식만 교체",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "filter",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "filter.field": "heat",
+              "filter.operator": "lt",
+              "filter.value": 900,
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "filter.field": "heat",
+              "filter.operator": "gte",
+              "filter.value": 900,
+              "output.format": "json"
+            },
+            "dependencies": [
+              [
+                "read",
+                "filter"
+              ],
+              [
+                "filter",
+                "export"
+              ]
+            ]
+          },
+          "initial_expected_rows": [
+            {
+              "lot": "도1",
+              "glaze": "백유",
+              "heat": 880,
+              "cracks": 2
+            },
+            {
+              "lot": "도5",
+              "glaze": "흑유",
+              "heat": 899,
+              "cracks": 2
+            }
+          ],
+          "final_expected_rows": [
+            {
+              "lot": "도2",
+              "glaze": "흑유",
+              "heat": 910,
+              "cracks": 0
+            },
+            {
+              "lot": "도3",
+              "glaze": "백유",
+              "heat": 910,
+              "cracks": 1
+            },
+            {
+              "lot": "도4",
+              "glaze": "철유",
+              "heat": 925,
+              "cracks": 0
+            }
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": {
+        "text": "조건을 반대로 바꿀게요. 이번에는 heat가 900 이상인 행만 JSON으로 주세요.",
+        "reference_time": "2028-02-14T11:34:00+09:00"
+      },
+      "restart_between_turns": true,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-18",
+      "category": "temporal",
+      "split": "holdout",
+      "eligible": true,
+      "request": "베를린 시간으로 어제 받은편지함에 들어온 메일의 ID만 최대 9개 보여줘.",
+      "prior_conversation": [],
+      "reference_time": "2027-03-29T00:12:00+02:00",
+      "user_timezone": "Europe/Berlin",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": true,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+        "slots": {
+          "gmail.period": "yesterday",
+          "gmail.date": "2027-03-28",
+          "gmail.zone": "Europe/Berlin",
+          "gmail.window_hours": 23.0,
+          "gmail.limit": 9,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "gmail.period",
+          "gmail.date",
+          "gmail.zone",
+          "gmail.window_hours",
+          "gmail.limit",
+          "gmail.scope",
+          "gmail.output"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "inbox_ids",
+            "alternatives": [
+              {
+                "tool": "email.list",
+                "operation": "execute"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "inbox_ids",
+              "alternatives": [
+                {
+                  "tool": "email.list",
+                  "operation": "execute"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "gmail.period": "yesterday",
+          "gmail.date": "2027-03-28",
+          "gmail.zone": "Europe/Berlin",
+          "gmail.window_hours": 23.0,
+          "gmail.limit": 9,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "execution": {
+          "mode": "external_connector_not_executed",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+          "ledger_units": {
+            "requested_steps": [
+              "inbox_ids"
+            ],
+            "explicit_slot_values": {
+              "gmail.period": "yesterday",
+              "gmail.date": "2027-03-28",
+              "gmail.zone": "Europe/Berlin",
+              "gmail.window_hours": 23.0,
+              "gmail.limit": 9,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "gmail.period": "yesterday",
+              "gmail.date": "2027-03-28",
+              "gmail.zone": "Europe/Berlin",
+              "gmail.window_hours": 23.0,
+              "gmail.limit": 9,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "dependencies": []
+          },
+          "date_window": {
+            "start_inclusive_epoch": 1806188400,
+            "end_exclusive_epoch": 1806271200,
+            "elapsed_hours": 23.0
+          },
+          "date_zone": "Europe/Berlin",
+          "date_interval_iso": [
+            "2027-03-28T00:00:00+01:00",
+            "2027-03-29T00:00:00+02:00"
+          ],
+          "boundary_probes": [
+            {
+              "id": "P18-1",
+              "epoch": 1806188399,
+              "matches": false
+            },
+            {
+              "id": "P18-2",
+              "epoch": 1806188400,
+              "matches": true
+            },
+            {
+              "id": "P18-3",
+              "epoch": 1806271199,
+              "matches": true
+            },
+            {
+              "id": "P18-4",
+              "epoch": 1806271200,
+              "matches": false
+            }
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-19",
+      "category": "temporal",
+      "split": "holdout",
+      "eligible": true,
+      "request": "베를린의 현지 날짜 2027년 10월 31일에 받은편지함으로 온 편지 ID를 13개까지 목록으로 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2027-11-01T00:10:00+01:00",
+      "user_timezone": "Europe/Berlin",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": true,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+        "slots": {
+          "gmail.period": "explicit_date",
+          "gmail.date": "2027-10-31",
+          "gmail.zone": "Europe/Berlin",
+          "gmail.window_hours": 25.0,
+          "gmail.limit": 13,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "gmail.period",
+          "gmail.date",
+          "gmail.zone",
+          "gmail.window_hours",
+          "gmail.limit",
+          "gmail.scope",
+          "gmail.output"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "inbox_ids",
+            "alternatives": [
+              {
+                "tool": "email.list",
+                "operation": "execute"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "inbox_ids",
+              "alternatives": [
+                {
+                  "tool": "email.list",
+                  "operation": "execute"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "gmail.period": "explicit_date",
+          "gmail.date": "2027-10-31",
+          "gmail.zone": "Europe/Berlin",
+          "gmail.window_hours": 25.0,
+          "gmail.limit": 13,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "execution": {
+          "mode": "external_connector_not_executed",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+          "ledger_units": {
+            "requested_steps": [
+              "inbox_ids"
+            ],
+            "explicit_slot_values": {
+              "gmail.period": "explicit_date",
+              "gmail.date": "2027-10-31",
+              "gmail.zone": "Europe/Berlin",
+              "gmail.window_hours": 25.0,
+              "gmail.limit": 13,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "gmail.period": "explicit_date",
+              "gmail.date": "2027-10-31",
+              "gmail.zone": "Europe/Berlin",
+              "gmail.window_hours": 25.0,
+              "gmail.limit": 13,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "dependencies": []
+          },
+          "date_window": {
+            "start_inclusive_epoch": 1824933600,
+            "end_exclusive_epoch": 1825023600,
+            "elapsed_hours": 25.0
+          },
+          "date_zone": "Europe/Berlin",
+          "date_interval_iso": [
+            "2027-10-31T00:00:00+02:00",
+            "2027-11-01T00:00:00+01:00"
+          ],
+          "boundary_probes": [
+            {
+              "id": "P19-1",
+              "epoch": 1824933599,
+              "matches": false
+            },
+            {
+              "id": "P19-2",
+              "epoch": 1824933600,
+              "matches": true
+            },
+            {
+              "id": "P19-3",
+              "epoch": 1825023599,
+              "matches": true
+            },
+            {
+              "id": "P19-4",
+              "epoch": 1825023600,
+              "matches": false
+            }
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-20",
+      "category": "temporal",
+      "split": "holdout",
+      "eligible": true,
+      "request": "카트만두 기준으로 오늘 받은편지함에 도착한 메일 ID를 많아도 4개까지만 확인할래요.",
+      "prior_conversation": [],
+      "reference_time": "2028-01-01T00:01:00+05:45",
+      "user_timezone": "Asia/Kathmandu",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": true,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+        "slots": {
+          "gmail.period": "today",
+          "gmail.date": "2028-01-01",
+          "gmail.zone": "Asia/Kathmandu",
+          "gmail.window_hours": 24.0,
+          "gmail.limit": 4,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "gmail.period",
+          "gmail.date",
+          "gmail.zone",
+          "gmail.window_hours",
+          "gmail.limit",
+          "gmail.scope",
+          "gmail.output"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "inbox_ids",
+            "alternatives": [
+              {
+                "tool": "email.list",
+                "operation": "execute"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "inbox_ids",
+              "alternatives": [
+                {
+                  "tool": "email.list",
+                  "operation": "execute"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "gmail.period": "today",
+          "gmail.date": "2028-01-01",
+          "gmail.zone": "Asia/Kathmandu",
+          "gmail.window_hours": 24.0,
+          "gmail.limit": 4,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "execution": {
+          "mode": "external_connector_not_executed",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+          "ledger_units": {
+            "requested_steps": [
+              "inbox_ids"
+            ],
+            "explicit_slot_values": {
+              "gmail.period": "today",
+              "gmail.date": "2028-01-01",
+              "gmail.zone": "Asia/Kathmandu",
+              "gmail.window_hours": 24.0,
+              "gmail.limit": 4,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "gmail.period": "today",
+              "gmail.date": "2028-01-01",
+              "gmail.zone": "Asia/Kathmandu",
+              "gmail.window_hours": 24.0,
+              "gmail.limit": 4,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "dependencies": []
+          },
+          "date_window": {
+            "start_inclusive_epoch": 1830276900,
+            "end_exclusive_epoch": 1830363300,
+            "elapsed_hours": 24.0
+          },
+          "date_zone": "Asia/Kathmandu",
+          "date_interval_iso": [
+            "2028-01-01T00:00:00+05:45",
+            "2028-01-02T00:00:00+05:45"
+          ],
+          "boundary_probes": [
+            {
+              "id": "P20-1",
+              "epoch": 1830276899,
+              "matches": false
+            },
+            {
+              "id": "P20-2",
+              "epoch": 1830276900,
+              "matches": true
+            },
+            {
+              "id": "P20-3",
+              "epoch": 1830363299,
+              "matches": true
+            },
+            {
+              "id": "P20-4",
+              "epoch": 1830363300,
+              "matches": false
+            }
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-21",
+      "category": "temporal",
+      "split": "holdout",
+      "eligible": true,
+      "request": "로스앤젤레스에서 어제 받은편지함에 들어온 메일 ID를 최대 17개 조회해 줘.",
+      "prior_conversation": [],
+      "reference_time": "2028-03-01T00:05:00-08:00",
+      "user_timezone": "America/Los_Angeles",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": true,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+        "slots": {
+          "gmail.period": "yesterday",
+          "gmail.date": "2028-02-29",
+          "gmail.zone": "America/Los_Angeles",
+          "gmail.window_hours": 24.0,
+          "gmail.limit": 17,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "gmail.period",
+          "gmail.date",
+          "gmail.zone",
+          "gmail.window_hours",
+          "gmail.limit",
+          "gmail.scope",
+          "gmail.output"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "inbox_ids",
+            "alternatives": [
+              {
+                "tool": "email.list",
+                "operation": "execute"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "inbox_ids",
+              "alternatives": [
+                {
+                  "tool": "email.list",
+                  "operation": "execute"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "gmail.period": "yesterday",
+          "gmail.date": "2028-02-29",
+          "gmail.zone": "America/Los_Angeles",
+          "gmail.window_hours": 24.0,
+          "gmail.limit": 17,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "execution": {
+          "mode": "external_connector_not_executed",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+          "ledger_units": {
+            "requested_steps": [
+              "inbox_ids"
+            ],
+            "explicit_slot_values": {
+              "gmail.period": "yesterday",
+              "gmail.date": "2028-02-29",
+              "gmail.zone": "America/Los_Angeles",
+              "gmail.window_hours": 24.0,
+              "gmail.limit": 17,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "gmail.period": "yesterday",
+              "gmail.date": "2028-02-29",
+              "gmail.zone": "America/Los_Angeles",
+              "gmail.window_hours": 24.0,
+              "gmail.limit": 17,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "dependencies": []
+          },
+          "date_window": {
+            "start_inclusive_epoch": 1835424000,
+            "end_exclusive_epoch": 1835510400,
+            "elapsed_hours": 24.0
+          },
+          "date_zone": "America/Los_Angeles",
+          "date_interval_iso": [
+            "2028-02-29T00:00:00-08:00",
+            "2028-03-01T00:00:00-08:00"
+          ],
+          "boundary_probes": [
+            {
+              "id": "P21-1",
+              "epoch": 1835423999,
+              "matches": false
+            },
+            {
+              "id": "P21-2",
+              "epoch": 1835424000,
+              "matches": true
+            },
+            {
+              "id": "P21-3",
+              "epoch": 1835510399,
+              "matches": true
+            },
+            {
+              "id": "P21-4",
+              "epoch": 1835510400,
+              "matches": false
+            }
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-22",
+      "category": "temporal",
+      "split": "holdout",
+      "eligible": true,
+      "request": "서울 시간으로 어제 날짜 딱 하루 동안 받은편지함에 들어온 메일 ID만 6개까지 볼게요.",
+      "prior_conversation": [],
+      "reference_time": "2028-01-01T07:10:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": true,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+        "slots": {
+          "gmail.period": "yesterday",
+          "gmail.date": "2027-12-31",
+          "gmail.zone": "Asia/Seoul",
+          "gmail.window_hours": 24.0,
+          "gmail.limit": 6,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "gmail.period",
+          "gmail.date",
+          "gmail.zone",
+          "gmail.window_hours",
+          "gmail.limit",
+          "gmail.scope",
+          "gmail.output"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "inbox_ids",
+            "alternatives": [
+              {
+                "tool": "email.list",
+                "operation": "execute"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "inbox_ids",
+              "alternatives": [
+                {
+                  "tool": "email.list",
+                  "operation": "execute"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "gmail.period": "yesterday",
+          "gmail.date": "2027-12-31",
+          "gmail.zone": "Asia/Seoul",
+          "gmail.window_hours": 24.0,
+          "gmail.limit": 6,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "execution": {
+          "mode": "external_connector_not_executed",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+          "ledger_units": {
+            "requested_steps": [
+              "inbox_ids"
+            ],
+            "explicit_slot_values": {
+              "gmail.period": "yesterday",
+              "gmail.date": "2027-12-31",
+              "gmail.zone": "Asia/Seoul",
+              "gmail.window_hours": 24.0,
+              "gmail.limit": 6,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "gmail.period": "yesterday",
+              "gmail.date": "2027-12-31",
+              "gmail.zone": "Asia/Seoul",
+              "gmail.window_hours": 24.0,
+              "gmail.limit": 6,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "dependencies": []
+          },
+          "date_window": {
+            "start_inclusive_epoch": 1830178800,
+            "end_exclusive_epoch": 1830265200,
+            "elapsed_hours": 24.0
+          },
+          "date_zone": "Asia/Seoul",
+          "date_interval_iso": [
+            "2027-12-31T00:00:00+09:00",
+            "2028-01-01T00:00:00+09:00"
+          ],
+          "boundary_probes": [
+            {
+              "id": "P22-1",
+              "epoch": 1830178799,
+              "matches": false
+            },
+            {
+              "id": "P22-2",
+              "epoch": 1830178800,
+              "matches": true
+            },
+            {
+              "id": "P22-3",
+              "epoch": 1830265199,
+              "matches": true
+            },
+            {
+              "id": "P22-4",
+              "epoch": 1830265200,
+              "matches": false
+            }
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-23",
+      "category": "temporal",
+      "split": "holdout",
+      "eligible": true,
+      "request": "시드니 기준 오늘 받은편지함의 메일 ID를 최대 3개만 조회할래요.",
+      "prior_conversation": [],
+      "reference_time": "2027-10-03T22:30:00+11:00",
+      "user_timezone": "Australia/Sydney",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": true,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+        "slots": {
+          "gmail.period": "today",
+          "gmail.date": "2027-10-03",
+          "gmail.zone": "Australia/Sydney",
+          "gmail.window_hours": 23.0,
+          "gmail.limit": 3,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "gmail.period",
+          "gmail.date",
+          "gmail.zone",
+          "gmail.window_hours",
+          "gmail.limit",
+          "gmail.scope",
+          "gmail.output"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "inbox_ids",
+            "alternatives": [
+              {
+                "tool": "email.list",
+                "operation": "execute"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "inbox_ids",
+              "alternatives": [
+                {
+                  "tool": "email.list",
+                  "operation": "execute"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "gmail.period": "explicit_date",
+          "gmail.date": "2027-10-02",
+          "gmail.zone": "Australia/Sydney",
+          "gmail.window_hours": 24.0,
+          "gmail.limit": 3,
+          "gmail.scope": "inbox",
+          "gmail.output": "IDs"
+        },
+        "execution": {
+          "mode": "external_connector_not_executed",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "사용자의 현지 날짜 하루에 해당하는 받은편지함 메시지 ID만 조회하는 설계",
+          "ledger_units": {
+            "requested_steps": [
+              "inbox_ids"
+            ],
+            "explicit_slot_values": {
+              "gmail.period": "today",
+              "gmail.date": "2027-10-03",
+              "gmail.zone": "Australia/Sydney",
+              "gmail.window_hours": 23.0,
+              "gmail.limit": 3,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "gmail.period": "explicit_date",
+              "gmail.date": "2027-10-02",
+              "gmail.zone": "Australia/Sydney",
+              "gmail.window_hours": 24.0,
+              "gmail.limit": 3,
+              "gmail.scope": "inbox",
+              "gmail.output": "IDs"
+            },
+            "dependencies": []
+          },
+          "date_window": {
+            "start_inclusive_epoch": 1822485600,
+            "end_exclusive_epoch": 1822568400,
+            "elapsed_hours": 23.0
+          },
+          "date_zone": "Australia/Sydney",
+          "date_interval_iso": [
+            "2027-10-03T00:00:00+10:00",
+            "2027-10-04T00:00:00+11:00"
+          ],
+          "boundary_probes": [
+            {
+              "id": "P23-1",
+              "epoch": 1822485599,
+              "matches": false
+            },
+            {
+              "id": "P23-2",
+              "epoch": 1822485600,
+              "matches": true
+            },
+            {
+              "id": "P23-3",
+              "epoch": 1822568399,
+              "matches": true
+            },
+            {
+              "id": "P23-4",
+              "epoch": 1822568400,
+              "matches": false
+            }
+          ],
+          "initial_and_final_windows": {
+            "initial": {
+              "date_window": {
+                "start_inclusive_epoch": 1822485600,
+                "end_exclusive_epoch": 1822568400,
+                "elapsed_hours": 23.0
+              },
+              "date_zone": "Australia/Sydney",
+              "date_interval_iso": [
+                "2027-10-03T00:00:00+10:00",
+                "2027-10-04T00:00:00+11:00"
+              ],
+              "boundary_probes": [
+                {
+                  "id": "P23-1",
+                  "epoch": 1822485599,
+                  "matches": false
+                },
+                {
+                  "id": "P23-2",
+                  "epoch": 1822485600,
+                  "matches": true
+                },
+                {
+                  "id": "P23-3",
+                  "epoch": 1822568399,
+                  "matches": true
+                },
+                {
+                  "id": "P23-4",
+                  "epoch": 1822568400,
+                  "matches": false
+                }
+              ]
+            },
+            "final": {
+              "date_window": {
+                "start_inclusive_epoch": 1822399200,
+                "end_exclusive_epoch": 1822485600,
+                "elapsed_hours": 24.0
+              },
+              "date_zone": "Australia/Sydney",
+              "date_interval_iso": [
+                "2027-10-02T00:00:00+10:00",
+                "2027-10-03T00:00:00+10:00"
+              ],
+              "boundary_probes": [
+                {
+                  "id": "R23-1",
+                  "epoch": 1822399199,
+                  "matches": false
+                },
+                {
+                  "id": "R23-2",
+                  "epoch": 1822399200,
+                  "matches": true
+                },
+                {
+                  "id": "R23-3",
+                  "epoch": 1822485599,
+                  "matches": true
+                },
+                {
+                  "id": "R23-4",
+                  "epoch": 1822485600,
+                  "matches": false
+                }
+              ]
+            }
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": {
+        "text": "정정할게요. 시드니 날짜 10월 2일 받은편지함으로 바꿔서 같은 개수의 ID만요.",
+        "reference_time": "2027-10-04T00:05:00+11:00"
+      },
+      "restart_between_turns": true,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-24",
+      "category": "unsupported",
+      "split": "holdout",
+      "eligible": true,
+      "request": "온실묘목.csv를 sprouts 큰 순서로 정렬한 뒤 작업장 잉크젯 프린터로 한 부 출력해 줘. 실제 종이 출력까지 꼭 해야 해.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-herbs",
+            "kind": "table",
+            "name": "온실묘목.csv",
+            "columns": [
+              "tray",
+              "species",
+              "sprouts"
+            ],
+            "rows": [
+              {
+                "tray": "묘3",
+                "species": "세이지",
+                "sprouts": 4
+              },
+              {
+                "tray": "묘1",
+                "species": "타임",
+                "sprouts": 7
+              },
+              {
+                "tray": "묘4",
+                "species": "세이지",
+                "sprouts": 8
+              },
+              {
+                "tray": "묘7",
+                "species": "차이브",
+                "sprouts": 7
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "정렬과 실물 프린터 출력을 모두 요구하므로 전체 요청은 지원 불가",
+        "slots": {
+          "source": "온실묘목.csv",
+          "sort.fields": [
+            "sprouts"
+          ],
+          "sort.directions": [
+            "desc"
+          ],
+          "copies": 1,
+          "destination": "physical printer"
+        },
+        "missing_required_slots": [],
+        "routing": "UNSUPPORTED",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "source",
+          "sort.fields",
+          "sort.directions",
+          "copies",
+          "destination"
+        ],
+        "tools_and_operations": [],
+        "workflow": {
+          "tasks": [],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [
+          "실물 프린터 출력"
+        ],
+        "final_routing": "UNSUPPORTED",
+        "final_slots": {
+          "source": "온실묘목.csv",
+          "sort.fields": [
+            "sprouts"
+          ],
+          "sort.directions": [
+            "desc"
+          ],
+          "copies": 1,
+          "destination": "physical printer"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "정렬과 실물 프린터 출력을 모두 요구하므로 전체 요청은 지원 불가",
+          "ledger_units": {
+            "requested_steps": [
+              "연결 표 읽기",
+              "내림차순 정렬",
+              "실물 프린터 출력"
+            ],
+            "explicit_slot_values": {
+              "source": "온실묘목.csv",
+              "sort.fields": [
+                "sprouts"
+              ],
+              "sort.directions": [
+                "desc"
+              ],
+              "copies": 1,
+              "destination": "physical printer"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [
+              "실물 프린터 출력"
+            ],
+            "final_slot_values": {
+              "source": "온실묘목.csv",
+              "sort.fields": [
+                "sprouts"
+              ],
+              "sort.directions": [
+                "desc"
+              ],
+              "copies": 1,
+              "destination": "physical printer"
+            },
+            "dependencies": []
+          },
+          "supported_prefix": [
+            "표 읽기",
+            "sprouts 내림차순 정렬"
+          ],
+          "must_report": "등록된 프린터 작업이 없어서 종이 출력 불가"
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-25",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "온실묘목.csv를 sprouts 큰 순, 같으면 tray 작은 순으로 정리한 CSV 파일 하나만 주세요. 종이 인쇄는 제가 할게요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-herbs",
+            "kind": "table",
+            "name": "온실묘목.csv",
+            "columns": [
+              "tray",
+              "species",
+              "sprouts"
+            ],
+            "rows": [
+              {
+                "tray": "묘3",
+                "species": "세이지",
+                "sprouts": 4
+              },
+              {
+                "tray": "묘1",
+                "species": "타임",
+                "sprouts": 7
+              },
+              {
+                "tray": "묘4",
+                "species": "세이지",
+                "sprouts": 8
+              },
+              {
+                "tray": "묘7",
+                "species": "차이브",
+                "sprouts": 7
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "사용자 본인의 인쇄 계획은 범위 밖이며 CSV만 제공",
+        "slots": {
+          "source": "온실묘목.csv",
+          "sort.fields": [
+            "sprouts",
+            "tray"
+          ],
+          "sort.directions": [
+            "desc",
+            "asc"
+          ],
+          "output.format": "csv"
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "source",
+          "sort.fields",
+          "sort.directions",
+          "output.format"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "read",
+            "alternatives": [
+              {
+                "tool": "read_table",
+                "operation": null
+              },
+              {
+                "tool": "read_table",
+                "operation": "parse"
+              },
+              {
+                "tool": "read_table",
+                "operation": "read_csv"
+              }
+            ]
+          },
+          {
+            "id": "sort",
+            "alternatives": [
+              {
+                "tool": "filter_sort",
+                "operation": null
+              },
+              {
+                "tool": "filter_sort",
+                "operation": "sort"
+              }
+            ]
+          },
+          {
+            "id": "export",
+            "alternatives": [
+              {
+                "tool": "write_result",
+                "operation": null
+              },
+              {
+                "tool": "export_result",
+                "operation": "serialize"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "read",
+              "alternatives": [
+                {
+                  "tool": "read_table",
+                  "operation": null
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "parse"
+                },
+                {
+                  "tool": "read_table",
+                  "operation": "read_csv"
+                }
+              ]
+            },
+            {
+              "id": "sort",
+              "alternatives": [
+                {
+                  "tool": "filter_sort",
+                  "operation": null
+                },
+                {
+                  "tool": "filter_sort",
+                  "operation": "sort"
+                }
+              ]
+            },
+            {
+              "id": "export",
+              "alternatives": [
+                {
+                  "tool": "write_result",
+                  "operation": null
+                },
+                {
+                  "tool": "export_result",
+                  "operation": "serialize"
+                }
+              ]
+            }
+          ],
+          "dependencies": [
+            [
+              "read",
+              "sort"
+            ],
+            [
+              "sort",
+              "export"
+            ]
+          ],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "source": "온실묘목.csv",
+          "sort.fields": [
+            "sprouts",
+            "tray"
+          ],
+          "sort.directions": [
+            "desc",
+            "asc"
+          ],
+          "output.format": "csv"
+        },
+        "execution": {
+          "mode": "local_synthetic",
+          "expected_rows": [
+            {
+              "tray": "묘4",
+              "species": "세이지",
+              "sprouts": 8
+            },
+            {
+              "tray": "묘1",
+              "species": "타임",
+              "sprouts": 7
+            },
+            {
+              "tray": "묘7",
+              "species": "차이브",
+              "sprouts": 7
+            },
+            {
+              "tray": "묘3",
+              "species": "세이지",
+              "sprouts": 4
+            }
+          ],
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "사용자 본인의 인쇄 계획은 범위 밖이며 CSV만 제공",
+          "ledger_units": {
+            "requested_steps": [
+              "read",
+              "sort",
+              "export"
+            ],
+            "explicit_slot_values": {
+              "source": "온실묘목.csv",
+              "sort.fields": [
+                "sprouts",
+                "tray"
+              ],
+              "sort.directions": [
+                "desc",
+                "asc"
+              ],
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "source": "온실묘목.csv",
+              "sort.fields": [
+                "sprouts",
+                "tray"
+              ],
+              "sort.directions": [
+                "desc",
+                "asc"
+              ],
+              "output.format": "csv"
+            },
+            "dependencies": [
+              [
+                "read",
+                "sort"
+              ],
+              [
+                "sort",
+                "export"
+              ]
+            ]
+          },
+          "excluded_user_actions": [
+            "사용자가 직접 인쇄"
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-26",
+      "category": "unsupported",
+      "split": "holdout",
+      "eligible": true,
+      "request": "작업용 블루투스 경광등을 기기에 페어링하고 실제 파란빛을 켜줘.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "페어링과 물리 장치 제어가 필수",
+        "slots": {
+          "device": "블루투스 경광등",
+          "color": "파란빛"
+        },
+        "missing_required_slots": [],
+        "routing": "UNSUPPORTED",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "device",
+          "color"
+        ],
+        "tools_and_operations": [],
+        "workflow": {
+          "tasks": [],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [
+          "블루투스 장치 페어링",
+          "실제 경광등 켜기"
+        ],
+        "final_routing": "UNSUPPORTED",
+        "final_slots": {
+          "device": "블루투스 경광등",
+          "color": "파란빛"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "페어링과 물리 장치 제어가 필수",
+          "ledger_units": {
+            "requested_steps": [
+              "페어링",
+              "물리 경광등 켜기"
+            ],
+            "explicit_slot_values": {
+              "device": "블루투스 경광등",
+              "color": "파란빛"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [
+              "블루투스 장치 페어링",
+              "실제 경광등 켜기"
+            ],
+            "final_slot_values": {
+              "device": "블루투스 경광등",
+              "color": "파란빛"
+            },
+            "dependencies": []
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-27",
+      "category": "ready",
+      "split": "holdout",
+      "eligible": true,
+      "request": "경광등 제어 담당자에게 전달할 문구 \"파란빛 켜기\"를 제목 \"점검 메모\" 아래에 넣어 TXT 파일로 만들어 주세요. 파일만 받으면 돼요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "주어진 제목과 본문을 포함한 TXT 파일 하나를 생성",
+        "slots": {
+          "document.heading": "점검 메모",
+          "document.body": "파란빛 켜기",
+          "output.format": "txt",
+          "output.link_count": 1
+        },
+        "missing_required_slots": [],
+        "routing": "READY",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "document.heading",
+          "document.body",
+          "output.format",
+          "output.link_count"
+        ],
+        "tools_and_operations": [
+          {
+            "id": "memo",
+            "alternatives": [
+              {
+                "tool": "create_document",
+                "operation": "compose"
+              }
+            ]
+          }
+        ],
+        "workflow": {
+          "tasks": [
+            {
+              "id": "memo",
+              "alternatives": [
+                {
+                  "tool": "create_document",
+                  "operation": "compose"
+                }
+              ]
+            }
+          ],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "READY",
+        "final_slots": {
+          "document.heading": "점검 메모",
+          "document.body": "파란빛 켜기",
+          "output.format": "txt",
+          "output.link_count": 1
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "주어진 제목과 본문을 포함한 TXT 파일 하나를 생성",
+          "ledger_units": {
+            "requested_steps": [
+              "memo"
+            ],
+            "explicit_slot_values": {
+              "document.heading": "점검 메모",
+              "document.body": "파란빛 켜기",
+              "output.format": "txt",
+              "output.link_count": 1
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "document.heading": "점검 메모",
+              "document.body": "파란빛 켜기",
+              "output.format": "txt",
+              "output.link_count": 1
+            },
+            "dependencies": []
+          },
+          "expected_sections": [
+            {
+              "heading": "점검 메모",
+              "text": "파란빛 켜기"
+            }
+          ],
+          "required_user_visible_downloads": 1,
+          "prohibited_effects": [
+            "경광등 제어",
+            "외부 발송"
+          ]
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-28",
+      "category": "unsupported",
+      "split": "holdout",
+      "eligible": true,
+      "request": "가상 회의실 Wi-Fi 공유기의 설정 화면에 접속해서 SSID를 무지개실로 실제 변경해 주세요.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "외부 공유기 네트워크 설정 변경 요구",
+        "slots": {
+          "setting": "SSID",
+          "requested.value": "무지개실"
+        },
+        "missing_required_slots": [],
+        "routing": "UNSUPPORTED",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "setting",
+          "requested.value"
+        ],
+        "tools_and_operations": [],
+        "workflow": {
+          "tasks": [],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [
+          "공유기 설정 변경"
+        ],
+        "final_routing": "UNSUPPORTED",
+        "final_slots": {
+          "setting": "SSID",
+          "requested.value": "무지개실"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "외부 공유기 네트워크 설정 변경 요구",
+          "ledger_units": {
+            "requested_steps": [
+              "공유기 설정 연결",
+              "SSID 변경"
+            ],
+            "explicit_slot_values": {
+              "setting": "SSID",
+              "requested.value": "무지개실"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [
+              "공유기 설정 변경"
+            ],
+            "final_slot_values": {
+              "setting": "SSID",
+              "requested.value": "무지개실"
+            },
+            "dependencies": []
+          }
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-29",
+      "category": "unsupported",
+      "split": "holdout",
+      "eligible": true,
+      "request": "조명대여.csv를 읽고 북관의 대여 건수만 집계해서 문자 발송기로 010-0000-0000에 SMS 전송까지 마쳐 줘.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-lamps",
+            "kind": "table",
+            "name": "조명대여.csv",
+            "columns": [
+              "ticket",
+              "room",
+              "issued",
+              "returned"
+            ],
+            "rows": [
+              {
+                "ticket": "L5",
+                "room": "남관",
+                "issued": 7,
+                "returned": 2
+              },
+              {
+                "ticket": "L2",
+                "room": "북관",
+                "issued": 4,
+                "returned": 4
+              },
+              {
+                "ticket": "L8",
+                "room": "남관",
+                "issued": 5,
+                "returned": 1
+              },
+              {
+                "ticket": "L3",
+                "room": "별관",
+                "issued": 3,
+                "returned": 1
+              },
+              {
+                "ticket": "L9",
+                "room": "북관",
+                "issued": 8,
+                "returned": 8
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "표의 집계와 실제 SMS 전송이 필수인 혼합 요청",
+        "slots": {
+          "source": "조명대여.csv",
+          "filter.field": "room",
+          "filter.value": "북관",
+          "aggregate.operation": "count",
+          "channel": "SMS",
+          "destination": "010-0000-0000"
+        },
+        "missing_required_slots": [],
+        "routing": "UNSUPPORTED",
+        "allowed_questions": {},
+        "forbidden_questions": [
+          "source",
+          "filter.field",
+          "filter.value",
+          "aggregate.operation",
+          "channel",
+          "destination"
+        ],
+        "tools_and_operations": [],
+        "workflow": {
+          "tasks": [],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [
+          "SMS 전송"
+        ],
+        "final_routing": "UNSUPPORTED",
+        "final_slots": {
+          "source": "조명대여.csv",
+          "filter.field": "room",
+          "filter.value": "북관",
+          "aggregate.operation": "count",
+          "channel": "SMS",
+          "destination": "010-0000-0000"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "표의 집계와 실제 SMS 전송이 필수인 혼합 요청",
+          "ledger_units": {
+            "requested_steps": [
+              "연결 표 읽기",
+              "북관 필터링",
+              "행 수 집계",
+              "SMS 전송"
+            ],
+            "explicit_slot_values": {
+              "source": "조명대여.csv",
+              "filter.field": "room",
+              "filter.value": "북관",
+              "aggregate.operation": "count",
+              "channel": "SMS",
+              "destination": "010-0000-0000"
+            },
+            "unresolved_user_inputs": [],
+            "unsupported_required_actions": [
+              "SMS 전송"
+            ],
+            "final_slot_values": {
+              "source": "조명대여.csv",
+              "filter.field": "room",
+              "filter.value": "북관",
+              "aggregate.operation": "count",
+              "channel": "SMS",
+              "destination": "010-0000-0000"
+            },
+            "dependencies": []
+          },
+          "supported_prefix": [
+            "조명대여.csv 읽기",
+            "room 북관 필터",
+            "행 수 계산"
+          ],
+          "expected_number_for_supported_prefix": 2
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    },
+    {
+      "id": "GNH-30",
+      "category": "clarify",
+      "split": "holdout",
+      "eligible": true,
+      "request": "조명대여.csv에서 제가 고를 방의 대여 건수를 집계해 CSV 파일로 주세요. 문자는 제가 보내겠습니다.",
+      "prior_conversation": [],
+      "reference_time": "2028-02-14T11:30:00+09:00",
+      "user_timezone": "Asia/Seoul",
+      "resource_state": {
+        "synthetic_only": true,
+        "resources": [
+          {
+            "id": "fixture-lamps",
+            "kind": "table",
+            "name": "조명대여.csv",
+            "columns": [
+              "ticket",
+              "room",
+              "issued",
+              "returned"
+            ],
+            "rows": [
+              {
+                "ticket": "L5",
+                "room": "남관",
+                "issued": 7,
+                "returned": 2
+              },
+              {
+                "ticket": "L2",
+                "room": "북관",
+                "issued": 4,
+                "returned": 4
+              },
+              {
+                "ticket": "L8",
+                "room": "남관",
+                "issued": 5,
+                "returned": 1
+              },
+              {
+                "ticket": "L3",
+                "room": "별관",
+                "issued": 3,
+                "returned": 1
+              },
+              {
+                "ticket": "L9",
+                "room": "북관",
+                "issued": 8,
+                "returned": 8
+              }
+            ]
+          }
+        ],
+        "gmail_connected_metadata": null,
+        "real_credentials_available": false
+      },
+      "gold": {
+        "intent": "CSV 집계에 필요한 방만 확인하며 사용자의 문자 전송은 작업 범위 밖",
+        "slots": {
+          "source": "조명대여.csv",
+          "filter.field": "room",
+          "aggregate.operation": "count",
+          "output.format": "csv"
+        },
+        "missing_required_slots": [
+          "room_name"
+        ],
+        "routing": "CLARIFY",
+        "allowed_questions": {
+          "room_name": [
+            "방",
+            "장소",
+            "room",
+            "관"
+          ]
+        },
+        "forbidden_questions": [
+          "source",
+          "filter.field",
+          "aggregate.operation",
+          "output.format"
+        ],
+        "tools_and_operations": [],
+        "workflow": {
+          "tasks": [],
+          "dependencies": [],
+          "allow_shared_node_for_filter_sort": true,
+          "allow_optional_finish": true,
+          "forbid_unrequested_side_effects": true
+        },
+        "unsupported_actions": [],
+        "final_routing": "CLARIFY",
+        "final_slots": {
+          "source": "조명대여.csv",
+          "filter.field": "room",
+          "aggregate.operation": "count",
+          "output.format": "csv"
+        },
+        "execution": {
+          "mode": "not_scheduled",
+          "expected_rows": null,
+          "external_execution_allowed": false
+        },
+        "review_contract": {
+          "whole_request_criterion": "CSV 집계에 필요한 방만 확인하며 사용자의 문자 전송은 작업 범위 밖",
+          "ledger_units": {
+            "requested_steps": [
+              "연결 표 읽기",
+              "선택 방 필터링",
+              "행 수 집계",
+              "CSV 제공"
+            ],
+            "explicit_slot_values": {
+              "source": "조명대여.csv",
+              "filter.field": "room",
+              "aggregate.operation": "count",
+              "output.format": "csv"
+            },
+            "unresolved_user_inputs": [
+              "room_name"
+            ],
+            "unsupported_required_actions": [],
+            "final_slot_values": {
+              "source": "조명대여.csv",
+              "filter.field": "room",
+              "aggregate.operation": "count",
+              "output.format": "csv"
+            },
+            "dependencies": []
+          },
+          "excluded_user_actions": [
+            "사용자가 직접 SMS 발송"
+          ],
+          "unresolved_criterion": "대상 방을 물은 후 기다림"
+        }
+      },
+      "answer_policy": [],
+      "revision_after_ready": null,
+      "restart_between_turns": false,
+      "max_user_answers": 0,
+      "adjudication": {
+        "status": "frozen_before_inference",
+        "basis": "사례별 입력·정답·판정 규칙을 모델 추론 전에 고정함."
+      }
+    }
+  ],
+  "excluded": [],
+  "gold_sha256": "b861a55a0ae1b6676c68ce71d3ee9a987e661fe11bae749291ac0e266cc119d1"
+}

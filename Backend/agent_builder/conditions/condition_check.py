@@ -179,6 +179,47 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
     return check
 
 
+def _separate_ordered_steps(state, draft):
+    """Split a native combined step only when its fixed runtime order is reversed."""
+    from agent_builder.design.condition_requirements import ordered_row_steps
+    from agent_builder.conditions.condition_readiness import confirmed_condition_view
+    if not confirmed_condition_view(state) or ordered_row_steps(state) != ('filter', 'policy'):
+        return None
+    workflow = draft.get('workflow') or {}
+    combined = [n for n in workflow.get('nodes', []) if n['tool'] == 'filter_sort']
+    if len(combined) != 1 or combined[0]['settings'].get('operation'):
+        return None
+    node = combined[0]
+    plan = node['settings'].get('execution_plan') or draft.get('execution_plan', {})
+    if (not plan.get('filters') or plan.get('sort') or plan.get('duplicate_policy') not in ('first', 'last')
+            or len(node.get('bindings', [])) != 1 or node['bindings'][0]['input'] != 'table'
+            or any(b['node_id'] == node['id'] and b['output'] != 'table'
+                   for n in workflow['nodes'] for b in n.get('bindings', []))):
+        return None
+    result = deepcopy(draft)
+    nodes = result['workflow']['nodes']
+    position = next(i for i, n in enumerate(nodes) if n['id'] == node['id'])
+    dedup = nodes[position]
+    first = deepcopy(dedup)
+    first_id = node['id'] + '_filter'
+    if any(n['id'] == first_id for n in nodes):
+        return None
+    first.update(id=first_id, label='요청 조건으로 행 선별')
+    first['settings']['execution_plan'] = dict(plan, duplicate_policy='keep', duplicate_field=None)
+    dedup['label'] = '선별된 행의 중복 제거'
+    dedup['bindings'] = [dict(input='table', node_id=first_id, output='table')]
+    dedup['settings']['execution_plan'] = dict(plan, filters=[])
+    nodes.insert(position, first)
+    edges = result['workflow']['edges']
+    for edge in edges:
+        if edge['target'] == node['id']:
+            edge['target'] = first_id
+    edges.append(dict(source=first_id, target=node['id'], branch='next'))
+    if result['workflow']['entry'] == node['id']:
+        result['workflow']['entry'] = first_id
+    return result
+
+
 def audit_conditions(state):
     from agent_builder.conditions.condition_readiness import canonical_written_operators, literal_condition_issues
     corrected, changes = canonical_written_operators(state, state.get('draft') or {})
@@ -191,8 +232,30 @@ def audit_conditions(state):
                       'detail': ', '.join(changes), 'model_calls': 0})
         update['trace'] = trace
     ledger = state.get('condition_ledger')
+    from agent_builder.design.gmail_summary import apply_gmail_count
+    corrected = apply_gmail_count(state, state.get('draft') or {})
+    if corrected is not None:
+        state = {**state, 'draft': corrected}
+        update['draft'] = corrected
+        trace.append(dict(node='condition_audit', label='Gmail 조회 수량 반영', status='completed',
+                          detail='사용자가 수정한 조회 수량을 기존 메일 읽기 단계에 반영했습니다.', model_calls=0))
+        update['trace'] = trace
+    from agent_builder.design.gmail_summary import apply_gmail_day
+    revised_day = apply_gmail_day(state, state.get('draft') or {})
+    if revised_day is not None:
+        state = {**state, 'draft': revised_day}
+        update['draft'] = revised_day
+        trace.append(dict(node='condition_audit', label='Gmail 현지 날짜 반영', status='completed',
+                          detail='원문 날짜의 두 현지 자정을 Gmail 검색 인자에 반영했습니다.', model_calls=0))
+        update['trace'] = trace
     if not ledger or ledger.get('decision') != 'ready':
         return update
+    ordered = _separate_ordered_steps(state, state['draft'])
+    if ordered is not None:
+        state = {**state, 'draft': ordered}
+        update['draft'] = ordered
+        trace.append({'node':'condition_audit', 'label':'순서가 지정된 표 처리', 'status':'completed',
+                      'detail':'선별 결과를 중복 제거 단계의 표 입력에 연결했습니다.', 'model_calls':0})
     from agent_builder.design.planner_constraints import table_tool_issues
     issues = literal_condition_issues(state) + plan_issues(ledger, state['draft'], state=state) + table_tool_issues(state)
     update['trace'] = trace + [{'node': 'condition_audit', 'label': '확정 조건 반영 검사',

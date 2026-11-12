@@ -19,6 +19,32 @@ REMOTE = 'https://fixture.proxy.runpod.net/v1'
 MODEL = 'qwen-offline-fixture'
 
 
+def test_trace_distinguishes_worker_cpu_snapshot_and_server_wait(monkeypatch):
+    from types import SimpleNamespace
+
+    clocks = {'wall': 0.0, 'cpu': 0.0}
+    monkeypatch.setattr('qwen_live_trace.time', SimpleNamespace(
+        monotonic=lambda: clocks['wall'], process_time=lambda: clocks['cpu']))
+    tracer = Trace(REMOTE, models=[MODEL])
+    def snapshot():
+        clocks['wall'] += 2
+        clocks['cpu'] += 1
+    tracer.on_change = snapshot
+    beginning = tracer.clock_sample()
+    call = tracer.start('ollama_native', MODEL)
+    tracer.dispatch(call)
+    clocks['wall'] += 20
+    clocks['cpu'] += 1
+    call['http_responses_received'] = 1
+    tracer.finish(call, status='returned', actual_model=MODEL)
+    assert call['elapsed_seconds'] == 24 and call['worker_cpu_seconds'] == 3
+    assert call['snapshot_wall_seconds'] == 4 and call['snapshot_cpu_seconds'] == 2
+    # The final persistence callback belongs to the enclosing stage, after the
+    # call clock is recorded. Counting call+stage would double-count snapshots.
+    assert tracer.elapsed(beginning) == dict(elapsed_seconds=26, worker_cpu_seconds=4,
+                                             snapshot_wall_seconds=6, snapshot_cpu_seconds=3)
+
+
 def load_runner():
     spec = importlib.util.spec_from_file_location('fixture_runner', ROOT/'scripts/verify/verify-qwen-live-evaluation.py')
     module = importlib.util.module_from_spec(spec)
@@ -94,15 +120,24 @@ def test_new_profile_uses_precommitted_digest_and_protects_original_52():
 
 
 def test_worker_error_keeps_attempted_followup_and_actual_question_id(tmp_path,monkeypatch):
+    from types import SimpleNamespace
+
     runner = load_runner()
+    wall = [0.0]
+    monkeypatch.setattr('qwen_live_trace.time', SimpleNamespace(
+        monotonic=lambda: wall[0], process_time=lambda: 0.0))
     case = fixture_corpus()['cases'][0]
     case.update(resource_state={'resources':[],'gmail_connected_metadata':False}, prior_conversation=[], max_user_answers=1,
                 answer_policy=[{'question_terms':['threshold'],'slot':'threshold','text':'20'}])
     def handle(request):
-        if request['action']=='new_session':return {'id':'fixture-session','revision':1}
+        if request['action']=='new_session':
+            wall[0] += 4
+            return {'id':'fixture-session','revision':1}
         if request.get('question_id'):
             assert request['question_id']=='real-prior-question'
+            wall[0] += 10
             raise ValueError('synthetic worker failure')
+        wall[0] += 3
         return {'id':'fixture-session','revision':2,'status':'needs_clarification',
                 'pending_questions':[{'id':'real-prior-question','text':'threshold?'}]}
     monkeypatch.setattr('service.worker.handle',handle)
@@ -111,6 +146,10 @@ def test_worker_error_keeps_attempted_followup_and_actual_question_id(tmp_path,m
     assert [a['status'] for a in record['turn_attempts']]==['returned','worker_error']
     assert record['turn_attempts'][1]['prior_pending_question_ids']==['real-prior-question']
     assert record['turn_attempts'][1]['question_id']=='real-prior-question'
+    assert [a['elapsed_seconds'] for a in record['turn_attempts']]==[3,10]
+    assert record['turn_attempts'][0]['response_route']=='CLARIFY'
+    assert 'response_route' not in record['turn_attempts'][1]
+    assert record['elapsed_seconds']==17
 
 
 def test_observed_ledger_input_and_output_keep_inherited_owner_state(monkeypatch):

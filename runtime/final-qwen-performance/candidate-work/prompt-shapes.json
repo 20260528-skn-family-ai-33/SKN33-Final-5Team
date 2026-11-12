@@ -1,0 +1,61 @@
+{
+  "method": "Stored case state rebuilt in current make_conversation/assess_capability with a captured or intercepted model transport. Counts are serialized Unicode characters, not tokens. No live Qwen calls.",
+  "catalog_entries": 62,
+  "distinct_contiguous_table_groups": 9,
+  "original_catalog_characters": 18285,
+  "candidate_catalog_characters": 13135,
+  "capability_initial_user_prompt": {
+    "H32": {
+      "before": 24006,
+      "after": 18580
+    },
+    "H01": {
+      "before": 23957,
+      "after": 18519
+    }
+  },
+  "non_catalog_payload_equal": true,
+  "roundtrip_json_equals_original": true,
+  "preoptimization_planner": {
+    "H32": {
+      "system_characters": 11977,
+      "wire_schema_characters": 34737,
+      "user_context_characters": 21862,
+      "discovery_catalog_characters": 10876,
+      "selected_contract_characters": 3133,
+      "discovered_tools": 62,
+      "selected_tools": [
+        "read_table",
+        "write_result",
+        "read_document",
+        "compose_answer",
+        "export_result",
+        "email.send"
+      ],
+      "capability_tools": [
+        "read_document",
+        "compose_answer",
+        "export_result",
+        "email.send"
+      ],
+      "whole_request_online_planner_input_tokens": 13619,
+      "whole_request_online_planner_output_tokens": 473
+    },
+    "H01": {
+      "system_characters": 10845,
+      "wire_schema_characters": 14517,
+      "user_context_characters": 11777,
+      "discovery_catalog_characters": 596,
+      "selected_contract_characters": 1179,
+      "discovered_tools": 4,
+      "selected_tools": [
+        "read_table",
+        "filter_sort",
+        "write_result"
+      ],
+      "whole_request_online_planner_input_tokens": 9974,
+      "whole_request_online_planner_output_tokens": 633
+    }
+  },
+  "judgement": "The full catalog remains available to Capability; discovery-summary and selected detailed contracts in Planner are different projections. Requirement specs repeated verbatim. These are reconstructed application-level messages. Ollama token totals come from retained historical traces."
+}

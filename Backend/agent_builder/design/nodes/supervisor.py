@@ -1,3 +1,8 @@
+def _unverifiable_tasks(coverage):
+    return {t['requirement_id'] for t in (coverage or {}).get('tasks', [])
+            if t.get('kind') == 'other' and t.get('status') == 'unverified'}
+
+
 def supervisor_node(state):
     from agent_builder.capabilities.capability_gate import blocking_issue
     issue=blocking_issue(state)
@@ -23,4 +28,13 @@ def supervisor_node(state):
             return {'route':'repair' if state.get('repair_count',0)<2 else 'invalid',
                     'status':'needs_clarification' if state.get('repair_count',0)<2 else 'validation_failed'}
     route='unsupported' if state['status']=='unsupported' else 'await_input' if (state.get('draft') or {}).get('questions') else 'repair' if state.get('issues') and state.get('repair_count',0)<2 else 'invalid' if state.get('issues') else 'await_input' if state['status']=='needs_clarification' else 'save' if state.get('confirmed') else 'await_approval'
+    if route == 'repair' and (reported := _unverifiable_tasks(state.get('requirement_coverage'))):
+        # A new draft cannot supply a coverage matcher for an opaque task.
+        # Revalidate the current ledger and draft before trusting a checkpoint's report.
+        from agent_builder.design.requirement_coverage import coverage_report
+        blocked = reported & _unverifiable_tasks(coverage_report(state, state['draft']))
+        if blocked:
+            return {'route':'invalid', 'status':'validation_failed', 'confirmed':False,
+                    'trace':[*state.get('trace', []), {'node':'supervisor', 'label':'요구사항 검증',
+                        'status':'needs_input', 'detail':'현재 장부에서 검증할 수 없는 업무: ' + ', '.join(sorted(blocked))}]}
     return {'route':route,**({'status':'validation_failed'} if route=='invalid' else {}),'trace':state.get('trace',[])+[{'node':'supervisor','label':'다음 단계 결정','status':'completed','detail':{'repair':'설정 검증 오류를 한 번 바로잡습니다.','invalid':'검증하지 못한 설정은 저장을 막고 오류를 표시합니다.','unsupported':'지원 범위를 안내합니다.','await_input':'필수 정보가 부족해 답변을 기다립니다.','await_approval':'검증을 통과해 사용자 확인을 기다립니다.','save':'사용자가 확인한 설정을 저장합니다.'}[route]}]}

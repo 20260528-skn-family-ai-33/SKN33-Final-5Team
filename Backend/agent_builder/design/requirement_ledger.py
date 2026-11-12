@@ -16,6 +16,14 @@ from .requirement_task_identity import merge_repeated_tasks
 
 
 SYSTEM = '''사용자의 최종 업무 요구사항을 추출해 JSON으로 반환한다. 각 task는 실제 요청된 업무 한 가지다.
+spec.kind는 도구 ID가 아니라 아래 업무 종류다. 각 종류의 의미를 바꾸지 않는다.
+범주 값으로 행을 고르는 조건은 filter의 eq/ne와 실제 값을 쓴다. 예: "승인 건만"은 상태 열 eq "승인"이다.
+is_empty/not_empty는 사용자가 해당 열의 빈값 여부를 실제로 요청한 경우에만 쓴다. 완료/승인/취소 같은 상태 값은 빈값이 아니다.
+compute의 formula는 산술식이다. 금액 이상의 행만 남기는 비교는 별도 filter이며, 비교식을 계산 열로 만들지 않는다.
+새로 계산하는 값은 이후 선별·정렬·출력에서 사용할 동일한 열 이름으로 연결한다. 최종 출력 열을 선택해도 앞의 계산·필터를 생략하지 않는다.
+문서 분석→사람 검토→최종 메모는 read, document_analysis, human_review로 기록한다. document_analysis에 원문 전체가 전달되므로 최종 메모 지시도 보존된다.
+서술형 분석·메모는 aggregate가 아니다. aggregate는 실제 표의 숫자 합계나 건수 집계에만 사용한다.
+예약을 명시하지 않으면 schedule을 만들지 않는다. 완료 안내도 예약이 아니다.
 description은 짧은 업무명이다. 같은 업무를 반복하지 않는다. 출력 규격에 대한 설명이나 생각을 업무로 기록하지 않는다.
 "원래 요청대로 생성", "다시 검토", "실행할 때 파일 제공", 자료 ID에 대한 질문은 설계 대화의 지시다. 이를 별도 실행 업무로 만들지 않고 원래 업무와 변경 조건을 반영한다.
 메시지마다 task를 만들지 않는다. 예를 들어 "파일 ID가 무엇인가요?"나 "그대로 만들어 주세요"는 실행 업무 0개다. other에도 넣지 않는다. 반면 "개인정보를 삭제"처럼 실행할 업무지만 지원 종류가 없는 요청은 other로 보존한다.
@@ -77,6 +85,9 @@ SYSTEM += '''\nconfirmed_conditions.slots는 사용자 근거 검증을 마친 �
 unresolved는 사용자 결정이 필요한 나머지 조건만 key,text,group,reason,options,response,required 구조로 작성한다.
 key는 영문 소문자와 점으로 구성한다(예: delivery.recipient, compute.formula, compute.output_column).
 조건 장부와 같은 의미일 때는 동일한 키를 사용한다(예: duplicate.policy, missing.policy, schedule.weekday, output.format).'''
+SYSTEM += '''\n마지막 확인: 명시한 비교 대상 열 이름을 다른 열로 바꾸지 않는다. 예를 들어 총액 조건이면 filter.field도 총액이다.
+최종 파일에 넣을 열 목록이 있으면 반드시 select_fields로 기록한다. 계산한 값을 다른 출력 이름으로 요구하면 compute의 출력 이름 또는 명시적인 rename으로 연결한다.
+분석→사람 검토→최종 메모 요청의 document_analysis는 원문 전체를 보존하는 한 건이다. 같은 원문에 대한 document_analysis를 중복하지 않는다. human_review는 별도 한 건으로 기록한다.'''
 
 
 def _customer_question_plan(plan,questions):
@@ -199,6 +210,9 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
+        from .explicit_review_contract import unrequested_review_kinds
+        if spec['kind'] in unrequested_review_kinds(state):
+            raise ValueError('문서 분석을 요청하지 않은 합계·집계 또는 예약 업무로 바꿀 수 없습니다.')
         if spec['kind'] == 'email_send' and spec['body'] is not None and (
                 spec != literal_send or index != 0 or task['depends_on'] or task['quote'] != users[index]):
             raise ValueError('메일 수신자·제목·본문을 사용자 답변과 발송 요청에서 확인해야 합니다.')
@@ -271,6 +285,11 @@ def validate_plan(raw, state):
                 if f['value_type']=='number' and f['value'] is not None:
                     number=number_value(f['value'])
                     if number not in numbers:raise ValueError('선별 기준 숫자가 사용자 원문에서 확인되지 않습니다.')
+                    from .grounded_values import _numeric_grounded
+                    if f['field'] in text and not _numeric_grounded(float(number), {**state,'resources':[]}, f['field']):
+                        clauses=[part.strip() for message in users for part in re.split(r',\s+|[\n;]',message)
+                                 if any(number_value(n.replace(',',''))==number for n in re.findall(r'(?<![\w.])\d[\d,]*(?:\.\d+)?',part))]
+                        raise ValueError(f"{f['field']!r} 열과 선별 기준 {number}의 연결이 사용자 원문과 다릅니다. filter.field를 다음 원문에 명시된 열로 바꾸세요: " + ' / '.join(clauses)[:220])
                     if isinstance(f['value'],str):f['value']=str(number)
         if spec['kind']=='aggregate' and ((spec['aggregation']=='sum') != bool(spec['sum_field'])):
             raise ValueError('합계/건수 요구사항의 원본 열을 확인하세요.')
@@ -283,6 +302,8 @@ def validate_plan(raw, state):
     validate_group_aggregations(plan, state)
     validate_grouped_result(plan, state)
     validate_explicit_ledger(plan,state)
+    from .output_selection_request import validate_output_selection
+    validate_output_selection(plan,state)
     from .request_guards import review_request
     if (not plan['unresolved'] and review_request(state)[0]
             and not any(t['spec']['kind'] == 'human_review' for t in plan['tasks'])):
@@ -448,6 +469,10 @@ def extract_plan(raw,state):
     confirmed = confirmed_condition_view(state)
     expected = owned_specs(confirmed, state)
     candidates = project_owned(raw['tasks'], expected, state)
+    from .explicit_review_contract import project_explicit_review
+    candidates = project_explicit_review(candidates,state)
+    from .output_selection_request import project_output_selection
+    candidates = project_output_selection(candidates,state)
     delivery = summary_delivery_spec(state)
     if delivery and any(c['spec']['kind'] == 'document_analysis' for c in candidates):
         read = dict(kind='read', file_ids=[state['resources'][0]['id']])
@@ -594,13 +619,22 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             if packet is not None:
                 return _clarification(state, extract_plan(packet, state), fingerprint, 0)
             owned = set(owned_specs(confirmed, state))
+            from .explicit_review_contract import explicit_review_contract, unrequested_review_kinds
+            review_contract=explicit_review_contract(state)
+            owned.update(unrequested_review_kinds(state))
+            from .output_selection_request import output_selection
+            selected_columns=output_selection(state)
             if multiple_outputs(state):
                 owned.discard('export')
             active=transport
             if active is None:
                 active=requirement_transport(model,api_key)
+                if hasattr(active,'thinking'):
+                    active.thinking=True
             active.schema=extraction_schema(len([m for m in state['messages'] if m['role']=='user']),
                                             [a['id'] for a in state.get('resources',[])], owned_kinds=owned)
+            from .output_selection_request import constrain_literal_selection, literal_numeric_filters
+            active.schema=constrain_literal_selection(active.schema,state)
             from .temporal_context import temporal_context, TEMPORAL_INSTRUCTIONS
             from .request_meaning import sealed_meaning
             payload={'user_messages':[m['content'] for m in state['messages'] if m['role']=='user'],
@@ -614,12 +648,34 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             payload['available_capabilities']=question_capability_context(state)
             from .service_connections import service_connection_context
             payload['service_connections']=service_connection_context(state)
+            if review_contract:
+                payload['confirmed_review_contract']=review_contract
+                payload['confirmed_review_instruction']='원문에 직접 명시한 document_analysis와 human_review는 필수다. 다른 종류로 바꾸지 않는다. 자료 읽기 및 나머지 실제 업무도 보존한다. 앱은 원문으로 증명된 필수 단계가 누락되면 보완한다.'
             if state.get('requirement_answers'):
                 payload['clarification_answers']=state['requirement_answers']
             from agent_builder.design.execution_mode import execution_mode_context
             if execution_mode_context(state):payload['execution_choice']=execution_mode_context(state)
             if confirmed:
                 payload['confirmed_conditions'] = confirmed
+            # Native constrained decoding limits syntax, but does not teach the
+            # model how the discriminated task schema represents user intent.
+            # Show the same schema in the prompt instead of letting tool names
+            # from the capability catalogue stand in for requirement kinds.
+            payload['response_contract']=active.schema
+            from .output_selection_request import output_selection
+            selected_columns=output_selection(state)
+            if selected_columns:
+                payload['explicit_output_columns']=selected_columns
+                payload['explicit_numeric_filters']=literal_numeric_filters(state)
+                original_columns=set(state['resources'][0].get('columns',[]))
+                payload['requested_new_output_columns']=[field for field in selected_columns if field not in original_columns]
+                payload['explicit_output_instruction']='원문에 명시한 최종 열을 select_fields로 기록한다. 최종 열이 원본에 없으면 요청한 계산 결과 또는 명시적 이름 변경으로 생성하고 동일한 이름으로 선별한다. 그 전에 필요한 계산·선별·정렬과 파일 저장 업무를 모두 추출한다.'
+            from .request_guards import review_request
+            review,final=review_request(state)
+            if review:
+                payload['explicit_review_request']={
+                    'human_review_required':True,'final_memo_required':final,
+                    'instruction':'실행 중 사람 검토 대기는 human_review로 기록한다. 문서의 분석과 최종 메모는 원문 전체를 보존하는 document_analysis다. read만으로 분석·검토·메모 요구를 충족하지 못한다. 추가로 요청한 업무도 보존한다.'}
             messages=[dict(role='system',content=SYSTEM+'\n'+TEMPORAL_INSTRUCTIONS),dict(role='user',content=json.dumps(payload,ensure_ascii=False))]
             for attempt in range(2):
                 calls+=1
@@ -642,7 +698,8 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                     return {**clarification_reply(state,error.questions,calls),'requirement_route':'await_input'}
                 except (ValueError,TypeError,KeyError) as error:
                     if attempt:raise
-                    messages=messages+[dict(role='user',content='앞선 추출은 무효입니다. 다음 응답 계약 오류를 해결하여 원래 사용자 요구만 새로 추출하세요. '
+                    rejected=[dict(role='assistant',content=content)] if isinstance(content,str) else []
+                    messages=messages+rejected+[dict(role='user',content='앞선 추출은 무효입니다. 위 응답은 요구사항의 근거가 아닙니다. 다음 응답 계약 오류를 해결하여 원래 사용자 요구만 새로 추출하세요. '
                         '조건 값을 추측하거나 사용자 업무를 삭제하지 마세요. 오류: '+str(error)[:400])]
                     continue
                 from .requirement_clarification import business_questions, clarification_reply

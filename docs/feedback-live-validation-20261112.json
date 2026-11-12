@@ -1,0 +1,167 @@
+{
+  "base_main": "33db4e455fe110718dcf5cdfe5905de87c8ca4c3",
+  "model": "a4b-qwen35-9b-final664-pilot32k",
+  "method": "actual design and runtime model; synthetic assets; in-memory checkpoints and file adapter; no production deployment or persistent changes",
+  "runtime_module_sha256": {
+    "agent_builder.conditions.condition_check": "b56a8136206a1445dc1abaae0a142d898e856dc0376bdfc43c470e9e7d14ebf4",
+    "agent_builder.conditions.condition_readiness": "fd0dca3148aea37fdea98f0f890c46921dc1963e37f1ae4e75e0b699e90f5f8b",
+    "agent_builder.conditions.input_requirements": "4397ad07aad7ec71167981a2787f1b785f13222806879aec1cdaa68e87b31e77",
+    "agent_builder.design.compute_grounding": "cc8f88b5dee598f02bc6807f4e8991f3a52d395e7cd15303c3d344ee0bbf1705",
+    "agent_builder.design.document_rows_template": "0251efa90882eb215f8c0b2de85415e0418c8316f55a3b561f5e72a2b56aebe5",
+    "agent_builder.design.failure_notice": "3488fa60fa2e303bfc2b426361e939077d4755ab50bb93a61409028835c14dee",
+    "agent_builder.design.graph": "80a3de7047f9e0983fe316375a3fbb13255e7b3263ed64ea831fcc432bf99776",
+    "agent_builder.design.nodes.await_input": "154156715f31978ea7ed6fc889e4fd78390951cbe12ddeeed8045c3d2b9cae54",
+    "agent_builder.design.nodes.conversation": "fa7f3067b33a031488b447ff3e8cd809882c874fd2f7826a5ce5a4ad4f7af56f",
+    "agent_builder.design.nodes.validation": "1ce33a41529a2f80a2254754fa2032845e8f73e17a932f8cebe6a6155f84483d",
+    "agent_builder.design.question_help": "0343d203d9e75d3017dd848340bf86764018a59af89f52e281dd391ccf273e11",
+    "agent_builder.design.request_guards": "7d62ca1df6dbb8a702a5fea3d3ea69fc1355bbe4c0897a5b7556cfffee513998",
+    "agent_builder.design.requirement_generation": "dab1c7067d7c3c5c335b1a144908e6fb0874bfb7e0667ce6891b9bc69eaa6cf8",
+    "agent_builder.design.requirement_ledger": "3a058bf3560c89ea12605b7f09578435f10cc22b93fd30dde546e9c8888c9c29",
+    "agent_builder.design.retry_request": "05392c461ef2c5d924ac802f6b095cb193845074abb95326f0f46df0bb9a25aa",
+    "contracts.models": "df84ee2c97e3e25ea67436520e76682c0c6ab4fe682a4191870cd21b37512db1",
+    "infrastructure.llm.model_factory": "57b07daec0b9d856f5249cbd45ba745e6e37517e3cbe09450bdcb252bbe7596f",
+    "service.handlers.design": "e0c2e5acdf856d5cae7fa59d43d2154542ef18146cf863a4c812aa04d0bc1f58",
+    "service.handlers.library_sources": "12eb3ab737c2535d154d460997dfce15f59751bd7eaf3dda504f154cd69640d2",
+    "service.handlers.runs": "5abf604abdf9a79c0881d83d44dd25dc8bccb74353905ffb4608fc8d8b30f2ac",
+    "workflow_engine.catalog.registry": "4bf39340f0dad82917da8a8aeac68f175bb193aa0d93f5b9e6b8f2704c09a2ea",
+    "workflow_engine.executors.document.compose_answer": "4ff651a6d7fbab3eb45b824919e50c800486d8875235796f4004d13141917697",
+    "workflow_engine.legacy_runtime": "0c832bf8b73268a56e25c3b28a5849f76b43252a84e2dfc828e0918f783efadf",
+    "workflow_engine.run_answer": "414fc1654d5040ffad31546fd16f35b92b3fd62e492e450c6ce408f11292ff98",
+    "workflow_engine.runner": "6ca5ea1a1a2ed7accdc4b68a34574fd64f41dfc6ee214d088772fffb2e928f22",
+    "workflow_engine.runtime_request": "21c0c204284202e126ceff3996456bcc9a18cd8baa5afbb548f637419ffb0038",
+    "workflow_engine.scheduling.library_sources": "6712b4e3bc00e2f82e97762196211d5611ee89143556c863ad46143f53b299fb",
+    "workflow_engine.workflow": "6699744b50f863a3d671e783bf6825657d711a5d997ffc1fe563a86d0dc39499",
+    "agent_builder.design.explicit_review_contract": "dfe88284c32abf200782ed6c8912aa868b2204190b5b9489faaafd6fa47e8a29",
+    "agent_builder.design.output_selection_request": "8a6edd9e91364bf37212eb48f6f5980e448ae7a8566a366c6c0fc5f67a7981a2",
+    "agent_builder.design.projected_table_decoder": "4d3907c44f81a7af32df855f35a2863a3e6650c3d8fa10959e245a055cf8fc32",
+    "workflow_engine.executors.document.review_memo": "6d32c84e645ec45976ac6f999151c57e09173a0290fd1213186b24054c22b1d3"
+  },
+  "automated_tests": {
+    "passed": 3863,
+    "skipped": 26,
+    "failures": 0,
+    "seconds": 95.443
+  },
+  "runs": [
+    {
+      "design": [
+        {
+          "scenario": "S5",
+          "status": "ready",
+          "seconds": 44.74,
+          "issues": []
+        },
+        {
+          "scenario": "S7",
+          "status": "ready",
+          "seconds": 33.53,
+          "issues": []
+        }
+      ],
+      "execution": [
+        {
+          "event": "execution_result",
+          "scenario": "S5",
+          "status": "passed",
+          "csv": "주문번호,주문금액\r\nORD-001,100000\r\nORD-003,150000\r\n",
+          "steps": 8
+        },
+        {
+          "event": "execution_result",
+          "scenario": "S7",
+          "status": "completed",
+          "steps": 4,
+          "review_count": 1,
+          "opinion": "월 이용료를 90000원으로 협의하자는 담당자 의견입니다. 아직 변경에 합의하거나 계약을 수정하지 않았습니다.",
+          "analysis": "## 계약 분석\n| 번호 | 핵심 내용 | 위험 | 확인 사항 |\n|---|---|---|---|\n| 1 | 제1조 목적: 교육용 소프트웨어를 제공합니다. | 목적 범위 초과 시 분쟁 발생 가능 | 제공 서비스 범위를 명확히 확인하세요.\n| 2 | 제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다. | 계약 기간 연장 조건 불명확 | 기간 연장 절차와 조건을 확인하세요.\n| 3 | 제3조 이용료: 월 100000원입니다. | 추가 비용 발생 가능성 | 숨은 비용이나 할인 조건을 확인하세요.\n| 4 | 제4조 해지: 30일 전에 서면으로 통지합니다. | 해지 처리 지연 가능 | 통지 방법과 수신을 확인하세요.\n| 5 | 제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다. | 정보 유출 책임 범위 불명확 | 예외 사항과 위반 시 조치를 확인하세요.\n\n## 사람 검토를 위해 분석 결과를 확인해 주세요.",
+          "final": {
+            "text": "## 요약\n연결한 계약서 분석 결과와 사람 검토 의견을 바탕으로 최종 메모를 작성합니다.\n\n## 주요 발견\n계약 목적, 기간, 이용료, 해지 조건, 비밀유지 의무가 명시되어 있습니다.\n\n## 검토 의견\n월 이용료를 90000원으로 협의하자는 담당자 의견입니다. 아직 변경에 합의하거나 계약을 수정하지 않았습니다.\n\n## 후속 조치\n이용료 변경을 위한 협의 결과를 확인하세요.",
+            "evidence": [
+              {
+                "source_id": "22222222-2222-4222-8222-222222222222:1:0",
+                "file_id": "22222222-2222-4222-8222-222222222222",
+                "file_name": "feedback-contract.txt",
+                "page": null,
+                "offset": 0,
+                "text": "합성 계약서\n제1조 목적: 교육용 소프트웨어를 제공합니다.\n제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다.\n제3조 이용료: 월 100000원입니다.\n제4조 해지: 30일 전에 서면으로 통지합니다.\n제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다.\n위약금과 자동 갱신 조항은 없습니다.",
+                "quote": "합성 계약서\n제1조 목적: 교육용 소프트웨어를 제공합니다.\n제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다."
+              },
+              {
+                "source_id": "22222222-2222-4222-8222-222222222222:1:0",
+                "file_id": "22222222-2222-4222-8222-222222222222",
+                "file_name": "feedback-contract.txt",
+                "page": null,
+                "offset": 0,
+                "text": "합성 계약서\n제1조 목적: 교육용 소프트웨어를 제공합니다.\n제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다.\n제3조 이용료: 월 100000원입니다.\n제4조 해지: 30일 전에 서면으로 통지합니다.\n제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다.\n위약금과 자동 갱신 조항은 없습니다.",
+                "quote": "제3조 이용료: 월 100000원입니다.\n제4조 해지: 30일 전에 서면으로 통지합니다.\n제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다."
+              }
+            ]
+          }
+        }
+      ],
+      "blocked_write_attempts": [
+        "open"
+      ]
+    },
+    {
+      "design": [
+        {
+          "scenario": "S5",
+          "status": "ready",
+          "seconds": 41.47,
+          "issues": []
+        },
+        {
+          "scenario": "S7",
+          "status": "ready",
+          "seconds": 36.99,
+          "issues": []
+        }
+      ],
+      "execution": [
+        {
+          "event": "execution_result",
+          "scenario": "S5",
+          "status": "passed",
+          "csv": "주문번호,주문금액\r\nORD-001,100000\r\nORD-003,150000\r\n",
+          "steps": 8
+        },
+        {
+          "event": "execution_result",
+          "scenario": "S7",
+          "status": "completed",
+          "steps": 4,
+          "review_count": 1,
+          "opinion": "월 이용료를 90000원으로 협의하자는 담당자 의견입니다. 아직 변경에 합의하거나 계약을 수정하지 않았습니다.",
+          "analysis": "## 계약 분석\n| 번호 | 핵심 내용 | 위험 | 확인 사항 |\n|---|---|---|---|\n| 1 | 제1조 목적: 교육용 소프트웨어를 제공합니다. | 목적 범위 초과 시 분쟁 발생 가능 | 제공 서비스 범위를 명확히 확인하세요.\n| 2 | 제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다. | 계약 기간 연장 조건 불명확 | 기간 연장 절차와 조건을 확인하세요.\n| 3 | 제3조 이용료: 월 100000원입니다. | 추가 비용 발생 가능성 | 숨은 비용이나 할인 조건을 확인하세요.\n| 4 | 제4조 해지: 30일 전에 서면으로 통지합니다. | 해지 처리 지연 가능 | 통지 방법과 수신을 확인하세요.\n| 5 | 제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다. | 정보 유출 책임 범위 불명확 | 예외 사항과 위반 시 조치를 확인하세요.\n\n## 사람 검토를 위해 분석 결과를 확인해 주세요.",
+          "final": {
+            "text": "## 요약\n연결한 계약서 분석 결과와 사람 검토 의견을 바탕으로 최종 메모를 작성합니다.\n\n## 주요 발견\n계약 목적, 기간, 이용료, 해지 조건, 비밀유지 의무가 명시되어 있습니다.\n\n## 검토 의견\n월 이용료를 90000원으로 협의하자는 담당자 의견입니다. 아직 변경에 합의하거나 계약을 수정하지 않았습니다.\n\n## 후속 조치\n이용료 변경을 위한 협의 결과를 확인하세요.",
+            "evidence": [
+              {
+                "source_id": "22222222-2222-4222-8222-222222222222:1:0",
+                "file_id": "22222222-2222-4222-8222-222222222222",
+                "file_name": "feedback-contract.txt",
+                "page": null,
+                "offset": 0,
+                "text": "합성 계약서\n제1조 목적: 교육용 소프트웨어를 제공합니다.\n제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다.\n제3조 이용료: 월 100000원입니다.\n제4조 해지: 30일 전에 서면으로 통지합니다.\n제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다.\n위약금과 자동 갱신 조항은 없습니다.",
+                "quote": "합성 계약서\n제1조 목적: 교육용 소프트웨어를 제공합니다.\n제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다."
+              },
+              {
+                "source_id": "22222222-2222-4222-8222-222222222222:1:0",
+                "file_id": "22222222-2222-4222-8222-222222222222",
+                "file_name": "feedback-contract.txt",
+                "page": null,
+                "offset": 0,
+                "text": "합성 계약서\n제1조 목적: 교육용 소프트웨어를 제공합니다.\n제2조 기간: 2026년 1월 1일부터 2026년 12월 31일까지입니다.\n제3조 이용료: 월 100000원입니다.\n제4조 해지: 30일 전에 서면으로 통지합니다.\n제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다.\n위약금과 자동 갱신 조항은 없습니다.",
+                "quote": "제3조 이용료: 월 100000원입니다.\n제4조 해지: 30일 전에 서면으로 통지합니다.\n제5조 비밀유지: 계약 중 알게 된 정보를 외부에 공개하지 않습니다."
+              }
+            ]
+          }
+        }
+      ],
+      "blocked_write_attempts": [
+        "open"
+      ]
+    }
+  ]
+}

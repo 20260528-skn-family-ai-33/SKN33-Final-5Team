@@ -83,6 +83,11 @@ def _compose_documents(node, state, storage, config, llm, docs, inputs, reviews)
             quote = ''.join(pieces[start:start + 3]).strip()
             if quote:
                 evidence_pool['e' + str(len(evidence_pool) + 1)] = {**source, 'quote': quote}
+    if not reviews:
+        from .review_memo import compose_review_memo
+        memo=compose_review_memo(settings,config,inputs,evidence_pool,llm)
+        if memo is not None:
+            return answer_result(node,memo['text'],memo['evidence'],reviews)
     schema = GroundedAnswer.model_json_schema()
     schema['$defs']['Citation']['properties'] = {'evidence_id': {'type': 'string', 'enum': list(evidence_pool)}}
     schema['$defs']['Citation']['required'] = ['evidence_id']

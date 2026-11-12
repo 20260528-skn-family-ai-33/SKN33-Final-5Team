@@ -17,11 +17,13 @@ def required_operation_variants(specs,node_schema,binding_schema,variable_names,
     """Expose required registered operations absent from a tool's native settings."""
     from workflow_engine.catalog.canonical import operation_variants
     operations={s['kind'] for s in specs} & {'fill_missing','select_fields'}
-    if not operations or 'filter_sort' in available:return []
-    names={'fill_missing':'handle_missing','select_fields':'select_columns'}
-    wanted={names[k] for k in operations}
-    return [v for v in operation_variants(node_schema,binding_schema,{'filter_sort'},variable_names)
-            if v['properties']['settings']['properties']['operation'].get('enum',[None])[0] in wanted]
+    if not operations:return []
+    wanted={'filter_sort':{'handle_missing' if k=='fill_missing' else 'select_columns' for k in operations}}
+    if 'select_fields' in operations:
+        wanted.update(json_transform={'lookup'},export_result={'write_csv','write_json'})
+    return [v for tool,names in wanted.items() if tool not in available
+            for v in operation_variants(node_schema,binding_schema,{tool},variable_names)
+            if v['properties']['settings']['properties']['operation'].get('enum',[None])[0] in names]
 
 
 def generation_mode():
@@ -78,6 +80,42 @@ def generation_requirements(state):
     if any(s['kind']=='policy' for s in specs) and 'filter_sort' not in order:
         return specs,[]  # no invented policy placement
     return specs,order if 1<=len(order)<=15 else []
+
+
+def constrain_review_steps(schema, state):
+    """Decode a sealed linear review contract with distinct analysis/answer ports.
+
+    Applicability is established by generation_requirements; additional work,
+    reusable nodes and non-document inputs retain the general decoder. This
+    constrains generation, never repairs or approves an invalid returned draft.
+    """
+    specs, order = generation_requirements(state)
+    if order != ['read_document', 'compose_answer', 'ask_user', 'compose_answer']:
+        return deepcopy(schema)
+    if (state.get('requirement_ledger') or {}).get('unresolved'):
+        return deepcopy(schema)
+    result = constrain_ordered_steps(schema, state)
+    following = result['$defs']['WorkflowDefinition']['properties'].get('next_steps', {})
+    slots = following.get('properties', {})
+    if set(slots) != {'step_2', 'step_3', 'step_4'}:
+        return deepcopy(schema)
+    bindings = {
+        'step_2': [dict(input='documents',step=1,output='documents')],
+        'step_3': [dict(input='text',step=2,output='text')],
+        'step_4': [dict(input='documents',step=1,output='documents'),
+                   dict(input='text',step=2,output='text'),dict(input='answer',step=3,output='answer')],
+    }
+    request = '\n'.join(dict.fromkeys(s['request'] for s in specs if s['kind']=='document_analysis'))
+    for name, slot in slots.items():
+        for variant in slot['anyOf']:
+            variant['properties']['bindings'] = _literal(bindings[name])
+            settings = variant['properties']['settings']['properties']
+            if name == 'step_3':
+                settings['instructions'] = {'type':'null'}
+            else:
+                phase = '현재 단계에서는 사람 검토 전 분석 결과만 작성하세요.' if name == 'step_2' else '현재 단계에서는 연결된 분석과 제출한 검토 의견으로 최종 메모를 작성하세요.'
+                settings['instructions'] = _literal(request + '\n' + phase)
+    return result
 
 
 def _literal(value):

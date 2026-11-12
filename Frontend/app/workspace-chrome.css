@@ -37,8 +37,8 @@
 .task-library-title h1{margin:0;font-size:25px;font-weight:650;letter-spacing:-.8px;line-height:1.4}
 .task-library-title>.as-button{width:36px;min-height:36px;padding:8px}
 .task-library-title>.as-text-button{flex:none}
-.task-library-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:fit-content;max-width:100%;gap:8px}
-.task-library-header .task-library-tabs button{display:grid;grid-template-columns:16px auto 16px;justify-content:center}
+.task-library-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:380px;max-width:100%;gap:8px}
+.task-library-header .task-library-tabs button{display:grid;grid-template-columns:16px minmax(0,1fr) 14px;align-items:center;gap:8px;min-height:38px;padding:8px 12px;line-height:20px;text-align:center;letter-spacing:normal}
 .task-library-tabs button[aria-current=page]{border-color:var(--a4b-action);box-shadow:inset 0 0 0 1px var(--a4b-action)}
 .task-library-tabs button:focus-visible{outline:2px solid var(--a4b-action);outline-offset:3px}
 .task-library-tabs button:disabled{opacity:.5;cursor:not-allowed}
@@ -61,3 +61,6 @@
 }
 
 .entry-workflow-card footer .as-button, .schedule-table .as-button { white-space: nowrap; }
+
+.task-library-tabs button>span{white-space:nowrap}
+@media(max-width:420px){.task-library-tabs{grid-template-columns:minmax(0,1fr);width:190px}}

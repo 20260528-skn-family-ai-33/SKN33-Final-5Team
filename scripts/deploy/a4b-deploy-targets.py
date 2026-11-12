@@ -5,6 +5,7 @@ import sys
 
 
 BACKEND_SCRIPTS = {
+    b'scripts/model-environment.mjs',
     b'scripts/dev/import-preprocessing.py',
     b'scripts/setup/prepare_parser_models.py',
     b'scripts/setup/setup-agent-demo.sh',

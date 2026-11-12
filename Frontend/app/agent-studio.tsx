@@ -305,6 +305,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
    const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
    remember(result);
+   setFreshFiles({session:'',ids:[]});  // the message has now used every attached file
   }catch(e){
    let restored:Session|null=null;
    if(sentSession)restored=await recoverConversation({before:sentSession,requestId,action:'message',content,draftText,fromComposer,error:(e as Error).message,running:false});
@@ -327,6 +328,8 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   if(content.length>4000)throw new Error('답변은 전체 4,000자까지 보낼 수 있습니다. 내용을 줄여주세요.');
   await send(undefined,content,undefined,answers);
  }
+ // Files attached since the last message, per session: only these get a summary mid-conversation.
+ const [freshFiles,setFreshFiles]=useState<{session:string;ids:string[]}>({session:'',ids:[]});
  async function attachResource(source:File|string) {
   if(inFlight.current||recovery)return;
   if(typeof source!=='string' && source.size>8*1024*1024){setError('자료는 8MB 이하로 연결하세요.');return;}
@@ -338,10 +341,13 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   try {
    const s=await ensureSession();remember(s);
    const sessionRef={id:s.id,revision:s.revision};
+   const before=new Set((s.resources||[]).map(resource=>resource.id));
    const result=typeof source==='string'
      ? await request('/api/agent-builder/attach_asset',{...sessionRef,assetId:source})
      : await request('/api/agent-builder/upload',{...sessionRef,fileName:source.name,data:await asBase64(source)});
    remember(result);
+   const added=((result.resources||[]) as Resource[]).map(resource=>resource.id).filter(id=>!before.has(id));
+   setFreshFiles(prior=>({session:result.id,ids:[...(prior.session===result.id?prior.ids:[]),...added]}));
   } catch(e){setError((e as Error).message);}
   finally{inFlight.current=false;setBusy('');}
  }
@@ -609,7 +615,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
         const full=asset.text?.trim() || (asset.kind==='table' && asset.row_count<=asset.preview.length);
         return {label:full?'읽은 내용 전체 보기':'자료 상세 보기',open:()=>setResource(asset)};
       }} factsFor={id=>{const asset=session.resources.find(resource=>resource.id===id);return asset?{row_count:asset.kind==='table'?asset.row_count:undefined,page_count:asset.page_count}:undefined;}}
-      initial={!session.messages.some(message=>message.role==='user')} readOnly={!!receiptQuestion} disabled={!!busy||!!recovery||libraryBusy||saved}
+      initial={!session.messages.some(message=>message.role==='user')} fresh={freshFiles.session===session.id?freshFiles.ids:[]} readOnly={!!receiptQuestion} disabled={!!busy||!!recovery||libraryBusy||saved}
       onUse={message=>{
         const next=text.trim()?text.trimEnd()+'\n'+message:message;
         if(next.length>4000){setError('업무 설명은 4,000자까지 입력할 수 있어요. 내용을 줄인 뒤 다시 추가해 주세요.');return;}

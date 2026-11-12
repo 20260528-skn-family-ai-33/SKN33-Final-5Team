@@ -99,16 +99,23 @@ export function describeFile(file:InspectedFile, facts:FileFacts={}):string {
   return parts.join(' ');
 }
 
-export function FileInspection({files,initial,readOnly,disabled,onUse,detailsFor,factsFor}:{
+export function FileInspection({files,initial,fresh=[],readOnly,disabled,onUse,detailsFor,factsFor}:{
   files:InspectedFile[];initial:boolean;readOnly:boolean;disabled:boolean;onUse:(message:string)=>void;detailsFor:(id:string)=>FileDetails|undefined;
-  factsFor?:(id:string)=>FileFacts|undefined
+  factsFor?:(id:string)=>FileFacts|undefined;
+  /** Files attached during the conversation and not yet used by a message. */
+  fresh?:string[]
 }) {
   if(!files.length)return null;
+  // Before the first message every file is new; later only the files attached since the last message.
+  const described=initial?files:files.filter(file=>fresh.includes(file.id));
+  const plural=described.length>1;
   return <section className="as-file-inspection" aria-label="연결 파일 확인">
     <h3>연결한 파일에서 확인한 내용</h3>
-    {initial&&!readOnly&&<div className="as-file-summary" role="status">
-      {files.map(file=><p key={file.id}>{describeFile(file,factsFor?.(file.id))}</p>)}
-      <p>{files.length>1?'이 파일들로':'이 파일로'} 어떤 작업을 할까요? 미리보기에서 항목을 골라 요청을 만들거나, 아래 입력창에 원하는 작업을 적어 주세요.</p>
+    {described.length>0&&!readOnly&&<div className="as-file-summary" role="status">
+      {described.map(file=><p key={file.id}>{describeFile(file,factsFor?.(file.id))}</p>)}
+      <p>{initial
+        ? (plural?'이 파일들로':'이 파일로')+' 어떤 작업을 할까요? 미리보기에서 항목을 골라 요청을 만들거나, 아래 입력창에 원하는 작업을 적어 주세요.'
+        : '새로 연결한 '+(plural?'파일들을':'파일을')+' 지금 작업에 어떻게 쓸까요? 미리보기에서 항목을 골라 요청에 추가하거나, 아래 입력창에 적어 주세요.'}</p>
     </div>}
     {files.map(file=><InspectedSource key={file.id} file={file} open={initial&&!readOnly} readOnly={readOnly} disabled={disabled} onUse={onUse} details={detailsFor(file.id)}/>)}
   </section>;

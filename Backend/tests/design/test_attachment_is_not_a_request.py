@@ -41,3 +41,24 @@ def test_attaching_while_a_question_waits_adds_no_assistant_text_or_issue(monkey
     assert [m['content'] for m in s['messages'] if m['role'] == 'assistant'] == before
     assert not s['issues'] and len(calls) == 1
     assert [r['name'] for r in s['resources']] == ['계약서.txt']
+
+
+def test_attaching_clears_validation_errors_reached_without_the_file(monkeypatch):
+    # PR #99 review: an earlier "file missing" validation error stayed on screen after attaching.
+    directory, s = _session(monkeypatch)
+    calls = []
+
+    def planner(state):
+        calls.append(state['messages'][-1]['content'])
+        from tests.design.test_runtime_file_questions import question_draft
+        d = question_draft('unused')
+        d.update(questions=[], workflow=None, tool_ids=[], requirements=[])
+        return {'draft': d, 'confirmed': False, 'repair_count': state.get('repair_count', 0) + 1}
+
+    s = handle({'directory': directory, 'action': 'message', 'id': s['id'], 'revision': s['revision'],
+                'content': '계약서 위험 조항을 정리해줘'}, conversation=planner)
+    assert s['issues'], 'the fixture must start from a validation error'
+    s = handle({'directory': directory, 'action': 'upload', 'id': s['id'], 'revision': s['revision'],
+                'asset': dict(DOC), 'rows': []}, conversation=planner)
+    assert s['issues'] == [] and s['status'] == 'needs_clarification' and len(calls) >= 1
+    assert not [m for m in s['messages'] if m['role'] == 'assistant' and '자료 연결이 변경' in m['content']]

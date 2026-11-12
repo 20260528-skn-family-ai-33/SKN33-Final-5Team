@@ -166,8 +166,10 @@ def _session_action(c):
             elif state:
                 # Attaching a file is not a request: the assistant says nothing until the user's next
                 # message, which re-reads every attached resource. A verdict reached without this file
-                # (ready, unsupported/tool gap, failure) no longer applies, so it is withdrawn silently.
-                update={'resources':resources}
+                # (ready, unsupported/tool gap, failure) no longer applies, so it is withdrawn silently,
+                # together with the validation errors it produced (PR #99 review). A retryable
+                # requirement failure stays so the user can retry with the new file at once.
+                update={'resources':resources,'issues':[],'semantic_issues':[]}
                 if state.get('status') not in (None,'empty','needs_clarification'):update['status']='needs_clarification'
                 graph.update_state(config,update)
             return public_state(storage,s,graph)

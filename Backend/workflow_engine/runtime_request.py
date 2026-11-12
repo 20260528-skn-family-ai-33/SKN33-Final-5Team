@@ -95,6 +95,10 @@ def _criteria(text, columns):
             field, value, word = match.groups()
             op = {'이상':'gte', '이하':'lte', '초과':'gt', '미만':'lt'}[word]
         value, quoted = _comparison_value(value)
+        if quoted and value == '' and op in ('eq', 'ne'):
+            filters.append(dict(field=field, operator='is_empty' if op=='eq' else 'not_empty',
+                                value=None, compare_field=None, value_type='text'))
+            continue
         numeric = re.fullmatch(r'[-+]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?', value)
         if op not in ('eq', 'ne') and (not numeric or quoted):
             raise ValueError(HELP)

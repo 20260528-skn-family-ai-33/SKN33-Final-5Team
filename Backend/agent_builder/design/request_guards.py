@@ -46,29 +46,44 @@ def review_workflow_issues(state, draft):
         return ['요청한 사람 검토가 빠졌습니다. 검토 의견을 기다리는 워크플로우를 연결하세요.']
     workflow = draft['workflow']
     by = {n['id']: n for n in workflow['nodes']}
-    paths = []
-    def visit(identifier, prefix):
-        if identifier not in by or identifier in {n['id'] for n in prefix} or len(paths) >= 256:
-            raise ValueError('Invalid or excessive review paths')
-        path = prefix + [by[identifier]]
-        edges = [e for e in workflow['edges'] if e['source'] == identifier]
-        if not edges or by[identifier]['tool'] == 'finish':
-            paths.append(path)
-        else:
-            for e in edges: visit(e['target'], path)
+    from .workflow_paths import workflow_paths
     try:
-        visit(workflow['entry'], [])
-    except ValueError:
+        paths = workflow_paths(workflow)
+    except (ValueError, KeyError):
         return ['사람 검토 단계의 실행 경로를 확인하지 못했습니다.']
     text = '\n'.join(m['content'] for m in active_request_messages(state) if m.get('role') == 'user')
     conditional = bool(re.search(r'(?:경우(?:에만|만)?|때(?:만)?|이면|하면)\s*(?:사람\s*검토|human\s+review)', text, re.I))
-    issues = [_review_path_issues(path, final, text) for path in paths]
     if conditional:
-        # Conditional review may skip a branch, but at least one reachable path
-        # must actually wait and every path containing a review must be valid.
-        reviewed = [i for p, i in zip(paths, issues) if any(n['tool']=='ask_user' for n in p)]
-        if reviewed:
-            return list(dict.fromkeys(i for group in reviewed for i in group))
+        # A review on an arbitrary branch is not evidence of the requested gate.
+        # Only prove the supported missing-value condition; unknown predicates
+        # must be clarified instead of accepting an inverted branch.
+        match = re.search(r'(?:누락|빈\s*값|결측)[^.\n;]{0,50}?'
+                          r'(?P<polarity>있는|없는|있을|없을)\s*(?:경우|때)(?:에만|만)?\s*'
+                          r'(?:사람\s*검토|human\s+review)', text, re.I)
+        gates = [n for n in by.values() if n['tool']=='condition' and not n['settings'].get('operation')
+                 and n['settings'].get('condition_operator')=='has_missing'
+                 and (not n['settings'].get('condition_field') or n['settings']['condition_field'] in (match[0] if match else ''))]
+        if not match or len(gates)!=1:
+            return ['사람 검토가 필요한 조건과 분기 방향을 확인하지 못했습니다.']
+        gate = gates[0]['id']
+        wanted = 'no' if match['polarity'].startswith('없') else 'yes'
+        only = bool(re.search(r'(?:경우|때)(?:에만|만)', match[0]))
+        issues = []
+        for path, edges in paths:
+            decision = next((e['branch'] for e in edges if e['source']==gate), None)
+            if decision is None:
+                issues.append(['사람 검토 조건을 거치지 않는 실행 경로가 있습니다.'])
+                continue
+            start = next(i for i,n in enumerate(path) if n['id']==gate) + 1
+            if any(n['tool']=='ask_user' for n in path[:start]):
+                issues.append(['조건 판정 전에 사람 검토가 연결됐습니다.'])
+            if decision == wanted:
+                issues.append(_review_path_issues(path[start:], final, text))
+            elif any(n['tool']=='ask_user' for n in path[start:]):
+                issues.append(['사람 검토를 요청하지 않은 조건 분기에 검토가 연결됐습니다.'] if only
+                              else _review_path_issues(path[start:], final, text))
+        return list(dict.fromkeys(i for group in issues for i in group))
+    issues = [_review_path_issues(path, final, text) for path, _ in paths]
     return list(dict.fromkeys(i for group in issues for i in group))
 
 
@@ -131,6 +146,17 @@ def unary_filter_issue(rule, text):
         # The first selection verb belongs to this predicate. A later column's
         # removal verb must not invert an earlier keep operation (and vice versa).
         action = re.search(selection, cleaned, re.I)
+        if action:
+            negated = re.match(r'\s*(?:하)?지\s*(?:말고|않고|마(?:세요)?|말아(?:줘)?|않)', cleaned[action.end():])
+            if negated:
+                remainder = cleaned[action.end()+negated.end():].strip()
+                # A bare prohibition does not request a new row filter. For a
+                # replacement predicate keep the same target column explicitly.
+                if re.match(rf'(?:값(?:이|은|는)?\s*)?(?:{nonempty}|{empty})', remainder, re.I):
+                    return unary_filter_issue(rule, field+' '+remainder)
+                if re.match(selection, remainder, re.I):
+                    return unary_filter_issue(rule, field+' '+cleaned[:action.start()]+remainder)
+                continue
         removing = bool(action and re.fullmatch(r'제외|제거|삭제|drop|remove', action[0], re.I))
         selected = action or re.search(r'(?:행|주문|항목|것)만', cleaned)
         if re.match(r'\b' + operator + r'\b', cleaned, re.I):

@@ -18,13 +18,31 @@ _EXPORT_END = re.compile(r'\s*(?:해\s*(?:줘|주세요)|하(?:고|며|도록)|[
 _ALL_COLUMNS = re.compile(r'(?:전체|모든)\s*열(?:들)?(?:을|로)?\s*(?:저장|내보내)')
 
 
-def _request_text(state):
+def _selection_request(state):
     assets = state.get('resources', [])
     if len(assets) != 1 or assets[0].get('kind') != 'table':
-        return ''
+        return -1, ''
     users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
-    # A quoted example is data, not an output instruction.
-    return re.sub(r'"[^"\n]*"|“[^”\n]*”|\x27[^\x27\n]*\x27', ' ', users[-1]) if users else ''
+    # Keep an explicit output contract through unrelated follow-up answers.
+    # A later output revision (even outside this narrow grammar) supersedes it.
+    from agent_builder.capabilities.capability_judgement import active_request_messages
+    active = active_request_messages(state)
+    active_users = [m['content'] for m in active if m.get('role')=='user']
+    offset = len(users)-len(active_users)
+    for index in range(len(active_users)-1, -1, -1):
+        text = re.sub(r'"[^"\n]*"|“[^”\n]*”|\x27[^\x27\n]*\x27', ' ', active_users[index])
+        if (re.search(r'뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요', text)
+                and not re.search(r'바꿔|변경해|추가해|제외해|선택해', text)):
+            continue  # Asking what an output column means does not replace it.
+        if (_NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text)
+                or re.search(r'\w+(?:\s*[·,]\s*\w+)+(?:을|를)\s*(?:내보내|저장)', text)
+                or re.search(r'(?:출력|저장할|내보낼)\s*(?:열|컬럼)|(?:열|컬럼).{0,20}(?:추가|제외|변경|바꿔)', text)):
+            return offset+index, text
+    return -1, ''
+
+
+def _request_text(state):
+    return _selection_request(state)[1]
 
 
 def _all_columns_requested(state):
@@ -36,8 +54,7 @@ def output_selection(state):
     assets=state.get('resources',[])
     if len(assets)!=1 or assets[0].get('kind')!='table':
         return None
-    # Later turns may replace the entire output specification. Never restore
-    # an older selection after an explicit new instruction.
+    # Only a new output instruction replaces the existing column selection.
     text = _request_text(state)
     if _all_columns_requested(state):
         return None
@@ -89,48 +106,57 @@ def validate_output_selection(plan, state):
 
 def output_selection_issues(state, draft):
     """Check the actual output even if extraction omitted a selection task."""
-    if not _all_columns_requested(state) or not draft.get('workflow'):
+    all_columns = _all_columns_requested(state)
+    fields = output_selection(state)
+    if (not all_columns and fields is None) or not draft.get('workflow'):
         return []
     from .content_lineage import content_ancestors
     from .requirement_coverage import _arguments
-    from workflow_engine.execution_path import artifact_output_ids, artifact_origin, execution_path
+    from .workflow_paths import workflow_paths
     workflow = draft['workflow']
     nodes = {n['id']: n for n in workflow['nodes']}
     try:
-        outputs = artifact_output_ids(workflow)
-        if not outputs:
-            return []
-        end = artifact_origin(workflow, outputs[-1])
-        active = content_ancestors(nodes, end) | {end}
-        expected = set(state['resources'][0].get('columns', []))
-        if any(e['branch'] != 'next' for e in workflow['edges']):
-            return ['전체 열 저장 요청의 분기별 출력 열을 확인하지 못했습니다.']
-        for n in execution_path(workflow):
-            if n['id'] not in active:
-                continue
-            settings = n['settings']
-            if n['tool'] == 'calculate_columns' and not settings.get('operation'):
-                if settings.get('table_operation') == 'compute':
-                    expected.add(settings['output_column'])
-                elif settings.get('table_operation') == 'rename':
-                    expected.discard(settings['rename_from'])
-                    expected.add(settings['rename_to'])
-            if n['settings'].get('operation') in ('select_columns', 'write_csv', 'write_json'):
-                columns = _arguments(n).get('columns')
-                if columns is not None and not expected <= set(columns):
-                    return ['전체 열 저장 요청과 실제 출력 열 선택이 다릅니다: ' + n['id']]
+        for path, _ in workflow_paths(workflow):
+            writers = [n for n in path if n['tool'] in ('write_result','export_result')]
+            for writer in writers:
+                active = content_ancestors(nodes, writer['id']) | {writer['id']}
+                expected = list(state['resources'][0].get('columns', []))
+                actual = list(expected)
+                for n in path:
+                    if n['id'] not in active:
+                        continue
+                    settings = n['settings']
+                    if n['tool']=='calculate_columns' and not settings.get('operation'):
+                        if settings.get('table_operation')=='compute':
+                            expected.append(settings['output_column']); actual.append(settings['output_column'])
+                        elif settings.get('table_operation')=='rename':
+                            expected=[settings['rename_to'] if c==settings['rename_from'] else c for c in expected]
+                            actual=[settings['rename_to'] if c==settings['rename_from'] else c for c in actual]
+                    if settings.get('operation')=='select_columns':
+                        actual = _arguments(n)['columns']
+                        if all_columns and not set(expected)<=set(actual):
+                            return ['전체 열 저장 요청과 실제 출력 열 선택이 다릅니다: '+n['id']]
+                    if n['id']==writer['id']:
+                        columns = _arguments(n).get('columns') if settings.get('operation') else None
+                        if columns is not None:
+                            if set(columns)!=set(actual):
+                                return ['전체 열/출력 열 검증: CSV 헤더와 입력 데이터 열이 다릅니다: '+n['id']]
+                            actual = columns
+                        if fields is not None and actual!=fields:
+                            return ['명시한 최종 출력 열의 목록·순서와 실제 저장 헤더가 다릅니다: '+n['id']]
+                        if all_columns and not set(expected)<=set(actual):
+                            return ['전체 열 저장 요청과 실제 저장 헤더가 다릅니다: '+n['id']]
     except (ValueError, KeyError, TypeError):
-        return ['전체 열 저장 요청의 최종 출력 열을 확인하지 못했습니다.']
+        return ['출력 열 요청의 최종 저장 경로를 확인하지 못했습니다.']
     return []
 
 
 def project_output_selection(candidates,state):
     fields=output_selection(state)
     if not fields or any(c['spec'].get('kind')=='select_fields' for c in candidates):return candidates
-    users=[m for m in state['messages'] if m.get('role')=='user']
     result=deepcopy(candidates)
     index=next((i for i,item in enumerate(result) if item['spec'].get('kind')=='export'),len(result))
-    result.insert(index,dict(source_message=len(users)-1,description='명시한 최종 출력 열',spec=dict(kind='select_fields',fields=fields)))
+    result.insert(index,dict(source_message=_selection_request(state)[0],description='명시한 최종 출력 열',spec=dict(kind='select_fields',fields=fields)))
     return result
 
 

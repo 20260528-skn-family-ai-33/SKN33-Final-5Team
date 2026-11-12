@@ -87,7 +87,8 @@ def test_unconditional_review_covers_every_branch(review_on):
     d={**draft(),'workflow':dict(entry='read',nodes=nodes,edges=edges)}
     assert bool(review_workflow_issues(state,d)) == (review_on!='both')
     state['messages'][0]['content']='누락된 조항이 있는 경우에만 사람 검토 후 저장해줘'
-    assert bool(review_workflow_issues(state,d)) == (review_on=='none')
+    # "Only when missing" requires the yes branch and forbids a review on no.
+    assert bool(review_workflow_issues(state,d)) == (review_on!='yes')
 
 
 def test_s5_calculation_bypasses_single_filter_checker_even_when_capability_misses_compute():

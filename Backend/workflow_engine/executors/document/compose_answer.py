@@ -85,7 +85,7 @@ def _compose_documents(node, state, storage, config, llm, docs, inputs, reviews)
                 evidence_pool['e' + str(len(evidence_pool) + 1)] = {**source, 'quote': quote}
     if not reviews:
         from .review_memo import compose_review_memo
-        memo=compose_review_memo(settings,config,inputs,evidence_pool,llm)
+        memo=compose_review_memo(settings,config,inputs,evidence_pool,llm,state=state)
         if memo is not None:
             return answer_result(node,memo['text'],memo['evidence'],reviews)
     schema = GroundedAnswer.model_json_schema()

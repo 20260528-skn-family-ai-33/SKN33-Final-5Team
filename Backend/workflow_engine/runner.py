@@ -74,19 +74,24 @@ def execution_parameters(node,config):
     return node['settings']
 
 
-def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inherit_checkpoint=False):
+def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inherit_checkpoint=False,external_inputs=None):
     from workflow_engine.library.reusable_workflows import reject_review_export
     reject_review_export(config,config.get('_saved_workflows',{}))
     workflow=config['workflow']
     runtime_ids=config.get('_runtime_file_ids',[])
     resources=[saved_input(storage,id) for id in config['document_ids']]
     source_columns={}
-    if runtime_ids:
+    if runtime_ids or 'table' in (external_inputs or {}):
         from workflow_engine.executors.sources import source_file_ids
         from workflow_engine.execution_path import execution_path
         active={n['id'] for n in execution_path(workflow)}
         for node in workflow['nodes']:
             if node['tool']=='read_table' and not uses_operation(node):
+                if 'table' in (external_inputs or {}):
+                    # source execution prioritizes a parent's bound table over
+                    # uploaded files; compilation must validate that same table.
+                    source_columns[node['id']]=external_inputs['table']['columns']
+                    continue
                 # Future branches resolve their files when chosen, as preflight
                 # and execution already do. Never require a sibling's upload.
                 source_columns[node['id']]=None

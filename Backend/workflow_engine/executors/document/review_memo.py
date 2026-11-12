@@ -2,14 +2,18 @@
 import json
 import re
 
-def compose_review_memo(settings,config,inputs,evidence,llm):
+def compose_review_memo(settings,config,inputs,evidence,llm,*,state=None):
     if not isinstance(inputs.get('answer'),str) or not inputs['answer'].strip():return None
     if not inputs.get('text') and not inputs.get('records'):return None
     request=config.get('instructions','')
     if not re.search(r'최종\s*(?:메모|보고서)',request):return None
-    matches=re.findall(r'([가-힣A-Za-z][가-힣A-Za-z0-9]*(?:/[가-힣A-Za-z][가-힣A-Za-z0-9]*(?: [가-힣A-Za-z0-9]+){0,2}){1,7})\s*제목',request)
+    # Anchor the first heading after the memo subject instead of starting at
+    # its last whitespace-separated word. Every heading uses the same grammar.
+    heading=r'[가-힣A-Za-z][가-힣A-Za-z0-9]*(?: [가-힣A-Za-z0-9]+){0,2}'
+    matches=re.findall(r'(?:(?:최종\s*(?:메모|보고서)(?:는|의\s*제목은)?|구분해서|제목은)\s*[:：]?\s*)('
+                       +heading+r'(?:\s*/\s*'+heading+r'){1,7})\s*제목',request)
     if len(matches)!=1:return None
-    headings=matches[0].split('/')
+    headings=[part.strip() for part in matches[0].split('/')]
     if len(set(headings))!=len(headings) or '검토 의견' not in headings:return None
     opinion=inputs['answer'].strip()
     properties={heading:{'type':'string','minLength':1} for heading in headings}
@@ -20,6 +24,8 @@ def compose_review_memo(settings,config,inputs,evidence,llm):
                                        'items':{'type':'string','enum':list(evidence)}}},
             'required':['sections','citations']}
     context={'task':settings.get('instructions'),'requested_headings':headings,
+             'execution_request':(state or {}).get('request',''),
+             'user_messages':[m['content'] for m in (state or {}).get('messages',[]) if m.get('role')=='user'],
              'previous_analysis':inputs.get('text') or inputs.get('records'),
              'human_review':opinion,
              'document_evidence':[{'evidence_id':key,'quote':value['quote']} for key,value in evidence.items()]}

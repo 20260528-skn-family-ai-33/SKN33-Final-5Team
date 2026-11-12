@@ -97,6 +97,11 @@ DEFAULT_FIELDS_NOTE = ('항목을 따로 정하지 않아 영수증 기본 항�
 
 
 def requested_fields(text):
+    # Semicolons delimit instructions, never field names in the fixed recipe.
+    # Keep the complete request for the general planner rather than discarding
+    # an unrecognized operation after the list.
+    if re.search(r'[;；]', text or ''):
+        return []
     fields = [part.strip(' .:;"\'') for part in _SPLIT.split(text or '')]
     fields = [f for f in fields if f]
     if not fields or len(fields) > 12 or any(len(f) > 20 for f in fields) or _processing_in_fields(fields):

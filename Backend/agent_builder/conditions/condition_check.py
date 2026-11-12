@@ -48,7 +48,12 @@ def computed_table_request(state):
     # At least one operand must be a real column; dates and numeric ranges
     # in an ordinary filter must not switch off condition checking.
     formula = re.compile(r'(?<!\w)(?:' + column_operand + operator + operand + '|' + operand + operator + column_operand + r')(?!\w)')
-    return any(formula.search(m['content']) for m in active_request_messages(state) if m.get('role')=='user')
+    def expression_text(text):
+        # Quoted cell values are data. Quoted exact column identifiers remain
+        # operands, so `"수량" * "단가"` is still a real calculation.
+        return re.sub(r'"(?:\\.|[^"\\])*"|\x27(?:\\.|[^\x27\\])*\x27|“[^”]*”|‘[^’]*’',
+                      lambda m: m[0][1:-1] if m[0][1:-1] in columns else ' ', text)
+    return any(formula.search(expression_text(m['content'])) for m in active_request_messages(state) if m.get('role')=='user')
 
 
 def _transport(api_key, model):

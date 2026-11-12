@@ -49,9 +49,14 @@ def execution_request_required(config, dependencies=None):
     return needs_text or not (file_reader or scheduled_prompt)
 
 
+def is_launch_request(request):
+    """Shared distinction between starting a run and supplying business criteria."""
+    import re
+    return bool(re.fullmatch(r'\s*(?:(?:지금|다시)\s*)?(?:실행|시작)(?:해\s*(?:줘|주세요))?[.!\s]*|\s*(?:run|start)\s*', request, re.I))
+
+
 def table_run_request_notice(config, request, dependencies=None):
     """A fixed table plan cannot silently interpret a new filter or formula."""
-    import re
     if not request.strip():
         return ''
     _, consumes_request = _request_inputs(config, dependencies or {}, False)
@@ -69,7 +74,7 @@ def table_run_request_notice(config, request, dependencies=None):
     if consumes_request or not has_table(config, dependencies or {}):
         return ''
     # Preserve legacy callers which pass only a launch command, not business criteria.
-    if re.fullmatch(r'\s*(?:(?:지금|다시)\s*)?(?:실행|시작)(?:해\s*(?:줘|주세요))?[.!\s]*|\s*(?:run|start)\s*', request, re.I):
+    if is_launch_request(request):
         return ''
     return ('이 표 워크플로우에는 저장된 조건이 적용됐으며, 추가 요청의 필터·계산·정렬은 적용되지 않았습니다. '
                      '필터·계산·정렬을 바꾸려면 설정 수정에서 변경하고 저장하세요. '

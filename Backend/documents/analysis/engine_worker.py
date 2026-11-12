@@ -106,9 +106,13 @@ def docling(request):
                 bbox = [rect.l, rect.t, rect.r, rect.b]
         blocks.append(dict(kind=label, text=text, location=location, bbox=bbox,
                            coordinate_system='pdf_top_left_points', data=data))
+    model = {'ocr_languages': config['ocr_languages'], 'mode': config['mode'], 'device': config['device']}
+    if config['device'] == 'cuda':
+        import torch
+        model.update(gpu=torch.cuda.get_device_name(), cuda_peak_bytes=torch.cuda.max_memory_allocated())
     return dict(engine='docling', version=version('docling'), blocks=blocks,
                 partial=converted.status != ConversionStatus.SUCCESS or bool(converted.errors),
-                page_count=len(doc.pages), model={'ocr_languages': config['ocr_languages'], 'mode': config['mode'], 'device': config['device']})
+                page_count=len(doc.pages), model=model)
 
 
 def paddle(request):

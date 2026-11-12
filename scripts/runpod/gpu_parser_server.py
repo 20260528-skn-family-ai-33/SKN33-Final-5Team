@@ -1,9 +1,9 @@
-"""GPU layout/OCR server for the A4B document parser, run on the RunPod pod beside Ollama.
+"""GPU PDF routing and image layout/OCR service, run on the RunPod pod beside Ollama.
 
 The app otherwise starts a CPU Paddle process per upload: about 21 s of model loading plus 12-16 s of
 inference for one receipt on a 4-core PC. Here PP-DocLayout_plus-L and the Korean PP-OCRv5 models are
 loaded once and stay on the GPU. Responses follow the engine_worker.paddle() contract, so the app's
-pipeline is unchanged; images arrive base64-encoded and are written to a temporary folder only.
+pipeline is unchanged. PDF requests send the original bytes to the Pod's document router.
 
 Environment: A4B_PARSER_API_KEY (required, 24+ chars), A4B_PARSER_PORT (8100),
 A4B_PADDLE_DEVICE (gpu:0), A4B_PADDLE_MODEL_DIR (optional local model folder; otherwise PaddleX
@@ -88,27 +88,41 @@ def run(engine, payload, models, device, version, lock):
 
 
 def make_handler(key, models, device, version):
+    from pdf_jobs import MAX_PDF, PdfJobs
+    pdf_python = os.environ.get('A4B_PDF_ROUTER_PYTHON')
+    jobs = PdfJobs(pdf_python)
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = 'A4BParser/1'
 
         def reply(self, status, value):
-            body = json.dumps(value, ensure_ascii=False, default=plain, allow_nan=False).encode()
+            binary = isinstance(value, bytes)
+            body = value if binary else json.dumps(value, ensure_ascii=False, default=plain, allow_nan=False).encode()
             self.send_response(status)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Type', 'application/zip' if binary else 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'no-store')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
         def do_GET(self):
             if self.path == '/health':
-                return self.reply(200, {'ok': True, 'device': device, 'engines': list(ENGINES)})
+                return self.reply(200, {'ok': True, 'device': device, 'engines': list(ENGINES), 'pdf_jobs': bool(pdf_python)})
+            if self.path.startswith('/v1/pdf/'):
+                if not self.authenticated():
+                    return self.reply(401, {'error': 'unauthorized'})
+                return self.reply(*jobs.result(self.path[len('/v1/pdf/'):]))
             self.reply(404, {'error': 'not_found'})
 
-        def do_POST(self):
+        def authenticated(self):
+            if os.environ.get('A4B_API_AUTH_REQUIRED', '1') == '0':
+                return True
             given = self.headers.get('Authorization', '')
-            if not hmac.compare_digest(given.encode(), ('Bearer ' + key).encode()):
+            return hmac.compare_digest(given.encode(), ('Bearer ' + key).encode())
+
+        def do_POST(self):
+            if not self.authenticated():
                 return self.reply(401, {'error': 'unauthorized'})
             if not self.path.startswith('/v1/'):
                 return self.reply(404, {'error': 'not_found'})
@@ -116,6 +130,15 @@ def make_handler(key, models, device, version):
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
                 length = -1
+            if self.path == '/v1/pdf':
+                if self.headers.get_content_type() != 'application/pdf':
+                    return self.reply(415, {'error': 'expected_pdf'})
+                if not 0 < length <= MAX_PDF:
+                    return self.reply(413, {'error': 'pdf_size_limit'})
+                policy = self.headers.get('X-A4B-PDF-Policy')
+                if policy not in (None, 'docling-paddle-fixed-v1'):
+                    return self.reply(400, {'error': 'invalid_policy'})
+                return self.reply(*jobs.submit(self.rfile.read(length), policy))
             if not 0 < length <= MAX_BODY:
                 return self.reply(413, {'error': 'request_too_large'})
             try:
@@ -144,7 +167,7 @@ def main():
     models = load_models(device)
     version = importlib.metadata.version('paddleocr')
     port = int(os.environ.get('A4B_PARSER_PORT', '8100'))
-    server = ThreadingHTTPServer(('0.0.0.0', port), make_handler(key, models, device, version))
+    server = ThreadingHTTPServer((os.environ.get('A4B_PARSER_BIND', '0.0.0.0'), port), make_handler(key, models, device, version))
     print(f'A4B GPU parser on :{port} ({device}, paddleocr {version})', flush=True)
     server.serve_forever()
 

@@ -2,12 +2,7 @@
 import re
 
 from .gmail_summary import MAX_RESULTS, SCHEDULED_MAX_RESULTS, PREVIOUS_DAY_QUERY, UNREAD_QUERY
-
-
-class MissingGmailSchedule(ValueError):
-    def __init__(self,questions):
-        super().__init__('예약 실행에 필요한 시각이나 시간대를 확인해주세요.')
-        self.questions=questions
+from .requirement_clarification import MissingSchedule as MissingGmailSchedule
 
 
 def validate_general_gmail_task(task,state,*,schedule_elsewhere=False):

@@ -173,3 +173,83 @@ def test_requirement_question_interrupt_resumes_into_reextraction_and_original_p
         assert payload['clarification_answers'][0]['questions'][0]['text']=='어떤 내용을 중심으로 요약할까요?'
     finally:
         connection.close();store.close()
+
+
+GMAIL_MORNING_REQUEST = '매일 오전에 gmail에서 안읽은 메일 요약해줘 상위 5개만'
+
+
+def morning_gmail_tasks(hour=9, minute=0):
+    from agent_builder.design.gmail_summary import UNREAD_QUERY
+    return [
+        {'source_message':0,'description':'매일 예약 실행','spec':{'kind':'schedule','schedule':{
+            'frequency':'daily','hour':hour,'minute':minute,'weekday':None,'monthday':None,
+            'month_end':False,'timezone':'Asia/Seoul'}}},
+        {'source_message':0,'description':'안 읽은 메일 5개 요약','spec':{
+            'kind':'gmail_summary','request':GMAIL_MORNING_REQUEST,'max_results':5,'query':UNREAD_QUERY}},
+    ]
+
+
+@pytest.mark.parametrize('schedule_first',[True,False])
+def test_separate_schedule_with_missing_time_asks_once_without_losing_gmail_conditions(schedule_first):
+    state=current(GMAIL_MORNING_REQUEST,mode=None)
+    before=deepcopy(state)
+    tasks=morning_gmail_tasks()
+    if not schedule_first:tasks.reverse()
+    model=Extractor({'tasks':tasks,'unresolved':[]})
+    errors=[]
+    result=make_requirement_check('fixture',model,'enforce',error_observer=errors.append)(state)
+    assert result['status']=='needs_clarification'
+    assert result['requirement_route']=='await_input' and result['requirement_failure'] is None
+    assert len(model.calls)==1 and not errors
+    assert [q['key'] for q in result['pending_questions']]==['schedule.time']
+    assert result['pending_questions'][0]['response']=={'type':'time'}
+    assert result['messages'][0]['content']==GMAIL_MORNING_REQUEST
+    assert state==before
+
+
+@pytest.mark.parametrize('answer,hour,minute',[('09:00',9,0),('10:25',10,25)])
+def test_morning_gmail_time_answer_resumes_graph_with_original_query_count_and_schedule(tmp_path,answer,hour,minute):
+    from agent_builder.design.gmail_summary import UNREAD_QUERY
+    from tests.workflow_engine.test_gmail_scheduling import gmail_config
+    state=current(GMAIL_MORNING_REQUEST,mode=None)
+    model=Extractor({'tasks':morning_gmail_tasks(),'unresolved':[]})
+    planned=[]
+
+    def planner(value):
+        planned.append(deepcopy(value))
+        draft=gmail_config()
+        schedule=grounded_schedule(value)
+        draft.update(name='안 읽은 메일 5개 요약',purpose=GMAIL_MORNING_REQUEST,
+                     instructions=GMAIL_MORNING_REQUEST,schedule=schedule,
+                     requirements=[{'description':'안 읽은 메일 5개 요약','source_id':'user','quote':GMAIL_MORNING_REQUEST}])
+        draft['workflow']['nodes'][0]['settings']['arguments_json']=json.dumps({'query':UNREAD_QUERY,'max_results':5})
+        draft['workflow']['nodes'][1]['settings']['instructions']=GMAIL_MORNING_REQUEST
+        return {'draft':draft}
+
+    store=Storage(tmp_path)
+    graph,connection=build_graph(store,conversation=planner,requirement_transport=model,requirement_mode='enforce',
+        capability_mode='off',condition_mode='off',verifier_mode='off')
+    config={'configurable':{'thread_id':state['session_id']}}
+    try:
+        first=graph.invoke(state,config)
+        assert first['status']=='needs_clarification' and not planned
+        question,=first['__interrupt__'][0].value['question_records']
+        assert question['key']=='schedule.time' and question['response']=={'type':'time'}
+        model.value={'tasks':morning_gmail_tasks(hour,minute),'unresolved':[]}
+        result=graph.invoke(Command(resume={'type':'message','content':answer,
+            'question_answers':[{'question_id':question['id'],'value':answer}]}),config)
+        assert result['status']=='ready',result.get('issues')
+        assert result['__interrupt__'][0].value['kind']=='review'
+        assert len(planned)==1 and result['messages'][0]['content']==GMAIL_MORNING_REQUEST
+        tasks=result['requirement_ledger']['tasks']
+        mail=next(task['spec'] for task in tasks if task['spec']['kind']=='gmail_summary')
+        schedule=next(task['spec']['schedule'] for task in tasks if task['spec']['kind']=='schedule')
+        assert mail['query']==UNREAD_QUERY and mail['max_results']==5 and mail['request']==GMAIL_MORNING_REQUEST
+        assert schedule==grounded_schedule(result)==result['draft']['schedule']
+        assert (schedule['frequency'],schedule['hour'],schedule['minute'])==('daily',hour,minute)
+        assert result['pending_questions']==[] and not store.agents()
+        payload=json.loads(model.calls[-1][1]['content'])
+        assert payload['user_messages']==[GMAIL_MORNING_REQUEST,answer]
+        assert payload['clarification_answers'][-1]['value']==answer
+    finally:
+        connection.close();store.close()

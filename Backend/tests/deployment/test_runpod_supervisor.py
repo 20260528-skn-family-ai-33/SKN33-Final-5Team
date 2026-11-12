@@ -62,8 +62,12 @@ class SupervisorTests(unittest.TestCase):
         self.common = f'import os,time,json\nfrom pathlib import Path\nr=Path({str(self.root)!r})\n'
         idle = 'while True:time.sleep(.05)\n'
         self.executable(self.base/'ollama/bin/ollama', self.common+"(r/'ollama.pid').write_text(str(os.getpid()))\n"+idle)
-        parser = self.base/'app/legacy-pdf/scripts/runpod/gpu_parser_server.py'
-        parser.parent.mkdir(parents=True)
+        parser = self.app/'gpu_parser_server.py'
+        (self.app/'pod_pdf_worker.py').touch()
+        (self.app/'parser-paths.sh').write_text((SCRIPTS/'parser-paths.sh').read_text())
+        legacy = self.base/'app/legacy-pdf/scripts/runpod/gpu_parser_server.py'
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text(self.common+"(r/'legacy-started').touch()\n")
         parser.write_text(self.common+"(r/'parser.pid').write_text(str(os.getpid()))\n"+idle)
         (self.app/'check-final-ready.py').write_text('pass\n')
         (self.app/'warm-final.py').write_text(self.common+"(r/'warm.pid').write_text(str(os.getpid()))\nwhile not (r/'warm-release').exists():time.sleep(.02)\nraise SystemExit(1 if (r/'warm-fail').exists() else 0)\n")
@@ -89,7 +93,7 @@ server.serve_forever()
             script = script.replace(old, new)
         # Keep real startup/control-flow and processes; shorten retry backoff only.
         script = script.replace('sleep 2', 'sleep .05').replace('sleep 5', 'sleep .05')
-        self.script = self.root/'start.sh'; self.script.write_text(script)
+        self.script = self.app/'start-final.sh'; self.script.write_text(script)
         self.processes = []
         self.addCleanup(self.stop_all)
 
@@ -97,8 +101,11 @@ server.serve_forever()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('#!'+sys.executable+'\n'+code); path.chmod(0o700)
 
-    def start(self):
-        env = {**os.environ, 'PATH': str(self.bin)+':'+os.environ['PATH']}
+    def start(self, source_root=None):
+        env = {k: v for k, v in os.environ.items() if not k.startswith('A4B_')}
+        env.update(PATH=str(self.bin)+':'+os.environ['PATH'], A4B_BASE_DIR=str(self.base))
+        if source_root is not None:
+            env['A4B_PARSER_SOURCE_ROOT'] = str(source_root)
         process = subprocess.Popen(['bash', str(self.script)], env=env, start_new_session=True,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.processes.append(process)
@@ -116,6 +123,31 @@ server.serve_forever()
         for path in self.root.glob('*.pid'):
             try: os.killpg(int(path.read_text()), signal.SIGKILL)
             except ProcessLookupError: pass
+
+    def test_missing_committed_parser_fails_without_using_legacy(self):
+        (self.run/'ready').write_text('stale')
+        (self.app/'gpu_parser_server.py').unlink()
+        process = self.start()
+        self.assertNotEqual(process.wait(timeout=3), 0)
+        self.assertFalse((self.root/'legacy-started').exists())
+        self.assertFalse((self.root/'ollama.pid').exists())
+        self.assertFalse((self.run/'ready').exists())
+
+    def test_explicit_release_is_used_again_after_parser_restart(self):
+        release = self.root/'releases/commit-fixture'
+        scripts = release/'scripts/runpod'
+        scripts.mkdir(parents=True)
+        (scripts/'pod_pdf_worker.py').touch()
+        (scripts/'gpu_parser_server.py').write_text((self.app/'gpu_parser_server.py').read_text())
+        (self.app/'gpu_parser_server.py').write_text(self.common+"(r/'wrong-source').touch()\n")
+        process = self.start(source_root=release)
+        eventually(lambda: (self.root/'warm.pid').exists())
+        first = int((self.root/'parser.pid').read_text())
+        os.kill(first, signal.SIGTERM)
+        eventually(lambda: (self.root/'parser.pid').read_text() not in ('', str(first)))
+        self.assertIsNone(process.poll())
+        self.assertFalse((self.root/'wrong-source').exists())
+        self.assertFalse((self.root/'legacy-started').exists())
 
     def test_stale_ready_removed_after_lock_before_receipts(self):
         (self.base/'receipts/pdf-prepared').unlink()
@@ -146,6 +178,7 @@ server.serve_forever()
         for pid in original.values():
             eventually(lambda pid=pid: not Path('/proc', str(pid)).exists())
         self.assertIsNone(process.poll())
+        self.assertFalse((self.root/'legacy-started').exists())
         self.assertFalse((self.root/'warm-release').exists())
         self.assertFalse((self.root/'gateway.pid').exists())
         self.assertFalse((self.run/'ready').exists())
@@ -172,7 +205,7 @@ server.serve_forever()
         self.assertEqual((self.root/'authenticated-request').read_text(), 'True')
         self.assertFalse((self.run/'ready').exists(), '503 must not publish ready')
         (self.root/'gateway-release').touch()
-        eventually(lambda: (self.run/'ready').exists())
+        eventually(lambda: (self.run/'ready').exists() and (self.run/'ready').read_bytes().endswith(b'\n'))
         before = (self.run/'ready').read_bytes()
         duplicate = self.start(); self.assertEqual(duplicate.wait(timeout=2), 0)
         self.assertEqual((self.run/'ready').read_bytes(), before)

@@ -19,35 +19,74 @@ REMOTE_TOO_LARGE = 'remote_parser_payload_too_large'
 # Match the decoded image and HTTP body limits in scripts/runpod/gpu_parser_server.py.
 REMOTE_MAX_IMAGE = 12 * 1024 * 1024
 REMOTE_MAX_BODY = 48 * 1024 * 1024
+REMOTE_MAX_SOURCES = 32
 
 
-def remote_request_body(names):
+def remote_request_batches(names):
+    """Bound both page count and the actual JSON/base64 body, preserving page names."""
     prefix, suffix = b'{"sources":[', b']}'
-    size = len(prefix) + len(suffix)
-    encoded_sources = []
+    overhead = len(prefix) + len(suffix)
+    size, batch_names, encoded_sources = overhead, [], []
     for name in names:
         with Path(name).open('rb') as image:
             data = image.read(REMOTE_MAX_IMAGE + 1)
         if len(data) > REMOTE_MAX_IMAGE:
             raise AnalysisError(REMOTE_TOO_LARGE, '변환된 이미지가 GPU 파서의 이미지 크기 제한을 넘었습니다.')
         source = json.dumps({'name': name, 'data': base64.b64encode(data).decode('ascii')}).encode('utf-8')
-        size += len(source) + (1 if encoded_sources else 0)  # Include each comma between sources.
-        if size > REMOTE_MAX_BODY:
-            raise AnalysisError(REMOTE_TOO_LARGE, '인코딩된 요청이 GPU 파서의 본문 크기 제한을 넘었습니다.')
+        if overhead + len(source) > REMOTE_MAX_BODY:
+            raise AnalysisError(REMOTE_TOO_LARGE, '이미지 한 장의 인코딩 요청이 GPU 파서의 본문 크기 제한을 넘었습니다.')
+        extra = len(source) + (1 if encoded_sources else 0)
+        if encoded_sources and (len(encoded_sources) == REMOTE_MAX_SOURCES or size + extra > REMOTE_MAX_BODY):
+            yield batch_names, prefix + b','.join(encoded_sources) + suffix
+            size, batch_names, encoded_sources = overhead, [], []
+            extra = len(source)
+        batch_names.append(name)
         encoded_sources.append(source)
-    return prefix + b','.join(encoded_sources) + suffix
+        size += extra
+    if encoded_sources:
+        yield batch_names, prefix + b','.join(encoded_sources) + suffix
+
+
+def remote_request_body(names):
+    """Encode a single request; callers handling multiple batches use remote_engine."""
+    batches = iter(remote_request_batches(names))
+    first = next(batches, ([], b'{"sources":[]}'))
+    if next(batches, None) is not None:
+        raise AnalysisError(REMOTE_TOO_LARGE, '이미지 목록을 여러 GPU 요청으로 나누어야 합니다.')
+    return first[1]
 
 
 def remote_engine(url, engine, sources):
     """Layout/OCR on the GPU parser server (scripts/runpod/gpu_parser_server.py), same contract as engine_worker."""
     names = [str(p) for p in sources]
-    body = remote_request_body(names)
+    deadline = time.monotonic() + REMOTE_TIMEOUT
+    result, received = None, 0
+    for batch_names, body in remote_request_batches(names):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AnalysisError(REMOTE_UNAVAILABLE, 'GPU 파서 요청 제한 시간을 초과했습니다.')
+        data, size = _remote_batch(url, engine, batch_names, body, remaining)
+        received += size
+        if received > MAX_RESULT:
+            raise AnalysisError('invalid_engine_result', '합산 엔진 응답이 크기 제한을 넘었습니다.')
+        if result is None:
+            result = data
+        else:
+            if data['version'] != result['version'] or data.get('model') != result.get('model'):
+                raise AnalysisError('invalid_engine_result', '처리 도중 GPU 엔진 버전이 변경됐습니다.')
+            result['outputs'].extend(data['outputs'])
+    if result is None:
+        raise AnalysisError('invalid_engine_result', 'GPU 파서에 보낼 이미지가 없습니다.')
+    return result
+
+
+def _remote_batch(url, engine, names, body, timeout):
     # The RunPod proxy answers 403 to urllib's default "Python-urllib" agent.
     request = urllib.request.Request(url.rstrip('/') + '/v1/' + engine, data=body, method='POST', headers={
         'Content-Type': 'application/json', 'User-Agent': 'A4B/0.1',
         'Authorization': 'Bearer ' + os.environ.get('A4B_PARSER_API_KEY', '')})
     try:
-        with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read(MAX_RESULT + 1)
     except urllib.error.HTTPError as exc:
         # 5xx is a server fault; the RunPod proxy answers 404 while the pod is stopped. Both are outages.
@@ -69,7 +108,7 @@ def remote_engine(url, engine, sources):
     if not isinstance(data, dict) or not isinstance(data.get('version'), str) or not isinstance(data.get('outputs'), list) \
             or not all(isinstance(o, dict) and o.get('source') in names for o in data['outputs']):
         raise AnalysisError('invalid_engine_result', '엔진 응답 계약이 올바르지 않습니다.')
-    return data
+    return data, len(raw)
 
 
 class LocalEngines:

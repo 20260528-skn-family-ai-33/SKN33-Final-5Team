@@ -124,7 +124,7 @@ def canonical_kind(kind):
     return 'text'
 
 
-def run(source, work, *, engines=None, converter=convert, max_supplements=16):
+def run(source, work, *, engines=None, converter=convert, max_supplements=16, pdf_primary='mineru'):
     source, work = Path(source).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
@@ -136,11 +136,14 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16):
     if not 0 <= max_supplements <= 32:
         raise AnalysisError('invalid_configuration', '보완 처리 상한은 0~32여야 합니다.')
     engines = engines or LocalEngines(work)
+    if pdf_primary not in ('mineru', 'docling'):
+        raise AnalysisError('invalid_configuration', 'PDF 엔진은 mineru 또는 docling이어야 합니다.')
+    primary = pdf_primary if fmt == 'pdf' else PRIMARY[fmt]
     result = dict(contract_version=CONTRACT_VERSION, document_id=sha256(source), source_sha256=sha256(source),
-                  source_format=fmt, primary_processor=PRIMARY[fmt], blocks=[], units=[], routes=engines.attempts,
+                  source_format=fmt, primary_processor=primary, blocks=[], units=[], routes=engines.attempts,
                   warnings=[], review_required=False, review_reasons=[], conversions=[], signals=[],
                   status='succeeded', routing_decisions=[dict(phase='primary', rule='source_format_default',
-                  processor=PRIMARY[fmt], source_format=fmt)], policy=dict(max_supplements=max_supplements, scan_characters=30,
+                  processor=primary, source_format=fmt)], policy=dict(max_supplements=max_supplements, scan_characters=30,
                   broken_ratio=.05, scan_image_fraction=.6, detection_threshold=.5, thresholds_are_provisional=True,
                   ocr_upscale_below=OCR_UPSCALE_BELOW, ocr_max_scale=OCR_MAX_SCALE))
     def review(reason):

@@ -80,11 +80,13 @@ def test_ready_does_not_require_4b_but_requires_parser(monkeypatch):
     expected = {k: v for k, v in receipt().items() if k in SERVING_MODELS}
     monkeypatch.setattr('final_model_profile.required_models', lambda: expected)
     parser_ok = True
+    from parser_readiness import SOURCE_ROOT
+    monkeypatch.setattr('parser_readiness.pdf_readiness', lambda: {'ready': True})
 
     def urlopen(url, **kwargs):
         data = {'models': [dict(name=k + ':latest', digest=v) for k, v in expected.items()]}
         if url.endswith('/health'):
-            data = dict(ok=parser_ok, device='gpu:0', pdf_jobs=True)
+            data = dict(ok=parser_ok, device='gpu:0', pdf_jobs=True, pdf_readiness={'ready': True, 'source_root': str(SOURCE_ROOT)})
         return io.BytesIO(json.dumps(data).encode())
 
     monkeypatch.setattr('urllib.request.urlopen', urlopen)

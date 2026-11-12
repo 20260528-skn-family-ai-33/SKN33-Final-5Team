@@ -161,7 +161,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(remote_request_body(sources), body)
         with patch('documents.analysis.adapters.REMOTE_MAX_BODY', len(body) - 1), \
                 patch('urllib.request.urlopen') as remote, self.assertRaises(AnalysisError) as error:
-            remote_engine('http://gpu.invalid', 'paddleocr', sources)
+            remote_request_body(sources)
         remote.assert_not_called()
         self.assertEqual(error.exception.code, REMOTE_TOO_LARGE)
 
@@ -483,6 +483,20 @@ class PipelineTests(unittest.TestCase):
         for b in payload['document_analysis']['blocks']:
             self.assertNotIn('page', b['native_location'])
             self.assertEqual(b['native_location']['converted_page'], 1)
+
+    def test_pod_can_select_docling_without_changing_local_pdf_default(self):
+        import pymupdf
+        source = self.root / 'source.pdf'
+        with pymupdf.open() as doc:
+            doc.new_page().insert_text((30, 50), 'original text')
+            doc.save(source)
+        for options, expected in [({}, 'mineru'), ({'pdf_primary': 'docling'}, 'docling')]:
+            engines = Engines()
+            payload = run(source, self.root / expected, engines=engines, **options)
+            self.assertEqual(payload['document_analysis']['primary_processor'], expected)
+            self.assertEqual(engines.attempts[0]['processor'], expected)
+        with self.assertRaises(AnalysisError):
+            run(source, self.root / 'invalid', engines=Engines(), pdf_primary='unknown')
 
     def test_contract_rejects_broken_parent_and_cycle(self):
         payload = run(self.picture(), self.work, engines=Engines())

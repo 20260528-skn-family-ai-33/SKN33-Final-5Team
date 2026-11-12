@@ -191,7 +191,10 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
                 if columns is not None and operation=='compute':
                     from .table_formula import formula_columns
                     try:
-                        if formula_columns(node['settings'].get('calculation_formula'))-columns:issues.append('계산 수식에 앞 단계에 없는 열이 있습니다: '+id)
+                        missing = formula_columns(node['settings'].get('calculation_formula')) - columns
+                        if missing:
+                            issues.append('계산 수식에 앞 단계에 없는 열이 있습니다: ' + ', '.join(sorted(missing))
+                                          + ' (단계: ' + id + '; 사용 가능한 열: ' + ', '.join(sorted(columns)) + ')')
                     except ValueError:pass
                     output=node['settings'].get('output_column')
                     if output in columns:issues.append('기존 열은 덮어쓸 수 없습니다: '+id)

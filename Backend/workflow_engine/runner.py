@@ -164,6 +164,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         gmail_collections={n['id'] for n in config['workflow']['nodes'] if n['tool']=='email.list' and n['settings'].get('operation')=='read_messages'}
         summarized_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool']=='compose_answer' and n['id'] in outputs
                             for b in n['bindings'] if b['input']=='documents' and b['output']=='documents' and b['node_id'] in gmail_collections}
+        # When a memo explicitly consumes an earlier analysis, its final text
+        # is the displayed result. Keep the analysis in outputs/step history
+        # and in the pending review preview until the memo actually executes.
+        from workflow_engine.run_answer import summarized_text_sources
+        summarized_sources.update(summarized_text_sources(config['workflow'], outputs))
         operation_nodes={n['id'] for n in config['workflow']['nodes'] if uses_operation(n)}
         texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources|summarized_sources and (tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform','base64_codec','text_hash','date_transform'] or id in operation_nodes)))
         records=[v['records'] for v in outputs.values() if 'records' in v]
@@ -172,6 +177,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         evidence=[e for v in outputs.values() for e in v.get('evidence',[])]+[r['evidence'] for r in (records[-1] if records else []) if r.get('evidence')]
         run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=artifacts[-1] if artifacts else None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
         run['answer'] = public_run_answer(run['answer'], outputs)
+        if run['status'] == 'succeeded' and run.get('artifact'):
+            from workflow_engine.run_answer import empty_table_notice
+            notice = empty_table_notice(config['workflow'], outputs)
+            if notice:
+                run['answer'] += '\n\n' + notice
         from workflow_engine.executors.document.gmail_summary_batches import append_collection_notices
         run['answer']=append_collection_notices(run['answer'],[outputs.get(node_id,{}).get('result',{}) for node_id in gmail_collections])
     except Exception as error:
@@ -208,4 +218,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
             lifecycle.publish(run['id'],execution_token,target,json.dumps({'id':run['id'],'agent_version':run['agent_version'],'source_version':run.get('source_version'),'reviews':reviews,'outputs':run['outputs']},ensure_ascii=False,indent=2))
             run['review_report_path']='reports/'+target.name
         except OSError:run.update(status='failed',error='검수 보고서를 저장하지 못했습니다. 저장 공간과 권한을 확인하세요.')
+    if run['status'] == 'succeeded':
+        from agent_builder.conditions.input_requirements import table_run_request_notice
+        notice = ('추가 필터·정렬을 이번 실행에 적용했습니다. 저장된 설정은 유지됩니다.'
+                  if run.get('runtime_request_applied') else
+                  table_run_request_notice(config, run['request'], run.get('workflow_dependencies')))
+        if notice:
+            run['answer'] = notice + '\n\n' + run['answer']
     lifecycle.finish(run,execution_token);return storage.test(run['id'])

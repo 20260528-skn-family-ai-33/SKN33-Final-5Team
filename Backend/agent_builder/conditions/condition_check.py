@@ -124,9 +124,13 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             detail = ledger['decision']
         except Exception as error:
             if error_observer and setting=='enforce':error_observer(error)
+            from agent_builder.conditions.condition_readiness import ConditionContractError
+            from agent_builder.design.failure_notice import requirement_failure_notice
+            notice = requirement_failure_notice(
+                'model_output_error' if isinstance(error, ConditionContractError) else 'model_error', error)
             # A model/contract error is not a business clarification or unsupported request.
             ledger = {**deepcopy(state.get('condition_ledger') or {}),
-                      'decision': 'system_error', 'issues': ['조건 판정을 완료하지 못했습니다. 모델 연결과 출력 계약을 확인하세요.'],
+                      'decision': 'system_error', 'issues': [notice],
                       'questions': [], 'slots': {}, 'operations': [], 'error_type': type(error).__name__}
             ledger['slots'] = deepcopy((state.get('condition_ledger') or {}).get('slots', {}))
             ledger['operations'] = list((state.get('condition_ledger') or {}).get('operations', []))

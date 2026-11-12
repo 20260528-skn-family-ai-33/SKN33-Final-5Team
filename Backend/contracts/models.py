@@ -201,6 +201,7 @@ class BuilderState(TypedDict, total=False):
     condition_route: str
     condition_template: bool
     pending_questions: list[dict]
+    clarification_help: bool
     condition_answers: list[dict]
     source_health: dict
     tool_gap: dict | None

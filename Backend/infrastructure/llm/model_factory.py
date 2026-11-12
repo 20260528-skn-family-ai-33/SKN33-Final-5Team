@@ -29,11 +29,17 @@ def create_chat_model(api_key, model, **limits):
         timeout=float(os.getenv('A4B_MAIN_TIMEOUT_S','180'))
         if not 1<=timeout<=600:raise ValueError('A4B_MAIN_TIMEOUT_S는 1~600초로 설정하세요.')
         options['timeout']=timeout
+        # Respect the caller's bounded transport retry policy. Design extractors
+        # pass zero; run execution asks for one. Never retry an entire workflow.
+        retries = limits.get('max_retries', 0)
+        if type(retries) is not int or not 0 <= retries <= 2:
+            raise ValueError('모델 연결 max_retries(재시도 횟수)는 0~2여야 합니다.')
+        options['max_retries'] = retries
         options.update(base_url=base_url, api_key=os.getenv('A4B_MAIN_API_KEY') or LOCAL_MODEL_API_KEY,
                        default_headers={'User-Agent': 'A4B/0.1'})
         if provider == 'vllm':
             from infrastructure.llm.qwen_chat_model import QwenChatOpenAI
-            options.update(temperature=0.7, top_p=0.8, streaming=True, stream_usage=True, max_retries=0, extra_body={
+            options.update(temperature=0.7, top_p=0.8, streaming=True, stream_usage=True, extra_body={
                 'top_k': 20, 'min_p': 0,
                 'chat_template_kwargs': {'enable_thinking': False},
                 'structured_outputs': {'whitespace_pattern': '[ ]?'},
@@ -46,7 +52,7 @@ def create_chat_model(api_key, model, **limits):
         if os.getenv('A4B_OLLAMA_NUM_PREDICT', '').strip():
             options['max_tokens']=bounded_output_limit(options.get('max_tokens') or output_limit())
         options.update(temperature=temperature_setting(options.get('temperature',0.7)), top_p=0.8, reasoning_effort='none', extra_body={'think': False, **resident_options(options['model'])},
-                       streaming=True, stream_usage=True, max_retries=0)
+                       streaming=True, stream_usage=True)
         from infrastructure.llm.ollama_chat_model import OllamaChatOpenAI
         return OllamaChatOpenAI(**options)
     return ChatOpenAI(**options)

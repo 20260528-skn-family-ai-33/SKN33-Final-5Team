@@ -1,4 +1,23 @@
 from infrastructure.llm import model_factory
+import pytest
+
+
+@pytest.mark.parametrize('provider', ['ollama', 'vllm'])
+@pytest.mark.parametrize('retries', [0, 1, 2])
+def test_local_transport_honors_bounded_requested_retries(monkeypatch, provider, retries):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', provider)
+    monkeypatch.setenv('A4B_MAIN_BASE_URL', 'http://127.0.0.1:8000/v1')
+    target = 'ollama_chat_model.OllamaChatOpenAI' if provider == 'ollama' else 'qwen_chat_model.QwenChatOpenAI'
+    monkeypatch.setattr('infrastructure.llm.' + target, lambda **kw: kw)
+    assert model_factory.create_chat_model('', 'local', max_retries=retries)['max_retries'] == retries
+
+
+@pytest.mark.parametrize('retries', [-1, 3, True, '1'])
+def test_local_transport_rejects_unbounded_retry_settings(monkeypatch, retries):
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL', 'http://127.0.0.1:8000/v1')
+    with pytest.raises(ValueError, match='max_retries'):
+        model_factory.create_chat_model('', 'local', max_retries=retries)
 
 
 def test_openai_default_does_not_inherit_local_options(monkeypatch):
@@ -94,3 +113,32 @@ def test_deployed_finetune_limits_override_local_sampling_only(monkeypatch):
     assert model_factory.create_chat_model('','final664',max_tokens=1000)['max_tokens']==1000
     external=model_factory.create_chat_model('real-key','external',temperature=0.2,max_tokens=9000)
     assert external['temperature']==0.2 and external['max_tokens']==9000
+
+
+@pytest.mark.parametrize('provider', ['ollama', 'vllm'])
+@pytest.mark.parametrize('status,attempts', [(503,2),(401,1)])
+def test_local_client_retries_transient_http_once_without_retrying_auth(monkeypatch, provider, status, attempts):
+    import httpx
+    import json
+    from openai import AuthenticationError
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', provider)
+    monkeypatch.setenv('A4B_MAIN_BASE_URL', 'https://fixture.test/v1')
+    monkeypatch.delenv('A4B_MAIN_API_KEY', raising=False)
+    monkeypatch.delenv('A4B_OLLAMA_MODEL_ALIASES', raising=False)
+    calls = []
+    def respond(request):
+        calls.append(json.loads(request.content))
+        if len(calls) == 1:
+            return httpx.Response(status, json={'error':{'message':'fixture failure'}}, headers={'retry-after':'0.01'})
+        body = dict(id='fixture',object='chat.completion.chunk',created=1,model='fixture',
+            choices=[dict(index=0,delta={'role':'assistant','content':'요약 완료'},finish_reason='stop')])
+        return httpx.Response(200,text='data: '+json.dumps(body)+'\n\ndata: [DONE]\n\n',
+                              headers={'Content-Type':'text/event-stream'})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        model = model_factory.create_chat_model('', 'fixture', max_retries=1, http_client=client)
+        if status == 401:
+            with pytest.raises(AuthenticationError):
+                model.invoke('요약해줘')
+        else:
+            assert model.invoke('요약해줘').content == '요약 완료'
+    assert len(calls) == attempts

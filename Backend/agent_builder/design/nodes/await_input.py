@@ -28,7 +28,13 @@ def await_input_node(state):
             break
         if not answer.get('question_id') or answer['question_id'] in [q['id'] for q in pending]:break
         payload={**payload,'error':'현재 대화의 확인 질문에 답변해주세요.'}
-    result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False}
+    result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False,'clarification_help':False}
+    if not answer.get('question_answers') and not answer.get('question_id'):
+        from agent_builder.design.question_help import question_help
+        explanation = question_help(state, answer['content'])
+        if explanation:
+            return {**result, 'clarification_help': True,
+                    'messages': result['messages'] + [{'role':'assistant','content':explanation}]}
     if answer.get('question_answers'):
         from agent_builder.design.question_answers import answer_text
         by_id={q['id']:q for q in pending}

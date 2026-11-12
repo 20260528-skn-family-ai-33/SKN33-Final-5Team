@@ -259,6 +259,11 @@ def validate_plan(raw, state):
         if spec['kind']=='filter':
             for f in spec['filters']:
                 unary=f['operator'] in ('is_empty','not_empty')
+                if unary:
+                    from .request_guards import unary_filter_issue
+                    issue = unary_filter_issue(f, task['quote'])
+                    if issue:
+                        raise ValueError(issue)
                 if not unary and ((f['value'] is None)==(f['compare_field'] is None)):
                     raise ValueError('선별 조건은 기준 값 또는 비교 열 중 하나만 가져야 합니다.')
                 if f['compare_field']==f['field']:
@@ -278,6 +283,10 @@ def validate_plan(raw, state):
     validate_group_aggregations(plan, state)
     validate_grouped_result(plan, state)
     validate_explicit_ledger(plan,state)
+    from .request_guards import review_request
+    if (not plan['unresolved'] and review_request(state)[0]
+            and not any(t['spec']['kind'] == 'human_review' for t in plan['tasks'])):
+        raise ValueError('원문에서 요청한 사람 검토가 업무 목록에서 누락됐습니다.')
     # Forward references are not a semantic error. Reorder an acyclic ledger
     # without dropping dependencies or rewriting any requested condition.
     remaining=list(plan['tasks']);ordered=[];seen=set()
@@ -655,7 +664,8 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
         except Exception as error:
             if error_observer:error_observer(error)
             # Provider exceptions may contain headers, prompts or customer data.
-            detail='입력하신 조건은 보존했습니다. 업무 흐름을 구성하는 중 문제가 생겼습니다. 조건을 더 입력하지 않아도 같은 내용으로 다시 시도할 수 있습니다.'
+            from .failure_notice import requirement_failure_notice
+            detail=requirement_failure_notice(failure_kind, error)
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,
                         status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],

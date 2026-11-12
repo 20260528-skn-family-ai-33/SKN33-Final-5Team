@@ -113,7 +113,9 @@ def test_bad_extraction_keeps_technical_error_out_of_customer_message():
     result=make_requirement_check('fixture',model,'enforce',error_observer=errors.append)(current('보고서를 만들어줘.','manual'))
     assert errors and result['status']=='validation_failed'
     assert 'bad_schema_field' not in json.dumps(result)
-    assert result['messages'][-1]['content']=='입력하신 조건은 보존했습니다. 업무 흐름을 구성하는 중 문제가 생겼습니다. 조건을 더 입력하지 않아도 같은 내용으로 다시 시도할 수 있습니다.'
+    notice=result['messages'][-1]['content']
+    assert '입력하신 조건은 보존' in notice and '저장을 중단' in notice
+    assert '입력 자료 → 처리 조건 → 원하는 결과' in notice
     assert result['requirement_failure']=={'kind':'processing_error','retryable':True}
 
 

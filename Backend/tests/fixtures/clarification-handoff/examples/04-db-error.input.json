@@ -14,7 +14,7 @@
     "db_status": "timeout",
     "messages_loaded": false
   },
-  "tool_catalog_fingerprint": "b187f747a4e063dd5f74a7e58cf3217203aa09a974f4f982e17cb5a34f286c37",
+  "tool_catalog_fingerprint": "4e2441370be9de379cff7f0a385654d3a88efb835ed0cee483c2674cc7c70a3c",
   "ml_advice": {
     "status": "not_requested",
     "ml_candidates": [],

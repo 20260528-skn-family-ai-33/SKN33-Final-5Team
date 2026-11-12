@@ -170,7 +170,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_edge('conversation','condition_audit');graph.add_edge('condition_audit','validate');graph.add_edge('validate','verification');graph.add_edge('verification','supervisor')
     graph.add_conditional_edges('supervisor',lambda s:s['route'],{'unsupported':'tool_gap','invalid':END,'repair':'generation_gate','await_input':'await_input','await_approval':'await_approval','save':'save'})
     graph.add_edge('tool_gap',END)
-    graph.add_edge('await_input','attachment_gate')
+    graph.add_conditional_edges('await_input',lambda s:'help' if s.get('clarification_help') else 'answer',
+                                {'help':'await_input','answer':'attachment_gate'})
     graph.add_conditional_edges('await_approval',lambda s:'save' if s['confirmed'] else 'capability_check',{'save':'save','capability_check':'attachment_gate'})
     graph.add_edge('save',END)
     return graph.compile(checkpointer=saver),connection

@@ -108,6 +108,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    window.history.replaceState(state,'',location.href);
   }
  },[initialPrompt]);
+ const initialPromptPending=useRef(!!initialPrompt?.trim());
  const [pendingMessage,setPendingMessage]=useState('');
  const [recovery,setRecovery]=useState<ConversationRecovery|null>(null);
  const [initialLoadFailed,setInitialLoadFailed]=useState(false);
@@ -316,6 +317,11 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
    setBusy('');
   }
  }
+ useEffect(()=>{
+  if(!initialPromptPending.current||loading||initialLoadFailed||!credentialId||screen!=='workflow')return;
+  initialPromptPending.current=false;
+  void send();
+ },[loading,initialLoadFailed,credentialId,screen]);
  async function answerQuestions(answers:ClarificationAnswer[]){
   const content=answers.map(answer=>answer.text+' → '+(answer.skip?'선택사항 건너뛰기':Array.isArray(answer.value)?answer.value.join(', '):String(answer.value))).join('\n');
   if(content.length>4000)throw new Error('답변은 전체 4,000자까지 보낼 수 있습니다. 내용을 줄여주세요.');

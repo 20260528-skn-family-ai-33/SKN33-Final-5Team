@@ -1937,8 +1937,8 @@ test('reservation edits survive cancelled tab, browser-back and new-workflow nav
  }finally{await h.close();}
 });
 
-test('home: first-login example opens a fresh design with the example in the composer',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+test('home: first-login example waits for submission then starts a fresh design',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:path.endsWith('/sessions')?{...readySession(),draft:null,status:'empty'}:path.endsWith('/message')?readySession():undefined,createElement(EntryApp));
  try{
   const example=Array.from(document.querySelectorAll('.overview-examples button')).find(item=>item.textContent?.includes('엑셀 정리하기'));
   assert.ok(example);
@@ -1950,8 +1950,11 @@ test('home: first-login example opens a fresh design with the example in the com
   assert.ok(!arrow.disabled);
   await click(arrow);
   assert.equal(location.search,'?screen=workflow');
-  assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,/재고표에서/);
-  assert.ok(!h.calls.some(call=>call.body));
+  await h.flush();
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,'');
+  const messages=h.calls.filter(call=>call.path.endsWith('/message'));
+  assert.equal(messages.length,1);
+  assert.match(messages[0].body.content,/재고표에서/);
  }finally{await h.close();}
 });
 
@@ -2126,22 +2129,30 @@ test('review: workspace menu restores the conversation after visiting assets',as
  }finally{await h.close();}
 });
 
-test('review: home prompt is consumed once and does not reappear after remount',async()=>{
+test('home submission starts generation once after loading and does not resend after remount',async()=>{
  const prompt='매출 합계를 계산해줘';
- const h=await setup('?screen=home',{},undefined,createElement(StrictMode,null,createElement(EntryApp)));
+ const result={...readySession(),messages:[{role:'user',content:prompt},{role:'assistant',content:'처리 기준을 확인할게요.'}]};
+ const h=await setup('?screen=home',{},path=>{
+  if(path.endsWith('/sessions'))return {...readySession(),status:'empty',draft:null};
+  if(path.endsWith('/message')||path.includes('/session?'))return result;
+ },createElement(StrictMode,null,createElement(EntryApp)));
  try{
   localStorage.setItem('a4b-builder-session','previous-session');
   localStorage.setItem('a4b-selected-agent','A');
   await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,prompt);
   await submit(document.querySelector('.overview-composer')!);
-  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,prompt);
-  assert.equal(localStorage.getItem('a4b-builder-session'),null);
-  assert.equal(localStorage.getItem('a4b-selected-agent'),null);
+  await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,1);
+  const messages=h.calls.filter(call=>call.path.endsWith('/message'));
+  assert.equal(messages.length,1);
+  assert.equal(messages[0].body.content,prompt);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,'');
+  assert.match(document.querySelector('.as-messages')?.textContent||'',/매출 합계를 계산해줘/);
   assert.equal(window.history.state.initialPrompt,undefined);
   assert.equal(typeof window.history.state.a4bIndex,'number');
   window.confirm=()=>true;
-  await click(button('자료함'));await click(button('워크플로우'));
-  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,'');
+  await click(button('자료함'));await click(button('워크플로우'));await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,1);
  }finally{await h.close();}
 });
 
@@ -2300,5 +2311,26 @@ for(const repairResult of ['saved','active','changed'])test('save recovery: pers
    assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.disabled,repairResult==='active');
   }
 
+ }finally{await h.close();}
+});
+
+test('home automatic submission waits for the design connection and preserves input on session failure',async()=>{
+ const prompt='입고 내역을 정리해줘';
+ const pending=deferred();
+ const h=await setup('?screen=home',{},path=>{
+  if(path.includes('/connection'))return pending.promise;
+  if(path.endsWith('/sessions'))throw Error('대화를 시작하지 못했습니다');
+ },createElement(EntryApp));
+ try{
+  await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,prompt);
+  await submit(document.querySelector('.overview-composer')!);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,0);
+  await act(async()=>{pending.resolve({connection:{model:'preview',credential:{id:'demo',provider:'openai',name:'연결'}},health:{status:'ready'}});await tick();});
+  await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,1);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,prompt);
+  assert.match(document.querySelector('[role="alert"]')?.textContent||'',/대화를 시작하지 못했습니다/);
+  await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,1);
  }finally{await h.close();}
 });

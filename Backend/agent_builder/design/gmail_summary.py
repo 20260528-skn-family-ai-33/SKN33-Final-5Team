@@ -5,6 +5,7 @@ daily-09:00 previous-day and hourly unread recipes are explicit; other filters, 
 other channels, attachments and additional tasks stay with the planner.
 Account authorization remains an execution prerequisite and is never inferred here.
 """
+from copy import deepcopy
 import json
 import re
 
@@ -91,9 +92,7 @@ def _count_summary_instructions(count):
             '메일별 핵심 내용을 요약하세요. 메일이 없으면 없다고 안내하세요.')
 
 
-def _base_summary(state):
-    """Count-only edits may preserve a saved, file-free read -> summary graph."""
-    draft = state.get('draft') or {}
+def _read_summary_arguments(draft):
     workflow = draft.get('workflow') or {}
     nodes = workflow.get('nodes', [])
     if draft.get('document_ids') or len(nodes) != 2 or set(draft.get('tool_ids', [])) != {'email.list', 'compose_answer'}:
@@ -113,6 +112,78 @@ def _base_summary(state):
     if (not isinstance(arguments, dict) or set(arguments) - {'query', 'max_results'}
             or type(arguments.get('max_results')) is not int or not 1 <= arguments['max_results'] <= MAX_RESULTS):
         return None
+    return reader, summary, arguments
+
+
+def gmail_count_revision(state):
+    """A count-only selector attached to a bounded Gmail lookup and summary."""
+    bound = _gmail_count_evidence(state)
+    return bound[0] if bound else None
+
+
+def _gmail_count_evidence(state, *, only=False):
+    assessment = state.get('capability_assessment') or {}
+    if (assessment.get('decision') != 'existing_tools'
+            or set(assessment.get('tool_ids', [])) != {'email.list', 'compose_answer'}
+            or state.get('resources') or state.get('required_node_refs')):
+        return None
+    users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
+    if len(users) < 2 or not any(re.search(r'gmail|지메일', text, re.I) for text in users[:-1]):
+        return None
+    from .processing_guard import _LITERALS
+    text = _LITERALS.sub(' ', users[-1])
+    compact = re.sub(r'\s+', '', users[-1].strip().rstrip('.!~'))
+    change = _COUNT_CHANGE.fullmatch(compact)
+    if change and int(change[1]) <= MAX_RESULTS:
+        evidence = re.search(r'[1-9]\d{0,3}\s*(?:개|건)', users[-1])
+        return int(change[1]), evidence[0]
+    bounds = list(re.finditer(r'(?:최신|최근)\s*(\d+|[가-힣]+?)\s*(통|건|개)만', text))
+    if len(bounds) != 1:
+        return None
+    match = bounds[0]
+    # Scope the quantity to an affirmative selection on the registered
+    # reader. Surrounding prose and the position of the selector can vary.
+    tail = text[match.end():].lstrip()
+    if (not re.match(r'(?:남겨|남기|골라|뽑아|조회|요약)', tail)
+            or re.search(r'지\s*(?:말|마|않)|말고|아니|제외|빼고', tail)
+            or re.search(r'(?:\d+|[가-힣]+)\s*(?:통|건|개)(?:만|씩|으로)', tail)):
+        return None
+    if only and (text != users[-1] or not re.fullmatch(r'\s*(?:(?:그\s*)?(?:목록|메일)(?:에서|은|을|의)?\s*)?', text[:match.start()])
+                 or not re.fullmatch(r'(?:(?:남겨서?|골라서?|뽑아서?)\s*)?(?:다시\s*)?요약(?:해\s*(?:줘|주세요))?[.!]?\s*', tail)):
+        return None
+    from .request_meaning import _quantity
+    evidence = text[match.start(1):match.end(2)]
+    count = _quantity(evidence)
+    return (count, evidence) if count and 1 <= count <= MAX_RESULTS else None
+
+
+def apply_gmail_count(state, draft):
+    """Project only the current sealed retrieval bound onto a proven graph."""
+    from .requirement_ledger import ledger_fingerprint, plan_digest
+    ledger = state.get('requirement_ledger') or {}
+    expected = gmail_count_revision(state)
+    if (not expected or state.get('requirement_fingerprint') != ledger_fingerprint(state)
+            or state.get('requirement_digest') != plan_digest(ledger)
+            or len(ledger.get('tasks', [])) != 1 or ledger.get('unresolved')
+            or ledger['tasks'][0]['spec'].get('gmail_limit') != expected):
+        return None
+    found = _read_summary_arguments(draft)
+    if not found or found[2]['max_results'] == expected:
+        return None
+    from copy import deepcopy
+    result = deepcopy(draft)
+    reader, _, args = _read_summary_arguments(result)
+    reader['settings']['arguments_json'] = json.dumps({**args, 'max_results': expected}, ensure_ascii=False)
+    return result
+
+
+def _base_summary(state):
+    """Count-only edits may preserve a saved, file-free read -> summary graph."""
+    draft = state.get('draft') or {}
+    found = _read_summary_arguments(draft)
+    if not found:
+        return None
+    _, summary, arguments = found
     query = arguments.get('query')
     if query not in (None, PREVIOUS_DAY_QUERY, UNREAD_QUERY) or bool(draft.get('schedule')) != (query is not None):
         return None
@@ -215,6 +286,97 @@ def gmail_summary_assessment(state):
                 scope='catalog assessment only; not condition READY')
 
 
+def _receipt_day(state):
+    from .request_meaning import sealed_meaning
+    reviewed = sealed_meaning(state)
+    users = [m['content'] for m in state.get('messages', []) if m['role']=='user']
+    count_only = (len(users) == 2 and gmail_count_revision(state) and not re.search(
+        r'오늘|어제|전날|내일|날짜|현지|기간|시간대|\d{4}[-/.]\d|before:|after:', users[-1], re.I))
+    if reviewed:
+        tasks = [t for t in reviewed['tasks'] if t['source'] == 'gmail' and 'read' in t['actions']]
+        if len(tasks) == 1 and tasks[0]['selection']['period'] in ('today', 'yesterday'):
+            if not (count_only and tasks[0]['selection']['period_source_message'] != 0):
+                return tasks[0]['selection']
+    if len(users)==1 or count_only:
+        # A confirmed count-only edit retains the first turn's calendar.
+        text = re.sub(r'''["“‘'][^"'”’]*["'”’]''', '', users[0])
+        if len(re.findall(r'오늘|어제|전날|내일|\d{4}[-/.]\d', text)) == 1:
+            match = re.search(r'(오늘|어제|전날)\s*(?:하루\s*(?:동안)?\s*)?(?:에\s*)?(?:받은|온|들어온|수신한)', text)
+            if match and re.search(r'Gmail|지메일', text, re.I):
+                selection = dict(period='today' if match[1] == '오늘' else 'yesterday', period_source_message=0)
+                from .temporal_context import source_calendar_zone
+                verified_zone = source_calendar_zone(state, 0)
+                if verified_zone:
+                    selection['calendar_timezone'] = verified_zone[0]
+                return selection
+    return None
+
+
+def _unknown_calendar(state, selection):
+    if selection.get('calendar_timezone'):
+        return False
+    source = [m['content'] for m in state['messages'] if m['role']=='user'][selection['period_source_message']]
+    source = re.sub(r'(?:Gmail|지메일)에서', '', source, flags=re.I)
+    return bool(re.search(r'현지|시간\s*기준|[가-힣]+에서\s*(?:어제|오늘)|(?:[A-Za-z_]+/)+[A-Za-z_+-]+', source))
+
+
+def apply_gmail_day(state, draft):
+    """Replace unambiguous calendar-date operands, preserving every other argument."""
+    if draft.get('schedule') or state.get('resources') or not (parts := _read_summary_arguments(draft)):
+        return None
+    selection = _receipt_day(state)
+    if not selection:
+        return None
+    # Regional proper names require a reviewed IANA mapping. A model's date,
+    # the host's offset, and the browser's zone alone cannot establish equivalence.
+    if _unknown_calendar(state, selection):
+        return None
+    from .temporal_context import selected_day
+    day = selected_day(state, selection)
+    query = parts[2].get('query')
+    if not day or query is not None and not isinstance(query, str):
+        return None
+    terms = (query or '').split()
+    if terms and (len(terms) != 2 or not all(sum(bool(re.fullmatch(
+            boundary + ':' + re.escape(date[:10]) + r'(?:T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2}))?', term))
+            for term in terms) == 1 for boundary, date in [('after', day['start']), ('before', day['end'])])):
+        return None
+    result = deepcopy(draft)
+    reader, _, arguments = _read_summary_arguments(result)
+    arguments['query'] = f"after:{day['start_epoch']} before:{day['end_epoch']} -in:sent -in:drafts"
+    reader['settings']['arguments_json'] = json.dumps(arguments)
+    return result
+
+
+def gmail_day_issues(state, draft):
+    """Verify the date operands even if meaning review fell back to the planner."""
+    if draft.get('schedule') or state.get('resources'):
+        return []
+    nodes = (draft.get('workflow') or {}).get('nodes', [])
+    reads = [n for n in nodes if n['tool'] == 'email.list' and n['settings'].get('operation') == 'read_messages']
+    if len(reads) != 1 or not any(n['tool'] == 'compose_answer' and any(
+            b['input'] == b['output'] == 'documents' and b['node_id'] == reads[0]['id']
+            for b in n.get('bindings', [])) for n in nodes):
+        return []
+    selection = _receipt_day(state)
+    if not selection:
+        return []
+    if _unknown_calendar(state, selection):
+        return ['Gmail 원문의 현지 날짜와 요청 턴의 IANA 시간대가 일치하는지 확인해야 합니다.']
+    from .temporal_context import selected_day
+    day = selected_day(state, selection)
+    try:
+        args = json.loads(reads[0]['settings'].get('arguments_json') or '{}')
+        query = args.get('query') or ''
+    except (ValueError, AttributeError, TypeError):
+        query = ''
+    if isinstance(query,str) and day and not re.search(r'[{}()"\']|\bOR\b', query):
+        bounds = [x for x in query.split() if re.match(r'^-?(?:after|before|older|newer|older_than|newer_than):', x, re.I)]
+        if sorted(bounds) == sorted([f"after:{day['start_epoch']}", f"before:{day['end_epoch']}"]):
+            return []
+    return ['Gmail 조회 인자에 요청 턴의 현지 자정부터 다음 현지 자정까지의 epoch 범위를 반영해야 합니다.']
+
+
 def _schedule_description(spec):
     zone = '한국 시간' if spec['timezone'] == 'Asia/Seoul' else spec['timezone'] + ' 기준'
     if spec['frequency'] == 'hourly':
@@ -260,8 +422,9 @@ def _semantic_scope(request, state):
         return _schedule_description(request['schedule']) + (' 전날 ' if selection['period'] == 'yesterday' else ' ') + scope
     if selection['period'] in ('today', 'yesterday'):
         anchor = state['temporal_context']['user_message_anchors'][selection['period_source_message']]
-        date = anchor['relative_days'][selection['period']]['date']
-        return f"{anchor['timezone']} 기준 {date}에 받은 {scope}"
+        from .temporal_context import selected_day
+        date = selected_day(state, selection)['date']
+        return f"{selection.get('calendar_timezone') or anchor['timezone']} 기준 {date}에 받은 {scope}"
     return '최근 ' + scope
 
 

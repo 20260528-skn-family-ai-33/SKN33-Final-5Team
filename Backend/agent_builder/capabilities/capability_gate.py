@@ -1,6 +1,7 @@
 """Persisted capability gate shared by planning, confirmation and saving."""
 import hashlib
 import json
+import os
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.capabilities.capability_judgement import APP_CAPABILITIES, delivery_conflict
 
@@ -26,10 +27,35 @@ def draft_delivery_issue(state, draft):
     return _delivery_issue(state, {node['tool'] for node in nodes})
 
 
+CAPABILITY_POLICY = 'a4b.capability.v2.turn-evidence'
+
+
+def _selected_model(state, model):
+    if model and state.get('credential_id') == 'local-model' and os.getenv('A4B_MAIN_PROVIDER') == 'ollama':
+        from infrastructure.llm.model_aliases import resolve_ollama_model
+        return resolve_ollama_model(model)
+    return model
+
+
+def turn_evidence(state):
+    """Use only evidence attached to user turns in this transcript or prefix."""
+    messages = state.get('messages', [])
+    turns = {i for i, message in enumerate(messages) if message.get('role') == 'user'}
+    clock = state.get('temporal_context') or {}
+    channels = ('capability_answers', 'condition_answers', 'requirement_answers')
+    return {
+        'model': _selected_model(state, state.get('model')), 'user_timezone': state.get('user_timezone'),
+        'anchors': clock.get('user_message_anchors', [])[:len(turns)],
+        'answers': {channel: [event for event in state.get(channel, []) if event.get('turn') in turns]
+                    for channel in channels},
+    }
+
+
 def input_fingerprint(state):
     payload={'users':[m for m in state.get('messages',[]) if m.get('role')=='user'],
              'request_meaning_digest':state.get('request_meaning_digest'),
-             'user_timezone':state.get('user_timezone'),
+             'turn_evidence':turn_evidence(state),'policy':CAPABILITY_POLICY,
+             'capability_model':_selected_model(state, os.getenv('A4B_CAPABILITY_MODEL') or state.get('model')),
              'resources':state.get('resources',[]),'source_health':state.get('source_health',{}),
              'tools':TOOLS,'app_capabilities':APP_CAPABILITIES}
     if state.get('execution_mode'):payload['execution_mode']=state['execution_mode']

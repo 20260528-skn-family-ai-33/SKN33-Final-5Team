@@ -599,9 +599,41 @@ test('DOM: a first upload offers observed file values before the first chat mess
   const deadline=Date.now()+3000;
   while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
   const card=document.querySelector('.as-inspected-source') as HTMLDetailsElement;assert.ok(card.open);
+  // The upload itself only describes what was read and asks what to do; no model call, no question.
+  assert.match(document.querySelector('.as-file-summary')?.textContent||'',/「접수.txt」 파일은 문서 자료예요\. 찾은 항목: 접수번호\..*이 파일로 어떤 작업을 할까요\?/);
+  assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
   assert.match(card.textContent||'',/접수번호: A-120/);await click(field('접수번호'));await click(button('요청에 추가'));
   assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement).value,'접수.txt에서 접수번호 항목을 추출해 주세요.');
   assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
+ }finally{await h.close();}
+});
+test('DOM: a file attached during the conversation gets its own summary until the next message',async()=>{
+ const old={id:'old',name:'기존.csv',kind:'table',has_readable_text:true,columns:['금액'],fields:[],snippets:[],preview:[]};
+ const added={id:'added',name:'추가.csv',kind:'table',has_readable_text:true,columns:['지역','금액'],fields:[],snippets:[],preview:[]};
+ const base={...readySession(),status:'needs_clarification',resources:[{id:'old',name:'기존.csv',kind:'table',row_count:2,columns:['금액'],preview:[]}],file_inspection:[old]};
+ const attached={...base,revision:2,resources:[...base.resources,{id:'added',name:'추가.csv',kind:'table',row_count:5,columns:['지역','금액'],preview:[]}],file_inspection:[old,added]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/session?'))return base;
+  if(path.endsWith('/upload'))return attached;
+  if(path.endsWith('/message'))return {...attached,revision:3,messages:[...attached.messages,{role:'user',content:'추가 파일도 합쳐줘'}]};
+ });
+ try{
+  assert.equal(document.querySelector('.as-file-summary'),null);  // a message was already sent: no summary yet
+  await click(button('자료 연결'));await click(button('새 파일 올리기'));
+  const picker=document.querySelector('input[type=file]') as HTMLInputElement;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['지역,금액'],'추가.csv')]});
+  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const deadline=Date.now()+3000;
+  while(!document.querySelector('.as-file-summary')){assert.ok(Date.now()<deadline);await h.flush();}
+  const summary=document.querySelector('.as-file-summary')?.textContent||'';
+  assert.match(summary,/「추가\.csv」 파일은 표 자료예요\. 열 2개\(지역, 금액\), 5행을 읽었어요\./);
+  assert.match(summary,/새로 연결한 파일을 지금 작업에 어떻게 쓸까요\?/);
+  assert.ok(!summary.includes('기존.csv'));
+  assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
+  const composer=document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement;
+  await input(composer,'추가 파일도 합쳐줘');await click(document.querySelector('button[aria-label="업무 설명 보내기"]')!);
+  const sent=Date.now()+3000;
+  while(document.querySelector('.as-file-summary')){assert.ok(Date.now()<sent);await h.flush();}
  }finally{await h.close();}
 });
 test('DOM: named sheet selections preserve their sheet names and the primary sheet is previewed once',async()=>{

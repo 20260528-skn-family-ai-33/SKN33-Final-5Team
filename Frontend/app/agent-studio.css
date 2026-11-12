@@ -124,8 +124,6 @@
 .as-save-schedule-choice label:has(input:checked){border-color:var(--a4b-action);background:var(--a4b-neutral-soft)}
 .as-save-schedule-choice input{margin:4px 0 0;accent-color:var(--a4b-action)}.as-save-schedule-choice span{display:grid;gap:5px}.as-save-schedule-choice small{font-size:12px;line-height:1.6;color:var(--a4b-muted)}
 .as-save-review-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
-
-
 .screen-workflow .as-message p,
 .screen-workflow .as-config-body .as-setting-section p {
   font-size: 14px;
@@ -146,3 +144,4 @@
   outline: 2px solid var(--a4b-action);
   outline-offset: -2px;
 }
+.as-file-summary{margin:0 0 8px}.as-file-summary p{margin:0 0 4px;line-height:1.6}.as-file-summary p:last-child{margin-bottom:0}

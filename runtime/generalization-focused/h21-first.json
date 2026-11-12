@@ -1,0 +1,3031 @@
+{
+  "version": 1,
+  "phase": "reassessment",
+  "created_at": "2026-11-11T11:47:01.977001+00:00",
+  "gold_sha256": "93c821ded55570fda569ceb983f22fd2ebf8d6b8c7d395d445e68e4931bc7e35",
+  "corpus_profile": "runpod-rebuild",
+  "catalog_fingerprint": "b187f747a4e063dd5f74a7e58cf3217203aa09a974f4f982e17cb5a34f286c37",
+  "code_manifest": {
+    "git_head": "c932680fc90cb8aba09e8ec30a7525d198fad2c4",
+    "source_sha256": "64915d6dcf0a7f504e21cb6276e160b5aa184e35749004bd46f01f2158022e2f",
+    "files": {
+      "Backend/agent_builder/__init__.py": "a9683a80ee1ad31b6911e3ef5c8ba68ed8593b956e61cab8e6ba68b96a93ed27",
+      "Backend/agent_builder/capabilities/__init__.py": "fb66c5c4ead3412a92468677684b033f4a1357145974650bb8066bb7a3536239",
+      "Backend/agent_builder/capabilities/capability_check.py": "a8c931d974411799879683dfd0208588e9f24424e88802c88584c4ce6c4e6211",
+      "Backend/agent_builder/capabilities/capability_gate.py": "4d5eb778623633fd89613f06107a40604d1f190e6c2594e204017d68635a6f4d",
+      "Backend/agent_builder/capabilities/capability_judgement.py": "373b21b76d1c455c4bf7304b80e97cc666e929f477e152ced43e4868454ff782",
+      "Backend/agent_builder/conditions/__init__.py": "0a020ca5460be6108edced909e554b8777658fdedad4f701c6b9e6aaf95bddc4",
+      "Backend/agent_builder/conditions/clarification_contract.py": "f2d490de9fc90d7b18b6e870e2beba9f9dcf7c43614ef5e2e07d2aef8c58b823",
+      "Backend/agent_builder/conditions/condition_check.py": "525ab6b4203c14cf6bd583dfd7f51b5f2642f69d8979c454cdb1ca553fda8394",
+      "Backend/agent_builder/conditions/condition_readiness.py": "d657d5cbf106c054bf59543a3e3a07493bf736e92d3cdb8556f8d1a91f7b4d72",
+      "Backend/agent_builder/conditions/input_requirements.py": "2cb5946f412ba94d1587343dd5d5e45dd2d7e15c2850c725fd46bff5ade55219",
+      "Backend/agent_builder/conditions/input_resolution.py": "0d6a83b134b3865c89a8c1d87417d093dfdc04578d505ab792d576caade523c5",
+      "Backend/agent_builder/design/__init__.py": "3e94c9110f5f260e8b9bdf4c9aeda6dd292fac9bf71871ba2bbff3c8f42fc8ae",
+      "Backend/agent_builder/design/attachment_precheck.py": "deb779889485c46ed1428670a25533d99e6ae0db88009ee7d2622d05e71972e4",
+      "Backend/agent_builder/design/binding_repairs.py": "ea32cba50f849b88ead459a080c3db743d399dd3eed098c51965fbd978508b5b",
+      "Backend/agent_builder/design/compute_grounding.py": "753efa1c0ebc00e965ff14457070b58ea3ea07a4fac77f07ab1ab168f862953c",
+      "Backend/agent_builder/design/condition_requirements.py": "7c81207af0eda4e91d09408b9f35dbb9d6a7b1f5826d2a24925c89f36a709b58",
+      "Backend/agent_builder/design/condition_templates.py": "e3961902c04c77d87c6c85a9286bb16c6603fc6daefea4539e939f1eea4ecc31",
+      "Backend/agent_builder/design/content_lineage.py": "796205ea659a1060b3033f588a803c6163a16401a1af0e3a03da63e2385b0405",
+      "Backend/agent_builder/design/document_rows_template.py": "98be3574a852cd76cb9de3a1e30ee52cd44354e27e47eaf0acd75ab197280f6c",
+      "Backend/agent_builder/design/experiments/__init__.py": "77988acf857ff693b88fc0b89f4818e057cf33dc5611f6308bf28fe1412bff48",
+      "Backend/agent_builder/design/experiments/binding_repairs.py": "8dfea08ddd474def7563977a3249b1f32190f95589ebb6829137225d5ec64d3b",
+      "Backend/agent_builder/design/experiments/request_judgement.py": "a9e60ebfb01f3a1bfe0572851eebc9ff4849e69217dedb41d5b4b9e417dca487",
+      "Backend/agent_builder/design/experiments/request_judgement_examples.json": "a9ac51c6dc966f6777df3f125ed2743cc19b33a954803fa06f419d4f8860d61b",
+      "Backend/agent_builder/design/explicit_date_criteria.py": "40f6232116594cb5990d6cf39bfe794bb2dc5c91d81025e257ac6d76f28abd35",
+      "Backend/agent_builder/design/explicit_table_criteria.py": "c8f7a31c83477bc286107c87b6ebd41ef156b3cb2196128c6a177105aa15e11e",
+      "Backend/agent_builder/design/final_table_criteria.py": "597171b94c229c7b49b0bcb57e9b2a78264004feebf59518a1235ad50e03f678",
+      "Backend/agent_builder/design/gmail_summary.py": "406c27869905d77669c3df9219cdd75f3fee22d9173f62206b1f5e1f2455647b",
+      "Backend/agent_builder/design/graph.py": "1dce50ee7cabc58c85cea3064daf5774343c42d33f11c44b4328bc3c1914f20f",
+      "Backend/agent_builder/design/grouped_result_requirements.py": "1503a48a3b37fbb2858214fcca0ef10a6bedeeec002bf29fe0aa2feb27f8c6dc",
+      "Backend/agent_builder/design/linear_plan.py": "23770283e86c6f2431413f0aa71a74e6ba0cba08772e1ca931307e448b6e494b",
+      "Backend/agent_builder/design/name_policy.py": "6aada835328f2986ba50ca2b011478e94cc471ce53abd2d5fe3eededcb25dc40",
+      "Backend/agent_builder/design/native_settings.py": "a2721127bc3d4b0997a70a43efe19241ffecb0c218b6319b44bdc04b2ec458a2",
+      "Backend/agent_builder/design/nodes/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/agent_builder/design/nodes/await_input.py": "a5f0bbdfc18ae829c6e505a6ed8503eb14f3c0287fff2f8ca665d3ffb8693d6f",
+      "Backend/agent_builder/design/nodes/conversation.py": "9d0d00c089b222dae690b528c946975fd5288e08da469f2f85c85ddb1ac9d609",
+      "Backend/agent_builder/design/nodes/direct_conversation.py": "a345fd0c28affab714a2236442cebb70ddc4d3a1ca141291cf18a27802bc419c",
+      "Backend/agent_builder/design/nodes/resources.py": "b664f7eae4068446df28783e4ed4ed68a16f5d5b1fff68cc8baef1c87d392c84",
+      "Backend/agent_builder/design/nodes/save.py": "42f18c7844a3804dc13dcc553dfb8706f2ec9d617cdfb3b848f6a80036746c0f",
+      "Backend/agent_builder/design/nodes/supervisor.py": "6316c0786016f95661b1a78c1709aa9dbae02c30d3f7c6b983fc6d79f670fb9b",
+      "Backend/agent_builder/design/nodes/validation.py": "638ae483274435faebb96f993e3db2b26aee33aa7c4310a05b6eef56720e932a",
+      "Backend/agent_builder/design/nodes/verification.py": "f4a1b2889d6832a136926a7dfca45a419ab41366285b826dd35346f40661f2a0",
+      "Backend/agent_builder/design/operation_steps.py": "6900643fa97245f9c5e88d1d8eb5cdd9a4faa4835b009eff772cc115c1a354e2",
+      "Backend/agent_builder/design/output_column_proof.py": "dd9ede105e9c9dd610790a178f4be244a37d2b7631b4761de5639f57175cc3e5",
+      "Backend/agent_builder/design/pilot/build_dataset.py": "08d308a048f85f93abb5481d415ed4c7a9a80c5fd05dde0252402f6d63d77d6f",
+      "Backend/agent_builder/design/pilot/contract.json": "0ef803260514935906f751fd330439720bb7f911b9684021cd551e4dc6fcf159",
+      "Backend/agent_builder/design/pilot/tool_registry.json": "f8afe4dfc2f0fd1e1e4cdf322728ea1e5b3f96c09f7348bc3258bd56af4b6f68",
+      "Backend/agent_builder/design/plan_contracts.py": "017873c93a69c6da5d25417891baa4aea8e74407f0d7e550e9042ae956b8b194",
+      "Backend/agent_builder/design/planner_constraints.py": "4a88016a01a8784793441272c388a1acd545f339e8e8007648c11f518b38c786",
+      "Backend/agent_builder/design/preprocessing.py": "00f0b2a27e3579c36283cf94650a8716fde5af4257532286916dc2c4659b53e6",
+      "Backend/agent_builder/design/presentation.py": "78026d67a22f9f8ffbb1775fe95efbe46b856cf9c82ecb6476e925671a349076",
+      "Backend/agent_builder/design/processing_guard.py": "804df83628a7813df1801ced7de914967604f59809ac1d02a1b85f4d714bb40a",
+      "Backend/agent_builder/design/reader_sources.py": "8b4a4413e4d9e4e8b631ed90f501a216d65054c762dec64375e534000b902dd6",
+      "Backend/agent_builder/design/receipt_intake.py": "c115f206e3b439b3ab0ffaa043d0cee2e8eff6970fd487aae8403fe09ddffff7",
+      "Backend/agent_builder/design/receipt_workbook.py": "88803f5d6166a450574496d3ceff1612793e3a6b4ce3772a9ee440f7b917494c",
+      "Backend/agent_builder/design/request_judgement.py": "a2e5bfe05b9d0db87f0ae9d3a5d2187e020c21d75fdbc285adf20c10e694b31e",
+      "Backend/agent_builder/design/request_meaning.py": "edfeb18f6e0fddf70a6b4b18beeae421cf15920fb8fb6d29cfc169ced97ce3b2",
+      "Backend/agent_builder/design/requirement_contracts.py": "078911f5a27f62dcf6fedf9f6f1a0c76aecde0a796ec9f0ecf43be5f856735a0",
+      "Backend/agent_builder/design/requirement_coverage.py": "3898c7eda7fe81388ef4c58a2aa9ba0ada4b64a9673ae96f4b832597c640443a",
+      "Backend/agent_builder/design/requirement_generation.py": "da5f489265a1494087311ca3768ba4c193dae67697c5328cda9ba6e0af13fa36",
+      "Backend/agent_builder/design/requirement_ledger.py": "e6a421fc893c6319a7cd92d059e441fd891517d2cc7f4c27f010f3a3106a78bf",
+      "Backend/agent_builder/design/requirement_task_identity.py": "ce144a2c2e21ce0f387a43ef8771a61f380fad5ebb06faac2363604486ddfa6c",
+      "Backend/agent_builder/design/runtime_inputs.py": "f82f254a7dc237182c9201831da85c507604bd3ceafadc30a9e2b591103bc53a",
+      "Backend/agent_builder/design/scalar_requirement.py": "4c102be98d2c838e972fc21a5b87336cbec30f1dd3eff844ab1bd0d8ef9629f1",
+      "Backend/agent_builder/design/scheduled_table_request.py": "149b6ddf9c4835adbb52bf7dd9156dcd8fe8b9c3d0606d0cb4b7e4b2ce1b0316",
+      "Backend/agent_builder/design/service_connections.py": "1eb98c3f97e0017af001ee2f4292b3c4002462df6e69d1f21f8073fddd924d15",
+      "Backend/agent_builder/design/temporal_context.py": "aaa5da851a9d9fea250a9e57861158efd344dbce6bda4a5492bd5facc290bfd0",
+      "Backend/agent_builder/design/verifier_columns.py": "c9b926e91e78df4854a36356894c9a625c4cfaefbf3ab15fa2cd7ce1ef427117",
+      "Backend/agent_builder/tool_gap/__init__.py": "96be7e0247e5403bc38fefcb970de186cdca9342d14acb74318eec57b4780f38",
+      "Backend/agent_builder/tool_gap/choice.py": "f5473cc3c26b65e474b52718b171de889218c90d784afc6b5af366e52cf068fa",
+      "Backend/agent_builder/tool_gap/gap.py": "622f1cfc1d49da604d2f795e2414a7553acaf42d1c5f57e6e3e2cbfb1f72f3cc",
+      "Backend/agent_builder/tool_gap/jobs.py": "20e3a4801736c0bcbe58b2abdc64e244dc91ec734bc6008deea003d57c4657dc",
+      "Backend/agent_builder/tool_gap/redesign.py": "03f4446f8a54f26148266f3edaa03549a53967d31d5b92624e559075ec12fbab",
+      "Backend/api/src/agent-builder.ts": "f9603318822921394f6721ae50f538484e8bd9036317ef59e9a73408b5510749",
+      "Backend/contracts/__init__.py": "b87990e9124cc06036fec887b7d34c3bf5fa777449eb34d52683ea06a0317d7b",
+      "Backend/contracts/draft_instructions.py": "5ce69dda16d74be2ab7ae277758aa1eb3cff5dce4cc296a61e0cf5d6b5967234",
+      "Backend/contracts/draft_outcome.py": "67afe30b4b4bf5e0ace57ed1b76cc5f8647a908995937459d9c3c9fd4e620954",
+      "Backend/contracts/models.py": "7549013d36b413b4a2e33412416ffbb2b5b6da37d62c73aa69c88eebb94208ad",
+      "Backend/contracts/numeric_criteria.py": "2a393698193cae148711a555774aa48922f12e79118fd89d37175d696bd7b7e6",
+      "Backend/infrastructure/llm/__init__.py": "1ad3651a50655869995619c90d4ac51bb94d8971cbcd4a14be451a146b1e2679",
+      "Backend/infrastructure/llm/deep_agents.py": "224892a1ce4a2e45d29680a4c3a4a239d2219777191e299e14c7792d07222e75",
+      "Backend/infrastructure/llm/errors.py": "6bbca1d58abbac1c299c25cccd254caaeee59e722c4995e3c222b0eb592c67dd",
+      "Backend/infrastructure/llm/model_aliases.py": "8ae0aa600b81e7479fba22d866bd57c7354b892486be5575ea4df79fe94ffeeb",
+      "Backend/infrastructure/llm/model_factory.py": "26d4a709f59f3008a822ae9dcc147399288ed581e264ccbbd816080ae2b81b42",
+      "Backend/infrastructure/llm/ollama_chat_model.py": "a3ec3510a84ec1250d2bb53974145ad99c8c1a5b8598d82aa327c6195f013cbb",
+      "Backend/infrastructure/llm/ollama_settings.py": "05abd82c4f0da2b097daa544585a7c4ed27e53627f3e163e5940a9f2fece77ee",
+      "Backend/infrastructure/llm/qwen_chat_model.py": "d08b2c8c0c8ff421182b8c09727ce0ecdbbe874bc13c20a2cd1d99d5e1408a47",
+      "Backend/ml/__init__.py": "91b359c33cb3bd7dbffe9908dc821170eb65f836f21663f00f336f0fadc6138a",
+      "Backend/ml/advice/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/ml/advice/request_context.py": "069da38407147e57ca6446d68ac01ea2f8d040b6c0a42e3ea4bb17c0538ffe15",
+      "Backend/ml/advice/tool_recommendation.py": "ae3e25c80e5a5d37cb0b36bc5facd4eff77de2921b87e350982f9da5d34b0111",
+      "Backend/ml/legacy/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/ml/legacy/model_bundle/tool_rec/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/ml/legacy/model_bundle/tool_rec/calibrate.py": "545e3dff3b3131e8c5027879604de2bfebfcb92fb101dc0941648854a847c5c5",
+      "Backend/ml/legacy/model_bundle/tool_rec/data.py": "c87fe08510b2dd654204ad12e3fb68d87b7cf59f8c71d9949c4b0c0cad16e4d7",
+      "Backend/ml/legacy/model_bundle/tool_rec/features.py": "1b42222c0b7e8dc48e616b01dd4a093cfbc350040c0bfaee6972abcdf067466f",
+      "Backend/ml/legacy/model_bundle/tool_rec/labels.py": "e6e1adb537c1b7f15fc156715605f98db8a29fd17635638f90e0063711f1a848",
+      "Backend/ml/legacy/model_bundle/tool_rec/metrics.py": "b92206d667bed33461e6c1159dc4303a17094ee99c45270c3b20c0c0165cb217",
+      "Backend/ml/legacy/model_bundle/tool_rec/models.py": "edbde3fb6a1752de319dde05c9bdcf620c6b72c00d09eb5441cc914fac00fa05",
+      "Backend/ml/legacy/model_bundle/tool_rec/preprocess.py": "0b2972bc5e6810ae6b645f39d7967c4512778f5ee6573e1b0a3fc5b7a0069905",
+      "Backend/ml/legacy/model_bundle/tool_rec/recommend.py": "0c5427aaac7b66f7d0963fdd8e39a01ab1f9cd50e981b31cd403b01cf4c549d0",
+      "Backend/ml/legacy/model_bundle/tool_rec/rules.py": "c7fc5c3a6cfa105cefa9c6b246c4eb67302e377aed83ffd9c207b02bc7b2988e",
+      "Backend/ml/legacy/model_bundle/tool_rec/select.py": "1d5f17806191cefc6544d2eb99e3414800ba87699dd6e500501ca6df5cda738b",
+      "Backend/ml/legacy/models/tier_thresholds.json": "8d686f7b727ad08d99a15f254986b29d80d6736a64fb1be877de6fe0319da9ce",
+      "Backend/ml/legacy/policy/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/ml/legacy/policy/checker_feedback.py": "eb51fae8c99e3f0d802eb9dfb023f13fcfaf1b78f0d44b2525d6529f32988edc",
+      "Backend/ml/legacy/policy/tool_advice.py": "cad9842e4ed9302344ceaab44b50e51df12940186cc5e1c3d868fc9afc2979a5",
+      "Backend/ml/svm56/__init__.py": "3f6453a2294d854e9d53ec7043dceebd63ccf1709c2f992f2f69c58fcaf58408",
+      "Backend/ml/svm56/bundle_cli.py": "2f5a1087a0f712bc72c2ced10e7fae2aad0a58742ae1647dec6e0ea11338577a",
+      "Backend/ml/svm56/inference_adapter.py": "bd4bd5a0d2fde7b6021970978981759a83bf85306d9536022fee36d3ff9e7fd7",
+      "Backend/ml/svm56/service_advice_adapter.py": "4f8e66419f2fc2f83535d122db6081e8bc7fe1637fec4f0dc4f57962d8b5009a",
+      "Backend/ml/svm56/service_contracts.py": "760515783f84a89586d2df290435f3f1440c6ff989d240d13f2c01b336199265",
+      "Backend/ml/svm56/service_recommender_bridge.py": "72e09f034cd4c5e334a6cd01f161c7cf563c4590c4010252156b3e632727cda8",
+      "Backend/ml/svm56/svm56_service_hook.py": "c7f19ff3037c4e69e560e32174bf67547d7041fe1440b1826ea689f4c0e55fdc",
+      "Backend/ml/svm56/verify_service.py": "1e885ccb6d0a37f9f6ab1eb6c4c48ead96e1831a54dc835a18e74f3814fcf890",
+      "Backend/ml/training/__init__.py": "51f53d5bd32e270fd7507e33e77879a51b2203e5fe4d69ec52fe3c60db7dfd95",
+      "Backend/ml/training/compare_candidates.py": "fc5e2b4566eb08bd3b551202486a6fde5edd78e0fbd905a7a99edc388567add9",
+      "Backend/ml/training/declared_inputs.py": "4da2a5a9f4b890c1dc10a7d922a9fa3f34b7b744138ee9a97121c03c135f3b8d",
+      "Backend/ml/training/evaluate_declared_assets.py": "66f269074bd045920bf8923918c9fe47f84d9c75aa09197ff1592eebb889655c",
+      "Backend/ml/training/provenance.py": "6528a8c9378c4213c593e12ca1de9e3fad217151060566170d6b1e0a3433cfa6",
+      "Backend/ml/training/supplemental_cases.json": "d7edc612712d04d844824003fd151fe9c5e7b978df8dc0cb7fdd1570fa28bbbf",
+      "Backend/ml/training/train_candidate.py": "cd91f53142604e2c3173638131e6ce327d83d2acf6d59916589b668fe32b639a",
+      "Backend/ml/training/tune_candidate.py": "86e070ae3522fa1c8ecaf817d7e5f76a902cea733c192c72d00bc13108894832",
+      "Backend/service/__init__.py": "515f52dbc76acac844a7560ff757f2b9043463fa55c36e97ded778fe83e5d59d",
+      "Backend/service/dispatch.py": "6887d318f11304c6dcedf9571e51b7b2b69bccdec9ca8347aaa2f261bfcb833f",
+      "Backend/service/handlers/__init__.py": "9a318cba71396b4c5114f018b5098bd3480cc1d33882435236839f0bfa39fe4d",
+      "Backend/service/handlers/asset_library.py": "9d1cebceddb74fde1cded3d522fa8fa3166c85644d9ff82d89d7080b4a3727e4",
+      "Backend/service/handlers/design.py": "421c4b0959c471b900d96817173cc53055be9c7c69046ac0a4fe71446b90e6cb",
+      "Backend/service/handlers/generation.py": "fb2c2d6f3938fdc4c4dc59c2496933a9547cfe596a052ec897d72927647021bc",
+      "Backend/service/handlers/library.py": "895835bfe431de6050644e606bb18a93eb3953a2f8122dcbef33d7918a0ed042",
+      "Backend/service/handlers/library_sources.py": "6ccf19daff81097564d1c38d03ff611873c8dcddcb19f8ed5f1f7df0982c985e",
+      "Backend/service/handlers/reviews.py": "952d8bec55d0537c3da1100862ad8b0bf3f05a8783220ff2ddc5b5ec5235451e",
+      "Backend/service/handlers/runs.py": "d51c99c9ebf931b2359cc5fc4d64e3efdde80048513f68ca5d6b5bb343764a0a",
+      "Backend/service/handlers/schedules.py": "7b37c40132eb357c79cb83c0c7fa22890e2959bcfdc61d933ff3aa89baa38754",
+      "Backend/service/handlers/uploads.py": "e1aa45cb143dcbfdbbe7ac70e81f1ac375038d4f5a2736b651226123c8fe6f69",
+      "Backend/service/worker.py": "442a57eb88dc749eaf595dabb0c680c8b3fd146a82a76c7c6b543476e54db458",
+      "Backend/workflow_engine/__init__.py": "98943993621e6b9c8047f4937347c055394da93c395ff19ff3dc40b92e4b299c",
+      "Backend/workflow_engine/catalog/__init__.py": "7b318fb2a329ae46a7fd271548663d35988b4d3258cea4836fb0279b7cd48b0f",
+      "Backend/workflow_engine/catalog/business56.json": "7b137fe9599017f7a830af7c65cfed78231746ea25158af75d717ede989b407d",
+      "Backend/workflow_engine/catalog/canonical.py": "8f43a715d5fdf6b2d09041884969266b62d89a23bcce863e5fb1e28057316e40",
+      "Backend/workflow_engine/catalog/output_contracts.py": "22642006c5c2d111a198bf6afaa5ad788fd61d3563cb46461f5d5e09024c63e0",
+      "Backend/workflow_engine/catalog/registry.py": "21a67e52b6bd91a9c842f393304399badb4beb292b136c305557ea1866da29b7",
+      "Backend/workflow_engine/catalog/settings.py": "98c3decb6f5615f6727138134e198c856bdfb270065045de4f2af4672fe23562",
+      "Backend/workflow_engine/execution_path.py": "b0f5d831428f26546b0e62d4e130fa902024c9abf2f62f01aa8f5b915265671e",
+      "Backend/workflow_engine/executors/__init__.py": "04912642f9b08c11bd3caea429dd91ab94976a9ceb9664a8928f29c479c6ce88",
+      "Backend/workflow_engine/executors/agent/__init__.py": "23b33d7d1c70e339cd66644a785527b1c455ccbfe3635ede0621ef0854ab5410",
+      "Backend/workflow_engine/executors/agent/agent_node.py": "42ed1b7c036fd4cb94986749f2ec1e957a2a508c7af2603d4ab39110f6b0bbe2",
+      "Backend/workflow_engine/executors/agent/role.py": "5571fb58d7660dd0a488a664987be9f8be2012edd18430bdf299dbeaa6dbbe00",
+      "Backend/workflow_engine/executors/agent_factory.py": "c7aeead6ba79739264abee51e3c997c3594f52a14c69ca4fe2892a5129aa9b95",
+      "Backend/workflow_engine/executors/canonical_operation.py": "0b80aac158180d6a54886d6ea2e6bba7d983511931ec5fc9f3e86a93ec25828a",
+      "Backend/workflow_engine/executors/control/__init__.py": "974cfb1ea48a0ec70ade4304614de269f2fa860d6f2d4939364f9e5cc04e7bf2",
+      "Backend/workflow_engine/executors/control/ask_user.py": "6cf95927c3e4e96c9c18329e4613ab98571517537e71cc1a97106e13b4989d61",
+      "Backend/workflow_engine/executors/control/condition.py": "87c7e6a22662ce0b14e6e95122fcea99ced8891db39c10b8abd015b4032d0394",
+      "Backend/workflow_engine/executors/control/finish.py": "8adf60e85958afed5eb7532d6bea05aa1c1c21116c8349f73e3c082704a7e6b5",
+      "Backend/workflow_engine/executors/control/saved_workflow.py": "4f7105a2d8f1d5e2b9d6e3110493c2988cd66724341d7546f7f1e3f115d8a911",
+      "Backend/workflow_engine/executors/dispatch.py": "39af96f5fc0b4544be4851c0d2c154a15904acb21957b0fbbdf5a37c2dbfb761",
+      "Backend/workflow_engine/executors/document/__init__.py": "a3af30c9f375d49894bc3f19d48d49152fb7858bd4301594347c7e1016cab343",
+      "Backend/workflow_engine/executors/document/compose_answer.py": "29e1fa91a5e7238ac7308626a4d75dead8b197a9ce0730709a80d90777071138",
+      "Backend/workflow_engine/executors/document/extract_information.py": "70a02234c9c042bb734875d6f4d9c9b2431ae622788731fb49144f1e720d1dbb",
+      "Backend/workflow_engine/executors/document/gmail_summary_batches.py": "9c3d8567c270886c3e45898b78f510899c7acc5124d2d810ec8c4398a3a5e110",
+      "Backend/workflow_engine/executors/document/read_document.py": "9c6b4c09ff375bfa808fad321aa45bd3a3cad4c6c7f861ecac50a3db8828f3fe",
+      "Backend/workflow_engine/executors/document/receipt_check.py": "d853b437d81fb2bb976248e7dd19c7bb2e864bfaddf47172ef5f7d7251b2d89a",
+      "Backend/workflow_engine/executors/document/receipt_fields.py": "ab8503ddc8deb29f74cffa8502cb36a7bb95f2bd5776451f992a36236768936e",
+      "Backend/workflow_engine/executors/document/receipt_items.py": "5fbf0fff87ef7e6fe70863643f175110903fb7a5350edfa3c6bb8aa02ccb7853",
+      "Backend/workflow_engine/executors/document/search_document.py": "75367819d15e2674c0ec27c04c059f3f6e2b54001b60b603ece0dc4ca9775615",
+      "Backend/workflow_engine/executors/legacy_tools/__init__.py": "1544ef21758acaa963686527f9420df6f1461aebdc306edeff1a9fd40981efec",
+      "Backend/workflow_engine/executors/legacy_tools/filter_sort.py": "31750137e4e920cf27a3e9d983d41ad6db5aa12eac98c2b77a9dbf8818d466d7",
+      "Backend/workflow_engine/executors/legacy_tools/read_table.py": "02c808c1b7ba9b625bc8e087eb1e0e494ec01f5f1b87591e2e55b31ca292de04",
+      "Backend/workflow_engine/executors/legacy_tools/write_result.py": "60f4118a546ee498481d396bce76ac2c940f664c6178abe8b6f077c497becf92",
+      "Backend/workflow_engine/executors/output/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/workflow_engine/executors/output/export_result.py": "b34d1801b15ca585f5ae6a0da05462f2889d754cd09d8f22da92a1f7da069be3",
+      "Backend/workflow_engine/executors/output/review_summary.py": "86f671ddaa89708789ad0acafd9d334d3b90544215e0debc2646dc247c145962",
+      "Backend/workflow_engine/executors/output/write_result.py": "ded4894f7b3b39bc4622fbf8adc74ec81cfa0d0111a242ccb6ffb1b9b2de095a",
+      "Backend/workflow_engine/executors/review/__init__.py": "9c327283f3b0fe304bfcb10331ada4401c8a93d0fd2201031977d2247c73cdfb",
+      "Backend/workflow_engine/executors/review/reply_review.py": "300d6bb1342ddb9f79fb93b3885bcbddc997f9071e0153c7731fc6f8eff1aedb",
+      "Backend/workflow_engine/executors/schemas.py": "d43544ba7e19dc06d0bdefcf7970cd7e8b105cf06330b77c1bcfa545692a20b8",
+      "Backend/workflow_engine/executors/sources.py": "e99969c184c06b26cfe47c4807dea8aa266d5999a2dfb7334381894e33fef5d0",
+      "Backend/workflow_engine/executors/table/__init__.py": "a02dd68299cac3503343d79f790e49d5689b0a33de8bfb05440a1e10d46f5df7",
+      "Backend/workflow_engine/executors/table/aggregate_table.py": "3e6ad7767e5aac40ed3dbcd5af8d8a89c3526bc1802830147db664387edf7774",
+      "Backend/workflow_engine/executors/table/calculate_columns.py": "68b9348a2f1852a6eac545631f8d21cce37f8d0b871e7249330ffd978ee63ca0",
+      "Backend/workflow_engine/executors/table/filter_sort.py": "c850a7270533a36ad859729d9151387378c3e3ee91c99ddc982f4a9002327864",
+      "Backend/workflow_engine/executors/table/read_table.py": "ab398c2d9b09800795668bef72f08fd79db7fe0af3ce56a938e577f75d769b54",
+      "Backend/workflow_engine/executors/text/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/workflow_engine/executors/text/base64_codec.py": "921114fc9cba56c2f3b217bd23b72ff354c43e89755caa91e2b3541084f34fca",
+      "Backend/workflow_engine/executors/text/date_transform.py": "818ce614458ccb383839e2adfbb992061874425d366ae357c43bc81239ba9703",
+      "Backend/workflow_engine/executors/text/text_hash.py": "a3cfb5778b508746abb350c0273bc6c32f4f1ddcf361d05581b2090aa76a7d8c",
+      "Backend/workflow_engine/executors/text/text_statistics.py": "0097f347df61035583864779d8f205afecd17e2b5029c3b135b3f0dc69144f67",
+      "Backend/workflow_engine/executors/text/text_transform.py": "9ce6321dc828123bc8294b5a4487c9c94de4e1c5542c6fbfecfa2e90e2464a5b",
+      "Backend/workflow_engine/legacy_runtime.py": "c8abf8305bead76ab7c692d61f8e0eadc6cf6cac37618727be4acbf6e269ca20",
+      "Backend/workflow_engine/library/__init__.py": "3145a99e2c2f14a16c8607e76527b60f016916390407f0e102580fd6db554a94",
+      "Backend/workflow_engine/library/node_library.py": "23e5fc853453776582e4bb03b90ce4bbae96d7e437fe55e711e17077551906f7",
+      "Backend/workflow_engine/library/reusable_workflows.py": "21f4dfde06dcbda9aeebefc1c26602e56fb0631e55411643d04569070562e924",
+      "Backend/workflow_engine/lifecycle/__init__.py": "e49a4ef1277b5f3fa9498a3694c90d35c5eba734e9bb917c6159dd1e56ada5fc",
+      "Backend/workflow_engine/lifecycle/run_lifecycle.py": "632724cb075d49c16fc0427dfd88822b7b5e57c817fc276d46440502091d4877",
+      "Backend/workflow_engine/public_runs.py": "d634b937de0bcfc9cb3a739ffa434b22ff5d6149b59fc11eed1faadbcbc6c9f6",
+      "Backend/workflow_engine/run_answer.py": "d4a9f8596dd1982971b759c2ed9aa912a5152086545f189e1ece5b264d19d69e",
+      "Backend/workflow_engine/runner.py": "265974f95fcced22193c2c937d267c69f3e5d88d44dd13be2124be1c2f8d7a1f",
+      "Backend/workflow_engine/scheduling/__init__.py": "3834f1cc21f3819f6bf01553f3800984f436d43bb0f78dd78bef3b2c3cab9c60",
+      "Backend/workflow_engine/scheduling/gmail_schedule.py": "9053acfaa20842ddf3f918a5c30fec7e2b3530436f00a1a9ca32b10ee4dc47e0",
+      "Backend/workflow_engine/scheduling/library_sources.py": "d01c9d09e191831f7f8940864de9bb98f4a05268f41d29408e6e47579e60620f",
+      "Backend/workflow_engine/scheduling/recurrence.py": "9487b3a85dca8674663f58daa3885214adc3dfd41dd652ec3d9a4c793152a104",
+      "Backend/workflow_engine/scheduling/schedules.py": "e8f15f8187f929e8667bfdfdeff35d88a92d4749b68be57cb6a71a562a953b17",
+      "Backend/workflow_engine/table_formula.py": "100c2723a07a771d34da687dfb75adddbfd68a067662b87327507187af75b30d",
+      "Backend/workflow_engine/unified_tools/__init__.py": "af7aca4cace4a07dbb69da5aed3612a20340d07da5b2503c5d16790387756584",
+      "Backend/workflow_engine/unified_tools/catalog.json": "9091c8f0703a8fd0f9d5340274dde693649f605d3210ef4484d7bab9cd95bbe6",
+      "Backend/workflow_engine/unified_tools/dispatcher.py": "0edfc3faa3bf7ab4e827f773f82d85dcb4e2d182631b13d9447f13d1ef1ec5ce",
+      "Backend/workflow_engine/unified_tools/execution_metrics.py": "85780c9e5ac94ed2064ec3de2e3dace966163cc30394fc04e933382ac619e858",
+      "Backend/workflow_engine/unified_tools/expansion/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "Backend/workflow_engine/unified_tools/expansion/google_adapters.py": "fbdb352bf93a269e6120e0fec2b07ea7098ac03289b849aa78df4adbe9f2f8eb",
+      "Backend/workflow_engine/unified_tools/expansion/google_tools.py": "816826eb0500fe6eb7dadd3097c29082628109234cc5d3487f784c4fad4f8923",
+      "Backend/workflow_engine/unified_tools/expansion/runtime.py": "bd0ee05e3977974eaa49db81f422f3399e91a1d02a85704087e5b831684bf0ef",
+      "Backend/workflow_engine/unified_tools/file_operations.py": "7ea53e751678dd16ba7cb202e4d8f03d0b85998cbd806608b2751ea45007ab8a",
+      "Backend/workflow_engine/unified_tools/local_operations.py": "067912bca03f9a42f06dcaf4136fb0d45fd502e209d1571046b4b54376d1747c",
+      "Backend/workflow_engine/unified_tools/model_operations.py": "2274f719854cd634db5a3ab2c02f1af1e20b2cd4d94ff3f9538a1d2715b5b3c5",
+      "Backend/workflow_engine/unified_tools/parser_errors.py": "ac1b499bed0d688f0935d99a86649ab4e8bbb830995fe8157cd78b612a88a090",
+      "Backend/workflow_engine/unified_tools/remote_operations.py": "686bb2c0d797634990e5d6bb3f0308f57b94e1eef403ffc6dbbc73c1a9480f7d",
+      "Backend/workflow_engine/workflow.py": "494efa5d777861b3f3cf23428d8a877d78351352bb9f35770457f7ce59336f49",
+      "Frontend/app/agent-run-refresh.ts": "91578aeea7a081c8d1f03385b6acd830ca8175bcb2b36dbba4ec3248db1adbba",
+      "Frontend/app/agent-studio.tsx": "390db67ed70f0751f3ede25dbec97f345a3dba9bc0e9b3f73e78eeaffa06a7e0",
+      "Frontend/app/ai-status.tsx": "ac3da825fab88831e7fb2d3dae28898d351ff2065a98bb862e606ec19eb70c61",
+      "Frontend/app/auth.tsx": "1979e3b2adbeadd2501db8034f941953099a2ed65d7d8fd69bd104f93edf9bf1",
+      "Frontend/app/document-analysis-summary.tsx": "9e532eb28c61f36f00c158ab85ce63b82b723171f8fd8b074041847e86aa4aeb",
+      "Frontend/app/document-review-panel.tsx": "a76783c5b95047d7706f2adea93eae465ab4b1d2c367fa88b9dff26bc2dbbe9a",
+      "Frontend/app/entry-app.tsx": "7d3f1c3dfee0f2c99596d148de86860d7226aac2b9236dcff042486ecc032e0f",
+      "Frontend/app/file-inspection.tsx": "40dc14ec28dda4a2da9def780dd4ec2049ef1a1dc45f15dc5b9c7939851df699",
+      "Frontend/app/gmail-connection.tsx": "e0be4eb08f49420108cb23d833f211d2488af7d60cae8dc38b75249c730bb670",
+      "Frontend/app/intro-demo.tsx": "b0ce8c6fea398c2ccf83df33aac281d3a7ebb75498fb01afac105a77172ab860",
+      "Frontend/app/intro-preview.tsx": "b0ceb3973ca198f7d965b92fb452be596255de6a654d3fd356721030a93c40c4",
+      "Frontend/app/landing-page.tsx": "785a2ef59e174a02f6942a17395ab76126e7bb795991d30490200c5a18167f3d",
+      "Frontend/app/main.tsx": "1aa8e2b0c9be04d644e963d182d0380cef9c1522889a7c04d58168b4c2c1548f",
+      "Frontend/app/node-form.ts": "24dacea9dc9c42a82d0f2f5f4367ea82a6a5692795341cd277a58def75504d48",
+      "Frontend/app/node-library.tsx": "5d97a7abc58467d8377f371302a187a89eb73c6adbfb902d13dab2ed52b42baa",
+      "Frontend/app/node-selection.ts": "0344f858541d734eef9bd0d9eb36ce75ad704586192c4cd747b2b3674f2b48ce",
+      "Frontend/app/product-tour.tsx": "5bccba06d0c1f7568b8afa30aafdcdf9d6834babbaa9ad879d7c43ba280ef81e",
+      "Frontend/app/receipt-question.tsx": "7a65f787e2d677c115f94e7ed20fcc2108db1e416f2dbb56c77870b83aed8514",
+      "Frontend/app/reply-review-panel.tsx": "c617e32c7b53497012f5b12a4daf93fde26a451987e8eccba90b642003ca4ae5",
+      "Frontend/app/run-file-download.tsx": "08225734f4d1e66c4fa12381f0c46eb2a2d3ab65fcf971565ae99ec1de36241f",
+      "Frontend/app/run-workflow-diagram.tsx": "cbdfa662f639c100f208a3e43a3db7bbecf00e90d71f52d69dc541e3dd06f3ec",
+      "Frontend/app/schedule-library-source.tsx": "214b1e7628720ae8be1653dac9429a8396bea3788e42b5b004cb3bce83c509f4",
+      "Frontend/app/scheduled-workflows.tsx": "13e6eec14ba5916cdc999dea3bed1981350c2c35451dcb1f5e10f3b99461f8de",
+      "Frontend/app/service-connections.tsx": "d8703983e1790ca1d243c70bdb5c04fb79e2207f52737409fbdb9cb42e5afc7b",
+      "Frontend/app/team-library.tsx": "3bc7f728b13396c68824aefd570b61b5e4fc00cb28889ca9acecf0c0a0b8e590",
+      "Frontend/app/tool-copy.ts": "ae70a108604963babafc94983e157d899f4fc6307c2cc2cf77e6c923e1fd9f16",
+      "Frontend/app/upload-library.tsx": "4d3222f2b085ae45172374b28d8174af0b6989a4dbe28bbe47c768da74000d29",
+      "Frontend/app/workflow-rename-dialog.tsx": "2abc8767c73279894bf0265bc43c1250827e6fe404ff3735b335bac449008bb1",
+      "Frontend/app/workspace-header.tsx": "d86033efadb8e3b8a58a32cccd13b3ffe502b08bb0ca93649e4c6591579ad47e",
+      "Frontend/app/workspace-nav.tsx": "1f29f7834100edaff12b83422b99b10fac66acb75ae45b49b77814539564f8ad",
+      "Frontend/app/workspace-overview.tsx": "cd20666e549df307af77bdd924906875d20ffa70193a3e86ec8c1337dd66d252",
+      "Frontend/app/workspace.tsx": "65dedc12999e8049406e60dcdc6c107cb927423d4072eaa068b9d17eefedae7e",
+      "scripts/run-configured.mjs": "8e1e8e674947ec15307f319f7f47eacbfcedbd4470582a1038362be604ce0297"
+    }
+  },
+  "evaluation_harness_manifest": {
+    "source_sha256": "b13dba529d7438fc8528e010f4afbc187240208b90a3ba44ecd6257b856f5fb3",
+    "files": {
+      "verify-qwen-live-evaluation.py": "ee0de38741f35dc63a0b758891fc8da9a306849e9d982e84ced8b73b17f986ad",
+      "run-qwen-live-evaluation.mjs": "dcd6eec011851ac8d137316d6337581e326cb6b520cff377f7df096f7b145af9",
+      "qwen_live_trace.py": "40770af4b108ff4551e9703223369b2403a04411ec75af52689173f33891ab4d",
+      "qwen_live_support.py": "96db10ffb15fa3974fbd947b0ffaab223363857db681e1c269af1cfe52a25ca0",
+      "qwen_live_policy.py": "9ed3da02c07b061a6955794984060db96f7bd5ff4da0cfe1663e6423586377eb",
+      "qwen_live_storage.py": "1d9f7edb427f6d7f44f123b6741b404221b05bcb88596a4dc54edae42a85d424",
+      "qwen-live-profiles.mjs": "13724b54b8212236ef84fb15c95fe1a29998ff874fb27d764601430ec78e1271",
+      "qwen-live-policy.mjs": "c303d066dba04919924356e6f7950bcb5257692606c0c661dc31ebd5cf1583e4"
+    }
+  },
+  "requested_scenarios": 1,
+  "evaluated_live_scenarios": 1,
+  "inference_calls": 4,
+  "status": "completed",
+  "cases": [
+    {
+      "id": "H21",
+      "status": "completed",
+      "kind": "live_backend_session_e2e",
+      "expected_route": "CLARIFY",
+      "request": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘.",
+      "turns": [
+        {
+          "user": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘.",
+          "question_id": null,
+          "reference_time": "2028-02-29T15:05:00Z",
+          "response": {
+            "id": "5a481b44-4171-49d7-9f99-b4a652cc7681",
+            "model": "a4b-public-qwen35-9b-32k",
+            "credential_id": "local-model",
+            "agent_id": null,
+            "base_version": 0,
+            "file_ids": [
+              "synthetic-depot"
+            ],
+            "created_at": "2026-11-11T11:47:22.043364+00:00",
+            "required_node_refs": [],
+            "node_library": [
+              {
+                "id": "2c204705-8a62-5071-aa30-b2c6d8c471d3",
+                "version": 1,
+                "ref": "2c204705-8a62-5071-aa30-b2c6d8c471d3:1",
+                "spec": {
+                  "kind": "processing",
+                  "name": "문서 읽기",
+                  "purpose": "PDF·TXT·MD의 실제 본문과 페이지를 읽습니다.",
+                  "tool": "read_document",
+                  "instructions": "",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "a5e2e3d7-9d2a-5e36-aa0c-b633de55b68e",
+                "version": 1,
+                "ref": "a5e2e3d7-9d2a-5e36-aa0c-b633de55b68e:1",
+                "spec": {
+                  "kind": "processing",
+                  "name": "표 파일 읽기",
+                  "purpose": "CSV·Excel·JSON의 실제 열과 행을 읽습니다.",
+                  "tool": "read_table",
+                  "instructions": "",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "81bff9ee-cfe6-58a3-a06d-8f5146289977",
+                "version": 1,
+                "ref": "81bff9ee-cfe6-58a3-a06d-8f5146289977:1",
+                "spec": {
+                  "kind": "processing",
+                  "name": "전체 건수 집계",
+                  "purpose": "입력 표의 전체 행 수를 집계합니다.",
+                  "tool": "aggregate_table",
+                  "instructions": "",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": "count",
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "31692c59-4bf5-5aea-96c9-54cd8167c811",
+                "version": 1,
+                "ref": "31692c59-4bf5-5aea-96c9-54cd8167c811:1",
+                "spec": {
+                  "kind": "agent",
+                  "name": "문의 분석 에이전트",
+                  "purpose": "고객 문의의 핵심 문제와 부족한 정보를 분석합니다.",
+                  "tool": "agent_node",
+                  "instructions": "실제 입력 자료를 조회하고 고객의 핵심 문제, 확인된 사실, 추가로 확인할 항목을 구분해서 작성하세요. 없는 사실을 추정하지 마세요.",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "3cfbe368-aca4-53db-89c3-8cfa7ac25ca8",
+                "version": 1,
+                "ref": "3cfbe368-aca4-53db-89c3-8cfa7ac25ca8:1",
+                "spec": {
+                  "kind": "agent",
+                  "name": "응대 초안 에이전트",
+                  "purpose": "분석과 정책을 참고해 고객 응대 초안을 작성합니다.",
+                  "tool": "agent_node",
+                  "instructions": "연결 문서와 앞 단계 분석을 조회하여 정중한 고객 응대 초안을 작성하세요. 확인되지 않은 처리 완료나 보상을 약속하지 말고 필요한 확인 사항을 안내하세요.",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              }
+            ],
+            "last_generation_request_id": "1c8158b5-235e-46ee-9699-e7b264416c9f",
+            "draft_name": "업무 조건 확인",
+            "revision": 2,
+            "messages": [
+              {
+                "role": "user",
+                "content": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+              },
+              {
+                "role": "assistant",
+                "content": "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요에 대해 알려주세요."
+              }
+            ],
+            "draft": {
+              "name": "업무 조건 확인",
+              "purpose": "사용자 조건 확인 후 업무 설계",
+              "instructions": "확정 조건과 사용자 답변을 보존합니다.",
+              "tool_ids": [],
+              "document_ids": [
+                "synthetic-depot"
+              ],
+              "requirements": [],
+              "questions": [
+                "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요에 대해 알려주세요."
+              ],
+              "question_options": [
+                [
+                  "연결 자료에서 기준 확인 후 입력",
+                  "기준을 직접 입력",
+                  "나중에 결정"
+                ]
+              ],
+              "unsupported": [],
+              "explanation": "필수 업무 조건을 확인합니다.",
+              "execution_plan": {
+                "filters": [],
+                "sort": [],
+                "match": "all",
+                "missing_policy": "keep",
+                "duplicate_policy": "keep",
+                "duplicate_field": null,
+                "output_format": "json"
+              },
+              "workflow": null,
+              "schedule": null,
+              "report_destination": null
+            },
+            "status": "needs_clarification",
+            "issues": [],
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "needs_input",
+                "detail": "clarify",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 16251.95
+              }
+            ],
+            "verification": null,
+            "saved_agent_id": null,
+            "resources": [
+              {
+                "id": "synthetic-depot",
+                "name": "창고정산.json",
+                "kind": "table",
+                "columns": [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ]
+              }
+            ],
+            "file_inspection": [
+              {
+                "id": "synthetic-depot",
+                "name": "창고정산.json",
+                "kind": "table",
+                "has_readable_text": true,
+                "partial": false,
+                "columns": [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ],
+                "preview": [],
+                "tables": [],
+                "snippets": [],
+                "fields": []
+              }
+            ],
+            "condition_ledger": null,
+            "pending_questions": [
+              {
+                "id": "dc99d3b10aa812d8bb9a1630",
+                "key": "capability.condition.0",
+                "source": "capability",
+                "text": "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요에 대해 알려주세요.",
+                "options": [
+                  "연결 자료에서 기준 확인 후 입력",
+                  "기준을 직접 입력",
+                  "나중에 결정"
+                ]
+              }
+            ],
+            "gap_condition_review": null,
+            "input_requirements": [],
+            "tool_gap": null,
+            "tool_gap_choice": null,
+            "redesign_context": null,
+            "tool_gap_job": null,
+            "capability_assessment": {
+              "decision": "clarify",
+              "tool_ids": [
+                "filter_sort"
+              ],
+              "missing_conditions": [
+                "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요"
+              ],
+              "missing_actions": [],
+              "reason": "사용자가 'batch 가 같은 행의 중복 처리 방식'을 아직 정하지 않았으므로, filter_sort 도구의 deduplicate 정책 (제거/유지) 에 적용할 기준이 부족합니다. 빈 셀 오류 처리는 filter_sort 의 handle_missing 정책으로 지원되나, 중복 정책 선택이 선행되어야 합니다.",
+              "user_quotes": [
+                "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+              ],
+              "model_calls": 1,
+              "allows_execution": false,
+              "allows_generation": false,
+              "scope": "catalog assessment only; not condition READY"
+            },
+            "capability_enforced": true,
+            "capability_deferred": false,
+            "redesign_proposal": null,
+            "redesign_generation": null,
+            "generation_request_id": "1c8158b5-235e-46ee-9699-e7b264416c9f"
+          }
+        },
+        {
+          "user": "원본에서 마지막으로 나온 행만 남겨줘.",
+          "question_id": "dc99d3b10aa812d8bb9a1630",
+          "reference_time": "2028-02-29T15:05:00Z",
+          "response": {
+            "id": "5a481b44-4171-49d7-9f99-b4a652cc7681",
+            "model": "a4b-public-qwen35-9b-32k",
+            "credential_id": "local-model",
+            "agent_id": null,
+            "base_version": 0,
+            "file_ids": [
+              "synthetic-depot"
+            ],
+            "created_at": "2026-11-11T11:47:22.043364+00:00",
+            "required_node_refs": [],
+            "node_library": [
+              {
+                "id": "2c204705-8a62-5071-aa30-b2c6d8c471d3",
+                "version": 1,
+                "ref": "2c204705-8a62-5071-aa30-b2c6d8c471d3:1",
+                "spec": {
+                  "kind": "processing",
+                  "name": "문서 읽기",
+                  "purpose": "PDF·TXT·MD의 실제 본문과 페이지를 읽습니다.",
+                  "tool": "read_document",
+                  "instructions": "",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "a5e2e3d7-9d2a-5e36-aa0c-b633de55b68e",
+                "version": 1,
+                "ref": "a5e2e3d7-9d2a-5e36-aa0c-b633de55b68e:1",
+                "spec": {
+                  "kind": "processing",
+                  "name": "표 파일 읽기",
+                  "purpose": "CSV·Excel·JSON의 실제 열과 행을 읽습니다.",
+                  "tool": "read_table",
+                  "instructions": "",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "81bff9ee-cfe6-58a3-a06d-8f5146289977",
+                "version": 1,
+                "ref": "81bff9ee-cfe6-58a3-a06d-8f5146289977:1",
+                "spec": {
+                  "kind": "processing",
+                  "name": "전체 건수 집계",
+                  "purpose": "입력 표의 전체 행 수를 집계합니다.",
+                  "tool": "aggregate_table",
+                  "instructions": "",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": "count",
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "31692c59-4bf5-5aea-96c9-54cd8167c811",
+                "version": 1,
+                "ref": "31692c59-4bf5-5aea-96c9-54cd8167c811:1",
+                "spec": {
+                  "kind": "agent",
+                  "name": "문의 분석 에이전트",
+                  "purpose": "고객 문의의 핵심 문제와 부족한 정보를 분석합니다.",
+                  "tool": "agent_node",
+                  "instructions": "실제 입력 자료를 조회하고 고객의 핵심 문제, 확인된 사실, 추가로 확인할 항목을 구분해서 작성하세요. 없는 사실을 추정하지 마세요.",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              },
+              {
+                "id": "3cfbe368-aca4-53db-89c3-8cfa7ac25ca8",
+                "version": 1,
+                "ref": "3cfbe368-aca4-53db-89c3-8cfa7ac25ca8:1",
+                "spec": {
+                  "kind": "agent",
+                  "name": "응대 초안 에이전트",
+                  "purpose": "분석과 정책을 참고해 고객 응대 초안을 작성합니다.",
+                  "tool": "agent_node",
+                  "instructions": "연결 문서와 앞 단계 분석을 조회하여 정중한 고객 응대 초안을 작성하세요. 확인되지 않은 처리 완료나 보상을 약속하지 말고 필요한 확인 사항을 안내하세요.",
+                  "reference": "",
+                  "model": null,
+                  "settings": {
+                    "operation": null,
+                    "arguments_json": null,
+                    "node_ref": null,
+                    "execution_plan": null,
+                    "agent_id": null,
+                    "agent_version": null,
+                    "output_node": null,
+                    "output_port": null,
+                    "aggregation": null,
+                    "sum_field": null,
+                    "table_operation": null,
+                    "output_column": null,
+                    "calculation_formula": null,
+                    "rename_from": null,
+                    "rename_to": null,
+                    "date_input_format": null,
+                    "date_timezone": null,
+                    "text_find": null,
+                    "text_replacement": null,
+                    "codec_mode": null,
+                    "statistics_unit": null,
+                    "include_whitespace": null,
+                    "date_operation": null,
+                    "date_seconds": null,
+                    "date_output_format": null,
+                    "extraction_mode": null,
+                    "file_ids": [],
+                    "query": null,
+                    "fields": [],
+                    "instructions": null,
+                    "format": null,
+                    "question": null,
+                    "condition_field": null,
+                    "condition_operator": null
+                  },
+                  "execution_plan": null
+                },
+                "saved_at": "2026-10-13",
+                "origin": "builtin"
+              }
+            ],
+            "last_generation_request_id": "14cafbed-4f27-4952-9599-ad473c1eb47e",
+            "draft_name": "업무 조건 확인",
+            "revision": 3,
+            "messages": [
+              {
+                "role": "user",
+                "content": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+              },
+              {
+                "role": "assistant",
+                "content": "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요에 대해 알려주세요."
+              },
+              {
+                "role": "user",
+                "content": "원본에서 마지막으로 나온 행만 남겨줘."
+              },
+              {
+                "role": "assistant",
+                "content": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?\n어느 열을 기준으로 선별할까요?"
+              }
+            ],
+            "draft": {
+              "name": "업무 조건 확인",
+              "purpose": "사용자 조건 확인 후 업무 설계",
+              "instructions": "확정 조건과 사용자 답변을 보존합니다.",
+              "tool_ids": [],
+              "document_ids": [
+                "synthetic-depot"
+              ],
+              "requirements": [
+                {
+                  "description": "사용자 요청의 확인 조건",
+                  "source_id": "user",
+                  "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                }
+              ],
+              "questions": [
+                "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                "어느 열을 기준으로 선별할까요?"
+              ],
+              "question_options": [
+                [
+                  "첫 행만 남김",
+                  "마지막 행만 남김",
+                  "모두 유지",
+                  "중복이면 오류"
+                ],
+                [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ]
+              ],
+              "unsupported": [],
+              "explanation": "필수 업무 조건을 확인합니다.",
+              "execution_plan": {
+                "filters": [],
+                "sort": [],
+                "match": "all",
+                "missing_policy": "keep",
+                "duplicate_policy": "keep",
+                "duplicate_field": null,
+                "output_format": "json"
+              },
+              "workflow": null,
+              "schedule": null,
+              "report_destination": null
+            },
+            "status": "needs_clarification",
+            "issues": [],
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "needs_input",
+                "detail": "clarify",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 16251.95
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.03
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "completed",
+                "detail": "existing_tools",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 13186.35
+              },
+              {
+                "node": "condition_check",
+                "label": "업무 조건 확인",
+                "status": "needs_input",
+                "detail": "clarify",
+                "mode": "enforce",
+                "model_calls": 1,
+                "metrics": {
+                  "prompt_eval_count": 5648,
+                  "eval_count": 305,
+                  "total_duration": 22642328400,
+                  "load_duration": 46224700,
+                  "done_reason": "stop",
+                  "seconds": 22.72209490000023
+                }
+              },
+              {
+                "node": "condition_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "condition_check",
+                "elapsed_ms": 22812.78
+              },
+              {
+                "node": "supervisor",
+                "label": "다음 단계 결정",
+                "status": "completed",
+                "detail": "필수 정보가 부족해 답변을 기다립니다."
+              },
+              {
+                "node": "supervisor",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "supervisor",
+                "elapsed_ms": 2.65
+              }
+            ],
+            "verification": null,
+            "saved_agent_id": null,
+            "resources": [
+              {
+                "id": "synthetic-depot",
+                "name": "창고정산.json",
+                "kind": "table",
+                "columns": [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ]
+              }
+            ],
+            "file_inspection": [
+              {
+                "id": "synthetic-depot",
+                "name": "창고정산.json",
+                "kind": "table",
+                "has_readable_text": true,
+                "partial": false,
+                "columns": [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ],
+                "preview": [],
+                "tables": [],
+                "snippets": [],
+                "fields": []
+              }
+            ],
+            "condition_ledger": {
+              "protocol": "condition-contracts-v8-dedup-scope",
+              "operations": [
+                "filter",
+                "deduplicate"
+              ],
+              "slots": {
+                "duplicate.field": {
+                  "key": "duplicate.field",
+                  "status": "specified",
+                  "value": "batch",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_column_rule"
+                },
+                "duplicate.policy": {
+                  "key": "duplicate.policy",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [
+                    "user:2:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:2:0",
+                      "source_id": "user",
+                      "turn": 2,
+                      "quote": "원본에서 마지막으로 나온 행만 남겨줘."
+                    }
+                  ]
+                },
+                "output.format": {
+                  "key": "output.format",
+                  "status": "specified",
+                  "value": "csv",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_policy_rule"
+                },
+                "missing.policy": {
+                  "key": "missing.policy",
+                  "status": "specified",
+                  "value": "error",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_policy_clause"
+                },
+                "filter.field": {
+                  "key": "filter.field",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "filter.operator": {
+                  "key": "filter.operator",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "filter.value": {
+                  "key": "filter.value",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.frequency": {
+                  "key": "schedule.frequency",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.hour": {
+                  "key": "schedule.hour",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.minute": {
+                  "key": "schedule.minute",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.timezone": {
+                  "key": "schedule.timezone",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.weekday": {
+                  "key": "schedule.weekday",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.monthday": {
+                  "key": "schedule.monthday",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.month_end": {
+                  "key": "schedule.month_end",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                }
+              },
+              "decision": "clarify",
+              "outside_scope": false,
+              "unresolved": [
+                "duplicate.policy",
+                "filter.field",
+                "filter.operator",
+                "filter.value",
+                "schedule.frequency",
+                "schedule.hour",
+                "schedule.minute",
+                "schedule.timezone",
+                "schedule.weekday",
+                "schedule.monthday",
+                "schedule.month_end"
+              ],
+              "questions": [
+                {
+                  "id": "610afe56b021d532895dd390",
+                  "key": "duplicate.policy",
+                  "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                  "options": [
+                    "첫 행만 남김",
+                    "마지막 행만 남김",
+                    "모두 유지",
+                    "중복이면 오류"
+                  ]
+                },
+                {
+                  "id": "e20e41292c3cf2e40d7c668f",
+                  "key": "filter.field",
+                  "text": "어느 열을 기준으로 선별할까요?",
+                  "options": [
+                    "seq",
+                    "batch",
+                    "depot",
+                    "units",
+                    "fee",
+                    "credit"
+                  ]
+                }
+              ],
+              "issues": [],
+              "resolution": null,
+              "validated_user_turn": 2,
+              "invalid_values": [
+                "duplicate.policy: 조건 값에 대응하는 명시적 원문 근거가 없습니다."
+              ],
+              "unsupported_actions": [],
+              "resource_versions": {
+                "synthetic-depot": "content:42afbc972ec3e6d2fd20e2db7d82df1ecd7e31531cd130183929e3fd311c77ff"
+              }
+            },
+            "pending_questions": [
+              {
+                "id": "610afe56b021d532895dd390",
+                "key": "duplicate.policy",
+                "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                "options": [
+                  "첫 행만 남김",
+                  "마지막 행만 남김",
+                  "모두 유지",
+                  "중복이면 오류"
+                ]
+              },
+              {
+                "id": "e20e41292c3cf2e40d7c668f",
+                "key": "filter.field",
+                "text": "어느 열을 기준으로 선별할까요?",
+                "options": [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ]
+              }
+            ],
+            "gap_condition_review": null,
+            "input_requirements": [
+              {
+                "kind": "table",
+                "timing": "execution",
+                "fields": [
+                  "batch"
+                ],
+                "ready": true,
+                "description": "열 이름·처리 기준으로 먼저 설계하고, 실제 표 파일은 실행 전에 연결할 수 있습니다.",
+                "alternatives": [
+                  "지금 자료 연결",
+                  "열 이름·기준 직접 입력",
+                  "실행 전에 파일 연결"
+                ]
+              }
+            ],
+            "tool_gap": null,
+            "tool_gap_choice": null,
+            "redesign_context": null,
+            "tool_gap_job": null,
+            "capability_assessment": {
+              "decision": "existing_tools",
+              "tool_ids": [
+                "read_table",
+                "filter_sort",
+                "write_result"
+              ],
+              "missing_conditions": [],
+              "missing_actions": [],
+              "reason": "batch 열 기준으로 중복 제거 시 '마지막으로 나온 행 유지' 정책은 filter_sort 도구의 deduplicate 동작에서 last_occurrence 옵션을 통해 지원 가능합니다. 빈 셀 오류 처리는 handle_missing 동작과 연결하여 구현할 수 있으며, CSV 저장은 write_result 로 수행됩니다.",
+              "user_quotes": [
+                "원본에서 마지막으로 나온 행만 남겨줘."
+              ],
+              "model_calls": 1,
+              "allows_execution": false,
+              "allows_generation": false,
+              "scope": "catalog assessment only; not condition READY"
+            },
+            "capability_enforced": true,
+            "capability_deferred": false,
+            "redesign_proposal": null,
+            "redesign_generation": null,
+            "generation_request_id": "14cafbed-4f27-4952-9599-ad473c1eb47e"
+          }
+        }
+      ],
+      "turn_attempts": [
+        {
+          "turn_index": 0,
+          "status": "returned",
+          "user": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘.",
+          "question_id": null,
+          "reference_time": "2028-02-29T15:05:00Z",
+          "prior_revision": 1,
+          "prior_pending_question_ids": [],
+          "response_id": "5a481b44-4171-49d7-9f99-b4a652cc7681",
+          "result_revision": 2
+        },
+        {
+          "turn_index": 1,
+          "status": "returned",
+          "user": "원본에서 마지막으로 나온 행만 남겨줘.",
+          "question_id": "dc99d3b10aa812d8bb9a1630",
+          "reference_time": "2028-02-29T15:05:00Z",
+          "prior_revision": 2,
+          "prior_pending_question_ids": [
+            "dc99d3b10aa812d8bb9a1630"
+          ],
+          "response_id": "5a481b44-4171-49d7-9f99-b4a652cc7681",
+          "result_revision": 3
+        }
+      ],
+      "model_call_offset": 1,
+      "external_execution": "NOT_RUN",
+      "frontend_browser_observed": false,
+      "http_api_exercised": false,
+      "execution_success": null,
+      "schema_valid": null,
+      "session_id": "5a481b44-4171-49d7-9f99-b4a652cc7681",
+      "thread_id": "5a481b44-4171-49d7-9f99-b4a652cc7681",
+      "actual_route": "CLARIFY",
+      "answer_stop_reason": [
+        "repeated_question",
+        "unmatched_question"
+      ],
+      "final_route": "CLARIFY",
+      "workflow": null,
+      "validation": {
+        "status": "needs_clarification",
+        "issues": []
+      },
+      "task_partial_scores": [
+        {
+          "task_id": "read",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": null,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "deduplicate",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": null,
+          "dependency_correct": null
+        },
+        {
+          "task_id": "output",
+          "tool_operation_present": false,
+          "candidate_node_ids": [],
+          "semantic_coverage": null,
+          "dependency_correct": null
+        }
+      ],
+      "semantic_metrics_status": "requires_independent_adjudication_against_frozen_gold",
+      "elapsed_seconds": 52.82508820000294,
+      "live_model_calls": 3,
+      "model_call_records": 3,
+      "model_responses_received": 3,
+      "model_calls": [
+        {
+          "stage": "capability_check",
+          "turn_index": 0,
+          "transport": "ollama_native",
+          "requested_model": "a4b-public-qwen35-9b-32k",
+          "actual_model": "a4b-public-qwen35-9b-32k",
+          "kind": "live",
+          "status": "returned",
+          "dispatch_state": "dispatched",
+          "http_dispatch_attempts": 1,
+          "http_responses_received": 1,
+          "model_response_observed": true,
+          "request_settings": {
+            "think": false,
+            "stream": false,
+            "options": {
+              "num_ctx": 32768,
+              "num_predict": 4096,
+              "temperature": 0.0,
+              "top_p": 0.8,
+              "seed": 42
+            }
+          },
+          "raw_output": {
+            "role": "assistant",
+            "content": "{\"decision\": \"clarify\", \"tool_ids\": [\"filter_sort\"], \"missing_conditions\": [\"batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요\"], \"missing_actions\": [], \"reason\": \"사용자가 'batch 가 같은 행의 중복 처리 방식'을 아직 정하지 않았으므로, filter_sort 도구의 deduplicate 정책 (제거/유지) 에 적용할 기준이 부족합니다. 빈 셀 오류 처리는 filter_sort 의 handle_missing 정책으로 지원되나, 중복 정책 선택이 선행되어야 합니다.\", \"user_quotes\": [\"창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘.\"]}"
+          },
+          "usage": {
+            "prompt_eval_count": 10052,
+            "eval_count": 165,
+            "total_duration": 16125107600,
+            "done_reason": "stop"
+          },
+          "elapsed_seconds": 16.1738
+        },
+        {
+          "stage": "capability_check",
+          "turn_index": 1,
+          "transport": "ollama_native",
+          "requested_model": "a4b-public-qwen35-9b-32k",
+          "actual_model": "a4b-public-qwen35-9b-32k",
+          "kind": "live",
+          "status": "returned",
+          "dispatch_state": "dispatched",
+          "http_dispatch_attempts": 1,
+          "http_responses_received": 1,
+          "model_response_observed": true,
+          "request_settings": {
+            "think": false,
+            "stream": false,
+            "options": {
+              "num_ctx": 32768,
+              "num_predict": 4096,
+              "temperature": 0.0,
+              "top_p": 0.8,
+              "seed": 42
+            }
+          },
+          "raw_output": {
+            "role": "assistant",
+            "content": "{\"decision\": \"existing_tools\", \"tool_ids\": [\"read_table\", \"filter_sort\", \"write_result\"], \"missing_conditions\": [], \"missing_actions\": [], \"reason\": \"batch 열 기준으로 중복 제거 시 '마지막으로 나온 행 유지' 정책은 filter_sort 도구의 deduplicate 동작에서 last_occurrence 옵션을 통해 지원 가능합니다. 빈 셀 오류 처리는 handle_missing 동작과 연결하여 구현할 수 있으며, CSV 저장은 write_result 로 수행됩니다.\", \"user_quotes\": [\"원본에서 마지막으로 나온 행만 남겨줘.\"]}"
+          },
+          "usage": {
+            "prompt_eval_count": 10785,
+            "eval_count": 112,
+            "total_duration": 13096279100,
+            "done_reason": "stop"
+          },
+          "elapsed_seconds": 13.1425
+        },
+        {
+          "stage": "condition_check",
+          "turn_index": 1,
+          "transport": "ollama_native",
+          "requested_model": "a4b-public-qwen35-9b-32k",
+          "actual_model": "a4b-public-qwen35-9b-32k",
+          "kind": "live",
+          "status": "returned",
+          "dispatch_state": "dispatched",
+          "http_dispatch_attempts": 1,
+          "http_responses_received": 1,
+          "model_response_observed": true,
+          "request_settings": {
+            "think": false,
+            "stream": false,
+            "options": {
+              "num_ctx": 32768,
+              "num_predict": 4096,
+              "temperature": 0.0,
+              "top_p": 0.8,
+              "seed": 42
+            }
+          },
+          "raw_output": {
+            "role": "assistant",
+            "content": "{\"operation\":\"deduplicate\",\"conditions\":[{\"key\":\"duplicate.field\",\"status\":\"specified\",\"value\":\"batch\",\"evidence_ids\":[\"synthetic-depot:column:1\"]},{\"key\":\"duplicate.policy\",\"status\":\"specified\",\"value\":\"last\",\"evidence_ids\":[\"user:2:0\"]},{\"key\":\"output.format\",\"status\":\"specified\",\"value\":\"csv\",\"evidence_ids\":[\"user:0:0\"]},{\"key\":\"missing.policy\",\"status\":\"specified\",\"value\":\"error\",\"evidence_ids\":[\"user:0:0\"]},{\"key\":\"filter.field\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"filter.operator\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"filter.value\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"schedule.frequency\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"schedule.hour\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"schedule.minute\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"schedule.timezone\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"schedule.weekday\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"schedule.monthday\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]},{\"key\":\"schedule.month_end\",\"status\":\"missing\",\"value\":null,\"evidence_ids\":[]}],\"unsupported_actions\":[]}"
+          },
+          "usage": {
+            "prompt_eval_count": 5648,
+            "eval_count": 305,
+            "total_duration": 22642328400,
+            "done_reason": "stop"
+          },
+          "elapsed_seconds": 22.6976
+        }
+      ],
+      "stages": [
+        {
+          "stage": "resources",
+          "turn_index": 0,
+          "elapsed_seconds": 0.007058499999402557,
+          "model_call_indices": [],
+          "parsed_state": {
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              }
+            ]
+          }
+        },
+        {
+          "stage": "request_meaning",
+          "turn_index": 0,
+          "elapsed_seconds": 4.8800000513438135e-05,
+          "model_call_indices": [],
+          "parsed_state": {
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              }
+            ]
+          }
+        },
+        {
+          "stage": "capability_check",
+          "turn_index": 0,
+          "elapsed_seconds": 16.251954999999725,
+          "model_call_indices": [
+            1
+          ],
+          "parsed_state": {
+            "capability_assessment": {
+              "decision": "clarify",
+              "tool_ids": [
+                "filter_sort"
+              ],
+              "missing_conditions": [
+                "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요"
+              ],
+              "missing_actions": [],
+              "reason": "사용자가 'batch 가 같은 행의 중복 처리 방식'을 아직 정하지 않았으므로, filter_sort 도구의 deduplicate 정책 (제거/유지) 에 적용할 기준이 부족합니다. 빈 셀 오류 처리는 filter_sort 의 handle_missing 정책으로 지원되나, 중복 정책 선택이 선행되어야 합니다.",
+              "user_quotes": [
+                "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+              ],
+              "model_calls": 1,
+              "allows_execution": false,
+              "allows_generation": false,
+              "scope": "catalog assessment only; not condition READY"
+            },
+            "pending_questions": [
+              {
+                "id": "dc99d3b10aa812d8bb9a1630",
+                "key": "capability.condition.0",
+                "source": "capability",
+                "text": "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요에 대해 알려주세요.",
+                "options": [
+                  "연결 자료에서 기준 확인 후 입력",
+                  "기준을 직접 입력",
+                  "나중에 결정"
+                ]
+              }
+            ],
+            "status": "needs_clarification",
+            "draft": {
+              "name": "업무 조건 확인",
+              "purpose": "사용자 조건 확인 후 업무 설계",
+              "instructions": "확정 조건과 사용자 답변을 보존합니다.",
+              "tool_ids": [],
+              "document_ids": [
+                "synthetic-depot"
+              ],
+              "requirements": [],
+              "questions": [
+                "batch 가 동일한 경우 중복을 제거할지, 첫 번째 행만 유지할지, 아니면 모두 유지할지에 대한 정책 결정 필요에 대해 알려주세요."
+              ],
+              "question_options": [
+                [
+                  "연결 자료에서 기준 확인 후 입력",
+                  "기준을 직접 입력",
+                  "나중에 결정"
+                ]
+              ],
+              "unsupported": [],
+              "explanation": "필수 업무 조건을 확인합니다.",
+              "execution_plan": {
+                "filters": [],
+                "sort": [],
+                "match": "all",
+                "missing_policy": "keep",
+                "duplicate_policy": "keep",
+                "duplicate_field": null,
+                "output_format": "json"
+              },
+              "workflow": null,
+              "schedule": null,
+              "report_destination": null
+            },
+            "issues": [],
+            "semantic_issues": [],
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "needs_input",
+                "detail": "clarify",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 16251.95
+              }
+            ]
+          }
+        },
+        {
+          "stage": "request_meaning",
+          "turn_index": 1,
+          "elapsed_seconds": 3.94000016967766e-05,
+          "model_call_indices": [],
+          "parsed_state": {
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "needs_input",
+                "detail": "clarify",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 16251.95
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.03
+              }
+            ]
+          }
+        },
+        {
+          "stage": "capability_check",
+          "turn_index": 1,
+          "elapsed_seconds": 13.186359100000118,
+          "model_call_indices": [
+            2
+          ],
+          "parsed_state": {
+            "capability_assessment": {
+              "decision": "existing_tools",
+              "tool_ids": [
+                "read_table",
+                "filter_sort",
+                "write_result"
+              ],
+              "missing_conditions": [],
+              "missing_actions": [],
+              "reason": "batch 열 기준으로 중복 제거 시 '마지막으로 나온 행 유지' 정책은 filter_sort 도구의 deduplicate 동작에서 last_occurrence 옵션을 통해 지원 가능합니다. 빈 셀 오류 처리는 handle_missing 동작과 연결하여 구현할 수 있으며, CSV 저장은 write_result 로 수행됩니다.",
+              "user_quotes": [
+                "원본에서 마지막으로 나온 행만 남겨줘."
+              ],
+              "model_calls": 1,
+              "allows_execution": false,
+              "allows_generation": false,
+              "scope": "catalog assessment only; not condition READY"
+            },
+            "pending_questions": [],
+            "issues": [],
+            "semantic_issues": [],
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "needs_input",
+                "detail": "clarify",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 16251.95
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.03
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "completed",
+                "detail": "existing_tools",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 13186.35
+              }
+            ]
+          }
+        },
+        {
+          "stage": "condition_check",
+          "turn_index": 1,
+          "elapsed_seconds": 22.812850499998603,
+          "model_call_indices": [
+            3
+          ],
+          "parsed_state": {
+            "condition_ledger": {
+              "protocol": "condition-contracts-v8-dedup-scope",
+              "operations": [
+                "filter",
+                "deduplicate"
+              ],
+              "slots": {
+                "duplicate.field": {
+                  "key": "duplicate.field",
+                  "status": "specified",
+                  "value": "batch",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_column_rule"
+                },
+                "duplicate.policy": {
+                  "key": "duplicate.policy",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [
+                    "user:2:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:2:0",
+                      "source_id": "user",
+                      "turn": 2,
+                      "quote": "원본에서 마지막으로 나온 행만 남겨줘."
+                    }
+                  ]
+                },
+                "output.format": {
+                  "key": "output.format",
+                  "status": "specified",
+                  "value": "csv",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_policy_rule"
+                },
+                "missing.policy": {
+                  "key": "missing.policy",
+                  "status": "specified",
+                  "value": "error",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_policy_clause"
+                },
+                "filter.field": {
+                  "key": "filter.field",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "filter.operator": {
+                  "key": "filter.operator",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "filter.value": {
+                  "key": "filter.value",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.frequency": {
+                  "key": "schedule.frequency",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.hour": {
+                  "key": "schedule.hour",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.minute": {
+                  "key": "schedule.minute",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.timezone": {
+                  "key": "schedule.timezone",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.weekday": {
+                  "key": "schedule.weekday",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.monthday": {
+                  "key": "schedule.monthday",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.month_end": {
+                  "key": "schedule.month_end",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                }
+              },
+              "decision": "clarify",
+              "outside_scope": false,
+              "unresolved": [
+                "duplicate.policy",
+                "filter.field",
+                "filter.operator",
+                "filter.value",
+                "schedule.frequency",
+                "schedule.hour",
+                "schedule.minute",
+                "schedule.timezone",
+                "schedule.weekday",
+                "schedule.monthday",
+                "schedule.month_end"
+              ],
+              "questions": [
+                {
+                  "id": "610afe56b021d532895dd390",
+                  "key": "duplicate.policy",
+                  "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                  "options": [
+                    "첫 행만 남김",
+                    "마지막 행만 남김",
+                    "모두 유지",
+                    "중복이면 오류"
+                  ]
+                },
+                {
+                  "id": "e20e41292c3cf2e40d7c668f",
+                  "key": "filter.field",
+                  "text": "어느 열을 기준으로 선별할까요?",
+                  "options": [
+                    "seq",
+                    "batch",
+                    "depot",
+                    "units",
+                    "fee",
+                    "credit"
+                  ]
+                }
+              ],
+              "issues": [],
+              "resolution": null,
+              "validated_user_turn": 2,
+              "invalid_values": [
+                "duplicate.policy: 조건 값에 대응하는 명시적 원문 근거가 없습니다."
+              ],
+              "unsupported_actions": [],
+              "resource_versions": {
+                "synthetic-depot": "content:42afbc972ec3e6d2fd20e2db7d82df1ecd7e31531cd130183929e3fd311c77ff"
+              }
+            },
+            "pending_questions": [
+              {
+                "id": "610afe56b021d532895dd390",
+                "key": "duplicate.policy",
+                "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                "options": [
+                  "첫 행만 남김",
+                  "마지막 행만 남김",
+                  "모두 유지",
+                  "중복이면 오류"
+                ]
+              },
+              {
+                "id": "e20e41292c3cf2e40d7c668f",
+                "key": "filter.field",
+                "text": "어느 열을 기준으로 선별할까요?",
+                "options": [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ]
+              }
+            ],
+            "status": "needs_clarification",
+            "draft": {
+              "name": "업무 조건 확인",
+              "purpose": "사용자 조건 확인 후 업무 설계",
+              "instructions": "확정 조건과 사용자 답변을 보존합니다.",
+              "tool_ids": [],
+              "document_ids": [
+                "synthetic-depot"
+              ],
+              "requirements": [
+                {
+                  "description": "사용자 요청의 확인 조건",
+                  "source_id": "user",
+                  "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                }
+              ],
+              "questions": [
+                "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                "어느 열을 기준으로 선별할까요?"
+              ],
+              "question_options": [
+                [
+                  "첫 행만 남김",
+                  "마지막 행만 남김",
+                  "모두 유지",
+                  "중복이면 오류"
+                ],
+                [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ]
+              ],
+              "unsupported": [],
+              "explanation": "필수 업무 조건을 확인합니다.",
+              "execution_plan": {
+                "filters": [],
+                "sort": [],
+                "match": "all",
+                "missing_policy": "keep",
+                "duplicate_policy": "keep",
+                "duplicate_field": null,
+                "output_format": "json"
+              },
+              "workflow": null,
+              "schedule": null,
+              "report_destination": null
+            },
+            "issues": [],
+            "semantic_issues": [],
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "needs_input",
+                "detail": "clarify",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 16251.95
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.03
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "completed",
+                "detail": "existing_tools",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 13186.35
+              },
+              {
+                "node": "condition_check",
+                "label": "업무 조건 확인",
+                "status": "needs_input",
+                "detail": "clarify",
+                "mode": "enforce",
+                "model_calls": 1,
+                "metrics": {
+                  "prompt_eval_count": 5648,
+                  "eval_count": 305,
+                  "total_duration": 22642328400,
+                  "load_duration": 46224700,
+                  "done_reason": "stop",
+                  "seconds": 22.72209490000023
+                }
+              },
+              {
+                "node": "condition_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "condition_check",
+                "elapsed_ms": 22812.78
+              }
+            ]
+          },
+          "ledger_before": {
+            "pending_questions": []
+          },
+          "ledger_after": {
+            "pending_questions": [
+              {
+                "id": "610afe56b021d532895dd390",
+                "key": "duplicate.policy",
+                "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                "options": [
+                  "첫 행만 남김",
+                  "마지막 행만 남김",
+                  "모두 유지",
+                  "중복이면 오류"
+                ]
+              },
+              {
+                "id": "e20e41292c3cf2e40d7c668f",
+                "key": "filter.field",
+                "text": "어느 열을 기준으로 선별할까요?",
+                "options": [
+                  "seq",
+                  "batch",
+                  "depot",
+                  "units",
+                  "fee",
+                  "credit"
+                ]
+              }
+            ],
+            "condition_ledger": {
+              "protocol": "condition-contracts-v8-dedup-scope",
+              "operations": [
+                "filter",
+                "deduplicate"
+              ],
+              "slots": {
+                "duplicate.field": {
+                  "key": "duplicate.field",
+                  "status": "specified",
+                  "value": "batch",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_column_rule"
+                },
+                "duplicate.policy": {
+                  "key": "duplicate.policy",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [
+                    "user:2:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:2:0",
+                      "source_id": "user",
+                      "turn": 2,
+                      "quote": "원본에서 마지막으로 나온 행만 남겨줘."
+                    }
+                  ]
+                },
+                "output.format": {
+                  "key": "output.format",
+                  "status": "specified",
+                  "value": "csv",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_policy_rule"
+                },
+                "missing.policy": {
+                  "key": "missing.policy",
+                  "status": "specified",
+                  "value": "error",
+                  "evidence_ids": [
+                    "user:0:0"
+                  ],
+                  "evidence": [
+                    {
+                      "id": "user:0:0",
+                      "source_id": "user",
+                      "turn": 0,
+                      "quote": "창고정산에서 batch가 같은 행의 중복 처리 방식은 아직 못 정했어. CSV로 저장하고 빈 셀은 오류로 해줘."
+                    }
+                  ],
+                  "extraction": "literal_policy_clause"
+                },
+                "filter.field": {
+                  "key": "filter.field",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "filter.operator": {
+                  "key": "filter.operator",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "filter.value": {
+                  "key": "filter.value",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.frequency": {
+                  "key": "schedule.frequency",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.hour": {
+                  "key": "schedule.hour",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.minute": {
+                  "key": "schedule.minute",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.timezone": {
+                  "key": "schedule.timezone",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.weekday": {
+                  "key": "schedule.weekday",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.monthday": {
+                  "key": "schedule.monthday",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                },
+                "schedule.month_end": {
+                  "key": "schedule.month_end",
+                  "status": "missing",
+                  "value": null,
+                  "evidence_ids": [],
+                  "evidence": []
+                }
+              },
+              "decision": "clarify",
+              "outside_scope": false,
+              "unresolved": [
+                "duplicate.policy",
+                "filter.field",
+                "filter.operator",
+                "filter.value",
+                "schedule.frequency",
+                "schedule.hour",
+                "schedule.minute",
+                "schedule.timezone",
+                "schedule.weekday",
+                "schedule.monthday",
+                "schedule.month_end"
+              ],
+              "questions": [
+                {
+                  "id": "610afe56b021d532895dd390",
+                  "key": "duplicate.policy",
+                  "text": "중복된 행은 첫 행·마지막 행·유지·오류 중 어떻게 처리할까요?",
+                  "options": [
+                    "첫 행만 남김",
+                    "마지막 행만 남김",
+                    "모두 유지",
+                    "중복이면 오류"
+                  ]
+                },
+                {
+                  "id": "e20e41292c3cf2e40d7c668f",
+                  "key": "filter.field",
+                  "text": "어느 열을 기준으로 선별할까요?",
+                  "options": [
+                    "seq",
+                    "batch",
+                    "depot",
+                    "units",
+                    "fee",
+                    "credit"
+                  ]
+                }
+              ],
+              "issues": [],
+              "resolution": null,
+              "validated_user_turn": 2,
+              "invalid_values": [
+                "duplicate.policy: 조건 값에 대응하는 명시적 원문 근거가 없습니다."
+              ],
+              "unsupported_actions": [],
+              "resource_versions": {
+                "synthetic-depot": "content:42afbc972ec3e6d2fd20e2db7d82df1ecd7e31531cd130183929e3fd311c77ff"
+              }
+            },
+            "condition_enforced": true,
+            "condition_required": true,
+            "condition_route": "supervisor"
+          }
+        },
+        {
+          "stage": "supervisor",
+          "turn_index": 1,
+          "elapsed_seconds": 0.0026574000003165565,
+          "model_call_indices": [],
+          "parsed_state": {
+            "trace": [
+              {
+                "node": "resources",
+                "label": "자료·도구 확인",
+                "status": "completed",
+                "detail": "연결 자료 1개와 허용 도구 62개를 확인했습니다."
+              },
+              {
+                "node": "resources",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "resources",
+                "elapsed_ms": 7.05
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.04
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "needs_input",
+                "detail": "clarify",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 16251.95
+              },
+              {
+                "node": "request_meaning",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "request_meaning",
+                "elapsed_ms": 0.03
+              },
+              {
+                "node": "capability_check",
+                "label": "등록 도구 지원 검토",
+                "status": "completed",
+                "detail": "existing_tools",
+                "model_calls": 1
+              },
+              {
+                "node": "capability_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "capability_check",
+                "elapsed_ms": 13186.35
+              },
+              {
+                "node": "condition_check",
+                "label": "업무 조건 확인",
+                "status": "needs_input",
+                "detail": "clarify",
+                "mode": "enforce",
+                "model_calls": 1,
+                "metrics": {
+                  "prompt_eval_count": 5648,
+                  "eval_count": 305,
+                  "total_duration": 22642328400,
+                  "load_duration": 46224700,
+                  "done_reason": "stop",
+                  "seconds": 22.72209490000023
+                }
+              },
+              {
+                "node": "condition_check",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "condition_check",
+                "elapsed_ms": 22812.78
+              },
+              {
+                "node": "supervisor",
+                "label": "다음 단계 결정",
+                "status": "completed",
+                "detail": "필수 정보가 부족해 답변을 기다립니다."
+              },
+              {
+                "node": "supervisor",
+                "label": "단계 소요 시간",
+                "status": "completed",
+                "detail": "supervisor",
+                "elapsed_ms": 2.65
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "metrics": {
+    "intent_accuracy": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "slot_extraction_f1": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "routing_macro_f1": {
+      "value": 1.0,
+      "denominator": 1,
+      "unit": "case",
+      "per_class": {
+        "READY": null,
+        "CLARIFY": 1.0,
+        "UNSUPPORTED": null
+      },
+      "status": "measured",
+      "system_errors_count_as_expected_class_false_negative": true
+    },
+    "necessary_question_recall": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "unnecessary_question_rate": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "repeated_question_rate": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "answer_incorporation_accuracy": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "clarification_completion_rate": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "workflow_schema_validity": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "tool_operation_accuracy": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "requirement_coverage": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "workflow_execution_success": {
+      "value": null,
+      "numerator": 0,
+      "denominator": 0,
+      "unit": "case",
+      "status": "not_measured"
+    },
+    "latency_p50_seconds": {
+      "value": 52.82508820000294,
+      "denominator": 1,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    },
+    "latency_p95_seconds": {
+      "value": 52.82508820000294,
+      "denominator": 1,
+      "unit": "case",
+      "status": "measured",
+      "estimator": "median / nearest-rank p95"
+    }
+  },
+  "connector_policy": "No Gmail/Notion/customer DB access or email sending",
+  "scope": "backend service/checkpoint/model E2E, API and browser covered separately",
+  "environment": null,
+  "evaluation_environment": {
+    "version": 1,
+    "kind": "local",
+    "endpoint": "http://127.0.0.1:11434/v1",
+    "provider": "ollama",
+    "python": "3.13.16",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "dependencies": {
+      "aiosqlite": "0.22.1",
+      "annotated-types": "0.8.0",
+      "anthropic": "1.13.0",
+      "anyio": "4.15.1",
+      "attrs": "26.1.0",
+      "bracex": "3.1",
+      "certifi": "2026.7.22",
+      "cffi": "2.1.1",
+      "charset-normalizer": "3.5.2",
+      "colorama": "0.4.6",
+      "cryptography": "50.0.2",
+      "deepagents": "0.7.23",
+      "distro": "1.9.0",
+      "docstring-parser": "0.18.0",
+      "et-xmlfile": "2.0.0",
+      "filetype": "1.2.0",
+      "flatbuffers": "25.12.19",
+      "google-auth": "2.61.0",
+      "google-genai": "2.29.0",
+      "h11": "0.16.0",
+      "httpcore": "1.0.9",
+      "httpcore2": "2.13.1",
+      "httpx": "0.28.1",
+      "httpx2": "2.13.1",
+      "idna": "3.20",
+      "iniconfig": "2.3.1",
+      "jiter": "0.17.0",
+      "joblib": "1.5.0",
+      "jsonpatch": "1.35",
+      "jsonpointer": "3.2.1",
+      "jsonschema": "4.26.0",
+      "jsonschema-specifications": "2025.9.1",
+      "langchain": "1.4.4",
+      "langchain-anthropic": "1.7.5",
+      "langchain-core": "1.6.9",
+      "langchain-google-genai": "4.4.1",
+      "langchain-openai": "1.7.0",
+      "langchain-protocol": "0.0.19",
+      "langgraph": "1.2.14",
+      "langgraph-checkpoint": "4.2.0",
+      "langgraph-checkpoint-postgres": "3.1.2",
+      "langgraph-checkpoint-sqlite": "3.1.1",
+      "langgraph-prebuilt": "1.1.0",
+      "langgraph-sdk": "0.4.6",
+      "langsmith": "0.14.7",
+      "lxml": "6.1.3",
+      "networkx": "3.7",
+      "numpy": "2.2.5",
+      "onnxruntime": "1.31.1",
+      "openai": "3.29.0",
+      "openpyxl": "3.1.5",
+      "orjson": "3.13.0",
+      "ormsgpack": "1.12.2",
+      "packaging": "26.3",
+      "pillow": "12.3.0",
+      "pip": "26.3",
+      "pluggy": "1.6.0",
+      "protobuf": "7.36.2",
+      "psutil": "7.2.2",
+      "psycopg": "3.3.7",
+      "psycopg-binary": "3.3.7",
+      "psycopg-pool": "3.3.3",
+      "pyasn1": "0.6.4",
+      "pyasn1-modules": "0.4.2",
+      "pycparser": "3.11",
+      "pydantic": "2.14.1",
+      "pydantic-core": "2.50.1",
+      "pygments": "2.21.0",
+      "pymupdf": "2.0",
+      "pymupdf-layout": "2.0",
+      "pymupdf4llm": "2.0",
+      "pypdf": "6.10.0",
+      "pytest": "9.1.1",
+      "python-docx": "1.2.0",
+      "pyyaml": "6.0.3",
+      "referencing": "0.37.0",
+      "regex": "2026.9.29",
+      "requests": "2.34.2",
+      "requests-toolbelt": "1.0.0",
+      "rpds-py": "2026.9.1",
+      "scikit-learn": "1.6.1",
+      "scipy": "1.15.2",
+      "sniffio": "1.3.1",
+      "sqlite-vec": "0.1.9",
+      "tabulate": "0.10.0",
+      "tenacity": "9.1.4",
+      "threadpoolctl": "3.6.0",
+      "tiktoken": "0.14.0",
+      "truststore": "0.10.4",
+      "typing-extensions": "4.16.0",
+      "typing-inspection": "0.4.4",
+      "tzdata": "2026.5",
+      "urllib3": "2.8.0",
+      "uuid-utils": "0.17.1",
+      "wcmatch": "11.1",
+      "websockets": "16.1.1",
+      "xxhash": "4.0.1",
+      "zstandard": "0.25.0"
+    },
+    "hardware": {
+      "cpu": "Intel64 Family 6 Model 165 Stepping 3, GenuineIntel",
+      "gpu": [
+        "NVIDIA GeForce RTX 4060 Ti, 8188, 610.88"
+      ],
+      "physical_memory_bytes": 17101434880
+    },
+    "server_version": "0.40.16",
+    "models": {
+      "a4b-public-qwen35-9b-32k": {
+        "listed_model_id": "a4b-public-qwen35-9b-32k:latest",
+        "digest": "dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df",
+        "size_bytes": 6550825594,
+        "details": {
+          "parent_model": "qwen3.5:9b",
+          "format": "gguf",
+          "family": "qwen35",
+          "families": [
+            "qwen35"
+          ],
+          "parameter_size": "9.0B",
+          "quantization_level": "Q4_K_M",
+          "runner": "llamacpp"
+        },
+        "parameters": "num_ctx                        32768\nnum_predict                    4096\npresence_penalty               1.5\nseed                           42\ntemperature                    0\ntop_k                          20\ntop_p                          0.8",
+        "template_sha256": "39302355407942b6b0b50e1a78741740fc8a31926a4febea429526497e0e6008",
+        "context_lengths": {
+          "qwen35.context_length": 262144
+        }
+      }
+    }
+  },
+  "effective_process_settings": {
+    "A4B_MAIN_PROVIDER": "ollama",
+    "A4B_MAIN_MODEL": "a4b-public-qwen35-9b-32k",
+    "A4B_CAPABILITY_MODEL": "a4b-public-qwen35-9b-32k",
+    "A4B_PLANNER_MODE": "deepagent",
+    "A4B_PLANNER_PROMPT": null,
+    "A4B_CAPABILITY_MODE": "enforce",
+    "A4B_CONDITION_MODE": "enforce",
+    "A4B_REQUIREMENT_MODE": "enforce",
+    "A4B_VERIFIER_MODE": "off",
+    "A4B_OLLAMA_NUM_CTX": "32768",
+    "A4B_OLLAMA_NUM_PREDICT": "4096",
+    "A4B_OLLAMA_TEMPERATURE": "0",
+    "A4B_MAIN_TIMEOUT_S": "180",
+    "A4B_REQUIREMENT_GENERATION_MODE": "baseline",
+    "A4B_TOOL_CATALOG_MODE": "model",
+    "A4B_TOOL_ADVICE_MODE": "hint",
+    "A4B_TOOL_ADVICE_BACKEND": "svm56",
+    "A4B_OLLAMA_MODEL_ALIASES": null
+  },
+  "model_call_records": 4,
+  "dispatched_model_requests": 4,
+  "model_responses_received": 4,
+  "pending_model_call_records": 0,
+  "inference_calls_accounting": "Confirmed model responses only; HTTP dispatch attempts do not prove server inference. dispatch_pending in a saved snapshot means dispatch may or may not have begun.",
+  "probe_calls": [
+    {
+      "stage": "probe",
+      "turn_index": null,
+      "transport": "ollama_native",
+      "requested_model": "a4b-public-qwen35-9b-32k",
+      "actual_model": "a4b-public-qwen35-9b-32k",
+      "kind": "live",
+      "status": "returned",
+      "dispatch_state": "dispatched",
+      "http_dispatch_attempts": 1,
+      "http_responses_received": 1,
+      "model_response_observed": true,
+      "request_settings": {
+        "think": false,
+        "stream": false,
+        "options": {
+          "num_ctx": 32768,
+          "num_predict": 4096,
+          "temperature": 0.0,
+          "top_p": 0.8,
+          "seed": 42
+        }
+      },
+      "raw_output": {
+        "role": "assistant",
+        "content": "{\"ok\": true, \"count\": 5}"
+      },
+      "usage": {
+        "prompt_eval_count": 33,
+        "eval_count": 12,
+        "total_duration": 16374900400,
+        "done_reason": "stop"
+      },
+      "elapsed_seconds": 16.4145
+    }
+  ],
+  "not_run_case_ids": [],
+  "probe": {
+    "model_ids": [
+      "a4b-public-qwen35-9b-32k:latest"
+    ],
+    "actual_model": "a4b-public-qwen35-9b-32k",
+    "structured_probe": "passed",
+    "server_model_metadata": [
+      {
+        "model": "a4b-public-qwen35-9b-32k",
+        "details": {
+          "parent_model": "qwen3.5:9b",
+          "format": "gguf",
+          "family": "qwen35",
+          "families": [
+            "qwen35"
+          ],
+          "parameter_size": "9.0B",
+          "quantization_level": "Q4_K_M",
+          "runner": "llamacpp"
+        },
+        "context_lengths": {
+          "qwen35.context_length": 262144
+        },
+        "num_ctx_parameter": [
+          "num_ctx                        32768"
+        ]
+      }
+    ],
+    "weights_family_attestation": "model ID and response metadata only; server weights not independently inspected",
+    "gpu_residency_after_probe": [
+      {
+        "name": "a4b-public-qwen35-9b-32k:latest",
+        "digest": "dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df",
+        "context_length": 32768,
+        "size": 6914677142,
+        "size_vram": 5604082973
+      }
+    ]
+  }
+}

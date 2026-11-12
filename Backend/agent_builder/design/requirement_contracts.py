@@ -90,9 +90,18 @@ class Other(Strict):
     action: str = Field(min_length=1, max_length=300)
 
 
+class EmailSend(Strict):
+    kind: Literal['email_send']
+    to: str = Field(min_length=3, max_length=254)
+    subject: str = Field(min_length=1, max_length=2000)
+    body: str | None = Field(max_length=20000)
+
+
 class DocumentAnalysis(Strict):
     kind: Literal['document_analysis']
     request: str = Field(min_length=1, max_length=20000)
+    gmail_limit: int | None = Field(default=None, ge=1, le=500, exclude_if=lambda value: value is None)
+    gmail_limit_source_message: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
 
 
 class HumanReview(Strict):
@@ -135,7 +144,7 @@ class ScheduledExecution(Strict):
     schedule: ScheduleSpec
 
 
-Spec = Annotated[Read | ExtractFields | Compute | ScalarCalculate | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
+Spec = Annotated[Read | ExtractFields | Compute | ScalarCalculate | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | EmailSend | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
                  Field(discriminator='kind')]
 
 

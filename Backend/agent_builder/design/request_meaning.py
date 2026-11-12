@@ -24,6 +24,8 @@ class Selection(Strict):
     period: Literal['all', 'today', 'yesterday', 'date_range', 'other']
     period_source_message: int | None = Field(ge=0)
     period_evidence: str | None
+    calendar_timezone: str | None = Field(default=None, max_length=100)
+    timezone_evidence: str | None = Field(default=None, max_length=100)
     # Unsupported conditions remain explicit; adapters must not discard them.
     filters: list[str] = Field(max_length=20)
 
@@ -74,6 +76,8 @@ selection.limit는 명시된 조회 개수만 숫자로, limit_evidence는 그 �
 limit_source_message는 그 수량이 나온 user_messages index입니다. 개수가 없으면 세 필드 모두 null입니다. '모든/전부/전체'는 한도가 없다는 요구이므로 other_requirements에 보존합니다.
 selection.period는 all/today/yesterday/date_range/other이고, period_source_message는 기간 표현이 나온 user_messages의 index입니다. 기간 조건이 없으면 all과 null입니다.
 period_evidence는 기간의 정확한 원문 표현(예: 어제, 오늘, 전날)이며 기간 조건이 없으면 null입니다.
+하루의 기준 도시를 명시하면 calendar_timezone에 IANA 시간대, timezone_evidence에 도시·시간대 원문을 기록합니다. 도시를 업무·검색 필터로 추가하지 않습니다.
+읽음 여부가 무관하거나 읽은 메일도 포함하면 읽음 필터가 없다는 의미입니다. 이를 추가 업무로 중복 기록하지 않습니다.
 안 읽은/미읽음은 filters=[unread], 읽은 메일은 [read]입니다. 그 밖의 발신자·제목·기간 등의 조건은 filters에 원문을 빠짐없이 남깁니다.
 읽음 상태는 원문이 요구할 때만 설정합니다. 단순히 오늘/어제 받은 메일이라는 표현에는 unread 조건이 없습니다. 읽음 여부 무관·미읽음 제외/취소 등 최신 변경도 적용합니다.
 필터가 없으면 []입니다. '내 Gmail'은 계정 연결의 표현이지 추가 필터가 아닙니다.
@@ -90,6 +94,8 @@ source_catalog의 조회 어댑터는 기능 제한이나 read 동작 요구가 
 발송 제목·본문·수신자는 원문 입력값으로 other_requirements에 보존해야 합니다. 값에 포함된 동사를 업무로 바꾸거나 제목·본문을 조회 필터로 바꾸면 false입니다.
 조회 없는 발송의 selection(order=unspecified, period=all, limit=null, filters=[])은 조회 조건 부재를 나타냅니다. period=all 자체를 '모든 메일 조회'라는 추가 동작으로 해석하지 않습니다.
 user_messages 전체를 먼저 읽고 최신 변경·취소를 적용한 실제 요구를 정리한 뒤 candidate와 비교합니다.
+현지 달력의 단일 오늘·어제는 해당 발화의 period 및 calendar_timezone로 보존합니다. timezone_evidence와 IANA 시간대의 도시가 다르면 거부합니다.
+현지 달력 및 읽음 제한 해제는 별도 업무가 아닙니다. 일광절약시간제 경계와 양 끝 자정은 앱에서 계산합니다.
 모든 출처와 동작(read/summarize/send/save/delete/transform/other), 수량과 근거 발화, 순서, 기간과 근거 발화,
 읽음 상태·발신자·제목 등 필터, 예약 주기·시각·시간대, 요약 관점·형식, 추가 업무와 unresolved가 보존되어야 합니다.
 발송·파일 저장·삭제·첨부파일 처리·다른 서비스 업무가 하나라도 빠졌거나 일반 요약으로 축소됐다면 faithful=false입니다.
@@ -107,11 +113,11 @@ def _users(state):
 
 
 def meaning_fingerprint(state):
-    clock = state.get('temporal_context') or {}
+    from agent_builder.capabilities.capability_gate import turn_evidence
     payload = {'users': _users(state), 'resources': state.get('resources', []),
                'base_agent_id': state.get('base_agent_id'),
                'base_version': state.get('base_version'),
-               'clock': clock.get('user_message_anchors'), 'version': 1}
+               'turn_evidence': turn_evidence(state), 'version': 2}
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
@@ -232,6 +238,7 @@ def gmail_importance(state):
 
 def validate_meaning(raw, state):
     result = RequestMeaning.model_validate(raw).model_dump()
+    result['unresolved'] = [question for question in result['unresolved'] if question.strip()]
     users = _users(state)
     for task in result['tasks']:
         if task['source_message'] >= len(users):
@@ -251,15 +258,47 @@ def validate_meaning(raw, state):
             if index is None or index >= len(users) or not period_evidence or period_evidence not in users[index]:
                 raise ValueError('조회 기간의 사용자 발화를 확인할 수 없습니다.')
             relative = {'today': {'오늘', '금일', 'today'}, 'yesterday': {'어제', '전날', '그 전날', 'yesterday'}}
-            if selection['period'] in relative and period_evidence.casefold().strip() not in relative[selection['period']]:
+            token = re.sub(r'\s*하루(?:\s*동안)?$', '', period_evidence.strip().casefold())
+            name = next((key for key, aliases in relative.items() if token in aliases), None)
+            if selection['period'] == 'date_range' and name:
+                selection['period'] = name
+            if selection['period'] in relative and name != selection['period']:
                 raise ValueError('상대 날짜와 원문의 기간 표현이 다릅니다.')
         elif period_evidence is not None or index is not None:
             raise ValueError('기간 조건과 원문 근거가 일치하지 않습니다.')
+        from .temporal_context import calendar_qualifier, source_calendar_zone
+        source_zone = source_calendar_zone(state, index) if index is not None else None
+        proven_zone = source_zone[0] if source_zone else None
+        zone, place = selection['calendar_timezone'], selection['timezone_evidence']
+        if proven_zone and selection['period'] in ('today','yesterday') and not task['schedule']:
+            if zone and zone != proven_zone or place and not calendar_qualifier(place, proven_zone):
+                raise ValueError('명시한 현지 달력과 해석한 시간대가 다릅니다.')
+            place = selection['timezone_evidence'] = place or source_zone[1]
+            zone = selection['calendar_timezone'] = proven_zone
+        if zone is not None or place is not None:
+            from .temporal_context import validate_user_timezone
+            if (index is None or not zone or not place or place not in users[index]
+                    or selection['period'] not in ('today', 'yesterday') or task['schedule']):
+                raise ValueError('단발 조회의 시간대·날짜 원문을 확인할 수 없습니다.')
+            validate_user_timezone(zone)
+            anchors = (state.get('temporal_context') or {}).get('user_message_anchors', [])
+            anchor_zone = anchors[index].get('timezone') if index < len(anchors) else None
+            if zone != anchor_zone or (zone != place and not calendar_qualifier(place, zone)):
+                raise ValueError('도시의 시간대를 요청 기준시각과 대조할 수 없습니다.')
         task['actions'] = sorted(set(task['actions']))
         selection['filters'] = sorted(set(selection['filters']))
         if task['source'] == 'gmail' and 'unread' in selection['filters'] and not _unread_grounded(users):
             raise ValueError('미읽음 필터의 명시적 사용자 근거가 없거나 이후에 취소되었습니다.')
         if task['source'] == 'gmail':
+            if proven_zone:
+                # A redundant qualifier is removed only if the source text and
+                # structured calendar already enforce it. All other effects survive.
+                task['other_requirements'] = [extra for extra in task['other_requirements'] if not (
+                    extra in users[index] and (calendar_qualifier(extra, proven_zone) or
+                        not selection['filters'] and re.fullmatch(
+                        r'읽음\s*(?:여부|상태)(?:는|와|와는)?\s*(?:상관없|관계없|무관)[가-힣]*|'
+                        r'읽은\s*(?:이?메일)(?:도|까지)\s*포함[가-힣]*|'
+                        r'읽지\s*않은\s*(?:메일|것)만\s*고르지\s*(?:마|말아)[가-힣]*', extra.strip())))]
             choice, _ = gmail_importance(state)
             for value in selection['filters']:
                 canonical = _IMPORTANCE_FILTERS.get(value.casefold())
@@ -291,6 +330,94 @@ def sealed_meaning(state):
 def source_candidate(state):
     text = '\n'.join(_users(state)).casefold()
     return any(alias.casefold() in text for source in SOURCES.values() for alias in source['aliases'])
+
+
+def _previous_meaning(state, turn):
+    prior = {**state, 'messages': state['messages'][:turn]}
+    return sealed_meaning(prior)
+
+
+def answered_mail_spec(state):
+    """Bind a single recipient answer to an already reviewed literal send task."""
+    messages = state.get('messages', [])
+    turn = next((i for i in reversed(range(len(messages))) if messages[i]['role'] == 'user'), None)
+    if turn is None or state.get('base_agent_id') or state.get('resources') or state.get('required_node_refs'):
+        return None
+    event = next((e for e in reversed(state.get('capability_answers', []))
+                  if e.get('turn') == turn and e.get('answer') == messages[turn]['content']
+                  and e.get('kind') == 'answer' and len(e.get('question_ids', [])) == 1
+                  and e.get('candidate_keys') == ['delivery.recipient']), None)
+    if not event:
+        return None
+    recipient = re.fullmatch(r'\s*([A-Za-z0-9_.+@-]+?)\s*'
+                             r'(?:(?:으?로|에)\s*(?:보내\s*(?:줘|주세요)|발송해\s*(?:줘|주세요)))?[.!]?\s*',
+                             event['answer'])
+    if not recipient:
+        return None
+    from workflow_engine.unified_tools.expansion.google_adapters import email_address, clean_text
+    try:
+        address = email_address(recipient[1])
+    except ValueError:
+        return None
+    users = _users({'messages': messages[:turn]})
+    meaning = _previous_meaning(state, turn)
+    if not meaning or meaning['unresolved'] or len(meaning['tasks']) != 1:
+        return None
+    task = meaning['tasks'][0]
+    selection = task['selection']
+    if (task['source'] != 'gmail' or task['actions'] != ['send'] or task['schedule'] or task['summary_focus']
+            or selection['limit'] is not None or selection['period'] != 'all' or selection['filters']
+            or selection['order'] != 'unspecified' or len(users) != 1):
+        return None
+    fields = {}
+    for entry in task['other_requirements']:
+        label, sep, content = entry.partition(':')
+        label, content = label.strip(), content.strip()
+        if not sep or label in fields or label not in ('제목', '본문', '수신자') or not content:
+            return None
+        fields[label] = content
+    if not {'제목', '본문'} <= fields.keys():
+        return None
+    if '수신자' in fields and not re.fullmatch(r'(?:사용자(?:가)?\s*)?(?:나중에|다음에|추후)\s*(?:결정|지정)(?:할\s*(?:예정|것임))?', fields['수신자']):
+        return None
+    # Check each structured value against its own quoted field. Words inside a
+    # subject/body never authorize further operations or an extra recipient.
+    for label in ('제목', '본문'):
+        match = re.search(label + r'\s*(?:은|는|이|가|:|=)?\s*(?:정확히\s*)?'
+                          r'(?:"([^"]+)"|“([^”]+)”|‘([^’]+)’|\'([^\']+)\')', users[0])
+        if not match or fields[label] != next(v for v in match.groups() if v is not None):
+            return None
+    try:
+        clean_text(fields['제목'], 'subject')
+    except ValueError:
+        return None
+    return dict(kind='email_send', to=address, subject=fields['제목'], body=fields['본문'])
+
+
+def _apply_reviewed_count_edit(state):
+    from .gmail_summary import _gmail_count_evidence
+    bound = _gmail_count_evidence(state, only=True)
+    if not bound or state.get('base_agent_id'):
+        return None
+    turn = max(i for i, m in enumerate(state['messages']) if m['role'] == 'user')
+    prior = _previous_meaning(state, turn)
+    if not prior or prior['unresolved'] or len(prior['tasks']) != 1:
+        return None
+    task = prior['tasks'][0]
+    if (task['source'] != 'gmail' or set(task['actions']) != {'read', 'summarize'}
+            or task['selection']['order'] == 'oldest_first' or task['schedule']
+            or task['other_requirements'] or task['summary_focus']):
+        return None
+    task['selection'].update(limit=bound[0], limit_evidence=bound[1], limit_source_message=len(_users(state)) - 1)
+    value = validate_meaning(prior, state)
+    digest, fingerprint = _digest(value), meaning_fingerprint(state)
+    return dict(request_meaning=value, request_meaning_digest=digest, request_meaning_fingerprint=fingerprint,
+                request_meaning_review=dict(faithful=True, issues=[], meaning_digest=digest,
+                                            request_fingerprint=fingerprint, source='confirmed_count_edit',
+                                            prior_meaning_digest=state['request_meaning_digest']),
+                request_meaning_model_calls=0,
+                trace=[*state.get('trace', []), dict(node='request_meaning', label='조회 수량 수정', status='completed',
+                      detail='검토된 원래 조회 기간과 요약 업무에 후속 수량만 반영했습니다.', model_calls=0)])
 
 
 def extract_meaning(state, transport):
@@ -347,12 +474,16 @@ def extract_meaning(state, transport):
             messages.append(dict(role='user', content='추출 계약 오류를 수정하고 전체 원문 업무를 보존하세요: ' + str(error)[:600]))
 
 
-def make_meaning_node(model, api_key='', transport=None, enabled=True, *, capability_mode=None):
+def make_meaning_node(model, api_key='', transport=None, enabled=True, *, capability_mode=None, requirement_mode=None):
     checks_capability = (capability_mode or os.getenv('A4B_CAPABILITY_MODE', 'off')) == 'enforce'
+    checks_requirements = (requirement_mode or os.getenv('A4B_REQUIREMENT_MODE', 'off')) == 'enforce'
 
     def interpret(state):
-        if not enabled or not source_candidate(state) or sealed_meaning(state):
+        if not enabled or not source_candidate(state) or sealed_meaning(state) or answered_mail_spec(state):
             return {}
+        edit = _apply_reviewed_count_edit(state)
+        if edit:
+            return edit
         from agent_builder.capabilities.capability_gate import capability_enforced
         if (checks_capability or capability_enforced(state)) and gmail_importance(state)[0] == 'ambiguous':
             return {}  # The next capability node already owns the criterion question.
@@ -361,7 +492,15 @@ def make_meaning_node(model, api_key='', transport=None, enabled=True, *, capabi
         from .gmail_summary import gmail_summary_request
         if gmail_summary_request(state):
             return {}
-        from .requirement_ledger import requirement_transport
+        from .requirement_ledger import requirement_transport, summary_delivery_spec
+        if (checks_requirements or state.get('requirement_required')) and summary_delivery_spec(state):
+            # The enforced requirement path owns the complete document request.
+            # An optional mailbox interpretation would reclassify the delivery as a source.
+            return dict(request_meaning=None, request_meaning_fingerprint=None, request_meaning_digest=None,
+                        request_meaning_review=None, request_meaning_model_calls=0,
+                        trace=state.get('trace', []) + [dict(node='request_meaning', label='요청 의미 해석',
+                            status='completed', reason='document_summary_delivery_owned', model_calls=0,
+                            detail='확인된 문서·요약·출력 조건은 요구사항 검증 단계에서 처리합니다.')])
         try:
             update = extract_meaning(state, transport or requirement_transport(model, api_key))
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as error:
@@ -416,10 +555,11 @@ def gmail_selection(state):
         elif period != 'all' or query != UNREAD_QUERY:
             return None
     elif period != 'all':
-        clock = state.get('temporal_context') or {}
-        anchors = clock.get('user_message_anchors', [])
-        index = selection['period_source_message']
-        day = anchors[index].get('relative_days', {}).get(period) if index is not None and index < len(anchors) else None
+        from .gmail_summary import _unknown_calendar
+        if _unknown_calendar(state, selection):
+            return None
+        from .temporal_context import selected_day
+        day = selected_day(state, selection)
         if not day:
             return None
         query = ' '.join(filter(None, [f"after:{day['start_epoch']} before:{day['end_epoch']}", query or '-in:sent -in:drafts']))

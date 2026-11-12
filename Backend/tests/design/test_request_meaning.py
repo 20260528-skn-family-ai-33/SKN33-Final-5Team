@@ -109,12 +109,89 @@ def test_relative_day_uses_request_anchor_and_preserves_query_in_draft(period, w
     day = current['temporal_context']['user_message_anchors'][0]['relative_days'][period]
     expected = f"after:{day['start_epoch']} before:{day['end_epoch']} -in:sent -in:drafts"
     assert gmail_selection(current)['query'] == expected
+
     result = gmail_summary_reply(current)
     assert mail_arguments(result) == dict(max_results=100, query=expected)
     assert result['draft']['schedule'] is None and result['draft']['questions'] == []
     assert coverage_report({**current, **result}, result['draft'])['issues'] == []
     current.update(ensure_temporal_context(current, now='2026-11-10T16:00:00Z'))
     assert gmail_selection(current)['query'] == expected
+
+
+@pytest.mark.parametrize(('zone', 'now', 'duration'), [
+    ('Europe/Berlin', '2027-03-29T09:00:00Z', 23),
+    ('Europe/Berlin', '2027-11-01T09:00:00Z', 25),
+    ('Asia/Seoul', '2028-03-01T04:00:00Z', 24),
+])
+def test_named_calendar_uses_verified_local_midnights(zone, now, duration):
+    current = state(f'{zone} 현지 기준 어제 하루 동안 받은 Gmail 메일을 요약해줘.')
+    current['user_timezone'] = zone
+    current.update(ensure_temporal_context(current, now=now))
+    raw = meaning(None, None, period='yesterday')
+    raw['tasks'][0]['selection'].update(period='date_range', period_evidence='어제 하루 동안',
+                                         calendar_timezone=zone, timezone_evidence=zone)
+    current.update(extract_meaning(current, Extractor(raw)))
+    args = mail_arguments(gmail_summary_reply(current))
+    import re
+    start, end = map(int, re.search(r'after:(\d+) before:(\d+)', args['query']).groups())
+    assert end - start == duration * 3600
+
+
+def test_unreviewed_generator_day_strings_cannot_pass_local_day_validation():
+    from agent_builder.design.gmail_summary import gmail_day_issues
+    text = '어제 받은 Gmail을 요약해줘.'
+    current, _ = interpreted(text, meaning(None, None, period='yesterday'))
+    draft = gmail_summary_reply(current)['draft']
+    current['request_meaning'] = None
+    assert gmail_day_issues(current, draft) == []
+    reader = draft['workflow']['nodes'][0]
+    reader['settings']['arguments_json'] = json.dumps({'query': 'after:2026-11-09 before:2026-11-10'})
+    assert gmail_day_issues(current, draft)
+
+
+def test_count_revision_keeps_first_calendar_when_general_planner_has_no_meaning():
+    from agent_builder.design.gmail_summary import apply_gmail_day, gmail_day_issues
+    text = 'Europe/Berlin 현지 기준 어제 받은 Gmail을 요약해줘.'
+    current = state(text)
+    current['user_timezone'] = 'Europe/Berlin'
+    current.update(ensure_temporal_context(current, now='2027-03-29T09:00:00Z'))
+    current.update(extract_meaning(current, Extractor(meaning(None, None, period='yesterday'))))
+    draft = gmail_summary_reply(current)['draft']
+    current['messages'].append(dict(role='user', content='그 목록에서 최신 두 통만 남겨서 다시 요약해줘.'))
+    current.update(ensure_temporal_context(current, now='2027-04-03T20:00:00Z'))
+    current.update(request_meaning=None, capability_assessment=dict(
+        decision='existing_tools', tool_ids=['email.list','compose_answer']))
+    reader = draft['workflow']['nodes'][0]
+    reader['settings']['arguments_json'] = json.dumps(dict(max_results=2, query='after:2027-03-28 before:2027-03-29'))
+    assert gmail_day_issues(current, draft)
+    corrected = apply_gmail_day(current, draft)
+    assert not gmail_day_issues(current, corrected)
+    assert mail_arguments({'draft': corrected}) == dict(max_results=2, query='after:1806188400 before:1806271200 -in:sent -in:drafts')
+
+
+@pytest.mark.parametrize('place', ['베를린 현지 기준', '파리와 서울 현지 기준'])
+def test_foreign_or_multiple_cities_cannot_be_replaced_by_browser_day(place):
+    from agent_builder.design.gmail_summary import apply_gmail_day, gmail_day_issues
+    baseline, _ = interpreted('어제 받은 Gmail을 요약해.', meaning(None, None, period='yesterday'))
+    draft = gmail_summary_reply(baseline)['draft']
+    other, _ = interpreted(f'{place} 어제 받은 Gmail을 요약해.', meaning(None, None, period='yesterday'))
+    assert gmail_summary_reply(other) is None
+    assert apply_gmail_day(other, draft) is None
+    assert gmail_day_issues(other, draft)
+
+
+def test_blank_unresolved_placeholder_has_no_question_but_real_questions_block():
+    raw = meaning(None, None, period='yesterday')
+    raw['unresolved'] = ['   ']
+    current, transport = interpreted('어제 받은 Gmail 메일을 요약해줘.', raw)
+    assert sealed_meaning(current)['unresolved'] == []
+    assert not json.loads(transport.messages[1][1]['content'])['candidate']['unresolved']
+    assert gmail_summary_reply(current)
+    raw['unresolved'].append('발신자 기준은 무엇인가요?')
+    current, _ = interpreted('어제 받은 Gmail 메일을 요약해줘.', raw)
+    assert sealed_meaning(current)['unresolved'] == ['발신자 기준은 무엇인가요?']
+    assert gmail_summary_reply(current) is None
+
 
 
 def test_unread_filter_survives_both_selection_and_workflow():

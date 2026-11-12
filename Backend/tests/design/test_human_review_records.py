@@ -21,7 +21,7 @@ def review_state(kind='records', export=False):
                else '문서의 모순을 분석하고 그 결과를 사람이 확인하게 해줘.')
     if export:
         request += ' 확인한 결과는 JSON으로 저장해줘.'
-    result = state([dict(role='user', content=request)])
+    result = {**initial(), **state([dict(role='user', content=request)])}
     first_spec = (dict(kind='extract_fields', fields=['제목']) if kind == 'records'
                   else dict(kind='document_analysis'))
     tasks = [dict(source_message=0, description='결과 생성', spec=first_spec),
@@ -75,7 +75,7 @@ def test_records_review_can_save_only_after_a_checkpointed_human_reply(tmp_path,
     assert checked['status'] == 'ready', checked['issues']
     store = Storage(tmp_path)
     try:
-        identifier = store.save_agent({**initial(), **original, **checked, 'confirmed': True})
+        identifier = store.save_agent({**original, **checked, 'confirmed': True})
         asset = store.add_asset(dict(id=uid(), name='sample.txt', kind='document', format='txt',
                                      text='제목: 테스트', pages=['제목: 테스트'], columns=[]), [])
         first = run_workflow(store, identifier, original['messages'][0]['content'], 'unused',

@@ -1,8 +1,9 @@
 """Enforced capability decisions persist through generation, resume and save."""
 import hashlib
+import json
 import os
 import re
-from agent_builder.capabilities.capability_judgement import assess_capability, guard_delivery_revision, validate_assessment_result, AssessmentConflictError
+from agent_builder.capabilities.capability_judgement import assess_capability, guard_delivery_revision, validate_assessment_decision, validate_assessment_result, AssessmentConflictError
 from agent_builder.capabilities.capability_gate import capability_enforced, input_fingerprint
 from agent_builder.conditions.input_resolution import answer_kind, latest_resolution, option_answer, numeric_answer, pending_nonanswer
 from agent_builder.conditions.condition_check import _pending_draft
@@ -55,6 +56,65 @@ def _short_reply(state):
     return text in _PASSIVE_REPLIES
 
 
+def _question_key(text, fallback, state=None):
+    """Carry a downstream slot only when the displayed question identifies it."""
+    from agent_builder.conditions.condition_readiness import CHOICES, QUESTIONS, policy_clauses
+    if text in ('delivery.recipient', 'duplicate.policy'):
+        return text
+    if text == QUESTIONS['duplicate.policy']:
+        return 'duplicate.policy'
+    # Earlier assessments have no slot ID. Only use an unambiguous label or
+    # a choice between duplicate policies; composite questions keep their ID.
+    label = text.removesuffix('에 대해 알려주세요.').strip()
+    if label in ('수신자', '수신자 주소', '수신자 이메일 주소', '수신자 이메일'):
+        return 'delivery.recipient'
+    # A displayed closed menu is also structured evidence. Require the whole
+    # surrounding question to be about this policy; do not claim mixed choices.
+    menu = re.fullmatch(r'(.+?)\s*\(([^()]*)\)\s*(?:[을를]\s*)?(?:정|선택|결정)해\s*주세요[.?]?', label)
+    if menu:
+        options = [item.strip() for item in re.split(r'[,·/]', menu[2])]
+        if len(options) == len(CHOICES['duplicate.policy']) and set(options) == CHOICES['duplicate.policy'].keys():
+            subject = menu[1]
+            tables = [r for r in (state or {}).get('resources', []) if r.get('kind') == 'table']
+            if len(tables) == 1:
+                for column in tables[0].get('columns', []):
+                    subject = re.sub(r'''["'“‘]''' + re.escape(column) + r'''["'”’]\s*(?:열|컬럼)\s*기준(?:으로)?''',
+                                     ' ', subject)
+            if re.fullmatch(r'\s*중복(?:된|되는)?\s*(?:행|키)?(?:을|를|은|는)?\s*'
+                            r'(?:어떻게\s*처리할지|처리\s*(?:정책|방식)(?:을|를)?)\s*', subject):
+                return 'duplicate.policy'
+        return fallback
+    policies = policy_clauses(label, ())
+    if (len(policies) == 1 and policies[0][0] == 'duplicate.policy'
+            and '중복' in label and not re.search(r'열\s*(?:이름|선택)|파일|수신자|예약|빈\s*(?:값|셀)', label)
+            and (len(re.findall(r'[가-힣]+지(?=[,\s]|$)', label)) >= 2 or '정책' in policies[0][2])):
+        return 'duplicate.policy'
+    return fallback
+
+
+def _serialized_quote_fragment(text, source_quotes):
+    """An echoed assessment field is model metadata rather than a user-facing condition."""
+    head = re.match(r'^\s*"?user_quotes"\s*:\s*', text)
+    if not head:
+        return False
+    rest = text[head.end():]
+    try:
+        quotes, end = json.JSONDecoder().raw_decode(rest)
+    except ValueError:
+        return False
+    remainder = rest[end:].lstrip()
+    if not remainder.startswith('}'):
+        return False
+    tail = remainder[1:].strip()
+    if tail and (not re.match(r'^(?:\*\*)?(?:이유|근거|설명|reason)\s*[:：](?:\*\*)?', tail, re.I)
+                 or re.search(r'[?？]|(?:해|어|려)\s*주(?:세요|십시오)', tail)):
+        return False  # An unclassified tail can contain a second user decision.
+    sources = [''.join(s.split()) for s in source_quotes]
+    return (isinstance(quotes, list) and bool(quotes)
+            and all(isinstance(q, str) and q.strip() and any(''.join(q.split()) in s for s in sources)
+                    for q in quotes))
+
+
 def make_capability_check(model,transport=None,mode=None,error_observer=None,api_key=''):
     setting=mode or os.getenv('A4B_CAPABILITY_MODE','off')
     if setting not in ('off','enforce'):raise ValueError('A4B_CAPABILITY_MODE는 off/enforce이어야 합니다.')
@@ -70,6 +130,9 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
             events=state.get('capability_answers',[])
             event=events[-1] if events and events[-1]['turn']==len(state.get('messages',[]))-1 else None
             previous=state.get('capability_assessment') or {}
+            defer_previous = event and previous.get('decision')=='clarify' and event['kind'] in ('unknown','defer','guidance')
+            if defer_previous:
+                validate_assessment_decision(previous)
             criterion, evidence = gmail_importance(state)
             if faults:result=assess_capability(state,None)
             elif criterion == 'ambiguous':
@@ -92,7 +155,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                 validate_assessment_result(previous,state)
                 resolution = 'condition_choice' if option_answer(state) or numeric_answer(state) else 'condition_nonanswer'
                 result = guard_delivery_revision({**previous, 'model_calls': 0, 'answer_resolution': resolution}, state)
-            elif event and previous.get('decision')=='clarify' and event['kind'] in ('unknown','defer','guidance'):
+            elif (defer_previous
+                  and state.get('capability_fingerprint')==input_fingerprint({**state,'messages':state['messages'][:-1]})):
                 validate_assessment_result(previous,state)
                 ids=set(event['question_ids'])
                 count=sum(e['kind']=='unknown' and bool(ids.intersection(e['question_ids'])) for e in events)
@@ -114,6 +178,15 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                     active=requirement_transport(os.getenv('A4B_CAPABILITY_MODEL') or model, api_key)
                 else:active=transport
                 result=assess_capability(state,active)
+            if result['decision'] == 'clarify':
+                missing = result['missing_conditions']
+                source_quotes = result.get('user_quotes', [])
+                rejected = [i for i, text in enumerate(missing) if _serialized_quote_fragment(text, source_quotes)]
+                if rejected:
+                    remaining = [text for i, text in enumerate(missing) if i not in rejected]
+                    if not remaining:
+                        raise ValueError('지원 판단 응답에 질문할 업무 조건이 없습니다.')
+                    result = {**result, 'missing_conditions':remaining, 'rejected_metadata_condition_indices':rejected}
         except Exception as error:
             if error_observer:error_observer(error)
             result={'decision':'system_error','issues':['도구 지원 판단을 완료하지 못했습니다.'], 'error_type':type(error).__name__,'model_calls':None}
@@ -141,9 +214,17 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
             questions=filter_execution_questions(questions,state)
             if not questions:
                 questions=[{'id':hashlib.sha256((fingerprint+':'+str(i)+':'+text).encode()).hexdigest()[:24],
-                            'key':'gmail.importance_criteria' if text == IMPORTANCE_QUESTION else 'capability.condition.'+str(i),
+                            'key':'gmail.importance_criteria' if text == IMPORTANCE_QUESTION else _question_key(text,'capability.condition.'+str(i),state),
                             'source':'capability','text':_question_text(text),
                             'options':[]} for i,text in enumerate(result['missing_conditions'])]
+                from agent_builder.conditions.condition_readiness import QUESTIONS, choice_options
+                for question, raw in zip(questions, result['missing_conditions']):
+                    if question['key'] == 'duplicate.policy':
+                        question['options'] = choice_options('duplicate.policy', state)
+                        if raw == 'duplicate.policy':
+                            question['text'] = QUESTIONS['duplicate.policy']
+                    elif raw == 'delivery.recipient':
+                        question.update(text='이메일을 받을 수신자 주소는 무엇인가요?', options=[])
             from agent_builder.design.question_controls import complete_questions
             questions=complete_questions(questions,state)
             # Keep the full missing list in the assessment; controls and answer IDs
@@ -196,6 +277,11 @@ def await_capability_node(state):
     if answer.get('question_answers'):
         event['answers']=answer['question_answers']
         event['question_ids']=[item['question_id'] for item in answer['question_answers']]
-    event['questions']=[question for question in questions if question['id'] in event['question_ids']]
+    questions_by_id = {q['id']:q for q in questions}
+    event['questions'] = [questions_by_id[qid] for qid in event['question_ids']]
+    event['candidate_keys'] = [
+        _question_key(q['text'], q['key'], state) if q['key'].startswith('capability.condition.') else q['key']
+        for q in event['questions']
+    ]
     return {'messages':state['messages']+[{'role':'user','content':answer['content']}],
             'capability_answers':state.get('capability_answers',[])+[event], 'confirmed':False,'saved_agent_id':None}

@@ -29,6 +29,8 @@ def _operation_inputs(node):
             ports = {'write_json': ('value',), 'serialize': ('value',), 'write_csv': ('rows',)}.get(operation, ())
         elif tool == 'json_transform':
             ports = ('text',) if operation == 'parse' else ('value',)
+        elif tool == 'email.send' and operation == 'execute':
+            ports = ('body',)
         elif tool == 'list_transform':
             ports = ('items',)
         elif tool == 'join_tables':
@@ -44,7 +46,8 @@ def _operation_inputs(node):
     return {name for value in data if (name := _sole_binding(value)) is not None}
 
 
-def _content_bindings(node, output):
+def content_bindings(node, output=None):
+    """Return the bindings that supply the contents of this node's output."""
     tool = node['tool']
     bindings = node.get('bindings', [])
     if tool in ('read_table', 'read_document'):
@@ -75,7 +78,7 @@ def content_ancestors(nodes, identifier):
         if (current, output) in visited or current not in nodes:
             continue
         visited.add((current, output))
-        for binding in _content_bindings(nodes[current], output):
+        for binding in content_bindings(nodes[current], output):
             parent = binding['node_id']
             ancestors.add(parent)
             pending.append((parent, binding['output']))

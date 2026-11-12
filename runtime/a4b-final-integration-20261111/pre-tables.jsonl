@@ -1,0 +1,3 @@
+{"id": "H01", "saved_requirement_responses_used": 1, "drafts": [{"draft": 1, "validator": "ready", "approved_save_gate": true, "expected_rows_verified": 3}, {"draft": 2, "validator": "ready", "approved_save_gate": true, "expected_rows_verified": 3}]}
+{"id": "H18", "saved_requirement_responses_used": 1, "drafts": [{"draft": 1, "validator": "ready", "approved_save_gate": true}, {"draft": 2, "validator": "ready", "approved_save_gate": true}]}
+{"id": "H29", "saved_requirement_responses_used": 2, "drafts": [{"draft": 1, "validator": "ready", "approved_save_gate": true, "expected_rows_verified": 2}, {"draft": 2, "validator": "ready", "approved_save_gate": true, "expected_rows_verified": 2}]}

@@ -24,10 +24,14 @@ class Trace:
         self.models={canonical_model(model,provider) for model in models}
         self.max_calls=max_calls; self.calls=[]; self.stages=[]; self.stage='probe'; self.turn_index=None
         self.on_change=lambda:None
+        self.snapshot_wall_seconds=0.0
+        self.snapshot_cpu_seconds=0.0
+        self.call_starts={}
         self.active_call=None;self.instrumentation_error=None
         self.secrets=[v for k,v in os.environ.items() if v and any(t in k.upper() for t in ('API_KEY','ACCESS_TOKEN','REFRESH_TOKEN','PASSWORD'))]
 
     def notify(self):
+        wall, cpu = time.monotonic(), time.process_time()
         try:self.on_change()
         except InstrumentationFatal as error:
             self.instrumentation_error=error
@@ -36,15 +40,29 @@ class Trace:
             fatal=instrumentation_failure('trace_snapshot_callback',error)
             self.instrumentation_error=fatal
             raise fatal from None
+        finally:
+            self.snapshot_wall_seconds += time.monotonic() - wall
+            self.snapshot_cpu_seconds += time.process_time() - cpu
+
+    def clock_sample(self):
+        """Worker process CPU includes native libraries and synchronous trace snapshots."""
+        return (time.monotonic(), time.process_time(), self.snapshot_wall_seconds, self.snapshot_cpu_seconds)
+
+    def elapsed(self, start):
+        now = self.clock_sample()
+        names = ('elapsed_seconds', 'worker_cpu_seconds', 'snapshot_wall_seconds', 'snapshot_cpu_seconds')
+        return {k: max(0.0, end - begin) for k, begin, end in zip(names, start, now)}
 
     def start(self, transport, model, request_settings=None):
         if len(self.calls)>=self.max_calls: raise BudgetExceeded('Evaluation call budget exhausted')
         if self.models and canonical_model(model,self.provider) not in self.models:
             raise ValueError('Evaluation blocks an unselected model')
+        start=self.clock_sample()
         item={'stage':self.stage,'turn_index':self.turn_index,'transport':transport,'requested_model':model,'actual_model':None,
-              'kind':'live','status':'started','started_monotonic':time.monotonic(),
+              'kind':'live','status':'started','started_monotonic':start[0],
               'dispatch_state':'not_dispatched','http_dispatch_attempts':0,'http_responses_received':0,
               'model_response_observed':False,'request_settings':request_settings or {}}
+        self.call_starts[id(item)] = start
         self.calls.append(item);self.notify();return item
 
     def dispatch(self,item):
@@ -68,7 +86,11 @@ class Trace:
         item.update(sanitize(values,self.secrets))
         if values.get('status')=='returned' and item['http_responses_received'] and values.get('actual_model'):
             item['model_response_observed']=True
-        if 'started_monotonic' in item:item['elapsed_seconds']=round(time.monotonic()-item.pop('started_monotonic'),4)
+        start=self.call_starts.pop(id(item),None)
+        if start is not None:
+            item.update(self.elapsed(start))
+            item['elapsed_seconds'] = round(item['elapsed_seconds'], 4)
+        item.pop('started_monotonic', None)
         if values.get('status')=='returned' and canonical_model(values.get('actual_model'),self.provider)!=canonical_model(item['requested_model'],self.provider):
             item.update(status='failed',error_type='ModelIdentityMismatch')
             self.notify()
@@ -147,7 +169,8 @@ class Trace:
                 with response: data=response.read()
                 raw=json.loads(data)
                 tracer.finish(item,status='returned',actual_model=raw.get('model'),raw_output=raw.get('message'),
-                              usage={k:raw.get(k) for k in ('prompt_eval_count','eval_count','total_duration','done_reason')})
+                              usage={k:raw.get(k) for k in ('prompt_eval_count','eval_count','total_duration',
+                                      'load_duration','prompt_eval_duration','eval_duration','done_reason')})
                 return io.BytesIO(data)
             except Exception as error:
                 if item:tracer.finish(item,status='failed',error_type=type(error).__name__)
@@ -179,7 +202,7 @@ class Trace:
             wrapped=original_timed(name,fn)
             def run(state):
                 previous=tracer.stage;tracer.stage=name
-                started=time.monotonic()
+                started=tracer.clock_sample()
                 calls_before = len(tracer.calls)
                 ledger_keys = ('condition_ledger','condition_enforced','condition_required','condition_route',
                                'requirement_ledger','requirement_fingerprint','requirement_digest','pending_questions')
@@ -189,7 +212,7 @@ class Trace:
                     result=wrapped(state)
                     fields=('request_meaning','capability_assessment','condition_ledger','requirement_ledger',
                             'pending_questions','status','draft','issues','semantic_issues','trace')
-                    observation={'stage':name,'turn_index':tracer.turn_index,'elapsed_seconds':time.monotonic()-started,
+                    observation={'stage':name,'turn_index':tracer.turn_index,**tracer.elapsed(started),
                         'model_call_indices':list(range(calls_before,len(tracer.calls))),
                         'parsed_state':{k:result[k] for k in fields if isinstance(result,dict) and k in result}}
                     if observes_ledger:

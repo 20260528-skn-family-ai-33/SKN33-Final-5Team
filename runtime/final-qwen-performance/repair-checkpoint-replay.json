@@ -1,0 +1,91 @@
+{
+  "kind": "recorded first draft and old accepted ledger, revalidated before sealing in current state; no model/connector",
+  "cases": [
+    {
+      "id": "M09",
+      "turn": 1,
+      "before": "repair",
+      "after": "invalid",
+      "unverified": [
+        "r1"
+      ],
+      "issues": [
+        "요구사항 검증: r1 region별 금액 합계 집계 및 JSON 저장 — 현재 규칙으로 실행 설정을 검증할 수 없습니다."
+      ]
+    },
+    {
+      "id": "X05",
+      "turn": 0,
+      "unavailable_reason": "요청한 선별·중복 제거 순서를 선행 업무에 반영해야 합니다."
+    },
+    {
+      "id": "H01",
+      "turn": 0,
+      "before": "repair",
+      "after": "invalid",
+      "unverified": [
+        "r1"
+      ],
+      "issues": [
+        "요구사항 검증: r1 credit이 0 이하인 행 필터링 및 CSV 내보내기 — 현재 규칙으로 실행 설정을 검증할 수 없습니다."
+      ]
+    },
+    {
+      "id": "H05",
+      "turn": 0,
+      "before": "repair",
+      "after": "invalid",
+      "unverified": [
+        "r1"
+      ],
+      "issues": [
+        "도구 식별자만으로는 저장할 수 없습니다. 사용자 업무를 설명하는 이름으로 바꿔주세요.",
+        "요구사항 검증: r1 Gmail 로 지정된 주소로 제목과 본문이 포함된 메일 발송 — 현재 규칙으로 실행 설정을 검증할 수 없습니다."
+      ]
+    },
+    {
+      "id": "H14",
+      "turn": 0,
+      "before": "repair",
+      "after": "invalid",
+      "unverified": [
+        "r2",
+        "r3"
+      ],
+      "issues": [
+        "Gmail 원문의 현지 날짜와 요청 턴의 IANA 시간대가 일치하는지 확인해야 합니다.",
+        "요구사항 검증: r2 요약 결과에 베를린 지역 필터링 적용 — 현재 규칙으로 실행 설정을 검증할 수 없습니다.",
+        "요구사항 검증: r3 읽은 메일 포함 여부 확인 및 반영 — 현재 규칙으로 실행 설정을 검증할 수 없습니다."
+      ]
+    },
+    {
+      "id": "H18",
+      "turn": 0,
+      "before": "repair",
+      "after": "invalid",
+      "unverified": [
+        "r1"
+      ],
+      "issues": [
+        "요구사항 검증: r1 매주 금요일 뉴욕 시간 오후 5시 20분에 창고정산 표를 CSV로 저장 — 현재 규칙으로 실행 설정을 검증할 수 없습니다."
+      ]
+    },
+    {
+      "id": "H19",
+      "turn": 0,
+      "before": "repair",
+      "after": "invalid",
+      "unverified": [
+        "r1"
+      ],
+      "issues": [
+        "요구사항 검증: r1 credit이 0보다 큰 행 필터링 및 JSON 출력 — 현재 규칙으로 실행 설정을 검증할 수 없습니다."
+      ]
+    },
+    {
+      "id": "H29",
+      "turn": 0,
+      "unavailable_reason": "요청한 선별·중복 제거 순서를 선행 업무에 반영해야 합니다."
+    }
+  ]
+}

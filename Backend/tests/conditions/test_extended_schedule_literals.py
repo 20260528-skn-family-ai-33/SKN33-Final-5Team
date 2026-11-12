@@ -97,9 +97,12 @@ def test_native_schedule_requirement_checks_actual_metadata_without_a_fake_tool(
 
 
 def test_unwritten_schedule_values_cannot_be_invented_by_requirement_extraction():
+    from agent_builder.design.requirement_clarification import MissingSchedule
     from agent_builder.design.requirement_ledger import grounded_schedule
-    with pytest.raises(ValueError, match='충분하지'):
+
+    with pytest.raises(MissingSchedule) as error:
         grounded_schedule(state('매월 오전9시에 실행해줘'))
+    assert [question['key'] for question in error.value.questions] == ['schedule.monthday']
 
 
 def test_changing_a_monthly_day_to_month_end_removes_the_obsolete_fixed_day():

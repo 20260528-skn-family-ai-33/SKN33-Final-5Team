@@ -664,9 +664,12 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             payload['response_contract']=active.schema
             from .output_selection_request import output_selection
             selected_columns=output_selection(state)
+            numeric_filters=literal_numeric_filters(state)
+            if numeric_filters:
+                payload['explicit_numeric_filters']=numeric_filters
             if selected_columns:
                 payload['explicit_output_columns']=selected_columns
-                payload['explicit_numeric_filters']=literal_numeric_filters(state)
+                payload.setdefault('explicit_numeric_filters',[])
                 original_columns=set(state['resources'][0].get('columns',[]))
                 payload['requested_new_output_columns']=[field for field in selected_columns if field not in original_columns]
                 payload['explicit_output_instruction']='원문에 명시한 최종 열을 select_fields로 기록한다. 최종 열이 원본에 없으면 요청한 계산 결과 또는 명시적 이름 변경으로 생성하고 동일한 이름으로 선별한다. 그 전에 필요한 계산·선별·정렬과 파일 저장 업무를 모두 추출한다.'

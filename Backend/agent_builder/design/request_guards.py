@@ -38,6 +38,33 @@ def review_request(state):
     return review, final
 
 
+def _missing_review_scope(gate, nodes, clause):
+    """Prove the records inspected by has_missing refer to the requested item."""
+    source=gate
+    seen=set()
+    while source['id'] not in seen:
+        seen.add(source['id'])
+        if source['tool']=='extract_information' and not source['settings'].get('operation'):
+            fields=source['settings'].get('fields',[])
+            break
+        if source['tool'] not in ('condition','ask_user') or source['settings'].get('operation'):
+            return False
+        bindings=[b for b in source.get('bindings',[]) if b['input']=='records' and b['output']=='records']
+        if len(bindings)!=1 or bindings[0]['node_id'] not in nodes:return False
+        source=nodes[bindings[0]['node_id']]
+    else:return False
+    # Do not accept suffixes (항 in 조항), another extracted field, or an
+    # unscoped test over multiple fields for a request about one named item.
+    named=[f for f in fields if re.search(r'(?<!\w)'+re.escape(f)+
+           r'(?:이|가|은|는|의|을|를)?(?=\s|[,·]|$)',clause)]
+    field=gate['settings'].get('condition_field')
+    if len(named)==1:
+        return field==named[0] or (not field and set(fields)==set(named))
+    if not named and re.search(r'(?:전체|모든)\s*(?:항목|필드)',clause):
+        return bool(fields) and not field
+    return False
+
+
 def review_workflow_issues(state, draft):
     review, final = review_request(state)
     if not review or draft.get('questions') or draft.get('unsupported'):
@@ -62,7 +89,7 @@ def review_workflow_issues(state, draft):
                           r'(?:사람\s*검토|human\s+review)', text, re.I)
         gates = [n for n in by.values() if n['tool']=='condition' and not n['settings'].get('operation')
                  and n['settings'].get('condition_operator')=='has_missing'
-                 and (not n['settings'].get('condition_field') or n['settings']['condition_field'] in (match[0] if match else ''))]
+                 and match and _missing_review_scope(n,by,match[0])]
         if not match or len(gates)!=1:
             return ['사람 검토가 필요한 조건과 분기 방향을 확인하지 못했습니다.']
         gate = gates[0]['id']

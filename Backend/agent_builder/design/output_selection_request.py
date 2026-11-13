@@ -16,28 +16,37 @@ _NAMED_EXPORT = re.compile(
 
 _EXPORT_END = re.compile(r'\s*(?:해\s*(?:줘|주세요)|하(?:고|며|도록)|[.!;,\n]|$)')
 _ALL_COLUMNS = re.compile(r'(?:전체|모든)\s*열(?:들)?(?:을|로)?\s*(?:저장|내보내)')
+_SINGLE_EXPORT = re.compile(
+    r'(?<![\w·])(?P<column>\w+?)(?:\s+(?:열|컬럼))?만(?:을|를)?\s*'
+    r'(?:[\w.-]+\.(?:csv|json|xlsx)(?:으로|로)\s*)?(?:저장|내보내)', re.I)
+
+
+def _request_turns(state):
+    """Scoped source turns, excluding quoted examples and explanation questions."""
+    users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
+    from agent_builder.capabilities.capability_judgement import active_request_messages
+    active = active_request_messages(state)
+    active_users = [m['content'] for m in active if m.get('role')=='user']
+    offset = len(users)-len(active_users)
+    for index, content in enumerate(active_users):
+        text = re.sub(r'"[^"\n]*"|“[^”\n]*”|\x27[^\x27\n]*\x27', ' ', content)
+        if (re.search(r'뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요', text)
+                and not re.search(r'바꿔|변경해|추가해|제외해|선택해', text)):
+            continue
+        yield offset+index, text
 
 
 def _selection_request(state):
     assets = state.get('resources', [])
     if len(assets) != 1 or assets[0].get('kind') != 'table':
         return -1, ''
-    users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
-    # Keep an explicit output contract through unrelated follow-up answers.
-    # A later output revision (even outside this narrow grammar) supersedes it.
-    from agent_builder.capabilities.capability_judgement import active_request_messages
-    active = active_request_messages(state)
-    active_users = [m['content'] for m in active if m.get('role')=='user']
-    offset = len(users)-len(active_users)
-    for index in range(len(active_users)-1, -1, -1):
-        text = re.sub(r'"[^"\n]*"|“[^”\n]*”|\x27[^\x27\n]*\x27', ' ', active_users[index])
-        if (re.search(r'뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요', text)
-                and not re.search(r'바꿔|변경해|추가해|제외해|선택해', text)):
-            continue  # Asking what an output column means does not replace it.
-        if (_NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text)
+    # A new output instruction replaces the old one even if its fields cannot
+    # be projected by this narrow grammar. Unrelated replies do not replace it.
+    for index, text in reversed(list(_request_turns(state))):
+        if (_NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _SINGLE_EXPORT.search(text)
                 or re.search(r'\w+(?:\s*[·,]\s*\w+)+(?:을|를)\s*(?:내보내|저장)', text)
                 or re.search(r'(?:출력|저장할|내보낼)\s*(?:열|컬럼)|(?:열|컬럼).{0,20}(?:추가|제외|변경|바꿔)', text)):
-            return offset+index, text
+            return index, text
     return -1, ''
 
 
@@ -58,13 +67,21 @@ def output_selection(state):
     text = _request_text(state)
     if _all_columns_requested(state):
         return None
+    return _selection_fields(text, assets[0].get('columns', []))
+
+
+def _selection_fields(text, columns):
     matches = [m for m in _NAMED_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
+    singles = [m for m in _SINGLE_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
+    if singles:
+        if matches or len(singles)!=1:
+            return None
+        return [singles[0]['column']]
     if len(matches) != 1:
         return None
     fields = re.split(r'\s*·\s*', matches[0]['columns'])
     if fields[-1].endswith('만'):
         literal, without_particle = fields[-1], fields[-1][:-1]
-        columns = assets[0].get('columns', [])
         if literal in columns and without_particle in columns:
             return None  # Both are real columns; leave disambiguation to the planner.
         if literal not in columns:
@@ -76,6 +93,12 @@ def validate_output_selection(plan, state):
     if plan['unresolved']:
         return
     specs = [task['spec'] for task in plan['tasks']]
+    # Output revisions do not cancel row criteria. Check these even when a
+    # later turn switches to all columns or a different output column list.
+    from .requirement_coverage import _condition
+    actual=[_condition(f) for spec in specs if spec['kind']=='filter' for f in spec['filters']]
+    if any(_condition(f) not in actual for f in literal_numeric_filters(state)):
+        raise ValueError('명시한 출력 열의 숫자 선별 조건이 누락되거나 변경됐습니다.')
     if _all_columns_requested(state):
         expected = set(state['resources'][0].get('columns', []))
         for spec in specs:
@@ -98,10 +121,6 @@ def validate_output_selection(plan, state):
             raise ValueError('명시한 계산식의 결과를 요청한 출력 열로 연결해야 합니다: '+str(computed))
     if not any(s['kind'] == 'select_fields' and s['fields'] == fields for s in specs):
         raise ValueError('명시한 최종 출력 열 선택이 누락되거나 변경됐습니다: ' + ', '.join(fields))
-    from .requirement_coverage import _condition
-    actual=[_condition(f) for spec in specs if spec['kind']=='filter' for f in spec['filters']]
-    if any(_condition(f) not in actual for f in literal_numeric_filters(state)):
-        raise ValueError('명시한 출력 열의 숫자 선별 조건이 누락되거나 변경됐습니다.')
 
 
 def output_selection_issues(state, draft):
@@ -161,18 +180,34 @@ def project_output_selection(candidates,state):
 
 
 def literal_numeric_filters(state):
-    """A closed comparison clause over an explicitly selected output column."""
-    fields=output_selection(state)
+    """Retain literal criteria until that field is explicitly revised/cancelled.
+
+    Historical output columns remain eligible after an output-only revision.
+    Clauses are complete assertions, never numbers in examples or questions.
+    """
+    assets=state.get('resources',[])
+    if len(assets)!=1 or assets[0].get('kind')!='table':return []
+    turns=list(_request_turns(state))
+    fields=set()
+    for _,text in turns:
+        fields.update(_selection_fields(text,assets[0].get('columns',[])) or [])
     if not fields:return []
-    text=[m['content'] for m in state['messages'] if m['role']=='user'][-1]
-    found=[]
-    for part in re.split(r',\s+|[\n;]',text):
-        match=re.fullmatch(r'\s*('+'|'.join(map(re.escape,fields))+r')(?:이|가|은|는)?\s+'
-                          r'(\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)\s*',part)
-        if match:
-            found.append(dict(field=match[1],operator={'이상':'gte','이하':'lte','초과':'gt','미만':'lt'}[match[3]],
-                              value=float(number_value(match[2])),compare_field=None,value_type='number'))
-    return found
+    names='|'.join(re.escape(f) for f in sorted(fields,key=len,reverse=True))
+    criteria={}
+    for _,text in turns:
+        revised={}
+        for part in re.split(r',\s+|[\n;]',text):
+            match=re.fullmatch(r'\s*('+names+r')(?:이|가|은|는)?\s+'
+                              r'(\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)\s*[.!]?\s*',part)
+            if match:
+                revised.setdefault(match[1],[]).append(dict(field=match[1],
+                    operator={'이상':'gte','이하':'lte','초과':'gt','미만':'lt'}[match[3]],
+                    value=float(number_value(match[2])),compare_field=None,value_type='number'))
+            cancel=re.fullmatch(r'\s*('+names+r')\s*(?:숫자\s*)?(?:조건|기준|필터)(?:은|는|을|를)?\s*'
+                                r'(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?\s*[.!]?\s*',part)
+            if cancel:revised[cancel[1]]=[]
+        criteria.update(revised)
+    return [rule for rules in criteria.values() for rule in rules]
 
 
 def literal_output_compute(state):
@@ -188,7 +223,7 @@ def literal_output_compute(state):
     missing=[f for f in fields if f not in columns]
     if len(missing)!=1 or not any(f['field']==missing[0] for f in literal_numeric_filters(state)):return None
     from .compute_grounding import _formula_literals, _named_column, _expression
-    users=[m['content'] for m in state['messages'] if m['role']=='user']
+    users=[text for _,text in _request_turns(state)]
     if any(name!=missing[0] for text in users for name in _named_column(text)):return None
     if any(re.search(r'집계|합계|합산|결합|평균|조인|\bjoin\b',text,re.I) for text in users):return None
     formulas={_expression(formula):formula for text in users for formula in _formula_literals(text,columns)}
@@ -199,10 +234,9 @@ def literal_output_compute(state):
 def constrain_literal_selection(schema,state):
     """Constrain the proven projection and describe independently parsed criteria."""
     fields=output_selection(state)
-    if not fields:return schema
     from .requirement_generation import _literal
     result=deepcopy(schema)
-    result['$defs']['SelectFields']['properties']['fields']=_literal(fields)
+    if fields:result['$defs']['SelectFields']['properties']['fields']=_literal(fields)
     computed=literal_output_compute(state)
     if computed:
         for key in ('formula','output_column'):

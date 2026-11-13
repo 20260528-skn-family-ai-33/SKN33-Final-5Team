@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {Mail} from 'lucide-react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger} from '@/components/ui/dialog';
+import './service-connections.css';
 
 type GmailStatus = {configured: boolean; connected: boolean; connectionVersion: number; email: string | null; accountError?: string};
 type GmailAttempt = {authorizationUrl: string; connectionVersion: number; expiresAt: number};
@@ -168,14 +169,9 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
       {!open && verified && status?.connected && <p className="gmail-account-notice" role="status">Gmail 읽기 권한을 확인했어요.</p>}
       {status && !status.configured && !status.connected && <p className="gmail-account-notice">서버의 Gmail 연결 설정이 필요합니다. 설정 후 Google 계정을 연결할 수 있어요.</p>}
       <div className="service-connection-actions">
-        <button type="button" className="as-button as-primary" disabled={disabled || busy || !status?.configured} onClick={() => void connect()} aria-label={status?.connected ? 'Gmail 계정 다시 연결' : 'Gmail 계정 연결'}>
-          {status?.connected ? '계정 다시 연결' : 'Google에서 연결'}
-        </button>
-        {status?.connected && <>
-          <button type="button" className="as-button" disabled={disabled || busy} onClick={() => void manage('test')} aria-label="Gmail 연결 확인">연결 확인</button>
-          <button type="button" className="as-text-button service-connection-disconnect" disabled={disabled || busy} onClick={() => void manage('disconnect')} aria-label="Gmail 연결 해제">연결 해제</button>
-        </>}
-        {status?.connected && <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled || busy} aria-label="Gmail 연결 관리">연결 관리</button></DialogTrigger>}
+        {status?.connected
+          ? <DialogTrigger asChild><button type="button" className="as-button service-connection-manage" disabled={disabled || busy} aria-label="Gmail 연결 관리">연결 관리</button></DialogTrigger>
+          : <button type="button" className="as-button as-primary" disabled={disabled || busy || !status?.configured} onClick={() => void connect()} aria-label="Gmail 계정 연결">Google에서 연결</button>}
       </div>
     </article> : <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled}>
       <Mail size={16} aria-hidden="true"/>Gmail
@@ -194,15 +190,15 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
       {!status && !error && <p role="status">연결 상태를 확인하고 있어요.</p>}
       {error && <p role="alert">{error}</p>}
       {attempt && <a href={attempt.authorizationUrl} className="as-text-button" referrerPolicy="no-referrer">팝업이 보이지 않으면 이 탭에서 Google 승인 계속</a>}
-      <div className="flex flex-wrap gap-2">
+      <div className="service-connection-dialog-actions">
         {status?.configured && <button type="button" className="as-button as-primary" disabled={disabled || busy} onClick={() => void connect()}>
           {status.connected ? '계정 다시 연결' : 'Google에서 연결'}
         </button>}
         {status?.connected && <>
           <button type="button" className="as-button" disabled={disabled || busy} onClick={() => void manage('test')}>연결 확인</button>
-          <button type="button" className="as-button" disabled={disabled || busy} onClick={() => void manage('disconnect')}>A4B 연결 해제</button>
         </>}
         <button type="button" className="as-text-button" disabled={disabled || busy} onClick={() => void refresh()}>상태 새로고침</button>
+        {status?.connected && <button type="button" className="as-text-button service-connection-disconnect" disabled={disabled || busy} onClick={() => void manage('disconnect')}>A4B 연결 해제</button>}
       </div>
     </DialogContent>
   </Dialog>;

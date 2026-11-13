@@ -17,8 +17,8 @@ def constrain_projected_table(schema,state):
             or kinds[-2:]!=['select_fields','export']):return schema
     exports=[s for s in specs if s['kind']=='export']
     if exports[0]['format']!='csv':return schema
-    filters=[s for s in specs if s['kind']=='filter']
-    if len(filters)>1 and any(s['match']!='all' for s in filters):return schema
+    # Each ledger filter below gets its own table stage. Successive stages are
+    # AND while a stage with match=any retains its complete OR group.
     # Preserve the ledger order: pre-compute filters can exclude rows whose
     # operands are invalid. Never move the calculation before those filters.
     if 'sort' in kinds and 'filter' in kinds[kinds.index('sort'):]:return schema

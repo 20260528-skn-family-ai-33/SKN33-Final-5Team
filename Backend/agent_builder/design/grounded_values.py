@@ -201,7 +201,8 @@ def ungrounded_value_questions(state, draft):
     for plan in _plans(draft):
         for f in plan.get('filters') or []:
             if f.get('operator') in ('is_empty', 'not_empty'):
-                if not _EMPTY_WORDS.search(user_text):
+                from .compound_table_request import grounded_compound_rule
+                if not _EMPTY_WORDS.search(user_text) and not grounded_compound_rule(state, f):
                     questions.append(f"{f.get('field') or '선별'} 열은 어떤 값을 기준으로 선별할까요?")
                 continue
             if f.get('compare_field'):

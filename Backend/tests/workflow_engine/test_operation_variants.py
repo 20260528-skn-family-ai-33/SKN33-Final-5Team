@@ -77,12 +77,18 @@ def extra_arguments(root):
 
 
 def test_representative_and_extra_cases_cover_all_operation_ids(business_files):
+    from tests.workflow_engine.test_slack_delivery import gmail_to_slack_workflow
     baseline={(tool,operation) for tool,(operation,_) in examples(business_files).items()}
     extras=set(extra_arguments(business_files))
+    # Slack requires predecessor text binding, so its executable coverage lives
+    # in test_slack_delivery rather than the single-node argument fixtures above.
+    bound={(step['tool'],step['settings']['operation'])
+           for step in gmail_to_slack_workflow()['nodes'] if step['tool']=='slack.post_message'}
     registered={(tool,spec['id']) for tool,specs in OPERATIONS.items() for spec in specs}
     assert not baseline & extras
+    assert not bound & (baseline | extras)
     assert extras==set(EXTRA_KEYS)
-    assert baseline | extras==registered
+    assert baseline | extras | bound==registered
 
 
 @pytest.mark.parametrize('tool,operation',EXTRA_KEYS)

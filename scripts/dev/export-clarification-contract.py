@@ -65,7 +65,7 @@ def export():
     record('03-parser-error',partial)
     db=request('db-error','비용을 선별해줘.');db['source_health']={'db_status':'timeout','messages_loaded':False}
     record('04-db-error',db)
-    record('05-unsupported',request('unsupported','비용 결과 파일을 Slack으로 자동 전송해줘.'),unsupported=['등록 도구에 Slack 전송이 없습니다.'])
+    record('05-unsupported',request('unsupported','비용 결과를 SMS 문자로 자동 전송해줘.'),unsupported=['등록 도구에 SMS 문자 전송이 없습니다.'])
     deferred=deepcopy(missing);deferred.update(request_id='defer',revision=1)
     deferred['messages']=first['messages']+[{'role':'user','content':'나중에 결정할게'}]
     deferred['previous_state']={'session_id':deferred['session_id'],'revision':1,'ledger':first['condition_ledger'],

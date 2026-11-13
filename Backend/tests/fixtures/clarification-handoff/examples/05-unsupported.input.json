@@ -6,7 +6,7 @@
   "messages": [
     {
       "role": "user",
-      "content": "비용 결과 파일을 Slack으로 자동 전송해줘."
+      "content": "비용 결과를 SMS 문자로 자동 전송해줘."
     }
   ],
   "resources": [],
@@ -14,7 +14,7 @@
     "db_status": "ok",
     "messages_loaded": true
   },
-  "tool_catalog_fingerprint": "8ade920787a4437f358c8ec0f4f5200d1ea1aa60dba49501235681ad3f81cd02",
+  "tool_catalog_fingerprint": "06018d4fdbbca0ba773f84fae1b9f2482b9e843149fdb190dbf5cb4d267a3f0f",
   "ml_advice": {
     "status": "not_requested",
     "ml_candidates": [],

@@ -239,6 +239,23 @@ def test_new_reservations_skip_success_retry_failed_same_snapshot_and_accept_new
     finally:store.close()
 
 
+def test_new_file_manual_conditions_are_rejected_before_queueing(tmp_path):
+    from service.handlers.library_sources import resolve
+    store=Storage(tmp_path)
+    try:
+        upload(store);identifier=workflow(store);manager=LibrarySources(store)
+        selection=manager.save(identifier,spec('new'),0)
+        refs=library_export(store,selection,'table')['candidates']
+        context=SimpleNamespace(storage=store,data=dict(source_action='test',id=identifier,
+            selection=selection,candidates=refs,content='amount >= 100'))
+        with pytest.raises(ValueError,match='새 파일마다 실행에는 추가 실행 조건'):
+            resolve(context)
+        assert store.db.execute('SELECT count(*) FROM builder_schedule_jobs WHERE {ws}').fetchone()[0]==0
+        context.data['content']=''
+        assert resolve(context)['enqueued_count']==1
+    finally:store.close()
+
+
 def test_two_workers_cannot_enqueue_the_same_unprocessed_file(tmp_path):
     store=Storage(tmp_path);upload(store);id=workflow(store);selection=LibrarySources(store).save(id,spec('new'),0)
     refs=library_export(store,selection,'table')['candidates'];store.close()

@@ -63,6 +63,9 @@ def test(c):
         if data.get('use_schedule'):preflight_schedule(storage,agent,files)
         else:preflight_execution(agent['config'],storage,files,agent.get('workflow_dependencies'))
         tags={'trigger':'manual',**source_tags(storage)}
+        from workflow_engine.runtime_request import apply_table_request
+        agent, applied = apply_table_request(agent, request, storage, files)
+        if applied:tags['runtime_request_applied'] = True
         if source and not data.get('file_ids'):tags.update(source_version=source['version'],source_id=source['id'])
         result=run_workflow(storage,data['id'],request,api_key,files,agent_snapshot=agent,reply_draft=data.get('reply_draft'),forced_run_id=data.get('run_id'),execution_token=data.get('execution_token'),run_tags=tags)
         LibrarySources(storage).complete(result)

@@ -28,7 +28,13 @@ def await_input_node(state):
             break
         if not answer.get('question_id') or answer['question_id'] in [q['id'] for q in pending]:break
         payload={**payload,'error':'현재 대화의 확인 질문에 답변해주세요.'}
-    result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False,'system_failure':None}
+    result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False,'clarification_help':False,'system_failure':None}
+    if not answer.get('question_answers') and not answer.get('question_id'):
+        from agent_builder.design.question_help import question_help
+        explanation = question_help(state, answer['content'])
+        if explanation:
+            return {**result, 'clarification_help': True,
+                    'messages': result['messages'] + [{'role':'assistant','content':explanation}]}
     from agent_builder.conditions.clarification_core import record_answer
     event=record_answer(state,answer['content'],answer.get('question_id'),answer.get('question_answers'))
     if event:result['clarification_answers']=state.get('clarification_answers',[])+[event]

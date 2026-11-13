@@ -15,7 +15,7 @@ _REQUEST = re.compile(
 _CANCEL = re.compile(r'(?:계산|파생|연산)\s*' + _COLUMN
                      + r'\s*(?:추가|계산|생성)?\s*(?:은|는|을|를)?\s*(?:하지\s*말|취소|생략|만들지\s*말|추가하지\s*말)')
 _CANCELLED = object()
-_ARITHMETIC = re.compile(r'계산|산식|수식|곱|나눈|나눌|빼|뺀|더한|더할|배율|[+*/%-]|(?:calculated|computed|derived)', re.I)
+_ARITHMETIC = re.compile(r'계산|산식|수식|곱|나눈|나눌|빼|뺀|더한|더할|배율|[+*/%×÷-]|(?:calculated|computed|derived)', re.I)
 _IDENT = r'(?:[A-Za-z_][A-Za-z_0-9]*|[가-힣]+)'
 _OPERAND = rf'(?:{_IDENT}|\d+(?:\.\d+)?)'
 _FORMULA = re.compile(rf'(?<![A-Za-z_0-9])[(]*(?:{_OPERAND})'
@@ -65,6 +65,7 @@ def _expression(text):
 
 
 def _formula_literals(text, columns, *, complete_reply=False):
+    text = text.replace('×', '*').replace('÷', '/')
     if complete_reply:
         text = re.sub(r'(?:해\s*(?:줘|주세요|요))?[.!?\s]*$', '', text.strip())
 
@@ -110,6 +111,7 @@ def _formula_answer_sources(state, formula):
 
 
 def _named_column(text):
+    text = text.replace('×', '*').replace('÷', '/')
     names = [m[1] for m in _ASSIGN.finditer(text) if _FORMULA.match(text, m.end())]
     for match in _LABEL.finditer(text):
         name = next(value for value in match.groups() if value)

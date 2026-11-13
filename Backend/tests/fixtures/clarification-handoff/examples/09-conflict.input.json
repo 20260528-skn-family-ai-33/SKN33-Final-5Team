@@ -37,7 +37,7 @@
     "db_status": "ok",
     "messages_loaded": true
   },
-  "tool_catalog_fingerprint": "64be4385637a39fd220fe379df0b36a6f01de3fe10281cf52d5feffd63eefc96",
+  "tool_catalog_fingerprint": "8ade920787a4437f358c8ec0f4f5200d1ea1aa60dba49501235681ad3f81cd02",
   "ml_advice": {
     "status": "not_requested",
     "ml_candidates": [],

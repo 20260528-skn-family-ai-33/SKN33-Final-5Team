@@ -201,6 +201,7 @@ class BuilderState(TypedDict, total=False):
     condition_route: str
     condition_template: bool
     pending_questions: list[dict]
+    clarification_help: bool
     condition_answers: list[dict]
     source_health: dict
     tool_gap: dict | None
@@ -225,6 +226,7 @@ class BuilderState(TypedDict, total=False):
     requirement_ledger: dict | None
     requirement_fingerprint: str | None
     requirement_digest: str | None
+    requirement_context: str | None
     requirement_coverage: dict
     requirement_answers: list[dict]
     requirement_failure: dict | None

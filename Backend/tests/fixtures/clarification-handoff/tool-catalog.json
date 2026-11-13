@@ -1,5 +1,5 @@
 {
-  "fingerprint": "64be4385637a39fd220fe379df0b36a6f01de3fe10281cf52d5feffd63eefc96",
+  "fingerprint": "8ade920787a4437f358c8ec0f4f5200d1ea1aa60dba49501235681ad3f81cd02",
   "tools": [
     {
       "id": "read_table",
@@ -265,7 +265,9 @@
       "input_ports": {
         "reviews": "reviews",
         "documents": "documents",
-        "answer": "text"
+        "answer": "text",
+        "text": "text",
+        "records": "records"
       },
       "output_ports": {
         "text": "text"

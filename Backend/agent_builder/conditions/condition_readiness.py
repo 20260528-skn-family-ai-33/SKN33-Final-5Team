@@ -1489,6 +1489,7 @@ def validate_conditions(raw, state, catalog):
         slots.pop('duplicate.field',None)
         operations=[op for op in operations if op!='deduplicate']
     policy_subjects = {'missing.policy': r'빈\s*(?:값|칸|셀|행)|빈\s+\S+|비어\s*있|결측|누락|값이\s*없',
+                       'duplicate.field': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치',
                        'duplicate.policy': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치'}
     unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified'
                   and not (slot['status'] == 'missing' and key in policy_subjects and key not in required

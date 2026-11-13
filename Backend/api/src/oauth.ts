@@ -11,6 +11,7 @@ export const GOOGLE_SHEETS_OAUTH={
  tokenUrl:'https://oauth2.googleapis.com/token',
  scope:'https://www.googleapis.com/auth/spreadsheets',
  readonlyScope:'https://www.googleapis.com/auth/spreadsheets.readonly',
+ accountScope:'https://www.googleapis.com/auth/spreadsheets openid email',
 } as const;
 export const GMAIL_OAUTH={
  authorizationUrl:GOOGLE_SHEETS_OAUTH.authorizationUrl,
@@ -38,7 +39,33 @@ export type OAuthBeginResult={stateId:string;authorizationUrl:string;redirectUri
 export type OAuthRequestOptions={fetch?:typeof fetch;signal?:AbortSignal;now?:()=>number};
 type OAuthConfig={clientId:string;clientSecret?:string;authorizationUrl:string;tokenUrl:string;scope:string;tokenAuthMethod:'body'|'basic'|'none';service?:string};
 type Pending={input:OAuthBeginInput;config:OAuthConfig;authority:string;redirectUri:string;verifier:string;expiresAt:number};
-type TokenResult={access_token:string;refresh_token?:string;expires_in?:number;scope?:string};
+type TokenResult={access_token:string;refresh_token?:string;expires_in?:number;scope?:string;accountLabel?:string};
+const GOOGLE_USERINFO_URL='https://openidconnect.googleapis.com/v1/userinfo';
+const GOOGLE_EMAIL_SCOPE='https://www.googleapis.com/auth/userinfo.email';
+
+function accountLabel(value:unknown):string|undefined {
+ if(typeof value!=='string')return undefined;
+ const label=value.trim();
+ return label&&label.length<=320&&!/[\u0000-\u001f\u007f]/.test(label)?label:undefined;
+}
+
+function validSheetsScope(scope:string):boolean {
+ const values=scope.split(/\s+/),allowed=new Set<string>([GOOGLE_SHEETS_OAUTH.scope,GOOGLE_SHEETS_OAUTH.readonlyScope,'openid','email',GOOGLE_EMAIL_SCOPE]);
+ const hasSheet=values.includes(GOOGLE_SHEETS_OAUTH.scope)||values.includes(GOOGLE_SHEETS_OAUTH.readonlyScope);
+ const hasIdentity=values.some(value=>value==='openid'||value==='email'||value===GOOGLE_EMAIL_SCOPE);
+ return hasSheet&&values.every(value=>allowed.has(value))&&(!hasIdentity||values.includes('openid')&&(values.includes('email')||values.includes(GOOGLE_EMAIL_SCOPE)));
+}
+
+async function googleAccountEmail(token:string,request:typeof fetch,signal?:AbortSignal):Promise<string|undefined> {
+ try {
+  const timeout=AbortSignal.timeout(5000);
+  const response=await request(GOOGLE_USERINFO_URL,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},redirect:'error',credentials:'omit',signal:signal?AbortSignal.any([timeout,signal]):timeout});
+  if(!response.ok)return undefined;
+  const profile=await response.json() as {email?:unknown;email_verified?:unknown};
+  const email=accountLabel(profile?.email);
+  return email&&email.includes('@')&&profile.email_verified===true?email:undefined;
+ }catch{return undefined;}
+}
 
 /** Endpoints come only from the user's registered app configuration. Never follow redirects with secrets. */
 export function validateOAuthEndpoint(value:unknown):string {
@@ -66,7 +93,7 @@ function config(input:OAuthBeginInput):OAuthConfig {
  const tokenAuthMethod=input.tokenAuthMethod||'body';
  if(!['body','basic','none'].includes(tokenAuthMethod))throw new Error('클라이언트 인증 방법을 확인해주세요.');
  if(tokenAuthMethod==='basic'&&!clientSecret)throw new Error('Basic 클라이언트 인증에는 클라이언트 비밀 값이 필요해요.');
- if(service==='googleSheets'&&(authorizationUrl!==GOOGLE_SHEETS_OAUTH.authorizationUrl||tokenUrl!==GOOGLE_SHEETS_OAUTH.tokenUrl||!scope.split(/\s+/).every(value=>value===GOOGLE_SHEETS_OAUTH.scope||value===GOOGLE_SHEETS_OAUTH.readonlyScope)||tokenAuthMethod!=='body'))throw new Error('Google Sheets 연결에는 공식 로그인·토큰 주소와 Sheets 권한을 사용해주세요.');
+ if(service==='googleSheets'&&(authorizationUrl!==GOOGLE_SHEETS_OAUTH.authorizationUrl||tokenUrl!==GOOGLE_SHEETS_OAUTH.tokenUrl||!validSheetsScope(scope)||tokenAuthMethod!=='body'))throw new Error('Google Sheets 연결에는 공식 로그인·토큰 주소와 Sheets 권한을 사용해주세요.');
  if(service==='gmail'&&(authorizationUrl!==GMAIL_OAUTH.authorizationUrl||tokenUrl!==GMAIL_OAUTH.tokenUrl||scope!==GMAIL_OAUTH.scope||tokenAuthMethod!=='body'||!clientSecret))throw new Error('Gmail 연결에는 등록된 Google 앱과 Gmail 읽기 권한을 사용해주세요.');
  if(service==='slack'&&(authorizationUrl!==SLACK_OAUTH.authorizationUrl||tokenUrl!==SLACK_OAUTH.tokenUrl||scope!==SLACK_OAUTH.scope||tokenAuthMethod!=='basic'||!clientSecret))throw new Error('Slack 연결에는 등록된 앱과 메시지 전송 권한을 사용해주세요.');
  return {clientId,...(clientSecret?{clientSecret}:{}),authorizationUrl,tokenUrl,scope,tokenAuthMethod,...(service?{service}:{})};
@@ -93,6 +120,7 @@ async function readTokenResponse(response:Response,service?:string):Promise<Toke
  if(data.refresh_token!==undefined){if(typeof data.refresh_token!=='string'||!data.refresh_token||data.refresh_token.length>MAX_TOKEN_LENGTH||/[\u0000-\u001f\u007f]/.test(data.refresh_token))throw new Error();result.refresh_token=data.refresh_token;}
  if(data.expires_in!==undefined){if(!['number','string'].includes(typeof data.expires_in)||!Number.isFinite(Number(data.expires_in))||Number(data.expires_in)<=0||Number(data.expires_in)>365*86400)throw new Error();result.expires_in=Number(data.expires_in);}
  if(typeof data.scope==='string'&&data.scope.length<=4096&&!/[\u0000-\u001f\u007f]/.test(data.scope))result.scope=data.scope;
+ if(service==='slack'&&data.team&&typeof data.team==='object'&&!Array.isArray(data.team))result.accountLabel=accountLabel(data.team.name);
  return result;
 }
 
@@ -119,6 +147,7 @@ function tokenData(base:Json,tokens:TokenResult,now:number):Json {
  if(tokens.expires_in!==undefined)data.expiresAt=now+tokens.expires_in*1000;
  else delete data.expiresAt;
  if(tokens.scope!==undefined)data.scope=tokens.scope;
+ if(tokens.accountLabel!==undefined)data.accountLabel=tokens.accountLabel;
  return data;
 }
 
@@ -186,6 +215,11 @@ export class OAuthManager {
   const body=new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:pending.redirectUri,...(pending.config.service==='slack'?{}:{code_verifier:pending.verifier})});
   const tokens=await requestToken(pending.config.tokenUrl,body,pending.config,{fetch:this.request,signal:options.signal},exchangeError);
   const data=tokenData({authType:'oauth2',...pending.config,redirectUri:pending.redirectUri},tokens,this.now());
+  if(pending.config.service==='googleSheets'&&pending.config.scope.split(/\s+/).some(value=>value==='email'||value===GOOGLE_EMAIL_SCOPE)){
+   const email=await googleAccountEmail(tokens.access_token,this.request,options.signal);
+   if(options.signal?.aborted)throw canceledError();
+   if(email)data.accountLabel=email;
+  }
   return {name:pending.input.name,provider:pending.config.service==='slack'?'slack':'bearer',...(pending.input.id?{id:pending.input.id}:{}),data};
  }
 }

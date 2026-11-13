@@ -149,3 +149,37 @@
 .screen-schedule .as-service-input > .as-run-actions {
   margin-top: 24px;
 }
+
+.as-desktop-canvas { cursor:grab; touch-action:none; }
+.as-desktop-canvas.is-dragging { cursor:grabbing; user-select:none; }
+.as-flow-node { animation:as-node-appear 260ms ease-out both; }
+.as-flow-canvas > svg > g { animation:as-edge-appear 320ms ease-out both; }
+@keyframes as-node-appear {
+  from { opacity:0; transform:translateY(10px) scale(.97); }
+  to { opacity:1; transform:translateY(0) scale(1); }
+}
+@keyframes as-edge-appear { from {opacity:0;} to {opacity:1;} }
+.as-app :is(.as-setting-section,.as-trace,.as-run-source-settings) > summary {
+  min-height:40px;
+  padding-block:8px;
+  cursor:pointer;
+}
+.as-setting-section summary > svg { flex:none; transition:transform 160ms ease; }
+.as-setting-section details[open] > summary > svg,
+details.as-setting-section[open] > summary > svg { transform:rotate(180deg); }
+.as-setting-section details:not([open]) > summary > svg,
+details.as-setting-section:not([open]) > summary > svg { transform:rotate(0); }
+@media(prefers-reduced-motion:reduce) {
+  .as-flow-node,.as-flow-canvas > svg > g { animation:none; }
+  .as-setting-section summary > svg { transition:none; }
+}
+.as-desktop-canvas .as-canvas-size { margin:0; }
+.as-setting-section summary:not(:has(> svg))::after {
+  content:'⌄'; margin-left:auto; flex:none; transition:transform 160ms ease;
+}
+.as-setting-section details[open] > summary:not(:has(> svg))::after,
+details.as-setting-section[open] > summary:not(:has(> svg))::after { transform:rotate(180deg); }
+
+@media(prefers-reduced-motion:reduce) {
+  .as-setting-section summary::after { transition:none; }
+}

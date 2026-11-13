@@ -31,7 +31,7 @@
 @media(min-width:651px){.workspace-sidebar-footer{position:sticky;bottom:0}}
 @media(max-width:650px){}
 
-:is(.as-app,.entry-app) .task-library-main{padding:32px 36px 48px;max-width:1440px}
+:is(.as-app,.entry-app) .task-library-main{padding:28px;max-width:1440px}
 .task-library-header{margin-bottom:20px}
 .task-library-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
 .task-library-title h1{margin:0;font-size:25px;font-weight:650;letter-spacing:-.8px;line-height:1.4}
@@ -39,13 +39,11 @@
 .task-library-title>.as-text-button{flex:none}
 .task-library-tabs{display:flex;flex-wrap:wrap;gap:8px}
 .task-library-header .task-library-tabs button{flex:0 0 auto;letter-spacing:normal}
-.task-library-tabs button[aria-current=page]{border-color:var(--a4b-action);box-shadow:inset 0 0 0 1px var(--a4b-action)}
+.task-library-tabs button[aria-current=page]{border-color:var(--a4b-action);background:var(--a4b-neutral-soft);color:var(--a4b-action);font-weight:600}
 .task-library-tabs button:focus-visible{outline:2px solid var(--a4b-action);outline-offset:3px}
 .task-library-tabs button:disabled{opacity:.5;cursor:not-allowed}
-.task-library-selection{visibility:hidden}
-.task-library-tabs [aria-current=page] .task-library-selection{visibility:visible}
 @media(max-width:650px){
- :is(.as-app,.entry-app) .task-library-main{padding:24px 16px 36px}
+ :is(.as-app,.entry-app) .task-library-main{padding:22px 16px 32px}
  .task-library-title h1{font-size:23px}
 }
 
@@ -92,4 +90,11 @@
   padding: 6px 10px;
   font-size: 12px;
   line-height: 20px;
+}
+
+@media (min-width:901px) and (max-width:1100px) {
+  :is(.as-app,.entry-app) .task-library-main { padding:24px 20px; }
+}
+@media (min-width:651px) and (max-width:900px) {
+  :is(.as-app,.entry-app) .task-library-main { padding:24px 18px; }
 }

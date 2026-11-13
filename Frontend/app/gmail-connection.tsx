@@ -1,5 +1,4 @@
 import {useEffect, useRef, useState} from 'react';
-import {Mail} from 'lucide-react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger} from '@/components/ui/dialog';
 
 type GmailStatus = {configured: boolean; connected: boolean; connectionVersion: number; email: string | null; accountError?: string};
@@ -153,7 +152,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
   }}>
     {variant === 'card' ? <article className="service-connection-card" aria-label="Gmail 서비스">
       <div className="service-connection-card-heading">
-        <span className="service-connection-logo"><Mail size={22} aria-hidden="true"/></span><h3>Gmail</h3>
+        <span className="service-connection-logo"><img src="/service-icons/gmail.png" width={22} height={22} alt="" aria-hidden="true" className="gmail-logo"/></span><h3>Gmail</h3>
         <span className={'service-connection-state' + (error || status?.accountError ? ' attention' : status?.connected ? ' connected' : '')} role="status">
           {error ? '상태 확인 필요' : !status ? '확인 중' : status.accountError ? '연결 확인 필요' : status.connected ? '연결됨' : status.configured ? '연결 안 됨' : '설정 대기'}
         </span>
@@ -178,7 +177,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
         {status?.connected && <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled || busy} aria-label="Gmail 연결 관리">연결 관리</button></DialogTrigger>}
       </div>
     </article> : <DialogTrigger asChild><button type="button" className="as-text-button" disabled={disabled}>
-      <Mail size={16} aria-hidden="true"/>Gmail
+      <img src="/service-icons/gmail.png" width={16} height={16} alt="" aria-hidden="true" className="gmail-logo"/>Gmail
     </button></DialogTrigger>}
     <DialogContent className="as-dialog">
       <DialogHeader>
@@ -186,7 +185,7 @@ export function GmailConnection({disabled, variant = 'button', onStatusChange}: 
         <DialogDescription>Google에서 읽기 권한을 허용하면 워크플로우에서 메일과 첨부파일을 읽고 요약할 수 있어요.</DialogDescription>
       </DialogHeader>
       {status?.connected && <div className="gmail-connected-account">
-        <Mail size={20} aria-hidden="true"/><div><span>연결된 계정</span><strong>{status.email || '계정 정보를 확인하지 못했어요.'}</strong></div>
+        <img src="/service-icons/gmail.png" width={20} height={20} alt="" aria-hidden="true" className="gmail-logo"/><div><span>연결된 계정</span><strong>{status.email || '계정 정보를 확인하지 못했어요.'}</strong></div>
       </div>}
       {verified && status?.connected && <p role="status">Gmail 읽기 권한을 확인했어요.</p>}
       {status?.connected && status.accountError && <p className="gmail-account-notice" role="status">{status.accountError}</p>}

@@ -39,8 +39,8 @@ function InspectedSource({file,open,readOnly,disabled,onUse,details}:{
   }
   return <details open={open} className="as-inspected-source">
     <summary>{file.name} · {file.kind==='table'?'표':'문서'} 미리보기</summary>
-    {file.partial&&<p>일부 내용은 확인이 필요해요. 원본과 대조해 주세요.</p>}
-    {!file.has_readable_text && !file.columns.length&&!tables.length&&<p>읽어 낸 글자가 없어요. 원본을 확인하거나 더 선명한 파일을 연결해 주세요.</p>}
+    {file.partial&&<p>일부 내용은 확인이 필요합니다. 원본과 대조해 주세요.</p>}
+    {!file.has_readable_text && !file.columns.length&&!tables.length&&<p>읽어 낸 글자가 없습니다. 원본을 확인하거나 더 선명한 파일을 연결해 주세요.</p>}
     {file.snippets.length>0&&<blockquote>{file.snippets.slice(0,3).map((text,i)=><p key={i}>{text}</p>)}</blockquote>}
     {!primaryIsNamed&&<PreviewRows label="원본에서 읽은 표" rows={file.preview} columns={file.columns}/>}
     {tables.map((table,index)=><div key={index}>

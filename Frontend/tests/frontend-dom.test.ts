@@ -579,7 +579,7 @@ test('DOM: a fresh file-first design opens real document excerpts and explains u
   const cards=Array.from(document.querySelectorAll<HTMLDetailsElement>('details.as-inspected-source'));
   assert.deepEqual(cards.map(card=>card.open),[true,true]);assert.ok(!document.querySelector('.as-welcome'));
   assert.equal(cards[0].querySelector('blockquote')?.textContent,'담당자: 김담당');
-  assert.match(cards[1].textContent||'',/읽어 낸 글자가 없어요/);
+  assert.match(cards[1].textContent||'',/읽어 낸 글자가 없습니다/);
   assert.equal(cards[1].querySelector('input[type=checkbox]'),null);
   await click(button('읽은 내용 전체 보기'));
   assert.equal(document.querySelector('.as-resource-dialog .as-preserve')?.textContent,text);
@@ -1140,7 +1140,7 @@ test('workspace library: pending startup does not show zero counts or an editabl
 });
 test('workspace library: failed initial fetch is distinct from an empty library',async()=>{
  const h=await setup('?screen=nodes',{},path=>{if(path.endsWith('/catalog'))throw Error('카탈로그 불러오기 실패');},createElement(EntryApp));
- try{assert.match(document.querySelector('[role=alert]')!.textContent!,/불러오기 실패/);assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오지 못했습니다/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('저장한 작업이 없어요.'));}finally{await h.close();}
+ try{assert.match(document.querySelector('[role=alert]')!.textContent!,/불러오기 실패/);assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오지 못했습니다/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('저장한 작업이 없습니다.'));}finally{await h.close();}
 });
 
 test('product tour: next and previous follow real controls without changing an unsent request or executing work',async()=>{
@@ -2464,5 +2464,81 @@ test('home allows a file without a prompt and uploads it once in StrictMode',asy
   assert.equal(h.calls.filter(call=>call.path.endsWith('/upload')).length,1);
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
   assert.match(document.body.textContent||'',/문서.txt/);
+ }finally{await h.close();}
+});
+
+test('canvas supports wheel zoom, zoom buttons, drag navigation and reset without changing nodes',async()=>{
+ const flow={entry:'read',nodes:[
+  {id:'read',tool:'read_document',label:'문서 읽기',bindings:[],settings:{}},
+  {id:'out',tool:'finish',label:'완료',bindings:[],settings:{}}
+ ],edges:[{source:'read',target:'out',branch:'next'}]};
+ const current={...A,config:{...A.config,workflow:flow}};
+ const h=await setup('?screen=workflow&service=A',{},path=>path.includes('/agent?')?snapshot(current):undefined);
+ try{
+  const canvas=document.querySelector<HTMLElement>('.as-desktop-canvas')!;
+  const percent=()=>document.querySelector('.as-zoom span')?.textContent;
+  assert.equal(percent(),'100%');
+  const normal=new dom.window.WheelEvent('wheel',{deltaY:100,bubbles:true,cancelable:true});
+  await act(async()=>canvas.dispatchEvent(normal));
+  assert.equal(normal.defaultPrevented,false);assert.equal(percent(),'100%');
+  const zoom=new dom.window.WheelEvent('wheel',{ctrlKey:true,deltaY:-100,bubbles:true,cancelable:true,clientX:100,clientY:100});
+  await act(async()=>canvas.dispatchEvent(zoom));
+  assert.equal(zoom.defaultPrevented,true);assert.equal(percent(),'122%');
+  const zoomAt=async(deltaY:number,metaKey=false)=>{
+   await act(async()=>canvas.dispatchEvent(new dom.window.WheelEvent('wheel',{deltaY,ctrlKey:!metaKey,metaKey,bubbles:true,cancelable:true,clientX:100,clientY:100})));
+  };
+  await zoomAt(-10000,true);assert.equal(percent(),'200%');
+  assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="캔버스 확대"]')!.disabled,true);
+  await zoomAt(10000);assert.equal(percent(),'35%');
+  assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="캔버스 축소"]')!.disabled,true);
+  await click(button('가로로 보기'));assert.equal(percent(),'100%');
+  await zoomAt(-100);assert.equal(percent(),'122%');
+  await click(document.querySelector('[aria-label="캔버스 확대"]')!);assert.equal(percent(),'132%');
+  await click(document.querySelector('[aria-label="캔버스 축소"]')!);assert.equal(percent(),'122%');
+  const captures=new Set<number>();
+  canvas.setPointerCapture=id=>{captures.add(id);};
+  canvas.hasPointerCapture=id=>captures.has(id);
+  canvas.releasePointerCapture=id=>{captures.delete(id);};
+  const pointer=async(type:string,x:number,y:number)=>{
+   const event=new dom.window.MouseEvent(type,{button:0,clientX:x,clientY:y,bubbles:true});
+   Object.defineProperty(event,'pointerId',{value:7});
+   await act(async()=>canvas.dispatchEvent(event));
+  };
+  const size=document.querySelector<HTMLElement>('.as-canvas-size')!;
+  const before=size.style.translate;
+  await pointer('pointerdown',50,50);await pointer('pointermove',110,90);
+  assert.notEqual(size.style.translate,before);
+  assert.ok(canvas.classList.contains('is-dragging'));
+  await pointer('pointerup',110,90);assert.equal(canvas.classList.contains('is-dragging'),false);
+  assert.equal(captures.size,0);
+  await pointer('pointerdown',50,50);await pointer('pointercancel',50,50);
+  assert.equal(canvas.classList.contains('is-dragging'),false);
+  assert.equal(captures.size,0);
+  canvas.scrollLeft=120;canvas.scrollTop=90;
+  await click(document.querySelector('[aria-label="화면에 맞추기"]')!);
+  assert.equal(canvas.scrollLeft,0);assert.equal(canvas.scrollTop,0);assert.equal(size.style.translate,'0px 0px');
+  assert.equal(document.querySelectorAll('.as-flow-node').length,2);
+  await click(document.querySelectorAll('.as-flow-node')[1]);
+  assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/완료/);
+ }finally{await h.close();}
+});
+
+test('optional run request can be collapsed with text retained',async()=>{
+ const h=await setup('?screen=run&service=A',{},path=>path.includes('/agent?')?{...snapshot(A),request_required:false}:undefined);
+ try{
+  const field=document.querySelector<HTMLTextAreaElement>('[data-tour="run-input"]')!;
+  await input(field,'보존할 조건');
+  const details=field.closest('details')!;
+  assert.equal(details.open,true);
+  await act(async()=>{details.open=false;details.dispatchEvent(new dom.window.Event('toggle'));});
+  await h.flush();
+  assert.equal(details.open,false);
+  assert.equal(field.value,'보존할 조건');
+  for(let i=0;i<3;i++){
+   await act(async()=>{details.open=true;details.dispatchEvent(new dom.window.Event('toggle'));});
+   await act(async()=>{details.open=false;details.dispatchEvent(new dom.window.Event('toggle'));});
+   await h.flush();
+   assert.equal(details.open,false);assert.equal(field.value,'보존할 조건');
+  }
  }finally{await h.close();}
 });

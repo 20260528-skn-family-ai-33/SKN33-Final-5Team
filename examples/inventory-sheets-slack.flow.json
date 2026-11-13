@@ -1,0 +1,143 @@
+{
+  "name": "매일 오전 9시 재고 부족 알림",
+  "nodes": [
+    {
+      "id": "start",
+      "name": "매일 오전 9시",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "read",
+      "name": "재고 시트 읽기",
+      "type": "easyflow.googleSheets",
+      "typeVersion": 1,
+      "position": [
+        350,
+        300
+      ],
+      "parameters": {
+        "operation": "read",
+        "spreadsheetId": "1MU0Y8jy7Ot3sXjsj4x9Hdr2ne94CK2MhOPcoKi74GhE",
+        "range": "재고!A1:D1000"
+      }
+    },
+    {
+      "id": "filter",
+      "name": "부족 재고 정리",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const shortages = $input.all()\n  .map(item => item.json)\n  .filter(row => row.rowIndex > 0 && Array.isArray(row.values))\n  .map(row => {\n    const [sku, name, quantityText, thresholdText] = row.values;\n    const quantity = Number(quantityText);\n    const threshold = Number(thresholdText);\n    return {sku: String(sku || ''), name: String(name || ''), quantity, threshold, deficit: threshold - quantity};\n  })\n  .filter(row => row.sku && row.name && Number.isFinite(row.quantity) && Number.isFinite(row.threshold) && row.deficit > 0);\nif (shortages.length === 0) return [];\nconst date = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);\nconst rows = shortages.map(row => [date, row.sku, row.name, row.quantity, row.threshold, row.deficit]);\nconst message = '*재고 부족 알림* (' + date + ')\\n' + shortages.map(row =>\n  '• ' + row.name + ' (' + row.sku + '): 현재 ' + row.quantity + ' / 기준 ' + row.threshold + ' · 부족 ' + row.deficit\n).join('\\n');\nreturn [{json: {rows, message, count: shortages.length}, pairedItem: {item: 0}}];"
+      }
+    },
+    {
+      "id": "append",
+      "name": "부족 재고 기록",
+      "type": "easyflow.googleSheets",
+      "typeVersion": 1,
+      "position": [
+        875,
+        210
+      ],
+      "parameters": {
+        "operation": "append",
+        "spreadsheetId": "1MU0Y8jy7Ot3sXjsj4x9Hdr2ne94CK2MhOPcoKi74GhE",
+        "range": "부족재고_기록!A:F",
+        "values": "={{ $json.rows }}",
+        "valueInputOption": "RAW"
+      }
+    },
+    {
+      "id": "slack",
+      "name": "Slack 알림 보내기",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        875,
+        390
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "C0CH769U6BX"
+        },
+        "messageType": "text",
+        "text": "={{ $json.message }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "매일 오전 9시": {
+      "main": [
+        [
+          {
+            "node": "재고 시트 읽기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "재고 시트 읽기": {
+      "main": [
+        [
+          {
+            "node": "부족 재고 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "부족 재고 정리": {
+      "main": [
+        [
+          {
+            "node": "부족 재고 기록",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack 알림 보내기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul"
+  },
+  "active": false
+}

@@ -1110,7 +1110,7 @@ test('navigation: cancelling browser back from a dirty editor restores the URL a
 test('redesign: infrastructure controls and model fields are absent from all product menus',async()=>{
  for(const screen of ['workflows','schedules','workflow','nodes','history']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['홈','워크플로우','작업 라이브러리','예약 관리','실행 기록','자료함','서비스 연결']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
+  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['홈','워크플로우','작업 라이브러리','예약 관리','실행 기록','자료함','서비스 연결','외부 API 자동화']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
 
  }
 });

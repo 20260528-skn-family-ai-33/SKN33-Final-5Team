@@ -53,14 +53,23 @@ def _missing_review_scope(gate, nodes, clause):
         if len(bindings)!=1 or bindings[0]['node_id'] not in nodes:return False
         source=nodes[bindings[0]['node_id']]
     else:return False
-    # Do not accept suffixes (항 in 조항), another extracted field, or an
-    # unscoped test over multiple fields for a request about one named item.
-    named=[f for f in fields if re.search(r'(?<!\w)'+re.escape(f)+
-           r'(?:이|가|은|는|의|을|를)?(?=\s|[,·]|$)',clause)]
+    # Parse the entire scope, not merely any field name occurring inside it.
+    # "조항 또는 담당자" means either field; "모두"/AND must not become any.
+    scope = re.split(r'(?:있는|없는|있을|없을)\s*(?:경우|때)', clause, maxsplit=1)[0].strip()
+    prefix = r'(?:누락(?:된)?|빈\s*값(?:인)?|결측(?:된)?)\s*'
     field=gate['settings'].get('condition_field')
-    if len(named)==1:
-        return field==named[0] or (not field and set(fields)==set(named))
-    if not named and re.search(r'(?:전체|모든)\s*(?:항목|필드)',clause):
+    names = '|'.join(re.escape(f) for f in sorted(set(fields), key=len, reverse=True))
+    if not names:
+        return False
+    matched = re.fullmatch(prefix + r'(?P<names>(?:' + names + r')(?:\s*(?:또는|혹은)\s*(?:' + names + r'))*)(?:이|가)?', scope)
+    if matched:
+        named = set(re.split(r'\s*(?:또는|혹은)\s*', matched['names']))
+        if len(named)==1:
+            return field in named or (not field and set(fields)==named)
+        return not field and named == set(fields)
+    # A real extracted field named "항목" is specific; only otherwise is the
+    # generic phrase evidence of an all-field request.
+    if re.fullmatch(prefix + r'(?:(?:전체|모든)\s*)?(?:항목|필드)(?:이|가)?', scope):
         return bool(fields) and not field
     return False
 
@@ -204,6 +213,8 @@ def request_guard_issues(state, draft):
         return issues
     from .output_selection_request import output_selection_issues
     issues.extend(output_selection_issues(state, draft))
+    from .numeric_filter_proof import numeric_filter_issues
+    issues.extend(numeric_filter_issues(state, draft))
     text = '\n'.join(m['content'] for m in active_request_messages(state) if m.get('role') == 'user')
     plans = [] if draft.get('workflow') else [draft.get('execution_plan')]
     for node in (draft.get('workflow') or {}).get('nodes', []):

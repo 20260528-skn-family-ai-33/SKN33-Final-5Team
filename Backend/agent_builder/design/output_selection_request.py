@@ -15,9 +15,9 @@ _NAMED_EXPORT = re.compile(
     r'(?:으로|로)\s*(?:저장|내보내)', re.I)
 
 _EXPORT_END = re.compile(r'\s*(?:해\s*(?:줘|주세요)|하(?:고|며|도록)|[.!;,\n]|$)')
-_ALL_COLUMNS = re.compile(r'(?:전체|모든)\s*열(?:들)?(?:을|로)?\s*(?:저장|내보내)')
+_ALL_COLUMNS = re.compile(r'(?:전체|모든)\s*열(?:들)?(?:만)?(?:을|로)?\s*(?:저장|내보내)')
 _SINGLE_EXPORT = re.compile(
-    r'(?<![\w·])(?P<column>\w+?)(?:\s+(?:열|컬럼))?만(?:을|를)?\s*'
+    r'(?<![\w·])(?P<column>\w+?)(?:\s+(?P<marker>열|컬럼))?만(?:을|를)?\s*'
     r'(?:[\w.-]+\.(?:csv|json|xlsx)(?:으로|로)\s*)?(?:저장|내보내)', re.I)
 
 
@@ -36,14 +36,30 @@ def _request_turns(state):
         yield offset+index, text
 
 
+def _single_requests(text, columns):
+    # These nouns describe the delivery, unless they really name a column or
+    # the user explicitly says "열/컬럼". Do not turn "파일만 저장" into a schema.
+    generic = {'파일', '결과', '결과물', '산출물', '표'}
+    return [m for m in _SINGLE_EXPORT.finditer(text)
+            if m['marker'] or m['column'] in columns or m['column'] not in generic]
+
+
+def _known_columns(state):
+    columns = set(state.get('resources', [{}])[0].get('columns', []))
+    for _, text in _request_turns(state):
+        columns.update(_selection_fields(text, columns) or [])
+    return columns
+
+
 def _selection_request(state):
     assets = state.get('resources', [])
     if len(assets) != 1 or assets[0].get('kind') != 'table':
         return -1, ''
     # A new output instruction replaces the old one even if its fields cannot
     # be projected by this narrow grammar. Unrelated replies do not replace it.
+    columns = _known_columns(state)
     for index, text in reversed(list(_request_turns(state))):
-        if (_NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _SINGLE_EXPORT.search(text)
+        if (_NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
                 or re.search(r'\w+(?:\s*[·,]\s*\w+)+(?:을|를)\s*(?:내보내|저장)', text)
                 or re.search(r'(?:출력|저장할|내보낼)\s*(?:열|컬럼)|(?:열|컬럼).{0,20}(?:추가|제외|변경|바꿔)', text)):
             return index, text
@@ -67,16 +83,17 @@ def output_selection(state):
     text = _request_text(state)
     if _all_columns_requested(state):
         return None
-    return _selection_fields(text, assets[0].get('columns', []))
+    return _selection_fields(text, _known_columns(state))
 
 
 def _selection_fields(text, columns):
     matches = [m for m in _NAMED_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
-    singles = [m for m in _SINGLE_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
+    singles = [m for m in _single_requests(text, columns) if _EXPORT_END.match(text[m.end():])]
     if singles:
         if matches or len(singles)!=1:
             return None
-        return [singles[0]['column']]
+        single = singles[0]
+        return [single['column']] if single['marker'] or single['column'] in columns else None
     if len(matches) != 1:
         return None
     fields = re.split(r'\s*·\s*', matches[0]['columns'])
@@ -95,10 +112,13 @@ def validate_output_selection(plan, state):
     specs = [task['spec'] for task in plan['tasks']]
     # Output revisions do not cancel row criteria. Check these even when a
     # later turn switches to all columns or a different output column list.
-    from .requirement_coverage import _condition
-    actual=[_condition(f) for spec in specs if spec['kind']=='filter' for f in spec['filters']]
-    if any(_condition(f) not in actual for f in literal_numeric_filters(state)):
+    from .numeric_filter_proof import guarantees_filter, contains_alternative
+    if any(not any(guarantees_filter(spec, rule) for spec in specs if spec['kind']=='filter')
+           for rule in literal_numeric_filters(state)):
         raise ValueError('명시한 출력 열의 숫자 선별 조건이 누락되거나 변경됐습니다.')
+    if any(not any(contains_alternative(spec, rule) for spec in specs if spec['kind']=='filter')
+           for rule in literal_or_filters(state)):
+        raise ValueError('명시한 OR 숫자 조건의 기준 또는 결합 방식이 누락되거나 변경됐습니다.')
     if _all_columns_requested(state):
         expected = set(state['resources'][0].get('columns', []))
         for spec in specs:
@@ -180,22 +200,39 @@ def project_output_selection(candidates,state):
 
 
 def literal_numeric_filters(state):
+    return _literal_numeric_contracts(state)[0]
+
+
+def literal_or_filters(state):
+    return _literal_numeric_contracts(state)[1]
+
+
+def _literal_numeric_contracts(state):
     """Retain literal criteria until that field is explicitly revised/cancelled.
 
     Historical output columns remain eligible after an output-only revision.
     Clauses are complete assertions, never numbers in examples or questions.
     """
     assets=state.get('resources',[])
-    if len(assets)!=1 or assets[0].get('kind')!='table':return []
+    if len(assets)!=1 or assets[0].get('kind')!='table':return [], []
+    from .explicit_table_criteria import explicit_criteria, expected_specs
+    explicit = explicit_criteria(state)
+    if explicit is not None and 'selection' in explicit:
+        filters = [s for s in expected_specs(explicit) if s['kind']=='filter']
+        # An explicit replacement contract owns both the operands and their
+        # connective. Its separate validator checks the complete OR expression.
+        return ([f for s in filters if s['match']=='all' or len(s['filters'])==1
+                 for f in s['filters'] if f['value_type']=='number'], [])
     turns=list(_request_turns(state))
     fields=set()
+    columns = _known_columns(state)
     for _,text in turns:
-        fields.update(_selection_fields(text,assets[0].get('columns',[])) or [])
-    if not fields:return []
+        fields.update(_selection_fields(text,columns) or [])
+    if not fields:return [], []
     names='|'.join(re.escape(f) for f in sorted(fields,key=len,reverse=True))
-    criteria={}
+    criteria={}; alternatives={}
     for _,text in turns:
-        revised={}
+        revised={}; or_revised={}
         for part in re.split(r',\s+|[\n;]',text):
             match=re.fullmatch(r'\s*('+names+r')(?:이|가|은|는)?\s+'
                               r'(\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)\s*[.!]?\s*',part)
@@ -205,9 +242,21 @@ def literal_numeric_filters(state):
                     value=float(number_value(match[2])),compare_field=None,value_type='number'))
             cancel=re.fullmatch(r'\s*('+names+r')\s*(?:숫자\s*)?(?:조건|기준|필터)(?:은|는|을|를)?\s*'
                                 r'(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?\s*[.!]?\s*',part)
-            if cancel:revised[cancel[1]]=[]
+            if cancel:
+                revised[cancel[1]]=[]
+                or_revised.pop(cancel[1],None)
+            alternative=re.fullmatch(r'\s*[^,;\n]{1,80}?(?:이거나|또는|혹은)\s+'
+                r'('+names+r')(?:이|가|은|는)?\s+(\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)(?:인)?\s*'
+                r'(?:주문|행|건)(?:을|만)?\s*(?:대상으로|남겨\s*(?:줘|주세요))\s*[.!]?\s*',part)
+            if alternative:
+                revised[alternative[1]]=[]
+                or_revised[alternative[1]]=dict(field=alternative[1],
+                    operator={'이상':'gte','이하':'lte','초과':'gt','미만':'lt'}[alternative[3]],
+                    value=float(number_value(alternative[2])),compare_field=None,value_type='number')
         criteria.update(revised)
-    return [rule for rules in criteria.values() for rule in rules]
+        for field in revised:alternatives.pop(field,None)
+        alternatives.update(or_revised)
+    return [rule for rules in criteria.values() for rule in rules], list(alternatives.values())
 
 
 def literal_output_compute(state):
@@ -220,7 +269,7 @@ def literal_output_compute(state):
     assets=state.get('resources',[])
     if len(assets)!=1 or assets[0].get('kind')!='table':return None
     columns=assets[0].get('columns',[])
-    numeric_fields={f['field'] for f in literal_numeric_filters(state)}
+    numeric_fields={f['field'] for f in [*literal_numeric_filters(state), *literal_or_filters(state)]}
     candidates=set()
     for _,text in _request_turns(state):
         missing=[f for f in (_selection_fields(text,columns) or []) if f not in columns]

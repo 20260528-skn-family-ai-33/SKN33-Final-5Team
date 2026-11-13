@@ -12,7 +12,7 @@ type Status={services:Record<Service,{configured:boolean}>;credentials:DisplayCr
 type Attempt={authorizationUrl:string;expiresAt:number};
 const entries=[
   {id:'googleSheets' as const,label:'Google Sheets',description:'시트를 읽고 결과 행을 기록합니다.',permission:'읽기·수정',Icon:Sheet},
-  {id:'slack' as const,label:'Slack',description:'워크플로 결과를 채널로 보냅니다.',permission:'메시지 전송',Icon:MessageSquare},
+  {id:'slack' as const,label:'Slack',description:'워크플로 결과를 채널로 보냅니다.',permission:'메시지 전송·채널 조회',Icon:MessageSquare},
 ];
 const connected=(status:Status|undefined,service:Service)=>status?.credentials.find(c=>service==='slack'?c.service==='slack'||c.provider==='slack':c.service==='googleSheets');
 const accountLabel=(credential:DisplayCredential,service:Service)=>credential.accountLabel?.trim()||

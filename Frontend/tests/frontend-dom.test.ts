@@ -68,6 +68,50 @@ test('incomplete external workflow explains missing settings in the conversation
   assert.equal(document.querySelector('.as-global-error'),null);
  }finally{await h.close();}
 });
+test('Gmail unread summary offers connected Slack channels and sends the chosen ID',async()=>{
+ const question={id:'slack-question',key:'slack.channel_id',text:'요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)',response:{type:'text'}};
+ const prompt='gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘';
+ let messageCount=0;
+ const h=await setup('?screen=workflow',{},(path)=>{
+  if(path==='/api/agent-builder/sessions')return {id:'gmail-slack-session',revision:0};
+  if(path==='/api/agent-builder/message'){
+   messageCount++;
+   return {id:'gmail-slack-session',revision:messageCount,status:messageCount===1?'needs_clarification':'ready',
+    messages:messageCount===1?[{role:'user',content:prompt},{role:'assistant',content:question.text}]:[{role:'user',content:prompt},{role:'user',content:'C0123456789'},{role:'assistant',content:'Slack 채널에 보냅니다.'}],
+    pending_questions:messageCount===1?[question]:[],draft:null,issues:[],trace:[],resources:[]};
+  }
+  if(path==='/api/service-connections/slack/channels')return {channels:[{id:'C0123456789',name:'reports',isPrivate:false},{id:'G0123456789',name:'team-private',isPrivate:true}],truncated:false};
+ });
+ try{
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,prompt);
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  await h.flush();
+  assert.equal(h.calls.some(call=>call.path==='/api/workflows/from-request'),false);
+  assert.ok(document.querySelector('form[aria-label="Slack 채널 선택"]'));
+  const select=document.querySelector<HTMLSelectElement>('select[aria-label="전송할 Slack 채널"]')!;
+  assert.ok(select);assert.match(select.textContent!,/#reports/);
+  await act(async()=>{select.value='C0123456789';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await tick();});
+  await click(button('이 채널로 설정'));
+  const messages=h.calls.filter(call=>call.path==='/api/agent-builder/message');
+  assert.equal(messages.length,2);assert.equal(messages[1].body.content,'C0123456789');assert.equal(messages[1].body.questionId,question.id);
+ }finally{await h.close();}
+});
+test('an older Slack connection asks for reconnection while preserving manual channel entry',async()=>{
+ let navigation='';
+ const question={id:'slack-question',key:'slack.channel_id',text:'요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)',response:{type:'text'}};
+ const saved={id:'slack-session',revision:1,status:'needs_clarification',messages:[{role:'user',content:'Gmail 메일을 Slack에 요약해줘'},{role:'assistant',content:question.text}],pending_questions:[question],draft:null,issues:[],trace:[],resources:[]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'slack-session'},path=>{
+  if(path==='/api/agent-builder/session?id=slack-session')return saved;
+  if(path==='/api/service-connections/slack/channels')return new Response(JSON.stringify({code:'slack_scope_required',error:'Slack 채널 목록 권한을 추가하려면 Slack 계정을 다시 연결해주세요.'}),{status:409,headers:{'Content-Type':'application/json'}});
+ },createElement(AgentStudio,{onNavigate:(next:string)=>{navigation=next;}}));
+ try{
+  await h.flush();
+  assert.match(document.querySelector('form[aria-label="Slack 채널 선택"]')?.textContent||'',/다시 연결/);
+  await click(button('서비스 연결 열기'));assert.equal(navigation,'connections');
+  await click(document.querySelector<HTMLInputElement>('.slack-channel-picker-manual input')!);
+  assert.ok(document.querySelector('input[aria-label="Slack 채널 ID 직접 입력"]'));
+ }finally{await h.close();}
+});
 
 for(const linked of [true,false])test('source evidence: '+(linked?'run-scoped snapshot original':'ordinary personal original'),async()=>{
  const fileId='source-alias',runId='historical-source-run';

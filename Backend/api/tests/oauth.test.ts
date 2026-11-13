@@ -39,18 +39,41 @@ test('Slack app install exchanges a bot token without requiring PKCE',async()=>{
   assert.equal(url,SLACK_OAUTH.tokenUrl);
   assert.equal(new URLSearchParams(String(init.body)).has('code_verifier'),false);
   assert.match(new Headers(init.headers).get('Authorization')||'',/^Basic /);
-  return json({ok:true,access_token:'xoxb-test',token_type:'bot',scope:'chat:write',team:{id:'T123',name:'SKN33 데모'}});
+  return json({ok:true,access_token:'xoxb-test',token_type:'bot',scope:SLACK_OAUTH.scope,team:{id:'T123',name:'SKN33 데모'}});
  })});
  const begin=manager.begin({name:'Slack',service:'slack',clientId:'client-id',clientSecret:'client-secret',tokenAuthMethod:'basic'},authority);
  const url=new URL(begin.authorizationUrl);
  assert.equal(url.origin+url.pathname,SLACK_OAUTH.authorizationUrl);
- assert.equal(url.searchParams.get('scope'),'chat:write');
+ assert.equal(url.searchParams.get('scope'),SLACK_OAUTH.scope);
  assert.equal(url.searchParams.has('code_challenge'),false);
  const credential=await manager.complete({state:begin.stateId,code:'slack-code'},authority);
  assert.equal(credential.provider,'slack');
  assert.equal(credential.data.service,'slack');
  assert.equal(credential.data.token,'xoxb-test');
  assert.equal(credential.data.accountLabel,'SKN33 데모');
+});
+
+test('legacy Slack bot tokens still refresh for posting while new installs require channel scopes',async()=>{
+ const manager=new OAuthManager({port:3010});
+ assert.throws(()=>manager.begin({name:'Slack',service:'slack',clientId:'client-id',clientSecret:'client-secret',tokenAuthMethod:'basic',scope:'chat:write'},authority),/채널 조회 권한/);
+ assert.throws(()=>manager.begin({name:'Slack',service:'slack',clientId:'client-id',clientSecret:'client-secret',tokenAuthMethod:'basic',scope:'groups:read,chat:write,channels:read'},authority),/채널 조회 권한/);
+ const credential=secret({service:'slack',authorizationUrl:SLACK_OAUTH.authorizationUrl,tokenUrl:SLACK_OAUTH.tokenUrl,scope:'chat:write',tokenAuthMethod:'basic'});
+ credential.provider='slack';credential.service='slack';
+ let saved:CredentialSecret|undefined,calls=0;
+ const refreshed=await getUsableCredential(credential,updated=>{saved=updated;},{now:()=>100000,fetch:mock((url,init)=>{
+  calls++;
+  assert.equal(url,SLACK_OAUTH.tokenUrl);
+  assert.match(new Headers(init.headers).get('Authorization')||'',/^Basic /);
+  assert.equal(new URLSearchParams(String(init.body)).get('refresh_token'),'private-refresh-token');
+  return json({ok:true,access_token:'refreshed-slack-token',token_type:'bot',scope:'chat:write',expires_in:3600});
+ })});
+ assert.equal(calls,1);
+ assert.equal(saved,refreshed);
+ assert.equal(refreshed.data.token,'refreshed-slack-token');
+ assert.equal(refreshed.data.scope,'chat:write');
+ const reordered={...credential,id:randomUUID(),data:{...credential.data,scope:'groups:read,chat:write,channels:read,users:read'}};
+ const refreshedReordered=await getUsableCredential(reordered,()=>{},{now:()=>100000,fetch:mock(()=>json({ok:true,access_token:'reordered-token',token_type:'bot',scope:'users:read,channels:read,chat:write,groups:read',expires_in:3600}))});
+ assert.equal(refreshedReordered.data.token,'reordered-token');
 });
 
 test('Google Sheets account scope stores a verified email without exposing its access token',async()=>{

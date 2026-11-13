@@ -19,6 +19,7 @@ import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointe
 import {storageConfig,builderDatabase} from './storage-config';
 import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
 import {ServiceConnectionIdentity} from './service-connection-identity';
+import {listSlackChannels,SlackChannelsError} from './slack-channels';
 import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems,splitBinaryItem} from './binary';
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
@@ -91,9 +92,9 @@ function gmailAccessToken():Promise<string|undefined>{
   }catch(error){recordGmailEvent('token_refresh_failed');throw error;}
  });
 }
-function slackAccessToken():Promise<string|undefined>{
+function slackAccessToken(accountId?:string):Promise<string|undefined>{
  return credentialOperation(async()=>{
-  const account=store.listCredentials().find(c=>c.provider==='slack'&&(c.service==='slack'||!c.service));
+  const account=store.listCredentials().find(c=>c.provider==='slack'&&(c.service==='slack'||!c.service)&&(!accountId||c.id===accountId));
   if(!account)return undefined;
   const saved=store.getCredential(account.id);
   const credential=await getUsableCredential(saved,updated=>{
@@ -325,6 +326,17 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
      credentials,
     });
    }
+   if(path==='/api/service-connections/slack/channels'&&method==='GET'){
+    const account=store.listCredentials().find(c=>c.provider==='slack'&&(c.service==='slack'||!c.service));
+    if(!account)return json(res,409,{code:'slack_not_connected',error:'Slack 계정을 먼저 연결해주세요.'});
+    const saved=store.getCredential(account.id);
+    const scopes=typeof saved.data.scope==='string'?new Set(saved.data.scope.split(/[\s,]+/)):undefined;
+    if(scopes&&(!scopes.has('channels:read')||!scopes.has('groups:read')))return json(res,409,{code:'slack_scope_required',error:'Slack 채널 목록 권한을 추가하려면 Slack 계정을 다시 연결해주세요.'});
+    const token=await slackAccessToken(account.id);
+    if(!token)return json(res,409,{code:'slack_reconnect_required',error:'Slack 연결이 만료됐어요. 계정을 다시 연결해주세요.'});
+    try{return json(res,200,await listSlackChannels(token));}
+    catch(error){if(error instanceof SlackChannelsError)return json(res,error.status,{code:error.code,error:error.message});throw error;}
+   }
    if(path==='/api/service-connections/connect'&&method==='POST'){
     const input=await body(req),service=input?.service;
     if(service!=='googleSheets'&&service!=='slack')throw new Error('연결할 서비스를 확인해주세요.');
@@ -450,7 +462,7 @@ if(!${gmail}){if(opener)window.close();else location.replace('/?screen=connectio
   }else json(res,400,{error:(error as Error).message});}
 };
 if(visualSchedulerEnabled)void pump();
-const credentialRequest=/^\/api\/(?:agent-builder\/gmail(?:\/test)?|oauth\/callback|credentials\/test)$/;
+const credentialRequest=/^\/api\/(?:agent-builder\/gmail(?:\/test)?|oauth\/callback|credentials\/test|service-connections\/slack\/channels)$/;
 return {handle:(req:IncomingMessage,res:ServerResponse)=>withScheduleSourceContext(sourceContext,()=>{
  if(closing)return Promise.resolve(json(res,503,{error:'프로그램이 종료 중입니다. 잠시 후 다시 시도해주세요.'}));
  // Keep the complete HTTP operation alive, including profile reads and their

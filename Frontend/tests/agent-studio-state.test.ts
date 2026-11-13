@@ -42,6 +42,20 @@ test('clarification reply sends the browser timezone and authoritative session r
  assert.deepEqual({...h.requests[0].body},{id:'conversation',revision:4,content:'JSON으로 해줘',userTimezone:'America/New_York',questionId:'a'.repeat(24),generationRequestId:'00000000-0000-4000-8000-000000000081'});
  assert.equal(h.c.session.revision,5);
 });
+test('Gmail to Slack request uses the agent builder conversation and keeps the selected channel ID',async()=>{
+ const h=harness();
+ h.c.Intl={DateTimeFormat:()=>({resolvedOptions:()=>({timeZone:'Asia/Seoul'})})};
+ h.c.text='gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘';
+ h.load(async path=>path==='/api/agent-builder/sessions'?{id:'gmail-slack',revision:0}:path==='/api/agent-builder/message'?{id:'gmail-slack',revision:1,status:'needs_clarification',messages:[]}:snapshot('A'));
+ await h.c.send();
+ assert.deepEqual(h.requests.map(item=>item.path),['/api/agent-builder/sessions','/api/agent-builder/message']);
+ assert.equal(h.requests[1].body.content,'gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘');
+ assert.equal(h.c.externalMessages.length,0);
+ await h.c.send(undefined,'C0123456789','channel-question-id');
+ assert.equal(h.requests[2].path,'/api/agent-builder/message');
+ assert.equal(h.requests[2].body.content,'C0123456789');
+ assert.equal(h.requests[2].body.questionId,'channel-question-id');
+});
 test('external service clarification keeps the original request and opens the generated workflow',async()=>{
  const h=harness();let opened='';h.c.onExternalFlow=(id:string)=>{opened=id;};
  h.c.text='Google Sheets 재고를 Slack으로 알려줘';
@@ -73,17 +87,17 @@ test('external request without model questions keeps context and shows requireme
  assert.match(h.requests[1].body.prompt,/추가 답변: 재고!A1:D100/);
 });
 test('external clarification keeps each turn and explains missing versus unsupported work without repeating the summary',async()=>{
- const h=harness();h.c.text='Gmail 메일을 Slack으로 정리해줘';
- h.load(async()=>({summary:'Gmail 메일을 Slack으로 정리해줘',questions:[{question:'어느 채널에 보낼까요?'}],checklist:['지원 여부 확인 필요: 메일에 별표 달기'],requirements:[
+ const h=harness();h.c.text='Google Sheets 행을 Slack으로 정리해줘';
+ h.load(async()=>({summary:'Google Sheets 행을 Slack으로 정리해줘',questions:[{question:'어느 채널에 보낼까요?'}],checklist:['지원 여부 확인 필요: 행에 별표 달기'],requirements:[
   {id:'channel',description:'Slack 채널 지정',status:'needs_input'},
-  {id:'star',description:'메일에 별표 달기',status:'unsupported'},
+  {id:'star',description:'행에 별표 달기',status:'unsupported'},
  ]}));
  await h.c.send();
  assert.equal(h.c.error,'');
  assert.match(h.c.externalMessages[1].content,/아직 정해지지 않은 내용:\n• Slack 채널 지정/);
- assert.match(h.c.externalMessages[1].content,/지원 여부를 확인할 작업:\n• 메일에 별표 달기/);
+ assert.match(h.c.externalMessages[1].content,/지원 여부를 확인할 작업:\n• 행에 별표 달기/);
  assert.match(h.c.externalMessages[1].content,/어느 채널에 보낼까요/);
- assert.equal(h.c.externalMessages[1].content.includes('지원 여부 확인 필요: 메일에 별표 달기'),false);
+ assert.equal(h.c.externalMessages[1].content.includes('지원 여부 확인 필요: 행에 별표 달기'),false);
  h.c.text='C0123456789';
  h.load(async()=>({summary:'아직 확인이 필요합니다.',questions:[{question:'메일 기간은 언제인가요?'}]}));
  await h.c.send();

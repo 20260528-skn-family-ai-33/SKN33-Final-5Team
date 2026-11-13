@@ -18,7 +18,7 @@ export const GMAIL_OAUTH={
  tokenUrl:GOOGLE_SHEETS_OAUTH.tokenUrl,
  scope:'https://www.googleapis.com/auth/gmail.readonly',
 } as const;
-export const SLACK_OAUTH={authorizationUrl:'https://slack.com/oauth/v2/authorize',tokenUrl:'https://slack.com/api/oauth.v2.access',scope:'chat:write'} as const;
+export const SLACK_OAUTH={authorizationUrl:'https://slack.com/oauth/v2/authorize',tokenUrl:'https://slack.com/api/oauth.v2.access',scope:'chat:write,channels:read,groups:read'} as const;
 export const OAUTH_STATE_TTL_MS=10*60*1000;
 const TOKEN_EXPIRY_BUFFER_MS=60*1000;
 const MAX_PENDING=128;
@@ -82,7 +82,7 @@ function string(value:unknown,max:number,message:string,required=false):string|u
  if(typeof value!=='string'||value.length>max||/[\u0000-\u001f\u007f]/.test(value)||required&&!value.trim())throw new Error(message);
  return value;
 }
-function config(input:OAuthBeginInput):OAuthConfig {
+function config(input:OAuthBeginInput,allowLegacySlackScope=false):OAuthConfig {
  const clientId=string(input.clientId,2048,'등록한 앱의 클라이언트 ID를 입력해주세요.',true)!.trim();
  const clientSecret=string(input.clientSecret,MAX_TOKEN_LENGTH,'클라이언트 비밀 값을 확인해주세요.');
  const service=string(input.service,120,'연결할 서비스 종류를 확인해주세요.');
@@ -95,7 +95,10 @@ function config(input:OAuthBeginInput):OAuthConfig {
  if(tokenAuthMethod==='basic'&&!clientSecret)throw new Error('Basic 클라이언트 인증에는 클라이언트 비밀 값이 필요해요.');
  if(service==='googleSheets'&&(authorizationUrl!==GOOGLE_SHEETS_OAUTH.authorizationUrl||tokenUrl!==GOOGLE_SHEETS_OAUTH.tokenUrl||!validSheetsScope(scope)||tokenAuthMethod!=='body'))throw new Error('Google Sheets 연결에는 공식 로그인·토큰 주소와 Sheets 권한을 사용해주세요.');
  if(service==='gmail'&&(authorizationUrl!==GMAIL_OAUTH.authorizationUrl||tokenUrl!==GMAIL_OAUTH.tokenUrl||scope!==GMAIL_OAUTH.scope||tokenAuthMethod!=='body'||!clientSecret))throw new Error('Gmail 연결에는 등록된 Google 앱과 Gmail 읽기 권한을 사용해주세요.');
- if(service==='slack'&&(authorizationUrl!==SLACK_OAUTH.authorizationUrl||tokenUrl!==SLACK_OAUTH.tokenUrl||scope!==SLACK_OAUTH.scope||tokenAuthMethod!=='basic'||!clientSecret))throw new Error('Slack 연결에는 등록된 앱과 메시지 전송 권한을 사용해주세요.');
+ // Slack can return granted scopes in a different order and add scopes after a
+ // later installation. Only token refresh may accept that returned scope set.
+ const validSlackScope=scope===SLACK_OAUTH.scope||allowLegacySlackScope&&scope.split(/[\s,]+/).includes('chat:write');
+ if(service==='slack'&&(authorizationUrl!==SLACK_OAUTH.authorizationUrl||tokenUrl!==SLACK_OAUTH.tokenUrl||!validSlackScope||tokenAuthMethod!=='basic'||!clientSecret))throw new Error('Slack 연결에는 등록된 앱과 메시지 전송·채널 조회 권한을 사용해주세요.');
  return {clientId,...(clientSecret?{clientSecret}:{}),authorizationUrl,tokenUrl,scope,tokenAuthMethod,...(service?{service}:{})};
 }
 
@@ -250,7 +253,9 @@ export function createCredentialRefresher(){
   if(typeof credential.id!=='string'||!credential.id)throw new Error('저장된 연결 계정을 다시 선택해주세요.');
   const existing=refreshLocks.get(credential.id);if(existing)return withAbort(existing,options.signal);
   const refresh=(async()=>{
-   const oauth=config({name:credential.name,clientId:data.clientId,clientSecret:data.clientSecret,service:credential.service||data.service,authorizationUrl:data.authorizationUrl,tokenUrl:data.tokenUrl,scope:data.scope,tokenAuthMethod:data.tokenAuthMethod});
+   // A chat:write-only Slack install can keep posting while its owner reconnects
+   // to grant channel listing. New installation requests still require all scopes.
+   const oauth=config({name:credential.name,clientId:data.clientId,clientSecret:data.clientSecret,service:credential.service||data.service,authorizationUrl:data.authorizationUrl,tokenUrl:data.tokenUrl,scope:data.scope,tokenAuthMethod:data.tokenAuthMethod},true);
    const body=new URLSearchParams({grant_type:'refresh_token',refresh_token:data.refreshToken});
    const tokens=await requestToken(oauth.tokenUrl,body,oauth,options,refreshError);
    const updated:CredentialSecret={...credential,data:tokenData({...data,...oauth},tokens,(options.now||Date.now)()),updatedAt:new Date((options.now||Date.now)()).toISOString()};

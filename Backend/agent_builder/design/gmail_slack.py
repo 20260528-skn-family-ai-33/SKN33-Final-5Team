@@ -219,7 +219,8 @@ def gmail_slack_reply(state):
     explanation = (f"{timing}{source_label}을 최대 {count}건 읽어 제목·보낸 사람·본문의 핵심을 요약하고 "
                    f"Slack 채널 {request['channel_id']}에 보냅니다. 조회 한도를 넘는 메일은 포함되지 않을 수 있습니다. "
                    f'{connection_note}')
-    draft = AgentDraft(name=f'{period_label} {"안 읽은 " if request["unread"] else ""}Gmail 메일 요약 Slack 전송', purpose=request['request'],
+    draft = AgentDraft(request_input_mode='saved_instructions',
+                       name=f'{period_label} {"안 읽은 " if request["unread"] else ""}Gmail 메일 요약 Slack 전송', purpose=request['request'],
                        instructions=explanation, tool_ids=['email.list', 'compose_answer', 'slack.post_message'],
                        document_ids=[], requirements=[dict(description='Gmail 메일 요약을 지정 Slack 채널에 전송',
                                                             source_id='user', quote=request['request'])],

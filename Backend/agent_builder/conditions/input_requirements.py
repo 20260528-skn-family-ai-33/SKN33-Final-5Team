@@ -51,10 +51,11 @@ def _legacy_fixed_gmail_slack_summary(config):
         unread = bool(re.search(r'(?:^|\s)is:unread(?:\s|$)', query or '', re.I)) if isinstance(query, str) else False
         expected_summary = (f'조회한 {"안 읽은 " if unread else ""}Gmail 메일 최대 {count}건을 사용자 요청에 맞춰 요약하세요: {purpose} '
                             '메일이 없으면 없다고 안내하세요. Slack 전송은 다음 단계가 처리하므로 요약 텍스트만 작성하세요.')
+        from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT
         return (set(mail_args) <= {'max_results', 'query'} and
                 1 <= count <= MAX_RESULTS and
                 (query is None or isinstance(query, str) and bool(query.strip())) and
-                summary['settings']['instructions'] == expected_summary and
+                summary['settings']['instructions'] in (expected_summary, expected_summary + SUMMARY_CARD_FORMAT) and
                 isinstance(slack_args, dict) and
                 set(slack_args) == {'channel_id'} and isinstance(slack_args['channel_id'], str) and
                 re.fullmatch(r'[CGD][A-Z0-9]{8,24}', slack_args['channel_id']) is not None)

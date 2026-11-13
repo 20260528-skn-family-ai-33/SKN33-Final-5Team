@@ -6,12 +6,13 @@ import pytest
 from langgraph.types import Command
 
 from agent_builder.conditions.input_requirements import execution_request_required
-from agent_builder.design.gmail_slack import gmail_slack_candidate, gmail_slack_reply, gmail_slack_request
+from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT, gmail_slack_candidate, gmail_slack_reply, gmail_slack_request
 from agent_builder.design.gmail_summary import UNREAD_QUERY
 from agent_builder.design.graph import build_graph
 from agent_builder.design.nodes.validation import validate_node
 from agent_builder.design.requirement_coverage import coverage_report
 from infrastructure.persistence.storage import Storage
+from workflow_engine.run_answer import gmail_slack_summary_texts
 
 
 PROMPT = 'Gmail에서 어제 받은 메일을 요약해서 Slack으로 보내줘'
@@ -68,6 +69,10 @@ def test_channel_clarification_then_real_saved_workflow(tmp_path, prompt):
         assert [node['tool'] for node in draft['workflow']['nodes']] == [
             'email.list', 'compose_answer', 'slack.post_message']
         reader, summary, sender = draft['workflow']['nodes']
+        assert summary['settings']['instructions'].endswith(SUMMARY_CARD_FORMAT)
+        assert all(label in summary['settings']['instructions'] for label in ('제목:', '보낸 사람:', '핵심:'))
+        assert '1~2문장' in summary['settings']['instructions']
+        assert '긴 URL을 복사하지 마세요' in summary['settings']['instructions']
         assert summary['bindings'] == [dict(input='documents', node_id='mail', output='documents')]
         assert sender['bindings'] == [dict(input='text', node_id='summary', output='text')]
         assert json.loads(sender['settings']['arguments_json']) == {'channel_id': CHANNEL}
@@ -142,7 +147,12 @@ def test_older_saved_gmail_slack_recipe_accepts_empty_execution_request(prompt):
     assert result is not None
     legacy = deepcopy(result['draft'])
     legacy['request_input_mode'] = None
+    legacy['workflow']['nodes'][1]['settings']['instructions'] = legacy['workflow']['nodes'][1]['settings']['instructions'].removesuffix(SUMMARY_CARD_FORMAT)
     assert not execution_request_required(legacy)
+
+    upgraded_without_input_mode = deepcopy(result['draft'])
+    upgraded_without_input_mode['request_input_mode'] = None
+    assert not execution_request_required(upgraded_without_input_mode)
 
     required = deepcopy(legacy)
     required['request_input_mode'] = 'required'
@@ -156,6 +166,58 @@ def test_older_saved_gmail_slack_recipe_accepts_empty_execution_request(prompt):
     generic['workflow']['nodes'][1]['settings']['instructions'] = '이번 실행의 질문에 답하세요.'
     if not legacy['schedule']:
         assert execution_request_required(generic)
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_fixed_gmail_slack_public_answer_keeps_summary_and_stores_delivery_receipt(legacy):
+    current = state(UNREAD)
+    current['messages'].append(dict(role='user', content=CHANNEL))
+    config = gmail_slack_reply(current)['draft']
+    if legacy:
+        config['request_input_mode'] = None
+        summary = config['workflow']['nodes'][1]
+        summary['settings']['instructions'] = summary['settings']['instructions'].removesuffix(SUMMARY_CARD_FORMAT)
+
+    summary_text = '제목: 공지\n보낸 사람: 담당자 <team@example.com>\n핵심: 내일 점검이 있습니다.'
+    receipt = {'status': 'accepted_by_provider', 'channel_id': CHANNEL, 'ts': '1731477600.000001'}
+    receipt_text = json.dumps(receipt, ensure_ascii=False, indent=2)
+    outputs = {'summary': {'text': summary_text}, 'slack': {'text': receipt_text, 'result': receipt}}
+    assert gmail_slack_summary_texts(config, outputs, [summary_text, receipt_text]) == [summary_text]
+    assert outputs['slack']['result'] == receipt
+
+    other = deepcopy(config)
+    other['workflow']['nodes'][1]['settings']['instructions'] = '임의 요약 지시'
+    assert gmail_slack_summary_texts(other, outputs, [summary_text, receipt_text]) == [summary_text, receipt_text]
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_fixed_gmail_slack_run_shows_summary_without_raw_delivery_json(tmp_path, legacy):
+    from tests.workflow_engine.test_workflow import saved
+    from workflow_engine.runner import run_workflow
+
+    current = state(UNREAD)
+    current['messages'].append(dict(role='user', content=CHANNEL))
+    draft = gmail_slack_reply(current)['draft']
+    if legacy:
+        draft['request_input_mode'] = None
+        summary = draft['workflow']['nodes'][1]
+        summary['settings']['instructions'] = summary['settings']['instructions'].removesuffix(SUMMARY_CARD_FORMAT)
+    store, agent_id, _ = saved(tmp_path, draft['workflow'], purpose=draft['purpose'],
+                               instructions=draft['instructions'], request_input_mode=draft['request_input_mode'])
+    try:
+        store.workflow_connectors = {
+            'gmail': lambda operation, args: {'messages': []},
+            'slack': lambda operation, args: {
+                'status': 'accepted_by_provider', 'channel_id': args['channel_id'], 'ts': '1731477600.000001'},
+        }
+        run = run_workflow(store, agent_id, '', 'unused', llm=object())
+        assert run['status'] == 'succeeded', run.get('error')
+        assert '요약할 내용이 없습니다' in run['answer']
+        assert 'accepted_by_provider' not in run['answer']
+        assert run['outputs']['slack']['result']['status'] == 'accepted_by_provider'
+        assert any(step['node'] == 'slack' and step['status'] == 'completed' for step in run['steps'])
+    finally:
+        store.close()
 
 
 def test_existing_saved_gmail_slack_agent_detail_and_run_allow_blank_request(tmp_path, monkeypatch):

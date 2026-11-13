@@ -2,6 +2,34 @@
 import json
 
 
+def gmail_slack_summary_texts(config, outputs, texts):
+    """Hide the delivery receipt from the displayed fixed Gmail-to-Slack summary.
+
+    The typed Slack result remains in outputs and the execution steps.  Only the
+    exact generated recipe qualifies, including copies saved before its input
+    mode and summary format were updated.
+    """
+    from agent_builder.conditions.input_requirements import _legacy_fixed_gmail_slack_summary
+
+    if not _legacy_fixed_gmail_slack_summary({**config, 'request_input_mode': None}):
+        return texts
+    _, summary, slack = config['workflow']['nodes']
+    summary_text = outputs.get(summary['id'], {}).get('text')
+    delivery = outputs.get(slack['id'], {})
+    receipt = delivery.get('result')
+    receipt_text = delivery.get('text')
+    if (not isinstance(summary_text, str) or summary_text not in texts or
+            not isinstance(receipt, dict) or receipt.get('status') != 'accepted_by_provider' or
+            not isinstance(receipt_text, str) or receipt_text not in texts):
+        return texts
+    try:
+        if json.loads(receipt_text) != receipt:
+            return texts
+    except ValueError:
+        return texts
+    return [text for text in texts if text != receipt_text]
+
+
 def summarized_text_sources(workflow, outputs):
     nodes = {n['id']: n for n in workflow['nodes']}
     sources = {b['node_id'] for n in nodes.values()

@@ -1,6 +1,8 @@
 import {WorkflowPreview,type Workflow} from './workflow-preview';
 import {NodeInspector,RuleSummary} from './node-inspector';
 import {StudioMessage} from './studio-message';
+import {GmailSummaryResult,isGmailSlackSummaryWorkflow} from './gmail-summary-result';
+import {RunAnswer} from './run-answer';
 import {RunWorkflowDiagram} from './run-workflow-diagram';
 import {RunFileDownload, suggestedRunFilename} from './run-file-download';
 import {toolDescription} from './tool-copy';
@@ -658,7 +660,11 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
         <summary>추가 요청</summary>{runRequestField}
        </RunRequestDetails>}{screen==='run'&&librarySourceSettings&&<details className="as-run-source-settings"><summary>{scheduleSourceDirty?'자료함 연결 설정 · 저장 필요':'자료함 연결 설정'}</summary>{librarySourceSettings}</details>}{reviewCapable&&<RunFileDownload file={{name:'승인된_응대.csv',mime:'text/csv'}} url={'/api/agent-builder/approved_replies?id='+encodeURIComponent(selected.id)} label="승인된 응대 CSV 다운로드"/>}{screen!=='schedule'&&scheduleNotice&&<p className="as-small-muted" role="status">{scheduleNotice}</p>}{history.length>0&&<details className="as-run-history"><summary>실행 기록 ({history.length})</summary><select disabled={!!busy} aria-label="실행 기록 선택" value={testRun?.id||''} onChange={e=>void selectRun(e.target.value)}>{history.map(r=><option key={r.id} value={r.id}>{r.id.slice(0,8)} · {({succeeded:'완료',failed:'실패',running:'실행 중',needs_input:'답변 대기'} as Record<string,string>)[r.status]||r.status} · 설정 v{r.agent_version} · {r.trigger==='scheduled'?'정규 예약':r.trigger==='schedule_test'?'시험 예약':'지금 실행'}</option>)}</select><button disabled={!!busy} className="as-text-button" onClick={()=>{pinnedRun.current=false;setTestRun(history[0]);}}>최신 실행 보기</button></details>}</div>{!testRun&&runWorkflow&&<div className="as-test-result"><RunWorkflowDiagram workflow={runWorkflow}/></div>}{!testRun&&!runWorkflow&&<div className="as-service-empty"><FileOutput size={30}/><h2>실행 결과</h2><p>요청과 자료를 넣어 실행하면 결과와 단계 기록이 여기에 표시됩니다.</p></div>}{testRun&&<div data-tour="run-result" ref={resultPanel} className="as-test-result"><div className="as-result-title"><strong>{testRun.status==='succeeded'?(testRun.reviews?.length?(testRun.approval_status==='pending'?'검수 완료 · 승인 대기':'검수 완료 · 운영자 결정 저장됨'):'워크플로우 실행 완료'):testRun.status==='failed'?'실행 실패':testRun.status==='running'?'실행 중':'추가 정보 확인 필요'}</strong><span>설정 v{testRun.agent_version} · 실행 {testRun.id.slice(0,8)}</span></div>
 
-      {(testRun.error || testRun.answer) && <p className="as-preserve">{testRun.error || testRun.answer}</p>}
+      {(testRun.error || testRun.answer) && (testRun.error
+       ? <p className="as-preserve">{testRun.error}</p>
+       : testRun.status==='succeeded'&&isGmailSlackSummaryWorkflow(runWorkflow)
+        ? <GmailSummaryResult answer={testRun.answer} workflow={runWorkflow}/>
+        : <RunAnswer text={testRun.answer}/>)}
       {uncertainSlackDelivery&&<p role="alert" className="as-small-muted">Slack 채널에서 메시지를 확인한 뒤 필요하면 새 실행을 시작해주세요.</p>}
       {resultFile && <div className="as-run-file-bar">
         <div><small>{testRun.trigger==='schedule_test'?'시험 예약 · ':testRun.trigger==='scheduled'?'정규 예약 · ':''}결과 파일</small><strong>{resultFile.name}</strong></div>

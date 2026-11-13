@@ -139,12 +139,22 @@ class GmailScheduledSummary(GmailSummary):
     query: Literal['{{gmail.previous_day}}', 'is:unread -in:sent -in:drafts']
 
 
+class GmailSlackSummary(Strict):
+    kind: Literal['gmail_slack_summary']
+    max_results: int = Field(ge=1, le=500)
+    period: Literal['yesterday', 'today', 'recent']
+    query: str | None = Field(default=None, max_length=2000)
+    channel_id: str = Field(pattern=r'^[CGD][A-Z0-9]{8,24}$')
+    schedule: ScheduleSpec | None = None
+    summary_instructions: str = Field(min_length=1, max_length=2000)
+
+
 class ScheduledExecution(Strict):
     kind: Literal['schedule']
     schedule: ScheduleSpec
 
 
-Spec = Annotated[Read | ExtractFields | Compute | ScalarCalculate | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | EmailSend | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | ScheduledExecution,
+Spec = Annotated[Read | ExtractFields | Compute | ScalarCalculate | ParseDates | Filter | Sort | Aggregate | Join | Export | ReceiptWorkbook | Policy | Other | EmailSend | GmailSummary | DocumentAnalysis | HumanReview | Rename | FillMissing | SelectFields | GmailScheduledSummary | GmailSlackSummary | ScheduledExecution,
                  Field(discriminator='kind')]
 
 

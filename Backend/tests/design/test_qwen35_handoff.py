@@ -47,6 +47,7 @@ def test_outcome_alternatives_survive_real_deepagent_model_binding():
     from langchain.agents.structured_output import ProviderStrategy
     from infrastructure.llm.ollama_chat_model import OllamaChatOpenAI
     calls=[];answer=draft(questions=['어떤 조건인가요?']);answer['requirements']=[]
+    answer['request_input_mode']=None  # Strict model wire schemas include every optional field.
     def response(request):
         calls.append(json.loads(request.content))
         return httpx.Response(200,json={'id':'chat-test','object':'chat.completion','created':0,

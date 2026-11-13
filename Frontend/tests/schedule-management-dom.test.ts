@@ -26,7 +26,7 @@ const daily={frequency:'daily',timezone:'Asia/Seoul',hour:9,minute:0,weekday:nul
 const saved={active:false,spec:daily,next_run_at:'2026-11-12T00:00:00Z',agent_version:1};
 async function mount(component:any,handler?:(path:string,body:any)=>unknown){
  dom.window.close();installDOM();const calls:{path:string;body:any}[]=[];
- globalThis.fetch=(async(path:any,init?:RequestInit)=>{const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({path:String(path),body});return new Response(JSON.stringify(await handler?.(String(path),body)),{headers:{'Content-Type':'application/json'}});}) as any;
+ globalThis.fetch=(async(path:any,init?:RequestInit)=>{const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({path:String(path),body});const value=String(path)==='/api/workflows'?{workflows:[]}:await handler?.(String(path),body);return new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});}) as any;
  const root=createRoot(document.getElementById('root'));await act(async()=>{root.render(component);await tick();});
  return {calls,render:async(component:any)=>act(async()=>{root.render(component);await tick();}),close:async()=>{await act(async()=>{root.unmount();await tick();});globalThis.fetch=originalFetch;}};
 }

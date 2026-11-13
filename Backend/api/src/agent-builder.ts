@@ -1,7 +1,7 @@
 import {parseToolGapChoiceRequest,parseRedesignDecisionRequest} from './tool-gap-contract';
 import {parseRequestTimezone} from './request-timezone';
 import {agentPython,backendPath,dataDirectory} from './paths';
-import {builderNeedsGmail,builderNeedsModel} from './builder-model-requirements';
+import {builderNeedsGmail,builderNeedsModel,builderNeedsSlack} from './builder-model-requirements';
 import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {extname} from 'node:path';
 import {existsSync,mkdirSync,appendFileSync} from 'node:fs';
@@ -191,7 +191,7 @@ export async function parseBuilderAsset(input:any,onArtifactDirectory?:(relative
  return {asset:{name:input.fileName,kind,format,size_bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex'),row_count:rows.length,columns,profile,preview:rows.slice(0,3),text,pages,
   capabilities:[kind,...(kind==='table'&&routed?.text.trim()?['document']:[])],...documentMeta},rows};
 }
-export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void,gmailAccessToken?:()=>Promise<string|undefined>):Promise<boolean>{
+export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,url:URL,store:Store,readBody:(req:IncomingMessage,max?:number)=>Promise<any>,json:(res:ServerResponse,status:number,value:any)=>void,gmailAccessToken?:()=>Promise<string|undefined>,slackAccessToken?:()=>Promise<string|undefined>):Promise<boolean>{
  if(!url.pathname.startsWith('/api/agent-builder/'))return false;
  const action=url.pathname.slice('/api/agent-builder/'.length),method=req.method||'GET';
  if(action==='source_original'){
@@ -321,6 +321,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(method!=='GET'){res.setHeader('Allow','GET');json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
   json(res,200,await builderWorker({action:'schedules'}));return true;
  }
+ if(action==='workflow_folders'&&method==='POST'){
+  const data=await readBody(req,50000);
+  if(!data||!['create','rename','delete','move'].includes(data.operation)||!Number.isSafeInteger(data.revision)||data.revision<0||data.folder_id!=null&&(typeof data.folder_id!=='string'||!idPattern.test(data.folder_id)))throw new Error('폴더 작업과 버전을 확인하세요.');
+  json(res,200,await builderWorker({action:'workflow_folders',operation:data.operation,revision:data.revision,folder_id:data.folder_id??null,name:data.name,agent_ids:data.agent_ids}));return true;
+ }
  if(action==='rename_agent'&&method==='POST'){
   const data=await readBody(req,4096);
   if(typeof data?.id!=='string'||!idPattern.test(data.id)||!Number.isSafeInteger(data.version)||data.version<1||typeof data.name!=='string')throw new Error('워크플로우 ID, 버전, 이름을 확인해주세요.');
@@ -381,7 +386,10 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    if(typeof data.includeSchedule!=='boolean')throw new Error('예약을 함께 저장할지 선택해주세요.');
    payload.include_schedule=data.includeSchedule;
   }
-  if(['message','confirm'].includes(workerAction)&&typeof store.gmailConnected==='function')payload.gmail_connected=store.gmailConnected();
+  if(['message','confirm'].includes(workerAction)){
+   if(typeof store.gmailConnected==='function')payload.gmail_connected=store.gmailConnected();
+   if(typeof store.listCredentials==='function')payload.slack_connected=store.listCredentials().some(c=>c.provider==='slack'&&(c.service==='slack'||!c.service));
+  }
   if(workerAction==='attach_asset'){
    if(typeof data.assetId!=='string'||!idPattern.test(data.assetId))throw new Error('연결할 자료 ID를 확인하세요.');
    payload.asset_id=data.assetId;
@@ -422,6 +430,8 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    const current=await builderWorker({action:'agent',id:data.id});
    if(builderNeedsGmail(current.agent.config,current.agent.workflow_dependencies)&&!await gmailAccessToken?.())
     throw new Error('예약 실행에 사용할 Gmail 계정을 먼저 연결해주세요.');
+   if(builderNeedsSlack(current.agent.config,current.agent.workflow_dependencies)&&!await slackAccessToken?.())
+    throw new Error('예약 실행에 사용할 Slack 계정을 먼저 연결해주세요.');
   }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
    if(['message','confirm'].includes(workerAction)){
@@ -431,6 +441,9 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     generationRequestId=payload.generation_request_id;
    }
    const current=await builderWorker({action:workerAction==='test'?'agent':['resume_run','retry_run'].includes(workerAction)?'run':'session',id:data.id});
+   if(workerAction==='retry_run'&&(current.run?.error_type==='SlackDeliveryUnknown'||
+    current.run?.error_type==='InterruptedExecution'&&builderNeedsSlack(current.run.config_snapshot,current.run.workflow_dependencies)))
+    throw new Error('Slack 메시지가 전송됐을 수 있어요. 채널을 확인한 뒤 필요하면 새 실행을 시작해주세요.');
    if(workerAction==='test'&&payload.use_schedule&&!current.schedule)throw new Error('예약 설정을 먼저 저장하세요.');
    if(workerAction==='test'&&!payload.content&&(payload.use_schedule?current.schedule_request_required:current.request_required))throw new Error('이 워크플로우에 필요한 실행 요청을 입력하세요.');
    const config=workerAction==='test'?current.agent.config:['resume_run','retry_run'].includes(workerAction)?current.run.config_snapshot:null;
@@ -444,6 +457,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     payload.api_key=credential.data.apiKey||credential.data.token;
    }
    if(builderNeedsGmail(config,dependencies))payload.gmail_access_token=await gmailAccessToken?.();
+   if(builderNeedsSlack(config,dependencies)){
+    const token=await slackAccessToken?.();
+    if(!token)throw new Error('Slack 계정을 먼저 연결해주세요.');
+    payload.slack_access_token=token;
+   }
   }
   if(['upload','run_upload','source_upload'].includes(workerAction)){
    Object.assign(payload,await parseBuilderAsset(data));

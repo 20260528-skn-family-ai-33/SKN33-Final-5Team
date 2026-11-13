@@ -1,0 +1,10 @@
+.workflow-folders{margin:20px 0;display:grid;gap:12px;min-width:0}
+.workflow-folder-list,.workflow-folder-actions{display:flex;flex-wrap:wrap;gap:8px}
+.workflow-folder-list .as-button{max-width:100%;overflow-wrap:anywhere;white-space:normal;text-align:left}
+.workflow-folder-list .as-button svg{flex:none}
+.workflow-folder-form{display:grid;gap:16px}.workflow-folder-form label{display:grid;gap:8px}
+.workflow-folder-form input,.workflow-folder-form select{width:100%;min-height:44px;padding:10px;border:1px solid var(--a4b-border,#cbd5e1);border-radius:6px}
+.workflow-folder-form>div{display:flex;gap:8px;justify-content:flex-end}
+.workflow-card-select{display:inline-flex;align-items:center;gap:8px;font-size:13px}
+.workflow-card-select input,.workflow-select-all input{width:16px;height:16px;margin:0;accent-color:#244e73;flex:none}
+.workflow-select-all{display:flex;align-items:center;gap:8px;margin:12px 0}

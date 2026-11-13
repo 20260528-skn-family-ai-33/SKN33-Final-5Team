@@ -6,7 +6,19 @@ def service_connection_context(state):
     connected = state.get('gmail_connected')
     if type(connected) is not bool:
         connected = None
-    return {'gmail': {
+    slack = state.get('slack_connected')
+    if type(slack) is not bool:
+        slack = None
+    return {'slack': {
+        'connected': slack,
+        'status': 'connected' if slack else 'not_connected' if slack is False else 'unknown',
+        'credentials_managed_by': 'server',
+        'credential_input_required': False,
+        'instruction': ('Slack 계정이 연결되어 있습니다. 전송 대상 채널은 업무 조건으로 확인합니다. '
+                        if slack else 'Slack 계정은 실행 전에 서비스 연결에서 연결합니다. 전송 대상 채널은 업무 조건으로 확인합니다. '
+                        if slack is False else 'Slack 연결 상태를 전달받지 않았습니다. 전송 대상 채널만 업무 조건으로 확인합니다. ')
+                       + '토큰이나 앱 비밀키를 대화에서 요청하지 않습니다.'},
+            'gmail': {
         'connected': connected,
         'status': 'connected' if connected else 'not_connected' if connected is False else 'unknown',
         'credentials_managed_by': 'server',

@@ -52,6 +52,7 @@ ACTIONS={
     'schedules':library.schedules,
     'agent':library.agent,
     'rename_agent':library.rename_agent,
+    'workflow_folders':library.workflow_folders,
     'claim_due':schedules.claim_due,
     'schedule':schedules.schedule,
     'schedule_configure':schedules.schedule_configure,
@@ -72,6 +73,7 @@ ACTIONS={
 def handle(data,conversation=None):
     storage=Storage(data['directory'])
     try:
+        connectors={}
         token=data.get('gmail_access_token')
         if token and data['action'] in {'test','resume_run','retry_run','scheduled_run'}:
             from workflow_engine.unified_tools.expansion.google_adapters import GmailAdapter, GoogleApiError, GoogleJsonTransport
@@ -89,7 +91,13 @@ def handle(data,conversation=None):
                         raise ValueError('Gmail에서 읽기 요청을 허용하지 않았습니다. 계정 연결과 읽기 권한을 다시 확인해주세요.') from None
                     raise
 
-            storage.workflow_connectors={'gmail':read_gmail}
+            connectors['gmail']=read_gmail
+        slack_token=data.get('slack_access_token')
+        if slack_token and data['action'] in {'test','resume_run','retry_run','scheduled_run'}:
+            from workflow_engine.unified_tools.expansion.slack_adapters import SlackAdapter, SlackJsonTransport
+
+            connectors['slack']=SlackAdapter(SlackJsonTransport(lambda: slack_token))
+        if connectors:storage.workflow_connectors=connectors
         view=storage
         if data.get('library_source_snapshot') is not None:
             from workflow_engine.scheduling.library_sources import LibrarySources

@@ -168,6 +168,11 @@ def test_missed_external_delivery_is_recorded_as_missing_capability(text,channel
     s=state(text)
     raw=packet(s,model_decision,conditions=['선별 기준'] if model_decision=='clarify' else None)
     result=assess_capability(s,Fake([raw]))
+    if channel.casefold() in ('슬랙','slack'):
+        assert result['decision'] in ('clarify','manual_review')
+        assert result['missing_actions'] == []
+        assert result['allows_generation'] is False and result['model_calls']==1
+        return
     assert result['decision']=='missing_capability' and result['missing_conditions']==[]
     assert result['missing_actions']==['외부 '+channel+' 전송'] and result['model_decision']==model_decision
     assert result['allows_generation'] is False and result['model_calls']==1

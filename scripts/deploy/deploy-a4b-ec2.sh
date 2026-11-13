@@ -172,9 +172,10 @@ if os.path.exists(sys.argv[2]):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         key, sep, value = line.partition("=")
-        if not sep or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or key in ("EASYFLOW_PUBLIC_URL", "PORT"):
+        if not sep or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or key in ("EASYFLOW_PUBLIC_URL", "PORT", "A4B_MIGRATION_DATABASE_URL"):
             raise SystemExit("Unsupported line in env-overrides: " + key)
         settings[key] = value
+settings.pop("A4B_MIGRATION_DATABASE_URL", None)
 switching = previous_store == "sqlite" and settings.get("A4B_STORAGE") == "postgres"
 if switching and sys.argv[3] != "exited":
     raise SystemExit("Stop the SQLite container, back up its volume and complete the import before cutover.")
@@ -185,6 +186,27 @@ print("\n".join(key + "=" + value for key, value in settings.items()))
 ' "$public_url" "$overrides" "$old_status" > "$env_file"
 
     pull_image "$image"
+    # A schema upgrade must precede the new image's PostgreSQL preflight. Keep the
+    # administrator URL in a separate root-only file and pass it only to this
+    # short-lived migration container, never to the replacement app container.
+    migration_env="$state/migration-env"
+    if [[ "$mode" == production && $(grep -c '^A4B_STORAGE=postgres$' "$env_file" || true) -gt 0 && ( -e "$migration_env" || -L "$migration_env" ) ]]; then
+        if [[ ! -f "$migration_env" || -L "$migration_env" || $(stat -c '%u %a' "$migration_env") != '0 600' ]]; then
+            echo 'migration-env must be a root-owned regular file with mode 600.' >&2
+            exit 1
+        fi
+        mapfile -t migration_lines < "$migration_env"
+        if [[ ${#migration_lines[@]} -ne 1 || ! ${migration_lines[0]} =~ ^A4B_MIGRATION_DATABASE_URL=postgres(ql)?://[^[:space:]]+$ ]]; then
+            echo 'migration-env must contain one A4B_MIGRATION_DATABASE_URL=postgresql://... line.' >&2
+            exit 1
+        fi
+        unset migration_lines
+        if ! docker run --rm --network host --env-file "$env_file" --env-file "$migration_env" "${mount_args[@]}" "$image" \
+            /app/Backend/.venv-agent/bin/python /app/scripts/deploy/apply-builder-migrations.py --existing-only; then
+            echo 'Business-data migration failed before container replacement.' >&2
+            exit 1
+        fi
+    fi
     # During the first cutover the source stays offline. Reject an import that
     # started before the last SQLite writer stopped, including after a rollback.
     preflight=(--preflight)
@@ -193,7 +215,7 @@ print("\n".join(key + "=" + value for key, value in settings.items()))
         preflight+=("--sqlite-stopped-at=$stopped_at")
     fi
     if ! docker run --rm --network host --env-file "$env_file" "${mount_args[@]}" "$image" node Backend/api/build-server/index.mjs "${preflight[@]}"; then
-        echo 'Preflight failed before container replacement.' >&2
+        echo 'Preflight failed before container replacement. If a PostgreSQL schema upgrade is required, provide the root-only migration-env file.' >&2
         exit 1
     fi
     # Use the effective production settings, including any explicit model paths.

@@ -492,6 +492,9 @@ def make_meaning_node(model, api_key='', transport=None, enabled=True, *, capabi
         from .gmail_summary import gmail_summary_request
         if gmail_summary_request(state):
             return {}
+        from .gmail_slack import gmail_slack_candidate
+        if gmail_slack_candidate(state):
+            return {}
         from .requirement_ledger import requirement_transport, summary_delivery_spec
         if (checks_requirements or state.get('requirement_required')) and summary_delivery_spec(state):
             # The enforced requirement path owns the complete document request.

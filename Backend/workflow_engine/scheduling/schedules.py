@@ -15,6 +15,8 @@ def required_connections(config,dependencies=None):
             providers.add('gmail')
         elif node['tool'].startswith('calendar.'):
             providers.add('google_calendar')
+        elif node['tool']=='slack.post_message':
+            providers.add('slack')
         elif node['tool']=='saved_workflow':
             child=(dependencies or {}).get(node['id'])
             if child:providers.update(required_connections(child['config'],child.get('workflow_dependencies')))

@@ -63,6 +63,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
             # including resumed interrupts. Never retain OAuth tokens in graph state.
             connected=getattr(storage,'gmail_connected',None)
             if hasattr(storage,'gmail_connected'):state={**state,'gmail_connected':connected if type(connected) is bool else None}
+            slack_connected=getattr(storage,'slack_connected',None)
+            if hasattr(storage,'slack_connected'):state={**state,'slack_connected':slack_connected if type(slack_connected) is bool else None}
             audit=getattr(storage,'generation_audit',None)
             if audit:audit.enter(name)
             try:
@@ -128,6 +130,9 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         from agent_builder.design.attachment_precheck import missing_attachment_reply
         quick=missing_attachment_reply(state)
         if quick:return quick
+        from agent_builder.design.gmail_slack import gmail_slack_reply
+        slack=gmail_slack_reply(state)
+        if slack:return slack
         from agent_builder.design.gmail_summary import gmail_summary_reply
         gmail=gmail_summary_reply(state)
         if gmail:return gmail

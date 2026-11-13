@@ -23,4 +23,4 @@ if __name__=='__main__':
         import traceback,os
         if os.environ.get('A4B_DIAGNOSTICS'):
             Path(__import__('tempfile').gettempdir(),'a4b-worker-diagnostic.json').write_text(json.dumps({'type':type(error).__name__,'code':getattr(error,'code',None),'param':getattr(error,'param',None),'frames':[{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)[-6:]]}))
-        print(json.dumps({'ok':False,'error':public_error(error,data.get('api_key',''))},ensure_ascii=False))
+        print(json.dumps({'ok':False,'error':public_error(error,data.get('api_key',''),data.get('gmail_access_token',''),data.get('slack_access_token',''))},ensure_ascii=False))

@@ -23,7 +23,7 @@
 
 자료함에서는 현재 폴더의 파일 검색, 하위 폴더 생성, 폴더 이름 변경·이동, 파일 이동, 기존 내용 보기와 자료 사용처 확인을 제공합니다. 원본 파일 등록은 기존 문서·표 파서와 파일당 8MB 제한을 재사용합니다. 파일이 있거나 하위 폴더가 있는 폴더는 삭제할 수 없습니다. 폴더 이름 중복과 자기 자신·하위 폴더로의 이동도 서버에서 차단합니다.
 
-PostgreSQL 배포에는 `005_personal_asset_library.sql`과 `006_team_sharing.sql` 적용이 필요합니다. Node와 Python의 필수 스키마 버전은 6입니다. 운영 배포 전에 새 코드/검증 이미지의 `scripts/deploy/apply-builder-migrations.py --dry-run`으로 미적용 항목을 확인하고 관리자 계정으로 적용한 다음, 같은 이미지의 앱 계정 시작 전 검증을 통과해야 합니다. 기존 RDS에는 신규 빈 DB용 `prerequisites.sql`·`schema.sql`을 다시 적용하지 않습니다. 로컬 SQLite는 자료함 표를 추가하며 기존 자료를 새 파일로 복사하지 않습니다.
+PostgreSQL 배포에는 `005_personal_asset_library.sql`부터 최신 `008_workflow_folders.sql`까지의 적용이 필요합니다. 현재 Node와 Python의 필수 스키마 버전은 8입니다. 운영 배포 전에 새 코드/검증 이미지의 `scripts/deploy/apply-builder-migrations.py --dry-run`으로 미적용 항목을 확인하고 관리자 계정으로 적용한 다음, 같은 이미지의 앱 계정 시작 전 검증을 통과해야 합니다. 기존 RDS에는 신규 빈 DB용 `prerequisites.sql`·`schema.sql`을 다시 적용하지 않습니다. 로컬 SQLite는 자료함 표를 추가하며 기존 자료를 새 파일로 복사하지 않습니다.
 
 ## 팀 공유와 서비스 내부 초대
 
@@ -126,7 +126,7 @@ docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /a
 docker compose --env-file .env.aws run --rm -e A4B_MIGRATION_DATABASE_URL app /app/Backend/.venv-agent/bin/python /app/scripts/deploy/apply-builder-migrations.py
 ```
 
-`002`는 LangGraph 체크포인트 표에 작업 공간 열과 보안 정책을 더하고, `003`은 볼륨 이전 완료 기록, `004`는 `a4b.workflow_generation_requests`와 행 수준 보안, `005`는 자료함 공간·폴더·파일 배치 정보, `006`은 팀·구성원·서비스 내부 초대를 만듭니다. 적용 버전은 계속 `a4b_builder.schema_migrations`에서 관리합니다. 이미 적용한 버전은 건너뜁니다. 새 서버는 스키마 버전 6을 요구하므로 배포 전에 관리자 계정으로 마이그레이션을 적용합니다. 현재 자동 배포는 SQL 마이그레이션을 실행하지 않으므로 머지에 앞서 이 한 번의 적용을 완료해야 합니다. 적용 누락 시 새 이미지의 사전 검사가 실패하고 기존 앱을 유지합니다.
+`002`는 LangGraph 체크포인트 표에 작업 공간 열과 보안 정책을 더하고, `003`은 볼륨 이전 완료 기록, `004`는 `a4b.workflow_generation_requests`와 행 수준 보안, `005`는 자료함 공간·폴더·파일 배치 정보, `006`은 팀·구성원·서비스 내부 초대를 만들며, `007`은 예약 자료 연결, `008`은 워크플로우 폴더를 만듭니다. 적용 버전은 계속 `a4b_builder.schema_migrations`에서 관리하며 이미 적용한 버전은 건너뜁니다. 자동 배포에서 증분 마이그레이션을 적용하려면 EC2의 `/var/lib/a4b-deploy/migration-env`를 root 소유·권한 `0600`의 일반 파일로 준비하고 `A4B_MIGRATION_DATABASE_URL=postgresql://...` 한 줄만 넣습니다. 배포 스크립트는 새 이미지의 사전 검사 전에 관리자 URL을 일회성 마이그레이션 컨테이너에만 전달합니다. 이 URL을 `env-overrides`나 앱 컨테이너 환경에 넣지 않습니다. 파일이 없고 필요한 버전이 미적용이면 사전 검사가 실패하며 기존 앱을 유지합니다.
 
 ## 기존 SQLite 자료 옮기기
 

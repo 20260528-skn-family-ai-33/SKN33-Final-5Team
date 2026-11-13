@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
 import {AccountMenu} from './auth';
-import {House, Workflow, CalendarClock, History, Layers, FolderOpen, Unplug, Check} from 'lucide-react';
+import {House, Workflow, CalendarClock, History, Layers, FolderOpen, Unplug} from 'lucide-react';
 
 export type WorkspaceDestination = 'home' | 'workflow' | 'workflows' | 'schedules' | 'history' | 'assets' | 'connections';
 
@@ -51,7 +51,6 @@ export function TaskLibraryHeader({active, onNavigate, actions, disabled = false
           disabled={disabled} onClick={()=>onNavigate(destination)}>
           <Icon size={16} aria-hidden="true"/>
           <span>{label}</span>
-          <Check className="task-library-selection" size={14} aria-hidden="true"/>
         </button>
       )}
     </nav>

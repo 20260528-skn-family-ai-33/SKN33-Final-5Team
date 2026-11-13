@@ -39,7 +39,7 @@ test('Slack app install exchanges a bot token without requiring PKCE',async()=>{
   assert.equal(url,SLACK_OAUTH.tokenUrl);
   assert.equal(new URLSearchParams(String(init.body)).has('code_verifier'),false);
   assert.match(new Headers(init.headers).get('Authorization')||'',/^Basic /);
-  return json({ok:true,access_token:'xoxb-test',token_type:'bot',scope:'chat:write'});
+  return json({ok:true,access_token:'xoxb-test',token_type:'bot',scope:'chat:write',team:{id:'T123',name:'SKN33 데모'}});
  })});
  const begin=manager.begin({name:'Slack',service:'slack',clientId:'client-id',clientSecret:'client-secret',tokenAuthMethod:'basic'},authority);
  const url=new URL(begin.authorizationUrl);
@@ -50,6 +50,37 @@ test('Slack app install exchanges a bot token without requiring PKCE',async()=>{
  assert.equal(credential.provider,'slack');
  assert.equal(credential.data.service,'slack');
  assert.equal(credential.data.token,'xoxb-test');
+ assert.equal(credential.data.accountLabel,'SKN33 데모');
+});
+
+test('Google Sheets account scope stores a verified email without exposing its access token',async()=>{
+ let calls=0;
+ const manager=new OAuthManager({port:3010,fetch:mock((url,init)=>{
+  calls++;
+  if(url===GOOGLE_SHEETS_OAUTH.tokenUrl)return json({access_token:'private-sheets-access',refresh_token:'private-sheets-refresh',expires_in:3600});
+  assert.equal(url,'https://openidconnect.googleapis.com/v1/userinfo');
+  assert.equal(new Headers(init.headers).get('Authorization'),'Bearer private-sheets-access');
+  assert.equal(init.redirect,'error');
+  return json({email:'sheets-owner@example.com',email_verified:true});
+ })});
+ const begin=manager.begin({name:'Google Sheets',service:'googleSheets',clientId:'google-client',clientSecret:'google-secret',scope:GOOGLE_SHEETS_OAUTH.accountScope},authority);
+ assert.equal(new URL(begin.authorizationUrl).searchParams.get('scope'),GOOGLE_SHEETS_OAUTH.accountScope);
+ const credential=await manager.complete({state:begin.stateId,code:'code'},authority);
+ assert.equal(credential.data.accountLabel,'sheets-owner@example.com');
+ assert.equal(calls,2);
+ const directory=mkdtempSync(join(tmpdir(),'easyflow-oauth-identity-')),store=new Store(directory);
+ try{const saved=store.saveCredential(credential);assert.equal('accountLabel' in saved,false);assert.equal('accountLabel' in store.listCredentials()[0],false);assert.equal(store.getCredential(saved.id).data.accountLabel,'sheets-owner@example.com');}
+ finally{store.close();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('Google Sheets connection succeeds when identity lookup fails or is unverified',async()=>{
+ for(const userInfo of [()=>{throw new Error('private-userinfo-token');},()=>json({email:'unverified@example.com',email_verified:false})]){
+  const manager=new OAuthManager({port:3010,fetch:mock((url)=>url===GOOGLE_SHEETS_OAUTH.tokenUrl?json({access_token:'private-access'}):userInfo())});
+  const begin=manager.begin({name:'Google Sheets',service:'googleSheets',clientId:'google-client',clientSecret:'google-secret',scope:GOOGLE_SHEETS_OAUTH.accountScope},authority);
+  const credential=await manager.complete({state:begin.stateId,code:'code'},authority);
+  assert.equal(credential.data.token,'private-access');
+  assert.equal(credential.data.accountLabel,undefined);
+ }
 });
 
 test('code exchange sends the matching verifier and exact callback in a POST body, consumes state, and returns server-only credential data',async()=>{
@@ -150,6 +181,7 @@ test('Google preset endpoints and scopes cannot be changed to another provider',
  const manager=new OAuthManager({port:3010});
  for(const extra of [{tokenUrl:generic.tokenUrl},{authorizationUrl:generic.authorizationUrl},{scope:'https://www.googleapis.com/auth/drive'},{tokenAuthMethod:'none' as const}])assert.throws(()=>manager.begin({name:'시트',clientId:'google-client',service:'googleSheets',...extra},authority),/Google Sheets/);
  assert.doesNotThrow(()=>manager.begin({name:'읽기 전용 시트',clientId:'google-client',service:'googleSheets',scope:GOOGLE_SHEETS_OAUTH.readonlyScope},authority));
+ assert.doesNotThrow(()=>manager.begin({name:'계정 표시 시트',clientId:'google-client',service:'googleSheets',scope:GOOGLE_SHEETS_OAUTH.accountScope},authority));
  assert.throws(()=>manager.begin({...generic,clientId:''},authority),/클라이언트 ID/);
 });
 

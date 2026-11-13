@@ -145,6 +145,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
     if run_id:
         run=storage.test(run_id)
         if run['agent_id']!=agent_id or run['status']!=('failed' if retry else 'needs_input'):raise ValueError('이어갈 수 있는 실행이 아닙니다.')
+        if retry:
+            from workflow_engine.scheduling.schedules import required_connections
+            if run.get('error_type')=='SlackDeliveryUnknown' or (run.get('error_type')=='InterruptedExecution' and
+                    'slack' in required_connections(run['config_snapshot'],run.get('workflow_dependencies'))):
+                raise ValueError('Slack 메시지가 전송됐을 수 있어요. 채널을 확인한 뒤 필요하면 새 실행을 시작해주세요.')
         run.update(_retry=retry,_previous_status=run['status'],_previous_error=run.get('error'),_previous_updated_at=run.get('updated_at'))
         config=run['config_snapshot'];model=run['model']
     else:
@@ -175,7 +180,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         # can resume its input and completed steps without losing or replaying them.
         request=run['request']  # A reclaimed start uses the input persisted by its original owner.
         # Run Now can use the saved schedule instructions, separately from real customer input.
-        task_prompt=request or (config.get('instructions','') if config.get('schedule') else '')
+        task_prompt=request or config.get('instructions','')
         result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':task_prompt,'file_ids':run['file_ids'],'messages':[{'role':'user','content':request}] if request else [],'customer_message':request,'reply_draft':run.get('reply_draft')},cfg,durability='sync')
         snapshot=graph.get_state(cfg);state=snapshot.values;outputs=state.get('outputs',{})
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]

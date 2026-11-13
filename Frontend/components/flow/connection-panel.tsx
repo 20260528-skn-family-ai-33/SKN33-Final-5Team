@@ -1,7 +1,7 @@
 "use client";
 
 import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
-import {AlertCircle, CheckCircle2, KeyRound, Loader2, PlugZap, RefreshCw, ShieldCheck, Trash2, X, Sparkles, Globe, Search, ArrowRight} from 'lucide-react';
+import {AlertCircle, CheckCircle2, KeyRound, Loader2, PlugZap, RefreshCw, ShieldCheck, Trash2, X, Sparkles, Globe, Search} from 'lucide-react';
 import {toast} from 'sonner';
 import {Table, TableHeader, TableBody, TableRow, TableHead, TableCell} from '@/components/ui/table';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@/components/ui/select';

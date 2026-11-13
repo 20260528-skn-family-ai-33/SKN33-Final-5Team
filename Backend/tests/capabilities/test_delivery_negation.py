@@ -30,5 +30,9 @@ def test_negated_delivery_with_particle_is_not_reclassified(text):
 def test_real_delivery_requests_are_still_recorded(text, channel):
     s = state(text)
     result = assess_capability(s, Fake([packet(s, 'existing_tools')]))
+    if channel == '슬랙':
+        assert result['decision'] == 'manual_review'
+        assert result['missing_actions'] == []
+        return
     assert result['decision'] == 'missing_capability'
     assert result['missing_actions'] == ['외부 ' + channel + ' 전송']

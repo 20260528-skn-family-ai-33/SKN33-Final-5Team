@@ -128,7 +128,7 @@ def assemble(state, settings):
     users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
     requirements = [{'description': 'Gmail 메일 요약', 'source_id': 'user', 'quote': users[0]}]
     requirements += [{'description': f'{name} 지정', 'source_id': 'user', 'quote': e['quote']} for name, e in settings['evidence'].items()]
-    return AgentDraft(name='Gmail 메일 요약', purpose=f'{period_text}을 요약합니다.', instructions=f'{period_text}의 본문을 요약합니다.',
+    return AgentDraft(request_input_mode='saved_instructions',name='Gmail 메일 요약', purpose=f'{period_text}을 요약합니다.', instructions=f'{period_text}의 본문을 요약합니다.',
                       tool_ids=['email.list', 'compose_answer'], document_ids=[], requirements=requirements, questions=[], question_options=[],
                       unsupported=[], explanation=f'Gmail에서 {period_text}을 읽고 요약하도록 구성했습니다. 확인 후 저장하세요.',
                       execution_plan={'filters': [], 'sort': [], 'match': 'all', 'missing_policy': 'keep', 'duplicate_policy': 'keep',

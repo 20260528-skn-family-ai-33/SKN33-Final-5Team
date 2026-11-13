@@ -3366,6 +3366,30 @@
       "operation_count": 1
     },
     {
+      "id": "slack.post_message",
+      "name_ko": "Slack 메시지 보내기",
+      "category": "business",
+      "role_ko": "Send bound workflow text to one explicitly selected Slack conversation.",
+      "operations": [
+        {
+          "id": "execute",
+          "runtime_id": "slack.post_message",
+          "status": "external_connection_required",
+          "implementation": "runtime.invoke",
+          "inputs": "channel_id (필수), text (필수, 앞 단계 출력에 연결)",
+          "outputs": "status: accepted_by_provider, channel_id, ts",
+          "requirements": "연결된 Slack 봇과 명시한 C/G/D 채널 ID. 실제 실행에서만 메시지를 보냄.",
+          "side_effect": true,
+          "code_implemented": true
+        }
+      ],
+      "origin": ["slack_adapter", "expansion"],
+      "limitations": ["봇이 참여하거나 전송 가능한 채널에만 보냅니다. 네트워크 오류 후 전송 여부가 불명확하면 자동 재시도하지 않습니다."],
+      "status": "external_connection_required",
+      "all_operations_ready": false,
+      "operation_count": 1
+    },
+    {
       "id": "email.send",
       "name_ko": "메일 발송",
       "category": "business",

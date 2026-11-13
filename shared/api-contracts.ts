@@ -5,7 +5,7 @@ import type {Flow} from './workflow';
 // from Backend/api/src/contracts.ts
 export type Provider='openai'|'slack'|'bearer'|'basic'|'header'|'jwt';
 // from Backend/api/src/contracts.ts
-export type CredentialPublic={id:string;name:string;provider:Provider;service?:string;authType?:'oauth2';createdAt:string;updatedAt:string};
+export type CredentialPublic={id:string;name:string;provider:Provider;service?:string;authType?:'oauth2';accountLabel?:string;createdAt:string;updatedAt:string};
 // from Backend/api/src/assistant.ts
 export type ConversationTurn={role:"user"|"assistant";content:string};
 // from Backend/api/src/assistant.ts

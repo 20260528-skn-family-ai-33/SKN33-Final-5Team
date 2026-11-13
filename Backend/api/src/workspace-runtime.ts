@@ -13,9 +13,12 @@ import type {WebhookResponse} from './contracts';
 import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
 import {visualModelConnection} from './visual-model';
+import {workflowRequestFeedback} from './workflow-request-feedback';
+import {inventoryWorkflowFromRequest} from './inventory-workflow-request';
 import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointer';
 import {storageConfig,builderDatabase} from './storage-config';
 import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
+import {ServiceConnectionIdentity} from './service-connection-identity';
 import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems,splitBinaryItem} from './binary';
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
@@ -45,6 +48,7 @@ const storage=storageConfig();
 const agentCheckpointer=storage.kind==='postgres'?new PostgresCheckpointSaver(builderDatabase(storage),ownerId||'local'):new SqliteCheckpointSaver(dataDirectory('agent-checkpoints.sqlite'));
 const chatInFlight=new Set<string>();
 const oauth=new OAuthManager({port,publicOrigin});
+const serviceConnectionIdentity=new ServiceConnectionIdentity();
 const getUsableCredential=createCredentialRefresher();
 const usableCredential=(id:string,signal?:AbortSignal)=>getUsableCredential(store.getCredential(id),updated=>store.saveCredential(updated),{signal});
 const gmailClientId=process.env.A4B_GMAIL_CLIENT_ID?.trim();
@@ -87,6 +91,20 @@ function gmailAccessToken():Promise<string|undefined>{
   }catch(error){recordGmailEvent('token_refresh_failed');throw error;}
  });
 }
+function slackAccessToken():Promise<string|undefined>{
+ return credentialOperation(async()=>{
+  const account=store.listCredentials().find(c=>c.provider==='slack'&&(c.service==='slack'||!c.service));
+  if(!account)return undefined;
+  const saved=store.getCredential(account.id);
+  const credential=await getUsableCredential(saved,updated=>{
+   const latest=store.getCredential(account.id);
+   if(latest.data.accessToken!==saved.data.accessToken||latest.data.refreshToken!==saved.data.refreshToken)throw new Error('Slack 연결이 바뀌었습니다.');
+   store.saveCredential(updated);
+  });
+  const token=credential.data.token||credential.data.botToken||credential.data.accessToken||credential.data.apiKey;
+  return typeof token==='string'&&token?token:undefined;
+ });
+}
 async function gmailEmail(force=false):Promise<string>{
  if(!store.gmailConnected())throw new Error('Gmail 계정을 먼저 연결해주세요.');
  const revision=gmailIdentityRevision;
@@ -108,7 +126,7 @@ async function gmailEmail(force=false):Promise<string>{
  try{return await pending.request;}
  finally{if(gmailIdentityPending===pending)gmailIdentityPending=undefined;}
 }
-const stopScheduler=withScheduleSourceContext(sourceContext,()=>startBuilderScheduler(store,scheduleState,gmailAccessToken));
+const stopScheduler=withScheduleSourceContext(sourceContext,()=>startBuilderScheduler(store,scheduleState,gmailAccessToken,slackAccessToken));
 const controllers=new Map<string,AbortController>();
 const inFlight=new Set<string>();
 type PendingWebhook={res:ServerResponse;node:FlowNode;mode:'lastNode'|'responseNode';timer?:ReturnType<typeof setTimeout>;responseError?:string};
@@ -259,7 +277,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
      return json(res,200,{email:await gmailEmail(true)});
     }catch{throw new Error('Gmail에 연결하지 못했어요. Gmail API 설정과 읽기 권한을 확인한 뒤 다시 연결해주세요.');}
    }
-   if(await handleAgentBuilder(req,res,url,store,body,json,gmailAccessToken))return;
+   if(await handleAgentBuilder(req,res,url,store,body,json,gmailAccessToken,slackAccessToken))return;
    if(path==='/api/health')return json(res,200,{ok:true,standalone:true,version:'0.2.0',credentials:store.listCredentials().length});
    if(path==='/api/webhook/response'&&method==='GET'){
     const response=store.getWebhookResponse(url.searchParams.get('executionId')||'');if(!response)return json(res,404,{error:'저장된 Webhook 응답을 찾을 수 없어요.'});const fileName=response.fileName.replace(/[\/\\\u0000-\u001f\u007f]/g,'_').slice(0,200).toWellFormed(),extension=fileName.split('.').at(-1)?.replace(/[^a-z0-9]/gi,'')||'bin';
@@ -271,9 +289,16 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'');return json(res,200,{ok:true});}
    }
    if(path==='/api/workflows/from-request'&&method==='POST'){
-    const input=await body(req),model=visualModelConnection();
+    const input=await body(req);
+    const inventory=inventoryWorkflowFromRequest(input?.prompt,store.listCredentials());
+    if(inventory){
+     if(!inventory.workflow)return json(res,200,inventory);
+     const workflow=store.saveFlow(inventory.workflow);
+     return json(res,200,{workflow,summary:inventory.summary,checklist:inventory.checklist});
+    }
+    const model=visualModelConnection();
     const result=await orchestrateWorkflow(input?.prompt,{...model,credentials:store.listCredentials()});
-    if(!result.workflow)return json(res,200,{summary:result.summary,questions:result.questions||[],checklist:result.checklist||[]});
+    if(!result.workflow)return json(res,200,workflowRequestFeedback(result));
     const workflow=store.saveFlow({...result.workflow,active:false});
     return json(res,200,{workflow,summary:result.summary,checklist:result.checklist||[]});
    }
@@ -289,10 +314,17 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});
     if(method==='DELETE'){const id=url.searchParams.get('id')||'';if(store.listFlows().some(f=>f.active&&f.nodes.some(n=>n.credentialId===id)))throw new Error('이 계정을 사용하는 자동 실행을 먼저 꺼주세요.');oauth.cancel(id);store.deleteCredential(id);return json(res,200,{ok:true});}
    }
-   if(path==='/api/service-connections'&&method==='GET')return json(res,200,{
-    services:{googleSheets:{configured:!!(sheetsClientId&&sheetsClientSecret)},slack:{configured:!!(slackClientId&&slackClientSecret)}},
-    credentials:store.listCredentials().filter(c=>c.service==='googleSheets'||c.service==='slack'||c.provider==='slack'),
-   });
+   if(path==='/api/service-connections'&&method==='GET'){
+    const credentials=await Promise.all(store.listCredentials().filter(c=>c.service==='googleSheets'||c.service==='slack'||c.provider==='slack').map(async credential=>{
+     let accountLabel:string|undefined;
+     try{accountLabel=await serviceConnectionIdentity.label(store.getCredential(credential.id));}catch{}
+     return {...credential,...(accountLabel?{accountLabel}:{})};
+    }));
+    return json(res,200,{
+     services:{googleSheets:{configured:!!(sheetsClientId&&sheetsClientSecret)},slack:{configured:!!(slackClientId&&slackClientSecret)}},
+     credentials,
+    });
+   }
    if(path==='/api/service-connections/connect'&&method==='POST'){
     const input=await body(req),service=input?.service;
     if(service!=='googleSheets'&&service!=='slack')throw new Error('연결할 서비스를 확인해주세요.');
@@ -301,7 +333,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(!clientId||!clientSecret)throw new Error('서비스 연결 설정이 아직 준비되지 않았어요. 관리자에게 문의해주세요.');
     const existing=store.listCredentials().find(c=>service==='slack'?c.service==='slack'||c.provider==='slack':c.service==='googleSheets');
     const details=service==='googleSheets'?GOOGLE_SHEETS_OAUTH:SLACK_OAUTH;
-    return json(res,200,oauth.begin({name:service==='googleSheets'?'Google Sheets':'Slack',service,...(existing?{id:existing.id}:{}),clientId,clientSecret,...details,...(service==='slack'?{tokenAuthMethod:'basic' as const}:{})},authority));
+    return json(res,200,oauth.begin({name:service==='googleSheets'?'Google Sheets':'Slack',service,...(existing?{id:existing.id}:{}),clientId,clientSecret,...details,...(service==='googleSheets'?{scope:GOOGLE_SHEETS_OAUTH.accountScope}:{}),...(service==='slack'?{tokenAuthMethod:'basic' as const}:{})},authority));
    }
    if(path==='/api/oauth/begin'&&method==='POST'){
     const input=await body(req);

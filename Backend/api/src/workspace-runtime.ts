@@ -91,6 +91,20 @@ function gmailAccessToken():Promise<string|undefined>{
   }catch(error){recordGmailEvent('token_refresh_failed');throw error;}
  });
 }
+function slackAccessToken():Promise<string|undefined>{
+ return credentialOperation(async()=>{
+  const account=store.listCredentials().find(c=>c.provider==='slack'&&(c.service==='slack'||!c.service));
+  if(!account)return undefined;
+  const saved=store.getCredential(account.id);
+  const credential=await getUsableCredential(saved,updated=>{
+   const latest=store.getCredential(account.id);
+   if(latest.data.accessToken!==saved.data.accessToken||latest.data.refreshToken!==saved.data.refreshToken)throw new Error('Slack 연결이 바뀌었습니다.');
+   store.saveCredential(updated);
+  });
+  const token=credential.data.token||credential.data.botToken||credential.data.accessToken||credential.data.apiKey;
+  return typeof token==='string'&&token?token:undefined;
+ });
+}
 async function gmailEmail(force=false):Promise<string>{
  if(!store.gmailConnected())throw new Error('Gmail 계정을 먼저 연결해주세요.');
  const revision=gmailIdentityRevision;
@@ -112,7 +126,7 @@ async function gmailEmail(force=false):Promise<string>{
  try{return await pending.request;}
  finally{if(gmailIdentityPending===pending)gmailIdentityPending=undefined;}
 }
-const stopScheduler=withScheduleSourceContext(sourceContext,()=>startBuilderScheduler(store,scheduleState,gmailAccessToken));
+const stopScheduler=withScheduleSourceContext(sourceContext,()=>startBuilderScheduler(store,scheduleState,gmailAccessToken,slackAccessToken));
 const controllers=new Map<string,AbortController>();
 const inFlight=new Set<string>();
 type PendingWebhook={res:ServerResponse;node:FlowNode;mode:'lastNode'|'responseNode';timer?:ReturnType<typeof setTimeout>;responseError?:string};
@@ -263,7 +277,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
      return json(res,200,{email:await gmailEmail(true)});
     }catch{throw new Error('Gmail에 연결하지 못했어요. Gmail API 설정과 읽기 권한을 확인한 뒤 다시 연결해주세요.');}
    }
-   if(await handleAgentBuilder(req,res,url,store,body,json,gmailAccessToken))return;
+   if(await handleAgentBuilder(req,res,url,store,body,json,gmailAccessToken,slackAccessToken))return;
    if(path==='/api/health')return json(res,200,{ok:true,standalone:true,version:'0.2.0',credentials:store.listCredentials().length});
    if(path==='/api/webhook/response'&&method==='GET'){
     const response=store.getWebhookResponse(url.searchParams.get('executionId')||'');if(!response)return json(res,404,{error:'저장된 Webhook 응답을 찾을 수 없어요.'});const fileName=response.fileName.replace(/[\/\\\u0000-\u001f\u007f]/g,'_').slice(0,200).toWellFormed(),extension=fileName.split('.').at(-1)?.replace(/[^a-z0-9]/gi,'')||'bin';

@@ -40,6 +40,8 @@ def validate_settings(node, resources=(), allow_unbound=False):
     from workflow_engine.catalog.canonical import validate_constant_domains
     validate_constant_domains(tool,spec['id'],args,binding_names)
     bound = {b['input'] for b in node.get('bindings', [])}
+    if tool=='slack.post_message' and ('text' not in bound or 'text' in args or 'channel_id' in bound):
+        raise ValueError('Slack 메시지는 앞 단계의 text 출력을 연결하고 채널 ID를 직접 지정하세요.')
     if tool=='scalar_calculate' and spec['id']=='evaluate' and isinstance(args.get('formula'),str):
         from workflow_engine.table_formula import formula_columns
         required_variables=formula_columns(args['formula'])

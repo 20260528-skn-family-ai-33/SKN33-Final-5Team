@@ -34,6 +34,7 @@ def load_env():
 def main():
     parser = argparse.ArgumentParser(description='Apply business-data PostgreSQL migrations.')
     parser.add_argument('--dry-run', action='store_true', help='list pending migrations only')
+    parser.add_argument('--existing-only', action='store_true', help='upgrade an existing schema; refuse an uninitialized database')
     args = parser.parse_args()
     load_env()
     from psycopg.conninfo import make_conninfo
@@ -46,12 +47,21 @@ def main():
     params.pop('options', None)  # Migration files name the a4b_builder schema explicitly.
     conninfo = make_conninfo(**{**params, 'application_name': 'a4b-builder-migrate'})
     todo = migrations.pending(conninfo)
+    if args.existing_only and len(todo) == len(migrations.MIGRATIONS):
+        sys.exit('운영 자동 배포는 빈 업무 데이터 DB를 초기화하지 않습니다. DB 대상과 기존 스키마를 확인하세요.')
     if args.dry_run:
         print('적용할 마이그레이션: ' + (', '.join(name for _, name in todo) if todo else '없음'))
+        return
+    if not todo:
+        print('완료: 이미 최신입니다.')
         return
     done = migrations.apply(conninfo)
     print('완료: ' + (', '.join(done) if done else '이미 최신입니다.'))
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as error:
+        # libpq exceptions can contain connection details; never print the URL.
+        sys.exit('업무 데이터 마이그레이션 실패 (' + type(error).__name__ + '). 관리자 DB 연결과 SQL 상태를 확인하세요.')

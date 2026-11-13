@@ -180,6 +180,7 @@ class BuilderState(TypedDict, total=False):
     credential_id: str
     # Server-supplied credential metadata only; never an access/refresh token.
     gmail_connected: bool | None
+    slack_connected: bool | None
     user_timezone: str | None
     temporal_context: dict
     request_meaning: dict | None

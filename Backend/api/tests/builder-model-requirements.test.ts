@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {builderNeedsGmail,builderNeedsModel} from '../src/builder-model-requirements';
+import test from 'node:test';import assert from 'node:assert/strict';import {builderNeedsGmail,builderNeedsModel,builderNeedsSlack} from '../src/builder-model-requirements';
 import {readFileSync,existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {backendPath,agentPython,BACKEND_ROOT} from '../src/paths';
@@ -34,12 +34,19 @@ test('Gmail collection uses the member connection and summarization additionally
  assert.equal(builderNeedsGmail({workflow:{nodes:[{tool:'calendar.list_events'}]}}),false);
 });
 
+test('Slack message delivery requires the connected account through nested workflow dependencies',()=>{
+ const slack={config:{workflow:{nodes:[{id:'send',tool:'slack.post_message',settings:{operation:'execute'}}]}}};
+ assert.equal(builderNeedsSlack(slack.config),true);
+ assert.equal(builderNeedsSlack({workflow:{nodes:[{id:'saved',tool:'saved_workflow'}]}},{saved:slack}),true);
+ assert.equal(builderNeedsSlack({workflow:{nodes:[{tool:'compose_answer'}]}}),false);
+});
+
 test('Node credential routing agrees with the Python executor for all tool modes',{skip:!existsSync(agentPython())},()=>{
  const script=`import json\nfrom workflow_engine.catalog.registry import NATIVE_IDS\nfrom workflow_engine.catalog.canonical import OPERATIONS\nfrom workflow_engine.library.reusable_workflows import requires_model\nrows=[]\nfor tool in sorted(NATIVE_IDS):\n n={'id':'step','tool':tool,'settings':{'instructions':None,'condition_operator':None}}\n rows.append({'node':n,'requires_model':requires_model({'workflow':{'nodes':[n]}})})\nfor tool,specs in OPERATIONS.items():\n for spec in specs:\n  n={'id':'step','tool':tool,'settings':{'operation':spec['id']}}\n  rows.append({'node':n,'requires_model':requires_model({'workflow':{'nodes':[n]}})})\nprint(json.dumps(rows))`;
  const result=spawnSync(agentPython(),['-c',script],{cwd:BACKEND_ROOT,encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);
  const cases=JSON.parse(result.stdout);
- assert.equal(cases.length,111);
+ assert.equal(cases.length,112);
  for(const row of cases)assert.equal(builderNeedsModel({workflow:{nodes:[row.node]}}),row.requires_model,
   row.node.tool+':'+String(row.node.settings.operation||'native'));
 });

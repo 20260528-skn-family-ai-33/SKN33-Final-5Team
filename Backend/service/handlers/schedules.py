@@ -25,7 +25,11 @@ def fail_job(c):
     except ValueError:run=None
     if run and run['status']=='succeeded':
         Schedules(c.storage).finish(c.data['id'],c.data['lease_token'],'succeeded',run_id=run['id'],source_run=run);return run
-    Schedules(c.storage).finish(c.data['id'],c.data['lease_token'],'failed',error='실행 환경·연결 계정을 확인하세요.');return {'status':'failed'}
+    error={
+        'gmail_disconnected':'Gmail 계정을 먼저 연결해주세요.',
+        'slack_disconnected':'Slack 계정을 먼저 연결해주세요.',
+    }.get(c.data.get('reason_code'),'실행 환경·연결 계정을 확인하세요.')
+    Schedules(c.storage).finish(c.data['id'],c.data['lease_token'],'failed',error=error);return {'status':'failed'}
 
 def scheduled_run(c):
     from workflow_engine.runner import run_workflow

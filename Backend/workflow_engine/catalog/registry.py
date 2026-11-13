@@ -101,8 +101,9 @@ def node_ports(node):
 
 # One catalogue for all 56 business tools; retain the six control/compatibility IDs.
 NATIVE_IDS = frozenset(EXECUTORS)
-from workflow_engine.catalog.canonical import BUSINESS_TOOLS, OPERATIONS, contract, operation_spec, ports
-for business in BUSINESS_TOOLS:
+from workflow_engine.catalog.canonical import BUSINESS_TOOLS, BUSINESS_IDS, OPERATIONS, contract, operation_spec, ports
+for business in [*BUSINESS_TOOLS, {'id': 'slack.post_message', 'name': 'Slack 메시지 보내기',
+                                   'description': '앞 단계의 text 출력을 지정한 Slack 채널에 전송합니다.'}]:
     identifier = business['id']
     contracts = [contract(identifier, spec) for spec in OPERATIONS[identifier]]
     item = next((t for t in TOOLS if t['id'] == identifier), None)
@@ -120,7 +121,7 @@ for business in BUSINESS_TOOLS:
                 'version': 1, 'module_path': EXECUTORS[identifier]+':execute',
                 'inputs': inputs, 'outputs': outputs, 'input_ports': inputs, 'output_ports': outputs}
         TOOLS.append(item)
-    item['business_tool'] = True
+    item['business_tool'] = identifier in BUSINESS_IDS
     item['operation_contracts'] = contracts
     item['description'] += ' 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.'
     item['execution_status'] = ('native_ready' if identifier in NATIVE_IDS else

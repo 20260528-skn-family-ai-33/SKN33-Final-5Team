@@ -580,6 +580,26 @@ test('DOM: run history draws the saved version and design opens at reading size 
   assert.ok(document.querySelector('.as-node-inspector')?.textContent?.includes('엑셀 만들기'));
  }finally{await h.close();}
 });
+test('DOM: saved Gmail→Slack run uses its historical workflow to render mail cards',async()=>{
+ const gmailSlack={entry:'mail',nodes:[
+  {id:'mail',tool:'email.list',label:'안 읽은 메일 읽기',bindings:[],settings:{operation:'read_messages',arguments_json:'{"max_results":3,"query":"is:unread"}'}},
+  {id:'summary',tool:'compose_answer',label:'메일 요약',bindings:[{input:'documents',node_id:'mail',output:'documents'}],settings:{}},
+  {id:'post',tool:'slack.post_message',label:'Slack 전송',bindings:[{input:'text',node_id:'summary',output:'text'}],settings:{operation:'execute',arguments_json:'{"channel_id":"C0123456789"}'}},
+ ],edges:[{source:'mail',target:'summary',branch:'next'},{source:'summary',target:'post',branch:'next'}]};
+ const updated={...A,version:2,config:{...A.config,workflow:{entry:'other',nodes:[{id:'other',tool:'read_document',label:'다른 흐름',bindings:[],settings:{}}],edges:[]}}};
+ const answer='조회한 안 읽은 메일 요약:\n\n제목: Slack 평가판 안내\n보낸 사람: Slack <no-reply@slack.com>\n평가판이 시작되었습니다.\n\n{"status":"accepted_by_provider","channel_id":"C0123456789","ts":"123"}';
+ const previous={id:'gmail-slack-run',status:'succeeded',agent_version:1,answer,rows:[],steps:[],evidence:[],config_snapshot:{workflow:gmailSlack}};
+ const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(updated,[previous]):undefined);
+ try{
+  assert.equal(document.querySelectorAll('.as-test-result .gmr-card').length,1);
+  assert.equal(document.querySelector('.gmr-card h3')?.textContent,'Slack 평가판 안내');
+  assert.equal(document.querySelector('.gmr-card-heading p')?.textContent,'Slack <no-reply@slack.com>');
+  assert.doesNotMatch(document.querySelector('.gmr-card-content')!.textContent!,/channel_id|accepted_by_provider/);
+  assert.equal(document.querySelector('.gmr-full')?.hasAttribute('open'),false);
+  assert.equal(document.querySelector('.gmr-full p')?.textContent,answer.split('\n\n{')[0]);
+  assert.doesNotMatch(document.querySelector('.as-test-result')!.textContent!,/accepted_by_provider|channel_id/);
+ }finally{await h.close();}
+});
 test('DOM: fallback save lets users rename an inline CSV and downloads identical bytes without leaving the page',async()=>{
  const csv='\ufeff이름,값\r\n가,1';
  const run={id:'csv',status:'succeeded',answer:'완료',steps:[],rows:[],

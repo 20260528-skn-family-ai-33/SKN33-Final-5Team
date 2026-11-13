@@ -22,6 +22,15 @@ _OTHER_WORK = re.compile(r'구글\s*시트|스프레드시트|캘린더|첨부|�
 _QUESTION = '요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)'
 _PERIOD_QUESTION = '어느 기간에 받은 Gmail 메일을 요약할까요? (예: 어제, 오늘, 최근)'
 _TIME_QUESTION = '매일 몇 시에 실행할까요? (한국 시간, 예: 오전 9시)'
+SUMMARY_CARD_FORMAT = (
+    '\n메일이 있으면 메일마다 아래 세 필드를 순서대로 한 번씩 쓰고, 메일 사이는 빈 줄로 구분하세요. '
+    '필드명은 바꾸지 말고 Markdown 표·목록이나 앞뒤 설명을 추가하지 마세요.\n'
+    '제목: 실제 메일의 제목\n보낸 사람: 실제 메일의 발신자\n'
+    '핵심: 원문에서 확인된 중요한 사실·기한·필요한 조치를 1~2문장으로 요약\n'
+    '콜론 오른쪽에는 실제 메일에서 확인한 값을 적으세요. '
+    '메일 본문 전체나 홍보 문구를 옮기지 말고 긴 URL을 복사하지 마세요. '
+    '원문에 없는 메일·날짜·조치·사실을 만들지 마세요.'
+)
 
 
 def _users(state):
@@ -134,7 +143,8 @@ def gmail_slack_request(state):
                 query=query, schedule=schedule, scheduled=scheduled, unread=unread,
                 channel_id=channel_id, missing_conditions=missing,
                 summary_instructions=(f'조회한 {"안 읽은 " if unread else ""}Gmail 메일 최대 {count}건을 사용자 요청에 맞춰 요약하세요: {first} '
-                                      '메일이 없으면 없다고 안내하세요. Slack 전송은 다음 단계가 처리하므로 요약 텍스트만 작성하세요.'))
+                                      '메일이 없으면 없다고 안내하세요. Slack 전송은 다음 단계가 처리하므로 요약 텍스트만 작성하세요.'
+                                      + SUMMARY_CARD_FORMAT))
 
 
 def gmail_slack_assessment(state):

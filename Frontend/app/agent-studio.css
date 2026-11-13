@@ -206,3 +206,7 @@ details.as-setting-section[open] > summary:not(:has(> svg))::after { transform:r
 .as-config-toggle .as-status{display:inline-flex;align-items:center;gap:6px}
 .as-config-toggle[aria-expanded=true] .as-status svg{transform:rotate(180deg)}
 .screen-workflow .as-editor-grid>.as-config:has(.as-config-toggle[aria-expanded=false]){height:auto;min-height:0}
+
+.workflow-title-actions{display:flex;align-items:center;gap:8px;min-width:0}
+.workflow-title-actions :is(h1,h2){min-width:0;overflow-wrap:anywhere}
+.workflow-title-actions .as-button{flex:none;padding-inline:8px}

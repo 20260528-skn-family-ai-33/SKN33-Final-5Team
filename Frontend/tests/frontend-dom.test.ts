@@ -1511,6 +1511,51 @@ test('schedules: pending and failed requests are not presented as an empty sched
  }finally{waiting.resolve({workflows:[]});await h.close();}
 });
 
+test('rename: design and reservation detail persist the title across screens',async()=>{
+ let current=A;
+ const h=await setup('?screen=workflow&service=A',{},(path,body)=>{
+  if(path.includes('/agent?id=A'))return snapshot(current);
+  if(path.endsWith('/agents'))return {agents:[current,B]};
+  if(path.endsWith('/rename_agent')){
+   assert.equal(body.version,current.version);
+   current={...current,version:current.version+1,config:{...current.config,name:body.name}};
+   return {agent:current};
+  }
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('button[aria-label="워크플로우 이름 변경"]')!);
+  await input(field('워크플로우 이름'),'설계에서 변경');
+  await click(button('이름 저장'));
+  assert.equal(document.querySelector('.as-page-title h1')?.textContent,'설계에서 변경');
+  await click(button('작업 라이브러리'));
+  await click(document.querySelector('button[aria-label="설계에서 변경 예약 관리"]')!);
+  await click(document.querySelector('button[aria-label="워크플로우 이름 변경"]')!);
+  await input(field('워크플로우 이름'),'예약에서 변경');
+  await click(button('이름 저장'));
+  assert.equal(document.querySelector('.as-page-title h1')?.textContent,'예약에서 변경');
+  await click(button('작업 라이브러리'));
+  assert.ok(document.querySelector('button[aria-label="예약에서 변경 설계 열기"]'));
+ }finally{await h.close();}
+});
+
+test('rename: reservation list preserves active status after changing the name',async()=>{
+ const workflows=scheduleFixtures();
+ const initial=workflows.find(row=>row.agent.id==='A')!;
+ const h=await setup('?screen=schedules',{},(path,body)=>{
+  if(path.endsWith('/schedules'))return {workflows};
+  if(path.endsWith('/rename_agent'))return {agent:{...initial.agent,version:initial.agent.version+1,config:{...initial.agent.config,name:body.name}}};
+ },createElement(EntryApp));
+ try{
+  const row=scheduleRow('A');
+  const status=row.querySelector('.schedule-status')?.textContent;
+  await click(row.querySelector('button[title="이름 변경"]')!);
+  await input(field('워크플로우 이름'),'새 예약 이름');
+  await click(button('이름 저장'));
+  assert.equal(scheduleRow('A').querySelector('h2')?.textContent,'새 예약 이름');
+  assert.equal(scheduleRow('A').querySelector('.schedule-status')?.textContent,status);
+ }finally{await h.close();}
+});
+
 test('schedules: an empty list offers a fresh workflow without changing an existing saved workflow',async()=>{
  const h=await setup('?screen=schedules',{'a4b-builder-session':'old','a4b-selected-agent':'A'},undefined,createElement(EntryApp));
  try{
@@ -1537,8 +1582,8 @@ test('schedules: management opens the chosen workflow and leaving a pending list
   await click(button('예약 관리'));assert.match(document.body.textContent!,/불러오고/);
   await click(button('워크플로우'));
   await act(async()=>{waiting.resolve({workflows:scheduleFixtures()});await tick();});
-  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(document.querySelector('h1')?.textContent,'일일 보고서');
-  assert.equal(localStorage.getItem('a4b-selected-agent'),'A');
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(document.querySelector('h1')?.textContent,'워크플로우 설계');
+  assert.equal(localStorage.getItem('a4b-selected-agent'),null);
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,0);assert.equal(h.calls.some(call=>call.body),false);
  }finally{waiting.resolve({workflows:[]});await h.close();}
 });
@@ -2181,7 +2226,7 @@ test('home: all sidebar destinations return to home and recent entries retain th
   assert.equal(location.search,'?screen=nodes');
   await goHome();
   const pages = {
-   workflow:'서비스 A',workflows:'작업 라이브러리',schedules:'예약 관리',
+   workflow:'워크플로우 설계',workflows:'작업 라이브러리',schedules:'예약 관리',
    history:'실행 기록',assets:'자료함',connections:'서비스 연결',
   };
   for (const [page,title] of Object.entries(pages)){
@@ -2324,14 +2369,18 @@ test('DOM: recovery polls a running request and enables the next answer after co
 });
 
 
-test('review: workspace menu restores the conversation after visiting assets',async()=>{
+for(const destination of ['자료함','홈','새 워크플로우'])test('navigation: starts clean after '+destination,async()=>{
  const session=readySession();
  const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined,createElement(EntryApp));
  try{
   assert.match(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
-  await click(button('자료함'));await click(button('워크플로우'));
-  assert.equal(localStorage.getItem('a4b-builder-session'),'ready');
-  assert.match(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
+  await click(button(destination));
+  if(destination!=='새 워크플로우')await click(button('워크플로우'));
+  assert.equal(localStorage.getItem('a4b-builder-session'),null);
+  assert.equal(localStorage.getItem('a4b-selected-agent'),null);
+  assert.equal(h.calls.filter(call=>call.path.includes('/session?')).length,1);
+  assert.doesNotMatch(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,'');
   assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,0);
  }finally{await h.close();}
 });

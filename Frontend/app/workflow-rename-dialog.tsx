@@ -1,3 +1,4 @@
+import {request} from '../components/flow/connection-panel';
 import {useRef, useState, type FormEvent} from 'react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
 
@@ -41,4 +42,9 @@ export function WorkflowRenameDialog({name, onSave, onClose}: {
       </form>
     </DialogContent>
   </Dialog>;
+}
+
+export async function renameWorkflow<Agent extends {id:string;version:number}>(agent:Agent,name:string):Promise<Agent> {
+  const result=await request<{agent:Agent}>('/api/agent-builder/rename_agent',{id:agent.id,version:agent.version,name});
+  return result.agent;
 }

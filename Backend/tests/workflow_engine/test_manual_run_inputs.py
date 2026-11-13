@@ -250,14 +250,17 @@ def test_document_question_requires_real_input_even_with_saved_instructions(tmp_
     assert observed==[('문서의 제목은 무엇인가요?','문서의 제목은 무엇인가요?')]
 
 
-def test_saved_schedule_instructions_do_not_satisfy_child_explicit_question():
+@pytest.mark.parametrize('mode',[None,'required','saved_instructions'])
+def test_parent_schedule_prompt_only_satisfies_explicit_fixed_child(mode):
     from agent_builder.conditions.input_requirements import execution_request_required
-    child={'workflow':{'entry':'answer','nodes':[node('answer','agent_node',instructions='사용자 질문에 답하세요.')],'edges':[]},
-           'instructions':'사용자 질문에 답하세요.','request_input_mode':'required'}
+    child={'workflow':{'entry':'read','nodes':[node('read','read_document'),
+            node('answer','compose_answer',[bind('documents','read','documents')],instructions='사용자 질문에 답하세요.')],
+            'edges':[edge('read','answer')]},
+           'instructions':'문서 처리 지시문','request_input_mode':mode}
     call=node('child','saved_workflow')
     config={'workflow':{'entry':'child','nodes':[call],'edges':[]},'instructions':'매일 실행하세요.',
             'schedule':{'frequency':'daily'}}
     dependencies={'child':{'config':child}}
-    assert execution_request_required(config,dependencies)
+    assert execution_request_required(config,dependencies) is (mode!='saved_instructions')
     call['bindings']=[bind('text','previous','text')]
     assert not execution_request_required(config,dependencies)

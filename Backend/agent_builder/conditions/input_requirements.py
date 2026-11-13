@@ -30,7 +30,7 @@ def _request_inputs(config, dependencies, supplied_prompt, depth=0):
             if not child or depth >= 10:
                 return file_reader, True
             child_prompt = any(b['input'] == 'text' for b in node.get('bindings', [])) or (
-                supplied_prompt and child['config'].get('request_input_mode') != 'required')
+                supplied_prompt and child['config'].get('request_input_mode') == 'saved_instructions')
             files, needs_text = _request_inputs(child['config'], child.get('workflow_dependencies', {}), child_prompt, depth + 1)
             if needs_text:
                 return file_reader, True

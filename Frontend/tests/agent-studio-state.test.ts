@@ -18,7 +18,7 @@ function harness(search='',stored:Record<string,string>={}){
  const storage=new Map(Object.entries(stored)),requests:{path:string;body:any}[]=[];let cleanup:(()=>void)|undefined;
  let load:(p:string,b:any)=>Promise<any>=async()=>snapshot('A');
  const c:any={screen:'run',executionMode:'manual',crypto:{randomUUID:()=>'00000000-0000-4000-8000-000000000081'},AbortController,setTimeout,clearTimeout,URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,recovery:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
- c.queuedSourceRuns=[];c.freshFiles={session:'',ids:[]};
+ c.queuedSourceRuns=[];c.freshFiles={session:'',ids:[]};c.externalPromptContext={current:''};
  c.sourceDirtyRef={current:false};c.scheduleDirtyRef={current:false};c.window.confirm=()=>true;
  c.setScheduleSourceDirty=(value:boolean)=>{c.scheduleSourceDirty=value;};
  for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns','SaveReviewOpen','ScheduleSettingsDirty','ClarificationDirty','FreshFiles']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
@@ -39,6 +39,31 @@ test('clarification reply sends the browser timezone and authoritative session r
  await h.c.send(undefined,'JSON으로 해줘','a'.repeat(24));
  assert.deepEqual({...h.requests[0].body},{id:'conversation',revision:4,content:'JSON으로 해줘',userTimezone:'America/New_York',questionId:'a'.repeat(24),generationRequestId:'00000000-0000-4000-8000-000000000081'});
  assert.equal(h.c.session.revision,5);
+});
+test('external service clarification keeps the original request and opens the generated workflow',async()=>{
+ const h=harness();let opened='';h.c.onExternalFlow=(id:string)=>{opened=id;};
+ h.c.text='Google Sheets 재고를 Slack으로 알려줘';
+ h.load(async path=>path==='/api/workflows/from-request'?{summary:'시트 범위를 알려주세요.',questions:[{question:'어느 범위인가요?'}]}:snapshot('A'));
+ await h.c.send();
+ assert.match(h.c.error,/어느 범위/);
+ assert.match(h.c.externalPromptContext.current,/Google Sheets 재고/);
+ h.c.text='재고!A1:D100';
+ h.load(async path=>path==='/api/workflows/from-request'?{workflow:{id:'generated-flow'}}:snapshot('A'));
+ await h.c.send();
+ assert.match(h.requests[1].body.prompt,/추가 답변: 재고!A1:D100/);
+ assert.equal(opened,'generated-flow');
+ assert.equal(h.c.externalPromptContext.current,'');
+});
+test('external request without model questions keeps context and shows requirement details',async()=>{
+ const h=harness();h.c.text='Google Sheets 재고를 Slack으로 알려줘';
+ h.load(async path=>path==='/api/workflows/from-request'?{summary:'재고 흐름',questions:[],requirements:[{id:'sheet',description:'시트 범위 지정',status:'needs_input'}]}:snapshot('A'));
+ await h.c.send();
+ assert.match(h.c.error,/시트 범위 지정/);
+ assert.match(h.c.externalPromptContext.current,/Google Sheets 재고/);
+ h.c.text='재고!A1:D100';
+ h.load(async path=>path==='/api/workflows/from-request'?{workflow:{id:'generated-flow'}}:snapshot('A'));
+ await h.c.send();
+ assert.match(h.requests[1].body.prompt,/추가 답변: 재고!A1:D100/);
 });
 test('failed explicit link reports error and preserves conversation without fallback',async()=>{
  const h=harness('?service=B',{'a4b-builder-session':'old'});h.load(async()=>{throw Error('not found');});h.mount();await flush();assert.equal(h.c.selected,null);assert.equal(h.c.error,'not found');assert.equal(h.storage.get('a4b-builder-session'),'old');assert.equal(h.requests.length,1);

@@ -12,9 +12,12 @@ import {authenticateWebhook,encodedWebhookPath,validateWebhookConfiguration,webh
 import type {WebhookResponse} from './contracts';
 import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
+import {visualModelConnection} from './visual-model';
+import {workflowRequestFeedback} from './workflow-request-feedback';
+import {inventoryWorkflowFromRequest} from './inventory-workflow-request';
 import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointer';
 import {storageConfig,builderDatabase} from './storage-config';
-import {GMAIL_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
+import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
 import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems,splitBinaryItem} from './binary';
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
@@ -48,6 +51,10 @@ const getUsableCredential=createCredentialRefresher();
 const usableCredential=(id:string,signal?:AbortSignal)=>getUsableCredential(store.getCredential(id),updated=>store.saveCredential(updated),{signal});
 const gmailClientId=process.env.A4B_GMAIL_CLIENT_ID?.trim();
 const gmailClientSecret=process.env.A4B_GMAIL_CLIENT_SECRET?.trim();
+const sheetsClientId=process.env.A4B_SHEETS_CLIENT_ID?.trim()||gmailClientId;
+const sheetsClientSecret=process.env.A4B_SHEETS_CLIENT_SECRET?.trim()||gmailClientSecret;
+const slackClientId=process.env.A4B_SLACK_CLIENT_ID?.trim();
+const slackClientSecret=process.env.A4B_SLACK_CLIENT_SECRET?.trim();
 let gmailConnectionRevision=0;
 let gmailConnectionCompleted=0;
 let gmailIdentityRevision=0;
@@ -265,6 +272,20 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(method==='POST'){const value=validateFlow(await body(req));if(value.intentReview){if(!value.intentReview.reviewed||!Array.isArray(value.intentReview.requirements)||value.intentReview.requirements.some((r:any)=>r.status!=='mapped'||!Array.isArray(r.nodeIds)||!r.nodeIds.length||r.nodeIds.some((id:string)=>!value.nodes.some(n=>n.id===id))))throw new Error('초안 설계 근거에서 요구사항과 실제 단계를 확인해주세요.');}const prior=store.getFlow(value.id);const same=prior&&JSON.stringify([prior.nodes,prior.connections,prior.settings])===JSON.stringify([value.nodes,value.connections,value.settings]);value.active=!!(same&&prior.active);if(value.active&&prior?.schedule)value.schedule=prior.schedule;else delete value.schedule;if(prior?.hookToken)value.hookToken=prior.hookToken;else delete value.hookToken;delete value.n8nId;return json(res,200,{workflow:store.saveFlow(value)});}
     if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'');return json(res,200,{ok:true});}
    }
+   if(path==='/api/workflows/from-request'&&method==='POST'){
+    const input=await body(req);
+    const inventory=inventoryWorkflowFromRequest(input?.prompt,store.listCredentials());
+    if(inventory){
+     if(!inventory.workflow)return json(res,200,inventory);
+     const workflow=store.saveFlow(inventory.workflow);
+     return json(res,200,{workflow,summary:inventory.summary,checklist:inventory.checklist});
+    }
+    const model=visualModelConnection();
+    const result=await orchestrateWorkflow(input?.prompt,{...model,credentials:store.listCredentials()});
+    if(!result.workflow)return json(res,200,workflowRequestFeedback(result));
+    const workflow=store.saveFlow({...result.workflow,active:false});
+    return json(res,200,{workflow,summary:result.summary,checklist:result.checklist||[]});
+   }
    if(path==='/api/files'&&method==='POST'){
     const data=await body(req,12*1024*1024);const file=createBinaryFileFromBase64(data.data,{mimeType:data.mimeType||'application/octet-stream',fileName:data.fileName});const item=withBinary({},data.property||'data',file);if(workspaceFilesEnabled){const bytes=decodeBinaryFile(file);await saveWorkspaceFile(binaryObjectPath('uploads',bytes),bytes);}return json(res,200,{input:[item]});
    }
@@ -275,7 +296,21 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    if(path==='/api/credentials'){
     if(method==='GET')return json(res,200,{credentials:store.listCredentials()});
     if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});
-    if(method==='DELETE'){const id=url.searchParams.get('id')||'';if(store.listFlows().some(f=>f.active&&f.nodes.some(n=>n.credentialId===id)))throw new Error('이 계정을 사용하는 자동 실행을 먼저 꺼주세요.');store.deleteCredential(id);return json(res,200,{ok:true});}
+    if(method==='DELETE'){const id=url.searchParams.get('id')||'';if(store.listFlows().some(f=>f.active&&f.nodes.some(n=>n.credentialId===id)))throw new Error('이 계정을 사용하는 자동 실행을 먼저 꺼주세요.');oauth.cancel(id);store.deleteCredential(id);return json(res,200,{ok:true});}
+   }
+   if(path==='/api/service-connections'&&method==='GET')return json(res,200,{
+    services:{googleSheets:{configured:!!(sheetsClientId&&sheetsClientSecret)},slack:{configured:!!(slackClientId&&slackClientSecret)}},
+    credentials:store.listCredentials().filter(c=>c.service==='googleSheets'||c.service==='slack'||c.provider==='slack'),
+   });
+   if(path==='/api/service-connections/connect'&&method==='POST'){
+    const input=await body(req),service=input?.service;
+    if(service!=='googleSheets'&&service!=='slack')throw new Error('연결할 서비스를 확인해주세요.');
+    const clientId=service==='googleSheets'?sheetsClientId:slackClientId;
+    const clientSecret=service==='googleSheets'?sheetsClientSecret:slackClientSecret;
+    if(!clientId||!clientSecret)throw new Error('서비스 연결 설정이 아직 준비되지 않았어요. 관리자에게 문의해주세요.');
+    const existing=store.listCredentials().find(c=>service==='slack'?c.service==='slack'||c.provider==='slack':c.service==='googleSheets');
+    const details=service==='googleSheets'?GOOGLE_SHEETS_OAUTH:SLACK_OAUTH;
+    return json(res,200,oauth.begin({name:service==='googleSheets'?'Google Sheets':'Slack',service,...(existing?{id:existing.id}:{}),clientId,clientSecret,...details,...(service==='slack'?{tokenAuthMethod:'basic' as const}:{})},authority));
    }
    if(path==='/api/oauth/begin'&&method==='POST'){
     const input=await body(req);
@@ -294,13 +329,13 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
       resetGmailIdentity();
       gmail=true;
      }else store.saveCredential(credential);
-     ok=true;message='계정 연결을 마쳤어요. 이 창을 닫고 Easyflow로 돌아가세요.';
+     ok=true;message='계정 연결을 마쳤어요. 이 창을 닫고 A4B로 돌아가세요.';
     }catch{
      if(callbackService==='gmail')recordGmailEvent('oauth_callback_failed');
      else if(callbackService===undefined)recordGmailEvent('oauth_callback_unattributed');
-     message='계정을 연결하지 못했어요. Easyflow에서 로그인 정보를 확인하고 다시 연결해주세요.';
+     message='계정을 연결하지 못했어요. A4B에서 로그인 정보를 확인하고 다시 연결해주세요.';
     }
-    res.writeHead(ok?200:400,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'"});res.end(`<!doctype html><html lang="ko"><meta charset="utf-8"><title>A4B 계정 연결</title><style>body{background:#201c28;color:#f2eafa;font:16px system-ui;padding:72px;line-height:1.8}h1{font-size:26px;color:#ff917d}a{color:#f2eafa}</style><h1>${ok?'연결 완료':'연결 확인이 필요해요'}</h1><p>${message}</p><a href="/?screen=workflows">A4B로 돌아가기</a><script>
+    res.writeHead(ok?200:400,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'"});res.end(`<!doctype html><html lang="ko"><meta charset="utf-8"><title>A4B 계정 연결</title><style>body{background:#201c28;color:#f2eafa;font:16px system-ui;padding:72px;line-height:1.8}h1{font-size:26px;color:#ff917d}a{color:#f2eafa}</style><h1>${ok?'연결 완료':'연결 확인이 필요해요'}</h1><p>${message}</p><a href="/?screen=connections">A4B로 돌아가기</a><script>
 const opener=window.opener;
 if(opener)opener.postMessage({type:'easyflow-oauth',ok:${ok}},location.origin);
 history.replaceState(null,'',location.pathname);
@@ -316,6 +351,7 @@ if(${gmail}){
   location.replace(destination);
  }
 }
+if(!${gmail}){if(opener)window.close();else location.replace('/?screen=connections');}
 </script></html>`);return;
    }
    if(path==='/api/credentials/test'&&method==='POST'){
@@ -337,9 +373,10 @@ if(${gmail}){
     if(chatInFlight.has(session.id))throw new Error('같은 대화의 요청을 처리 중이에요. 완료 후 다시 보내주세요.');
     if(data.revision!==session.revision)throw new Error('대화가 변경됐어요. 다시 열고 확인해주세요.');
     if(typeof data.prompt!=='string'||data.prompt.length>4000||session.conversation.length>=24)throw new Error('대화 길이 제한을 확인해주세요. 새 대화를 시작할 수 있어요.');
-    const credential=store.getCredential(data.credentialId);
+    const serverModel=data.credentialId==='a4b-server-model'?visualModelConnection():null;
+    const credential=serverModel?.credential||store.getCredential(data.credentialId);
     chatInFlight.add(session.id);try{
-    const result=await orchestrateWorkflow(data.prompt,{credential,threadId:session.id,checkpointer:agentCheckpointer,credentials:store.listCredentials(),model:data.model,conversation:session.conversation,currentWorkflow:data.currentWorkflow?validateFlow(data.currentWorkflow):session.result?.workflow||session.context,previousRequirements:session.result?.requirements});
+    const result=await orchestrateWorkflow(data.prompt,{credential,threadId:session.id,checkpointer:agentCheckpointer,credentials:store.listCredentials(),model:serverModel?.model||data.model,...(serverModel?{fetch:serverModel.fetch}:{}),conversation:session.conversation,currentWorkflow:data.currentWorkflow?validateFlow(data.currentWorkflow):session.result?.workflow||session.context,previousRequirements:session.result?.requirements});
     const key=credential.data.apiKey||credential.data.token;
     session.conversation.push({role:'user',content:key?data.prompt.split(key).join('[보호된 연결 정보]'):data.prompt},{role:'assistant',content:result.summary});session.result=result;
     return json(res,200,store.saveAssistantSession(session,data.revision));

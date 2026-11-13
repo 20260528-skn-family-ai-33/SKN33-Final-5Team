@@ -8,3 +8,4 @@
 .gmail-logo { display:block; flex:none; object-fit:contain; }
 .service-connections .service-connection-category:not(:first-of-type){margin-top:28px}
 .service-connections .panel-content{margin-top:24px}
+.service-connection-feedback{margin:0 0 18px;color:var(--a4b-muted);font-size:13px}

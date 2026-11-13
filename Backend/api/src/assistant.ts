@@ -10,6 +10,13 @@ export type {ConversationTurn,AgentRun,AssistantResult};
 
 export type AssistantOptions={agentContext?:unknown;credential:CredentialSecret;credentials:CredentialPublic[];fetch?:typeof fetch;signal?:AbortSignal;model?:string;conversation?:ConversationTurn[];currentWorkflow?:Flow;conversational?:boolean;previousRequirements?:RequirementReview[]};
 export class DraftValidationError extends Error {}
+export const SERVER_VISUAL_MODEL_ID='a4b-visual-model';
+const STANDARD_MODEL_TIMEOUT_MS=60_000;
+export function modelRequestTimeoutMs(credential:Pick<CredentialSecret,'id'>,env:NodeJS.ProcessEnv=process.env):number {
+ if(credential.id!==SERVER_VISUAL_MODEL_ID)return STANDARD_MODEL_TIMEOUT_MS;
+ const seconds=Number(env.A4B_MAIN_TIMEOUT_S);
+ return Number.isFinite(seconds)&&seconds>0?Math.min(Math.max(Math.round(seconds*1000),1000),600_000):180_000;
+}
 const protectedValue='[보호된 연결 정보]';
 const secretKey=/^(?:key|api[-_]?key|private[-_]?key|passphrase|authorization|password|passwd|secret|client[-_]?secret|access[-_]?token|refresh[-_]?token|token|credentials?|credential[-_]?id)$/i;
 const forbiddenKey=new Set(['__proto__','prototype','constructor']);
@@ -147,6 +154,23 @@ export async function boundedResponse(response:Response):Promise<string> {
  try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>MAX_RESPONSE_BYTES){await reader.cancel();throw new Error('AI 응답이 2MB를 넘었어요. 더 작은 자동화로 요청해주세요.');}parts.push(decoder.decode(value,{stream:true}));}parts.push(decoder.decode());return parts.join('');}
  finally{reader.releaseLock();}
 }
+/** Keep all supported operations, but omit bulky field descriptions unless this request needs them. */
+export function supportedCatalogForModel(prompt:string,serverModel=false,currentWorkflow?:Flow){
+ const existingTypes=new Set(currentWorkflow?.nodes.map(node=>node.type)||[]);
+ const relevantLargeFields:Record<string,RegExp>={
+  webhook:/webhook|웹훅|외부.{0,8}요청|요청.{0,8}받/i,
+  respondToWebhook:/webhook|웹훅|요청.{0,8}응답|요청.{0,8}답/i,
+  merge:/merge|합치|병합|결합/i,
+  convertToFile:/파일.{0,8}(만들|생성|변환)|csv.{0,8}(만들|생성)|xlsx.{0,8}(만들|생성)/i,
+  extractFromFile:/파일.{0,8}(읽|추출|가져)|csv.{0,8}(읽|추출)|xlsx.{0,8}(읽|추출)|pdf.{0,8}(읽|추출)/i,
+ };
+ return catalog.map(c=>{
+  const bulky=JSON.stringify(c.fields||[]).length>1200;
+  const relevant=existingTypes.has(c.n8nType)||relevantLargeFields[c.id]?.test(prompt)||prompt.toLocaleLowerCase().includes(c.n8nType.toLocaleLowerCase());
+  const fields=serverModel&&bulky&&!relevant?undefined:c.fields;
+  return {name:c.name,type:c.n8nType,typeVersion:c.typeVersion,description:c.description,defaults:c.parameters,fields,inputs:c.inputs,outputs:c.outputs,credentialProviders:c.credentialProviders,credentialService:c.credentialService,...(c.n8nType==='n8n-nodes-base.webhook'?{credentialConditions:{authentication:webhookAccounts}}:c.n8nType==='n8n-nodes-base.respondToWebhook'?{credentialConditions:{respondWith:{jwt:'jwt'}}}:{})};
+ });
+}
 async function generateAssistant(prompt:string,options:AssistantOptions):Promise<AssistantResult> {
  if(typeof prompt!=='string'||prompt.trim().length<5||prompt.length>4000)throw new Error('하고 싶은 일을 5자에서 4,000자 사이로 적어주세요.');
  const conversation=options.conversation||[];
@@ -154,9 +178,10 @@ async function generateAssistant(prompt:string,options:AssistantOptions):Promise
  const model=options.model??'gpt-4o-mini';if(typeof model!=='string'||!model.trim()||model.length>120)throw new Error('모델 이름은 1자에서 120자 사이로 입력해주세요.');
  const {credential}=options;if(credential.provider!=='openai')throw new Error('AI로 만들기에는 OpenAI 연결 계정을 선택해주세요.');
  const key=credential.data.apiKey||credential.data.token;if(typeof key!=='string'||!key.trim()||/[\r\n]/.test(key))throw new Error('OpenAI API 키를 연결 계정에 등록해주세요.');
- const available=catalog.map(c=>({name:c.name,type:c.n8nType,typeVersion:c.typeVersion,description:c.description,defaults:c.parameters,fields:c.fields,inputs:c.inputs,outputs:c.outputs,credentialProviders:c.credentialProviders,credentialService:c.credentialService,...(c.n8nType==='n8n-nodes-base.webhook'?{credentialConditions:{authentication:webhookAccounts}}:c.n8nType==='n8n-nodes-base.respondToWebhook'?{credentialConditions:{respondWith:{jwt:'jwt'}}}:{})}));
+ const serverModel=options.credential.id===SERVER_VISUAL_MODEL_ID;
+ const available=supportedCatalogForModel(prompt,serverModel,options.currentWorkflow);
  let instructions=[
-  '당신은 Easyflow라는 독립 자동화 프로그램의 설계 도우미입니다. 사용자의 요청을 실행 가능한 워크플로 초안으로 만들고 한국어로 설명합니다. JSON 객체만 반환합니다.',
+  serverModel?'당신은 A4B의 워크플로 설계 도우미입니다. 사용자의 요청을 실행 가능한 워크플로 초안으로 만들고 한국어로 설명합니다. JSON 객체만 반환합니다.':'당신은 Easyflow라는 독립 자동화 프로그램의 설계 도우미입니다. 사용자의 요청을 실행 가능한 워크플로 초안으로 만들고 한국어로 설명합니다. JSON 객체만 반환합니다.',
   '형식: {"workflow":{"name":"이름","nodes":[{"id":"고유문자열","name":"고유한단계이름","type":"지원종류","typeVersion":1,"position":[0,0],"parameters":{}}],"connections":{"시작단계이름":{"main":[[{"node":"다음단계이름","type":"main","index":0}]]}},"settings":{}},"summary":"작동 방식을 2문장으로 설명","checklist":["사용자가 실제 실행 전에 입력할 값"]}.',
   'JSON은 저장하거나 실행되지 않는 초안입니다. 지원 단계만 사용하고 기본 매개변수 구조를 그대로 따르세요. 시작 단계는 하나만 사용하세요. 조건은 맞아요 출력0, 아니에요 출력1입니다. connections[source].main 배열의 위치가 출발 출력 번호이고 edge.index는 도착 입력 번호입니다. IF의 거짓 경로는 main[1]에 놓고 도착 단계가 단일 입력이면 edge.index는 언제나 0입니다. 시작에 제공된 항목을 그대로 처리할 때는 Set으로 빈 배열이나 예시 자료를 덮어쓰지 말고 시작 단계에서 처리 단계로 바로 연결하세요. Switch는 rules.values마다 출력0부터, fallbackOutput이 extra일 때만 마지막 나머지 경로를 만듭니다.',
   `반복은 Loop Over Items(${loopNodeType}) 버전 3으로 구성합니다. done 완료는 출력0, loop 반복 묶음은 출력1입니다. 시작 → 반복 입력(index:0), 반복 출력1 → 반복 본문, 본문의 끝 → 같은 반복의 입력(index:0)으로 돌아오는 feedback 연결 하나, 반복 출력0 → 완료 후 단계로 연결하세요. 본문에 반복 밖에서 직접 들어가거나 서로 다른 반복 본문을 공유하지 마세요. 여러 복귀 경로는 Merge로 하나로 모으세요. 반복 단계의 정해진 feedback 외에는 임의 순환 연결을 만들지 마세요. batchSize는 1~5,000 정수이며 기본값은 1입니다. options.reset은 false를 기본값으로 유지하고, 무조건 reset:true로 매 반복을 초기화하지 마세요.`,
@@ -181,7 +206,7 @@ async function generateAssistant(prompt:string,options:AssistantOptions):Promise
   instructions+='\n최종 출력은 응답 스키마를 따릅니다. workflow={name,nodes,edges}이며 nodes 각 parametersJson에는 단계 설정 객체를 JSON 문자열로 직렬화합니다. 빈 설정은 "{}"입니다. edges의 sourceId와 targetId는 노드 id입니다. outputIndex는 출발 출력 번호, inputIndex는 도착 입력 번호이며 보통 0입니다. connections와 settings는 직접 생성하지 않습니다. 분석 requirements의 id, evidence를 그대로 유지하고 status와 nodeIds로 반영을 기록합니다. mapped인 모든 요구는 nodeIds가 최소 하나 있어야 합니다. 저장·전송하지 않는 제약은 결과를 화면으로 전달하는 마지막 단계 ID에 연결하세요. 조건 설정은 지원 목록의 defaults 구조를 따르고 입력 항목 이름은 사용자가 말한 이름을 그대로 사용하세요. 이미 제공된 시작 데이터는 덮어쓰지 않습니다. 화면 업로드는 수동 시작입니다. 사용자 원문에 없는 분류 기준이나 담당자를 만들지 말고 필수 정보가 없으면 workflow:null 및 추가 질문으로 반환합니다.';
  }
  let response:Response;
- try{response=await (options.fetch||fetch)('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},signal:AbortSignal.any([AbortSignal.timeout(60000),...(options.signal?[options.signal]:[])]),body:JSON.stringify({model:model.trim(),...(model.startsWith('gpt-5')?{reasoning:{effort:'low'}}:{}),instructions,input:mask(options.conversational?JSON.stringify({responseFormat:'JSON',conversation,currentWorkflow:modelContext(options.currentWorkflow??null),previousRequirements:options.previousRequirements||[],agentContext:options.agentContext,message:prompt.trim()}):('JSON request: '+prompt.trim()),key),text:{format:options.agentContext?{type:'json_schema',name:'workflow_design',strict:true,schema}:{type:'json_object'}},store:false,max_output_tokens:8000})});}
+ try{response=await (options.fetch||fetch)('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},signal:AbortSignal.any([AbortSignal.timeout(modelRequestTimeoutMs(options.credential)),...(options.signal?[options.signal]:[])]),body:JSON.stringify({model:model.trim(),...(model.startsWith('gpt-5')?{reasoning:{effort:'low'}}:{}),instructions,input:mask(options.conversational?JSON.stringify({responseFormat:'JSON',conversation,currentWorkflow:modelContext(options.currentWorkflow??null),previousRequirements:options.previousRequirements||[],agentContext:options.agentContext,message:prompt.trim()}):('JSON request: '+prompt.trim()),key),text:{format:options.agentContext?{type:'json_schema',name:'workflow_design',strict:true,schema}:{type:'json_object'}},store:false,max_output_tokens:8000})});}
  catch{throw new Error(options.signal?.aborted?'AI 초안 요청을 중지했어요.':'AI 서비스에 연결하지 못했어요. 인터넷 연결과 모델 이름을 확인해주세요.');}
  if(!response.ok){void response.body?.cancel().catch(()=>{});throw new Error(response.status===429?'AI 요청 한도에 도달했어요. 잠시 후 다시 만들어주세요.':'AI 초안을 만들지 못했어요. OpenAI 계정과 모델 이름을 확인해주세요.');}
  let raw:string;try{raw=await boundedResponse(response);}catch(error){if(error instanceof Error&&error.message.startsWith('AI 응답이 2MB'))throw error;throw new Error('AI 서비스 응답을 끝까지 받지 못했어요. 다시 시도해주세요.');}

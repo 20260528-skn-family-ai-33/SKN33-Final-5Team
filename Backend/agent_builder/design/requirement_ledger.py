@@ -199,6 +199,15 @@ def validate_plan(raw, state):
             raise ValueError('요구사항 ID·선행 업무 관계가 잘못됐습니다: '+
                              json.dumps({'id':task['id'],'depends_on':task['depends_on']},ensure_ascii=False))
         spec=task['spec']
+        if spec['kind'] == 'gmail_slack_summary':
+            from .gmail_slack import gmail_slack_request
+            request=gmail_slack_request(state)
+            expected_spec=(dict(kind='gmail_slack_summary',max_results=request['count'],
+                                period=request['period'],query=request['query'],
+                                channel_id=request['channel_id'],schedule=request['schedule'],
+                                summary_instructions=request['summary_instructions']) if request and not request['missing_conditions'] else None)
+            if (spec != expected_spec or index != 0 or task['quote'] != request['request']):
+                raise ValueError('Gmail 조회·요약·Slack 채널 조건이 사용자 원문과 답변에 일치하지 않습니다.')
         if spec['kind'] == 'email_send' and spec['body'] is not None and (
                 spec != literal_send or index != 0 or task['depends_on'] or task['quote'] != users[index]):
             raise ValueError('메일 수신자·제목·본문을 사용자 답변과 발송 요청에서 확인해야 합니다.')
@@ -536,6 +545,16 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
 
     def check(state):
         target='template' if state.get('condition_route')=='template_plan' else 'plan'
+        from .gmail_slack import gmail_slack_plan
+        slack_plan=gmail_slack_plan(state)
+        if slack_plan:
+            plan=validate_plan(slack_plan,state)
+            return dict(requirement_route=target,requirement_required=True,requirement_ledger=plan,requirement_failure=None,
+                        requirement_fingerprint=ledger_fingerprint(state),requirement_digest=plan_digest(plan),
+                        pending_questions=[q for q in state.get('pending_questions',[]) if q.get('source') not in ('requirement','requirements')],
+                        confirmed=False,saved_agent_id=None,
+                        trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='completed',
+                            detail='Gmail 조회·요약·Slack 전송을 원문과 채널 답변에 맞춰 기록했습니다.',model_calls=0)])
         from .gmail_summary import gmail_summary_plan
         gmail_plan=gmail_summary_plan(state)
         if gmail_plan:

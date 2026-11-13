@@ -11,7 +11,8 @@ from pathlib import Path
 BUSINESS_TOOLS = json.loads(Path(__file__).with_name('business56.json').read_text(encoding="utf-8"))
 BUSINESS_IDS = tuple(t['id'] for t in BUSINESS_TOOLS)
 CONTROL_IDS = ('agent_node', 'finish', 'condition', 'ask_user', 'saved_workflow', 'write_result')
-TOOL_IDS = tuple(dict.fromkeys((*BUSINESS_IDS, *CONTROL_IDS)))
+EXTENSION_IDS = ('slack.post_message',)
+TOOL_IDS = tuple(dict.fromkeys((*BUSINESS_IDS, *CONTROL_IDS, *EXTENSION_IDS)))
 CATALOG = json.loads((Path(__file__).parents[1] / 'unified_tools/catalog.json').read_text(encoding="utf-8"))
 OPERATIONS = {t['id']: [o for o in t['operations'] if not o.get('backend_tool')]
               for t in CATALOG['tools']}
@@ -94,6 +95,7 @@ def ports(tool, spec, selected=None):
 # Scalar policies whose domain must be checked before saving, even when table
 # inputs will only be supplied later. The executor still validates actual data.
 ARGUMENT_CONSTRAINTS = {
+ ('slack.post_message','execute'):{'channel_id':{'type':'string'}},
  ('email.list','read_messages'):{'max_results':{'type':'positive_integer','maximum':500}},
  ('filter_sort','filter'):{'predicates':{'type':'array','items':'object','min_items':1},'combine':{'enum':['and','or']}},
  ('join_tables','join'):{'keys':{'type':'array','items':'string','min_items':1},'how':{'enum':['inner','left']},
@@ -108,6 +110,10 @@ ARGUMENT_CONSTRAINTS = {
 
 
 def validate_constant_domains(tool,operation,args,placeholder_names):
+    if (tool,operation)==('slack.post_message','execute') and 'channel_id' in args:
+        channel_id=args['channel_id']
+        if placeholder_names(channel_id) or not isinstance(channel_id,str) or not re.fullmatch(r'[CGD][A-Z0-9]{8,24}',channel_id):
+            raise ValueError('Slack 채널 ID는 C/G/D로 시작하는 실제 대화 ID를 지정하세요.')
     if tool in ('email.get','email.attachment.get') and 'message_id' in args:
         message_id=args['message_id']
         if not placeholder_names(message_id) and (not isinstance(message_id,str) or message_id.strip() in ('','$binding')):

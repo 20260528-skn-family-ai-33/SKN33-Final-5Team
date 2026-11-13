@@ -1,6 +1,6 @@
 """User-facing error text: never expose provider bodies, prompts or secrets."""
 
-def public_error(error,api_key=''):
+def public_error(error,api_key='',*service_tokens):
     # Provider bodies can contain prompts, billing details or secrets. Do not expose them.
     from pydantic import ValidationError
     import os
@@ -10,9 +10,9 @@ def public_error(error,api_key=''):
         return '모델이 반환한 설정 형식이 올바르지 않습니다. 다시 시도해주세요. (검사 항목: '+fields+')'
     if isinstance(error,ValueError):
         message=str(error)
-        secrets=[api_key,*[os.getenv(name,'') for name in ('A4B_LLM_API_KEY','A4B_MAIN_API_KEY','A4B_VERIFIER_API_KEY')]]
+        secrets=[api_key,*service_tokens,*[os.getenv(name,'') for name in ('A4B_LLM_API_KEY','A4B_MAIN_API_KEY','A4B_VERIFIER_API_KEY')]]
         for secret in secrets:
-            if secret:message=message.replace(secret,'[보호된 키]')
+            if isinstance(secret,str) and secret:message=message.replace(secret,'[보호된 키]')
         return message[:1000]
     name=type(error).__name__
     if isinstance(error,(APITimeoutError,TimeoutError)):

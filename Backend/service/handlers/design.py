@@ -141,6 +141,7 @@ def _generation_action(c):
 def _session_action(c):
     storage=c.storage;data=c.data;action=c.action;api_key=c.api_key;conversation=c.conversation;connection=None
     storage.gmail_connected=data.get('gmail_connected') if type(data.get('gmail_connected')) is bool else None
+    storage.slack_connected=data.get('slack_connected') if type(data.get('slack_connected')) is bool else None
     if action == 'message' and 'user_timezone' in data:
         from agent_builder.design.temporal_context import validate_user_timezone
         storage.request_timezone = validate_user_timezone(data['user_timezone'])

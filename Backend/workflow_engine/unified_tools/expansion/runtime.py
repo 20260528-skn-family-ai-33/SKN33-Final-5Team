@@ -255,3 +255,5 @@ def table_cast(rows,columns):
 
 from workflow_engine.unified_tools.expansion.google_tools import register_google_tools
 register_google_tools(tool,invoke_connector,TOOLS)
+from workflow_engine.unified_tools.expansion.slack_tools import register_slack_tools
+register_slack_tools(tool,invoke_connector,TOOLS)

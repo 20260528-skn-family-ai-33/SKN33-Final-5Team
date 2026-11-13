@@ -77,3 +77,32 @@ test('Gmail schedules fail before starting an execution when the account is disc
  await createBuilderScheduleRunner({} as any,worker,state,async()=>undefined).tick();
  assert.ok(actions.includes('fail_job'));assert.ok(!actions.includes('scheduled_run'));assert.ok(state.lastError);
 });
+
+test('Gmail to Slack scheduled run receives both member access tokens at execution time',async()=>{
+ const actions:Record<string,any>[]=[],state=createBuilderScheduleState();
+ const worker=async(payload:Record<string,any>)=>{
+  actions.push(payload);
+  if(payload.action==='claim_due')return {jobs:[{id:'combined-job',lease_token:'lease',agent_snapshot:{config:{workflow:{nodes:[
+   {id:'read',tool:'email.list',settings:{operation:'read_messages'}},
+   {id:'send',tool:'slack.post_message',settings:{operation:'execute'}},
+  ]}}}}]};
+  return {};
+ };
+ await createBuilderScheduleRunner({} as any,worker,state,async()=> 'gmail-access',async()=> 'slack-bot-access').tick();
+ const run=actions.find(payload=>payload.action==='scheduled_run');
+ assert.deepEqual(run,{action:'scheduled_run',id:'combined-job',lease_token:'lease',api_key:'',gmail_access_token:'gmail-access',slack_access_token:'slack-bot-access'});
+ assert.equal(state.lastError,null);
+});
+
+test('Slack schedule never starts when the member account is disconnected',async()=>{
+ const actions:Record<string,any>[]=[],state=createBuilderScheduleState();
+ const worker=async(payload:Record<string,unknown>)=>{
+  actions.push(payload);
+  if(payload.action==='claim_due')return {jobs:[{id:'slack-job',lease_token:'lease',agent_snapshot:{config:{workflow:{nodes:[{id:'send',tool:'slack.post_message',settings:{operation:'execute'}}]}}}}]};
+  return {};
+ };
+ await createBuilderScheduleRunner({} as any,worker,state,undefined,async()=>undefined).tick();
+ assert.equal(actions.find(payload=>payload.action==='fail_job')?.reason_code,'slack_disconnected');
+ assert.ok(!actions.some(payload=>payload.action==='scheduled_run'));
+ assert.match(state.lastError||'',/Slack 계정/);
+});

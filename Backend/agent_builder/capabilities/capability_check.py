@@ -234,7 +234,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
     setting=mode or os.getenv('A4B_CAPABILITY_MODE','off')
     if setting not in ('off','enforce'):raise ValueError('A4B_CAPABILITY_MODE는 off/enforce이어야 합니다.')
     def check(state):
-        if setting=='off' and not capability_enforced(state):
+        from agent_builder.design.gmail_slack import gmail_slack_assessment, gmail_slack_candidate
+        if setting=='off' and not capability_enforced(state) and not gmail_slack_candidate(state):
             return {'capability_route':'conditions','capability_assessment':None,'capability_enforced':False,
                     'capability_fingerprint':None,'capability_questions':[],'capability_deferred':False}
         deferred=False;reuse_questions=False
@@ -250,6 +251,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                 validate_assessment_decision(previous)
             criterion, evidence = gmail_importance(state)
             if faults:result=assess_capability(state,None)
+            elif (gmail_slack := gmail_slack_assessment(state)):
+                result = validate_assessment_result(gmail_slack, state)
             elif criterion == 'ambiguous':
                 result = {'decision':'clarify', 'tool_ids':[], 'missing_actions':[],
                           'missing_conditions':[IMPORTANCE_QUESTION], 'user_quotes':[evidence],

@@ -49,6 +49,30 @@ def _arguments(node):
 def _matches(spec,node,draft,sources):
     tool=node['tool'];settings=node['settings'];operation=settings.get('operation')
     args=_arguments(node);kind=spec['kind']
+    if kind == 'gmail_slack_summary':
+        if tool != 'slack.post_message' or operation != 'execute' or args != {'channel_id':spec['channel_id']}:
+            return False
+        if len(node['bindings']) != 1 or node['bindings'][0]['input'] != 'text' or node['bindings'][0]['output'] != 'text':
+            return False
+        summary=next((n for n in draft['workflow']['nodes'] if n['id']==node['bindings'][0]['node_id']),None)
+        if (not summary or summary['tool'] != 'compose_answer' or summary['settings'].get('operation')
+                or summary['settings'].get('instructions') != spec['summary_instructions']
+                or len(summary['bindings']) != 1 or summary['bindings'][0]['input'] != 'documents'
+                or summary['bindings'][0]['output'] != 'documents'):
+            return False
+        reader=next((n for n in draft['workflow']['nodes'] if n['id']==summary['bindings'][0]['node_id']),None)
+        if not reader or reader['tool'] != 'email.list' or reader['settings'].get('operation') != 'read_messages' or reader['bindings']:
+            return False
+        read_args=_arguments(reader)
+        if (read_args.get('max_results') != spec['max_results'] or read_args.get('query') != spec['query']
+                or set(read_args)-{'max_results','query'} or draft.get('schedule') != spec['schedule']):
+            return False
+        if bool(spec['schedule']) != (draft.get('report_destination') == 'reports'):
+            return False
+        workflow=draft['workflow']
+        return (workflow.get('entry') == reader['id'] and
+                workflow.get('edges') == [dict(source=reader['id'],target=summary['id'],branch='next'),
+                                          dict(source=summary['id'],target=node['id'],branch='next')])
     if kind == 'email_send':
         if tool != 'email.send' or operation != 'execute' or set(args) != {'to', 'subject', 'body'}:
             return False
@@ -244,6 +268,9 @@ def coverage_report(state,draft):
     expected_sends = sum(t['spec']['kind'] == 'email_send' for t in plan['tasks'])
     if expected_sends and sum(n['tool'] == 'email.send' for n in nodes.values()) != expected_sends:
         problems.append('확인된 이메일 발송 업무 수와 실제 발송 단계 수가 일치하지 않습니다.')
+    expected_slack_sends = sum(t['spec']['kind'] == 'gmail_slack_summary' for t in plan['tasks'])
+    if expected_slack_sends and sum(n['tool'] == 'slack.post_message' for n in nodes.values()) != expected_slack_sends:
+        problems.append('확인된 Slack 전송 업무 수와 실제 전송 단계 수가 일치하지 않습니다.')
     from .gmail_summary import gmail_day_issues
     problems.extend(gmail_day_issues(state, draft))
     from .content_lineage import content_ancestors, content_bindings
@@ -309,7 +336,7 @@ def coverage_report(state,draft):
             # bind its own upstream content, but it does not produce a file's contents.
             from workflow_engine.execution_path import execution_path
             path = {node['id'] for node in execution_path(workflow)}
-            if any(selected[t['id']] not in path for t in tasks if t['spec']['kind'] == 'email_send'):
+            if any(selected[t['id']] not in path for t in tasks if t['spec']['kind'] in ('email_send','gmail_slack_summary')):
                 return False
             return all(any(selected[t['id']]==selected[e] or selected[t['id']] in upstream[selected[e]] for e in exports)
                        for t in tasks if t['id'] not in exports and t['spec']['kind'] != 'email_send') if exports else True

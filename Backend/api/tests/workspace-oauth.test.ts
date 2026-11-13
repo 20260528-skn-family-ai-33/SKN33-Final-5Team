@@ -198,6 +198,34 @@ test('HTTP workspace routing preserves public OAuth callbacks and isolates concu
     await Promise.allSettled(requests);
    }
   });
+  await t.test('service connection status exposes provider identity without exposing it in generic credential metadata',async()=>{
+   members.set('connections',member('connections'));
+   let slackLookups=0;
+   globalThis.fetch=(async(input,init)=>{
+    assert.equal(String(input),'https://slack.com/api/auth.test');
+    assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer private-slack-token');
+    slackLookups++;
+    return Response.json({ok:true,team:'Legacy Slack workspace',user:'bot'});
+   }) as typeof fetch;
+   const sheets=await call('/api/credentials','connections',{name:'Google Sheets',provider:'bearer',data:{service:'googleSheets',authType:'oauth2',accountLabel:'sheet-owner@example.com',token:'private-sheets-token'}});
+   assert.equal(sheets.status,200,sheets.body);
+   const slack=await call('/api/credentials','connections',{name:'Slack',provider:'slack',data:{service:'slack',authType:'oauth2',token:'private-slack-token'}});
+   assert.equal(slack.status,200,slack.body);
+   const status=await call('/api/service-connections','connections');
+   assert.equal(status.status,200,status.body);
+   const connected=JSON.parse(status.body).credentials as {service:string;accountLabel?:string}[];
+   assert.equal(connected.find(value=>value.service==='googleSheets')?.accountLabel,'sheet-owner@example.com');
+   assert.equal(connected.find(value=>value.service==='slack')?.accountLabel,'Legacy Slack workspace');
+   assert.doesNotMatch(status.body,/private-sheets-token|private-slack-token/);
+   await call('/api/service-connections','connections');
+   assert.equal(slackLookups,1,'legacy workspace lookup is cached across status polling');
+   const generic=await call('/api/credentials','connections');
+   assert.equal(generic.status,200,generic.body);
+   assert.doesNotMatch(generic.body,/accountLabel|private-sheets-token|private-slack-token/);
+   const begin=await call('/api/service-connections/connect','connections',{service:'googleSheets'});
+   assert.equal(begin.status,200,begin.body);
+   assert.equal(new URL(JSON.parse(begin.body).authorizationUrl).searchParams.get('scope'),GOOGLE_SHEETS_OAUTH.accountScope);
+  });
  }finally{
   globalThis.fetch=previousFetch;await app.close();await new Promise<void>(resolve=>app.server.close(()=>resolve()));
   if(previousDirectory===undefined)delete process.env.EASYFLOW_DATA_DIR;else process.env.EASYFLOW_DATA_DIR=previousDirectory;

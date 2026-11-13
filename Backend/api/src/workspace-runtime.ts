@@ -18,6 +18,7 @@ import {inventoryWorkflowFromRequest} from './inventory-workflow-request';
 import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointer';
 import {storageConfig,builderDatabase} from './storage-config';
 import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
+import {ServiceConnectionIdentity} from './service-connection-identity';
 import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWithoutBinary,withBinary,assertBinaryItems,splitBinaryItem} from './binary';
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
@@ -47,6 +48,7 @@ const storage=storageConfig();
 const agentCheckpointer=storage.kind==='postgres'?new PostgresCheckpointSaver(builderDatabase(storage),ownerId||'local'):new SqliteCheckpointSaver(dataDirectory('agent-checkpoints.sqlite'));
 const chatInFlight=new Set<string>();
 const oauth=new OAuthManager({port,publicOrigin});
+const serviceConnectionIdentity=new ServiceConnectionIdentity();
 const getUsableCredential=createCredentialRefresher();
 const usableCredential=(id:string,signal?:AbortSignal)=>getUsableCredential(store.getCredential(id),updated=>store.saveCredential(updated),{signal});
 const gmailClientId=process.env.A4B_GMAIL_CLIENT_ID?.trim();
@@ -298,10 +300,17 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});
     if(method==='DELETE'){const id=url.searchParams.get('id')||'';if(store.listFlows().some(f=>f.active&&f.nodes.some(n=>n.credentialId===id)))throw new Error('이 계정을 사용하는 자동 실행을 먼저 꺼주세요.');oauth.cancel(id);store.deleteCredential(id);return json(res,200,{ok:true});}
    }
-   if(path==='/api/service-connections'&&method==='GET')return json(res,200,{
-    services:{googleSheets:{configured:!!(sheetsClientId&&sheetsClientSecret)},slack:{configured:!!(slackClientId&&slackClientSecret)}},
-    credentials:store.listCredentials().filter(c=>c.service==='googleSheets'||c.service==='slack'||c.provider==='slack'),
-   });
+   if(path==='/api/service-connections'&&method==='GET'){
+    const credentials=await Promise.all(store.listCredentials().filter(c=>c.service==='googleSheets'||c.service==='slack'||c.provider==='slack').map(async credential=>{
+     let accountLabel:string|undefined;
+     try{accountLabel=await serviceConnectionIdentity.label(store.getCredential(credential.id));}catch{}
+     return {...credential,...(accountLabel?{accountLabel}:{})};
+    }));
+    return json(res,200,{
+     services:{googleSheets:{configured:!!(sheetsClientId&&sheetsClientSecret)},slack:{configured:!!(slackClientId&&slackClientSecret)}},
+     credentials,
+    });
+   }
    if(path==='/api/service-connections/connect'&&method==='POST'){
     const input=await body(req),service=input?.service;
     if(service!=='googleSheets'&&service!=='slack')throw new Error('연결할 서비스를 확인해주세요.');
@@ -310,7 +319,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(!clientId||!clientSecret)throw new Error('서비스 연결 설정이 아직 준비되지 않았어요. 관리자에게 문의해주세요.');
     const existing=store.listCredentials().find(c=>service==='slack'?c.service==='slack'||c.provider==='slack':c.service==='googleSheets');
     const details=service==='googleSheets'?GOOGLE_SHEETS_OAUTH:SLACK_OAUTH;
-    return json(res,200,oauth.begin({name:service==='googleSheets'?'Google Sheets':'Slack',service,...(existing?{id:existing.id}:{}),clientId,clientSecret,...details,...(service==='slack'?{tokenAuthMethod:'basic' as const}:{})},authority));
+    return json(res,200,oauth.begin({name:service==='googleSheets'?'Google Sheets':'Slack',service,...(existing?{id:existing.id}:{}),clientId,clientSecret,...details,...(service==='googleSheets'?{scope:GOOGLE_SHEETS_OAUTH.accountScope}:{}),...(service==='slack'?{tokenAuthMethod:'basic' as const}:{})},authority));
    }
    if(path==='/api/oauth/begin'&&method==='POST'){
     const input=await body(req);

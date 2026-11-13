@@ -5,6 +5,7 @@ import json
 import pytest
 from langgraph.types import Command
 
+from agent_builder.conditions.input_requirements import execution_request_required
 from agent_builder.design.gmail_slack import gmail_slack_candidate, gmail_slack_reply, gmail_slack_request
 from agent_builder.design.gmail_summary import UNREAD_QUERY
 from agent_builder.design.graph import build_graph
@@ -62,6 +63,8 @@ def test_channel_clarification_then_real_saved_workflow(tmp_path, prompt):
         assert reviewed['status'] == 'ready'
         assert reviewed['__interrupt__'][0].value['kind'] == 'review'
         draft = reviewed['draft']
+        assert draft['request_input_mode'] == 'saved_instructions'
+        assert not execution_request_required(draft)
         assert [node['tool'] for node in draft['workflow']['nodes']] == [
             'email.list', 'compose_answer', 'slack.post_message']
         reader, summary, sender = draft['workflow']['nodes']
@@ -91,6 +94,8 @@ def test_channel_clarification_then_real_saved_workflow(tmp_path, prompt):
         persisted = store.agent(saved['saved_agent_id'])['config']
         assert persisted['workflow'] == draft['workflow']
         assert persisted['schedule'] == draft['schedule']
+        assert persisted['request_input_mode'] == 'saved_instructions'
+        assert not execution_request_required(persisted)
     finally:
         connection.close()
         store.close()
@@ -127,6 +132,74 @@ def test_unread_filter_cannot_be_removed_after_review():
     reader = altered['workflow']['nodes'][0]
     reader['settings']['arguments_json'] = json.dumps({'max_results': 3})
     assert coverage_report({**current, **result}, altered)['issues']
+
+
+@pytest.mark.parametrize('prompt', [SCHEDULED, UNREAD, 'Gmail에서 최근 받은 메일 300건을 요약해서 Slack으로 보내줘'])
+def test_older_saved_gmail_slack_recipe_accepts_empty_execution_request(prompt):
+    current = state(prompt)
+    current['messages'].append(dict(role='user', content=CHANNEL))
+    result = gmail_slack_reply(current)
+    assert result is not None
+    legacy = deepcopy(result['draft'])
+    legacy['request_input_mode'] = None
+    assert not execution_request_required(legacy)
+
+    required = deepcopy(legacy)
+    required['request_input_mode'] = 'required'
+    assert execution_request_required(required)
+
+    changed = deepcopy(legacy)
+    changed['workflow']['nodes'][1]['bindings'] = []
+    if not legacy['schedule']:
+        assert execution_request_required(changed)
+    generic = deepcopy(legacy)
+    generic['workflow']['nodes'][1]['settings']['instructions'] = '이번 실행의 질문에 답하세요.'
+    if not legacy['schedule']:
+        assert execution_request_required(generic)
+
+
+def test_existing_saved_gmail_slack_agent_detail_and_run_allow_blank_request(tmp_path, monkeypatch):
+    from service.worker import handle
+    from service.handlers import runs
+    from tests.workflow_engine.test_workflow import saved
+
+    current = state(UNREAD)
+    current['messages'].append(dict(role='user', content=CHANNEL))
+    draft = gmail_slack_reply(current)['draft']
+    store, agent_id, _ = saved(tmp_path, draft['workflow'], purpose=draft['purpose'],
+                               instructions=draft['instructions'], request_input_mode=None)
+    store.close()
+    job = dict(directory=str(tmp_path), id=agent_id)
+    detail = handle({**job, 'action': 'agent'})
+    assert detail['request_required'] is False
+    requests = []
+
+    def run_without_external_services(storage, identifier, request, api_key, files, **kwargs):
+        requests.append((identifier, request, files))
+        return {'status': 'succeeded'}
+
+    monkeypatch.setattr(runs, 'run_workflow', run_without_external_services)
+    result = handle({**job, 'action': 'test', 'content': '', 'file_ids': []})
+    assert result['status'] == 'succeeded'
+    assert requests == [(agent_id, '', [])]
+
+
+def test_other_three_step_gmail_slack_question_still_requires_a_run_request(tmp_path):
+    from service.worker import handle
+    from tests.workflow_engine.test_workflow import saved
+
+    current = state(UNREAD)
+    current['messages'].append(dict(role='user', content=CHANNEL))
+    workflow = deepcopy(gmail_slack_reply(current)['draft']['workflow'])
+    workflow['nodes'][1]['settings']['instructions'] = '이번 실행의 질문에 답하세요.'
+    store, agent_id, _ = saved(tmp_path, workflow,
+                              purpose='Gmail 메일을 요약해서 Slack으로 보낼 때 이번 실행의 질문에 답하세요.',
+                              instructions='이번 실행의 질문에 답하세요.', request_input_mode=None)
+    store.close()
+    job = dict(directory=str(tmp_path), id=agent_id)
+    assert handle({**job, 'action': 'agent'})['request_required'] is True
+    with pytest.raises(ValueError, match='실행 요청'):
+        handle({**job, 'action': 'test', 'content': ''})
 
 
 def test_unrelated_and_cancelled_requests_do_not_enter_bounded_path():

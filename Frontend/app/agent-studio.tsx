@@ -67,10 +67,11 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange,initialPrompt}:{initialPrompt?:string;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'|'automation')=>void}={}){
+export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,onCanLeaveChange,initialPrompt}:{initialPrompt?:string;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void;onExternalFlow?:(id:string)=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'|'schedule'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'||initialScreen==='schedule'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const screenRef=useRef(screen);screenRef.current=screen;
+ const externalPromptContext=useRef('');
  const scheduleDirtyRef=useRef(false),internalHistoryIndex=useRef(Number(window.history.state?.a4bIndex||0));
  const editorGrid=useRef<HTMLDivElement>(null);
 
@@ -282,7 +283,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   setAgentResources(prior=>prior.map(item=>item.id===next.id?next:item));setRunFiles(prior=>prior.map(item=>item.id===next.id?next:item));
   setSource(prior=>prior?.asset.id===next.id?{...prior,asset:next}:prior);
  }
- function reset(){if(inFlight.current||recovery?.running)return;setRecovery(null);go('workflow');window.scrollTo({top:0,behavior:'instant'});setChosenRefs([]);setChosenSnapshots([]);setSelectedNodeId(null);setEditorPanel('conversation');generation.current++;setSelected(null);setSession(null);setHistory([]);pinnedRun.current=false;setRunFiles([]);setSchedule(null);setSource(null);setJobs([]);setQueuedSourceRuns([]);setSaveReviewOpen(false);setScheduleSourceDirty(false);setScheduleSettingsDirty(false);setClarificationDirty(false);setScheduleNotice('');setText('');setTestText('');setTestRun(null);setAgentResources([]);setError('');localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');const url=new URL(location.href);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('executionMode');window.history.replaceState(window.history.state,'',url);setReplyDraft('');requestAnimationFrame(()=>input.current?.focus({preventScroll:true}));}
+ function reset(){if(inFlight.current||recovery?.running)return;setRecovery(null);externalPromptContext.current='';go('workflow');window.scrollTo({top:0,behavior:'instant'});setChosenRefs([]);setChosenSnapshots([]);setSelectedNodeId(null);setEditorPanel('conversation');generation.current++;setSelected(null);setSession(null);setHistory([]);pinnedRun.current=false;setRunFiles([]);setSchedule(null);setSource(null);setJobs([]);setQueuedSourceRuns([]);setSaveReviewOpen(false);setScheduleSourceDirty(false);setScheduleSettingsDirty(false);setClarificationDirty(false);setScheduleNotice('');setText('');setTestText('');setTestRun(null);setAgentResources([]);setError('');localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');const url=new URL(location.href);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('executionMode');window.history.replaceState(window.history.state,'',url);setReplyDraft('');requestAnimationFrame(()=>input.current?.focus({preventScroll:true}));}
 
  async function ensureSession(){generation.current++;if(session)return session;if(!credentialId)throw new Error('설계 서비스를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.');const s=await request('/api/agent-builder/sessions',{credentialId,model,nodeRefs:chosenRefs});return {...s,messages:[],draft:null,status:'empty',issues:[],trace:[],resources:[]} as Session;}
  async function send(event?:FormEvent,choice?:string,questionId?:string,answers?:ClarificationAnswer[]){
@@ -299,6 +300,14 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   setError('');
   let sentSession:Session|null=null;
   try{
+   if(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content)){
+    const prompt=externalPromptContext.current?`${externalPromptContext.current}\n추가 답변: ${content}`:content;
+    const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[]}>('/api/workflows/from-request',{prompt});
+    if(!result.workflow){externalPromptContext.current=(result.questions||[]).length?prompt:'';setError([result.summary,...(result.questions||[]).map(item=>item.question),...(result.checklist||[])].filter(Boolean).join('\n')||'외부 서비스 워크플로우를 만들지 못했어요. 요청을 더 구체적으로 적어주세요.');return;}
+    externalPromptContext.current='';
+    onExternalFlow?.(result.workflow.id);
+    return;
+   }
    const s=await ensureSession();
    sentSession=s;
    remember(s);
@@ -509,7 +518,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   if(screen==='workflow'&&!selected)return;
   if(canLeave()){if(session&&!selected)go('workflow',true);else reset();}
  }
- function leave(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'|'automation'){if(canLeave())onNavigate?.(next);}
+ function leave(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'){if(canLeave())onNavigate?.(next);}
  useEffect(()=>{
   if(!(text.trim()||testText.trim()||replyDraft.trim()||runFiles.length||chosenRefs.length||libraryDirty||scheduleSourceDirty||scheduleSettingsDirty||clarificationDirty))return;
   const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};

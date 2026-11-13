@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "language": "ko",
   "verifiedDate": "2026-10-07",
-  "notice": "Easyflow가 직접 실행하는 단계입니다. 외부 서비스는 해당 서비스의 연결 계정만 필요합니다.",
+  "notice": "A4B가 직접 실행하는 단계입니다. 외부 서비스는 해당 서비스의 연결 계정만 필요합니다.",
   "categories": [
     "시작",
     "데이터",
@@ -1209,7 +1209,7 @@
       },
       "setupGuidance": [
         "메시지를 받을 채널 ID와 내용을 입력해주세요.",
-        "Slack 봇 토큰을 연결 계정에 등록하고 선택해주세요."
+        "서비스 연결에서 Slack 계정을 연결하고 이 단계에서 선택해주세요. 메시지 전송 권한과 대상 채널에 대한 앱 접근이 필요해요."
       ],
       "locallyExecutable": false,
       "requires": [
@@ -2594,14 +2594,14 @@
       "credentialRequired": true,
       "locallyExecutable": false,
       "requires": [
-        "Google Sheets 범위가 허용된 액세스 토큰",
+        "Google Sheets 읽기·수정 권한을 승인한 연결 계정",
         "대상 스프레드시트 접근 권한"
       ],
       "setupGuidance": [
-        "Google Sheets API가 활성화된 프로젝트에서 발급한 액세스 토큰을 Google Sheets용 연결에 저장해주세요. 읽기는 spreadsheets.readonly, 쓰기는 spreadsheets 권한이 필요해요.",
+        "서비스 연결에서 Google Sheets 계정을 연결하고 이 단계에서 선택해주세요. 시트를 읽고 기록하려면 Google의 읽기·수정 권한을 승인해야 해요.",
         "스프레드시트 ID는 문서 주소의 /d/ 다음 값이에요. 범위는 Sheet1!A1:C20처럼 입력하세요. 기본 Sheet1 이름은 본인 시트의 탭 이름으로 바꿔주세요.",
         "셀 데이터는 [[\"이름\",92],[\"다음 이름\",80]]처럼 행 배열로 입력하세요. RAW는 값을 그대로 저장하고 USER_ENTERED는 시트 입력처럼 수식·날짜를 해석해요.",
-        "읽기 결과는 행마다 range, rowIndex(0부터), values 배열을 제공해요. 액세스 토큰은 만료되며 이 연결은 토큰을 자동 갱신하지 않아요."
+        "읽기 결과는 행마다 range, rowIndex(0부터), values 배열을 제공해요."
       ],
       "docsUrl": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values",
       "sourceUrl": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/append",

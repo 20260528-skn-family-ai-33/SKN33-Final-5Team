@@ -4,7 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {mkdtempSync,readFileSync,readdirSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {OAuthManager,createCredentialRefresher,validateOAuthEndpoint,GOOGLE_SHEETS_OAUTH,OAUTH_STATE_TTL_MS,type OAuthBeginInput} from '../src/oauth';
+import {OAuthManager,createCredentialRefresher,validateOAuthEndpoint,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH,OAUTH_STATE_TTL_MS,type OAuthBeginInput} from '../src/oauth';
 import {Store} from '../src/store';
 import type {CredentialSecret} from '../src/contracts';
 
@@ -33,6 +33,23 @@ test('Google Sheets begins an offline code grant with S256 and no client secret 
  assert.equal(result.redirectUri,`http://${authority}/api/oauth/callback`);
  assert.ok(!JSON.stringify(result).includes('private-google-secret'));
  assert.equal(url.searchParams.has('code_verifier'),false);
+});
+test('Slack app install exchanges a bot token without requiring PKCE',async()=>{
+ const manager=new OAuthManager({port:3010,fetch:mock((url,init)=>{
+  assert.equal(url,SLACK_OAUTH.tokenUrl);
+  assert.equal(new URLSearchParams(String(init.body)).has('code_verifier'),false);
+  assert.match(new Headers(init.headers).get('Authorization')||'',/^Basic /);
+  return json({ok:true,access_token:'xoxb-test',token_type:'bot',scope:'chat:write'});
+ })});
+ const begin=manager.begin({name:'Slack',service:'slack',clientId:'client-id',clientSecret:'client-secret',tokenAuthMethod:'basic'},authority);
+ const url=new URL(begin.authorizationUrl);
+ assert.equal(url.origin+url.pathname,SLACK_OAUTH.authorizationUrl);
+ assert.equal(url.searchParams.get('scope'),'chat:write');
+ assert.equal(url.searchParams.has('code_challenge'),false);
+ const credential=await manager.complete({state:begin.stateId,code:'slack-code'},authority);
+ assert.equal(credential.provider,'slack');
+ assert.equal(credential.data.service,'slack');
+ assert.equal(credential.data.token,'xoxb-test');
 });
 
 test('code exchange sends the matching verifier and exact callback in a POST body, consumes state, and returns server-only credential data',async()=>{

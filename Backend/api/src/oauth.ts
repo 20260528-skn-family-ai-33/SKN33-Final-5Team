@@ -17,6 +17,7 @@ export const GMAIL_OAUTH={
  tokenUrl:GOOGLE_SHEETS_OAUTH.tokenUrl,
  scope:'https://www.googleapis.com/auth/gmail.readonly',
 } as const;
+export const SLACK_OAUTH={authorizationUrl:'https://slack.com/oauth/v2/authorize',tokenUrl:'https://slack.com/api/oauth.v2.access',scope:'chat:write'} as const;
 export const OAUTH_STATE_TTL_MS=10*60*1000;
 const TOKEN_EXPIRY_BUFFER_MS=60*1000;
 const MAX_PENDING=128;
@@ -58,7 +59,7 @@ function config(input:OAuthBeginInput):OAuthConfig {
  const clientId=string(input.clientId,2048,'등록한 앱의 클라이언트 ID를 입력해주세요.',true)!.trim();
  const clientSecret=string(input.clientSecret,MAX_TOKEN_LENGTH,'클라이언트 비밀 값을 확인해주세요.');
  const service=string(input.service,120,'연결할 서비스 종류를 확인해주세요.');
- const google=service==='googleSheets'?GOOGLE_SHEETS_OAUTH:service==='gmail'?GMAIL_OAUTH:undefined;
+ const google=service==='googleSheets'?GOOGLE_SHEETS_OAUTH:service==='gmail'?GMAIL_OAUTH:service==='slack'?SLACK_OAUTH:undefined;
  const authorizationUrl=validateOAuthEndpoint(input.authorizationUrl||google?.authorizationUrl);
  const tokenUrl=validateOAuthEndpoint(input.tokenUrl||google?.tokenUrl);
  const scope=string(input.scope,4096,'요청할 권한 범위를 확인해주세요.')?.trim()||(google?.scope||'');
@@ -67,6 +68,7 @@ function config(input:OAuthBeginInput):OAuthConfig {
  if(tokenAuthMethod==='basic'&&!clientSecret)throw new Error('Basic 클라이언트 인증에는 클라이언트 비밀 값이 필요해요.');
  if(service==='googleSheets'&&(authorizationUrl!==GOOGLE_SHEETS_OAUTH.authorizationUrl||tokenUrl!==GOOGLE_SHEETS_OAUTH.tokenUrl||!scope.split(/\s+/).every(value=>value===GOOGLE_SHEETS_OAUTH.scope||value===GOOGLE_SHEETS_OAUTH.readonlyScope)||tokenAuthMethod!=='body'))throw new Error('Google Sheets 연결에는 공식 로그인·토큰 주소와 Sheets 권한을 사용해주세요.');
  if(service==='gmail'&&(authorizationUrl!==GMAIL_OAUTH.authorizationUrl||tokenUrl!==GMAIL_OAUTH.tokenUrl||scope!==GMAIL_OAUTH.scope||tokenAuthMethod!=='body'||!clientSecret))throw new Error('Gmail 연결에는 등록된 Google 앱과 Gmail 읽기 권한을 사용해주세요.');
+ if(service==='slack'&&(authorizationUrl!==SLACK_OAUTH.authorizationUrl||tokenUrl!==SLACK_OAUTH.tokenUrl||scope!==SLACK_OAUTH.scope||tokenAuthMethod!=='basic'||!clientSecret))throw new Error('Slack 연결에는 등록된 앱과 메시지 전송 권한을 사용해주세요.');
  return {clientId,...(clientSecret?{clientSecret}:{}),authorizationUrl,tokenUrl,scope,tokenAuthMethod,...(service?{service}:{})};
 }
 
@@ -80,13 +82,13 @@ function authenticate(body:URLSearchParams,headers:Headers,config:Pick<OAuthConf
  }
 }
 
-async function readTokenResponse(response:Response):Promise<TokenResult> {
+async function readTokenResponse(response:Response,service?:string):Promise<TokenResult> {
  if(!response.ok||response.status<200||response.status>=300||!response.body)throw new Error();
  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let bytes=0;
  try{while(true){const chunk=await reader.read();if(chunk.done)break;bytes+=chunk.value.byteLength;if(bytes>MAX_RESPONSE_BYTES){await reader.cancel();throw new Error();}chunks.push(chunk.value);}}
  finally{reader.releaseLock();}
  const data=JSON.parse(Buffer.concat(chunks).toString('utf8')) as Json;
- if(!data||typeof data!=='object'||Array.isArray(data)||data.error||typeof data.access_token!=='string'||!data.access_token||data.access_token.length>MAX_TOKEN_LENGTH||/[\u0000-\u001f\u007f]/.test(data.access_token)||data.token_type!==undefined&&(typeof data.token_type!=='string'||data.token_type.toLowerCase()!=='bearer'))throw new Error();
+ if(!data||typeof data!=='object'||Array.isArray(data)||data.error||service==='slack'&&data.ok!==true||typeof data.access_token!=='string'||!data.access_token||data.access_token.length>MAX_TOKEN_LENGTH||/[\u0000-\u001f\u007f]/.test(data.access_token)||data.token_type!==undefined&&(typeof data.token_type!=='string'||data.token_type.toLowerCase()!==(service==='slack'?'bot':'bearer')))throw new Error();
  const result:TokenResult={access_token:data.access_token};
  if(data.refresh_token!==undefined){if(typeof data.refresh_token!=='string'||!data.refresh_token||data.refresh_token.length>MAX_TOKEN_LENGTH||/[\u0000-\u001f\u007f]/.test(data.refresh_token))throw new Error();result.refresh_token=data.refresh_token;}
  if(data.expires_in!==undefined){if(!['number','string'].includes(typeof data.expires_in)||!Number.isFinite(Number(data.expires_in))||Number(data.expires_in)<=0||Number(data.expires_in)>365*86400)throw new Error();result.expires_in=Number(data.expires_in);}
@@ -94,7 +96,7 @@ async function readTokenResponse(response:Response):Promise<TokenResult> {
  return result;
 }
 
-async function requestToken(tokenUrl:string,body:URLSearchParams,oauth:Pick<OAuthConfig,'clientId'|'clientSecret'|'tokenAuthMethod'>,options:OAuthRequestOptions,message:string):Promise<TokenResult> {
+async function requestToken(tokenUrl:string,body:URLSearchParams,oauth:Pick<OAuthConfig,'clientId'|'clientSecret'|'tokenAuthMethod'|'service'>,options:OAuthRequestOptions,message:string):Promise<TokenResult> {
  if(options.signal?.aborted)throw canceledError();
  const headers=new Headers({'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'});
  authenticate(body,headers,oauth);
@@ -102,7 +104,7 @@ async function requestToken(tokenUrl:string,body:URLSearchParams,oauth:Pick<OAut
  const signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;
  try {
   const response=await (options.fetch||fetch)(tokenUrl,{method:'POST',headers,body:body.toString(),redirect:'error',credentials:'omit',signal});
-  const tokens=await readTokenResponse(response);
+  const tokens=await readTokenResponse(response,oauth.service);
   if(options.signal?.aborted)throw canceledError();
   return tokens;
  } catch {
@@ -155,7 +157,7 @@ export class OAuthManager {
   this.pending.set(stateId,{input:{...oauth,name,...(id?{id}:{})},config:oauth,authority:initiatingAuthority,redirectUri,verifier,expiresAt});
   const authorization=new URL(oauth.authorizationUrl);
   authorization.searchParams.set('client_id',oauth.clientId);authorization.searchParams.set('response_type','code');authorization.searchParams.set('redirect_uri',redirectUri);authorization.searchParams.set('state',stateId);
-  authorization.searchParams.set('code_challenge',createHash('sha256').update(verifier).digest('base64url'));authorization.searchParams.set('code_challenge_method','S256');
+  if(oauth.service!=='slack'){authorization.searchParams.set('code_challenge',createHash('sha256').update(verifier).digest('base64url'));authorization.searchParams.set('code_challenge_method','S256');}
   if(oauth.scope)authorization.searchParams.set('scope',oauth.scope);
   if(oauth.service==='googleSheets'||oauth.service==='gmail'){authorization.searchParams.set('access_type','offline');authorization.searchParams.set('prompt','consent');}
   return {stateId,authorizationUrl:authorization.toString(),redirectUri,expiresAt};
@@ -181,10 +183,10 @@ export class OAuthManager {
   if(pending.expiresAt<=this.now())throw new Error(loginError);
   if(query.error)throw new Error('로그인 권한 승인이 취소됐어요. 다시 연결해주세요.');
   const code=string(query.code,MAX_TOKEN_LENGTH,exchangeError,true)!;
-  const body=new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:pending.redirectUri,code_verifier:pending.verifier});
+  const body=new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:pending.redirectUri,...(pending.config.service==='slack'?{}:{code_verifier:pending.verifier})});
   const tokens=await requestToken(pending.config.tokenUrl,body,pending.config,{fetch:this.request,signal:options.signal},exchangeError);
   const data=tokenData({authType:'oauth2',...pending.config,redirectUri:pending.redirectUri},tokens,this.now());
-  return {name:pending.input.name,provider:'bearer',...(pending.input.id?{id:pending.input.id}:{}),data};
+  return {name:pending.input.name,provider:pending.config.service==='slack'?'slack':'bearer',...(pending.input.id?{id:pending.input.id}:{}),data};
  }
 }
 
@@ -204,7 +206,7 @@ export function createCredentialRefresher(){
  return async function getUsableCredential(credential:CredentialSecret,saveCallback:(updated:CredentialSecret)=>unknown|Promise<unknown>,options:OAuthRequestOptions={}):Promise<CredentialSecret> {
   if(options.signal?.aborted)throw canceledError();
   if(credential.data.authType!=='oauth2')return credential;
-  if(credential.provider!=='bearer')throw new Error('OAuth 로그인은 Bearer 연결 계정으로 저장해주세요.');
+  if(credential.provider!=='bearer'&&!(credential.provider==='slack'&&credential.service==='slack'))throw new Error('OAuth 로그인 연결 계정을 확인해주세요.');
   const data=credential.data;
   const accessToken=typeof data.accessToken==='string'&&data.accessToken?data.accessToken:typeof data.token==='string'?data.token:'';
   const expiresAt=data.expiresAt===undefined?undefined:typeof data.expiresAt==='number'?data.expiresAt:typeof data.expiresAt==='string'?Date.parse(data.expiresAt):NaN;

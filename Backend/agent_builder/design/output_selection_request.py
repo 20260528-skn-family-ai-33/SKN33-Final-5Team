@@ -110,8 +110,6 @@ def validate_output_selection(plan, state):
             elif spec['kind'] == 'select_fields' and not expected <= set(spec['fields']):
                 raise ValueError('전체 열 저장 요청에서 일부 출력 열을 제거할 수 없습니다.')
     fields=output_selection(state)
-    if fields is None:
-        return
     computed=literal_output_compute(state)
     if computed:
         from .requirement_coverage import _formula
@@ -119,6 +117,8 @@ def validate_output_selection(plan, state):
         if (len(computations)!=1 or computations[0]['output_column']!=computed['output_column']
                 or _formula(computations[0]['formula'])!=_formula(computed['formula'])):
             raise ValueError('명시한 계산식의 결과를 요청한 출력 열로 연결해야 합니다: '+str(computed))
+    if fields is None:
+        return
     if not any(s['kind'] == 'select_fields' and s['fields'] == fields for s in specs):
         raise ValueError('명시한 최종 출력 열 선택이 누락되거나 변경됐습니다: ' + ', '.join(fields))
 
@@ -217,18 +217,25 @@ def literal_output_compute(state):
     declaration. An assignment/name declaration, multiple formulas, or multiple
     missing output columns makes the correspondence ambiguous and stays general.
     """
-    fields=output_selection(state)
-    if not fields:return None
-    columns=state['resources'][0].get('columns',[])
-    missing=[f for f in fields if f not in columns]
-    if len(missing)!=1 or not any(f['field']==missing[0] for f in literal_numeric_filters(state)):return None
+    assets=state.get('resources',[])
+    if len(assets)!=1 or assets[0].get('kind')!='table':return None
+    columns=assets[0].get('columns',[])
+    numeric_fields={f['field'] for f in literal_numeric_filters(state)}
+    candidates=set()
+    for _,text in _request_turns(state):
+        missing=[f for f in (_selection_fields(text,columns) or []) if f not in columns]
+        if len(missing)==1 and missing[0] in numeric_fields:candidates.add(missing[0])
+    # Hiding a computed column in the final file does not remove the earlier
+    # calculation still needed by an active numeric filter.
+    if len(candidates)!=1:return None
+    output=next(iter(candidates))
     from .compute_grounding import _formula_literals, _named_column, _expression
     users=[text for _,text in _request_turns(state)]
-    if any(name!=missing[0] for text in users for name in _named_column(text)):return None
+    if any(name!=output for text in users for name in _named_column(text)):return None
     if any(re.search(r'집계|합계|합산|결합|평균|조인|\bjoin\b',text,re.I) for text in users):return None
     formulas={_expression(formula):formula for text in users for formula in _formula_literals(text,columns)}
     if len(formulas)!=1:return None
-    return dict(kind='compute',formula=next(iter(formulas.values())),output_column=missing[0])
+    return dict(kind='compute',formula=next(iter(formulas.values())),output_column=output)
 
 
 def constrain_literal_selection(schema,state):

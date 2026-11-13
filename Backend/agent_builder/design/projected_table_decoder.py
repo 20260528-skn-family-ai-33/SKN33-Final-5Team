@@ -19,9 +19,8 @@ def constrain_projected_table(schema,state):
     if exports[0]['format']!='csv':return schema
     filters=[s for s in specs if s['kind']=='filter']
     if len(filters)>1 and any(s['match']!='all' for s in filters):return schema
-    # Moving a calculation across a filter/sort can change errors and results.
-    # Admit only an already ordered, complete ledger; preserve general plans.
-    if 'compute' in kinds and any(k in ('filter','sort','policy') for k in kinds[:kinds.index('compute')]):return schema
+    # Preserve the ledger order: pre-compute filters can exclude rows whose
+    # operands are invalid. Never move the calculation before those filters.
     if 'sort' in kinds and 'filter' in kinds[kinds.index('sort'):]:return schema
     definitions=schema['$defs']
     if 'next_steps' not in definitions['WorkflowDefinition']['properties']:return schema
@@ -47,11 +46,11 @@ def constrain_projected_table(schema,state):
     def bind(name,port):return [dict(input=name,step=len(steps),output=port)]
     try:
         append('read_table',None,{'file_ids':[assets[0]['id']]},[])
-        compute=next((s for s in specs if s['kind']=='compute'),None)
-        if compute:
-            append('calculate_columns',None,{'table_operation':'compute','calculation_formula':compute['formula'],
-                                            'output_column':compute['output_column']},bind('table','table'))
         for spec in specs:
+            if spec['kind']=='compute':
+                append('calculate_columns',None,{'table_operation':'compute','calculation_formula':spec['formula'],
+                                                'output_column':spec['output_column']},bind('table','table'))
+                continue
             if spec['kind'] not in ('filter','sort'):continue
             plan=ExecutionPlan.model_validate(dict(missing_policy='keep',duplicate_policy='keep',duplicate_field=None,output_format='json',
                 filters=spec.get('filters',[]),match=spec.get('match','all'),sort=spec.get('sort',[]))).model_dump(mode='json')

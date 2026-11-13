@@ -106,6 +106,19 @@ def test_all_columns_revision_sends_retained_threshold_to_model():
     assert make_requirement_check('fixture',Transport(),'enforce')(current)['requirement_route']=='plan'
 
 
+@pytest.mark.parametrize('reply',['주문번호 열만 저장해줘','전체 열을 저장해줘'])
+def test_hidden_computed_filter_column_keeps_formula_and_name(reply):
+    from agent_builder.design.output_selection_request import constrain_literal_selection
+    from agent_builder.design.requirement_ledger import extraction_schema
+    from jsonschema import Draft202012Validator
+    current=state();current['messages'].append(dict(role='user',content=reply))
+    assert literal_output_compute(current)==dict(kind='compute',formula='수량*단가',output_column='주문금액')
+    schema=constrain_literal_selection(extraction_schema(3,['table-source']),current)
+    validator=Draft202012Validator(schema['$defs']['Compute'])
+    assert validator.is_valid(dict(kind='compute',formula='수량*단가',output_column='주문금액'))
+    assert not validator.is_valid(dict(kind='compute',formula='수량*단가',output_column='매출'))
+
+
 @pytest.mark.parametrize('single',[False,True])
 def test_followup_survives_save_and_csv_execution(tmp_path,monkeypatch,single):
     monkeypatch.setenv('A4B_REQUIREMENT_MODE','off')
@@ -129,6 +142,64 @@ def test_followup_survives_save_and_csv_execution(tmp_path,monkeypatch,single):
     fields,rows=_run_csv(tmp_path,current,config,COLUMNS,ROWS)
     assert fields==selected
     assert [r['주문번호'] for r in rows]==['ORD-001','ORD-003']
+
+
+def filtered_before_compute_packet():
+    raw=packet(); tasks=raw['tasks']
+    categorical=deepcopy(tasks[2]); categorical['spec']['filters']=categorical['spec']['filters'][:1]
+    tasks[2]['spec']['filters']=tasks[2]['spec']['filters'][1:]
+    raw['tasks']=[tasks[0],categorical,*tasks[1:]]
+    return raw
+
+
+def test_real_model_filter_before_compute_keeps_projection_decoder(monkeypatch):
+    from contracts.models import AgentDraft
+    from tests.design.test_beta_feedback import native_schema
+    from agent_builder.design.operation_steps import schema_for
+    from agent_builder.design.requirement_generation import required_operation_variants
+    from agent_builder.design.projected_table_decoder import constrain_projected_table
+    monkeypatch.setenv('A4B_MAIN_PROVIDER','ollama')
+    current=state(); ledger=extract_plan(filtered_before_compute_packet(),current)
+    current.update(requirement_required=True,requirement_ledger=ledger,
+                   requirement_fingerprint=ledger_fingerprint(current),requirement_digest=plan_digest(ledger))
+    specs=[t['spec'] for t in ledger['tasks']]
+    base=native_schema(); original=AgentDraft.model_json_schema()
+    base['$defs']['WorkflowNode']['anyOf']+=required_operation_variants(specs,original['$defs']['WorkflowNode'],original['$defs']['Binding'],set(COLUMNS))
+    constrained=constrain_projected_table(schema_for(base),current)
+    slots=constrained['$defs']['WorkflowDefinition']['properties']['next_steps']['properties']
+    variants=[slot['anyOf'][0]['properties'] for slot in slots.values()]
+    assert [v['tool']['enum'][0] for v in variants]==[
+        'filter_sort','calculate_columns','filter_sort','filter_sort','json_transform','filter_sort','export_result']
+    from jsonschema import Draft202012Validator
+    from contracts.models import ExecutionPlan
+    checker=Draft202012Validator(variants[0]['settings']['properties']['execution_plan'])
+    first=ExecutionPlan.model_validate(dict(filters=specs[1]['filters'],match='all',sort=[],
+        missing_policy='keep',duplicate_policy='keep',duplicate_field=None,output_format='json')).model_dump(mode='json')
+    assert checker.is_valid(first)
+    first['filters']=specs[3]['filters']
+    assert not checker.is_valid(first)
+    assert variants[-2]['settings']['properties']['operation']['enum']==['select_columns']
+    assert variants[-1]['settings']['properties']['operation']['enum']==['write_csv']
+
+
+def test_filter_before_compute_executes_without_touching_excluded_bad_operands(tmp_path,monkeypatch):
+    monkeypatch.setenv('A4B_REQUIREMENT_MODE','off')
+    current={**initial(),**state()}; ledger=extract_plan(filtered_before_compute_packet(),current)
+    current.update(requirement_required=True,requirement_ledger=ledger,
+                   requirement_fingerprint=ledger_fingerprint(current),requirement_digest=plan_digest(ledger))
+    config=deepcopy(order_draft('table-source')); workflow=config['workflow']; nodes=workflow['nodes']
+    before=deepcopy(nodes[2]); before['id']='completed'
+    before['bindings']=[bind('table','read','table')]
+    before['settings']['execution_plan']['filters']=before['settings']['execution_plan']['filters'][:1]
+    before['settings']['execution_plan']['sort']=[]
+    nodes[1]['bindings']=[bind('table','completed','table')]
+    nodes[2]['settings']['execution_plan']['filters']=nodes[2]['settings']['execution_plan']['filters'][1:]
+    nodes.insert(1,before)
+    workflow['edges']=[edge(a['id'],b['id']) for a,b in zip(nodes,nodes[1:])]
+    rows=deepcopy(ROWS); next(r for r in rows if r['주문상태']=='취소')['수량']='계산 불가'
+    fields,actual=_run_csv(tmp_path,current,config,COLUMNS,rows)
+    assert fields==['주문번호','주문금액']
+    assert [r['주문번호'] for r in actual]==['ORD-001','ORD-003']
 
 
 def review_flow(fields,field=None):

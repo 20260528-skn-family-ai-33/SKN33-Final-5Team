@@ -7,6 +7,8 @@ import ts from 'typescript';
 const sf=ts.createSourceFile('studio.tsx',readFileSync(new URL('../app/agent-studio.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
 const component=sf.statements.find((n):n is ts.FunctionDeclaration=>ts.isFunctionDeclaration(n)&&n.name?.text==='AgentStudio');assert.ok(component?.body);
 const statements=component.body.statements;
+const explanation=sf.statements.find((n):n is ts.FunctionDeclaration=>ts.isFunctionDeclaration(n)&&n.name?.text==='explainIncompleteWorkflow');if(!explanation)throw new Error('Missing workflow explanation');
+const explanationText=explanation.getText(sf);
 const restore=statements.find(n=>ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText(sf)==='useEffect'&&n.getText(sf).includes('await refresh()'));assert.ok(restore);
 const restoreText=restore.getText(sf);
 function handler(name:string){const n=statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(n);return n.getText(sf);}
@@ -18,13 +20,13 @@ function harness(search='',stored:Record<string,string>={}){
  const storage=new Map(Object.entries(stored)),requests:{path:string;body:any}[]=[];let cleanup:(()=>void)|undefined;
  let load:(p:string,b:any)=>Promise<any>=async()=>snapshot('A');
  const c:any={screen:'run',executionMode:'manual',crypto:{randomUUID:()=>'00000000-0000-4000-8000-000000000081'},AbortController,setTimeout,clearTimeout,URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,recovery:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
- c.queuedSourceRuns=[];c.freshFiles={session:'',ids:[]};c.externalPromptContext={current:''};
+ c.queuedSourceRuns=[];c.freshFiles={session:'',ids:[]};c.externalPromptContext={current:''};c.externalMessages=[];
  c.sourceDirtyRef={current:false};c.scheduleDirtyRef={current:false};c.window.confirm=()=>true;
  c.setScheduleSourceDirty=(value:boolean)=>{c.scheduleSourceDirty=value;};
- for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns','SaveReviewOpen','ScheduleSettingsDirty','ClarificationDirty','FreshFiles']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
+ for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns','SaveReviewOpen','ScheduleSettingsDirty','ClarificationDirty','FreshFiles','ExternalMessages']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
  Object.defineProperty(c,'canStartRun',{get:()=>!!c.testText.trim()||!!c.selected?.config?.schedule});
  c.request=(path:string,body:any)=>{requests.push({path,body});return load(path,body);};createContext(c);
- runInContext(compile(['applyRunInputs','clearRunInputs','confirmSettingsExit','clearSettingsDirty','remember','recoverConversation','reloadConversation','resumeConversation','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
+ runInContext(compile(explanationText+'\n'+['applyRunInputs','clearRunInputs','confirmSettingsExit','clearSettingsDirty','remember','recoverConversation','reloadConversation','resumeConversation','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
 
  return {c,storage,requests,load:(f:typeof load)=>{load=f;},mount:()=>runInContext(compile(restoreText),c),stop:()=>cleanup?.()};
 }
@@ -40,12 +42,28 @@ test('clarification reply sends the browser timezone and authoritative session r
  assert.deepEqual({...h.requests[0].body},{id:'conversation',revision:4,content:'JSON으로 해줘',userTimezone:'America/New_York',questionId:'a'.repeat(24),generationRequestId:'00000000-0000-4000-8000-000000000081'});
  assert.equal(h.c.session.revision,5);
 });
+test('Gmail to Slack request uses the agent builder conversation and keeps the selected channel ID',async()=>{
+ const h=harness();
+ h.c.Intl={DateTimeFormat:()=>({resolvedOptions:()=>({timeZone:'Asia/Seoul'})})};
+ h.c.text='gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘';
+ h.load(async path=>path==='/api/agent-builder/sessions'?{id:'gmail-slack',revision:0}:path==='/api/agent-builder/message'?{id:'gmail-slack',revision:1,status:'needs_clarification',messages:[]}:snapshot('A'));
+ await h.c.send();
+ assert.deepEqual(h.requests.map(item=>item.path),['/api/agent-builder/sessions','/api/agent-builder/message']);
+ assert.equal(h.requests[1].body.content,'gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘');
+ assert.equal(h.c.externalMessages.length,0);
+ await h.c.send(undefined,'C0123456789','channel-question-id');
+ assert.equal(h.requests[2].path,'/api/agent-builder/message');
+ assert.equal(h.requests[2].body.content,'C0123456789');
+ assert.equal(h.requests[2].body.questionId,'channel-question-id');
+});
 test('external service clarification keeps the original request and opens the generated workflow',async()=>{
  const h=harness();let opened='';h.c.onExternalFlow=(id:string)=>{opened=id;};
  h.c.text='Google Sheets 재고를 Slack으로 알려줘';
  h.load(async path=>path==='/api/workflows/from-request'?{summary:'시트 범위를 알려주세요.',questions:[{question:'어느 범위인가요?'}]}:snapshot('A'));
  await h.c.send();
- assert.match(h.c.error,/어느 범위/);
+ assert.equal(h.c.error,'');
+ assert.equal(h.c.externalMessages.map((message:any)=>message.role).join(','),'user,assistant');
+ assert.match(h.c.externalMessages[1].content,/어느 범위/);
  assert.match(h.c.externalPromptContext.current,/Google Sheets 재고/);
  h.c.text='재고!A1:D100';
  h.load(async path=>path==='/api/workflows/from-request'?{workflow:{id:'generated-flow'}}:snapshot('A'));
@@ -53,17 +71,39 @@ test('external service clarification keeps the original request and opens the ge
  assert.match(h.requests[1].body.prompt,/추가 답변: 재고!A1:D100/);
  assert.equal(opened,'generated-flow');
  assert.equal(h.c.externalPromptContext.current,'');
+ assert.equal(h.c.externalMessages.length,0);
 });
 test('external request without model questions keeps context and shows requirement details',async()=>{
  const h=harness();h.c.text='Google Sheets 재고를 Slack으로 알려줘';
  h.load(async path=>path==='/api/workflows/from-request'?{summary:'재고 흐름',questions:[],requirements:[{id:'sheet',description:'시트 범위 지정',status:'needs_input'}]}:snapshot('A'));
  await h.c.send();
- assert.match(h.c.error,/시트 범위 지정/);
+ assert.equal(h.c.error,'');
+ assert.match(h.c.externalMessages[1].content,/아직 정해지지 않은 내용/);
+ assert.match(h.c.externalMessages[1].content,/시트 범위 지정/);
  assert.match(h.c.externalPromptContext.current,/Google Sheets 재고/);
  h.c.text='재고!A1:D100';
  h.load(async path=>path==='/api/workflows/from-request'?{workflow:{id:'generated-flow'}}:snapshot('A'));
  await h.c.send();
  assert.match(h.requests[1].body.prompt,/추가 답변: 재고!A1:D100/);
+});
+test('external clarification keeps each turn and explains missing versus unsupported work without repeating the summary',async()=>{
+ const h=harness();h.c.text='Google Sheets 행을 Slack으로 정리해줘';
+ h.load(async()=>({summary:'Google Sheets 행을 Slack으로 정리해줘',questions:[{question:'어느 채널에 보낼까요?'}],checklist:['지원 여부 확인 필요: 행에 별표 달기'],requirements:[
+  {id:'channel',description:'Slack 채널 지정',status:'needs_input'},
+  {id:'star',description:'행에 별표 달기',status:'unsupported'},
+ ]}));
+ await h.c.send();
+ assert.equal(h.c.error,'');
+ assert.match(h.c.externalMessages[1].content,/아직 정해지지 않은 내용:\n• Slack 채널 지정/);
+ assert.match(h.c.externalMessages[1].content,/지원 여부를 확인할 작업:\n• 행에 별표 달기/);
+ assert.match(h.c.externalMessages[1].content,/어느 채널에 보낼까요/);
+ assert.equal(h.c.externalMessages[1].content.includes('지원 여부 확인 필요: 행에 별표 달기'),false);
+ h.c.text='C0123456789';
+ h.load(async()=>({summary:'아직 확인이 필요합니다.',questions:[{question:'메일 기간은 언제인가요?'}]}));
+ await h.c.send();
+ assert.equal(h.c.externalMessages.map((message:any)=>message.role).join(','),'user,assistant,user,assistant');
+ assert.equal(h.c.externalMessages[2].content,'C0123456789');
+ assert.match(h.c.externalMessages[3].content,/메일 기간은 언제인가요/);
 });
 test('failed explicit link reports error and preserves conversation without fallback',async()=>{
  const h=harness('?service=B',{'a4b-builder-session':'old'});h.load(async()=>{throw Error('not found');});h.mount();await flush();assert.equal(h.c.selected,null);assert.equal(h.c.error,'not found');assert.equal(h.storage.get('a4b-builder-session'),'old');assert.equal(h.requests.length,1);

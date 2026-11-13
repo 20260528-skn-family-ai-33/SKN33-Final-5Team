@@ -93,6 +93,14 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         setting='enforce' if state.get('condition_required') or state.get('condition_enforced') else configured
         if setting == 'off':
             return {'condition_enforced': False, 'condition_route': 'conversation', 'condition_ledger': None, 'condition_template': False}
+        from agent_builder.design.compound_table_request import compound_table_request
+        if setting == 'enforce' and compound_table_request(state) is not None:
+            # A single filter slot cannot encode per-column emptiness or nested
+            # OR/AND. The source-grounded ledger and final data-path proof own it.
+            return {'condition_ledger':None, 'condition_enforced':False, 'condition_required':False,
+                    'condition_route':'conversation', 'condition_template':False, 'pending_questions':[],
+                    'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
+                        'detail':'outside_scope: 복합 선별 조건을 원문 계약·실행 경로 검증기로 위임', 'mode':setting,'model_calls':0,'metrics':{}}]}
         if setting=='enforce' and computed_table_request(state):
             return {'condition_ledger':None, 'condition_enforced':False, 'condition_required':False,
                     'condition_route':'conversation', 'condition_template':False, 'pending_questions':[],

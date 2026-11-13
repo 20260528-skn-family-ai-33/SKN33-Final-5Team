@@ -3,10 +3,64 @@
 Branches and table inputs produced by subgraphs still receive runtime checks.
 This does not execute tools, query a model, or prove output correctness.
 """
+import json
+import re
+
 from agent_builder.conditions.condition_readiness import input_issues
 from workflow_engine.executors.sources import source_file_ids
 from workflow_engine.catalog.registry import uses_operation
 from documents.resources.document_resources import RemovedUpload
+
+
+def _legacy_fixed_gmail_slack_summary(config):
+    """Recognize only the previously saved, three-step fixed Gmail-to-Slack recipe."""
+    purpose = config.get('purpose')
+    if (config.get('request_input_mode') is not None or config.get('document_ids') or
+            config.get('tool_ids') != ['email.list', 'compose_answer', 'slack.post_message'] or
+            not (config.get('instructions') or '').strip() or
+            not isinstance(purpose, str) or '요약' not in purpose or
+            not re.search(r'Gmail|지메일', purpose, re.I) or
+            not re.search(r'Slack|슬랙', purpose, re.I)):
+        return False
+    workflow = config.get('workflow')
+    if not isinstance(workflow, dict):
+        return False
+    nodes = workflow.get('nodes')
+    if not isinstance(nodes, list) or len(nodes) != 3:
+        return False
+    mail, summary, slack = nodes
+    try:
+        if ([node['tool'] for node in nodes] != config['tool_ids'] or
+                workflow.get('entry') != mail['id'] or
+                workflow.get('edges') != [
+                    {'source': mail['id'], 'target': summary['id'], 'branch': 'next'},
+                    {'source': summary['id'], 'target': slack['id'], 'branch': 'next'}] or
+                mail['settings'].get('operation') != 'read_messages' or
+                summary.get('bindings') != [{'input': 'documents', 'node_id': mail['id'], 'output': 'documents'}] or
+                not (summary['settings'].get('instructions') or '').strip() or
+                slack['settings'].get('operation') != 'execute' or
+                slack.get('bindings') != [{'input': 'text', 'node_id': summary['id'], 'output': 'text'}]):
+            return False
+        mail_args = json.loads(mail['settings'].get('arguments_json') or '{}')
+        slack_args = json.loads(slack['settings'].get('arguments_json') or '{}')
+        from agent_builder.design.gmail_summary import MAX_RESULTS
+        query = mail_args.get('query') if isinstance(mail_args, dict) else None
+        if not isinstance(mail_args, dict) or type(mail_args.get('max_results')) is not int:
+            return False
+        count = mail_args['max_results']
+        unread = bool(re.search(r'(?:^|\s)is:unread(?:\s|$)', query or '', re.I)) if isinstance(query, str) else False
+        expected_summary = (f'조회한 {"안 읽은 " if unread else ""}Gmail 메일 최대 {count}건을 사용자 요청에 맞춰 요약하세요: {purpose} '
+                            '메일이 없으면 없다고 안내하세요. Slack 전송은 다음 단계가 처리하므로 요약 텍스트만 작성하세요.')
+        from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT
+        return (set(mail_args) <= {'max_results', 'query'} and
+                1 <= count <= MAX_RESULTS and
+                (query is None or isinstance(query, str) and bool(query.strip())) and
+                summary['settings']['instructions'] in (expected_summary, expected_summary + SUMMARY_CARD_FORMAT) and
+                isinstance(slack_args, dict) and
+                set(slack_args) == {'channel_id'} and isinstance(slack_args['channel_id'], str) and
+                re.fullmatch(r'[CGD][A-Z0-9]{8,24}', slack_args['channel_id']) is not None)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
 
 
 def _request_inputs(config, dependencies, supplied_prompt, depth=0):
@@ -17,6 +71,8 @@ def _request_inputs(config, dependencies, supplied_prompt, depth=0):
     if not workflow:
         table_plan = 'read_table' in config.get('tool_ids', []) and bool(config.get('execution_plan'))
         return table_plan, not table_plan
+    saved_instructions = (config.get('request_input_mode') == 'saved_instructions' or
+                          _legacy_fixed_gmail_slack_summary(config))
     file_reader = False
     for node in workflow['nodes']:
         tool, settings = node['tool'], node['settings']
@@ -42,7 +98,7 @@ def _request_inputs(config, dependencies, supplied_prompt, depth=0):
         elif tool == 'search_document' and not supplied_prompt and not (settings.get('query') or '').strip():
             return file_reader, True
         elif tool in ('agent_node', 'compose_answer') and not supplied_prompt and not (
-                config.get('request_input_mode') == 'saved_instructions' and
+                saved_instructions and
                 (settings.get('instructions') or config.get('instructions') or '').strip()):
             return file_reader, True
         # ask_user collects its own answer after the workflow starts.

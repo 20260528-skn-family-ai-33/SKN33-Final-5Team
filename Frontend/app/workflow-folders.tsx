@@ -1,5 +1,5 @@
 import {useRef,useState} from 'react';
-import {Folder,FolderPlus,Pencil,Trash2} from 'lucide-react';
+import {FolderInput,FolderPlus,Pencil,Trash2} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {request} from '../components/flow/connection-panel';
 import './workflow-folders.css';
@@ -21,14 +21,18 @@ export function WorkflowFolders({organization,onChange,active,onActive,selected,
   }catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy(false);}
  }
  return <section className="workflow-folders" aria-label="워크플로우 폴더">
-  <div className="workflow-folder-list" role="group" aria-label="폴더 선택">
-   {[{id:'all',name:'전체'},{id:'unfiled',name:'미분류'},...organization.folders].map(f=><button key={f.id} type="button" className={'as-button'+(active===f.id?' as-secondary':'')} aria-pressed={active===f.id} disabled={busy||disabled} onClick={()=>onActive(f.id)}><Folder size={16}/>{f.name}</button>)}
-  </div>
+  <div className="workflow-folder-toolbar"><label className="workflow-folder-scope">폴더
+   <select value={active} disabled={busy||disabled} onChange={e=>onActive(e.target.value)}>
+    <option value="all">모든 폴더</option>
+    <option value="unfiled">미분류</option>
+    {organization.folders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}
+   </select>
+  </label>
   <div className="workflow-folder-actions">
    <button className="as-button" disabled={busy||disabled} onClick={()=>open('create')}><FolderPlus size={16}/>폴더 만들기</button>
    {folder&&<><button className="as-button" disabled={busy||disabled} onClick={()=>open('rename')}><Pencil size={16}/>폴더 이름 변경</button><button className="as-button" disabled={busy||disabled} onClick={()=>open('delete')}><Trash2 size={16}/>폴더 삭제</button></>}
-   <button className="as-button" disabled={busy||disabled||!selected.length||selected.length>MAX_WORKFLOW_SELECTION} onClick={()=>open('move')}>선택 이동{selected.length?` (${selected.length})`:''}</button>
-  </div>
+  </div></div>
+  {selected.length>0&&<button className="as-button workflow-folder-move" disabled={busy||disabled||!selected.length||selected.length>MAX_WORKFLOW_SELECTION} onClick={()=>open('move')}><FolderInput size={16}/>선택한 워크플로우 이동{selected.length?` (${selected.length})`:''}</button>}
   {notice&&<p role="status">{notice}</p>}
   {dialog&&<Dialog open onOpenChange={v=>{if(!v&&!inFlight.current)setDialog(null);}}><DialogContent className="as-dialog" showCloseButton={!busy} aria-describedby={undefined}><DialogHeader><DialogTitle>{({create:'폴더 만들기',rename:'폴더 이름 변경',delete:'폴더 삭제',move:'워크플로우 이동'})[dialog]}</DialogTitle></DialogHeader>
    <form className="workflow-folder-form" aria-busy={busy} onSubmit={e=>{e.preventDefault();void save();}}>

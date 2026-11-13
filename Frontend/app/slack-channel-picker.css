@@ -1,0 +1,6 @@
+.slack-channel-picker{display:grid;gap:11px;margin:14px 0;padding:16px;border:1px solid var(--a4b-border);border-radius:8px;background:var(--a4b-surface);font-size:13px;color:var(--a4b-ink)}
+.slack-channel-picker>strong{font-size:14px}.slack-channel-picker p{margin:0;line-height:1.6;color:var(--a4b-muted)}
+.slack-channel-picker label:not(.slack-channel-picker-manual){display:grid;gap:6px;font-weight:600}.slack-channel-picker :is(select,input[type="search"],input:not([type])){width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--a4b-input-border);border-radius:5px;background:var(--a4b-surface);color:var(--a4b-ink);font:inherit}
+.slack-channel-picker-manual{display:flex;align-items:center;gap:8px;cursor:pointer}.slack-channel-picker-manual input{accent-color:var(--a4b-action)}
+.slack-channel-picker-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.slack-channel-picker-status p{flex-basis:100%;color:var(--a4b-danger)}
+.slack-channel-picker>button[type="submit"]{justify-self:start}

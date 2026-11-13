@@ -1,12 +1,8 @@
 import {useRef,useState} from 'react';
-import {ArrowRight, ArrowUp, Paperclip, X, FileText, Layers, Table2, Workflow} from 'lucide-react';
+import {ArrowRight, ArrowUp, Paperclip, X, Layers, Workflow} from 'lucide-react';
 import './workspace-overview.css';
 
 type RecentWorkflow = {id:string; updated_at:string; config:{name:string}};
-const examples = [
-  {title:'엑셀 정리하기', text:'재고표에서 기준 수량보다 재고가 적은 품목만 골라 엑셀로 정리해 줘.', icon:Table2},
-  {title:'문서에서 항목 뽑기', text:'영수증 PDF에서 날짜, 가맹점, 결제 금액을 뽑아 표로 만들어 줘.', icon:FileText},
-];
 const timestamp = new Intl.DateTimeFormat('ko-KR', {dateStyle:'medium', timeStyle:'short', timeZone:'Asia/Seoul'});
 
 function timeLabel(value:string) {
@@ -61,11 +57,6 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
           </button>
         </div>
       </form>
-      <div className="overview-examples" aria-label="업무 예시">
-        {examples.map(({title,text,icon:Icon})=><button type="button" key={title} onClick={()=>setPrompt(text)}>
-          <Icon size={15} aria-hidden="true"/>{title}
-        </button>)}
-      </div>
     </section>
     <section className="overview-section" aria-labelledby="home-workflows">
       <div className="overview-section-heading">

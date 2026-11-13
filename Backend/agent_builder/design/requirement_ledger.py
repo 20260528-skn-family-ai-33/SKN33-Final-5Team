@@ -284,7 +284,7 @@ def validate_plan(raw, state):
                 unary=f['operator'] in ('is_empty','not_empty')
                 if unary:
                     from .request_guards import unary_filter_issue
-                    issue = unary_filter_issue(f, task['quote'])
+                    issue = unary_filter_issue(f, task['quote'], state=state)
                     if issue:
                         raise ValueError(issue)
                 if not unary and ((f['value'] is None)==(f['compare_field'] is None)):
@@ -311,6 +311,8 @@ def validate_plan(raw, state):
     validate_group_aggregations(plan, state)
     validate_grouped_result(plan, state)
     validate_explicit_ledger(plan,state)
+    from .compound_table_request import validate_compound_ledger
+    validate_compound_ledger(plan,state)
     from .output_selection_request import validate_output_selection
     validate_output_selection(plan,state)
     from .request_guards import review_request
@@ -581,6 +583,11 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
 
     def check(state):
         target='template' if state.get('condition_route')=='template_plan' else 'plan'
+        from .compound_table_request import compound_table_request, request_specs
+        compound = compound_table_request(state)
+        if compound is not None:
+            raw = dict(tasks=[dict(source_message=0,description=s['kind'],spec=s) for s in request_specs(compound)],unresolved=[])
+            return _completed(state, target, extract_plan(raw, state), ledger_fingerprint(state), 0)
         from .gmail_slack import gmail_slack_plan
         slack_plan=gmail_slack_plan(state)
         if slack_plan:

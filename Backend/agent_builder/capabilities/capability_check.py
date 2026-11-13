@@ -174,6 +174,9 @@ def _without_generic_questions(state,transport,result,retried=False):
 def _question_key(text, fallback, state=None):
     """Carry a downstream slot only when the displayed question identifies it."""
     from agent_builder.conditions.condition_readiness import CHOICES, QUESTIONS, policy_clauses
+    from agent_builder.design.gmail_slack import _QUESTION as GMAIL_SLACK_CHANNEL_QUESTION
+    if text == GMAIL_SLACK_CHANNEL_QUESTION:
+        return 'slack.channel_id'
     if text in ('delivery.recipient', 'duplicate.policy'):
         return text
     if text == QUESTIONS['duplicate.policy']:

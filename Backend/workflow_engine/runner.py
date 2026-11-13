@@ -194,10 +194,12 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         # When a memo explicitly consumes an earlier analysis, its final text
         # is the displayed result. Keep the analysis in outputs/step history
         # and in the pending review preview until the memo actually executes.
-        from workflow_engine.run_answer import summarized_text_sources
+        from workflow_engine.run_answer import summarized_text_sources, gmail_slack_summary_texts
         summarized_sources.update(summarized_text_sources(config['workflow'], outputs))
         operation_nodes={n['id'] for n in config['workflow']['nodes'] if uses_operation(n)}
         texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources|summarized_sources and (tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform','base64_codec','text_hash','date_transform'] or id in operation_nodes)))
+        if not questions:
+            texts=gmail_slack_summary_texts(config, outputs, texts)
         records=[v['records'] for v in outputs.values() if 'records' in v]
         tables=[v['table'] for v in outputs.values() if 'table' in v]
         result_rows=next((v['records'] if 'records' in v else v['table']['rows'] for v in reversed(list(outputs.values())) if 'records' in v or 'table' in v),[])

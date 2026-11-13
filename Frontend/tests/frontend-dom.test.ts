@@ -52,6 +52,67 @@ async function setup(search='',stored:Record<string,string>={},override?:(path:s
 }
 const buttons=()=>Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
 
+test('incomplete external workflow explains missing settings in the conversation',async()=>{
+ const h=await setup('?screen=workflow',{},path=>path==='/api/workflows/from-request'?{
+  summary:'재고 흐름',questions:[{question:'어느 시트 범위를 읽을까요?'}],
+  requirements:[{id:'range',description:'원본 시트 범위 지정',status:'needs_input'}],
+ }:undefined);
+ try{
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'Google Sheets 재고를 Slack으로 알려줘');
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  const messages=Array.from(document.querySelectorAll('.as-messages .as-message'));
+  assert.equal(messages.length,2);
+  assert.match(messages[0].textContent||'',/Google Sheets 재고를 Slack으로 알려줘/);
+  assert.match(messages[1].textContent||'',/원본 시트 범위 지정/);
+  assert.match(messages[1].textContent||'',/어느 시트 범위를 읽을까요/);
+  assert.equal(document.querySelector('.as-global-error'),null);
+ }finally{await h.close();}
+});
+test('Gmail unread summary offers connected Slack channels and sends the chosen ID',async()=>{
+ const question={id:'slack-question',key:'slack.channel_id',text:'요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)',response:{type:'text'}};
+ const prompt='gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘';
+ let messageCount=0;
+ const h=await setup('?screen=workflow',{},(path)=>{
+  if(path==='/api/agent-builder/sessions')return {id:'gmail-slack-session',revision:0};
+  if(path==='/api/agent-builder/message'){
+   messageCount++;
+   return {id:'gmail-slack-session',revision:messageCount,status:messageCount===1?'needs_clarification':'ready',
+    messages:messageCount===1?[{role:'user',content:prompt},{role:'assistant',content:question.text}]:[{role:'user',content:prompt},{role:'user',content:'C0123456789'},{role:'assistant',content:'Slack 채널에 보냅니다.'}],
+    pending_questions:messageCount===1?[question]:[],draft:null,issues:[],trace:[],resources:[]};
+  }
+  if(path==='/api/service-connections/slack/channels')return {channels:[{id:'C0123456789',name:'reports',isPrivate:false},{id:'G0123456789',name:'team-private',isPrivate:true}],truncated:false};
+ });
+ try{
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,prompt);
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  await h.flush();
+  assert.equal(h.calls.some(call=>call.path==='/api/workflows/from-request'),false);
+  assert.ok(document.querySelector('form[aria-label="Slack 채널 선택"]'));
+  const select=document.querySelector<HTMLSelectElement>('select[aria-label="전송할 Slack 채널"]')!;
+  assert.ok(select);assert.match(select.textContent!,/#reports/);
+  await act(async()=>{select.value='C0123456789';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await tick();});
+  await click(button('이 채널로 설정'));
+  const messages=h.calls.filter(call=>call.path==='/api/agent-builder/message');
+  assert.equal(messages.length,2);assert.equal(messages[1].body.content,'C0123456789');assert.equal(messages[1].body.questionId,question.id);
+ }finally{await h.close();}
+});
+test('an older Slack connection asks for reconnection while preserving manual channel entry',async()=>{
+ let navigation='';
+ const question={id:'slack-question',key:'slack.channel_id',text:'요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)',response:{type:'text'}};
+ const saved={id:'slack-session',revision:1,status:'needs_clarification',messages:[{role:'user',content:'Gmail 메일을 Slack에 요약해줘'},{role:'assistant',content:question.text}],pending_questions:[question],draft:null,issues:[],trace:[],resources:[]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'slack-session'},path=>{
+  if(path==='/api/agent-builder/session?id=slack-session')return saved;
+  if(path==='/api/service-connections/slack/channels')return new Response(JSON.stringify({code:'slack_scope_required',error:'Slack 채널 목록 권한을 추가하려면 Slack 계정을 다시 연결해주세요.'}),{status:409,headers:{'Content-Type':'application/json'}});
+ },createElement(AgentStudio,{onNavigate:(next:string)=>{navigation=next;}}));
+ try{
+  await h.flush();
+  assert.match(document.querySelector('form[aria-label="Slack 채널 선택"]')?.textContent||'',/다시 연결/);
+  await click(button('서비스 연결 열기'));assert.equal(navigation,'connections');
+  await click(document.querySelector<HTMLInputElement>('.slack-channel-picker-manual input')!);
+  assert.ok(document.querySelector('input[aria-label="Slack 채널 ID 직접 입력"]'));
+ }finally{await h.close();}
+});
+
 for(const linked of [true,false])test('source evidence: '+(linked?'run-scoped snapshot original':'ordinary personal original'),async()=>{
  const fileId='source-alias',runId='historical-source-run';
  const current={id:runId,status:'succeeded',answer:'자료 요약',steps:[],rows:[],artifact:null,agent_version:1,
@@ -517,6 +578,26 @@ test('DOM: run history draws the saved version and design opens at reading size 
   assert.notEqual(cards()[0].style.left,cards()[1].style.left);
   await click(cards()[1]);
   assert.ok(document.querySelector('.as-node-inspector')?.textContent?.includes('엑셀 만들기'));
+ }finally{await h.close();}
+});
+test('DOM: saved Gmail→Slack run uses its historical workflow to render mail cards',async()=>{
+ const gmailSlack={entry:'mail',nodes:[
+  {id:'mail',tool:'email.list',label:'안 읽은 메일 읽기',bindings:[],settings:{operation:'read_messages',arguments_json:'{"max_results":3,"query":"is:unread"}'}},
+  {id:'summary',tool:'compose_answer',label:'메일 요약',bindings:[{input:'documents',node_id:'mail',output:'documents'}],settings:{}},
+  {id:'post',tool:'slack.post_message',label:'Slack 전송',bindings:[{input:'text',node_id:'summary',output:'text'}],settings:{operation:'execute',arguments_json:'{"channel_id":"C0123456789"}'}},
+ ],edges:[{source:'mail',target:'summary',branch:'next'},{source:'summary',target:'post',branch:'next'}]};
+ const updated={...A,version:2,config:{...A.config,workflow:{entry:'other',nodes:[{id:'other',tool:'read_document',label:'다른 흐름',bindings:[],settings:{}}],edges:[]}}};
+ const answer='조회한 안 읽은 메일 요약:\n\n제목: Slack 평가판 안내\n보낸 사람: Slack <no-reply@slack.com>\n평가판이 시작되었습니다.\n\n{"status":"accepted_by_provider","channel_id":"C0123456789","ts":"123"}';
+ const previous={id:'gmail-slack-run',status:'succeeded',agent_version:1,answer,rows:[],steps:[],evidence:[],config_snapshot:{workflow:gmailSlack}};
+ const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(updated,[previous]):undefined);
+ try{
+  assert.equal(document.querySelectorAll('.as-test-result .gmr-card').length,1);
+  assert.equal(document.querySelector('.gmr-card h3')?.textContent,'Slack 평가판 안내');
+  assert.equal(document.querySelector('.gmr-card-heading p')?.textContent,'Slack <no-reply@slack.com>');
+  assert.doesNotMatch(document.querySelector('.gmr-card-content')!.textContent!,/channel_id|accepted_by_provider/);
+  assert.equal(document.querySelector('.gmr-full')?.hasAttribute('open'),false);
+  assert.equal(document.querySelector('.gmr-full p')?.textContent,answer.split('\n\n{')[0]);
+  assert.doesNotMatch(document.querySelector('.as-test-result')!.textContent!,/accepted_by_provider|channel_id/);
  }finally{await h.close();}
 });
 test('DOM: fallback save lets users rename an inline CSV and downloads identical bytes without leaving the page',async()=>{
@@ -989,6 +1070,10 @@ test('DOM integration: new document review UI survives merging with workflow res
   if(path.includes('/document_review'))return {asset:body?{...resource,text:'검토된 본문',parser_metadata:{document_analysis:analysis,document_review:{...review,status:'completed'}}}:resource,review:body?{...review,revision:1,status:'completed',completed_at:'2026-10-29T00:00:00Z'}:review,groups:[],history:[]};
  });
  try{
+  const settingsToggle=document.querySelector<HTMLButtonElement>('.as-config-toggle')!;
+  assert.equal(settingsToggle.getAttribute('aria-expanded'),'false');
+  await click(settingsToggle);
+  assert.equal(document.querySelector('#workflow-settings-detail')?.hasAttribute('hidden'),false);
   const resourceButton=Array.from(document.querySelectorAll('.as-config .as-resource')).find(b=>b.textContent?.includes(resource.name));assert.ok(resourceButton);await click(resourceButton);
   assert.ok(document.querySelector('[aria-label="문서 내용 분석 결과"]'));
   await click(button('원본·대조 후보 검토'));
@@ -1426,6 +1511,51 @@ test('schedules: pending and failed requests are not presented as an empty sched
  }finally{waiting.resolve({workflows:[]});await h.close();}
 });
 
+test('rename: design and reservation detail persist the title across screens',async()=>{
+ let current=A;
+ const h=await setup('?screen=workflow&service=A',{},(path,body)=>{
+  if(path.includes('/agent?id=A'))return snapshot(current);
+  if(path.endsWith('/agents'))return {agents:[current,B]};
+  if(path.endsWith('/rename_agent')){
+   assert.equal(body.version,current.version);
+   current={...current,version:current.version+1,config:{...current.config,name:body.name}};
+   return {agent:current};
+  }
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('button[aria-label="워크플로우 이름 변경"]')!);
+  await input(field('워크플로우 이름'),'설계에서 변경');
+  await click(button('이름 저장'));
+  assert.equal(document.querySelector('.as-page-title h1')?.textContent,'설계에서 변경');
+  await click(button('작업 라이브러리'));
+  await click(document.querySelector('button[aria-label="설계에서 변경 예약 관리"]')!);
+  await click(document.querySelector('button[aria-label="워크플로우 이름 변경"]')!);
+  await input(field('워크플로우 이름'),'예약에서 변경');
+  await click(button('이름 저장'));
+  assert.equal(document.querySelector('.as-page-title h1')?.textContent,'예약에서 변경');
+  await click(button('작업 라이브러리'));
+  assert.ok(document.querySelector('button[aria-label="예약에서 변경 설계 열기"]'));
+ }finally{await h.close();}
+});
+
+test('rename: reservation list preserves active status after changing the name',async()=>{
+ const workflows=scheduleFixtures();
+ const initial=workflows.find(row=>row.agent.id==='A')!;
+ const h=await setup('?screen=schedules',{},(path,body)=>{
+  if(path.endsWith('/schedules'))return {workflows};
+  if(path.endsWith('/rename_agent'))return {agent:{...initial.agent,version:initial.agent.version+1,config:{...initial.agent.config,name:body.name}}};
+ },createElement(EntryApp));
+ try{
+  const row=scheduleRow('A');
+  const status=row.querySelector('.schedule-status')?.textContent;
+  await click(row.querySelector('button[title="이름 변경"]')!);
+  await input(field('워크플로우 이름'),'새 예약 이름');
+  await click(button('이름 저장'));
+  assert.equal(scheduleRow('A').querySelector('h2')?.textContent,'새 예약 이름');
+  assert.equal(scheduleRow('A').querySelector('.schedule-status')?.textContent,status);
+ }finally{await h.close();}
+});
+
 test('schedules: an empty list offers a fresh workflow without changing an existing saved workflow',async()=>{
  const h=await setup('?screen=schedules',{'a4b-builder-session':'old','a4b-selected-agent':'A'},undefined,createElement(EntryApp));
  try{
@@ -1452,8 +1582,8 @@ test('schedules: management opens the chosen workflow and leaving a pending list
   await click(button('예약 관리'));assert.match(document.body.textContent!,/불러오고/);
   await click(button('워크플로우'));
   await act(async()=>{waiting.resolve({workflows:scheduleFixtures()});await tick();});
-  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(document.querySelector('h1')?.textContent,'일일 보고서');
-  assert.equal(localStorage.getItem('a4b-selected-agent'),'A');
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(document.querySelector('h1')?.textContent,'워크플로우 설계');
+  assert.equal(localStorage.getItem('a4b-selected-agent'),null);
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,0);assert.equal(h.calls.some(call=>call.body),false);
  }finally{waiting.resolve({workflows:[]});await h.close();}
 });
@@ -2061,14 +2191,12 @@ test('reservation edits survive cancelled tab, browser-back and new-workflow nav
  }finally{await h.close();}
 });
 
-test('home: first-login example waits for submission then starts a fresh design',async()=>{
+test('home: typed request waits for submission then starts a fresh design',async()=>{
  const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:path.endsWith('/sessions')?{...readySession(),draft:null,status:'empty'}:path.endsWith('/message')?readySession():undefined,createElement(EntryApp));
  try{
-  const example=Array.from(document.querySelectorAll('.overview-examples button')).find(item=>item.textContent?.includes('엑셀 정리하기'));
-  assert.ok(example);
   const arrow=document.querySelector<HTMLButtonElement>('.overview-composer button[type=submit]')!;
   assert.ok(arrow.disabled);
-  await click(example);
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="자동화할 업무"]')!,'재고표에서 기준 수량보다 재고가 적은 품목만 골라 엑셀로 정리해 줘.');
   assert.equal(location.search,'?screen=home');
   assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="자동화할 업무"]')!.value,/재고표에서/);
   assert.ok(!arrow.disabled);
@@ -2098,7 +2226,7 @@ test('home: all sidebar destinations return to home and recent entries retain th
   assert.equal(location.search,'?screen=nodes');
   await goHome();
   const pages = {
-   workflow:'서비스 A',workflows:'작업 라이브러리',schedules:'예약 관리',
+   workflow:'워크플로우 설계',workflows:'작업 라이브러리',schedules:'예약 관리',
    history:'실행 기록',assets:'자료함',connections:'서비스 연결',
   };
   for (const [page,title] of Object.entries(pages)){
@@ -2241,14 +2369,18 @@ test('DOM: recovery polls a running request and enables the next answer after co
 });
 
 
-test('review: workspace menu restores the conversation after visiting assets',async()=>{
+for(const destination of ['자료함','홈','새 워크플로우'])test('navigation: starts clean after '+destination,async()=>{
  const session=readySession();
  const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined,createElement(EntryApp));
  try{
   assert.match(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
-  await click(button('자료함'));await click(button('워크플로우'));
-  assert.equal(localStorage.getItem('a4b-builder-session'),'ready');
-  assert.match(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
+  await click(button(destination));
+  if(destination!=='새 워크플로우')await click(button('워크플로우'));
+  assert.equal(localStorage.getItem('a4b-builder-session'),null);
+  assert.equal(localStorage.getItem('a4b-selected-agent'),null);
+  assert.equal(h.calls.filter(call=>call.path.includes('/session?')).length,1);
+  assert.doesNotMatch(document.querySelector('.as-messages')?.textContent||'',/합계를 계산해줘/);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')?.value,'');
   assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,0);
  }finally{await h.close();}
 });
@@ -2676,14 +2808,14 @@ test('workflow folders: create, select, move, filter, rename and delete preserve
  },createElement(EntryApp));
  try{
   await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택 이동 (1)'));
+  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택한 워크플로우 이동 (1)'));
   await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
-  await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
+  await submit(document.querySelector('.workflow-folder-form')!);await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   assert.ok(document.querySelector('button[aria-label="서비스 A 실행하기"]'));
   assert.ok(document.querySelector('button[aria-label="서비스 A 예약 관리"]'));
   await click(button('폴더 이름 변경'));await input(field('폴더 이름'),'정리 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  assert.ok(button('정리 업무'));
+  assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/정리 업무/);
   await click(button('폴더 삭제'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
   assert.deepEqual(organization.assignments,{});
@@ -2713,7 +2845,7 @@ test('workflow folder pending save rejects duplicate submission and keeps the di
   assert.equal(saves,1);assert.equal(button('취소').disabled,true);
   assert.equal(field('폴더 이름').disabled,true);
   await act(async()=>{pending.resolve({organization:{revision:1,folders:[{id:'pending-folder',name:'중복 방지'}],assignments:{}}});await tick();});
-  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.ok(button('중복 방지'));
+  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/중복 방지/);
  }finally{await h.close();}
 });
 
@@ -2721,13 +2853,13 @@ test('workflow folder search and folder changes clear hidden selection',async()=
  const h=await setup('?screen=workflows',{},path=>path.endsWith('/agents')?{agents:[A,B],organization:{revision:1,folders:[{id:'f',name:'정리'}],assignments:{A:'f'}}}:undefined,createElement(EntryApp));
  try{
   await click(document.querySelector('input[aria-label="현재 목록 전체 선택"]')!);
-  assert.equal(button('선택 이동 (2)').disabled,false);
+  assert.equal(button('선택한 워크플로우 이동 (2)').disabled,false);
   await input(document.querySelector('input[aria-label="워크플로우 검색"]')!,'서비스 A');
-  assert.equal(button('선택 이동').disabled,true);
+  assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);
-  await click(button('미분류'));
-  assert.equal(button('선택 이동').disabled,true);
+  await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='unfiled';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
  }finally{await h.close();}
 });
@@ -2742,11 +2874,11 @@ test('workflow folder selection caps at 500 and releases a slot when unchecked',
   await click(document.querySelector('input[aria-label="현재 목록에서 500개 선택"]')!);
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
   const last=document.querySelector<HTMLInputElement>('input[aria-label="대량 500 선택"]')!;
-  assert.equal(last.disabled,true);assert.ok(button('선택 이동 (500)'));
+  assert.equal(last.disabled,true);assert.ok(button('선택한 워크플로우 이동 (500)'));
   await click(document.querySelector('input[aria-label="대량 0 선택"]')!);
   assert.equal(last.disabled,false);await click(last);
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
-  await click(button('선택 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
+  await click(button('선택한 워크플로우 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
  }finally{await h.close();}
 });

@@ -1,5 +1,6 @@
+import {WorkflowRenameDialog,renameWorkflow} from './workflow-rename-dialog';
 import {useEffect,useRef,useState} from 'react';
-import {AlertCircle,ArrowRight,CalendarClock,Plus,RefreshCw,Search,X} from 'lucide-react';
+import {AlertCircle,ArrowRight,CalendarClock,Pencil,Plus,RefreshCw,Search,X} from 'lucide-react';
 import {request} from '../components/flow/connection-panel';
 import {scheduleDescription,scheduleDateNote,type ScheduleSpec} from '../lib/schedule-spec';
 import {ScheduleSettings,type ManagedSchedule} from './schedule-settings';
@@ -36,6 +37,7 @@ function formatNextAt(value:string|number|undefined):string {
 
 export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveChange}:{onOpen:(id:string)=>void;onOpenExternal:(id:string)=>void;onCreate:()=>void;onCanLeaveChange?:(guard:()=>boolean)=>void}) {
  const [workflows,setWorkflows]=useState<ScheduledWorkflow[]>([]),[agents,setAgents]=useState<WorkflowSummary[]>([]),[externalFlows,setExternalFlows]=useState<ExternalFlow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
+ const [renaming,setRenaming]=useState<WorkflowSummary|null>(null);
  const [query,setQuery]=useState(''),[filter,setFilter]=useState<'all'|Status>('all');
  const [adding,setAdding]=useState(false),[manageId,setManageId]=useState(''),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false),[notice,setNotice]=useState('');
  const generation=useRef(0);
@@ -105,10 +107,18 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
     <div className="entry-list-tools schedule-list-tools"><label><Search size={17} aria-hidden="true"/><input aria-label="예약 워크플로우 검색" placeholder="이름이나 업무 내용 검색" value={query} onChange={event=>setQuery(event.target.value)}/></label><select aria-label="예약 상태 필터" value={filter} onChange={event=>setFilter(event.target.value as 'all'|Status)}><option value="all">전체 상태</option><option value="active">활성</option><option value="paused">중지</option><option value="unconfigured">설정 확인 필요</option></select></div>
     {matches.length>0?<div className="schedule-table-container"><table className="schedule-table"><caption className="sr-only">예약 워크플로우 목록</caption><thead><tr><th scope="col">워크플로우</th><th scope="col">반복 일정</th><th scope="col">상태</th><th scope="col">다음 실행</th><th scope="col"><span className="sr-only">관리</span></th></tr></thead><tbody>{matches.map(row=>{
      const spec=row.kind==='agent'?workflows.find(item=>item.agent.id===row.id)?.schedule?.spec??workflows.find(item=>item.agent.id===row.id)?.agent.config.schedule:undefined;
-     return <tr key={row.kind+'-'+row.id} data-schedule-id={row.id}><td data-label="워크플로우"><h2>{row.name}</h2><p>{row.purpose}</p></td><td data-label="반복 일정"><span>{row.description}</span><small>{row.timezone==='Asia/Seoul'?'서울 표준시':row.timezone}</small>{spec&&scheduleDateNote(spec)&&<small>{scheduleDateNote(spec)}</small>}</td><td data-label="상태"><span className={'schedule-status '+row.status}>{statusLabels[row.status]}</span></td><td data-label="다음 실행"><span>{row.status==='paused'?'예약 중지됨':row.status==='unconfigured'?'예약 설정 확인 필요':formatNextAt(row.nextRunAt)}</span></td><td><div className="schedule-row-actions">{row.kind==='agent'?<><button type="button" className="as-button" aria-label={row.name+' 일정 관리'} disabled={busy} onClick={()=>openManager(row.id)}>일정 관리</button><button type="button" className="as-button" aria-label={row.name+' 예약 자료·실행 확인'} disabled={busy} onClick={()=>navigate(()=>onOpen(row.id))}>상세 확인<ArrowRight size={14}/></button></>:<button type="button" className="as-button" aria-label={row.name+' 일정 관리'} disabled={busy} onClick={()=>navigate(()=>onOpenExternal(row.id))}>일정 관리<ArrowRight size={14}/></button>}</div></td></tr>;
+     return <tr key={row.kind+'-'+row.id} data-schedule-id={row.id}><td data-label="워크플로우"><div className="workflow-title-actions"><h2>{row.name}</h2>{row.kind==='agent'&&<button type="button" className="as-button" aria-label={row.name+' 이름 변경'} title="이름 변경" disabled={busy} onClick={()=>{const agent=workflows.find(item=>item.agent.id===row.id)?.agent;if(agent)setRenaming(agent);}}><Pencil size={15}/></button>}</div><p>{row.purpose}</p></td><td data-label="반복 일정"><span>{row.description}</span><small>{row.timezone==='Asia/Seoul'?'서울 표준시':row.timezone}</small>{spec&&scheduleDateNote(spec)&&<small>{scheduleDateNote(spec)}</small>}</td><td data-label="상태"><span className={'schedule-status '+row.status}>{statusLabels[row.status]}</span></td><td data-label="다음 실행"><span>{row.status==='paused'?'예약 중지됨':row.status==='unconfigured'?'예약 설정 확인 필요':formatNextAt(row.nextRunAt)}</span></td><td><div className="schedule-row-actions">{row.kind==='agent'?<><button type="button" className="as-button" aria-label={row.name+' 일정 관리'} disabled={busy} onClick={()=>openManager(row.id)}>일정 관리</button><button type="button" className="as-button" aria-label={row.name+' 예약 자료·실행 확인'} disabled={busy} onClick={()=>navigate(()=>onOpen(row.id))}>상세 확인<ArrowRight size={14}/></button></>:<button type="button" className="as-button" aria-label={row.name+' 일정 관리'} disabled={busy} onClick={()=>navigate(()=>onOpenExternal(row.id))}>일정 관리<ArrowRight size={14}/></button>}</div></td></tr>;
     })}</tbody></table></div>:<div className="entry-empty"><Search size={24}/><h2>검색 결과가 없습니다.</h2><p>이름이나 상태 필터를 바꿔 확인하세요.</p><button type="button" className="as-button" onClick={()=>{setQuery('');setFilter('all');}}>검색 조건 초기화</button></div>}
-   </>:<div className="entry-empty"><CalendarClock size={28}/><h2>등록한 예약이 없습니다.</h2><p>기존 워크플로우에 일정을 추가하거나, 예약 실행할 새 워크플로우를 만드세요.</p>{!adding&&<button type="button" className="as-button" onClick={toggleAdding}>기존 워크플로우에 예약 추가</button>}</div>}
+   </>:<div className="entry-empty"><CalendarClock size={28}/><h2>등록한 예약이 없습니다.</h2><p>기존 워크플로우에 일정을 추가하거나, 예약 실행할 새 워크플로우를 만드세요.</p></div>}
   </>}
+  {renaming&&<WorkflowRenameDialog name={renaming.config.name} onClose={()=>setRenaming(null)} onSave={async name=>{
+   const updated=await renameWorkflow(renaming,name);
+   setAgents(current=>current.map(agent=>agent.id===updated.id?updated:agent));
+   setWorkflows(current=>current.map(row=>row.agent.id===updated.id?{
+    agent:updated,
+    schedule:row.schedule?.agent_version===renaming.version?{...row.schedule,agent_version:updated.version}:row.schedule,
+   }:row));
+  }}/>}
  </section>;
 
 }

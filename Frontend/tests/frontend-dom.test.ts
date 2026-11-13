@@ -2643,3 +2643,22 @@ test('workflow folder search and folder changes clear hidden selection',async()=
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
  }finally{await h.close();}
 });
+
+test('workflow folder selection caps at 500 and releases a slot when unchecked',async()=>{
+ const agents=Array.from({length:501},(_,i)=>({...A,id:'bulk-'+i,config:{...A.config,name:'대량 '+i}}));let moved:string[]=[];
+ const h=await setup('?screen=workflows',{},(path,body)=>{
+  if(path.endsWith('/agents'))return {agents};
+  if(path.endsWith('/workflow_folders')){moved=body.agent_ids;return {organization:{revision:1,folders:[],assignments:{}}};}
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('input[aria-label="현재 목록에서 500개 선택"]')!);
+  assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
+  const last=document.querySelector<HTMLInputElement>('input[aria-label="대량 500 선택"]')!;
+  assert.equal(last.disabled,true);assert.ok(button('선택 이동 (500)'));
+  await click(document.querySelector('input[aria-label="대량 0 선택"]')!);
+  assert.equal(last.disabled,false);await click(last);
+  assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
+  await click(button('선택 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
+  assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
+ }finally{await h.close();}
+});

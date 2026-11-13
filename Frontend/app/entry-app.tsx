@@ -7,7 +7,7 @@ import {UploadLibrary} from './upload-library';
 import {WorkspaceHeader,WorkspaceHelp} from './workspace-header';
 import {ServiceConnections} from './service-connections';
 import {ScheduledWorkflows} from './scheduled-workflows';
-import {WorkflowFolders,emptyOrganization,type WorkflowOrganization} from './workflow-folders';
+import {WorkflowFolders,emptyOrganization,MAX_WORKFLOW_SELECTION,type WorkflowOrganization} from './workflow-folders';
 import {WorkflowRenameDialog} from './workflow-rename-dialog';
 import {request} from '../components/flow/connection-panel';
 import './entry-app.css';
@@ -82,6 +82,15 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
  useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;};},[route,historyService]);
  const historyAgent=historyService?agents.find(agent=>agent.id===historyService):undefined;
  const matches=agents.filter(a=>(activeFolder==='all'||(activeFolder==='unfiled'?!organization.assignments[a.id]:organization.assignments[a.id]===activeFolder))&&(a.config.name+' '+a.config.purpose).toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+ const selectableMatches=matches.slice(0,MAX_WORKFLOW_SELECTION);
+ const selectionLabel=matches.length>MAX_WORKFLOW_SELECTION?'현재 목록에서 500개 선택':'현재 목록 전체 선택';
+ function toggleWorkflow(id:string,checked:boolean){
+  setSelectedWorkflows(current=>{
+   if(!checked)return current.filter(value=>value!==id);
+   if(current.includes(id)||current.length>=MAX_WORKFLOW_SELECTION)return current;
+   return [...current,id];
+  });
+ }
  const refreshButton=<button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button>;
  if(route==='home')return <WorkspaceOverview
   workflows={agents.slice().sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)).slice(0,3)}
@@ -94,9 +103,10 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   {renameNotice&&<p className="entry-rename-notice" role="status">{renameNotice}</p>}
   <div className="entry-list-tools" aria-label="워크플로우 목록 도구"><label><Search size={18}/><input aria-label="워크플로우 검색" value={query} onChange={e=>{setQuery(e.target.value);setSelectedWorkflows([]);}} placeholder="워크플로우 검색"/></label><span>{loading?'불러오는 중…':'전체 '+agents.length}</span></div>
   <WorkflowFolders organization={organization} onChange={setOrganization} active={activeFolder} onActive={id=>{setActiveFolder(id);setSelectedWorkflows([]);}} selected={selectedWorkflows} onMoved={()=>setSelectedWorkflows([])} disabled={loading||!!error}/>
-  {!!matches.length&&<label className="workflow-select-all"><input type="checkbox" aria-label="현재 목록 전체 선택" disabled={loading} checked={matches.every(a=>selectedWorkflows.includes(a.id))} onChange={e=>setSelectedWorkflows(e.target.checked?matches.map(a=>a.id):[])}/>현재 목록 전체 선택</label>}
+  {!!matches.length&&<label className="workflow-select-all"><input type="checkbox" aria-label={selectionLabel} disabled={loading} checked={selectableMatches.every(a=>selectedWorkflows.includes(a.id))} onChange={e=>setSelectedWorkflows(e.target.checked?selectableMatches.map(a=>a.id):[])}/>{selectionLabel}</label>}
+  {matches.length>MAX_WORKFLOW_SELECTION&&<p className="as-small-muted">한 번에 최대 500개까지 선택해 이동할 수 있습니다.</p>}
   <div className="entry-workflow-grid">{matches.map(a=><article className="entry-workflow-card" key={a.id}>
-   <div><label className="workflow-card-select"><input type="checkbox" aria-label={a.config.name+' 선택'} checked={selectedWorkflows.includes(a.id)} disabled={loading} onChange={e=>setSelectedWorkflows(current=>e.target.checked?[...current,a.id]:current.filter(id=>id!==a.id))}/><Workflow size={20}/></label><span className="as-status">저장 버전 {a.version}</span></div>
+   <div><label className="workflow-card-select"><input type="checkbox" aria-label={a.config.name+' 선택'} checked={selectedWorkflows.includes(a.id)} disabled={loading||(!selectedWorkflows.includes(a.id)&&selectedWorkflows.length>=MAX_WORKFLOW_SELECTION)} onChange={e=>toggleWorkflow(a.id,e.target.checked)}/><Workflow size={20}/></label><span className="as-status">저장 버전 {a.version}</span></div>
    <div className="entry-workflow-title"><h2>{a.config.name}</h2><button type="button" aria-label={a.config.name+' 이름 변경'} title="이름 변경" disabled={loading} onClick={()=>{setRenameNotice('');setRenaming(a);}}><Pencil size={15} aria-hidden="true"/></button></div>
    <p>{a.config.purpose}</p><footer><small>작업 {a.config.workflow?.nodes.length??a.config.tool_ids.length}개 · {date(a.updated_at)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',a.id)} aria-label={a.config.name+' 설계 열기'}>설계 열기</button><button className="as-button as-secondary" onClick={()=>navigate('history',a.id)} aria-label={a.config.name+' 실행 기록'}>실행 기록</button><button className="as-button as-secondary" onClick={()=>navigate('schedule',a.id)} aria-label={a.config.name+' 예약 관리'}>예약 관리</button><button className="as-button as-primary" onClick={()=>navigate('run',a.id)} aria-label={a.config.name+' 실행하기'}>실행하기<ArrowRight size={14}/></button></footer>
 

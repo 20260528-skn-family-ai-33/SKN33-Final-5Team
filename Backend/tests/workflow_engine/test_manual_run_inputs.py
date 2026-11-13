@@ -182,7 +182,7 @@ def test_saved_analysis_instructions_do_not_require_retyping():
         node('read', 'read_document'),
         node('summary', 'compose_answer', [bind('documents', 'read', 'documents')]),
     ], 'edges': [edge('read', 'summary')]}
-    config = {'workflow': workflow, 'instructions': '문서의 주요 내용을 요약하세요.'}
+    config = {'workflow': workflow, 'instructions': '문서의 주요 내용을 요약하세요.', 'request_input_mode':'saved_instructions'}
     assert not execution_request_required(config)
     config['instructions'] = ''
     assert execution_request_required(config)
@@ -199,7 +199,7 @@ def test_saved_analysis_runs_without_new_text_and_receives_saved_instructions(tm
         node('summary', 'compose_answer', [bind('documents', 'read', 'documents')],
              instructions='주요 내용을 요약하세요.'),
     ], 'edges': [edge('read', 'summary')]}
-    store, identifier, doc = saved(tmp_path, workflow)
+    store, identifier, doc = saved(tmp_path, workflow, request_input_mode='saved_instructions')
     expected = store.agent(identifier)['config']['instructions']
     original = runner.execute_node
     prompts = []
@@ -219,3 +219,45 @@ def test_saved_analysis_runs_without_new_text_and_receives_saved_instructions(tm
     assert run['status'] == 'succeeded', run.get('error')
     assert prompts == [expected]
     assert run['answer'] == '제목은 테스트입니다.'
+
+
+@pytest.mark.parametrize('mode',[None,'required'])
+def test_document_question_requires_real_input_even_with_saved_instructions(tmp_path,monkeypatch,mode):
+    from workflow_engine import runner
+    from service.handlers import runs
+    workflow={'entry':'read','nodes':[
+        node('read','read_document'),
+        node('answer','compose_answer',[bind('documents','read','documents')],
+             instructions='이번 실행에서 사용자가 입력한 질문에 답하세요.')],
+        'edges':[edge('read','answer')]}
+    store,identifier,doc=saved(tmp_path,workflow,request_input_mode=mode,
+        instructions='첨부 문서를 참고하여 사용자가 실행할 때 입력하는 질문에 답하세요.')
+    store.close()
+    observed=[];original=runner.execute_node
+    def execute(current,state,*args,**kwargs):
+        if current['id']=='answer':
+            observed.append((state['request'],state['customer_message']))
+            return {'text':'질문에 대한 답변','evidence':[]}
+        return original(current,state,*args,**kwargs)
+    monkeypatch.setattr(runs,'run_workflow',lambda *args,**kwargs:runner.run_workflow(*args,**kwargs,executor=execute,llm=object()))
+    job=dict(directory=str(tmp_path),id=identifier)
+    assert handle({**job,'action':'agent'})['request_required'] is True
+    with pytest.raises(ValueError,match='요청|질문|입력'):
+        handle({**job,'action':'test','content':'','file_ids':[doc['id']]})
+    assert not observed
+    result=handle({**job,'action':'test','content':'문서의 제목은 무엇인가요?','file_ids':[doc['id']]})
+    assert result['status']=='succeeded',result.get('error')
+    assert observed==[('문서의 제목은 무엇인가요?','문서의 제목은 무엇인가요?')]
+
+
+def test_saved_schedule_instructions_do_not_satisfy_child_explicit_question():
+    from agent_builder.conditions.input_requirements import execution_request_required
+    child={'workflow':{'entry':'answer','nodes':[node('answer','agent_node',instructions='사용자 질문에 답하세요.')],'edges':[]},
+           'instructions':'사용자 질문에 답하세요.','request_input_mode':'required'}
+    call=node('child','saved_workflow')
+    config={'workflow':{'entry':'child','nodes':[call],'edges':[]},'instructions':'매일 실행하세요.',
+            'schedule':{'frequency':'daily'}}
+    dependencies={'child':{'config':child}}
+    assert execution_request_required(config,dependencies)
+    call['bindings']=[bind('text','previous','text')]
+    assert not execution_request_required(config,dependencies)

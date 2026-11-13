@@ -110,3 +110,7 @@
 @media(prefers-reduced-motion:reduce) {
  :is(.as-app,.entry-app) button { transition:none; }
 }
+
+.task-library-tabs{gap:16px;border-bottom:1px solid var(--a4b-border)}
+.task-library-header .task-library-tabs .as-button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding-inline:4px}
+.task-library-header .task-library-tabs .as-button[aria-current=page]{border-bottom-color:var(--a4b-action);background:transparent}

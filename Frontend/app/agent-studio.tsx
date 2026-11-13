@@ -302,8 +302,8 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
   try{
    if(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content)){
     const prompt=externalPromptContext.current?`${externalPromptContext.current}\n추가 답변: ${content}`:content;
-    const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[]}>('/api/workflows/from-request',{prompt});
-    if(!result.workflow){externalPromptContext.current=(result.questions||[]).length?prompt:'';setError([result.summary,...(result.questions||[]).map(item=>item.question),...(result.checklist||[])].filter(Boolean).join('\n')||'외부 서비스 워크플로우를 만들지 못했어요. 요청을 더 구체적으로 적어주세요.');return;}
+    const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{id:string;description:string;status:string}[]}>('/api/workflows/from-request',{prompt});
+    if(!result.workflow){externalPromptContext.current=prompt;const requirements=(result.requirements||[]).filter(item=>item.status==='needs_input'||item.status==='unsupported').map(item=>`${item.status==='unsupported'?'지원 확인 필요':'추가 정보 필요'}: ${item.description}`);setError([result.summary,...(result.questions||[]).map(item=>item.question),...(result.checklist||[]),...requirements].filter(Boolean).join('\n')||'외부 서비스 워크플로우를 만들지 못했어요. 요청을 더 구체적으로 적어주세요.');return;}
     externalPromptContext.current='';
     onExternalFlow?.(result.workflow.id);
     return;

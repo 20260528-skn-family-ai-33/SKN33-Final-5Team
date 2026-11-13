@@ -13,6 +13,7 @@ import type {WebhookResponse} from './contracts';
 import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
 import {visualModelConnection} from './visual-model';
+import {workflowRequestFeedback} from './workflow-request-feedback';
 import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointer';
 import {storageConfig,builderDatabase} from './storage-config';
 import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
@@ -273,7 +274,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    if(path==='/api/workflows/from-request'&&method==='POST'){
     const input=await body(req),model=visualModelConnection();
     const result=await orchestrateWorkflow(input?.prompt,{...model,credentials:store.listCredentials()});
-    if(!result.workflow)return json(res,200,{summary:result.summary,questions:result.questions||[],checklist:result.checklist||[]});
+    if(!result.workflow)return json(res,200,workflowRequestFeedback(result));
     const workflow=store.saveFlow({...result.workflow,active:false});
     return json(res,200,{workflow,summary:result.summary,checklist:result.checklist||[]});
    }

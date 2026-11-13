@@ -54,6 +54,17 @@ test('external service clarification keeps the original request and opens the ge
  assert.equal(opened,'generated-flow');
  assert.equal(h.c.externalPromptContext.current,'');
 });
+test('external request without model questions keeps context and shows requirement details',async()=>{
+ const h=harness();h.c.text='Google Sheets 재고를 Slack으로 알려줘';
+ h.load(async path=>path==='/api/workflows/from-request'?{summary:'재고 흐름',questions:[],requirements:[{id:'sheet',description:'시트 범위 지정',status:'needs_input'}]}:snapshot('A'));
+ await h.c.send();
+ assert.match(h.c.error,/시트 범위 지정/);
+ assert.match(h.c.externalPromptContext.current,/Google Sheets 재고/);
+ h.c.text='재고!A1:D100';
+ h.load(async path=>path==='/api/workflows/from-request'?{workflow:{id:'generated-flow'}}:snapshot('A'));
+ await h.c.send();
+ assert.match(h.requests[1].body.prompt,/추가 답변: 재고!A1:D100/);
+});
 test('failed explicit link reports error and preserves conversation without fallback',async()=>{
  const h=harness('?service=B',{'a4b-builder-session':'old'});h.load(async()=>{throw Error('not found');});h.mount();await flush();assert.equal(h.c.selected,null);assert.equal(h.c.error,'not found');assert.equal(h.storage.get('a4b-builder-session'),'old');assert.equal(h.requests.length,1);
 });

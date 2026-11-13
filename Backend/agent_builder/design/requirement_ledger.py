@@ -628,7 +628,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             from .explicit_review_contract import explicit_review_contract, unrequested_review_kinds
             review_contract=explicit_review_contract(state)
             owned.update(unrequested_review_kinds(state))
-            from .output_selection_request import output_selection
+            from .output_selection_request import output_selection, cancelled_numeric_fields
             selected_columns=output_selection(state)
             if multiple_outputs(state):
                 owned.discard('export')
@@ -673,6 +673,10 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             numeric_filters=literal_numeric_filters(state)
             if numeric_filters:
                 payload['explicit_numeric_filters']=numeric_filters
+            cancelled = cancelled_numeric_fields(state)
+            if cancelled:
+                payload['cancelled_filter_fields'] = sorted(cancelled)
+                payload['cancelled_filter_instruction'] = '이 열의 선별 조건은 사용자가 취소했다. 해당 필터를 제거하고 다른 열의 조건과 계산·출력 업무는 유지한다.'
             computation=literal_output_compute(state)
             if computation:
                 payload['explicit_required_computation']=computation

@@ -52,6 +52,23 @@ async function setup(search='',stored:Record<string,string>={},override?:(path:s
 }
 const buttons=()=>Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
 
+test('incomplete external workflow explains missing settings in the conversation',async()=>{
+ const h=await setup('?screen=workflow',{},path=>path==='/api/workflows/from-request'?{
+  summary:'재고 흐름',questions:[{question:'어느 시트 범위를 읽을까요?'}],
+  requirements:[{id:'range',description:'원본 시트 범위 지정',status:'needs_input'}],
+ }:undefined);
+ try{
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'Google Sheets 재고를 Slack으로 알려줘');
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  const messages=Array.from(document.querySelectorAll('.as-messages .as-message'));
+  assert.equal(messages.length,2);
+  assert.match(messages[0].textContent||'',/Google Sheets 재고를 Slack으로 알려줘/);
+  assert.match(messages[1].textContent||'',/원본 시트 범위 지정/);
+  assert.match(messages[1].textContent||'',/어느 시트 범위를 읽을까요/);
+  assert.equal(document.querySelector('.as-global-error'),null);
+ }finally{await h.close();}
+});
+
 for(const linked of [true,false])test('source evidence: '+(linked?'run-scoped snapshot original':'ordinary personal original'),async()=>{
  const fileId='source-alias',runId='historical-source-run';
  const current={id:runId,status:'succeeded',answer:'자료 요약',steps:[],rows:[],artifact:null,agent_version:1,

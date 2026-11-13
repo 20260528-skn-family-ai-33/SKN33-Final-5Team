@@ -731,17 +731,25 @@ test('DOM: a fresh file-first design opens real document excerpts and explains u
   assert.equal(document.querySelector('.as-resource-dialog .as-preserve')?.textContent,text);
  }finally{await h.close();}
 });
-test('DOM: a first upload offers observed file values before the first chat message',async()=>{
+for(const drop of [false,true])test('DOM: first attachment shows file values before chat ('+(drop?'drop':'picker')+')',async()=>{
  const file={id:'uploaded',name:'접수.txt',kind:'document',has_readable_text:true,columns:[],fields:[{label:'접수번호',value:'A-120'}],snippets:['접수번호: A-120'],preview:[]};
  const h=await setup('',{},path=>{
   if(path.endsWith('/sessions'))return {id:'new',revision:0};
   if(path.endsWith('/upload'))return {...readySession(),id:'new',revision:1,messages:[],draft:null,status:'empty',file_inspection:[file]};
  });
  try{
-  await click(button('자료 연결'));await click(button('새 파일 올리기'));
-  const picker=document.querySelector('input[type=file]') as HTMLInputElement;
-  Object.defineProperty(picker,'files',{value:[new dom.window.File(['접수번호: A-120'],'접수.txt')]});
-  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const files=[new dom.window.File(['접수번호: A-120'],'접수.txt')];
+  if(drop){
+   const event=new dom.window.Event('drop',{bubbles:true,cancelable:true});
+   Object.defineProperty(event,'dataTransfer',{value:{files}});
+   await act(async()=>{document.querySelector('.as-composer textarea')!.dispatchEvent(event);});
+   assert.ok(event.defaultPrevented);
+  }else{
+   await click(button('자료 연결'));await click(button('새 파일 올리기'));
+   const picker=document.querySelector('input[type=file]') as HTMLInputElement;
+   Object.defineProperty(picker,'files',{value:files});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  }
   const deadline=Date.now()+3000;
   while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
   const card=document.querySelector('.as-inspected-source') as HTMLDetailsElement;assert.ok(card.open);

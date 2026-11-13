@@ -23,12 +23,24 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
   const [file,setFile]=useState<File|null>(null);
   const [fileError,setFileError]=useState('');
   const fileInput=useRef<HTMLInputElement>(null);
+  function attachFile(selected:File) {
+    if(selected.size>8*1024*1024){setFileError('자료는 8MB 이하로 연결하세요.');return;}
+    setFile(selected);setFileError('');
+  }
   const canStart=!!prompt.trim()||!!file;
 
   return <div className="workspace-overview">
     <section className="overview-welcome" aria-labelledby="overview-title">
       <h1 id="overview-title">안녕하세요{memberName ? `, ${memberName}님` : ''}</h1>
-      <form className="overview-composer" data-tour="home-create" onSubmit={event=>{
+      <form className="overview-composer" data-tour="home-create"
+        onDragOver={event=>{if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault();}}
+        onDrop={event=>{
+          const files=event.dataTransfer.files;
+          if(!files.length)return;
+          event.preventDefault();
+          if(files.length!==1){setFileError('자료를 한 번에 하나씩 놓아주세요.');return;}
+          attachFile(files[0]);
+        }} onSubmit={event=>{
         event.preventDefault();
         if(canStart)onStart(prompt.trim(),file??undefined);
       }}>
@@ -45,9 +57,7 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
         {fileError && <p role="alert">{fileError}</p>}
         <input ref={fileInput} type="file" hidden accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic" onChange={event=>{
           const selected=event.currentTarget.files?.[0];event.currentTarget.value='';
-          if(!selected)return;
-          if(selected.size>8*1024*1024){setFileError('자료는 8MB 이하로 연결하세요.');return;}
-          setFile(selected);setFileError('');
+          if(selected)attachFile(selected);
         }}/>
         <div className="overview-composer-actions">
           <button type="button" className="as-text-button" onClick={()=>fileInput.current?.click()}><Paperclip size={16}/>자료 추가</button>

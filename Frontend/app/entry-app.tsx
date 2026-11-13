@@ -14,10 +14,11 @@ import {WorkspaceOverview} from './workspace-overview';
 import LandingPage from './landing-page';
 import {IntroDemo} from './intro-demo';
 import {useAuth,SignIn} from './auth';
-export type EntryRoute='intro'|'preview'|'home'|'workflows'|'schedules'|'schedule'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
+import VisualAutomation from './workspace';
+export type EntryRoute='intro'|'preview'|'home'|'workflows'|'schedules'|'schedule'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections'|'automation';
 type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
-function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','home','workflows','schedules','schedule','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
+function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models')return 'workflows';return ['intro','preview','home','workflows','schedules','schedule','history','nodes','workflow','run','assets','connections','automation'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
 
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
 export default function EntryApp(){
@@ -55,6 +56,7 @@ export default function EntryApp(){
  const startExample=(prompt:string)=>navigate('workflow',undefined,true,undefined,false,prompt);
  if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} initialPrompt={window.history.state?.initialPrompt} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('home')} onPreview={preview} onRoute={next=>navigate(next)}/>;
+ if(route==='automation')return <><VisualAutomation/><button type="button" className="as-button as-secondary" onClick={()=>navigate('home')} style={{position:'fixed',right:16,bottom:16,zIndex:1000}}>A4B 홈으로</button></>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
    <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onCanLeaveChange={fn=>{guard.current=fn;}} onOpen={id=>navigate('schedule',id)} onCreate={newFlow}/>:

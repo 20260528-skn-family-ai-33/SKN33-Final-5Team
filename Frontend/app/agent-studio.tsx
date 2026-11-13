@@ -67,7 +67,7 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange,initialPrompt}:{initialPrompt?:string;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void}={}){
+export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChange,initialPrompt}:{initialPrompt?:string;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'|'automation')=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'|'schedule'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'||initialScreen==='schedule'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const screenRef=useRef(screen);screenRef.current=screen;
@@ -509,7 +509,7 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
   if(screen==='workflow'&&!selected)return;
   if(canLeave()){if(session&&!selected)go('workflow',true);else reset();}
  }
- function leave(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'){if(canLeave())onNavigate?.(next);}
+ function leave(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'|'automation'){if(canLeave())onNavigate?.(next);}
  useEffect(()=>{
   if(!(text.trim()||testText.trim()||replyDraft.trim()||runFiles.length||chosenRefs.length||libraryDirty||scheduleSourceDirty||scheduleSettingsDirty||clarificationDirty))return;
   const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};

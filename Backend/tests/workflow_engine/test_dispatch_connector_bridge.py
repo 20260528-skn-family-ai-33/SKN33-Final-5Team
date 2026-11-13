@@ -2,6 +2,9 @@
 
 from service import dispatch
 from infrastructure.llm.errors import public_error
+from workflow_engine.runner import run_workflow
+from workflow_engine.unified_tools.expansion.slack_adapters import SlackDeliveryUnknown
+import pytest
 from workflow_engine.scheduling.library_sources import LibrarySources, SnapshotStorage
 
 
@@ -72,3 +75,24 @@ def test_worker_error_text_redacts_service_tokens():
     result = public_error(error, "", "private-gmail", "private-slack")
     assert "private-slack" not in result
     assert "private-gmail" not in result
+
+
+def test_unknown_slack_delivery_requires_channel_check_before_retry():
+    assert "채널" in public_error(SlackDeliveryUnknown("private response"))
+
+    class Storage:
+        def test(self, run_id):
+            return {"agent_id": "agent", "status": "failed", "error_type": "SlackDeliveryUnknown"}
+
+    with pytest.raises(ValueError, match="Slack 메시지가 전송됐을 수"):
+        run_workflow(Storage(), "agent", "", "", run_id="run", retry=True)
+
+
+def test_interrupted_slack_run_cannot_blindly_retry():
+    class Storage:
+        def test(self, run_id):
+            return {"agent_id": "agent", "status": "failed", "error_type": "InterruptedExecution",
+                    "config_snapshot": {"workflow": {"nodes": [{"id": "send", "tool": "slack.post_message"}]}}}
+
+    with pytest.raises(ValueError, match="Slack 메시지가 전송됐을 수"):
+        run_workflow(Storage(), "agent", "", "", run_id="run", retry=True)

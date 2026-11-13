@@ -441,6 +441,9 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     generationRequestId=payload.generation_request_id;
    }
    const current=await builderWorker({action:workerAction==='test'?'agent':['resume_run','retry_run'].includes(workerAction)?'run':'session',id:data.id});
+   if(workerAction==='retry_run'&&(current.run?.error_type==='SlackDeliveryUnknown'||
+    current.run?.error_type==='InterruptedExecution'&&builderNeedsSlack(current.run.config_snapshot,current.run.workflow_dependencies)))
+    throw new Error('Slack 메시지가 전송됐을 수 있어요. 채널을 확인한 뒤 필요하면 새 실행을 시작해주세요.');
    if(workerAction==='test'&&payload.use_schedule&&!current.schedule)throw new Error('예약 설정을 먼저 저장하세요.');
    if(workerAction==='test'&&!payload.content&&(payload.use_schedule?current.schedule_request_required:current.request_required))throw new Error('이 워크플로우에 필요한 실행 요청을 입력하세요.');
    const config=workerAction==='test'?current.agent.config:['resume_run','retry_run'].includes(workerAction)?current.run.config_snapshot:null;

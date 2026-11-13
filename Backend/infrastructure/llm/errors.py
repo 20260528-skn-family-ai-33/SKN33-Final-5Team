@@ -5,6 +5,8 @@ def public_error(error,api_key='',*service_tokens):
     from pydantic import ValidationError
     import os
     from openai import APITimeoutError,APIConnectionError,AuthenticationError,PermissionDeniedError,RateLimitError,NotFoundError,APIStatusError
+    if type(error).__name__=='SlackDeliveryUnknown':
+        return 'Slack 전송 결과를 확인할 수 없습니다. 채널에서 메시지를 확인한 뒤 필요하면 새 실행을 시작해주세요.'
     if isinstance(error,ValidationError):
         fields=', '.join('.'.join(map(str,e['loc'])) for e in error.errors(include_input=False)[:5])
         return '모델이 반환한 설정 형식이 올바르지 않습니다. 다시 시도해주세요. (검사 항목: '+fields+')'

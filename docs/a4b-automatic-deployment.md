@@ -229,6 +229,8 @@ A4B_OLLAMA_MODEL_ALIASES='{"a4b-qwen35-4b-16k":"a4b-qwen35-9b-final664-pilot32k"
 
 ### 업무 데이터 저장소 전환
 
+PostgreSQL로 운영 중인 서버의 증분 스키마 마이그레이션은 새 이미지의 사전 검사 전에 실행합니다. EC2의 `/var/lib/a4b-deploy/migration-env`를 root 소유·권한 `0600`의 일반 파일로 만들고 `A4B_MIGRATION_DATABASE_URL=postgresql://...` 한 줄만 저장합니다. 관리자 주소는 실행마다 일회성 마이그레이션 컨테이너에만 전달되며 새 앱 컨테이너의 환경에는 포함되지 않습니다. 이 파일이 없고 새 이미지가 요구하는 스키마 버전이 미적용이면 배포가 기존 컨테이너를 유지한 채 실패합니다. 최초 SQLite → PostgreSQL 전환은 아래 별도 절차를 따릅니다.
+
 과거 빌더 기록을 SQLite에 보존하고 새 기록만 기존 `a4b` 업무 표에 남기는 전환도 가능합니다.
 먼저 DB 스키마·역할과 검증 이미지를 준비합니다. 기존 컨테이너를 정지한 뒤 실제 데이터 볼륨을 백업하고, 새 Docker 볼륨에 빌더 SQLite 파일과 관련 WAL/SHM/journal, 이전 식별자만 제외한 **나머지 파일 전부**를 권한과 함께 복사해 검증합니다.
 새 볼륨 이름은 `a4b-fresh-`로 시작하며 `a4b.cutover.source` 라벨은 정지한 원본 컨테이너의 전체 ID입니다.

@@ -214,7 +214,7 @@ def operation_variants(node_schema, binding_schema, tool_ids=None, variable_name
     from copy import deepcopy
     args = sorted({name for tool,specs in OPERATIONS.items() for spec in specs for name in arguments_spec(tool,spec)})
     variant = deepcopy(node_schema)
-    variant['properties']['tool'] = {'type':'string','enum':list(BUSINESS_IDS)}
+    variant['properties']['tool'] = {'type':'string','enum':list(OPERATIONS)}
     variant['properties']['settings'] = {'type':'object','additionalProperties':False,
         'properties':{'operation':{'type':'string','enum':sorted({s['id'] for specs in OPERATIONS.values() for s in specs})},
                       'arguments_json':{'type':'string','description':'JSON object of constant arguments; predecessor values use bindings.'}},

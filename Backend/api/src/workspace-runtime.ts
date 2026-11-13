@@ -14,6 +14,7 @@ import {dispatchErrorWorkflow} from './error-workflows';
 import {orchestrateWorkflow,analyzeExecutionError} from './agents';
 import {visualModelConnection} from './visual-model';
 import {workflowRequestFeedback} from './workflow-request-feedback';
+import {inventoryWorkflowFromRequest} from './inventory-workflow-request';
 import {SqliteCheckpointSaver,PostgresCheckpointSaver} from './graph-checkpointer';
 import {storageConfig,builderDatabase} from './storage-config';
 import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH,OAuthManager,createCredentialRefresher} from './oauth';
@@ -272,7 +273,14 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'');return json(res,200,{ok:true});}
    }
    if(path==='/api/workflows/from-request'&&method==='POST'){
-    const input=await body(req),model=visualModelConnection();
+    const input=await body(req);
+    const inventory=inventoryWorkflowFromRequest(input?.prompt,store.listCredentials());
+    if(inventory){
+     if(!inventory.workflow)return json(res,200,inventory);
+     const workflow=store.saveFlow(inventory.workflow);
+     return json(res,200,{workflow,summary:inventory.summary,checklist:inventory.checklist});
+    }
+    const model=visualModelConnection();
     const result=await orchestrateWorkflow(input?.prompt,{...model,credentials:store.listCredentials()});
     if(!result.workflow)return json(res,200,workflowRequestFeedback(result));
     const workflow=store.saveFlow({...result.workflow,active:false});

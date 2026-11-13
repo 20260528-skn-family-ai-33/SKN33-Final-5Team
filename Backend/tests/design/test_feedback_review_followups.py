@@ -119,6 +119,20 @@ def test_hidden_computed_filter_column_keeps_formula_and_name(reply):
     assert not validator.is_valid(dict(kind='compute',formula='수량*단가',output_column='매출'))
 
 
+def test_hidden_calculation_is_explicit_in_extractor_model_input():
+    from agent_builder.design.requirement_ledger import make_requirement_check
+    current=state();current['messages'].append(dict(role='user',content='주문번호 열만 저장해줘'))
+    raw=packet();raw['tasks'][4].update(source_message=2,spec=dict(kind='select_fields',fields=['주문번호']))
+    class Transport:
+        def invoke(self,messages):
+            context=json.loads(messages[-1]['content'])
+            assert context['explicit_output_columns']==['주문번호']
+            assert context['explicit_required_computation']==dict(kind='compute',formula='수량*단가',output_column='주문금액')
+            assert context['explicit_numeric_filters'][0]['field']=='주문금액'
+            return {'content':json.dumps(raw,ensure_ascii=False)}
+    assert make_requirement_check('fixture',Transport(),'enforce')(current)['requirement_route']=='plan'
+
+
 @pytest.mark.parametrize('single',[False,True])
 def test_followup_survives_save_and_csv_execution(tmp_path,monkeypatch,single):
     monkeypatch.setenv('A4B_REQUIREMENT_MODE','off')

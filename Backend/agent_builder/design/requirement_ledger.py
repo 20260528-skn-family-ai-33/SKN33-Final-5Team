@@ -633,7 +633,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                     active.thinking=True
             active.schema=extraction_schema(len([m for m in state['messages'] if m['role']=='user']),
                                             [a['id'] for a in state.get('resources',[])], owned_kinds=owned)
-            from .output_selection_request import constrain_literal_selection, literal_numeric_filters
+            from .output_selection_request import constrain_literal_selection, literal_numeric_filters, literal_output_compute
             active.schema=constrain_literal_selection(active.schema,state)
             from .temporal_context import temporal_context, TEMPORAL_INSTRUCTIONS
             from .request_meaning import sealed_meaning
@@ -667,6 +667,10 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             numeric_filters=literal_numeric_filters(state)
             if numeric_filters:
                 payload['explicit_numeric_filters']=numeric_filters
+            computation=literal_output_compute(state)
+            if computation:
+                payload['explicit_required_computation']=computation
+                payload['computation_dependency_instruction']='이 계산은 원문으로 확정됐고 숫자 선별에 필요하다. 최종 출력 열에서 제외해도 compute 작업과 결과 열 이름을 유지한다. 출력 열 변경은 계산·상태 선별·금액 선별·정렬의 취소가 아니다. 현재 출력 목록만 보고 read/select_fields/export만 남기지 않는다.'
             if selected_columns:
                 payload['explicit_output_columns']=selected_columns
                 payload.setdefault('explicit_numeric_filters',[])

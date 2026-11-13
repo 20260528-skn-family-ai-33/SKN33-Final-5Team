@@ -60,23 +60,6 @@
   border-radius: 50%;
 }
 .overview-submit svg { flex: none; }
-.overview-examples {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.overview-examples button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border: 1px solid var(--a4b-border);
-  border-radius: 6px;
-  color: var(--a4b-muted);
-  font-size: 12px;
-  cursor: pointer;
-}
 .overview-section { margin-top: 24px; }
 .overview-section-heading { padding-bottom: 10px; border-bottom: 1px solid var(--a4b-border); }
 .overview-section h2 { margin: 0; font-size: 16px; font-weight: 650; }
@@ -92,8 +75,8 @@
   text-align: left;
   cursor: pointer;
 }
-.overview-row:hover, .overview-examples button:hover { background: var(--a4b-neutral-soft); }
-.overview-row:focus-visible, .overview-examples button:focus-visible {
+.overview-row:hover { background: var(--a4b-neutral-soft); }
+.overview-row:focus-visible {
   outline: 2px solid var(--a4b-action);
   outline-offset: -2px;
 }

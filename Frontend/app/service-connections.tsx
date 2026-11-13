@@ -1,5 +1,4 @@
 import {useEffect,useRef,useState} from 'react';
-import {Sheet,MessageSquare} from 'lucide-react';
 import {Toaster} from '@/components/ui/sonner';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {request,type CredentialPublic} from '../components/flow/connection-panel';
@@ -11,8 +10,8 @@ type DisplayCredential=CredentialPublic&{accountLabel?:string};
 type Status={services:Record<Service,{configured:boolean}>;credentials:DisplayCredential[]};
 type Attempt={authorizationUrl:string;expiresAt:number};
 const entries=[
-  {id:'googleSheets' as const,label:'Google Sheets',description:'시트를 읽고 결과 행을 기록합니다.',permission:'읽기·수정',Icon:Sheet},
-  {id:'slack' as const,label:'Slack',description:'워크플로 결과를 채널로 보냅니다.',permission:'메시지 전송·채널 조회',Icon:MessageSquare},
+  {id:'googleSheets' as const,label:'Google Sheets',description:'시트를 읽고 결과 행을 기록합니다.',permission:'읽기·수정'},
+  {id:'slack' as const,label:'Slack',description:'워크플로 결과를 채널로 보냅니다.',permission:'메시지 전송·채널 조회'},
 ];
 const connected=(status:Status|undefined,service:Service)=>status?.credentials.find(c=>service==='slack'?c.service==='slack'||c.provider==='slack':c.service==='googleSheets');
 const accountLabel=(credential:DisplayCredential,service:Service)=>credential.accountLabel?.trim()||
@@ -66,16 +65,15 @@ export function ServiceConnections(){
   }
   const managedEntry=entries.find(entry=>entry.id===managing);
   const managedCredential=managing?connected(status,managing):undefined;
-  const ManagedIcon=managedEntry?.Icon;
   return <section className="service-connections" aria-labelledby="service-connections-heading">
     <Toaster theme="light" position="top-center"/>
     <div className="entry-page-heading"><div><h1 id="service-connections-heading">서비스 연결</h1></div></div>
     {notice&&!managing&&<p role="status" className="service-connection-feedback">{notice}</p>}
     <div className="service-connection-grid"><GmailConnection disabled={false} variant="card"/>
-      {entries.map(({id,label,description,permission,Icon})=>{
+      {entries.map(({id,label,description,permission})=>{
         const credential=connected(status,id),configured=status?.services[id].configured;
         return <article className="service-connection-card" key={id} aria-label={label+' 서비스'}>
-          <div className="service-connection-card-heading"><span className="service-connection-logo"><Icon size={22} aria-hidden="true"/></span><h3>{label}</h3><span className={'service-connection-state'+(credential?' connected':'')}>{credential?'연결됨':status?configured?'연결 안 됨':'설정 대기':'확인 중'}</span></div>
+          <div className="service-connection-card-heading"><span className="service-connection-logo"><img src={`/service-icons/${id.toLowerCase()}.svg`} width={22} height={22} alt=""/></span><h3>{label}</h3><span className={'service-connection-state'+(credential?' connected':'')}>{credential?'연결됨':status?configured?'연결 안 됨':'설정 대기':'확인 중'}</span></div>
           {credential&&<div className="service-connection-account"><span>연결된 계정</span><strong>{accountLabel(credential,id)}</strong></div>}
           <p>{description}</p><span className="service-connection-permissions">{permission}</span>
           {!configured&&status&&!credential&&<p>서버의 {label} 연결 설정이 필요합니다.</p>}
@@ -94,7 +92,7 @@ export function ServiceConnections(){
           <DialogDescription>{managedEntry.label} 계정의 연결 상태를 확인하고 관리하세요.</DialogDescription>
         </DialogHeader>
         <div className="gmail-connected-account">
-          {ManagedIcon&&<ManagedIcon size={20} aria-hidden="true"/>}
+          {managedEntry&&<img src={`/service-icons/${managedEntry.id.toLowerCase()}.svg`} width={20} height={20} alt=""/>}
           <div><span>연결된 계정</span><strong>{accountLabel(managedCredential,managedEntry.id)}</strong></div>
         </div>
         {managedEntry.id==='googleSheets'&&!managedCredential.accountLabel?.trim()&&<p className="gmail-account-notice">계정을 다시 연결하면 연결된 Google 계정의 이메일을 표시할 수 있어요.</p>}

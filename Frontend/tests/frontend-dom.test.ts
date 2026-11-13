@@ -1070,6 +1070,10 @@ test('DOM integration: new document review UI survives merging with workflow res
   if(path.includes('/document_review'))return {asset:body?{...resource,text:'검토된 본문',parser_metadata:{document_analysis:analysis,document_review:{...review,status:'completed'}}}:resource,review:body?{...review,revision:1,status:'completed',completed_at:'2026-10-29T00:00:00Z'}:review,groups:[],history:[]};
  });
  try{
+  const settingsToggle=document.querySelector<HTMLButtonElement>('.as-config-toggle')!;
+  assert.equal(settingsToggle.getAttribute('aria-expanded'),'false');
+  await click(settingsToggle);
+  assert.equal(document.querySelector('#workflow-settings-detail')?.hasAttribute('hidden'),false);
   const resourceButton=Array.from(document.querySelectorAll('.as-config .as-resource')).find(b=>b.textContent?.includes(resource.name));assert.ok(resourceButton);await click(resourceButton);
   assert.ok(document.querySelector('[aria-label="문서 내용 분석 결과"]'));
   await click(button('원본·대조 후보 검토'));
@@ -2142,14 +2146,12 @@ test('reservation edits survive cancelled tab, browser-back and new-workflow nav
  }finally{await h.close();}
 });
 
-test('home: first-login example waits for submission then starts a fresh design',async()=>{
+test('home: typed request waits for submission then starts a fresh design',async()=>{
  const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:path.endsWith('/sessions')?{...readySession(),draft:null,status:'empty'}:path.endsWith('/message')?readySession():undefined,createElement(EntryApp));
  try{
-  const example=Array.from(document.querySelectorAll('.overview-examples button')).find(item=>item.textContent?.includes('엑셀 정리하기'));
-  assert.ok(example);
   const arrow=document.querySelector<HTMLButtonElement>('.overview-composer button[type=submit]')!;
   assert.ok(arrow.disabled);
-  await click(example);
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="자동화할 업무"]')!,'재고표에서 기준 수량보다 재고가 적은 품목만 골라 엑셀로 정리해 줘.');
   assert.equal(location.search,'?screen=home');
   assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="자동화할 업무"]')!.value,/재고표에서/);
   assert.ok(!arrow.disabled);
@@ -2757,14 +2759,14 @@ test('workflow folders: create, select, move, filter, rename and delete preserve
  },createElement(EntryApp));
  try{
   await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택 이동 (1)'));
+  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택한 워크플로우 이동 (1)'));
   await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
-  await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
+  await submit(document.querySelector('.workflow-folder-form')!);await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   assert.ok(document.querySelector('button[aria-label="서비스 A 실행하기"]'));
   assert.ok(document.querySelector('button[aria-label="서비스 A 예약 관리"]'));
   await click(button('폴더 이름 변경'));await input(field('폴더 이름'),'정리 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  assert.ok(button('정리 업무'));
+  assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/정리 업무/);
   await click(button('폴더 삭제'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
   assert.deepEqual(organization.assignments,{});
@@ -2794,7 +2796,7 @@ test('workflow folder pending save rejects duplicate submission and keeps the di
   assert.equal(saves,1);assert.equal(button('취소').disabled,true);
   assert.equal(field('폴더 이름').disabled,true);
   await act(async()=>{pending.resolve({organization:{revision:1,folders:[{id:'pending-folder',name:'중복 방지'}],assignments:{}}});await tick();});
-  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.ok(button('중복 방지'));
+  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/중복 방지/);
  }finally{await h.close();}
 });
 
@@ -2802,13 +2804,13 @@ test('workflow folder search and folder changes clear hidden selection',async()=
  const h=await setup('?screen=workflows',{},path=>path.endsWith('/agents')?{agents:[A,B],organization:{revision:1,folders:[{id:'f',name:'정리'}],assignments:{A:'f'}}}:undefined,createElement(EntryApp));
  try{
   await click(document.querySelector('input[aria-label="현재 목록 전체 선택"]')!);
-  assert.equal(button('선택 이동 (2)').disabled,false);
+  assert.equal(button('선택한 워크플로우 이동 (2)').disabled,false);
   await input(document.querySelector('input[aria-label="워크플로우 검색"]')!,'서비스 A');
-  assert.equal(button('선택 이동').disabled,true);
+  assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);
-  await click(button('미분류'));
-  assert.equal(button('선택 이동').disabled,true);
+  await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='unfiled';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
  }finally{await h.close();}
 });
@@ -2823,11 +2825,11 @@ test('workflow folder selection caps at 500 and releases a slot when unchecked',
   await click(document.querySelector('input[aria-label="현재 목록에서 500개 선택"]')!);
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
   const last=document.querySelector<HTMLInputElement>('input[aria-label="대량 500 선택"]')!;
-  assert.equal(last.disabled,true);assert.ok(button('선택 이동 (500)'));
+  assert.equal(last.disabled,true);assert.ok(button('선택한 워크플로우 이동 (500)'));
   await click(document.querySelector('input[aria-label="대량 0 선택"]')!);
   assert.equal(last.disabled,false);await click(last);
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
-  await click(button('선택 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
+  await click(button('선택한 워크플로우 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
  }finally{await h.close();}
 });

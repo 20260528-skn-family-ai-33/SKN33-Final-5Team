@@ -173,7 +173,21 @@ details.as-setting-section:not([open]) > summary > svg { transform:rotate(0); }
   .as-flow-node,.as-flow-canvas > svg > g { animation:none; }
   .as-setting-section summary > svg { transition:none; }
 }
-.as-desktop-canvas .as-canvas-size { margin:0; }
+/* Auto margins center a graph that fits and keep oversized graphs scrollable. */
+.as-desktop-canvas { align-items:flex-start; }
+.as-flow-beam {
+  stroke-dasharray: .14 1;
+  stroke-dashoffset: 1;
+  stroke-linecap: round;
+  animation: as-flow-beam-travel 1.3s ease-out .32s both;
+}
+@keyframes as-flow-beam-travel {
+  from { stroke-dashoffset: .14; opacity: 1; }
+  to { stroke-dashoffset: -1; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .as-flow-beam { display: none; }
+}
 .as-setting-section summary:not(:has(> svg))::after {
   content:'⌄'; margin-left:auto; flex:none; transition:transform 160ms ease;
 }
@@ -186,3 +200,9 @@ details.as-setting-section[open] > summary:not(:has(> svg))::after { transform:r
 .as-node-kind{display:inline-flex;align-items:center;gap:7px;min-height:22px;color:var(--as-accent)}
 .as-node-kind svg,.as-node-kind img{flex:none}
 .as-node-inspector-title{display:flex;align-items:center;gap:8px}
+
+.as-config-toggle{width:100%;background:none;color:inherit;border:0;border-bottom:1px solid var(--as-border);text-align:left;cursor:pointer}
+.as-config-toggle[aria-expanded=false]{border-bottom:0}
+.as-config-toggle .as-status{display:inline-flex;align-items:center;gap:6px}
+.as-config-toggle[aria-expanded=true] .as-status svg{transform:rotate(180deg)}
+.screen-workflow .as-editor-grid>.as-config:has(.as-config-toggle[aria-expanded=false]){height:auto;min-height:0}

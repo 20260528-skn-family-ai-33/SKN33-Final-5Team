@@ -21,9 +21,14 @@ export function useCanvasNavigation(enabled:boolean) {
     const view=element.getBoundingClientRect();
     const anchor=point??{x:view.left+view.width/2,y:view.top+view.height/2};
     const ratio=next/before.zoom;
+    const style=getComputedStyle(element);
+    const innerWidth=element.clientWidth-parseFloat(style.paddingLeft||'0')-parseFloat(style.paddingRight||'0');
+    const innerHeight=element.clientHeight-parseFloat(style.paddingTop||'0')-parseFloat(style.paddingBottom||'0');
+    const marginChange=(available:number,size:number)=>
+      (Math.max(0,available-size*ratio)-Math.max(0,available-size))/2;
     const nextPan={
-      x:before.pan.x+(anchor.x-bounds.left)*(1-ratio),
-      y:before.pan.y+(anchor.y-bounds.top)*(1-ratio),
+      x:before.pan.x+(anchor.x-bounds.left)*(1-ratio)-marginChange(innerWidth,bounds.width),
+      y:before.pan.y+(anchor.y-bounds.top)*(1-ratio)-marginChange(innerHeight,bounds.height),
     };
     current.current={zoom:next,pan:nextPan};
     setZoom(next);setPan(nextPan);

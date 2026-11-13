@@ -11,7 +11,7 @@ def execute(node,state,storage,config,llm):
     if not agent:raise ValueError('저장된 워크플로우의 고정 버전이 연결되지 않았습니다. 설정을 다시 저장하세요.')
     inputs={b['input']:state['outputs'][b['node_id']][b['output']] for b in node['bindings']}
     child=child_configuration(agent,config,state.get('file_ids',[]))
-    graph,connection=compile_workflow(storage,child,llm,ownership=config.get('_ownership'),inherit_checkpoint=True)
+    graph,connection=compile_workflow(storage,child,llm,ownership=config.get('_ownership'),inherit_checkpoint=True,external_inputs=inputs)
     try:
         result=graph.invoke({'outputs':{},'steps':[],'request':inputs.get('text') or state['request'],'customer_message':state.get('customer_message',state['request']),'reply_draft':state.get('reply_draft'),'file_ids':state.get('file_ids',[]),'messages':state.get('messages',[]),'external_inputs':inputs})
         selected=result['outputs'].get(settings['output_node'],{})

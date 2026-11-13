@@ -927,3 +927,95 @@ def test_interrupted_checkpoint_copy_is_completed_by_a_rerun(tmp_path, monkeypat
         target.execute("SELECT set_config('a4b.workspace_id',%s,false)", (folder.name,))
         copied = target.execute("SELECT count(*) FROM checkpoint_writes WHERE thread_id='shared-thread' AND channel='__interrupt__'").fetchone()[0]
     assert copied == sum(1 for _, channel, _ in source if channel == '__interrupt__')
+
+
+def test_workflow_folders_preserve_execution_and_persist(backend, tmp_path):
+    from infrastructure.persistence.workflow_folders import organization, change
+    directory=workspace(tmp_path)
+    store, _, agent_id=seed(directory)
+    original=store.agent(agent_id)
+    before=Schedules(store).get(agent_id)
+    try:
+        state=change(store,{'operation':'create','name':'  재고  ','revision':0})
+        folder_id=state['folders'][0]['id']
+        assert state['folders'][0]['name']=='재고'
+        with pytest.raises(ValueError,match='변경'):
+            change(store,{'operation':'create','name':'오래된 창','revision':0})
+        with pytest.raises(ValueError,match='같은 이름'):
+            change(store,{'operation':'create','name':'재고','revision':1,'folder_id':folder_id})
+        with pytest.raises(ValueError,match='찾을 수'):
+            change(store,{'operation':'move','agent_ids':['missing',agent_id],'folder_id':folder_id,'revision':1})
+        assert organization(store)==state
+        state=change(store,{'operation':'move','agent_ids':[agent_id],'folder_id':folder_id,'revision':1})
+        assert state['assignments']=={agent_id:folder_id}
+        state=change(store,{'operation':'rename','folder_id':folder_id,'name':'매일 업무','revision':2})
+        assert state['folders'][0]['name']=='매일 업무'
+        store.close();store=Storage(directory)
+        assert organization(store)==state
+        assert store.agent(agent_id)==original and Schedules(store).get(agent_id)==before
+        state=change(store,{'operation':'delete','folder_id':folder_id,'revision':3})
+        assert state=={'revision':4,'folders':[],'assignments':{}}
+        assert store.agent(agent_id)==original and Schedules(store).get(agent_id)==before
+    finally:store.close()
+
+
+def test_workflow_folders_validation_and_workspace_isolation(backend,tmp_path):
+    from infrastructure.persistence.workflow_folders import organization,change
+    alice=Storage(workspace(tmp_path));bob=Storage(workspace(tmp_path))
+    try:
+        state=change(alice,{'operation':'create','name':'개인 폴더','revision':0})
+        for name in ['', ' ', 'a'*61, '줄\n바꿈', '줄\u2028바꿈']:
+            with pytest.raises(ValueError,match='이름'):
+                change(alice,{'operation':'create','name':name,'revision':1})
+        assert organization(alice)==state
+        assert organization(bob)=={'revision':0,'folders':[],'assignments':{}}
+        with pytest.raises(ValueError,match='찾을 수'):
+            change(bob,{'operation':'delete','folder_id':state['folders'][0]['id'],'revision':0})
+    finally:alice.close();bob.close()
+
+
+def test_workflow_folders_bulk_move_unfile_and_atomic_failure(backend,tmp_path):
+    from infrastructure.persistence.workflow_folders import change,organization
+    directory=workspace(tmp_path)
+    store,_,first=seed(directory)
+    second=uid()
+    original=store.agent(first)
+    store._insert_agent_version({**original,'id':second})
+    store.db.commit()
+    try:
+        state=change(store,{'operation':'create','name':'일괄 이동','revision':0})
+        folder_id=state['folders'][0]['id']
+        state=change(store,{'operation':'move','folder_id':folder_id,'agent_ids':[first,second],'revision':1})
+        assert state['assignments']=={first:folder_id,second:folder_id}
+        state=change(store,{'operation':'move','folder_id':None,'agent_ids':[first],'revision':2})
+        assert state['assignments']=={second:folder_id}
+        for ids in ([],[first,'missing'],[first]*501):
+            with pytest.raises(ValueError):
+                change(store,{'operation':'move','folder_id':folder_id,'agent_ids':ids,'revision':3})
+            assert organization(store)==state
+        state=change(store,{'operation':'delete','folder_id':folder_id,'revision':3})
+        assert state['assignments']=={} and state['folders']==[]
+        assert store.agent(first)==original and store.agent(second)['config']==original['config']
+    finally:store.close()
+
+
+def test_workflow_folder_concurrent_writers_do_not_overwrite(backend,tmp_path):
+    from infrastructure.persistence.workflow_folders import change,organization
+    directory=workspace(tmp_path)
+    initial_store=Storage(directory);initial_store.close()
+    def create(name):
+        store=Storage(directory)
+        try:
+            try:return change(store,{'operation':'create','name':name,'revision':0})
+            except ValueError as error:return str(error)
+        finally:store.close()
+    with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(create,['동시 A','동시 B']))
+    assert sum(isinstance(result,dict) for result in results)==1
+    assert any(isinstance(result,str) and '변경' in result for result in results)
+    store=Storage(directory)
+    try:
+        state=organization(store)
+        assert state['revision']==1 and len(state['folders'])==1
+        state=change(store,{'operation':'create','name':'새로고침 후 재시도','revision':1})
+        assert state['revision']==2 and len(state['folders'])==2
+    finally:store.close()

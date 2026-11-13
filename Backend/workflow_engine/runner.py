@@ -74,10 +74,32 @@ def execution_parameters(node,config):
     return node['settings']
 
 
-def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inherit_checkpoint=False):
+def compile_workflow(storage,config,llm,executor=execute_node,ownership=None,inherit_checkpoint=False,external_inputs=None):
     from workflow_engine.library.reusable_workflows import reject_review_export
     reject_review_export(config,config.get('_saved_workflows',{}))
-    workflow=config['workflow'];issues=workflow_errors(workflow,config['tool_ids'],[saved_input(storage,id) for id in config['document_ids']],config['execution_plan'],runtime_resources=[storage.asset(id) for id in config.get('_runtime_file_ids',[])])
+    workflow=config['workflow']
+    runtime_ids=config.get('_runtime_file_ids',[])
+    resources=[saved_input(storage,id) for id in config['document_ids']]
+    source_columns={}
+    if runtime_ids or 'table' in (external_inputs or {}):
+        from workflow_engine.executors.sources import source_file_ids
+        from workflow_engine.execution_path import execution_path
+        active={n['id'] for n in execution_path(workflow)}
+        for node in workflow['nodes']:
+            if node['tool']=='read_table' and not uses_operation(node):
+                if 'table' in (external_inputs or {}):
+                    # source execution prioritizes a parent's bound table over
+                    # uploaded files; compilation must validate that same table.
+                    source_columns[node['id']]=external_inputs['table']['columns']
+                    continue
+                # Future branches resolve their files when chosen, as preflight
+                # and execution already do. Never require a sibling's upload.
+                source_columns[node['id']]=None
+                if node['id'] in active:
+                    ids=source_file_ids(node,runtime_ids,storage,config)
+                    source_columns[node['id']]=storage.asset(ids[0])['columns']
+    issues=workflow_errors(workflow,config['tool_ids'],resources,config['execution_plan'],
+        runtime_resources=[storage.asset(id) for id in runtime_ids],source_columns=source_columns)
     if issues:raise ValueError(' / '.join(issues))
     connection=None if inherit_checkpoint else checkpoint_connection(storage)
     config={**config,'_ownership':ownership}
@@ -153,7 +175,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         # can resume its input and completed steps without losing or replaying them.
         request=run['request']  # A reclaimed start uses the input persisted by its original owner.
         # Run Now can use the saved schedule instructions, separately from real customer input.
-        task_prompt=request or (config.get('instructions','') if config.get('schedule') else '')
+        task_prompt=request or config.get('instructions','')
         result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':task_prompt,'file_ids':run['file_ids'],'messages':[{'role':'user','content':request}] if request else [],'customer_message':request,'reply_draft':run.get('reply_draft')},cfg,durability='sync')
         snapshot=graph.get_state(cfg);state=snapshot.values;outputs=state.get('outputs',{})
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]
@@ -164,6 +186,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         gmail_collections={n['id'] for n in config['workflow']['nodes'] if n['tool']=='email.list' and n['settings'].get('operation')=='read_messages'}
         summarized_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool']=='compose_answer' and n['id'] in outputs
                             for b in n['bindings'] if b['input']=='documents' and b['output']=='documents' and b['node_id'] in gmail_collections}
+        # When a memo explicitly consumes an earlier analysis, its final text
+        # is the displayed result. Keep the analysis in outputs/step history
+        # and in the pending review preview until the memo actually executes.
+        from workflow_engine.run_answer import summarized_text_sources
+        summarized_sources.update(summarized_text_sources(config['workflow'], outputs))
         operation_nodes={n['id'] for n in config['workflow']['nodes'] if uses_operation(n)}
         texts=list(dict.fromkeys(v['text'] for id,v in outputs.items() if isinstance(v.get('text'),str) and id not in transformed_sources|summarized_sources and (tools_by_id.get(id) in ['compose_answer','agent_node','finish','saved_workflow','text_transform','base64_codec','text_hash','date_transform'] or id in operation_nodes)))
         records=[v['records'] for v in outputs.values() if 'records' in v]
@@ -172,6 +199,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         evidence=[e for v in outputs.values() for e in v.get('evidence',[])]+[r['evidence'] for r in (records[-1] if records else []) if r.get('evidence')]
         run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=artifacts[-1] if artifacts else None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
         run['answer'] = public_run_answer(run['answer'], outputs)
+        if run['status'] == 'succeeded' and run.get('artifact'):
+            from workflow_engine.run_answer import empty_table_notice
+            notice = empty_table_notice(config['workflow'], outputs)
+            if notice:
+                run['answer'] += '\n\n' + notice
         from workflow_engine.executors.document.gmail_summary_batches import append_collection_notices
         run['answer']=append_collection_notices(run['answer'],[outputs.get(node_id,{}).get('result',{}) for node_id in gmail_collections])
     except Exception as error:
@@ -208,4 +240,11 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
             lifecycle.publish(run['id'],execution_token,target,json.dumps({'id':run['id'],'agent_version':run['agent_version'],'source_version':run.get('source_version'),'reviews':reviews,'outputs':run['outputs']},ensure_ascii=False,indent=2))
             run['review_report_path']='reports/'+target.name
         except OSError:run.update(status='failed',error='검수 보고서를 저장하지 못했습니다. 저장 공간과 권한을 확인하세요.')
+    if run['status'] == 'succeeded':
+        from agent_builder.conditions.input_requirements import table_run_request_notice
+        notice = ('추가 필터·정렬을 이번 실행에 적용했습니다. 저장된 설정은 유지됩니다.'
+                  if run.get('runtime_request_applied') else
+                  table_run_request_notice(config, run['request'], run.get('workflow_dependencies')))
+        if notice:
+            run['answer'] = notice + '\n\n' + run['answer']
     lifecycle.finish(run,execution_token);return storage.test(run['id'])

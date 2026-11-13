@@ -27,7 +27,7 @@ def table_hint(needed,outs):
     return ''
 
 
-def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_resources=()):
+def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_resources=(),source_columns=None):
     nodes=workflow['nodes'];edges=workflow['edges'];by={n['id']:n for n in nodes};issues=[]
     if not nodes or len(by)!=len(nodes):return ['워크플로우 노드가 없거나 ID가 중복되었습니다.']
     if any(not re.fullmatch(r'[a-zA-Z][\w-]{0,39}',n['id']) for n in nodes):issues.append('노드 ID 형식을 확인하세요.')
@@ -170,9 +170,13 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
         if uses_operation(node):
             column_cache[id]=None;return None
         if tool=='read_table':
-            ids=node['settings']['file_ids'] or list(table_resources)
-            if len(ids)>1:issues.append('표 읽기 노드는 한 데이터 소스를 선택해야 합니다: '+id)
-            if len(ids)==1 and ids[0] in table_resources:columns=set(table_resources[ids[0]]['columns'])
+            if id in (source_columns or {}):
+                resolved=source_columns[id]
+                columns=set(resolved) if resolved is not None else None
+            else:
+                ids=node['settings']['file_ids'] or list(table_resources)
+                if len(ids)>1:issues.append('표 읽기 노드는 한 데이터 소스를 선택해야 합니다: '+id)
+                if len(ids)==1 and ids[0] in table_resources:columns=set(table_resources[ids[0]]['columns'])
         elif tool=='review_summary':columns={'review_id','verdict','summary','candidate_reply','approval_state'}
         elif tool in ['filter_sort','aggregate_table','calculate_columns','reply_review']:
             binding=next((b for b in node['bindings'] if b['input']=='table' and b['node_id'] in by),None)
@@ -191,7 +195,10 @@ def workflow_errors(workflow,tool_ids,resources,default_plan=None,*,runtime_reso
                 if columns is not None and operation=='compute':
                     from .table_formula import formula_columns
                     try:
-                        if formula_columns(node['settings'].get('calculation_formula'))-columns:issues.append('계산 수식에 앞 단계에 없는 열이 있습니다: '+id)
+                        missing = formula_columns(node['settings'].get('calculation_formula')) - columns
+                        if missing:
+                            issues.append('계산 수식에 앞 단계에 없는 열이 있습니다: ' + ', '.join(sorted(missing))
+                                          + ' (단계: ' + id + '; 사용 가능한 열: ' + ', '.join(sorted(columns)) + ')')
                     except ValueError:pass
                     output=node['settings'].get('output_column')
                     if output in columns:issues.append('기존 열은 덮어쓸 수 없습니다: '+id)

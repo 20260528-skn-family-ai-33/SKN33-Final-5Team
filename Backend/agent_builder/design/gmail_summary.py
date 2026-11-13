@@ -480,7 +480,7 @@ def gmail_summary_reply(state):
                     f'최근 메일 {count}건 요약')
     if request.get('semantic_selection'):
         default_name = _semantic_scope(request, state) + f' {count}건 요약'
-    draft = AgentDraft(name=name or default_name, purpose=quote, instructions=explanation,
+    draft = AgentDraft(request_input_mode='saved_instructions',name=name or default_name, purpose=quote, instructions=explanation,
                        tool_ids=['email.list', 'compose_answer'], document_ids=[],
                        requirements=[dict(description='안 읽은 메일 예약 조회와 요약' if unread else '전날 메일 예약 조회와 요약' if scheduled else '최근 메일 본문 조회와 요약', source_id='user', quote=quote)],
                        questions=[], unsupported=[], explanation=explanation,

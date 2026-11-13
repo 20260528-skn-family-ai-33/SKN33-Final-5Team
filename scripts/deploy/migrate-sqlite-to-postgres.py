@@ -36,6 +36,7 @@ TABLES = {
     'library_folders': ['id', 'space_id', 'parent_id', 'parent_key', 'name', 'name_key', 'created_at', 'updated_at'],
     'library_asset_placements': ['asset_id', 'space_id', 'folder_id', 'updated_at'],
     'agent_versions': ['agent_id', 'version', 'json'],
+    'workflow_organization': ['id', 'revision', 'json'],
     'agent_tests': ['id', 'agent_id', 'json'],
     'builder_generation_requests': ['id', 'session_id', 'json'],
     'builder_run_leases': ['run_id', 'token', 'expires_at', 'pid', 'active'],

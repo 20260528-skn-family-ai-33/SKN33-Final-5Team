@@ -142,6 +142,8 @@ class AgentDraft(BaseModel):
     name: str = Field(max_length=60)
     purpose: str = Field(max_length=2000)
     instructions: str = Field(max_length=12000)
+    request_input_mode: Literal['required', 'saved_instructions'] | None = Field(default=None,
+        description='실행마다 사용자 질문·요청이 필요한 작업은 required. 질문 없이 저장된 고정 지시로 완료하는 요약·보고서는 saved_instructions. 지시문 존재만으로 질문을 생략하지 않습니다.')
     tool_ids: list[Literal[TOOL_IDS]] = Field(max_length=10)
     document_ids: list[str] = Field(max_length=10)
     requirements: list[Requirement] = Field(max_length=30)
@@ -202,6 +204,7 @@ class BuilderState(TypedDict, total=False):
     condition_route: str
     condition_template: bool
     pending_questions: list[dict]
+    clarification_help: bool
     condition_answers: list[dict]
     source_health: dict
     tool_gap: dict | None
@@ -226,6 +229,7 @@ class BuilderState(TypedDict, total=False):
     requirement_ledger: dict | None
     requirement_fingerprint: str | None
     requirement_digest: str | None
+    requirement_context: str | None
     requirement_coverage: dict
     requirement_answers: list[dict]
     requirement_failure: dict | None

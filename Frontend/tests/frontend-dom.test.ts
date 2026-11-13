@@ -644,7 +644,7 @@ test('DOM: a fresh file-first design opens real document excerpts and explains u
   const cards=Array.from(document.querySelectorAll<HTMLDetailsElement>('details.as-inspected-source'));
   assert.deepEqual(cards.map(card=>card.open),[true,true]);assert.ok(!document.querySelector('.as-welcome'));
   assert.equal(cards[0].querySelector('blockquote')?.textContent,'담당자: 김담당');
-  assert.match(cards[1].textContent||'',/읽어 낸 글자가 없어요/);
+  assert.match(cards[1].textContent||'',/읽어 낸 글자가 없습니다/);
   assert.equal(cards[1].querySelector('input[type=checkbox]'),null);
   await click(button('읽은 내용 전체 보기'));
   assert.equal(document.querySelector('.as-resource-dialog .as-preserve')?.textContent,text);
@@ -1004,7 +1004,7 @@ test('DOM integration: new document review UI survives merging with workflow res
 test('entry: service introduction is the default, then opens home and the workflow library',async()=>{
  const t=await setup('',{},undefined,createElement(EntryApp));
  try{
-  assert.match(document.body.textContent||'',/업무를 말하세요/);
+  assert.match(document.body.textContent||'',/반복 업무를/);
   assert.equal(t.calls.length,0,'landing must not require a backend or model');
   await click(button('A4B 시작하기'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'home');
@@ -1016,21 +1016,45 @@ test('entry: service introduction is the default, then opens home and the workfl
   assert.ok(document.body.textContent?.includes('검색 결과가 없습니다.'));
  }finally{await t.close();}
 });
-test('entry: scrolling intro keeps every link on the existing routes without API calls',async()=>{
- const cases:[string,string,string|null][]=[['워크플로우 열기','home',null],['제품 살펴보기','preview',null],['작업 라이브러리','nodes',null],['워크플로우 목록','workflows',null],['실행 기록','history',null],['워크플로우 시작하기','home',null]];
- for(const [label,screen,node] of cases){
-  const t=await setup('?screen=intro',{'a4b-builder-session':'kept'},undefined,createElement(EntryApp));
-  try{
-   assert.ok(document.querySelector('#a4b-how')&&document.querySelector('#a4b-usecases')&&document.querySelector('#a4b-product-preview'),'scroll sections');
-   assert.equal(t.calls.length,0,'intro must not call the backend');
-   await click(button(label));await t.flush();
-   const params=new URL(location.href).searchParams;
-   assert.equal(params.get('screen'),screen,label);assert.equal(params.get('previewNode'),node,label);
-   assert.equal(localStorage.getItem('a4b-builder-session'),'kept','intro links never reset a draft');
-  }finally{await t.close();}
- }
- const n=await setup('?screen=intro',{},undefined,createElement(EntryApp));
- try{await click(document.querySelector('.entry-preview-node.ai') as HTMLElement);await n.flush();const params=new URL(location.href).searchParams;assert.equal(params.get('screen'),'preview');assert.equal(params.get('previewNode'),'ai');assert.ok(document.body.textContent?.includes('AI 작업 설정'));}finally{await n.close();}
+test('entry: introduction has one start action and uses the actual editor views without API calls',async()=>{
+ const h=await setup('?screen=intro',{'a4b-builder-session':'kept'},undefined,createElement(EntryApp));
+ try{
+  assert.equal(h.calls.length,0);
+  assert.equal(document.querySelectorAll('.a4b-landing-hero button').length,0);
+  assert.ok(!document.querySelector('.a4b-landing-header')?.textContent?.match(/워크플로우 열기|제품 살펴보기/));
+  assert.ok(!document.querySelector('.a4b-steps button'));
+  assert.equal(buttons().filter(b=>b.textContent?.trim()==='A4B 시작하기').length,1);
+  assert.ok(!document.body.textContent?.match(/FROM WORDS|MADE FOR|YOUR WORK|A CLEAR WAY/));
+  assert.equal(document.querySelectorAll('.landing-studio-preview .as-flow-node').length,3);
+  for(const node of document.querySelectorAll('.landing-studio-preview .as-flow-node'))assert.ok(node.querySelector('.as-node-kind svg'));
+  await click(document.querySelectorAll('.landing-studio-preview .as-flow-node')[1]);
+  assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/부족한 재고 찾기/);
+  assert.ok(document.querySelector('.as-node-inspector-title svg'));
+  await click(button('직접 실행'));
+  assert.ok(document.querySelector('.run-workflow-diagram'));
+  assert.match(document.querySelector('.landing-preview-run')?.textContent||'',/키보드/);
+  await click(document.getElementById('a4b-preview-tab-document')!);
+  assert.match(document.querySelector('.landing-studio-preview')?.textContent||'',/반품 접수 기간/);
+  assert.equal(h.calls.length,0,'samples and node inspection never call the backend');
+  assert.equal(new URL(location.href).searchParams.get('screen'),'intro');
+  await click(button('A4B 시작하기'));await h.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'home');
+  assert.equal(localStorage.getItem('a4b-builder-session'),'kept');
+ }finally{await h.close();}
+});
+test('entry: use cases select the matching sample while keyboard tabs keep ARIA references valid',async()=>{
+ const h=await setup('?screen=intro',{},undefined,createElement(EntryApp));
+ try{
+  await click(document.querySelector('button[aria-label="응대 검수 예시 보기"]')!);
+  assert.equal(document.getElementById('a4b-preview-tab-review')?.getAttribute('aria-selected'),'true');
+  assert.match(document.querySelector('.landing-studio-preview')?.textContent||'',/응대 초안 검수/);
+  const tab=document.getElementById('a4b-preview-tab-review')!;
+  await act(async()=>{tab.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));});
+  assert.equal(document.activeElement?.id,'a4b-preview-tab-document');
+  for(const button of document.querySelectorAll('[role="tab"]'))assert.ok(document.getElementById(button.getAttribute('aria-controls')!));
+  assert.equal(document.querySelectorAll('[role="tabpanel"]:not([hidden])').length,1);
+  assert.equal(h.calls.length,0);
+ }finally{await h.close();}
 });
 test('entry: list failures are recoverable and never displayed as an empty success',async()=>{
  let failed=true;
@@ -1059,7 +1083,7 @@ test('entry: fresh editor starts from the list and browser history returns to th
   await click(button('저장한 워크플로우'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
   await act(async()=>{window.history.replaceState(null,'','?screen=intro');window.dispatchEvent(new dom.window.PopStateEvent('popstate'));await tick();});
-  assert.ok(document.body.textContent?.includes('업무를 말하세요.'));
+  assert.ok(document.body.textContent?.includes('반복 업무를'));
  }finally{await t.close();}
 });
 test('entry: old model URLs redirect to workflows, and deep links keep their exact run',async()=>{
@@ -1077,12 +1101,11 @@ test('entry: old model URLs redirect to workflows, and deep links keep their exa
  try{assert.ok(document.body.textContent?.includes('이전 실행 결과'));assert.ok(!document.body.textContent?.includes('최신 실행 결과'));}finally{await r.close();}
 });
 
-test('entry: ZIP preview is separate from real workflows, preserves storage, and has no API side effects',async()=>{
- const t=await setup('',{'a4b-selected-agent':'A','a4b-builder-session':'remembered'},undefined,createElement(EntryApp));
+test('entry: legacy preview deep link is separate from real workflows, preserves storage, and has no API side effects',async()=>{
+ const t=await setup('?screen=preview',{'a4b-selected-agent':'A','a4b-builder-session':'remembered'},undefined,createElement(EntryApp));
  try{
   assert.equal(document.querySelectorAll('.entry-preview-steps').length,0);
   assert.equal(document.querySelectorAll('.entry-preview-node:is(button)').length,1);
-  await click(button('편집기 미리보기'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'preview');
   assert.ok(document.body.textContent?.includes('대화 제안 검토'));
   await click(button('AI 작업 설정 살펴보기'));await t.flush();
@@ -1093,7 +1116,7 @@ test('entry: ZIP preview is separate from real workflows, preserves storage, and
   await click(button('제안 검토로 돌아가기'));await t.flush();
   assert.equal(new URL(location.href).searchParams.has('previewNode'),false);
  }finally{await t.close();}
- const n=await setup('',{},undefined,createElement(EntryApp));
+ const n=await setup('?screen=preview',{},undefined,createElement(EntryApp));
  try{await click(button('작업 추가'));await n.flush();assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');assert.ok(document.body.textContent?.includes('작업 라이브러리'));}finally{await n.close();}
 });
 
@@ -1120,7 +1143,7 @@ test('entry: user help has no infrastructure controls and unsent input is guarde
   await click(button('작업 찾아보기'));
   window.confirm=()=>true;await click(home);await n.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'home');
-  assert.equal(document.querySelector('main h1')?.textContent,'어떤 업무를 자동화할까요?');
+  assert.equal(document.querySelector('main h1')?.textContent,'안녕하세요');
  }finally{await n.close();}
 });
 
@@ -1205,7 +1228,7 @@ test('workspace library: pending startup does not show zero counts or an editabl
 });
 test('workspace library: failed initial fetch is distinct from an empty library',async()=>{
  const h=await setup('?screen=nodes',{},path=>{if(path.endsWith('/catalog'))throw Error('카탈로그 불러오기 실패');},createElement(EntryApp));
- try{assert.match(document.querySelector('[role=alert]')!.textContent!,/불러오기 실패/);assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오지 못했습니다/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('저장한 작업이 없어요.'));}finally{await h.close();}
+ try{assert.match(document.querySelector('[role=alert]')!.textContent!,/불러오기 실패/);assert.match(document.querySelector('.workspace-loading')!.textContent!,/불러오지 못했습니다/);assert.ok(!document.querySelector('form[aria-label="작업 설정"]'));assert.ok(!document.body.textContent?.includes('저장한 작업이 없습니다.'));}finally{await h.close();}
 });
 
 test('product tour: next and previous follow real controls without changing an unsent request or executing work',async()=>{
@@ -2472,5 +2495,258 @@ test('direct run keeps an optional request editor open while clearing and after 
   await click(button('직접 실행'));
   assert.equal(requestField().value,'이번 실행의 추가 요청');
   assert.equal(requestField().closest('details')?.open,true);
+ }finally{await h.close();}
+});
+
+test('home attachment is uploaded before the initial design message',async()=>{
+ const prompt='첨부 문서를 요약해줘';
+ const h=await setup('?screen=home',{},(path,body)=>{
+  if(path.endsWith('/sessions'))return {...readySession(),revision:1,status:'empty',draft:null,resources:[]};
+  if(path.endsWith('/upload'))return {...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'home-file',name:'문서.txt',kind:'document'}]};
+  if(path.endsWith('/message'))return {...readySession(),messages:[{role:'user',content:prompt}]};
+ },createElement(EntryApp));
+ try{
+  await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,prompt);
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type="file"]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['내용'],'문서.txt')]});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  assert.match(document.querySelector('.overview-attachment')?.textContent||'',/문서.txt/);
+  await submit(document.querySelector('.overview-composer')!);await h.flush();
+  const calls=h.calls.filter(call=>/\/(upload|message)$/.test(call.path));
+  assert.deepEqual(calls.map(call=>call.path.split('/').pop()),['upload','message']);
+  assert.equal(calls[1].body.revision,2);
+  assert.equal(window.history.state.initialFile,undefined);
+ }finally{await h.close();}
+});
+
+test('home upload failure retains text and does not send a design request',async()=>{
+ const prompt='첨부 파일을 정리해줘';
+ const h=await setup('?screen=home',{},path=>{
+  if(path.endsWith('/sessions'))return {...readySession(),status:'empty',draft:null,resources:[]};
+  if(path.endsWith('/upload'))return new Response(JSON.stringify({error:'업로드 실패'}),{status:500});
+ },createElement(StrictMode,null,createElement(EntryApp)));
+ try{
+  await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,prompt);
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type="file"]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['내용'],'문서.txt')]});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  await submit(document.querySelector('.overview-composer')!);await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/upload')).length,1);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="업무 설명"]')?.value,prompt);
+  assert.match(document.body.textContent||'',/업로드 실패/);
+ }finally{await h.close();}
+});
+
+test('home allows a file without a prompt and uploads it once in StrictMode',async()=>{
+ const h=await setup('?screen=home',{},path=>{
+  if(path.endsWith('/sessions'))return {...readySession(),revision:1,status:'empty',draft:null,resources:[]};
+  if(path.endsWith('/upload'))return {...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'home-file',name:'문서.txt',kind:'document'}]};
+ },createElement(StrictMode,null,createElement(EntryApp)));
+ try{
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type="file"]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['내용'],'문서.txt')]});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="업무 입력 확인"]')!.disabled,false);
+  await submit(document.querySelector('.overview-composer')!);await h.flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/upload')).length,1);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  assert.match(document.body.textContent||'',/문서.txt/);
+ }finally{await h.close();}
+});
+
+test('canvas supports wheel zoom, zoom buttons, drag navigation and reset without changing nodes',async()=>{
+ const flow={entry:'read',nodes:[
+  {id:'read',tool:'read_document',label:'문서 읽기',bindings:[],settings:{}},
+  {id:'out',tool:'finish',label:'완료',bindings:[],settings:{}}
+ ],edges:[{source:'read',target:'out',branch:'next'}]};
+ const current={...A,config:{...A.config,workflow:flow}};
+ const h=await setup('?screen=workflow&service=A',{},path=>path.includes('/agent?')?snapshot(current):undefined);
+ try{
+  const canvas=document.querySelector<HTMLElement>('.as-desktop-canvas')!;
+  const percent=()=>document.querySelector('.as-zoom span')?.textContent;
+  assert.equal(percent(),'100%');
+  const normal=new dom.window.WheelEvent('wheel',{deltaY:100,bubbles:true,cancelable:true});
+  await act(async()=>canvas.dispatchEvent(normal));
+  assert.equal(normal.defaultPrevented,false);assert.equal(percent(),'100%');
+  const zoom=new dom.window.WheelEvent('wheel',{ctrlKey:true,deltaY:-100,bubbles:true,cancelable:true,clientX:100,clientY:100});
+  await act(async()=>canvas.dispatchEvent(zoom));
+  assert.equal(zoom.defaultPrevented,true);assert.equal(percent(),'122%');
+  const zoomAt=async(deltaY:number,metaKey=false)=>{
+   await act(async()=>canvas.dispatchEvent(new dom.window.WheelEvent('wheel',{deltaY,ctrlKey:!metaKey,metaKey,bubbles:true,cancelable:true,clientX:100,clientY:100})));
+  };
+  await zoomAt(-10000,true);assert.equal(percent(),'200%');
+  assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="캔버스 확대"]')!.disabled,true);
+  await zoomAt(10000);assert.equal(percent(),'35%');
+  assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="캔버스 축소"]')!.disabled,true);
+  await click(button('가로로 보기'));assert.equal(percent(),'100%');
+  await zoomAt(-100);assert.equal(percent(),'122%');
+  await click(document.querySelector('[aria-label="캔버스 확대"]')!);assert.equal(percent(),'132%');
+  await click(document.querySelector('[aria-label="캔버스 축소"]')!);assert.equal(percent(),'122%');
+  const captures=new Set<number>();
+  canvas.setPointerCapture=id=>{captures.add(id);};
+  canvas.hasPointerCapture=id=>captures.has(id);
+  canvas.releasePointerCapture=id=>{captures.delete(id);};
+  const pointer=async(type:string,x:number,y:number)=>{
+   const event=new dom.window.MouseEvent(type,{button:0,clientX:x,clientY:y,bubbles:true});
+   Object.defineProperty(event,'pointerId',{value:7});
+   await act(async()=>canvas.dispatchEvent(event));
+  };
+  const size=document.querySelector<HTMLElement>('.as-canvas-size')!;
+  const before=size.style.translate;
+  await pointer('pointerdown',50,50);await pointer('pointermove',110,90);
+  assert.notEqual(size.style.translate,before);
+  assert.ok(canvas.classList.contains('is-dragging'));
+  await pointer('pointerup',110,90);assert.equal(canvas.classList.contains('is-dragging'),false);
+  assert.equal(captures.size,0);
+  await pointer('pointerdown',50,50);await pointer('pointercancel',50,50);
+  assert.equal(canvas.classList.contains('is-dragging'),false);
+  assert.equal(captures.size,0);
+  canvas.scrollLeft=120;canvas.scrollTop=90;
+  await click(document.querySelector('[aria-label="화면에 맞추기"]')!);
+  assert.equal(canvas.scrollLeft,0);assert.equal(canvas.scrollTop,0);assert.equal(size.style.translate,'0px 0px');
+  assert.equal(document.querySelectorAll('.as-flow-node').length,2);
+  await click(document.querySelectorAll('.as-flow-node')[1]);
+  assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/완료/);
+ }finally{await h.close();}
+});
+
+test('optional run request can be collapsed with text retained',async()=>{
+ const h=await setup('?screen=run&service=A',{},path=>path.includes('/agent?')?{...snapshot(A),request_required:false}:undefined);
+ try{
+  const field=document.querySelector<HTMLTextAreaElement>('[data-tour="run-input"]')!;
+  await input(field,'보존할 조건');
+  const details=field.closest('details')!;
+  assert.equal(details.open,true);
+  await act(async()=>{details.open=false;details.dispatchEvent(new dom.window.Event('toggle'));});
+  await h.flush();
+  assert.equal(details.open,false);
+  assert.equal(field.value,'보존할 조건');
+  for(let i=0;i<3;i++){
+   await act(async()=>{details.open=true;details.dispatchEvent(new dom.window.Event('toggle'));});
+   await act(async()=>{details.open=false;details.dispatchEvent(new dom.window.Event('toggle'));});
+   await h.flush();
+   assert.equal(details.open,false);assert.equal(field.value,'보존할 조건');
+  }
+ }finally{await h.close();}
+});
+
+test('home greets the member once and limits recent work to three entries',async()=>{
+ const overviewCode=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/workspace-overview.tsx')],absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
+ const Overview=load(overviewCode).WorkspaceOverview;
+ const workflows=Array.from({length:5},(_,index)=>({id:String(index),updated_at:'2026-11-13T00:00:00Z',config:{name:'작업 '+index}}));
+ const navigations:any[]=[];
+ const h=await setup('',{},undefined,createElement(Overview,{memberName:'정재',workflows,loading:false,error:'',onStart:()=>{},onNavigate:(...args:any[])=>navigations.push(args),onRetry:()=>{}}));
+ try{
+  assert.equal(document.querySelector('h1')?.textContent,'안녕하세요, 정재님');
+  assert.equal(document.querySelector('.overview-greeting'),null);
+  assert.equal(document.querySelectorAll('.overview-recent-grid li').length,3);
+  await click(document.querySelectorAll('.overview-recent-grid button')[2]);
+  assert.deepEqual(navigations,[['workflow','2']]);
+ }finally{await h.close();}
+});
+
+test('workflow sidebar contains only navigation while the upper selector preserves switching',async()=>{
+ const h=await setup('?screen=workflow&service=A');
+ try{
+  assert.equal(document.querySelector('.workspace-sidebar [data-tour="saved-workflows"]'),null);
+  assert.ok(!document.querySelector('.workspace-sidebar')?.textContent?.includes('내 워크플로우'));
+  const selector=document.querySelector<HTMLDetailsElement>('.as-workflow-switcher')!;
+  assert.equal(selector.open,false);
+  selector.open=true;
+  const choice=Array.from(selector.querySelectorAll('button')).find(button=>button.textContent?.includes('서비스 B'))!;
+  await click(choice);await h.flush();
+  assert.equal(new URL(location.href).searchParams.get('service'),'B');
+ }finally{await h.close();}
+});
+
+test('workflow folders: create, select, move, filter, rename and delete preserve workflow actions',async()=>{
+ let organization:any={revision:0,folders:[],assignments:{}};
+ const h=await setup('?screen=workflows',{},(path,body)=>{
+  if(path.endsWith('/agents'))return {agents:[A,B],organization};
+  if(path.endsWith('/workflow_folders')){
+   assert.equal(body.revision,organization.revision);
+   const folders=organization.folders.map((f:any)=>({...f})),assignments={...organization.assignments};
+   if(body.operation==='create')folders.push({id:'folder-1',name:body.name});
+   if(body.operation==='rename')folders[0].name=body.name;
+   if(body.operation==='move')for(const id of body.agent_ids)assignments[id]=body.folder_id;
+   if(body.operation==='delete'){folders.splice(0);for(const id of Object.keys(assignments))delete assignments[id];}
+   organization={revision:organization.revision+1,folders,assignments};return {organization};
+  }
+ },createElement(EntryApp));
+ try{
+  await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
+  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택 이동 (1)'));
+  await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
+  assert.ok(document.querySelector('button[aria-label="서비스 A 실행하기"]'));
+  assert.ok(document.querySelector('button[aria-label="서비스 A 예약 관리"]'));
+  await click(button('폴더 이름 변경'));await input(field('폴더 이름'),'정리 업무');await submit(document.querySelector('.workflow-folder-form')!);
+  assert.ok(button('정리 업무'));
+  await click(button('폴더 삭제'));await submit(document.querySelector('.workflow-folder-form')!);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
+  assert.deepEqual(organization.assignments,{});
+  await click(buttons().find(b=>b.getAttribute('aria-label')==='목록 새로고침')!);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
+ }finally{await h.close();}
+});
+
+test('workflow folder save failure keeps dialog and selection for retry',async()=>{
+ const h=await setup('?screen=workflows',{},path=>path.endsWith('/workflow_folders')?new Response(JSON.stringify({error:'다른 곳에서 폴더가 변경됐습니다.'}),{status:400}):undefined,createElement(EntryApp));
+ try{
+  await click(button('폴더 만들기'));await input(field('폴더 이름'),'실패 유지');await submit(document.querySelector('.workflow-folder-form')!);
+  assert.equal(field('폴더 이름').value,'실패 유지');assert.match(document.querySelector('[role="alert"]')!.textContent!,/변경/);
+  await click(button('취소'));assert.equal(document.querySelector('.workflow-folder-form'),null);
+ }finally{await h.close();}
+});
+
+test('workflow folder pending save rejects duplicate submission and keeps the dialog open',async()=>{
+ const pending=deferred();let saves=0;
+ const h=await setup('?screen=workflows',{},path=>{
+  if(path.endsWith('/workflow_folders')){saves++;return pending.promise;}
+ },createElement(EntryApp));
+ try{
+  await click(button('폴더 만들기'));await input(field('폴더 이름'),'중복 방지');
+  const form=document.querySelector<HTMLFormElement>('.workflow-folder-form')!;
+  await submit(form);await submit(form);
+  assert.equal(saves,1);assert.equal(button('취소').disabled,true);
+  assert.equal(field('폴더 이름').disabled,true);
+  await act(async()=>{pending.resolve({organization:{revision:1,folders:[{id:'pending-folder',name:'중복 방지'}],assignments:{}}});await tick();});
+  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.ok(button('중복 방지'));
+ }finally{await h.close();}
+});
+
+test('workflow folder search and folder changes clear hidden selection',async()=>{
+ const h=await setup('?screen=workflows',{},path=>path.endsWith('/agents')?{agents:[A,B],organization:{revision:1,folders:[{id:'f',name:'정리'}],assignments:{A:'f'}}}:undefined,createElement(EntryApp));
+ try{
+  await click(document.querySelector('input[aria-label="현재 목록 전체 선택"]')!);
+  assert.equal(button('선택 이동 (2)').disabled,false);
+  await input(document.querySelector('input[aria-label="워크플로우 검색"]')!,'서비스 A');
+  assert.equal(button('선택 이동').disabled,true);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
+  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);
+  await click(button('미분류'));
+  assert.equal(button('선택 이동').disabled,true);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
+ }finally{await h.close();}
+});
+
+test('workflow folder selection caps at 500 and releases a slot when unchecked',async()=>{
+ const agents=Array.from({length:501},(_,i)=>({...A,id:'bulk-'+i,config:{...A.config,name:'대량 '+i}}));let moved:string[]=[];
+ const h=await setup('?screen=workflows',{},(path,body)=>{
+  if(path.endsWith('/agents'))return {agents};
+  if(path.endsWith('/workflow_folders')){moved=body.agent_ids;return {organization:{revision:1,folders:[],assignments:{}}};}
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('input[aria-label="현재 목록에서 500개 선택"]')!);
+  assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
+  const last=document.querySelector<HTMLInputElement>('input[aria-label="대량 500 선택"]')!;
+  assert.equal(last.disabled,true);assert.ok(button('선택 이동 (500)'));
+  await click(document.querySelector('input[aria-label="대량 0 선택"]')!);
+  assert.equal(last.disabled,false);await click(last);
+  assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
+  await click(button('선택 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
+  assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
  }finally{await h.close();}
 });

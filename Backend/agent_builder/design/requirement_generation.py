@@ -17,11 +17,13 @@ def required_operation_variants(specs,node_schema,binding_schema,variable_names,
     """Expose required registered operations absent from a tool's native settings."""
     from workflow_engine.catalog.canonical import operation_variants
     operations={s['kind'] for s in specs} & {'fill_missing','select_fields'}
-    if not operations or 'filter_sort' in available:return []
-    names={'fill_missing':'handle_missing','select_fields':'select_columns'}
-    wanted={names[k] for k in operations}
-    return [v for v in operation_variants(node_schema,binding_schema,{'filter_sort'},variable_names)
-            if v['properties']['settings']['properties']['operation'].get('enum',[None])[0] in wanted]
+    if not operations:return []
+    wanted={'filter_sort':{'handle_missing' if k=='fill_missing' else 'select_columns' for k in operations}}
+    if 'select_fields' in operations:
+        wanted.update(json_transform={'lookup'},export_result={'write_csv','write_json'})
+    return [v for tool,names in wanted.items() if tool not in available
+            for v in operation_variants(node_schema,binding_schema,{tool},variable_names)
+            if v['properties']['settings']['properties']['operation'].get('enum',[None])[0] in names]
 
 
 def generation_mode():
@@ -58,6 +60,13 @@ def generation_requirements(state):
         for id in ids:
             if id not in files:files.append(id)
     if not files and len(assets)==1:files=list(assets)
+    from .request_guards import review_request
+    if (review_request(state) == (True, True) and len(files) == 1
+            and files[0] in assets and assets[files[0]].get('kind') == 'document'
+            and not state.get('required_node_refs')
+            and {s['kind'] for s in specs} <= {'read', 'document_analysis', 'human_review'}
+            and {'document_analysis', 'human_review'} <= {s['kind'] for s in specs}):
+        return specs, ['read_document', 'compose_answer', 'ask_user', 'compose_answer']
     if (not files or any(id not in assets or assets[id].get('kind')!='table' for id in files)
             or state.get('required_node_refs')):return specs,[]
     order=['read_table']*len(files)
@@ -71,6 +80,42 @@ def generation_requirements(state):
     if any(s['kind']=='policy' for s in specs) and 'filter_sort' not in order:
         return specs,[]  # no invented policy placement
     return specs,order if 1<=len(order)<=15 else []
+
+
+def constrain_review_steps(schema, state):
+    """Decode a sealed linear review contract with distinct analysis/answer ports.
+
+    Applicability is established by generation_requirements; additional work,
+    reusable nodes and non-document inputs retain the general decoder. This
+    constrains generation, never repairs or approves an invalid returned draft.
+    """
+    specs, order = generation_requirements(state)
+    if order != ['read_document', 'compose_answer', 'ask_user', 'compose_answer']:
+        return deepcopy(schema)
+    if (state.get('requirement_ledger') or {}).get('unresolved'):
+        return deepcopy(schema)
+    result = constrain_ordered_steps(schema, state)
+    following = result['$defs']['WorkflowDefinition']['properties'].get('next_steps', {})
+    slots = following.get('properties', {})
+    if set(slots) != {'step_2', 'step_3', 'step_4'}:
+        return deepcopy(schema)
+    bindings = {
+        'step_2': [dict(input='documents',step=1,output='documents')],
+        'step_3': [dict(input='text',step=2,output='text')],
+        'step_4': [dict(input='documents',step=1,output='documents'),
+                   dict(input='text',step=2,output='text'),dict(input='answer',step=3,output='answer')],
+    }
+    request = '\n'.join(dict.fromkeys(s['request'] for s in specs if s['kind']=='document_analysis'))
+    for name, slot in slots.items():
+        for variant in slot['anyOf']:
+            variant['properties']['bindings'] = _literal(bindings[name])
+            settings = variant['properties']['settings']['properties']
+            if name == 'step_3':
+                settings['instructions'] = {'type':'null'}
+            else:
+                phase = '현재 단계에서는 사람 검토 전 분석 결과만 작성하세요.' if name == 'step_2' else '현재 단계에서는 연결된 분석과 제출한 검토 의견으로 최종 메모를 작성하세요.'
+                settings['instructions'] = _literal(request + '\n' + phase)
+    return result
 
 
 def _literal(value):
@@ -195,6 +240,10 @@ def constrain_request_settings(schema,state):
     if order:
         nodes=result['$defs']['WorkflowDefinition']['properties'].get('nodes')
         if nodes is not None:nodes['minItems']=max(nodes.get('minItems',1),len(order))
+    # Output projection uses adapters, so no fixed order is available. Still
+    # carry its sealed table criteria in the default generation mode as well.
+    if any(s['kind']=='select_fields' for s in specs):
+        return constrain_generation(result, state)
     return result
 
 
@@ -264,42 +313,48 @@ def constrain_generation(schema,state):
         workflow=result['$defs']['WorkflowDefinition']['properties']
         if 'nodes' in workflow:workflow['nodes']['minItems']=max(workflow['nodes'].get('minItems',1),len(order))
         if 'next_steps' in workflow:workflow['next_steps']['minItems']=max(workflow['next_steps'].get('minItems',0),len(order)-1)
-        computes=[s for s in specs if s['kind']=='compute']
-        dates=[s for s in specs if s['kind']=='parse_dates']
-        aggregates=[s for s in specs if s['kind']=='aggregate']
-        filters=[s for s in specs if s['kind']=='filter'];sorts=[s for s in specs if s['kind']=='sort']
-        exports=[s for s in specs if s['kind']=='export']
-        for variant in result['$defs']['WorkflowNode']['anyOf']:
-            tool=variant['properties']['tool'].get('enum',[None])[0]
-            properties=variant['properties']['settings']['properties']
-            if properties.get('operation',{}).get('enum'):continue
-            values={}
-            if tool=='calculate_columns' and len(computes)==1 and not dates:
-                values=dict(table_operation='compute',calculation_formula=computes[0]['formula'],output_column=computes[0]['output_column'])
-                values.update({k:None for k in ('rename_from','rename_to','date_input_format','date_timezone') if k in properties})
-                if 'fields' in properties:values['fields']=[]
-            if tool=='calculate_columns' and len(dates)==1 and not computes:
-                values=dict(table_operation='parse_dates',fields=dates[0]['fields'],
-                            date_input_format=dates[0]['input_format'],date_timezone=dates[0]['timezone'])
-                values.update({k:None for k in ('calculation_formula','output_column','rename_from','rename_to') if k in properties})
-            if tool=='aggregate_table' and len(aggregates)==1:
-                values={k:aggregates[0][k] for k in ('fields','aggregation','sum_field')}
-            if tool=='filter_sort' and order.count('filter_sort')==1 and len(filters)<=1 and len(sorts)<=1:
-                plan=dict(filters=filters[0]['filters'] if filters else [],sort=sorts[0]['sort'] if sorts else [],
-                    match=filters[0]['match'] if filters else 'all',missing_policy='keep',duplicate_policy='keep',
-                    duplicate_field=None,output_format=exports[0]['format'] if len(exports)==1 else 'json')
-                policy={};conflict=False
-                for s in specs:
-                    if s['kind']!='policy':continue
-                    for key in ('missing_policy','duplicate_policy','duplicate_field'):
-                        if s[key] is None:continue
-                        if key in policy and policy[key]!=s[key]:conflict=True
-                        policy[key]=s[key]
-                if not conflict:
-                    plan.update(policy);values={'execution_plan':plan}
-            if tool=='write_result' and len(exports)==1:values={'format':exports[0]['format']}
-            for key,value in values.items():
-                if key in properties:properties[key]=_literal(value)
+    # Projection needs adapters and therefore has no fixed tool order. Its
+    # sealed arithmetic/criteria must still constrain generation.
+    computes=[s for s in specs if s['kind']=='compute']
+    dates=[s for s in specs if s['kind']=='parse_dates']
+    aggregates=[s for s in specs if s['kind']=='aggregate']
+    filters=[s for s in specs if s['kind']=='filter'];sorts=[s for s in specs if s['kind']=='sort']
+    exports=[s for s in specs if s['kind']=='export']
+    single_filter = order.count('filter_sort')==1 or (
+        not order and any(s['kind']=='select_fields' for s in specs)
+        and {s['kind'] for s in specs} <= {'read','compute','parse_dates','rename','filter','sort','policy','select_fields','export'})
+    renames = any(s['kind']=='rename' for s in specs)
+    for variant in result['$defs']['WorkflowNode']['anyOf']:
+        tool=variant['properties']['tool'].get('enum',[None])[0]
+        properties=variant['properties']['settings']['properties']
+        if properties.get('operation',{}).get('enum'):continue
+        values={}
+        if tool=='calculate_columns' and len(computes)==1 and not dates and not renames:
+            values=dict(table_operation='compute',calculation_formula=computes[0]['formula'],output_column=computes[0]['output_column'])
+            values.update({k:None for k in ('rename_from','rename_to','date_input_format','date_timezone') if k in properties})
+            if 'fields' in properties:values['fields']=[]
+        if tool=='calculate_columns' and len(dates)==1 and not computes and not renames:
+            values=dict(table_operation='parse_dates',fields=dates[0]['fields'],
+                        date_input_format=dates[0]['input_format'],date_timezone=dates[0]['timezone'])
+            values.update({k:None for k in ('calculation_formula','output_column','rename_from','rename_to') if k in properties})
+        if tool=='aggregate_table' and len(aggregates)==1:
+            values={k:aggregates[0][k] for k in ('fields','aggregation','sum_field')}
+        if tool=='filter_sort' and single_filter and len(filters)<=1 and len(sorts)<=1:
+            plan=dict(filters=filters[0]['filters'] if filters else [],sort=sorts[0]['sort'] if sorts else [],
+                match=filters[0]['match'] if filters else 'all',missing_policy='keep',duplicate_policy='keep',
+                duplicate_field=None,output_format=exports[0]['format'] if len(exports)==1 else 'json')
+            policy={};conflict=False
+            for s in specs:
+                if s['kind']!='policy':continue
+                for key in ('missing_policy','duplicate_policy','duplicate_field'):
+                    if s[key] is None:continue
+                    if key in policy and policy[key]!=s[key]:conflict=True
+                    policy[key]=s[key]
+            if not conflict:
+                plan.update(policy);values={'execution_plan':plan}
+        if tool=='write_result' and len(exports)==1:values={'format':exports[0]['format']}
+        for key,value in values.items():
+            if key in properties:properties[key]=_literal(value)
     return result
 
 

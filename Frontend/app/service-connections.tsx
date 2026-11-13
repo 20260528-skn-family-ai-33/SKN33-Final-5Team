@@ -69,7 +69,7 @@ export function ServiceConnections(){
   const ManagedIcon=managedEntry?.Icon;
   return <section className="service-connections" aria-labelledby="service-connections-heading">
     <Toaster theme="light" position="top-center"/>
-    <div className="entry-page-heading"><div><h1 id="service-connections-heading">서비스 연결</h1><p>워크플로우에서 사용할 계정을 연결하세요.</p></div></div>
+    <div className="entry-page-heading"><div><h1 id="service-connections-heading">서비스 연결</h1></div></div>
     {notice&&!managing&&<p role="status" className="service-connection-feedback">{notice}</p>}
     <div className="service-connection-grid"><GmailConnection disabled={false} variant="card"/>
       {entries.map(({id,label,description,permission,Icon})=>{

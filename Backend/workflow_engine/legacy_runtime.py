@@ -66,6 +66,13 @@ def test_agent(storage,agent_id,request,api_key,file_ids=None,agent_snapshot=Non
         if isinstance(answer,list):answer='\n'.join(c.get('text','') for c in answer if isinstance(c,dict))
         authoritative=(f"저장한 설정 v{agent['version']}의 조건을 적용해 {len(context['rows'] or [])}행을 처리했습니다. 실제 결과와 적용 인자는 아래 표와 처리 단계에서 확인할 수 있습니다." if context['artifact'] else str(answer))
         run.update(status='succeeded' if context['artifact'] else 'needs_input',answer=authoritative,steps=context['trace'],rows=context['rows'] or [],artifact=context['artifact'])
+        if run['status'] == 'succeeded':
+            from agent_builder.conditions.input_requirements import table_run_request_notice
+            notice = table_run_request_notice(config, request)
+            if notice:
+                run['answer'] = notice + '\n\n' + run['answer']
+            if context['rows'] == []:
+                run['answer'] += '\n\n결과가 0행입니다. 저장된 파일에는 데이터 행이 없습니다. 처리 단계의 필터·빈값 처리 조건을 확인하세요.'
     except Exception as error:
         import traceback
         frames=[{'function':f.name,'file':Path(f.filename).name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)[-6:]]

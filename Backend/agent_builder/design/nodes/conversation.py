@@ -36,6 +36,7 @@ SYSTEM="""당신은 A4B의 사용자 대화와 워크플로우 설계를 총괄�
 노드 ID, tool, label, settings, bindings 및 entry/edges를 명시합니다. settings는 해당 도구의 생성 스키마에 있는 키만 작성합니다. 생략된 호환 설정은 앱이 기본값으로 채웁니다. 가짜 시작 노드·포트와 순환/병렬을 만들지 않습니다. 일반 노드는 next 경로 하나, condition은 yes/no, 종료 노드는 outgoing edge가 없습니다. bindings는 이전에 실제 존재하는 출력만 참조합니다. 실제 포트는 list_tools 명세를 따릅니다.
 read_table/read_document는 file_ids 또는 실행 입력을 읽고 bindings=[]입니다. 연결된 파일은 실제 ID만 사용합니다. 자료가 없어도 실행 시 입력받는 설계를 만들 수 있습니다.
 각 filter_sort.settings.execution_plan에 그 단계의 조건·정렬·결측·중복 정책을 지정합니다. 글로벌 execution_plan은 호환용 기본값이며 여러 단계의 조건을 합치지 않습니다. filter_sort가 없는 설계는 글로벌 filters=[], sort=[], missing_policy=keep, duplicate_policy=keep, duplicate_field=null로 둡니다. 사용자 요청 없이 빈 값을 제외하거나 중복을 제거하지 않습니다. 빈 값 제외를 명시적으로 요청받았다면 실제 filter_sort 단계와 그 단계의 execution_plan을 함께 구성합니다. 합계 계산의 숫자 검증은 aggregate_table 실행 코드가 수행하며, 빈 값 제외 정책으로 대신하지 않습니다. aggregation=count/sum, fields=그룹 열, sum_field=합계 원본 열은 aggregate_table에만 지정합니다. 집계 결과는 그룹 열과 count/sum 열입니다. 숫자 변환·검증은 실행 코드가 하며 실패한 값을 임의로 0으로 바꾸지 않습니다.
+request_input_mode는 실행마다 질문·요청을 받는 문서 질의응답이나 AI 작업이면 required입니다. 사용자 질문을 기다리지 않고 저장된 고정 조건으로 완료하는 요약·분석·보고서 작업만 saved_instructions로 지정합니다. instructions가 있다는 이유만으로 질문 입력을 생략하지 않습니다.
 문서 추출 항목은 실제 사용자 요청을 반영합니다. evidence는 값의 근거 메타데이터입니다. 검색이 필요 없으면 강제로 넣지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다. agent_node는 실제 실행 요청과 연결 입력을 조회하여 text를 반환합니다. 실행 요청용 가짜 binding은 필요 없습니다.
 문서의 누락·모순 분석과 수정 제안은 원문 documents를 compose_answer에 연결하고 document_analysis.request 전체를 settings.instructions에 보존합니다. extract_information은 필드 추출이며 분석 답변을 대신하지 않습니다. 사람이 분석 결과를 확인하면 compose_answer.text를 ask_user.text에 연결하고 question을 작성하며 instructions=null로 실제 응답을 기다립니다. ask_user는 reviews를 출력하지 않습니다.
 표 열 계산은 calculate_columns 노드의 table_operation=compute, calculation_formula(열 이름과 숫자, + - * / % 괄호만), output_column으로 지정하고 앞 표의 table을 연결합니다. 열 이름 변경은 table_operation=rename, rename_from, rename_to를 사용합니다. 식·새 열 이름이 불명확하면 묻고 임의로 정하지 않습니다. 존재하는 열 덮어쓰기는 지원하지 않습니다.
@@ -187,6 +188,8 @@ def make_conversation(api_key,model,model_factory=None):
         planner_token_budget=output_budget(required_steps,requirement_generation_mode)
         if local_ollama:planner_token_budget=bounded_output_limit(planner_token_budget)
         selected_contract_ids|={REQUIREMENT_TOOLS[s['kind']] for s in requirement_specs if s['kind'] in REQUIREMENT_TOOLS} & {t['id'] for t in catalog}
+        if any(s['kind']=='select_fields' for s in requirement_specs):
+            selected_contract_ids.update({'json_transform','export_result'})
         # Ollama may ignore forced tool_choice. Supply authoritative read-only
         # contracts directly instead of losing the final JSON decoding stage.
         selected_contract_ids |= {n['tool'] for n in ((state.get('draft') or {}).get('workflow') or {}).get('nodes',[]) if n['tool'] in {t['id'] for t in catalog}}
@@ -404,6 +407,12 @@ def make_conversation(api_key,model,model_factory=None):
             if ordered_encoding() and required_steps and requirement_generation_mode=='bounded':
                 bounded=constrain_ordered_steps(decoder_schema,state)
                 decoder_schema.clear();decoder_schema.update(bounded)
+            if ordered_encoding():
+                from agent_builder.design.requirement_generation import constrain_review_steps
+                bounded=constrain_review_steps(decoder_schema,state)
+                from agent_builder.design.projected_table_decoder import constrain_projected_table
+                bounded=constrain_projected_table(bounded,state)
+                decoder_schema.clear();decoder_schema.update(bounded)
             if runtime_file:
                 constrained = constrain_runtime_readers(decoder_schema, state)
                 decoder_schema.clear();decoder_schema.update(constrained)
@@ -479,6 +488,21 @@ def make_conversation(api_key,model,model_factory=None):
         if requirement_specs:
             context['required_execution_contracts']={'specs':requirement_specs,
                 'note':'각 명시된 계산식·열·방향·파일 형식은 실제 단계의 설정에 반영해야 합니다. 원래 초안이 빠뜨린 단계도 보존하지 말고 새 설계에 포함하세요. document_analysis.request 전체를 compose_answer.instructions에 전달하고 human_review는 ask_user에서 실제 text 결과를 확인합니다.'}
+        if required_steps == ['read_document','compose_answer','ask_user','compose_answer']:
+            context['review_data_flow']={
+                'analysis':'compose_answer: documents=read_document.documents. instructions에 document_analysis.request 전체를 보존한다.',
+                'review':'ask_user: text=분석.text. question은 검토 의견 입력 요청. instructions는 비워 실제 입력을 기다린다.',
+                'final':'compose_answer: documents=read_document.documents, text=분석.text, answer=검토.answer를 모두 연결한다. 최종 메모 지시를 instructions에 보존한다.',
+                'note':'agent_node로 대체하지 않는다. ask_user.text는 이전 분석의 전달이며 answer가 사용자가 제출한 의견이다.'}
+        if any(s['kind']=='select_fields' for s in requirement_specs):
+            context['projection_data_flow']={
+                'table_to_rows':{'tool':'json_transform','operation':'lookup','arguments_json':{'path':['rows']},'output_port':'records',
+                                 'binding':'value에는 계산·필터·정렬이 끝난 table 출력을 연결'},
+                'select':{'tool':'filter_sort','operation':'select_columns','binding':'rows에는 앞 단계 records를 연결',
+                          'columns':[s['fields'] for s in requirement_specs if s['kind']=='select_fields']},
+                'export':{'tool':'export_result','operation':'write_csv 또는 write_json','binding':'rows에는 select_columns.records를 연결',
+                          'note':'CSV columns에는 요청한 최종 열 순서를 쓰고 path에는 요청 파일명을 쓴다.'},
+                'note':'native filter_sort는 열 선택 기능이 없다. 빈 execution_plan을 추가해도 출력 열 선택을 수행하지 않는다. 위 등록 operation과 arguments_json을 사용한다.'}
         # Saved snapshots retain full compatibility defaults. They need not be
         # repeated in every model prompt; never modify the persisted originals.
         def compact_settings(settings):

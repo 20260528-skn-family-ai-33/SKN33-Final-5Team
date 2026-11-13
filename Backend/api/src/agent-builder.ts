@@ -321,6 +321,11 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(method!=='GET'){res.setHeader('Allow','GET');json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
   json(res,200,await builderWorker({action:'schedules'}));return true;
  }
+ if(action==='workflow_folders'&&method==='POST'){
+  const data=await readBody(req,50000);
+  if(!data||!['create','rename','delete','move'].includes(data.operation)||!Number.isSafeInteger(data.revision)||data.revision<0||data.folder_id!=null&&(typeof data.folder_id!=='string'||!idPattern.test(data.folder_id)))throw new Error('폴더 작업과 버전을 확인하세요.');
+  json(res,200,await builderWorker({action:'workflow_folders',operation:data.operation,revision:data.revision,folder_id:data.folder_id??null,name:data.name,agent_ids:data.agent_ids}));return true;
+ }
  if(action==='rename_agent'&&method==='POST'){
   const data=await readBody(req,4096);
   if(typeof data?.id!=='string'||!idPattern.test(data.id)||!Number.isSafeInteger(data.version)||data.version<1||typeof data.name!=='string')throw new Error('워크플로우 ID, 버전, 이름을 확인해주세요.');

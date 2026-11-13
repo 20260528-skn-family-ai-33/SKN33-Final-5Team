@@ -64,7 +64,7 @@ export function AccountMenu({showLocalStatus=false}:{showLocalStatus?:boolean}){
 }
 export function SignIn({onHome}:{onHome:()=>void}){
  const auth=useAuth();const reason=new URLSearchParams(location.search).get('auth_error');
- return <main className="a4b-auth-page"><section className="a4b-auth-card" aria-labelledby="auth-title"><img src="/brand/a4b-mark.svg" width="44" height="44" alt="A4B"/><h1 id="auth-title">내 작업 공간에 로그인</h1><p>문서와 워크플로우를 저장하고,<br/>이전 작업을 이어서 진행하세요.</p>
+ return <main className="a4b-auth-page"><section className="a4b-auth-card" aria-labelledby="auth-title"><span className="workspace-brandmark"><img src="/brand/a4b-logo.png" width="1254" height="1254" alt="A4B"/></span><h1 id="auth-title">내 작업 공간에 로그인</h1><p>문서와 워크플로우를 저장하고,<br/>이전 작업을 이어서 진행하세요.</p>
  {(auth.error||reason)&&<div className="a4b-auth-error" role="alert">{auth.error|| (reason==='account_disabled'?'서비스 이용이 중지된 계정입니다. 관리자에게 문의하세요.':'로그인을 완료하지 못했습니다. 다시 시도해주세요.')}</div>}
  {auth.loading?<p role="status">로그인 상태를 확인하고 있습니다.</p>:<a className="a4b-auth-primary" href={loginUrl()}><LogIn size={18} aria-hidden="true"/>로그인 · 회원가입</a>}
  <p className="a4b-auth-note"><ShieldCheck size={15} aria-hidden="true"/>내 자료는 내 계정의 작업 공간에 보관됩니다.</p>

@@ -29,6 +29,33 @@ def condition_mode(mode=None):
     return setting
 
 
+def computed_table_request(state):
+    """The single-filter contract cannot represent derived columns.
+
+    Scope routing must not depend on a model remembering calculate_columns.
+    This does not generate a formula or approve a workflow.
+    """
+    from agent_builder.design.processing_guard import _legacy_actions
+    from agent_builder.capabilities.capability_judgement import active_request_messages
+    if 'compute' in _legacy_actions(state):
+        return True
+    columns = {c for r in state.get('resources',[]) if r.get('kind')=='table' for c in r.get('columns',[])}
+    if not columns:return False
+    column = '(?:' + '|'.join(re.escape(c) for c in sorted(columns,key=len,reverse=True)) + ')'
+    column_operand = r'["`\x27]?' + column + r'["`\x27]?'
+    operand = '(?:' + column_operand + r'|\d+(?:\.\d+)?)'
+    operator = r'\s*[×÷*/+−-]\s*'
+    # At least one operand must be a real column; dates and numeric ranges
+    # in an ordinary filter must not switch off condition checking.
+    formula = re.compile(r'(?<!\w)(?:' + column_operand + operator + operand + '|' + operand + operator + column_operand + r')(?!\w)')
+    def expression_text(text):
+        # Quoted cell values are data. Quoted exact column identifiers remain
+        # operands, so `"수량" * "단가"` is still a real calculation.
+        return re.sub(r'"(?:\\.|[^"\\])*"|\x27(?:\\.|[^\x27\\])*\x27|“[^”]*”|‘[^’]*’',
+                      lambda m: m[0][1:-1] if m[0][1:-1] in columns else ' ', text)
+    return any(formula.search(expression_text(m['content'])) for m in active_request_messages(state) if m.get('role')=='user')
+
+
 def _transport(api_key, model):
     if os.getenv('A4B_MAIN_PROVIDER') == 'ollama':
         from agent_builder.design.nodes.direct_conversation import OllamaPlanner
@@ -66,6 +93,11 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         setting='enforce' if state.get('condition_required') or state.get('condition_enforced') else configured
         if setting == 'off':
             return {'condition_enforced': False, 'condition_route': 'conversation', 'condition_ledger': None, 'condition_template': False}
+        if setting=='enforce' and computed_table_request(state):
+            return {'condition_ledger':None, 'condition_enforced':False, 'condition_required':False,
+                    'condition_route':'conversation', 'condition_template':False, 'pending_questions':[],
+                    'trace':state.get('trace',[])+[{'node':'condition_check','label':'업무 조건 확인','status':'completed',
+                        'detail':'outside_scope: 계산 열을 포함한 요청을 전체 설계기로 위임','mode':setting,'model_calls':0,'metrics':{}}]}
         from agent_builder.design.gmail_summary import gmail_summary_request
         if gmail_summary_request(state):
             return {'condition_ledger':None, 'condition_enforced':False, 'condition_required':False,
@@ -124,10 +156,19 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             detail = ledger['decision']
         except Exception as error:
             if error_observer and setting=='enforce':error_observer(error)
+            from agent_builder.conditions.condition_readiness import ConditionContractError
+            from agent_builder.design.failure_notice import requirement_failure_notice
+            notice = requirement_failure_notice(
+                'model_output_error' if isinstance(error, ConditionContractError) else 'model_error', error)
             # A model/contract error is not a business clarification or unsupported request.
             ledger = {**deepcopy(state.get('condition_ledger') or {}),
-                      'decision': 'system_error', 'issues': ['조건 판정을 완료하지 못했습니다. 모델 연결과 출력 계약을 확인하세요.'],
+                      'decision': 'system_error', 'issues': [notice],
                       'questions': [], 'slots': {}, 'operations': [], 'error_type': type(error).__name__}
+            if isinstance(error, ConditionContractError):
+                # Retain diagnostic codes, never provider bodies or evidence text.
+                ledger['diagnostics'] = [{'attempt':i+1,'code':
+                    'duplicate_condition_key' if a.get('contract_error','').startswith('같은 조건을 중복 출력했습니다:')
+                    else 'invalid_condition_contract'} for i,a in enumerate(error.attempts)]
             ledger['slots'] = deepcopy((state.get('condition_ledger') or {}).get('slots', {}))
             ledger['operations'] = list((state.get('condition_ledger') or {}).get('operations', []))
             result = {'model_calls': getattr(error, 'model_calls', None), 'metrics': {}}

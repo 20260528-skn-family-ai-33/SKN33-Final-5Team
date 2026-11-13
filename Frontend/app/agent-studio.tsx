@@ -1,3 +1,4 @@
+import {WorkflowRenameDialog,renameWorkflow} from './workflow-rename-dialog';
 import {WorkflowPreview,type Workflow} from './workflow-preview';
 import {NodeInspector,RuleSummary} from './node-inspector';
 import {StudioMessage} from './studio-message';
@@ -16,7 +17,7 @@ import {NodeLibrary,type LibraryNode,type ToolInfo} from './node-library';
 import {nodeSelectionPool} from './node-selection';
 import {shouldRefreshAgentRuns,refreshedAgentRun,startAgentRunRefresh} from './agent-run-refresh';
 import {useEffect,useRef,useState,type FormEvent,type ReactNode} from 'react';
-import {ArrowLeft,ArrowUp,Check,ChevronDown,FileText,Loader2,Paperclip,Plus,Workflow as WorkflowIcon,X,Settings2,CheckCircle2,AlertCircle,Database,SlidersHorizontal,FileOutput,MessageSquare,RefreshCw} from 'lucide-react';
+import {ArrowLeft,ArrowUp,Check,ChevronDown,FileText,Loader2,Paperclip,Pencil,Plus,Workflow as WorkflowIcon,X,Settings2,CheckCircle2,AlertCircle,Database,SlidersHorizontal,FileOutput,MessageSquare,RefreshCw} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {request} from '@/components/flow/connection-panel';
 import './agent-studio.css';
@@ -92,7 +93,7 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,onCanLeaveChange,initialPrompt,initialFile}:{initialPrompt?:string;initialFile?:File;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void;onExternalFlow?:(id:string)=>void}={}){
+export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onLocationChange,onCanLeaveChange,initialPrompt,initialFile}:{onNewWorkflow?:()=>void;initialPrompt?:string;initialFile?:File;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void;onExternalFlow?:(id:string)=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'|'schedule'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'||initialScreen==='schedule'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const screenRef=useRef(screen);screenRef.current=screen;
@@ -102,6 +103,7 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
 
 
  const [libraryVisited,setLibraryVisited]=useState(initialScreen==='nodes');
+ const [renaming,setRenaming]=useState<Agent|null>(null);
  const [selectedNodeId,setSelectedNodeId]=useState<string|null>(null);
  const [editorPanel,setEditorPanel]=useState<'conversation'|'canvas'|'settings'>('conversation');
  const [settingsOpen,setSettingsOpen]=useState(false);
@@ -572,9 +574,10 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
  function canLeave(){if(inFlight.current||recovery?.running||libraryBusy)return false;return !(text.trim()||testText.trim()||replyDraft.trim()||runFiles.length||chosenRefs.length||libraryDirty||scheduleSourceDirty||scheduleSettingsDirty||clarificationDirty)||window.confirm('아직 보내지 않은 입력 또는 작업 선택이 있습니다. 이 화면을 나가면 입력이 사라집니다. 이동할까요?');}
 
  useEffect(()=>{onCanLeaveChange?.(canLeave);});
+ function startFreshDesign(){if(onNewWorkflow)onNewWorkflow();else reset();}
  function openDesignHome(){
   if(screen==='workflow'&&!selected)return;
-  if(canLeave()){if(session&&!selected)go('workflow',true);else reset();}
+  if(canLeave())startFreshDesign();
  }
  function leave(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'){if(canLeave())onNavigate?.(next);}
  useEffect(()=>{
@@ -624,7 +627,7 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
   ['settings', '설정'],
  ] as const;
  const runRequestField=<label className="as-field">{testRun?.question?'확인 질문에 답변':reviewCapable?(requestRequired?'고객 문의':'고객 문의 (선택 · 표의 문의 열 사용)'):requestRequired?'실행 요청':'추가 요청 (선택)'}<textarea placeholder={testRun?.question?"확인 질문에 답변하세요.":requestRequired?"저장한 워크플로우에 맡길 요청이나 질문을 입력하세요.":"비워 두면 저장한 설정으로 실행합니다."} data-tour="run-input" value={testText} onChange={e=>setTestText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||libraryBusy}/>{requestRequired&&!testRun?.question&&<small>이 워크플로우는 이번에 처리할 {reviewCapable?'고객 문의':'질문이나 요청'}가 필요합니다.</small>}</label>;
- const pageNavigation=<div className="workspace-context"><button className="as-text-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>leave(screen==='schedule'?'schedules':'workflows')}><ArrowLeft size={15}/>목록으로</button><nav className="studio-tabs" aria-label="워크플로우 작업"><button aria-current={screen==='workflow'?'page':undefined} className={screen==='workflow'?'active':''} onClick={()=>switchScreen('workflow')} disabled={!!busy||!!recovery||libraryBusy}>설계</button><button data-tour="run-tab" aria-current={screen==='run'?'page':undefined} className={screen==='run'?'active':''} onClick={()=>switchScreen('run')} disabled={!!busy||!!recovery||libraryBusy}>직접 실행</button>{selected&&<button aria-current={screen==='schedule'?'page':undefined} className={screen==='schedule'?'active':''} onClick={()=>switchScreen('schedule')} disabled={!!busy||!!recovery||libraryBusy}>예약 관리</button>}</nav>{screen==='workflow'&&<button type="button" data-tour="create-workflow" className="as-button as-primary as-new-workflow" disabled={loading||!!busy||!!recovery||libraryBusy} onClick={()=>{if(canLeave())reset();}}><Plus size={16}/>새 워크플로우</button>}</div>;
+ const pageNavigation=<div className="workspace-context"><button className="as-text-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>leave(screen==='schedule'?'schedules':'workflows')}><ArrowLeft size={15}/>목록으로</button><nav className="studio-tabs" aria-label="워크플로우 작업"><button aria-current={screen==='workflow'?'page':undefined} className={screen==='workflow'?'active':''} onClick={()=>switchScreen('workflow')} disabled={!!busy||!!recovery||libraryBusy}>설계</button><button data-tour="run-tab" aria-current={screen==='run'?'page':undefined} className={screen==='run'?'active':''} onClick={()=>switchScreen('run')} disabled={!!busy||!!recovery||libraryBusy}>직접 실행</button>{selected&&<button aria-current={screen==='schedule'?'page':undefined} className={screen==='schedule'?'active':''} onClick={()=>switchScreen('schedule')} disabled={!!busy||!!recovery||libraryBusy}>예약 관리</button>}</nav>{screen==='workflow'&&<button type="button" data-tour="create-workflow" className="as-button as-primary as-new-workflow" disabled={loading||!!busy||!!recovery||libraryBusy} onClick={()=>{if(canLeave())startFreshDesign();}}><Plus size={16}/>새 워크플로우</button>}</div>;
 
  return <div className={"as-app screen-"+screen+(selected?" has-service":"")}>
   {attachMode && !saved && screen==='workflow' && <AttachUploadDialog mode={attachMode} onClose={()=>setAttachMode(null)}
@@ -634,12 +637,18 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
   <WorkspaceHeader onHome={()=>leave('home')} disabled={loading||!!busy||!!recovery||libraryBusy}/>
   {error&&<div className="as-error as-global-error" role="alert"><AlertCircle size={17}/><span>{error}</span>{recovery&&<button type="button" className="as-button" disabled={!!busy} onClick={()=>void reloadConversation()}>대화 다시 불러오기</button>}{recovery&&!recovery.running&&<button type="button" className="as-button as-secondary" disabled={!!busy} onClick={()=>void resumeConversation()}>이 대화 이어가기</button>}<button disabled={!!recovery} onClick={()=>setError('')} aria-label="오류 안내 닫기"><X size={16}/></button></div>}
   <div className="as-shell"><WorkspaceSidebar active={screen==='nodes'?'workflows':screen==='schedule'?'schedules':'workflow'} disabled={!!busy||!!recovery?.running||libraryBusy} help={<WorkspaceHelp currentTourPanel={editorPanel} onTourPanelChange={showEditorPanel} deferAutoStart={loading||!!busy||!!recovery||libraryBusy}/>} onNavigate={next=>{if(next==='workflow')openDesignHome();else leave(next);}}></WorkspaceSidebar>
-  <div style={{display:screen==='nodes'?'contents':'none'}}>{libraryVisited&&<NodeLibrary loading={loading} unavailable={initialLoadFailed} header={<TaskLibraryHeader active="nodes" disabled={!!busy||!!recovery||libraryBusy} onNavigate={next=>{if(next==='workflows')leave(next);}} actions={window.history.state?.returnToDesign&&<button type="button" className="as-text-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>switchScreen('workflow')}><ArrowLeft size={15}/>설계로 돌아가기</button>}/>} onDirtyChange={setLibraryDirty} onBusyChange={setLibraryBusy} nodes={library} defaults={presets} catalog={catalog} onSaved={refreshLibrary} onUse={n=>{if(!canLeave())return;reset();setChosenRefs([n.ref]);setChosenSnapshots([n]);go('workflow');}} onToolUse={t=>{if(!canLeave())return;reset();setText(t.name+' 기능을 사용하는 워크플로우를 만들어줘. ');go('workflow');}}/>}</div>{screen!=='nodes'&&<main className="as-main">{pageNavigation}{agents.length>0&&<details className="as-workflow-switcher"><summary>워크플로우 선택</summary><nav data-tour="saved-workflows" aria-label="저장한 워크플로우">{agents.map(a=><button key={a.id} disabled={!!busy||!!recovery||libraryBusy} onClick={()=>{if(canLeave())void openAgent(a);}} className={'as-agent-link '+(selected?.id===a.id?'active':'')}><span className="as-small-icon"><WorkflowIcon size={16}/></span><span><strong>{a.config.name}</strong><small>버전 {a.version} · {a.config.tool_ids.length}개 도구</small></span></button>)}</nav></details>}<div className="as-page-title"><div><h1>{selected?selected.config.name:session?.base_version?'워크플로우 수정':screen==='run'||screen==='schedule'?'실행할 워크플로우를 선택하세요.':'워크플로우 설계'}</h1></div>{selected&&<button data-tour="edit-workflow" className="as-button as-secondary" onClick={edit} disabled={!!busy||!!recovery||libraryBusy}><Settings2 size={16}/>설정 수정</button>}{screen==='workflow'&&!saved&&<div className="as-design-actions">
+  <div style={{display:screen==='nodes'?'contents':'none'}}>{libraryVisited&&<NodeLibrary loading={loading} unavailable={initialLoadFailed} header={<TaskLibraryHeader active="nodes" disabled={!!busy||!!recovery||libraryBusy} onNavigate={next=>{if(next==='workflows')leave(next);}} actions={window.history.state?.returnToDesign&&<button type="button" className="as-text-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>switchScreen('workflow')}><ArrowLeft size={15}/>설계로 돌아가기</button>}/>} onDirtyChange={setLibraryDirty} onBusyChange={setLibraryBusy} nodes={library} defaults={presets} catalog={catalog} onSaved={refreshLibrary} onUse={n=>{if(!canLeave())return;reset();setChosenRefs([n.ref]);setChosenSnapshots([n]);go('workflow');}} onToolUse={t=>{if(!canLeave())return;reset();setText(t.name+' 기능을 사용하는 워크플로우를 만들어줘. ');go('workflow');}}/>}</div>{screen!=='nodes'&&<main className="as-main">{pageNavigation}{agents.length>0&&<details className="as-workflow-switcher"><summary>워크플로우 선택</summary><nav data-tour="saved-workflows" aria-label="저장한 워크플로우">{agents.map(a=><button key={a.id} disabled={!!busy||!!recovery||libraryBusy} onClick={()=>{if(canLeave())void openAgent(a);}} className={'as-agent-link '+(selected?.id===a.id?'active':'')}><span className="as-small-icon"><WorkflowIcon size={16}/></span><span><strong>{a.config.name}</strong><small>버전 {a.version} · {a.config.tool_ids.length}개 도구</small></span></button>)}</nav></details>}<div className="as-page-title"><div className="workflow-title-actions"><h1>{selected?selected.config.name:session?.base_version?'워크플로우 수정':screen==='run'||screen==='schedule'?'실행할 워크플로우를 선택하세요.':'워크플로우 설계'}</h1>{selected&&(screen==='workflow'||screen==='schedule')&&<button type="button" className="as-button" aria-label="워크플로우 이름 변경" title="워크플로우 이름 변경" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>setRenaming(selected)}><Pencil size={15}/></button>}</div>{selected&&<button data-tour="edit-workflow" className="as-button as-secondary" onClick={edit} disabled={!!busy||!!recovery||libraryBusy}><Settings2 size={16}/>설정 수정</button>}{screen==='workflow'&&!saved&&<div className="as-design-actions">
      <button type="button" className="as-button as-secondary" onClick={()=>go('nodes',true)} disabled={loading||!!busy||!!recovery||libraryBusy}>작업 찾아보기</button>
      <button className="as-button as-primary" onClick={reviewSave} disabled={!ready||!!busy||!!recovery||libraryBusy}><Check size={17}/>{session?.base_version?'새 버전 저장':'저장'}</button>
     </div>}</div>
 
-   {screen==='workflow'&&!saved&&<div className="as-progress" aria-label="설계 진행">
+   {renaming&&<WorkflowRenameDialog name={renaming.config.name} onClose={()=>setRenaming(null)} onSave={async name=>{
+    const updated=await renameWorkflow(renaming,name);
+    setSelected(current=>current?.id===updated.id?{...current,...updated}:current);
+    setAgents(current=>current.map(agent=>agent.id===updated.id?updated:agent));
+    setSchedule(current=>current?.agent_version===renaming.version?{...current,agent_version:updated.version}:current);
+   }}/>}
+   {screen==='workflow'&&!saved&&<div className="as-progress"  aria-label="설계 진행">
     <span className={draft?'done':'current'}><i>{draft?<Check size={12}/>:'1'}</i>업무 설명</span>
     <span className={draft?'current':''}><i>2</i>설정 확인</span>
     <span><i>3</i>저장</span>

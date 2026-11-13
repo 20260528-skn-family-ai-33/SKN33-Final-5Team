@@ -1,0 +1,14 @@
+import type {Workflow} from './workflow-preview';
+export type ScenarioId='inventory'|'review'|'document';
+export type LandingScenario={id:ScenarioId;label:string;title:string;description:string;file:string;request:string;reply:string;confirmation:string;workflow:Workflow;result:string;rows?:string[][]};
+const node=(id:string,tool:string,label:string,bindings:Workflow['nodes'][number]['bindings']=[],settings:Record<string,unknown>={}):Workflow['nodes'][number]=>({id,tool,label,bindings,settings});
+const binding=(input:string,node_id:string,output:string)=>({input,node_id,output});
+const graph=(nodes:Workflow['nodes']):Workflow=>({entry:nodes[0].id,nodes,edges:nodes.slice(1).map((n,i)=>({source:nodes[i].id,target:n.id,branch:'next'}))});
+export const landingScenarios:LandingScenario[]=[
+ {id:'inventory',label:'재고 정리',title:'부족한 재고만 모아보기',description:'재고표에서 기준 수량보다 적은 상품을 찾아 CSV로 저장합니다. 같은 조건으로 다시 실행하거나 시간을 정해 예약할 수 있습니다.',file:'재고목록.csv',request:'재고가 기준 수량보다 적은 상품만 골라 CSV로 저장해 줘. 빈 값은 제외해.',reply:'현재 재고와 기준 수량을 비교하고, 부족한 상품만 CSV로 저장하도록 구성했습니다.',confirmation:'이 조건으로 저장해 줘.',
+  workflow:graph([node('read','read_table','재고표 읽기'),node('filter','filter_sort','부족한 재고 찾기',[binding('table','read','table')],{execution_plan:{filters:[{field:'현재 재고',operator:'lt',compare_field:'기준 수량'}],sort:[],match:'all',missing_policy:'drop',duplicate_policy:'keep'}}),node('save','write_result','CSV로 저장',[binding('table','filter','table')],{format:'csv'})]),result:'기준 수량보다 재고가 적은 상품 2개를 찾았습니다.',rows:[['상품','현재 재고','기준 수량'],['키보드','20','30'],['마우스','3','10']]},
+ {id:'review',label:'응대 검수',title:'응대 초안을 정책과 대조하기',description:'고객 문의와 응대 초안을 정책 문서와 비교합니다. 확인이 필요한 표현과 수정안을 보고 담당자가 최종 내용을 결정합니다.',file:'환불정책.txt',request:'고객 문의와 환불 안내 초안을 정책에 맞게 검수해 줘. 수정안에는 근거도 붙여 줘.',reply:'정책 문서와 응대 초안을 대조하고, 확인할 표현과 수정 의견을 정리하도록 구성했습니다.',confirmation:'확인되지 않은 처리 완료 표현도 찾아줘.',
+  workflow:graph([node('read','read_document','정책 문서 읽기'),node('review','reply_review','응대 초안 검수',[binding('documents','read','documents')],{instructions:'정책과 고객 문의를 대조하고 확인되지 않은 사실과 처리 완료 표현을 검토합니다.'}),node('summary','review_summary','검수 결과 정리',[binding('reviews','review','reviews')])]),result:'“환불을 완료했습니다”는 실제 처리 여부 확인이 필요합니다. 최종 응대는 담당자가 확인합니다.'},
+ {id:'document',label:'문서 질문',title:'문서에서 필요한 답 찾기',description:'안내문이나 업무 지침을 연결하고 궁금한 내용을 질문합니다. 답변에 사용한 원문도 함께 확인할 수 있습니다.',file:'반품정책.txt',request:'이 문서에서 반품 접수 기간을 찾아 알려줘. 답변에 원문도 함께 보여 줘.',reply:'문서에서 반품 접수 기간을 찾고, 해당 원문을 근거로 답변하도록 구성했습니다.',confirmation:'문서에 없는 내용은 추정하지 마.',
+  workflow:graph([node('read','read_document','문서 읽기'),node('search','search_document','반품 접수 기간 찾기',[binding('documents','read','documents')],{query:'반품 접수 기간'}),node('answer','compose_answer','근거와 함께 답변',[binding('documents','search','documents')],{instructions:'반품 접수 기간을 원문에 근거해 안내합니다.'})]),result:'반품은 수령 후 7일 이내에 접수할 수 있습니다.\n근거: “반품은 수령 후 7일 이내 접수합니다.”'},
+];

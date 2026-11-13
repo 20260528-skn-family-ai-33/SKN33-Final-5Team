@@ -1,5 +1,6 @@
+import {WorkflowToolIcon} from './workflow-tool-icon';
 import type {CSSProperties} from 'react';
-import {ArrowDown, ArrowRight, Check, Circle, Clock3, FileSpreadsheet, FileText, GitBranch, Layers, ScanText, Workflow as WorkflowIcon, X} from 'lucide-react';
+import {ArrowDown, ArrowRight, Check, Circle, Clock3, Workflow as WorkflowIcon, X} from 'lucide-react';
 
 type Node = {id:string; label:string; tool:string};
 type Edge = {source:string; target:string; branch:string};
@@ -7,10 +8,6 @@ export type RunWorkflow = {entry:string; nodes:Node[]; edges:Edge[]};
 type Step = {node:string; label:string; status:string};
 type Props = {workflow?:RunWorkflow|null; steps?:Step[]; runStatus?:string; waitingNodeId?:string|null};
 
-const toolIcons:Record<string,typeof FileText> = {
-  read_document:FileText, read_table:FileSpreadsheet, extract_information:ScanText,
-  create_spreadsheet:FileSpreadsheet, condition:GitBranch, saved_workflow:WorkflowIcon,
-};
 const branchNames:Record<string,string> = {next:'다음', yes:'조건 충족', no:'조건 미충족'};
 const states = {
   completed:{text:'완료',icon:Check}, succeeded:{text:'완료',icon:Check},
@@ -85,11 +82,10 @@ export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId}:P
         const status = !graph ? steps[index].status
           : runStatus === 'needs_input' && waitingNodeId === node.id ? 'needs_input'
           : recorded.get(node.id) || (runStatus ? 'unrecorded' : undefined);
-        const Icon = toolIcons[node.tool] || Layers;
         return <div role="listitem" key={graph ? node.id : index} data-workflow-node={node.id}
           className="rwd-row" style={{gridRow:index+1}}>
           <div className="rwd-card">
-            <span className="rwd-type"><Icon aria-hidden="true" size={21}/></span>
+            <span className="rwd-type"><WorkflowToolIcon tool={node.tool} size={21}/></span>
             <div className="rwd-copy"><span className="rwd-index">{index+1}단계</span><strong>{node.label}</strong></div>
             <Badge status={status}/>
             {graph && edges.length > 0 && <div className={straight && edges.length === 1 && edges[0].branch==='next' ? 'rwd-sr' : 'rwd-branches'}>

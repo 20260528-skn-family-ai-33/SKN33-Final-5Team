@@ -939,7 +939,7 @@ test('DOM integration: new document review UI survives merging with workflow res
 test('entry: service introduction is the default, then opens home and the workflow library',async()=>{
  const t=await setup('',{},undefined,createElement(EntryApp));
  try{
-  assert.match(document.body.textContent||'',/업무를 말하세요/);
+  assert.match(document.body.textContent||'',/반복 업무를/);
   assert.equal(t.calls.length,0,'landing must not require a backend or model');
   await click(button('A4B 시작하기'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'home');
@@ -951,21 +951,45 @@ test('entry: service introduction is the default, then opens home and the workfl
   assert.ok(document.body.textContent?.includes('검색 결과가 없습니다.'));
  }finally{await t.close();}
 });
-test('entry: scrolling intro keeps every link on the existing routes without API calls',async()=>{
- const cases:[string,string,string|null][]=[['워크플로우 열기','home',null],['제품 살펴보기','preview',null],['작업 라이브러리','nodes',null],['워크플로우 목록','workflows',null],['실행 기록','history',null],['워크플로우 시작하기','home',null]];
- for(const [label,screen,node] of cases){
-  const t=await setup('?screen=intro',{'a4b-builder-session':'kept'},undefined,createElement(EntryApp));
-  try{
-   assert.ok(document.querySelector('#a4b-how')&&document.querySelector('#a4b-usecases')&&document.querySelector('#a4b-product-preview'),'scroll sections');
-   assert.equal(t.calls.length,0,'intro must not call the backend');
-   await click(button(label));await t.flush();
-   const params=new URL(location.href).searchParams;
-   assert.equal(params.get('screen'),screen,label);assert.equal(params.get('previewNode'),node,label);
-   assert.equal(localStorage.getItem('a4b-builder-session'),'kept','intro links never reset a draft');
-  }finally{await t.close();}
- }
- const n=await setup('?screen=intro',{},undefined,createElement(EntryApp));
- try{await click(document.querySelector('.entry-preview-node.ai') as HTMLElement);await n.flush();const params=new URL(location.href).searchParams;assert.equal(params.get('screen'),'preview');assert.equal(params.get('previewNode'),'ai');assert.ok(document.body.textContent?.includes('AI 작업 설정'));}finally{await n.close();}
+test('entry: introduction has one start action and uses the actual editor views without API calls',async()=>{
+ const h=await setup('?screen=intro',{'a4b-builder-session':'kept'},undefined,createElement(EntryApp));
+ try{
+  assert.equal(h.calls.length,0);
+  assert.equal(document.querySelectorAll('.a4b-landing-hero button').length,0);
+  assert.ok(!document.querySelector('.a4b-landing-header')?.textContent?.match(/워크플로우 열기|제품 살펴보기/));
+  assert.ok(!document.querySelector('.a4b-steps button'));
+  assert.equal(buttons().filter(b=>b.textContent?.trim()==='A4B 시작하기').length,1);
+  assert.ok(!document.body.textContent?.match(/FROM WORDS|MADE FOR|YOUR WORK|A CLEAR WAY/));
+  assert.equal(document.querySelectorAll('.landing-studio-preview .as-flow-node').length,3);
+  for(const node of document.querySelectorAll('.landing-studio-preview .as-flow-node'))assert.ok(node.querySelector('.as-node-kind svg'));
+  await click(document.querySelectorAll('.landing-studio-preview .as-flow-node')[1]);
+  assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/부족한 재고 찾기/);
+  assert.ok(document.querySelector('.as-node-inspector-title svg'));
+  await click(button('직접 실행'));
+  assert.ok(document.querySelector('.run-workflow-diagram'));
+  assert.match(document.querySelector('.landing-preview-run')?.textContent||'',/키보드/);
+  await click(document.getElementById('a4b-preview-tab-document')!);
+  assert.match(document.querySelector('.landing-studio-preview')?.textContent||'',/반품 접수 기간/);
+  assert.equal(h.calls.length,0,'samples and node inspection never call the backend');
+  assert.equal(new URL(location.href).searchParams.get('screen'),'intro');
+  await click(button('A4B 시작하기'));await h.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'home');
+  assert.equal(localStorage.getItem('a4b-builder-session'),'kept');
+ }finally{await h.close();}
+});
+test('entry: use cases select the matching sample while keyboard tabs keep ARIA references valid',async()=>{
+ const h=await setup('?screen=intro',{},undefined,createElement(EntryApp));
+ try{
+  await click(document.querySelector('button[aria-label="응대 검수 예시 보기"]')!);
+  assert.equal(document.getElementById('a4b-preview-tab-review')?.getAttribute('aria-selected'),'true');
+  assert.match(document.querySelector('.landing-studio-preview')?.textContent||'',/응대 초안 검수/);
+  const tab=document.getElementById('a4b-preview-tab-review')!;
+  await act(async()=>{tab.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));});
+  assert.equal(document.activeElement?.id,'a4b-preview-tab-document');
+  for(const button of document.querySelectorAll('[role="tab"]'))assert.ok(document.getElementById(button.getAttribute('aria-controls')!));
+  assert.equal(document.querySelectorAll('[role="tabpanel"]:not([hidden])').length,1);
+  assert.equal(h.calls.length,0);
+ }finally{await h.close();}
 });
 test('entry: list failures are recoverable and never displayed as an empty success',async()=>{
  let failed=true;
@@ -994,7 +1018,7 @@ test('entry: fresh editor starts from the list and browser history returns to th
   await click(button('저장한 워크플로우'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
   await act(async()=>{window.history.replaceState(null,'','?screen=intro');window.dispatchEvent(new dom.window.PopStateEvent('popstate'));await tick();});
-  assert.ok(document.body.textContent?.includes('업무를 말하세요.'));
+  assert.ok(document.body.textContent?.includes('반복 업무를'));
  }finally{await t.close();}
 });
 test('entry: old model URLs redirect to workflows, and deep links keep their exact run',async()=>{
@@ -1012,12 +1036,11 @@ test('entry: old model URLs redirect to workflows, and deep links keep their exa
  try{assert.ok(document.body.textContent?.includes('이전 실행 결과'));assert.ok(!document.body.textContent?.includes('최신 실행 결과'));}finally{await r.close();}
 });
 
-test('entry: ZIP preview is separate from real workflows, preserves storage, and has no API side effects',async()=>{
- const t=await setup('',{'a4b-selected-agent':'A','a4b-builder-session':'remembered'},undefined,createElement(EntryApp));
+test('entry: legacy preview deep link is separate from real workflows, preserves storage, and has no API side effects',async()=>{
+ const t=await setup('?screen=preview',{'a4b-selected-agent':'A','a4b-builder-session':'remembered'},undefined,createElement(EntryApp));
  try{
   assert.equal(document.querySelectorAll('.entry-preview-steps').length,0);
   assert.equal(document.querySelectorAll('.entry-preview-node:is(button)').length,1);
-  await click(button('편집기 미리보기'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'preview');
   assert.ok(document.body.textContent?.includes('대화 제안 검토'));
   await click(button('AI 작업 설정 살펴보기'));await t.flush();
@@ -1028,7 +1051,7 @@ test('entry: ZIP preview is separate from real workflows, preserves storage, and
   await click(button('제안 검토로 돌아가기'));await t.flush();
   assert.equal(new URL(location.href).searchParams.has('previewNode'),false);
  }finally{await t.close();}
- const n=await setup('',{},undefined,createElement(EntryApp));
+ const n=await setup('?screen=preview',{},undefined,createElement(EntryApp));
  try{await click(button('작업 추가'));await n.flush();assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');assert.ok(document.body.textContent?.includes('작업 라이브러리'));}finally{await n.close();}
 });
 

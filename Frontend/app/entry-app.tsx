@@ -56,7 +56,7 @@ export default function EntryApp(){
  const newFlow=()=>navigate('workflow',undefined,true);
  const startExample=(prompt:string,file?:File)=>navigate('workflow',undefined,true,undefined,false,prompt,file);
  if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} initialPrompt={window.history.state?.initialPrompt} initialFile={window.history.state?.initialFile} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)}/>;
- if(route==='intro')return <LandingPage onStart={()=>navigate('home')} onPreview={preview} onRoute={next=>navigate(next)}/>;
+ if(route==='intro')return <LandingPage onStart={()=>navigate('home')}/>;
  if(route==='automation')return <><VisualAutomation/><button type="button" className="as-button as-secondary" onClick={()=>navigate('home')} style={{position:'fixed',right:16,bottom:16,zIndex:1000}}>A4B 홈으로</button></>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>

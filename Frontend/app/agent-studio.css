@@ -183,3 +183,6 @@ details.as-setting-section[open] > summary:not(:has(> svg))::after { transform:r
 @media(prefers-reduced-motion:reduce) {
   .as-setting-section summary::after { transition:none; }
 }
+.as-node-kind{display:inline-flex;align-items:center;gap:7px;min-height:22px;color:var(--as-accent)}
+.as-node-kind svg,.as-node-kind img{flex:none}
+.as-node-inspector-title{display:flex;align-items:center;gap:8px}

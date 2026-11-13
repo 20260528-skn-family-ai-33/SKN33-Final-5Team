@@ -555,8 +555,10 @@ def requirement_transport(model, api_key=''):
 
 
 def _completed(state, target, plan, fingerprint, calls):
+    from .output_selection_revision import revision_context
     return dict(requirement_route=target, requirement_required=True, requirement_ledger=plan,requirement_failure=None,
                 requirement_fingerprint=fingerprint, requirement_digest=plan_digest(plan),
+                requirement_context=revision_context(state),
                 pending_questions=[q for q in state.get('pending_questions', []) if q.get('source') not in ('requirement','requirements')],
                 confirmed=False, saved_agent_id=None,
                 trace=state.get('trace', [])+[dict(node='requirements', label='요청 업무 목록', status='completed',
@@ -614,6 +616,10 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             if state.get('condition_enforced') and state.get('condition_ledger') and not confirmed:
                 failure_kind = 'condition_state_error'
                 raise ValueError('확정 조건의 현재 턴·버전·근거를 다시 검증해야 합니다.')
+            from .output_selection_revision import narrow_output_revision
+            revision = narrow_output_revision(state)
+            if revision is not None:
+                return _completed(state, target, revision, fingerprint, 0)
             from .compute_grounding import missing_compute_packet
             packet = missing_compute_packet(state)
             if packet is not None:

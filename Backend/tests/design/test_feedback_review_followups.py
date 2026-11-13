@@ -16,6 +16,64 @@ from tests.design.test_feedback_final_review import _run_csv
 from tests.workflow_engine.test_workflow import node, bind, edge, saved
 
 
+def sealed_revision_state(reply='주문번호 열만 저장해줘'):
+    from agent_builder.design.requirement_ledger import _completed
+    current=state()
+    current.update(_completed(current,'plan',extract_plan(packet(),current),ledger_fingerprint(current),1))
+    current['messages'].append(dict(role='assistant',content='설계가 준비되었습니다.'))
+    current['messages'].append(dict(role='user',content=reply))
+    return current
+
+
+def test_closed_output_revision_preserves_all_business_tasks_without_reextraction():
+    from agent_builder.design.requirement_ledger import make_requirement_check
+    class NeverCalled:
+        def invoke(self,messages):
+            pytest.fail('A sealed output-only revision must not re-extract the business request')
+    current=sealed_revision_state()
+    original=deepcopy(current['requirement_ledger'])
+    result=make_requirement_check('fixture',NeverCalled(),'enforce')(current)
+    assert result['requirement_route']=='plan'
+    revised=result['requirement_ledger']
+    assert revised['tasks'][:-2]==original['tasks'][:-2]
+    assert revised['tasks'][-1]==original['tasks'][-1]
+    assert revised['tasks'][-2]['spec']==dict(kind='select_fields',fields=['주문번호'])
+    assert revised['tasks'][-2]['source_message']==2
+    assert revised['tasks'][-2]['quote']=='주문번호 열만 저장해줘'
+    assert result['requirement_digest']==plan_digest(revised)
+    assert result['trace'][-1]['model_calls']==0
+
+
+@pytest.mark.parametrize('change', ['digest','context','source','resource','health','model','new_turn','mixed','quoted','filename','unknown','unresolved','missing_context'])
+def test_closed_output_revision_never_reuses_stale_or_ambiguous_work(change):
+    from agent_builder.design.output_selection_revision import narrow_output_revision
+    current=sealed_revision_state()
+    if change=='digest': current['requirement_ledger']['tasks'][2]['spec']['filters'].pop()
+    elif change=='context': current['requirement_context']='stale'
+    elif change=='source': current['messages'][0]['content']='새 작업: 다른 업무'
+    elif change=='resource': current['resources'][0]['columns']=['다른열']
+    elif change=='health': current['source_health']={'table-source':'error'}
+    elif change=='model': current['model']='changed-model'
+    elif change=='new_turn': current['messages'].insert(-1,dict(role='user',content='주문금액 200000 이상'))
+    elif change=='mixed': current['messages'][-1]['content']='주문번호 열만 저장해줘. 필터는 취소해줘'
+    elif change=='quoted': current['messages'][-1]['content']='"주문번호 열만 저장해줘"'
+    elif change=='filename': current['messages'][-1]['content']='주문번호만 새이름.csv로 저장해줘'
+    elif change=='unknown': current['messages'][-1]['content']='주문상태 열만 저장해줘'
+    elif change=='unresolved':
+        current['requirement_ledger']['unresolved']=['업무 조건 확인']
+        current['requirement_digest']=plan_digest(current['requirement_ledger'])
+    else: current.pop('requirement_context')
+    assert narrow_output_revision(current) is None
+
+
+def test_closed_output_revision_still_enforces_current_numeric_validation():
+    from agent_builder.design.output_selection_revision import narrow_output_revision
+    current=sealed_revision_state()
+    current['requirement_ledger']['tasks'][2]['spec']['filters'].pop()
+    current['requirement_digest']=plan_digest(current['requirement_ledger'])
+    assert narrow_output_revision(current) is None
+
+
 @pytest.mark.parametrize('reply', ['주문번호 오름차순으로 정렬해줘', '기준값이 뭐야?',
                                   '주문번호 열만 저장해줘', '전체 열을 저장해줘'])
 def test_later_reply_cannot_erase_numeric_filter(reply):

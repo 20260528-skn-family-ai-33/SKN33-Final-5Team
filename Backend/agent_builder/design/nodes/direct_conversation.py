@@ -47,6 +47,7 @@ text_transform은 앞 단계 text를 받아 text_find를 text_replacement로 문
 날짜 열 변환은 calculate_columns의 table_operation=parse_dates와 fields, date_input_format, date_timezone을 사용합니다. 입력 형식과 시간대가 불명확하면 확인합니다.
 CSV/JSON 표 저장은 write_result, records/text 저장은 export_result입니다. 실제 format을 지정하고 서버 reports에 보관합니다.
 문서·이미지(영수증·스캔 등)에서 항목을 뽑아 표나 엑셀로 정리하는 요청은 read_document → extract_information(fields=요청 항목) → export_result(format=csv)로 구성합니다. read_document의 documents를 write_result에 연결하지 않습니다(write_result는 table 입력 전용). xlsx 파일 요청은 create_spreadsheet의 실제 동작 계약으로 생성합니다. CSV 요청은 export_result를 사용합니다. edges와 bindings에는 nodes에 실제로 있는 id만 쓰며, 끝을 표시하려고 없는 finish 노드를 연결하지 않습니다.
+request_input_mode는 매번 질문을 받는 작업이면 required, 질문 없이 저장된 고정 지시로 완료하는 요약·분석·보고서만 saved_instructions입니다. 지시문 존재만으로 질문을 생략하지 않습니다.
 문서 추출은 extract_information.fields에 요청 항목을 지정하며 없는 값은 만들어내지 않습니다. 근거 답변은 documents를 compose_answer에 연결합니다.
 저장 노드 ref와 saved_workflow ID·버전·출력은 제공된 목록만 쓰세요. required_node_refs는 반드시 연결합니다.
 ask_user는 실행 중 사람 응답 대기 도구이며 생성 조건 questions와 다릅니다. reply_review는 실제 문의·응대 초안 검수에만 사용합니다.
@@ -151,6 +152,7 @@ filter_sort.settings.execution_plan에 확정 조건을 반영합니다. 확정�
 표 파일 저장은 write_result의 format=csv/json입니다. records/text는 export_result로 저장합니다. 저장 경로는 reports입니다.
 requirements.quote는 source_quote_catalog의 실제 원문을 그대로 선택하고 해당 source_id를 사용합니다. 요약·공백 변경 금지.
 node_ref와 saved_workflow는 제공된 라이브러리·버전·출력만 사용합니다. required_node_refs를 보존합니다.
+request_input_mode는 매번 질문을 받는 작업이면 required, 저장된 고정 지시만으로 완료하는 작업이면 saved_instructions입니다.
 설계 질문은 questions이고 ask_user는 실행 중 응답 대기 도구입니다. reply_review는 실제 문의·초안 검수에 사용합니다.
 예약은 저장된 입력으로 무인 실행 가능한 워크플로우에 hourly/daily/weekly/monthly를 설정합니다. Gmail·외부 API 등 비파일 작업에는 표를 요구하지 않으며, 파일 읽기 단계가 있을 때만 실제 자료를 연결합니다. 예약 요청이 없으면 schedule=null입니다. hourly는 minute만, daily는 hour/minute, weekly는 hour/minute/weekday, monthly는 hour/minute와 monthday(1~31) 또는 month_end=true를 사용합니다. 없는 일자는 해당 달을 건너뛰며 말일은 매달 실제 마지막 날입니다. 시간대는 필수입니다.
 repair_feedback이 있으면 현재 초안의 코드 오류를 수정한 전체 JSON을 반환합니다. 확정 조건은 그대로 유지합니다.
@@ -172,7 +174,7 @@ def decoder_schema(version=None):
         props['unsupported']['description'] = '등록 도구가 없어 수행할 수 없는 필수 동작만. 지원되는 업무면 반드시 []. 미정 조건·설계 규칙·해결된 문제는 넣지 않는다.'
         props['questions']['description'] = '아직 답하지 않은 필수 업무 조건만. 이미 명시하거나 최신 답변으로 해결된 조건은 묻지 않는다. 충분하면 반드시 [].'
         props['requirements']['description'] = 'source_quote_catalog 또는 실제 사용자·자료 원문의 정확한 부분 문자열만 인용. 요약·공백 변경 금지.'
-        order = ['unsupported','questions','question_options','question_responses','name','purpose','instructions','document_ids',
+        order = ['unsupported','questions','question_options','question_responses','name','purpose','instructions','request_input_mode','document_ids',
                  'requirements','execution_plan','workflow','tool_ids','schedule','report_destination','explanation']
         schema['properties'] = {key:props[key] for key in order}
     def walk(value):

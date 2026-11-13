@@ -11,6 +11,8 @@ from documents.resources.document_resources import RemovedUpload
 
 def _request_inputs(config, dependencies, supplied_prompt, depth=0):
     """Return (has a file reader, consumes the initial user request), including pinned children."""
+    if config.get('request_input_mode') == 'required' and not supplied_prompt:
+        return False, True
     workflow = config.get('workflow')
     if not workflow:
         table_plan = 'read_table' in config.get('tool_ids', []) and bool(config.get('execution_plan'))
@@ -27,7 +29,8 @@ def _request_inputs(config, dependencies, supplied_prompt, depth=0):
             child = dependencies.get(node['id'])
             if not child or depth >= 10:
                 return file_reader, True
-            child_prompt = supplied_prompt or any(b['input'] == 'text' for b in node.get('bindings', []))
+            child_prompt = any(b['input'] == 'text' for b in node.get('bindings', [])) or (
+                supplied_prompt and child['config'].get('request_input_mode') == 'saved_instructions')
             files, needs_text = _request_inputs(child['config'], child.get('workflow_dependencies', {}), child_prompt, depth + 1)
             if needs_text:
                 return file_reader, True
@@ -36,17 +39,21 @@ def _request_inputs(config, dependencies, supplied_prompt, depth=0):
             return file_reader, True
         elif tool == 'reply_review' and not any(b['input'] == 'table' for b in node.get('bindings', [])):
             return file_reader, True  # A customer's message cannot come from saved schedule instructions.
-        elif not supplied_prompt and (tool in ('agent_node', 'compose_answer') or
-                (tool == 'search_document' and not (settings.get('query') or '').strip())):
+        elif tool == 'search_document' and not supplied_prompt and not (settings.get('query') or '').strip():
+            return file_reader, True
+        elif tool in ('agent_node', 'compose_answer') and not supplied_prompt and not (
+                config.get('request_input_mode') == 'saved_instructions' and
+                (settings.get('instructions') or config.get('instructions') or '').strip()):
             return file_reader, True
         # ask_user collects its own answer after the workflow starts.
     return file_reader, False
 
 
 def execution_request_required(config, dependencies=None):
-    scheduled_prompt = bool(config.get('schedule') and (config.get('instructions') or '').strip())
+    scheduled_prompt = bool(config.get('schedule') and config.get('request_input_mode') != 'required'
+                            and (config.get('instructions') or '').strip())
     file_reader, needs_text = _request_inputs(config, dependencies or {}, scheduled_prompt)
-    return needs_text or not (file_reader or scheduled_prompt)
+    return needs_text or not (file_reader or scheduled_prompt or (config.get('instructions') or '').strip())
 
 
 def is_launch_request(request):

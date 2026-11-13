@@ -17,7 +17,13 @@ def save_node(c):
 
 def catalog(c):return {'tools':TOOLS,'business_tool_count':56,'control_compatibility_count':6,'engine':{'conversation':'deepagents','routing':'langgraph','storage':c.storage.dialect}}
 
-def agents(c):return {'agents':c.storage.agents()}
+def agents(c):
+    from infrastructure.persistence.workflow_folders import organization
+    return {'agents':c.storage.agents(),'organization':organization(c.storage)}
+
+def workflow_folders(c):
+    from infrastructure.persistence.workflow_folders import change
+    return {'organization':change(c.storage,c.data)}
 
 def schedules(c):
     schedules=Schedules(c.storage)

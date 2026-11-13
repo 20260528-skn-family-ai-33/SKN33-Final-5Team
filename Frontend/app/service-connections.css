@@ -5,4 +5,7 @@
 .service-connection-card>p{color:var(--a4b-muted);font-size:13px;line-height:1.8}.service-connection-permissions{font-size:11px;color:var(--a4b-muted);padding:4px 8px;border-radius:4px;background:var(--a4b-neutral-soft)}.service-connection-card>.as-button{margin-top:auto}.service-connections-note{margin-top:22px!important;color:var(--a4b-muted);font-size:12px;max-width:660px}.service-connection-card [role=alert]{color:var(--a4b-danger);font-size:12px}
 .service-connection-state.attention{color:var(--a4b-warning)}.service-connection-actions{display:flex;align-items:center;gap:8px;width:100%;margin-top:auto}.service-connection-actions>.as-button{width:100%}.service-connection-disconnect{color:var(--a4b-danger)}.service-connection-card>.gmail-account-notice{font-size:12px;line-height:1.7}
 .service-connection-dialog-actions{display:flex;flex-wrap:wrap;gap:8px}.service-connection-dialog-actions>.service-connection-disconnect{flex-basis:100%;margin-top:4px;text-align:left}
+
+.gmail-logo { display:block; flex:none; object-fit:contain; }
+.service-connections .panel-content{margin-top:24px}
 .service-connection-feedback{margin:0 0 18px;color:var(--a4b-muted);font-size:13px}

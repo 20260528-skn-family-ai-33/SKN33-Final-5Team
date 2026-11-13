@@ -5,10 +5,10 @@ import './workspace-chrome.css';
 import {AccountMenu} from './auth';
 import {AiStatus} from './ai-status';
 
-/** One cached vector asset for all product marks and the favicon. */
+/** Preserve the supplied stacked logo artwork in every brand placement. */
 export function WorkspaceBrandMark() {
   return <span className="workspace-brandmark">
-    <img src="/brand/a4b-mark.svg" width="32" height="32" alt="" aria-hidden="true"/>
+    <img src="/brand/a4b-logo.png" width="1254" height="1254" alt="A4B"/>
   </span>;
 }
 
@@ -25,7 +25,7 @@ export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = 
 
   return <header className="workspace-header">
     <button type="button" className="workspace-brand" aria-label="A4B 홈" onClick={onHome} disabled={disabled}>
-      <WorkspaceBrandMark/><strong>A4B</strong>
+      <WorkspaceBrandMark/>
     </button>
     <div className="workspace-header-actions">
       {actions}

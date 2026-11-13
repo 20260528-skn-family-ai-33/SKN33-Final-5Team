@@ -55,7 +55,7 @@ export function builderDatabase(config:Extract<StorageConfig,{kind:'postgres'}>)
 export async function closeBuilderDatabase(){const current=pool;pool=undefined;await current?.end();}
 
 // Must match REQUIRED_SCHEMA_VERSION in Backend/infrastructure/persistence/db.py.
-export const REQUIRED_SCHEMA_VERSION=7;
+export const REQUIRED_SCHEMA_VERSION=8;
 /**
  * Connects as the app account before the server takes traffic: the schema must be migrated,
  * the account must not bypass row-level security, and it must be able to use the tables.

@@ -27,9 +27,9 @@ class FakeLLM:
     def invoke(self,messages):
         data=json.loads(messages[-1]['content']);d=data['documents'][0]
         return Facts(facts=[Fact(field='제목',value='테스트',source_id=d['source_id'],quote='제목: 테스트'),Fact(field='금액',value=None,source_id=None,quote=None)])
-def saved(tmp_path,w):
+def saved(tmp_path,w,**config):
     store=Storage(tmp_path);s=initial();d=draft();d['workflow']=w;d['tool_ids']=list(dict.fromkeys(n['tool'] for n in w['nodes']));d['document_ids']=[]
-    s.update(draft=AgentDraft.model_validate(d).model_dump(),confirmed=True)
+    s.update(draft=AgentDraft.model_validate({**d,**config}).model_dump(),confirmed=True)
     id=store.save_agent(s)
     asset={'id':uid(),'name':'sample.txt','kind':'document','format':'txt','text':'제목: 테스트\n작성일: 2026-10-12','pages':['제목: 테스트\n작성일: 2026-10-12'],'columns':[]};store.add_asset(asset,[])
     return store,id,asset

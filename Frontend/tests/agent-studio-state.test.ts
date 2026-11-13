@@ -24,7 +24,7 @@ function harness(search='',stored:Record<string,string>={}){
  for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns','SaveReviewOpen','ScheduleSettingsDirty','ClarificationDirty','FreshFiles']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
  Object.defineProperty(c,'canStartRun',{get:()=>!!c.testText.trim()||!!c.selected?.config?.schedule});
  c.request=(path:string,body:any)=>{requests.push({path,body});return load(path,body);};createContext(c);
- runInContext(compile(['applyRunInputs','clearRunInputs','confirmSettingsExit','clearSettingsDirty','confirmSourceExit','clearSourceDirty','remember','recoverConversation','reloadConversation','resumeConversation','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
+ runInContext(compile(['applyRunInputs','clearRunInputs','confirmSettingsExit','clearSettingsDirty','remember','recoverConversation','reloadConversation','resumeConversation','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
 
  return {c,storage,requests,load:(f:typeof load)=>{load=f;},mount:()=>runInContext(compile(restoreText),c),stop:()=>cleanup?.()};
 }

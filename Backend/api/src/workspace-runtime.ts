@@ -206,7 +206,7 @@ function activate(flow:Flow,active:boolean){
  return store.saveFlow({...flow,active});
 }
 const timer=setInterval(()=>{
- if(process.env.A4B_FOCUSED_DEMO==='1')return;
+ if(process.env.A4B_VISUAL_SCHEDULER_ENABLED!=='1')return;
  for(const f of store.listFlows()){if(!f.active||!f.schedule||f.schedule.nextRunAt>Date.now())continue;const n=f.nodes.find(n=>n.id===f.schedule.triggerId);if(!n)continue;const due=f.schedule.nextRunAt;try{enqueue(f,[{timestamp:new Date(due).toISOString(),timezone:f.settings.timezone||'Asia/Seoul'}],'live',{trigger:'schedule',dedupeKey:`${f.id}/${n.id}/${due}`});f.schedule.nextRunAt=nextRunAt({...n,scheduleAnchorAt:f.schedule.activatedAt},Math.max(due,Date.now()),f.settings.timezone||'Asia/Seoul');store.saveFlow(f);}catch(err){store.saveFlow({...f,active:false,activationError:(err as Error).message});}}
  void pump();
 },500);
@@ -388,7 +388,7 @@ if(${gmail}){
    if(req.readableEnded)finish();else{req.on('data',discard);req.once('end',finish);req.resume();}
   }else json(res,400,{error:(error as Error).message});}
 };
-if(process.env.A4B_FOCUSED_DEMO!=='1')void pump();
+if(process.env.A4B_VISUAL_SCHEDULER_ENABLED==='1')void pump();
 const credentialRequest=/^\/api\/(?:agent-builder\/gmail(?:\/test)?|oauth\/callback|credentials\/test)$/;
 return {handle:(req:IncomingMessage,res:ServerResponse)=>withScheduleSourceContext(sourceContext,()=>{
  if(closing)return Promise.resolve(json(res,503,{error:'프로그램이 종료 중입니다. 잠시 후 다시 시도해주세요.'}));

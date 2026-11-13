@@ -121,3 +121,18 @@
 .overview-composer-actions > small { margin-left:auto; font-size:11px; color:var(--as-muted); }
 .overview-attachment { display:flex; align-items:center; gap:8px; padding:8px 12px; overflow-wrap:anywhere; }
 .overview-attachment button { display:grid; place-items:center; border:0; background:transparent; cursor:pointer; }
+
+.workspace-overview { max-width:960px; }
+.overview-welcome { max-width:720px; margin-inline:auto; }
+.overview-recent-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding-top:14px!important; }
+.overview-recent-grid li { min-width:0; border:1px solid var(--a4b-border); border-radius:8px; }
+.overview-recent-grid .overview-row { min-height:104px; padding:16px; }
+.overview-recent-grid .overview-item { gap:8px; }
+.overview-recent-grid .overview-item small { font-size:11px; }
+.overview-recent-grid .overview-row > svg { width:14px; }
+.overview-section[aria-labelledby=home-library] > ul { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
+@media(max-width:650px) {
+ .overview-recent-grid { grid-template-columns:1fr; }
+ .overview-recent-grid .overview-row { min-height:76px; }
+ .overview-section[aria-labelledby=home-library] > ul { grid-template-columns:1fr;gap:0; }
+}

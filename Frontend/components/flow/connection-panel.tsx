@@ -71,9 +71,9 @@ const oauthFields:CredentialField[]=[{key:'clientId',label:'앱 클라이언트 
 
 function ServiceIcon({service}:{service:string}){const names:Record<string,string>={googleSheets:'googlesheets'};const logos=['openai','slack','github','notion','telegram','discord','airtable','googleSheets'];return <span className={'service-mark service-'+service}>{logos.includes(service)?<img src={'/service-icons/'+(names[service]||service)+'.svg'} alt="" onError={e=>{e.currentTarget.style.display='none';}}/>:service==='openai'?<Sparkles size={23}/>:<Globe size={23}/>}</span>;}
 
-export function ConnectionPanel({onClose, onChanged}: {onClose?: () => void; onChanged?: () => void | Promise<void>}) {
+export function ConnectionPanel({onClose, onChanged, initialService='openai', allowedServices}: {onClose?: () => void; onChanged?: () => void | Promise<void>; initialService?:string; allowedServices?:string[]}) {
   const [credentials, setCredentials] = useState<CredentialPublic[]>([]);
-  const [service, setService] = useState('openai');
+  const [service, setService] = useState(initialService);
   const [serviceSearch,setServiceSearch]=useState('');
   function selectService(value:string){setService(value);setData({});setError('');setName('');}
   const [name, setName] = useState('');
@@ -91,6 +91,7 @@ export function ConnectionPanel({onClose, onChanged}: {onClose?: () => void; onC
   const [loginPending,setLoginPending]=useState(false);
   const oauthWindow=useRef<Window|null>(null);
   const selectedProvider = services[service];
+  const visibleCredentials=allowedServices?credentials.filter(credential=>allowedServices.includes(credential.service||credential.provider)):credentials;
   const provider = selectedProvider.provider;
   const useOAuth=service==='oauth2'||service==='googleSheets'&&googleMethod==='oauth2';
   const jwtAlgorithm=data.algorithm||'HS256';
@@ -169,7 +170,7 @@ export function ConnectionPanel({onClose, onChanged}: {onClose?: () => void; onC
       {onClose && <button className="icon-btn" aria-label="연결 계정 닫기" onClick={onClose}><X/></button>}
     </div>
     <div className="connection-onboarding"><button className="btn" aria-expanded={guideOpen} onClick={()=>guideOpen?closeGuide():setGuideOpen(true)}>계정 연결 방법 {guideOpen?'접기':'보기'}</button>{guideOpen&&<div className="help-box mt-3"><button className="icon-btn float-right" aria-label="연결 안내 닫기" onClick={closeGuide}><X size={14}/></button><b>서비스 선택 → 키·토큰 입력 → 저장 → 연결 확인</b><p>챗봇은 OpenAI API 키를 연결하세요. 앱 작업은 해당 서비스의 토큰이나 로그인 정보가 필요합니다. 저장한 계정은 챗봇 또는 단계 설정에서 선택합니다.</p></div>}</div>
-    <div className="connection-layout"><section className="service-catalog" aria-label="연결할 서비스 선택"><h2>어떤 서비스를 연결할까요?</h2><div className="service-search"><Search size={16}/><input aria-label="서비스 검색" placeholder="서비스 이름 검색" value={serviceSearch} onChange={e=>setServiceSearch(e.target.value)}/></div><div className="service-grid">{Object.entries(services).filter(([id,s])=>(s.label+' '+id).toLowerCase().includes(serviceSearch.toLowerCase())).map(([id,s])=><button className={'service-choice '+(service===id?'selected':'')} key={id} aria-pressed={service===id} disabled={saving||loginPending} onClick={()=>selectService(id)}><ServiceIcon service={id}/><span><b>{s.label}</b><small>{id==='googleSheets'||id==='oauth2'?'로그인 / OAuth':id==='basic'?'아이디 · 비밀번호':'키 · 토큰 연결'}</small></span>{service===id&&<CheckCircle2 size={16}/>}</button>)}</div></section>
+    <div className="connection-layout"><section className="service-catalog" aria-label="연결할 서비스 선택"><h2>어떤 서비스를 연결할까요?</h2><div className="service-search"><Search size={16}/><input aria-label="서비스 검색" placeholder="서비스 이름 검색" value={serviceSearch} onChange={e=>setServiceSearch(e.target.value)}/></div><div className="service-grid">{Object.entries(services).filter(([id,s])=>(!allowedServices||allowedServices.includes(id))&&(s.label+' '+id).toLowerCase().includes(serviceSearch.toLowerCase())).map(([id,s])=><button className={'service-choice '+(service===id?'selected':'')} key={id} aria-pressed={service===id} disabled={saving||loginPending} onClick={()=>selectService(id)}><ServiceIcon service={id}/><span><b>{s.label}</b><small>{id==='googleSheets'||id==='oauth2'?'로그인 / OAuth':id==='basic'?'아이디 · 비밀번호':'키 · 토큰 연결'}</small></span>{service===id&&<CheckCircle2 size={16}/>}</button>)}</div></section>
 
       <form className="connection-card" onSubmit={event => void save(event)}>
         <div className="connection-icon"><KeyRound size={26}/></div>
@@ -202,9 +203,9 @@ export function ConnectionPanel({onClose, onChanged}: {onClose?: () => void; onC
         <button className="btn" onClick={() => void load()} disabled={loading || !!actionId}><RefreshCw className={loading ? 'animate-spin' : ''}/>새로고침</button>
       </div>
       {listError && <div className="error-box mb-4" role="alert">{listError}</div>}
-      {loading && credentials.length === 0 ? <p className="muted flex items-center gap-2" role="status"><Loader2 size={17} className="animate-spin"/>연결 계정을 불러오는 중…</p> : credentials.length > 0 ? <Table>
+      {loading && visibleCredentials.length === 0 ? <p className="muted flex items-center gap-2" role="status"><Loader2 size={17} className="animate-spin"/>연결 계정을 불러오는 중…</p> : visibleCredentials.length > 0 ? <Table>
         <TableHeader><TableRow><TableHead>연결 이름</TableHead><TableHead>서비스</TableHead><TableHead>연결 확인</TableHead><TableHead className="text-right">관리</TableHead></TableRow></TableHeader>
-        <TableBody>{credentials.map(credential => {
+        <TableBody>{visibleCredentials.map(credential => {
           const result = testResults[credential.id];
           const ResultIcon = result?.ok ? CheckCircle2 : AlertCircle;
           return <TableRow key={credential.id}>

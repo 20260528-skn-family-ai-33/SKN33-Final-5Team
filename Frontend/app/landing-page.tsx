@@ -102,7 +102,7 @@ export default function LandingPage({onStart,onPreview,onRoute}:LandingProps){
  return <div className="a4b-landing" id="a4b-landing-top" ref={root}>
   <a className="a4b-landing-skip" href="#a4b-landing-main" onClick={scrollTo('a4b-landing-main')}>본문으로 건너뛰기</a>
   <header className="a4b-landing-header" ref={header}><div className="a4b-landing-header-inner">
-   <a className="a4b-landing-brand" href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')} aria-label="A4B 서비스 소개 맨 위로"><WorkspaceBrandMark/><span>A4B</span></a>
+   <a className="a4b-landing-brand" href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')} aria-label="A4B 서비스 소개 맨 위로"><WorkspaceBrandMark/></a>
    <nav className="a4b-landing-nav" aria-label="페이지 메뉴">{sections.map(({id,label})=><a key={id} href={'#'+id} onClick={scrollTo(id)} aria-current={current===id?'location':undefined} className={current===id?'is-current':undefined}>{label}</a>)}</nav>
    <div className="a4b-landing-header-actions"><AccountMenu/><button type="button" className="a4b-landing-button a4b-button-header a4b-button-quiet" onClick={()=>onPreview(false)}>제품 살펴보기</button><button type="button" className="a4b-landing-button a4b-button-header" onClick={onStart}>워크플로우 열기<ArrowUpRight size={16} aria-hidden="true"/></button></div>
   </div><span className="a4b-scroll-progress" aria-hidden="true"/></header>
@@ -118,7 +118,7 @@ export default function LandingPage({onStart,onPreview,onRoute}:LandingProps){
    <section className="a4b-product-section" id="a4b-product-preview" aria-labelledby="a4b-product-title"><div className="a4b-landing-container">
     <div className="a4b-section-heading" data-reveal><div><span className="a4b-landing-eyebrow">FROM WORDS TO WORKFLOWS</span><h2 id="a4b-product-title">설명하던 업무가,<br/>눈에 보이는 흐름으로.</h2></div><p>자료를 읽고, 조건을 확인하고, 결과를 만드는 과정.<br className="a4b-desktop-break"/> 하나의 업무가 어떻게 연결되는지 살펴보세요.</p></div>
     <div className="a4b-product-preview" data-reveal style={order(1)}>
-     <div className="a4b-preview-topbar"><div className="a4b-preview-brand"><WorkspaceBrandMark/><span>A4B <small>Studio</small></span></div><span className="a4b-preview-example"><span/>제품 미리보기 · 예시</span></div>
+     <div className="a4b-preview-topbar"><div className="a4b-preview-brand"><WorkspaceBrandMark/></div><span className="a4b-preview-example"><span/>제품 미리보기 · 예시</span></div>
      <div className="a4b-preview-tabs" role="tablist" aria-label="업무 시나리오">{scenarios.map((scenario,index)=><button key={scenario.id} type="button" role="tab" id={'a4b-preview-tab-'+scenario.id} aria-selected={active===scenario.id} aria-controls={'a4b-preview-panel-'+scenario.id} tabIndex={active===scenario.id?0:-1} ref={element=>{tabRefs.current[index]=element;}} onClick={()=>setActive(scenario.id)} onKeyDown={event=>handleTabKey(event,index)}>{scenario.id==='inventory'?<CalendarClock size={15}/>:scenario.id==='review'?<ShieldCheck size={15}/>:<FileText size={15}/>}<span>{scenario.label}</span></button>)}</div>
      {scenarios.map(scenario=><ProductPreview key={scenario.id} scenario={scenario} selected={active===scenario.id}/>)}
      <div className="a4b-preview-bottom"><span><span/>설명 → 설계 → 실행</span><span>업무의 시작부터 결과까지, 한곳에서.</span></div>
@@ -135,6 +135,6 @@ export default function LandingPage({onStart,onPreview,onRoute}:LandingProps){
    </div></section>
    <section className="a4b-final-section" aria-labelledby="a4b-final-title"><div className="a4b-final-decoration" aria-hidden="true"><span/><span/><span/></div><div className="a4b-final-content" data-reveal><span className="a4b-landing-eyebrow">YOUR WORK. YOUR FLOW.</span><h2 id="a4b-final-title">다음 업무는,<br/>A4B와 함께.</h2><p>머릿속에 있던 업무를 실행할 흐름으로 만들어보세요.</p><button type="button" className="a4b-landing-button a4b-button-primary" onClick={onStart}>워크플로우 시작하기<ArrowUpRight size={19} aria-hidden="true"/></button></div></section>
   </main>
-  <footer className="a4b-landing-footer"><div className="a4b-landing-container"><div className="a4b-footer-brand"><WorkspaceBrandMark/><span>A4B<small>AI for Business</small></span></div><p>대화로 설계하고, 확인한 흐름으로 실행합니다.</p><a href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')}>맨 위로<ArrowUpRight size={15} aria-hidden="true"/></a></div></footer>
+  <footer className="a4b-landing-footer"><div className="a4b-landing-container"><div className="a4b-footer-brand"><WorkspaceBrandMark/></div><p>대화로 설계하고, 확인한 흐름으로 실행합니다.</p><a href="#a4b-landing-top" onClick={scrollTo('a4b-landing-top')}>맨 위로<ArrowUpRight size={15} aria-hidden="true"/></a></div></footer>
  </div>;
 }

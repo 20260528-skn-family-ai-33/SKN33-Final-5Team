@@ -6,3 +6,5 @@
 .service-connection-state.attention{color:var(--a4b-warning)}.service-connection-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%;margin-top:auto}.service-connection-actions>.as-button.as-primary{flex:1 0 auto}.service-connection-actions>.service-connection-disconnect{color:var(--a4b-danger)}.service-connection-card>.gmail-account-notice{font-size:12px;line-height:1.7}
 
 .gmail-logo { display:block; flex:none; object-fit:contain; }
+.service-connections .service-connection-category:not(:first-of-type){margin-top:28px}
+.service-connections .panel-content{margin-top:24px}

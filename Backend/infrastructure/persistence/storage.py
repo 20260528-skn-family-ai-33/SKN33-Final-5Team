@@ -7,6 +7,7 @@ from infrastructure.persistence.db import WORKSPACE, enable_wal, open_database, 
 from workflow_engine.catalog.registry import TOOLS
 from infrastructure.persistence.asset_library import LIBRARY_SCHEMA
 from workflow_engine.scheduling.library_sources import SOURCE_SCHEMA
+from infrastructure.persistence.workflow_folders import FOLDER_SCHEMA
 
 __all__=['Storage','enable_wal']
 
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS builder_schedule_jobs(id TEXT PRIMARY KEY,agent_id TE
 CREATE TABLE IF NOT EXISTS reply_review_decisions(run_id TEXT NOT NULL REFERENCES agent_tests(id),review_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(run_id,review_id));
 CREATE TABLE IF NOT EXISTS document_reviews(asset_id TEXT PRIMARY KEY REFERENCES builder_assets(id),revision INTEGER NOT NULL,json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS document_review_events(asset_id TEXT NOT NULL REFERENCES builder_assets(id),revision INTEGER NOT NULL,request_id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(asset_id,revision),UNIQUE(asset_id,request_id));
-'''+LIBRARY_SCHEMA+SOURCE_SCHEMA
+'''+LIBRARY_SCHEMA+SOURCE_SCHEMA+FOLDER_SCHEMA
 
 class Storage:
     def __init__(self,directory):

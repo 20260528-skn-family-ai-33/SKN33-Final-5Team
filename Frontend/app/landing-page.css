@@ -480,3 +480,6 @@
 }
 
 .a4b-assistant-avatar .workspace-brandmark{width:100%;height:100%;border-radius:inherit}
+
+.a4b-landing .workspace-brandmark { --brand-logo-size:48px; }
+.a4b-landing .a4b-assistant-avatar .workspace-brandmark { --brand-logo-size:28px;width:28px;height:27px; }

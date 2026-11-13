@@ -31,8 +31,7 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
 
   return <div className="workspace-overview">
     <section className="overview-welcome" aria-labelledby="overview-title">
-      {memberName && <p className="overview-greeting">{memberName}님, 안녕하세요</p>}
-      <h1 id="overview-title">어떤 업무를 자동화할까요?</h1>
+      <h1 id="overview-title">안녕하세요{memberName ? `, ${memberName}님` : ''}</h1>
       <form className="overview-composer" data-tour="home-create" onSubmit={event=>{
         event.preventDefault();
         if(canStart)onStart(prompt.trim(),file??undefined);
@@ -70,13 +69,13 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
     </section>
     <section className="overview-section" aria-labelledby="home-workflows">
       <div className="overview-section-heading">
-        <h2 id="home-workflows">최근 워크플로우</h2>
+        <h2 id="home-workflows">최근 작업</h2>
         {workflows.length>0 && <button type="button" className="as-text-button" onClick={()=>onNavigate('workflows')}>전체 보기 <ArrowRight size={14} aria-hidden="true"/></button>}
       </div>
       {error ? <div className="as-error" role="alert">
         <span>최근 워크플로우를 불러오지 못했습니다.</span><button type="button" onClick={onRetry}>다시 시도</button>
       </div> : loading ? <p className="overview-empty" role="status">최근 작업을 불러오고 있습니다.</p> :
-      workflows.length > 0 ? <ul>{workflows.map(workflow=><li key={workflow.id}>
+      workflows.length > 0 ? <ul className="overview-recent-grid">{workflows.slice(0,3).map(workflow=><li key={workflow.id}>
         <button type="button" className="overview-row" onClick={()=>onNavigate('workflow',workflow.id)}>
           <span className="overview-icon"><Workflow size={17} aria-hidden="true"/></span>
           <span className="overview-item"><strong>{workflow.config.name}</strong><small>{timeLabel(workflow.updated_at)}</small></span>

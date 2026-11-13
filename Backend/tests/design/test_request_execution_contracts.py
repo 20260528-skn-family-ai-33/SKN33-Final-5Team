@@ -77,5 +77,5 @@ def test_requested_fill_and_projection_have_registered_decoder_operations(monkey
     schema=AgentDraft.model_json_schema()
     specs=[{'kind':'fill_missing'},{'kind':'select_fields'}]
     variants=required_operation_variants(specs,schema['$defs']['WorkflowNode'],schema['$defs']['Binding'],set())
-    assert {v['properties']['settings']['properties']['operation']['enum'][0] for v in variants}=={'handle_missing','select_columns'}
-    assert not required_operation_variants(specs,schema['$defs']['WorkflowNode'],schema['$defs']['Binding'],set(),{'filter_sort'})
+    assert {v['properties']['settings']['properties']['operation']['enum'][0] for v in variants}=={'handle_missing','select_columns','lookup','write_csv','write_json'}
+    assert not required_operation_variants(specs,schema['$defs']['WorkflowNode'],schema['$defs']['Binding'],set(),{'filter_sort','json_transform','export_result'})

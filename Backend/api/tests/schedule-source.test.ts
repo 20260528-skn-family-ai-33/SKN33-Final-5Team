@@ -54,6 +54,20 @@ test('manual uploads override the saved reservation source for only this executi
  assert.deepEqual(result,{payload});
 });
 
+test('new-file manual runs preserve the request for rejection before enqueueing',async()=>{
+ const chosen=selection('personal','new'),calls:string[]=[];
+ await assert.rejects(withScheduleSourceContext({directory:tmpdir(),ownerId},()=>prepareScheduleSource(
+  {action:'test',id:agentId,content:'상태 = 완료'},async payload=>{
+   calls.push(String(payload.action));
+   if(payload.action==='library_source_plan')return {selection:chosen,target_kind:'table',needs_resolve:true};
+   if(payload.action==='library_source_export')return {candidates:[ref]};
+   assert.equal(payload.action,'library_source_resolve');
+   assert.equal(payload.content,'상태 = 완료');
+   throw new Error('새 파일마다 실행에는 추가 실행 조건을 적용할 수 없습니다.');
+  })),/추가 실행 조건/);
+ assert.deepEqual(calls,['library_source_plan','library_source_export','library_source_resolve']);
+});
+
 for(const space of ['personal','team'] as const)test(`source resolution stays in the ${space} namespace and never creates a personal library copy`,async()=>{
  const files=await fixture(),calls:{action:string;directory:string}[]=[];let checks=0;
  const chosen=selection(space),context={directory:files.owner,ownerId,authorizeOwner:async()=>{},authorizeTeam:async(id:string)=>{assert.equal(id,teamId);checks++;}};

@@ -15,3 +15,5 @@
 .a4b-auth-card .a4b-auth-note{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:20px;font-size:12px}.a4b-auth-home{display:inline-flex;align-items:center;gap:6px;margin-top:28px;padding:4px;border:0;background:none;color:var(--a4b-muted);font:inherit;font-size:12px;cursor:pointer}
 .a4b-auth-error,.a4b-auth-notice{padding:12px 16px;background:var(--a4b-danger-soft,#fff1f0);color:var(--a4b-danger,#a32121);font-size:13px}.a4b-auth-error{margin-top:20px;border-radius:6px}.a4b-auth-notice a{color:inherit;text-underline-offset:3px}
 @media(max-width:650px){.a4b-account-menu{gap:6px}.a4b-account-label{display:none}.a4b-account-name{max-width:84px}.a4b-account-button{padding:7px 8px;font-size:11px}.a4b-auth-card{padding:32px 24px}}
+
+.a4b-auth-card > .workspace-brandmark { --brand-logo-size:56px; margin-inline:auto; }

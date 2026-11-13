@@ -52,6 +52,7 @@ ACTIONS={
     'schedules':library.schedules,
     'agent':library.agent,
     'rename_agent':library.rename_agent,
+    'workflow_folders':library.workflow_folders,
     'claim_due':schedules.claim_due,
     'schedule':schedules.schedule,
     'schedule_configure':schedules.schedule_configure,

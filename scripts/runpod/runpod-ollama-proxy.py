@@ -1,4 +1,4 @@
-"""Bearer-authenticated gateway: public 11434 -> loopback Ollama 11435."""
+"""Gateway with configurable Bearer authentication: public 11434 -> loopback Ollama 11435."""
 import hmac
 import http.client
 import os
@@ -15,7 +15,7 @@ class Gateway(BaseHTTPRequestHandler):
         self.forward()
 
     def forward(self):
-        if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + TOKEN):
+        if os.environ.get('A4B_API_AUTH_REQUIRED', '1') != '0' and not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + TOKEN):
             self.send_error(401, 'Bearer authentication required')
             return
         if self.path.split('?')[0] not in {'/api/tags', '/api/chat', '/api/version', '/v1/models', '/v1/chat/completions'}:

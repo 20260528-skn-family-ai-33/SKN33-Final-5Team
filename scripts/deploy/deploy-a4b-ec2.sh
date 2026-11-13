@@ -180,6 +180,7 @@ if switching and sys.argv[3] != "exited":
     raise SystemExit("Stop the SQLite container, back up its volume and complete the import before cutover.")
 if not switching and sys.argv[3] == "exited":
     raise SystemExit("A stopped container can only be replaced during SQLite to PostgreSQL cutover.")
+settings["A4B_VISUAL_SCHEDULER_ENABLED"] = "1"
 print("\n".join(key + "=" + value for key, value in settings.items()))
 ' "$public_url" "$overrides" "$old_status" > "$env_file"
 

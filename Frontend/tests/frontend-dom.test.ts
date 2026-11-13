@@ -1055,7 +1055,7 @@ test('entry: user help has no infrastructure controls and unsent input is guarde
   await click(button('작업 찾아보기'));
   window.confirm=()=>true;await click(home);await n.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'home');
-  assert.equal(document.querySelector('main h1')?.textContent,'어떤 업무를 자동화할까요?');
+  assert.equal(document.querySelector('main h1')?.textContent,'안녕하세요');
  }finally{await n.close();}
 });
 
@@ -1110,7 +1110,7 @@ test('navigation: cancelling browser back from a dirty editor restores the URL a
 test('redesign: infrastructure controls and model fields are absent from all product menus',async()=>{
  for(const screen of ['workflows','schedules','workflow','nodes','history']){
   const h=await setup('?screen='+screen,{},undefined,createElement(EntryApp));
-  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['홈','워크플로우','작업 라이브러리','예약 관리','실행 기록','자료함','서비스 연결']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
+  try{assert.ok(!document.body.textContent?.includes('Qwen'));assert.equal(document.querySelectorAll('input[type=password]').length,0);assert.deepEqual(Array.from(document.querySelectorAll('.workspace-nav button')).map(b=>b.textContent),['홈','워크플로우','작업 라이브러리','예약 관리','실행 기록','자료함','서비스 연결','외부 API 자동화']);assert.ok(!Array.from(document.querySelectorAll('label')).some(l=>l.textContent?.startsWith('모델')));}finally{await h.close();}
 
  }
 });
@@ -2540,5 +2540,106 @@ test('optional run request can be collapsed with text retained',async()=>{
    await h.flush();
    assert.equal(details.open,false);assert.equal(field.value,'보존할 조건');
   }
+ }finally{await h.close();}
+});
+
+test('home greets the member once and limits recent work to three entries',async()=>{
+ const overviewCode=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/workspace-overview.tsx')],absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
+ const Overview=load(overviewCode).WorkspaceOverview;
+ const workflows=Array.from({length:5},(_,index)=>({id:String(index),updated_at:'2026-11-13T00:00:00Z',config:{name:'작업 '+index}}));
+ const navigations:any[]=[];
+ const h=await setup('',{},undefined,createElement(Overview,{memberName:'정재',workflows,loading:false,error:'',onStart:()=>{},onNavigate:(...args:any[])=>navigations.push(args),onRetry:()=>{}}));
+ try{
+  assert.equal(document.querySelector('h1')?.textContent,'안녕하세요, 정재님');
+  assert.equal(document.querySelector('.overview-greeting'),null);
+  assert.equal(document.querySelectorAll('.overview-recent-grid li').length,3);
+  await click(document.querySelectorAll('.overview-recent-grid button')[2]);
+  assert.deepEqual(navigations,[['workflow','2']]);
+ }finally{await h.close();}
+});
+
+test('workflow sidebar contains only navigation while the upper selector preserves switching',async()=>{
+ const h=await setup('?screen=workflow&service=A');
+ try{
+  assert.equal(document.querySelector('.workspace-sidebar [data-tour="saved-workflows"]'),null);
+  assert.ok(!document.querySelector('.workspace-sidebar')?.textContent?.includes('내 워크플로우'));
+  const selector=document.querySelector<HTMLDetailsElement>('.as-workflow-switcher')!;
+  assert.equal(selector.open,false);
+  selector.open=true;
+  const choice=Array.from(selector.querySelectorAll('button')).find(button=>button.textContent?.includes('서비스 B'))!;
+  await click(choice);await h.flush();
+  assert.equal(new URL(location.href).searchParams.get('service'),'B');
+ }finally{await h.close();}
+});
+
+test('workflow folders: create, select, move, filter, rename and delete preserve workflow actions',async()=>{
+ let organization:any={revision:0,folders:[],assignments:{}};
+ const h=await setup('?screen=workflows',{},(path,body)=>{
+  if(path.endsWith('/agents'))return {agents:[A,B],organization};
+  if(path.endsWith('/workflow_folders')){
+   assert.equal(body.revision,organization.revision);
+   const folders=organization.folders.map((f:any)=>({...f})),assignments={...organization.assignments};
+   if(body.operation==='create')folders.push({id:'folder-1',name:body.name});
+   if(body.operation==='rename')folders[0].name=body.name;
+   if(body.operation==='move')for(const id of body.agent_ids)assignments[id]=body.folder_id;
+   if(body.operation==='delete'){folders.splice(0);for(const id of Object.keys(assignments))delete assignments[id];}
+   organization={revision:organization.revision+1,folders,assignments};return {organization};
+  }
+ },createElement(EntryApp));
+ try{
+  await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
+  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택 이동 (1)'));
+  await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
+  assert.ok(document.querySelector('button[aria-label="서비스 A 실행하기"]'));
+  assert.ok(document.querySelector('button[aria-label="서비스 A 예약 관리"]'));
+  await click(button('폴더 이름 변경'));await input(field('폴더 이름'),'정리 업무');await submit(document.querySelector('.workflow-folder-form')!);
+  assert.ok(button('정리 업무'));
+  await click(button('폴더 삭제'));await submit(document.querySelector('.workflow-folder-form')!);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
+  assert.deepEqual(organization.assignments,{});
+  await click(buttons().find(b=>b.getAttribute('aria-label')==='목록 새로고침')!);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
+ }finally{await h.close();}
+});
+
+test('workflow folder save failure keeps dialog and selection for retry',async()=>{
+ const h=await setup('?screen=workflows',{},path=>path.endsWith('/workflow_folders')?new Response(JSON.stringify({error:'다른 곳에서 폴더가 변경됐습니다.'}),{status:400}):undefined,createElement(EntryApp));
+ try{
+  await click(button('폴더 만들기'));await input(field('폴더 이름'),'실패 유지');await submit(document.querySelector('.workflow-folder-form')!);
+  assert.equal(field('폴더 이름').value,'실패 유지');assert.match(document.querySelector('[role="alert"]')!.textContent!,/변경/);
+  await click(button('취소'));assert.equal(document.querySelector('.workflow-folder-form'),null);
+ }finally{await h.close();}
+});
+
+test('workflow folder pending save rejects duplicate submission and keeps the dialog open',async()=>{
+ const pending=deferred();let saves=0;
+ const h=await setup('?screen=workflows',{},path=>{
+  if(path.endsWith('/workflow_folders')){saves++;return pending.promise;}
+ },createElement(EntryApp));
+ try{
+  await click(button('폴더 만들기'));await input(field('폴더 이름'),'중복 방지');
+  const form=document.querySelector<HTMLFormElement>('.workflow-folder-form')!;
+  await submit(form);await submit(form);
+  assert.equal(saves,1);assert.equal(button('취소').disabled,true);
+  assert.equal(field('폴더 이름').disabled,true);
+  await act(async()=>{pending.resolve({organization:{revision:1,folders:[{id:'pending-folder',name:'중복 방지'}],assignments:{}}});await tick();});
+  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.ok(button('중복 방지'));
+ }finally{await h.close();}
+});
+
+test('workflow folder search and folder changes clear hidden selection',async()=>{
+ const h=await setup('?screen=workflows',{},path=>path.endsWith('/agents')?{agents:[A,B],organization:{revision:1,folders:[{id:'f',name:'정리'}],assignments:{A:'f'}}}:undefined,createElement(EntryApp));
+ try{
+  await click(document.querySelector('input[aria-label="현재 목록 전체 선택"]')!);
+  assert.equal(button('선택 이동 (2)').disabled,false);
+  await input(document.querySelector('input[aria-label="워크플로우 검색"]')!,'서비스 A');
+  assert.equal(button('선택 이동').disabled,true);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
+  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);
+  await click(button('미분류'));
+  assert.equal(button('선택 이동').disabled,true);
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
  }finally{await h.close();}
 });

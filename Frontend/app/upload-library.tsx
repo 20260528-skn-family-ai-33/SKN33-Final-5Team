@@ -204,6 +204,8 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSumm
   const [query, setQuery] = useState(''), [search, setSearch] = useState('');
   const {items, setItems, folders, next, loading, error, setError, load} = useLibrary(endpoint, folderId, query);
   const [deleting, setDeleting] = useState('');
+  const [checked,setChecked]=useState<string[]>([]);
+  useEffect(()=>setChecked([]),[folderId,query]);
   const [selected, setSelected] = useState<Upload | null>(null);
   const [notice, setNotice] = useState('');
   const [action, setAction] = useState<LibraryAction | null>(null);
@@ -308,25 +310,34 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSumm
     } catch (e) {setActionError((e as Error).message);}
     finally {writing.current = false; setSaving(false);}
   }
-  async function remove(asset: Upload) {
-    if (!canEdit || writing.current || running.current) return;
-    const savedUse = asset.usages?.some(use => use.kind === 'workflow' || use.kind === 'run');
-    const impact = savedUse ? '기존 실행 결과는 보관됩니다. 다시 실행할 때 이 원본이 필요하면 새 파일을 연결하세요.' :
-      '이 파일이 연결된 설계 대화에서도 연결이 해제됩니다.';
-    if (!asset.pending_delete && !window.confirm('「' + asset.name + '」 원본을 삭제할까요? ' + impact + ' 삭제한 파일은 복구할 수 없습니다.')) return;
-    writing.current = true; setDeleting(asset.id); setError(''); setNotice('');
+  const deletable = items.filter(asset => asset.pending_delete || !asset.usages?.some(use => use.kind === 'schedule' || use.kind === 'running'));
+  const selectedFiles = deletable.filter(asset => checked.includes(asset.id));
+  async function removeFiles(assets: Upload[]) {
+    if (!canEdit || writing.current || running.current || !assets.length) return;
+    if (!window.confirm(assets.map(asset => '「'+asset.name+'」').join(', ') +
+      ' 자료를 삭제할까요? 연결된 설계 대화에서 해제됩니다. 기존 실행 결과는 보관되지만 다시 실행할 때 새 파일 연결이 필요할 수 있습니다. 삭제한 파일은 복구할 수 없습니다.')) return;
+    writing.current = true; setDeleting('batch'); setError(''); setNotice('');
+    const failures: string[] = [];
+    let count = 0;
     try {
-      await request(endpoint + 'assets?id=' + encodeURIComponent(asset.id), undefined, 'DELETE');
-      setItems(previous => previous.filter(item => item.id !== asset.id));
-      setNotice(asset.name + ' 자료를 삭제했습니다.');
-      void reload.current();
-    } catch (e) {
-      if (e instanceof Error && (e.cause as {pending_delete?: boolean} | null)?.pending_delete) {
-        setItems(previous => previous.map(item => item.id === asset.id ? {...item, pending_delete: true, usages: []} : item));
+      for (const asset of assets) {
+        try {
+          await request(endpoint + 'assets?id=' + encodeURIComponent(asset.id), undefined, 'DELETE');
+          setItems(previous => previous.filter(item => item.id !== asset.id));
+          setChecked(previous => previous.filter(id => id !== asset.id));
+          count++;
+        } catch (e) {
+          if (e instanceof Error && (e.cause as {pending_delete?: boolean} | null)?.pending_delete) {
+            setItems(previous => previous.map(item => item.id === asset.id ? {...item, pending_delete: true, usages: []} : item));
+          }
+          failures.push(asset.name + ': ' + (e as Error).message);
+        }
       }
-      setError((e as Error).message);
+      setNotice(count + '개 자료를 삭제했습니다.');
+      if (failures.length) setError(failures.join('\n'));
     } finally {writing.current = false; setDeleting('');}
   }
+  async function remove(asset: Upload) { await removeFiles([asset]); }
   const excluded = new Set<string>();
   if (action?.kind === 'move-folder') {
     excluded.add(action.folder.id);
@@ -384,10 +395,19 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange}: {team: TeamSumm
     {!loading && !items.length && !children.length && !error && <section className="entry-empty"><FolderOpen size={26}/>
       <h2>{query ? '검색 결과가 없습니다.' : '이 폴더에 자료가 없습니다.'}</h2><p>{query ? '다른 이름으로 검색하거나 검색어를 지워보세요.' : canEdit ? '파일을 올리거나 새 폴더를 만들어 자료를 정리하세요.' : '팀원이 자료를 올리면 이곳에서 확인할 수 있습니다.'}</p></section>}
     {!!items.length && <div className="asset-section-heading"><h2>파일</h2><span>{items.length}개{next ? ' 이상' : ''}</span></div>}
+    {canEdit && !!items.length && <div className="asset-section-heading">
+      <label><input type="checkbox" aria-label="삭제 가능한 파일 전체 선택" disabled={busy||!deletable.length}
+        checked={!!deletable.length&&selectedFiles.length===deletable.length}
+        onChange={event=>setChecked(event.target.checked?deletable.map(asset=>asset.id):[])}/>전체 선택</label>
+      <span>{selectedFiles.length}개 선택</span>
+      <button type="button" className="as-button" disabled={busy||!selectedFiles.length} onClick={()=>void removeFiles(selectedFiles)}><Trash2 size={14}/>선택 삭제</button>
+    </div>}
     <div className="entry-history-list asset-file-list">{items.map(asset => {
       const usages = asset.usages || [];
       const blocked = usages.some(use => use.kind === 'schedule') ? '예약 파일 교체 후 삭제' : usages.some(use => use.kind === 'running') ? '실행 완료 후 삭제' : '';
       return <article key={asset.id}>
+        {canEdit && <input type="checkbox" aria-label={asset.name+' 선택'} disabled={busy||(!asset.pending_delete&&!!blocked)}
+          checked={checked.includes(asset.id)} onChange={event=>setChecked(previous=>event.target.checked?[...previous,asset.id]:previous.filter(id=>id!==asset.id))}/>}
         <FileText className="asset-file-icon" size={21} aria-hidden="true"/><div className="asset-file-info"><h2>{asset.name}</h2><p>{uploadInfo(asset)}{asset.processing_status === 'ready' ? ' · 사용 가능' : asset.processing_status === 'partial' ? ' · 일부 확인 필요' : ''}{asset.pending_delete && ' · 삭제 대기 중'}</p>
           {usages.length ? <ul aria-label="자료 사용처">{usages.map(use => <li key={use.kind + use.id}>{use.name} · {usageLabels[use.kind]}</li>)}</ul> : !asset.pending_delete && <p>연결된 사용처 없음</p>}
         </div>

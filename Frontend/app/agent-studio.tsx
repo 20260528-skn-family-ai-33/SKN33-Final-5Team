@@ -11,7 +11,7 @@ import {NodeLibrary,type LibraryNode,type ToolInfo} from './node-library';
 import {nodeSelectionPool} from './node-selection';
 import {shouldRefreshAgentRuns,refreshedAgentRun,startAgentRunRefresh} from './agent-run-refresh';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
-import {ArrowLeft,ArrowUp,Check,ChevronDown,FileText,Loader2,Paperclip,Plus,Workflow,X,Settings2,CheckCircle2,AlertCircle,Database,SlidersHorizontal,FileOutput,MessageSquare,CalendarClock,RefreshCw,ZoomIn,ZoomOut,Maximize2,Box} from 'lucide-react';
+import {ArrowLeft,ArrowUp,Check,ChevronDown,FileText,Loader2,Paperclip,Plus,Workflow,X,Settings2,CheckCircle2,AlertCircle,Database,SlidersHorizontal,FileOutput,MessageSquare,RefreshCw,ZoomIn,ZoomOut,Maximize2,Box} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
 import {request} from '@/components/flow/connection-panel';
 import './agent-studio.css';
@@ -83,8 +83,6 @@ export default function AgentStudio({onNavigate,onLocationChange,onCanLeaveChang
  function go(next:'nodes'|'workflow'|'run'|'schedule',record=false){if(next!==screen)window.scrollTo({top:0,behavior:'instant'});if(next==='nodes')setLibraryVisited(true);setScreen(next);const url=new URL(location.href);url.searchParams.set('screen',next);if(next!=='run')url.searchParams.delete('run');if(record&&url.href!==location.href)window.history.pushState({...window.history.state,a4bIndex:Number(window.history.state?.a4bIndex||0)+1,returnToDesign:next==='nodes'&&screen==='workflow'},'',url);else window.history.replaceState(window.history.state,'',url);internalHistoryIndex.current=Number(window.history.state?.a4bIndex||0);onLocationChange?.();}
  function confirmSettingsExit(){return !scheduleDirtyRef.current||window.confirm('저장하지 않은 자료함 연결 또는 예약 설정이 있습니다. 이동하면 변경 내용이 사라집니다. 이동할까요?');}
  function clearSettingsDirty(){scheduleDirtyRef.current=false;setScheduleSourceDirty(false);setScheduleSettingsDirty(false);}
- function confirmSourceExit(){return confirmSettingsExit();}
- function clearSourceDirty(){clearSettingsDirty();}
  function switchScreen(next:'nodes'|'workflow'|'run'|'schedule'){if(next!==screen){if(!confirmSettingsExit())return;clearSettingsDirty();}go(next,true);}
  useEffect(()=>{onLocationChange?.();});
  useEffect(()=>{const pop=()=>{const next=new URLSearchParams(location.search).get('screen');

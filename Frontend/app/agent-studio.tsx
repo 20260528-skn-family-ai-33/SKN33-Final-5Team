@@ -29,6 +29,7 @@ import {ScheduleLibrarySourceSettings,type ScheduleLibrarySource} from './schedu
 import {ScheduleSettings} from './schedule-settings';
 import {type QuestionResponse,type ClarificationQuestionData} from './clarification-question';
 import {ClarificationForm,type ClarificationAnswer} from './clarification-form';
+import {SlackChannelPicker} from './slack-channel-picker';
 
 
 type SavedSchedule={active:boolean;next_run_at:string;spec:ScheduleSpec;agent_version:number};
@@ -324,7 +325,8 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
   setError('');
   let sentSession:Session|null=null;
   try{
-   if(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content)){
+   const gmailSlackRequest=/(?:Gmail|지메일)/i.test(content)&&/(?:Slack|슬랙)/i.test(content);
+   if(!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
     const prompt=externalPromptContext.current?`${externalPromptContext.current}\n추가 답변: ${content}`:content;
     const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{id:string;description:string;status:string}[]}>('/api/workflows/from-request',{prompt});
     if(!result.workflow){externalPromptContext.current=prompt;setExternalMessages(prior=>[...prior,{role:'user',content},{role:'assistant',content:explainIncompleteWorkflow(result,prompt)}]);return;}
@@ -333,6 +335,7 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
     onExternalFlow?.(result.workflow.id);
     return;
    }
+   if(gmailSlackRequest&&externalPromptContext.current){externalPromptContext.current='';setExternalMessages([]);}
    const s=await ensureSession();
    sentSession=s;
    remember(s);
@@ -580,6 +583,7 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
  const clarificationQuestions:ClarificationQuestionData[]=saved||receiptQuestion?[]:session?.pending_questions?.length
   ? session.pending_questions.map(question=>{const index=session.draft?.questions.indexOf(question.text)??-1;return {...question,response:question.response||session.draft?.question_responses?.[index]||undefined};})
   : (session?.draft?.questions||[]).map((question,index)=>({text:question,options:session?.draft?.question_options?.[index],response:session?.draft?.question_responses?.[index]||undefined}));
+  const slackChannelQuestion=clarificationQuestions.find(question=>question.key==='slack.channel_id'||/(?:Slack|슬랙).{0,20}채널/i.test(question.text));
  // Only draw the version that actually ran when browsing history.
  const runWorkflow = testRun?.config_snapshot && 'workflow' in testRun.config_snapshot
   ? testRun.config_snapshot.workflow
@@ -690,7 +694,7 @@ export default function AgentStudio({onNavigate,onExternalFlow,onLocationChange,
         setText(next);input.current?.focus();
       }}/> : null}
     {receiptQuestion?.action ? <ReceiptQuestion key={receiptQuestion.id} text={receiptQuestion.text} action={receiptQuestion.action}
-      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onSubmit={answerQuestions}/>}{session?.requirement_failure?.retryable&&<div className="as-requirement-retry"><p>입력하신 조건은 보존되어 있습니다. 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,'앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.')}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}><textarea ref={input} aria-label="업무 설명" placeholder={collecting?'확인 질문에 답해주세요.':draft?'추가하거나 바꿀 조건을 설명하세요.':'예: 여러 자료에서 필요한 내용을 찾아 정리하는 기능이 필요해요.'} value={text} onChange={e=>setText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||saved} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div className="as-composer-footer"><button data-tour="attach" type="button" className="as-text-button" onClick={()=>setAttachMode('choose')} disabled={!!busy||!!recovery||saved||!credentialId&&!session}><Paperclip size={16}/>자료 연결</button><small>Enter 전송 · Shift+Enter 줄바꿈</small><button type="submit" className="as-send" disabled={!!busy||!text.trim()||saved||!credentialId&&!session} aria-label="업무 설명 보내기"><ArrowUp size={19}/></button></div></form></>}
+      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&slackChannelQuestion ? <SlackChannelPicker key={session?.id+'-'+slackChannelQuestion.id} disabled={!!busy||!!recovery||libraryBusy} onSelect={channelId=>send(undefined,channelId,slackChannelQuestion.id)} onReconnect={()=>leave('connections')}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onSubmit={answerQuestions}/>}{session?.requirement_failure?.retryable&&<div className="as-requirement-retry"><p>입력하신 조건은 보존되어 있습니다. 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,'앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.')}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}><textarea ref={input} aria-label="업무 설명" placeholder={collecting?'확인 질문에 답해주세요.':draft?'추가하거나 바꿀 조건을 설명하세요.':'예: 여러 자료에서 필요한 내용을 찾아 정리하는 기능이 필요해요.'} value={text} onChange={e=>setText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||saved} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div className="as-composer-footer"><button data-tour="attach" type="button" className="as-text-button" onClick={()=>setAttachMode('choose')} disabled={!!busy||!!recovery||saved||!credentialId&&!session}><Paperclip size={16}/>자료 연결</button><small>Enter 전송 · Shift+Enter 줄바꿈</small><button type="submit" className="as-send" disabled={!!busy||!text.trim()||saved||!credentialId&&!session} aria-label="업무 설명 보내기"><ArrowUp size={19}/></button></div></form></>}
 
    </section>
    {screen==='workflow'&&<section data-tour="canvas" className="as-workspace" aria-label="워크플로우 캔버스"><WorkflowPreview workflow={draft?.workflow} selectedId={selectedNodeId} onSelect={n=>{setSelectedNodeId(n.id);setEditorPanel('settings');settingsPanel.current?.scrollIntoView?.({block:'nearest'});}}/></section>}

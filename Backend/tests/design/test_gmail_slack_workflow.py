@@ -6,6 +6,7 @@ import pytest
 from langgraph.types import Command
 
 from agent_builder.design.gmail_slack import gmail_slack_candidate, gmail_slack_reply, gmail_slack_request
+from agent_builder.design.gmail_summary import UNREAD_QUERY
 from agent_builder.design.graph import build_graph
 from agent_builder.design.nodes.validation import validate_node
 from agent_builder.design.requirement_coverage import coverage_report
@@ -14,6 +15,7 @@ from infrastructure.persistence.storage import Storage
 
 PROMPT = 'Gmail에서 어제 받은 메일을 요약해서 Slack으로 보내줘'
 SCHEDULED = '매일 오전 9시에 Gmail에서 어제 받은 메일을 최대 25건 요약해서 Slack으로 보내줘'
+UNREAD = 'gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘'
 CHANNEL = 'C0CH769U6BX'
 
 
@@ -38,7 +40,7 @@ def graph_for(store):
                        verifier_mode='off')
 
 
-@pytest.mark.parametrize('prompt', [PROMPT, SCHEDULED])
+@pytest.mark.parametrize('prompt', [PROMPT, SCHEDULED, UNREAD])
 def test_channel_clarification_then_real_saved_workflow(tmp_path, prompt):
     store = Storage(tmp_path)
     graph, connection = graph_for(store)
@@ -50,6 +52,10 @@ def test_channel_clarification_then_real_saved_workflow(tmp_path, prompt):
         assert first['capability_assessment']['missing_actions'] == []
         assert first['__interrupt__'][0].value['kind'] == 'clarification'
         assert 'Slack 채널 ID' in first['messages'][-1]['content']
+        assert first['pending_questions'][0]['key'] == 'slack.channel_id'
+        if prompt == UNREAD:
+            assert len(first['pending_questions']) == 1
+            assert '기간' not in first['messages'][-1]['content']
         assert not store.agents()
 
         reviewed = graph.invoke(Command(resume={'type': 'message', 'content': CHANNEL}), config)
@@ -63,11 +69,17 @@ def test_channel_clarification_then_real_saved_workflow(tmp_path, prompt):
         assert sender['bindings'] == [dict(input='text', node_id='summary', output='text')]
         assert json.loads(sender['settings']['arguments_json']) == {'channel_id': CHANNEL}
         args = json.loads(reader['settings']['arguments_json'])
-        assert args['max_results'] == (25 if prompt == SCHEDULED else 100)
+        assert args['max_results'] == (25 if prompt == SCHEDULED else 3 if prompt == UNREAD else 100)
         if prompt == SCHEDULED:
             assert args['query'] == '{{gmail.previous_day}}'
             assert draft['schedule']['frequency'] == 'daily'
             assert draft['schedule']['hour'] == 9
+        elif prompt == UNREAD:
+            assert args['query'] == UNREAD_QUERY
+            assert '최근 안 읽은 Gmail 메일' in draft['explanation']
+            assert 'gmail에서 안읽은 메일 3건 요약 정리해서 slack에 올려줘' in summary['settings']['instructions']
+            assert not any('\u0400' <= char <= '\u04ff' for char in draft['explanation'])
+            assert draft['schedule'] is None
         else:
             assert args['query'].startswith('after:')
             assert draft['schedule'] is None
@@ -104,9 +116,23 @@ def test_destination_and_summary_lineage_cannot_be_changed_after_review():
         assert coverage_report(full, altered)['issues'], change
 
 
+def test_unread_filter_cannot_be_removed_after_review():
+    current = state(UNREAD)
+    current.update(gmail_connected=True, slack_connected=True)
+    current['messages'].append(dict(role='user', content=CHANNEL))
+    result = gmail_slack_reply(current)
+    assert result is not None
+    assert '연결된 Gmail 읽기 계정과 Slack 계정을 사용합니다' in result['draft']['explanation']
+    altered = deepcopy(result['draft'])
+    reader = altered['workflow']['nodes'][0]
+    reader['settings']['arguments_json'] = json.dumps({'max_results': 3})
+    assert coverage_report({**current, **result}, altered)['issues']
+
+
 def test_unrelated_and_cancelled_requests_do_not_enter_bounded_path():
     assert not gmail_slack_candidate(state('Gmail에서 어제 받은 메일을 요약해줘'))
     assert not gmail_slack_candidate(state('Slack에서 메시지 요약해서 보내줘'))
+    assert not gmail_slack_candidate(state('Gmail에서 안 읽은 메일은 제외하고 요약해서 Slack으로 보내줘'))
     current = state(PROMPT)
     current['messages'].append(dict(role='user', content='Slack 전송은 취소해줘'))
     assert not gmail_slack_candidate(current)
@@ -139,3 +165,12 @@ def test_missing_period_answer_is_applied_to_its_own_turn():
     assert request['period'] == 'yesterday'
     assert request['missing_conditions'] == []
     assert request['query'].startswith('after:')
+
+
+def test_unread_today_keeps_both_date_and_unread_filters():
+    current = state('Gmail에서 오늘 안 읽은 메일 3건 요약해서 Slack으로 보내줘')
+    request = gmail_slack_request(current)
+    assert request['period'] == 'today'
+    assert request['count'] == 3
+    assert request['query'].startswith('is:unread after:')
+    assert request['query'].endswith('-in:sent -in:drafts')

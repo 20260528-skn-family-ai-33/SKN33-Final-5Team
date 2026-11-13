@@ -8,15 +8,17 @@ import re
 
 from contracts.models import AgentDraft, NodeSettings, ScheduleSpec
 
-from .gmail_summary import MAX_RESULTS, PREVIOUS_DAY_QUERY
+from .gmail_summary import MAX_RESULTS, PREVIOUS_DAY_QUERY, UNREAD_QUERY
 
 
 CHANNEL = re.compile(r'(?<![A-Z0-9])([CGD][A-Z0-9]{8,24})(?![A-Z0-9])')
 _DAY = re.compile(r'어제|전날|오늘|최근|최신')
+_UNREAD = re.compile(r'안\s*읽은|읽지\s*않은', re.I)
+_UNREAD_EXCLUSION = re.compile(r'(?:안\s*읽은|읽지\s*않은).{0,15}(?:제외|빼고|말고|아닌)', re.I)
 _COUNT = re.compile(r'(?:최대\s*)?([1-9]\d{0,2})\s*(?:건|개|통)')
 _DAILY = re.compile(r'매일\s*(?:(오전|오후)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?')
 _TIME = re.compile(r'(?:(오전|오후)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?')
-_OTHER_WORK = re.compile(r'구글\s*시트|스프레드시트|캘린더|첨부|번역|표로|엑셀|웹훅|카카오|텔레그램|문서\s*파일|그리고\s*(?:또|추가)|안\s*읽은|읽지\s*않은|중요\s*표시|별표\s*표시|지난\s*주|이번\s*주|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}', re.I)
+_OTHER_WORK = re.compile(r'구글\s*시트|스프레드시트|캘린더|첨부|번역|표로|엑셀|웹훅|카카오|텔레그램|문서\s*파일|그리고\s*(?:또|추가)|중요\s*표시|별표\s*표시|지난\s*주|이번\s*주|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}', re.I)
 _QUESTION = '요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)'
 _PERIOD_QUESTION = '어느 기간에 받은 Gmail 메일을 요약할까요? (예: 어제, 오늘, 최근)'
 _TIME_QUESTION = '매일 몇 시에 실행할까요? (한국 시간, 예: 오전 9시)'
@@ -33,7 +35,8 @@ def gmail_slack_candidate(state):
     if not users:
         return False
     first = users[0]
-    if (len(first) > 1200 or _OTHER_WORK.search(first) or not re.search(r'Gmail|지메일', first, re.I)
+    if (len(first) > 1200 or _OTHER_WORK.search(first) or _UNREAD_EXCLUSION.search(first)
+            or not re.search(r'Gmail|지메일', first, re.I)
             or '요약' not in first
             or not re.search(r'Slack|슬랙', first, re.I)
             or not re.search(r'보내|전송|전달|올려|알려', first)):
@@ -67,7 +70,8 @@ def gmail_slack_request(state):
     first = users[0]
     period_source = next((index for index in reversed(range(len(users))) if _DAY.search(users[index])), None)
     period_match = _DAY.search(users[period_source]) if period_source is not None else None
-    period = (None if not period_match else
+    unread = bool(_UNREAD.search(first))
+    period = ('recent' if unread and not period_match else None if not period_match else
               'yesterday' if period_match[0] in ('어제', '전날') else
               'today' if period_match[0] == '오늘' else 'recent')
     counts = [match for text in users for match in _COUNT.finditer(text)]
@@ -79,6 +83,8 @@ def gmail_slack_request(state):
     if len(set(ids)) > 1:
         return None
     scheduled = any('매일' in text for text in users)
+    if scheduled and unread and period == 'yesterday':
+        return None  # The dynamic previous-day query cannot combine with an unread filter.
     clock = next((match for text in reversed(users) if (match := _DAILY.search(text)) or
                   (scheduled and (match := _TIME.fullmatch(text.strip().rstrip('.!?'))))), None)
     schedule = None
@@ -122,10 +128,12 @@ def gmail_slack_request(state):
             query = f"after:{day['start_epoch']} before:{day['end_epoch']} -in:sent -in:drafts"
         else:
             missing.append('오늘의 날짜 기준 시간대를 알려주세요.')
+    if unread:
+        query = f'is:unread {query}' if query else UNREAD_QUERY
     return dict(request=first, source_message=0, count=count, period=period,
-                query=query, schedule=schedule, scheduled=scheduled,
+                query=query, schedule=schedule, scheduled=scheduled, unread=unread,
                 channel_id=channel_id, missing_conditions=missing,
-                summary_instructions=(f'조회한 Gmail 메일 최대 {count}건을 사용자 요청에 맞춰 요약하세요: {first} '
+                summary_instructions=(f'조회한 {"안 읽은 " if unread else ""}Gmail 메일 최대 {count}건을 사용자 요청에 맞춰 요약하세요: {first} '
                                       '메일이 없으면 없다고 안내하세요. Slack 전송은 다음 단계가 처리하므로 요약 텍스트만 작성하세요.'))
 
 
@@ -154,7 +162,7 @@ def gmail_slack_assessment(state):
     return dict(decision='clarify' if missing else 'existing_tools', tool_ids=ids,
                 missing_conditions=missing, missing_actions=[], user_quotes=[request['request']],
                 reason='Gmail 본문 조회와 요약 텍스트의 Slack 전송은 등록 도구로 구성할 수 있습니다. '
-                       '대상 채널과 메일 기간은 사용자 요청으로 확인합니다.',
+                       '요청에 지정된 수량·기간·읽음 상태를 조회 설정에 반영하고 대상 채널을 확인합니다.',
                 model_calls=0, allows_execution=False, allows_generation=False,
                 runtime_prerequisites=['Gmail 읽기 계정 연결', 'Slack 계정 연결', '요약 모델 연결'])
 
@@ -167,7 +175,9 @@ def gmail_slack_plan(state):
                 period=request['period'], query=request['query'],
                 channel_id=request['channel_id'], schedule=request['schedule'],
                 summary_instructions=request['summary_instructions'])
-    description = f"{request['period']} Gmail 메일 최대 {request['count']}건 요약 후 Slack {request['channel_id']} 전송"
+    period_label = {'yesterday': '어제', 'today': '오늘', 'recent': '최근'}[request['period']]
+    scope = '안 읽은 Gmail 메일' if request['unread'] else 'Gmail 메일'
+    description = f"{period_label} {scope} 최대 {request['count']}건 요약 후 Slack {request['channel_id']} 전송"
     return dict(tasks=[dict(id='r1', source_message=0, quote=request['request'],
                             description=description, depends_on=[], spec=spec)], unresolved=[])
 
@@ -188,7 +198,7 @@ def gmail_slack_reply(state):
     defaults = NodeSettings(file_ids=[], query=None, fields=[], instructions=None, format=None,
                             question=None, condition_field=None, condition_operator=None).model_dump()
     nodes = [
-        dict(id='mail', tool='email.list', label=f'Gmail 메일 최대 {count}건 읽기', bindings=[],
+        dict(id='mail', tool='email.list', label=f'{"안 읽은 " if request["unread"] else ""}Gmail 메일 최대 {count}건 읽기', bindings=[],
              settings={**defaults, 'operation': 'read_messages', 'arguments_json': json.dumps(arguments)}),
         dict(id='summary', tool='compose_answer', label='메일 내용 요약',
              bindings=[dict(input='documents', node_id='mail', output='documents')],
@@ -201,10 +211,15 @@ def gmail_slack_reply(state):
     schedule = request['schedule']
     period_label = {'yesterday': '어제', 'today': '오늘', 'recent': '최근'}[request['period']]
     timing = f"매일 {schedule['hour']:02d}:{schedule['minute']:02d} 한국 시간에 " if schedule else ''
-    explanation = (f"{timing}{period_label} 받은 Gmail 메일을 최대 {count}건 읽어 제목·보낸 사람·본문의 핵심을 요약하고 "
+    source_label = (f'{period_label} 받은 안 읽은 Gmail 메일' if request['unread'] and request['period'] != 'recent'
+                    else '최근 안 읽은 Gmail 메일' if request['unread'] else f'{period_label} 받은 Gmail 메일')
+    connection_note = ('실행 시 연결된 Gmail 읽기 계정과 Slack 계정을 사용합니다.'
+                       if state.get('gmail_connected') is True and state.get('slack_connected') is True
+                       else '실행에는 Gmail 읽기 계정과 Slack 계정 연결이 필요합니다.')
+    explanation = (f"{timing}{source_label}을 최대 {count}건 읽어 제목·보낸 사람·본문의 핵심을 요약하고 "
                    f"Slack 채널 {request['channel_id']}에 보냅니다. 조회 한도를 넘는 메일은 포함되지 않을 수 있습니다. "
-                   'Gmail 읽기 계정과 Slack 계정은 실행 전에 서비스 연결에서 확인합니다.')
-    draft = AgentDraft(name=f'{period_label} Gmail 메일 요약 Slack 전송', purpose=request['request'],
+                   f'{connection_note}')
+    draft = AgentDraft(name=f'{period_label} {"안 읽은 " if request["unread"] else ""}Gmail 메일 요약 Slack 전송', purpose=request['request'],
                        instructions=explanation, tool_ids=['email.list', 'compose_answer', 'slack.post_message'],
                        document_ids=[], requirements=[dict(description='Gmail 메일 요약을 지정 Slack 채널에 전송',
                                                             source_id='user', quote=request['request'])],

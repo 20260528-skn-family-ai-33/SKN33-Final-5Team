@@ -9,7 +9,7 @@ import {createApplication} from '../src/app-server';
 import {authConfig} from '../src/auth-config';
 import {CognitoAuth} from '../src/cognito-auth';
 import type {AuthUser,AuthUsers} from '../src/auth-users';
-import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH} from '../src/oauth';
+import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH} from '../src/oauth';
 import {GMAIL_CONNECTION_ID,Store} from '../src/store';
 
 test('HTTP workspace routing preserves public OAuth callbacks and isolates concurrent refreshes',async t=>{
@@ -225,6 +225,40 @@ test('HTTP workspace routing preserves public OAuth callbacks and isolates concu
    const begin=await call('/api/service-connections/connect','connections',{service:'googleSheets'});
    assert.equal(begin.status,200,begin.body);
    assert.equal(new URL(JSON.parse(begin.body).authorizationUrl).searchParams.get('scope'),GOOGLE_SHEETS_OAUTH.accountScope);
+  });
+  await t.test('Slack channel discovery requires channel scopes and stays within the connected member workspace',async()=>{
+   members.set('channel-owner',member('channel-owner'));
+   members.set('channel-other',member('channel-other'));
+   const path='/api/service-connections/slack/channels';
+   const disconnected=await call(path,'channel-other');
+   assert.equal(disconnected.status,409,disconnected.body);
+   assert.equal(JSON.parse(disconnected.body).code,'slack_not_connected');
+   const saved=await call('/api/credentials','channel-owner',{name:'Slack',provider:'slack',data:{service:'slack',authType:'oauth2',scope:'chat:write',token:'private-slack-token'}});
+   assert.equal(saved.status,200,saved.body);
+   const id=JSON.parse(saved.body).credential.id;
+   let requests=0;
+   globalThis.fetch=(async(input,init)=>{
+    requests++;
+    const url=new URL(String(input));
+    assert.equal(url.origin+url.pathname,'https://slack.com/api/users.conversations');
+    assert.equal(url.searchParams.get('types'),'public_channel,private_channel');
+    assert.equal(url.searchParams.get('exclude_archived'),'true');
+    assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer private-slack-token');
+    return Response.json(url.searchParams.get('cursor')?{ok:true,channels:[{id:'G2',name:'private-team',is_private:true}],response_metadata:{next_cursor:''}}:{ok:true,channels:[{id:'C1',name:'general',is_private:false}],response_metadata:{next_cursor:'page-two'}});
+   }) as typeof fetch;
+   const oldScope=await call(path,'channel-owner');
+   assert.equal(oldScope.status,409,oldScope.body);
+   assert.equal(JSON.parse(oldScope.body).code,'slack_scope_required');
+   assert.equal(requests,0,'an old installation should be told to reconnect before a provider call');
+   const reconnected=await call('/api/credentials','channel-owner',{id,name:'Slack',provider:'slack',data:{service:'slack',authType:'oauth2',scope:SLACK_OAUTH.scope,token:'private-slack-token'}});
+   assert.equal(reconnected.status,200,reconnected.body);
+   const listed=await call(path,'channel-owner');
+   assert.equal(listed.status,200,listed.body);
+   assert.deepEqual(JSON.parse(listed.body),{channels:[{id:'C1',name:'general',isPrivate:false},{id:'G2',name:'private-team',isPrivate:true}],truncated:false});
+   assert.equal(requests,2);
+   assert.doesNotMatch(listed.body,/private-slack-token/);
+   assert.equal(JSON.parse((await call(path,'channel-other')).body).code,'slack_not_connected');
+   assert.equal(requests,2,'another member must not use the owner\'s Slack token');
   });
  }finally{
   globalThis.fetch=previousFetch;await app.close();await new Promise<void>(resolve=>app.server.close(()=>resolve()));

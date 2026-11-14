@@ -14,7 +14,7 @@ from parser_readiness import executable, pdf_readiness, populated_directory
 
 
 def clean_env():
-    return {k: v for k, v in os.environ.items() if not k.startswith('A4B_')}
+    return {k: v for k, v in os.environ.items() if not k.startswith(('A4B_', 'EASYFLOW_DOCLING_'))}
 
 
 @pytest.mark.parametrize('custom', [False, True])
@@ -23,14 +23,15 @@ def test_shared_install_and_runtime_paths(tmp_path, custom):
     if custom:
         env.update(A4B_BASE_DIR=str(tmp_path), A4B_PDF_VENV=str(tmp_path / 'venv'),
                    A4B_PDF_MODELS=str(tmp_path / 'models'))
-    script = 'source "$1/parser-paths.sh"; exec "$2" -c \'import os,json; print(json.dumps({k:v for k,v in os.environ.items() if k.startswith("A4B_")}))\''
+    script = 'source "$1/parser-paths.sh"; exec "$2" -c \'import os,json; print(json.dumps({k:v for k,v in os.environ.items() if k.startswith(("A4B_", "EASYFLOW_DOCLING_"))}))\''
     result = subprocess.run(['bash', '-c', script, 'fixture', str(SCRIPTS), sys.executable],
                             env=env, check=True, capture_output=True, text=True)
     paths = json.loads(result.stdout)
     base = str(tmp_path) if custom else '/workspace/a4b'
-    venv = str(tmp_path / 'venv') if custom else base + '/envs/pdf'
+    venv = str(tmp_path / 'venv') if custom else '/opt/a4b-envs/pdf'
     models = str(tmp_path / 'models') if custom else base + '/models/pdf'
     assert paths['A4B_PDF_ROUTER_PYTHON'] == venv + '/bin/python'
+    assert paths['EASYFLOW_DOCLING_PYTHON'] == venv + '/bin/python'
     assert paths['A4B_PDF_ARTIFACTS_DIR'] == models + '/docling'
     assert paths['A4B_PDF_OCR_MODEL_DIR'] == models + '/docling/EasyOcr'
     assert paths['A4B_PARSER_SOURCE_ROOT'] == str(SCRIPTS.parent.parent.resolve())
@@ -39,6 +40,7 @@ def test_shared_install_and_runtime_paths(tmp_path, custom):
 def test_setup_produces_files_at_runtime_paths(tmp_path):
     env = clean_env()
     env['A4B_BASE_DIR'] = str(tmp_path)
+    env['A4B_PDF_VENV'] = str(tmp_path / 'envs/pdf')
     python = tmp_path / 'envs/pdf/bin/python'
     python.parent.mkdir(parents=True)
     python.write_text('#!' + sys.executable + '\n' + '''

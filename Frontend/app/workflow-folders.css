@@ -9,8 +9,7 @@
 .workflow-folder-toolbar{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px}
 .workflow-folder-move{justify-self:start}
 
-.workflow-folder-actions,.workflow-folder-scope{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.workflow-folder-scope select{min-height:38px;max-width:min(220px,100%);padding:6px 10px;border:1px solid var(--a4b-border);border-radius:6px;background:var(--a4b-surface);color:var(--a4b-ink)}
+.workflow-folder-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .workflow-view-filters{display:flex;gap:4px;width:max-content;padding:4px;border-radius:8px;background:var(--a4b-neutral-soft)}
 .workflow-view-filters .as-button{min-height:32px;padding:4px 12px;border-color:transparent;background:transparent;color:var(--a4b-muted)}
 .workflow-view-filters .as-button[aria-pressed=true]{border-color:var(--a4b-border);background:var(--a4b-surface);color:var(--a4b-action);font-weight:650}

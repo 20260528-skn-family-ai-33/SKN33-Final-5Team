@@ -1,5 +1,5 @@
 .workspace-overview {
-  max-width: 720px;
+  max-width: 960px;
   margin-inline: auto;
 }
 .overview-welcome {
@@ -7,7 +7,7 @@
   margin-bottom: 32px;
   text-align: center;
 }
-.overview-greeting, .overview-empty {
+.overview-empty {
   color: var(--a4b-muted);
   font-size: 13px;
 }
@@ -54,12 +54,16 @@
 .overview-composer-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .overview-composer-actions .overview-submit {
   width: 34px;
   min-height: 34px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: 10px;
+  margin-left: auto;
 }
 .overview-submit svg { flex: none; }
 .overview-section { margin-top: 24px; }
@@ -102,7 +106,6 @@
   .overview-composer textarea { font-size: 16px; }
 }
 
-.overview-composer-actions { align-items:center; gap:10px; flex-wrap:wrap; }
 
 .overview-attachment-tray { display:flex; padding:4px 4px 10px; }
 .overview-attachment { display:flex; align-items:center; gap:10px; width:320px; max-width:100%; min-width:0; padding:10px; border:1px solid var(--a4b-border); border-radius:12px; background:var(--a4b-surface); }
@@ -114,7 +117,6 @@
 .overview-attachment button:hover { background:var(--a4b-neutral-soft); color:var(--a4b-ink); }
 .overview-attachment button:focus-visible { outline:2px solid var(--a4b-action); outline-offset:2px; }
 
-.workspace-overview { max-width:960px; }
 .overview-welcome { max-width:720px; margin-inline:auto; }
 .overview-recent-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding-top:14px!important; }
 .overview-recent-grid li { min-width:0; border:1px solid var(--a4b-border); border-radius:8px; }
@@ -133,5 +135,4 @@
 .overview-attach-button { display:grid; place-items:center; width:34px; height:34px; padding:0; border:0; border-radius:9px; color:var(--a4b-muted); background:transparent; cursor:pointer; }
 .overview-attach-button:hover { color:var(--a4b-action); background:var(--a4b-neutral-soft); }
 .overview-attach-button:focus-visible { outline:2px solid var(--a4b-action); outline-offset:2px; }
-.overview-composer-actions .overview-submit { margin-left:auto; border-radius:10px; }
 .overview-drop-hint { position:absolute; inset:0; z-index:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:16px; border:1px dashed var(--a4b-action); border-radius:inherit; background:var(--a4b-surface); color:var(--a4b-action); font-size:14px; pointer-events:none; }

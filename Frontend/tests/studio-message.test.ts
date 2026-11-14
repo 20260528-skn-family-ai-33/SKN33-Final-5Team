@@ -30,10 +30,6 @@ async function mount(props:any){
  return {render:async(next:any)=>act(async()=>{root.render(createElement(require('react').StrictMode,null,createElement(StudioMessage,next)));await tick();}),close:async()=>act(async()=>{root.unmount();await tick();})};
 }
 async function click(element:Element){await act(async()=>{(element as HTMLElement).click();await tick();});}
-async function input(element:HTMLInputElement|HTMLTextAreaElement,value:string){
- await act(async()=>{const prototype=element.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value')!.set!.call(element,value);element.dispatchEvent(new dom.window.Event('input',{bubbles:true}));element.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await tick();});
-}
-async function submit(){await act(async()=>{document.querySelector('form')!.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));await tick();});}
 
 const visible=()=>document.querySelector('p > span[aria-hidden="true"]')?.textContent??document.querySelector('p')?.textContent;
 async function advance(t:any,frames:number){for(let i=0;i<frames;i++)await act(async()=>{t.mock.timers.tick(24);await tick();});}

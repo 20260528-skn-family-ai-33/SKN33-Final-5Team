@@ -2091,7 +2091,7 @@ for(const includeSchedule of [true,false])test('request-led scheduling: save rev
  const config={...A.config,name:'재고 현황 보고서',schedule:spec,report_destination:'reports'};
  const session={id:'intent-session',revision:4,messages:[{role:'user',content:'매일 오전 9시에 재고 현황을 정리해줘.'}],draft:config,status:'ready',issues:[],trace:[],resources:[]};
  const savedAgent={...A,config:{...config,schedule:includeSchedule?spec:null}};
- const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>{
   if(path.includes('/session?'))return session;
   if(path.endsWith('/confirm'))return {...session,status:'saved',saved_agent_id:'A',draft:savedAgent.config};
   if(path.includes('/agent?id=A'))return {...snapshot(savedAgent),source_required:false,schedule_request_required:false};
@@ -2161,7 +2161,7 @@ test('clarification: a legacy choice requires confirmation and submits its quest
 test('execution separation: a manual workflow gains a reservation while direct input stays independent',async()=>{
  let reservation:any={active:false,agent_version:1,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'};
  const finished={id:'separate-run',status:'succeeded',answer:'분리 실행 완료',agent_version:1,steps:[],rows:[],artifact:null};
- const h=await setup('?screen=schedule&service=A',{},(path,body)=>{
+ const h=await setup('?screen=schedule&service=A',{},path=>{
   if(path.includes('/agent?id=A'))return {...snapshot(A),schedule:reservation,request_required:true,schedule_request_required:false,source_required:false,input_requirements:[]};
   if(path.endsWith('/test'))return finished;
   if(path.endsWith('/schedule_remove')){reservation=null;return {schedule:null};}
@@ -2640,7 +2640,7 @@ test('direct run keeps an optional request editor open while clearing and after 
 
 test('home attachment is uploaded before the initial design message',async()=>{
  const prompt='첨부 문서를 요약해줘';
- const h=await setup('?screen=home',{},(path,body)=>{
+ const h=await setup('?screen=home',{},path=>{
   if(path.endsWith('/sessions'))return {...readySession(),revision:1,status:'empty',draft:null,resources:[]};
   if(path.endsWith('/upload'))return {...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'home-file',name:'문서.txt',kind:'document'}]};
   if(path.endsWith('/message'))return {...readySession(),messages:[{role:'user',content:prompt}]};

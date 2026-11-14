@@ -1,9 +1,10 @@
 .workspace-overview {
   max-width: 960px;
   margin-inline: auto;
+  padding-top:24px;
 }
 .overview-welcome {
-  padding-top: clamp(20px, 4vw, 48px);
+  padding-top: 32px;
   margin-bottom: 32px;
   text-align: center;
 }
@@ -20,7 +21,7 @@
   overflow-wrap: anywhere;
 }
 .overview-composer {
-  margin: clamp(56px, 8vw, 84px) 0 12px;
+  margin: clamp(28px, 4vw, 44px) 0 12px;
   padding: 10px 12px;
   border: 1px solid var(--a4b-input-border);
   border-radius: 18px;
@@ -102,7 +103,7 @@
 .overview-row > svg { color: var(--a4b-action); flex: none; }
 .overview-empty { padding: 12px 0; }
 @media (max-width: 650px) {
-  .overview-welcome { margin-bottom: 28px; }
+  .overview-welcome { padding-top:20px; margin-bottom:28px; }
   .overview-composer textarea { font-size: 16px; }
 }
 

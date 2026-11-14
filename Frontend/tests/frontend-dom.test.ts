@@ -1236,7 +1236,8 @@ test('entry: user help has no infrastructure controls and unsent input is guarde
   await click(button('작업 찾아보기'));
   window.confirm=()=>true;await click(home);await n.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'home');
-  assert.equal(document.querySelector('main h1')?.textContent,'안녕하세요');
+  assert.equal(document.querySelector('main h1')?.textContent,'안녕하세요무엇을 도와드릴까요?');
+  assert.ok(document.querySelector('main h1 br'));
  }finally{await n.close();}
 });
 
@@ -2778,7 +2779,8 @@ test('home greets the member once and limits recent work to three entries',async
  const navigations:any[]=[];
  const h=await setup('',{},undefined,createElement(Overview,{memberName:'정재',workflows,loading:false,error:'',onStart:()=>{},onNavigate:(...args:any[])=>navigations.push(args),onRetry:()=>{}}));
  try{
-  assert.equal(document.querySelector('h1')?.textContent,'안녕하세요, 정재님');
+  assert.equal(document.querySelector('h1')?.textContent,'안녕하세요, 정재님무엇을 도와드릴까요?');
+  assert.ok(document.querySelector('h1 br'));
   assert.equal(document.querySelector('.overview-greeting'),null);
   assert.equal(document.querySelectorAll('.overview-recent-grid li').length,3);
   await click(document.querySelectorAll('.overview-recent-grid button')[2]);

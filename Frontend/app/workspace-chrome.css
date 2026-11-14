@@ -1,10 +1,10 @@
 /* One product shell for lists, history, the library, design and execution. */
-.workspace-header{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:68px;padding:8px clamp(20px, 2.5vw, 36px);border-bottom:1px solid var(--a4b-border);background:var(--a4b-surface);font:14px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}
+.workspace-header{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:48px;padding:4px clamp(20px, 2.5vw, 36px);border-bottom:0;background:var(--a4b-surface);font:14px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}
 .workspace-header .workspace-brand{display:inline-flex;align-items:center;gap:10px;flex:none;padding:0;border:0;background:none;color:var(--a4b-ink);font:inherit}
 .workspace-header .workspace-brand:not(:disabled){cursor:pointer}
 .workspace-header .workspace-brand:focus-visible{outline:2px solid var(--a4b-action);outline-offset:4px;border-radius:6px}
 .workspace-brandmark img{position:absolute;display:block;width:calc(var(--brand-logo-size)*1.802);height:auto;max-width:none;left:calc(var(--brand-logo-size)*-.402);top:calc(var(--brand-logo-size)*-.411)}.workspace-brand strong{font-size:20px;font-weight:750;line-height:1;letter-spacing:-.8px}.workspace-brandmark{--brand-logo-size:40px;position:relative;display:block;flex:none;width:var(--brand-logo-size);height:calc(var(--brand-logo-size)*.96);overflow:hidden;background:transparent}.workspace-header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}.workspace-header :is(button,a):focus-visible{outline:2px solid var(--a4b-action);outline-offset:3px}.workspace-header button:disabled{opacity:.5;cursor:not-allowed}.workspace-header .as-button{white-space:nowrap}
-.workspace-sidebar{box-sizing:border-box;width:168px;flex:none;display:flex;flex-direction:column;gap:8px;padding:18px 8px;border-right:1px solid var(--a4b-border);background:var(--a4b-surface);font:14px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}.workspace-sidebar-content>.workspace-nav{margin-bottom:14px;padding-bottom:18px;border-bottom:1px solid var(--a4b-border)}
+.workspace-sidebar{box-sizing:border-box;width:148px;flex:none;display:flex;flex-direction:column;gap:8px;padding:18px 8px;border-right:1px solid var(--a4b-border);background:var(--a4b-surface);font:14px/1.65 Inter,"Pretendard","Apple SD Gothic Neo",sans-serif}.workspace-sidebar-content>.workspace-nav{margin-bottom:14px;padding-bottom:18px;border-bottom:1px solid var(--a4b-border)}
 .workspace-nav{display:grid;gap:3px}.workspace-sidebar .workspace-nav button{display:flex;align-items:center;gap:8px;min-height:40px;padding:9px 8px;border:0;border-radius:5px;background:none;text-align:left;font:inherit;font-size:13px;line-height:20px;color:var(--a4b-muted);white-space:nowrap;cursor:pointer}.workspace-nav button:hover{color:var(--a4b-action);text-decoration:underline;text-underline-offset:4px}.workspace-nav button[aria-current=page]{background:var(--a4b-neutral-soft);color:var(--a4b-action);font-weight:650;box-shadow:inset 2px 0 var(--a4b-action);text-decoration:none}.workspace-nav button:disabled{opacity:.5;cursor:not-allowed}.workspace-nav button:focus-visible{outline:2px solid var(--a4b-action);outline-offset:2px}
 .workspace-sidebar-footer{margin-top:auto;padding:12px 0 0;background:var(--a4b-surface)}.workspace-sidebar-footer .as-button.as-secondary{justify-content:flex-start;border:0;background:transparent;color:var(--a4b-muted);box-shadow:none}
 .workspace-sidebar-footer .as-button.as-secondary:hover{background:transparent;text-decoration:underline;text-underline-offset:4px}
@@ -17,9 +17,9 @@
 .workspace-sidebar-account .a4b-account-name{max-width:none}
 .workspace-sidebar-account .a4b-account-button{padding:4px 6px}
 .workspace-context{display:flex;align-items:center;gap:24px;min-height:36px;margin:0 0 22px}.workspace-context .studio-tabs{align-self:stretch}.workspace-context .studio-tabs button{padding:6px 0}.workspace-loading{padding:24px 0;color:var(--a4b-muted);font-size:13px}
-.as-app .as-main,.entry-app .entry-workspace-main{padding:28px;min-width:0}
-@media(max-width:1100px){.workspace-sidebar{width:160px}.as-app .as-main,.entry-app .entry-workspace-main{padding:24px 20px}}
-@media(max-width:900px){.workspace-sidebar{width:152px;padding:14px 8px}.workspace-sidebar .workspace-nav button{padding:9px 8px;font-size:12px}.as-app .as-main,.entry-app .entry-workspace-main{padding:24px 18px}}
+.as-app .as-main,.entry-app .entry-workspace-main{padding:20px;min-width:0}
+@media(max-width:1100px){.workspace-sidebar{width:148px}.as-app .as-main,.entry-app .entry-workspace-main{padding:24px 20px}}
+@media(max-width:900px){.workspace-sidebar{width:144px;padding:14px 8px}.workspace-sidebar .workspace-nav button{padding:9px 8px;font-size:12px}.as-app .as-main,.entry-app .entry-workspace-main{padding:24px 18px}}
 @media(max-width:650px){.workspace-header{flex-wrap:wrap}.workspace-header-actions{min-width:0;max-width:100%;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}}
 @media(max-width:650px){.workspace-header{padding:8px 16px;gap:12px}.workspace-brand strong{font-size:19px}.workspace-brandmark{--brand-logo-size:36px}.workspace-header-actions{gap:8px}.workspace-header .as-text-button{font-size:11px!important;gap:4px}.workspace-sidebar{width:100%;border-right:0;border-bottom:1px solid var(--a4b-border);padding:8px 16px;display:block}.workspace-sidebar-content>.workspace-nav{display:flex;gap:12px;overflow:auto;border:0;margin:0;padding:0}.workspace-sidebar .workspace-nav button{flex:none;min-height:36px;padding:6px 4px;font-size:11px;gap:5px}.workspace-nav button[aria-current=page]{box-shadow:inset 0 -2px var(--a4b-action);background:none}.workspace-sidebar .as-sidebar-label,.workspace-sidebar .as-sidebar-empty{display:none}.workspace-sidebar>nav:not(.workspace-nav){display:flex;gap:6px;overflow:auto}.workspace-sidebar>nav:not(.workspace-nav):empty{display:none}.as-app .as-main,.entry-app .entry-workspace-main{padding:22px 16px 32px}.workspace-context{gap:20px;margin-bottom:18px;min-height:36px}}
 
@@ -31,7 +31,7 @@
 @media(min-width:651px){.workspace-sidebar-footer{position:sticky;bottom:0}}
 @media(max-width:650px){}
 
-:is(.as-app,.entry-app) .task-library-main{padding:28px;max-width:1440px}
+:is(.as-app,.entry-app) .task-library-main{padding:20px;max-width:none}
 .task-library-header{margin-bottom:20px}
 .task-library-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
 .task-library-title h1{margin:0;font-size:25px;font-weight:650;letter-spacing:-.8px;line-height:1.4}
@@ -115,7 +115,7 @@
 .task-library-header .task-library-tabs .as-button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding-inline:4px}
 .task-library-header .task-library-tabs .as-button[aria-current=page]{border-bottom-color:var(--a4b-action);background:transparent}
 
-:root { --workspace-rail-width:72px; --workspace-logo-size:40px; }
+:root { --workspace-shell-background:color-mix(in srgb,var(--a4b-neutral-soft) 40%,var(--a4b-surface)); --workspace-rail-width:56px; --workspace-logo-size:40px; }
 .workspace-sidebar-content { display:flex; flex:1; min-height:0; flex-direction:column; gap:8px; }
 .workspace-sidebar-toggle { display:grid; place-items:center; align-self:flex-end; width:24px; height:24px; flex:none; border:0; border-radius:6px; padding:0; background:transparent; color:var(--a4b-muted); cursor:pointer; }
 .workspace-sidebar-toggle:hover { background:var(--a4b-neutral-soft); color:var(--a4b-action); }
@@ -143,3 +143,43 @@
 }
 @media(max-width:650px) { .workspace-sidebar-header,.workspace-sidebar-toggle { display:none; } .workspace-sidebar-content { display:contents; } }
 @media(prefers-reduced-motion:reduce) { .workspace-sidebar { transition:none; } }
+
+/* A quiet shell behind a raised, continuous workspace surface. */
+.as-app:has(>.workspace-header),.entry-app:has(>.workspace-header){background:var(--workspace-shell-background)}
+.workspace-header{background:var(--workspace-shell-background)}
+.workspace-sidebar,.workspace-sidebar-footer{background:var(--workspace-shell-background);border-right:0}
+.as-app .as-main,.entry-app .entry-workspace-main{
+ box-sizing:border-box;
+ max-width:none;
+ background:var(--a4b-surface);
+ border:1px solid var(--a4b-border);
+ border-radius:24px 24px 0 0;
+ box-shadow:0 -2px 12px color-mix(in srgb,var(--a4b-ink) 3%,transparent);
+ margin-right:0;
+ min-height:calc(100dvh - 48px);
+}
+@media(max-width:650px){
+ .as-app .as-main,.entry-app .entry-workspace-main{border-radius:18px 18px 0 0;margin-right:0;min-height:0}
+ .workspace-sidebar{border-bottom:0}
+}
+
+.workspace-header .workspace-brandmark img{mix-blend-mode:multiply}
+.workspace-nav button[aria-current=page]{box-shadow:none}
+
+.entry-workspace-main:has(>.entry-run-history){display:flex;flex-direction:column}
+.entry-workspace-main>.entry-run-history:empty{display:none}
+.entry-workspace-main:has(>.entry-run-history)>.entry-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px}
+.entry-workspace-main:has(>.entry-run-history)>.entry-empty>svg{margin:0}
+
+/* Page actions share a second row below the title and refresh control. */
+.workspace-page-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;max-width:none;margin:0 0 20px}
+@media(max-width:650px){.workspace-page-actions{justify-content:flex-start;width:100%}}
+
+/* Shared page scale: headings, refresh controls and page-level actions. */
+:is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title,.as-page-title) h1{font-size:25px;font-weight:650;line-height:1.4;letter-spacing:-.8px}
+:is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title)>.as-button{width:38px;min-height:38px;padding:8px}
+.workspace-page-actions>.as-button{min-height:38px;padding:8px 12px;font-size:13px;line-height:20px;gap:8px}
+.workspace-header .workspace-brandmark{left:4px;top:3px}
+@media(max-width:650px){
+ :is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title,.as-page-title) h1{font-size:23px}
+}

@@ -36,7 +36,7 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
 
   return <div className="workspace-overview">
     <section className="overview-welcome" aria-labelledby="overview-title">
-      <h1 id="overview-title">안녕하세요{memberName ? `, ${memberName}님` : ''}</h1>
+      <h1 id="overview-title">안녕하세요{memberName ? `, ${memberName}님` : ''}<br/>무엇을 도와드릴까요?</h1>
       <form className={'overview-composer'+(dragOver?' is-drag-over':'')} data-tour="home-create"
         onDragEnter={event=>{if(Array.from(event.dataTransfer.types).includes('Files')){event.preventDefault();dragDepth.current++;setDragOver(true);}}}
         onDragLeave={event=>{event.preventDefault();if(dragDepth.current>0)dragDepth.current--;if(!dragDepth.current)setDragOver(false);}}

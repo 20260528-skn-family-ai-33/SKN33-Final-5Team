@@ -1,3 +1,5 @@
+/* Keep button corners consistent across shared and screen-specific controls. */
+:root :is(button, a.as-button, [role="button"]):not(.studio-tabs button, .task-library-tabs button, .subbar-tabs button, .as-examples button) { border-radius:10px !important; }
 /* Bento-inspired feedback, shared by native buttons and UI components. */
 :where(button) { position:relative; }
 :root button:not(:disabled):not([aria-disabled="true"]) {

@@ -350,13 +350,11 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
   const sameDestination = action?.kind === 'move-folder' ? destination === (action.folder.parent_id || '') : action?.kind === 'move-asset' ? destination === (action.asset.folder_id || '') : false;
 
   return <div className="asset-library"><PageTransition active={loading}/>
-    <div className="entry-page-heading"><div><h1>자료함</h1></div>
-      <div className="asset-library-actions">
+    <div className="entry-page-heading"><div><h1>자료함</h1></div><button type="button" className="as-button" onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={16}/></button></div>
+      {canEdit && <div className="asset-library-actions workspace-page-actions">
         {canEdit && <><button type="button" className="as-button as-primary" disabled={busy} onClick={() => input.current?.click()}><UploadIcon size={15}/>파일 올리기</button>
         <button type="button" className="as-button as-secondary" disabled={busy} onClick={() => openAction({kind: 'create', parentId: folderId})}><FolderPlus size={15}/>새 폴더</button></>}
-        <button type="button" className="as-button" onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={16}/></button>
-      </div>
-    </div>
+      </div>}
     {spaceControls}
     <div className="asset-library-toolbar">
       <nav className="asset-breadcrumb" aria-label="자료함 위치"><button type="button" disabled={mutating} onClick={() => navigate(null)} aria-current={!folderId ? 'page' : undefined}><FolderOpen size={15}/>{rootName}</button>

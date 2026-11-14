@@ -115,7 +115,7 @@
 .task-library-header .task-library-tabs .as-button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding-inline:4px}
 .task-library-header .task-library-tabs .as-button[aria-current=page]{border-bottom-color:var(--a4b-action);background:transparent}
 
-:root { --workspace-shell-background:color-mix(in srgb,var(--a4b-neutral-soft) 40%,var(--a4b-surface)); --workspace-rail-width:56px; --workspace-logo-size:40px; }
+:root { --workspace-shell-background:color-mix(in srgb,var(--a4b-neutral-soft) 40%,var(--a4b-surface)); --workspace-rail-width:72px; --workspace-logo-size:34px; }
 .workspace-sidebar-content { display:flex; flex:1; min-height:0; flex-direction:column; gap:8px; }
 .workspace-sidebar-toggle { display:grid; place-items:center; align-self:flex-end; width:24px; height:24px; flex:none; border:0; border-radius:6px; padding:0; background:transparent; color:var(--a4b-muted); cursor:pointer; }
 .workspace-sidebar-toggle:hover { background:var(--a4b-neutral-soft); color:var(--a4b-action); }
@@ -179,7 +179,8 @@
 :is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title,.as-page-title) h1{font-size:25px;font-weight:650;line-height:1.4;letter-spacing:-.8px}
 :is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title)>.as-button{width:38px;min-height:38px;padding:8px}
 .workspace-page-actions>.as-button{min-height:38px;padding:8px 12px;font-size:13px;line-height:20px;gap:8px}
-.workspace-header .workspace-brandmark{left:4px;top:3px}
+.workspace-header .workspace-brandmark{--brand-logo-size:34px;left:0;top:3px}
+.workspace-header-actions{position:relative;top:3px}
 @media(max-width:650px){
  :is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title,.as-page-title) h1{font-size:23px}
 }

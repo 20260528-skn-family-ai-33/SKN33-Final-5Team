@@ -1,3 +1,4 @@
+import {useButtonEffects} from './use-button-effects';
 import {settleWithLimit} from '../lib/settle-with-limit';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,Workflow,History,Search,RefreshCw,AlertCircle,Pencil} from 'lucide-react';
@@ -24,6 +25,7 @@ function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.sear
 
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
 export default function EntryApp(){
+ useButtonEffects();
  const auth=useAuth();
  const [route,setRoute]=useState<EntryRoute>(routeFromLocation),[navigationKey,setNavigationKey]=useState(0);
  const clearDesign=()=>{

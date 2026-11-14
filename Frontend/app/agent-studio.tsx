@@ -133,6 +133,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
 
  const [agents,setAgents]=useState<Agent[]>([]),[credentialId,setCredentialId]=useState(''),[model,setModel]=useState('');
  const [session,setSession]=useState<Session|null>(null),[selected,setSelected]=useState<Agent|null>(null),[agentResources,setAgentResources]=useState<Resource[]>([]),[text,setText]=useState(initialPrompt ?? ''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+ const [animatedMessage,setAnimatedMessage]=useState('');
  const [externalMessages,setExternalMessages]=useState<Session['messages']>([]);
  useEffect(()=>{
   if(initialPrompt!==undefined&&window.history.state?.initialPrompt===initialPrompt){
@@ -350,6 +351,8 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
    remember(s);
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
    const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
+   const lastReply=(result.messages as Session['messages']|undefined)?.findLastIndex(message=>message.role==='assistant')??-1;
+   setAnimatedMessage(result.id+':'+lastReply);
    remember(result);
    setFreshFiles({session:'',ids:[]});  // the message has now used every attached file
   }catch(e){
@@ -697,9 +700,9 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
           content = content.split('\n').filter(line => !clarificationQuestions.some(q => q.text.trim() === line.trim().replace(/^•\s*/, ''))).join('\n').trim();
         }
       }
-      return content ? <StudioMessage key={i} role={message.role} content={content}/> : null;
+      return content ? <StudioMessage key={i} role={message.role} content={content} animate={animatedMessage===session?.id+':'+i}/> : null;
     })}
-     {externalMessages.map((message,index)=><StudioMessage key={'external-'+index} role={message.role} content={message.content}/>)}
+     {externalMessages.map((message,index)=><StudioMessage key={'external-'+index} role={message.role} content={message.content} animate={index===externalMessages.length-1}/>)}
     {!selected&&session?.file_inspection?.length ? <FileInspection files={session.file_inspection}
       detailsFor={id=>{
         const asset=session.resources.find(resource=>resource.id===id);

@@ -23,7 +23,9 @@
   margin: clamp(56px, 8vw, 84px) 0 12px;
   padding: 10px 12px;
   border: 1px solid var(--a4b-input-border);
-  border-radius: 12px;
+  border-radius: 18px;
+  position: relative;
+  transition: border-color .18s, box-shadow .18s;
   text-align: left;
   background: var(--a4b-surface);
 }
@@ -39,7 +41,7 @@
   border: 0;
   background: transparent;
   outline: none;
-  resize: vertical;
+  resize: none;
   font: inherit;
 }
 .overview-section-heading {
@@ -101,9 +103,16 @@
 }
 
 .overview-composer-actions { align-items:center; gap:10px; flex-wrap:wrap; }
-.overview-composer-actions > small { margin-left:auto; font-size:11px; color:var(--as-muted); }
-.overview-attachment { display:flex; align-items:center; gap:8px; padding:8px 12px; overflow-wrap:anywhere; }
-.overview-attachment button { display:grid; place-items:center; border:0; background:transparent; cursor:pointer; }
+
+.overview-attachment-tray { display:flex; padding:4px 4px 10px; }
+.overview-attachment { display:flex; align-items:center; gap:10px; width:320px; max-width:100%; min-width:0; padding:10px; border:1px solid var(--a4b-border); border-radius:12px; background:var(--a4b-surface); }
+.overview-attachment-icon { display:grid; place-items:center; flex:none; width:40px; height:40px; border-radius:9px; background:var(--a4b-neutral-soft); color:var(--a4b-action); }
+.overview-attachment-info { display:grid; gap:3px; min-width:0; flex:1; }
+.overview-attachment-info strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:600; color:var(--a4b-ink); }
+.overview-attachment-info small { font-size:11px; color:var(--a4b-muted); }
+.overview-attachment button { display:grid; place-items:center; flex:none; width:30px; height:30px; padding:0; border:0; border-radius:7px; background:transparent; color:var(--a4b-muted); cursor:pointer; }
+.overview-attachment button:hover { background:var(--a4b-neutral-soft); color:var(--a4b-ink); }
+.overview-attachment button:focus-visible { outline:2px solid var(--a4b-action); outline-offset:2px; }
 
 .workspace-overview { max-width:960px; }
 .overview-welcome { max-width:720px; margin-inline:auto; }
@@ -119,3 +128,10 @@
  .overview-recent-grid .overview-row { min-height:76px; }
  .overview-section[aria-labelledby=home-library] > ul { grid-template-columns:1fr;gap:0; }
 }
+
+.overview-composer textarea::placeholder { color:color-mix(in srgb,var(--a4b-muted) 55%,var(--a4b-surface)); opacity:1; }
+.overview-attach-button { display:grid; place-items:center; width:34px; height:34px; padding:0; border:0; border-radius:9px; color:var(--a4b-muted); background:transparent; cursor:pointer; }
+.overview-attach-button:hover { color:var(--a4b-action); background:var(--a4b-neutral-soft); }
+.overview-attach-button:focus-visible { outline:2px solid var(--a4b-action); outline-offset:2px; }
+.overview-composer-actions .overview-submit { margin-left:auto; border-radius:10px; }
+.overview-drop-hint { position:absolute; inset:0; z-index:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:16px; border:1px dashed var(--a4b-action); border-radius:inherit; background:var(--a4b-surface); color:var(--a4b-action); font-size:14px; pointer-events:none; }

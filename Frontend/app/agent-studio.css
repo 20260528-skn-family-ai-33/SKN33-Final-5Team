@@ -179,11 +179,13 @@ details.as-setting-section:not([open]) > summary > svg { transform:rotate(0); }
   stroke-dasharray: .14 1;
   stroke-dashoffset: 1;
   stroke-linecap: round;
-  animation: as-flow-beam-travel 1.3s ease-out .32s both;
+  animation: as-flow-beam-travel 3.6s linear infinite;
 }
 @keyframes as-flow-beam-travel {
-  from { stroke-dashoffset: .14; opacity: 1; }
-  to { stroke-dashoffset: -1; opacity: 0; }
+  0% { stroke-dashoffset: .14; opacity: 0; }
+  10% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { stroke-dashoffset: -1; opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .as-flow-beam { display: none; }

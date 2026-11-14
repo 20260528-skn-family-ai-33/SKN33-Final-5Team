@@ -1,5 +1,5 @@
 import {useRef,useState} from 'react';
-import {ArrowRight, ArrowUp, Paperclip, X, Layers, Workflow} from 'lucide-react';
+import {ArrowRight, ArrowUp, FileText, FileSpreadsheet, FileImage, File as FileIcon, Plus, X, Layers, Workflow} from 'lucide-react';
 import './workspace-overview.css';
 
 type RecentWorkflow = {id:string; updated_at:string; config:{name:string}};
@@ -23,18 +23,26 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
   const [file,setFile]=useState<File|null>(null);
   const [fileError,setFileError]=useState('');
   const fileInput=useRef<HTMLInputElement>(null);
+  const dragDepth=useRef(0);
+  const [dragOver,setDragOver]=useState(false);
   function attachFile(selected:File) {
     if(selected.size>8*1024*1024){setFileError('자료는 8MB 이하로 연결하세요.');return;}
     setFile(selected);setFileError('');
   }
   const canStart=!!prompt.trim()||!!file;
+  const extension=file?.name.split('.').pop()?.toLowerCase()||'';
+  const AttachmentIcon=/^(csv|tsv|xlsx|xls)$/.test(extension)?FileSpreadsheet:/^(jpg|jpeg|png|bmp|webp|tif|tiff|heic)$/.test(extension)?FileImage:/^(pdf|doc|docx|txt|md|hwp|hwpx|ppt|pptx)$/.test(extension)?FileText:FileIcon;
+  const fileSize=file?(file.size>=1024*1024?`${(file.size/(1024*1024)).toFixed(1)} MB`:file.size>=1024?`${Math.ceil(file.size/1024)} KB`:`${file.size} B`):'';
 
   return <div className="workspace-overview">
     <section className="overview-welcome" aria-labelledby="overview-title">
       <h1 id="overview-title">안녕하세요{memberName ? `, ${memberName}님` : ''}</h1>
-      <form className="overview-composer" data-tour="home-create"
+      <form className={'overview-composer'+(dragOver?' is-drag-over':'')} data-tour="home-create"
+        onDragEnter={event=>{if(Array.from(event.dataTransfer.types).includes('Files')){event.preventDefault();dragDepth.current++;setDragOver(true);}}}
+        onDragLeave={event=>{event.preventDefault();if(dragDepth.current>0)dragDepth.current--;if(!dragDepth.current)setDragOver(false);}}
         onDragOver={event=>{if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault();}}
         onDrop={event=>{
+          dragDepth.current=0;setDragOver(false);
           const files=event.dataTransfer.files;
           if(!files.length)return;
           event.preventDefault();
@@ -44,6 +52,13 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
         event.preventDefault();
         if(canStart)onStart(prompt.trim(),file??undefined);
       }}>
+        {file && <div className="overview-attachment-tray" aria-label="첨부 자료">
+          <div className="overview-attachment">
+            <span className="overview-attachment-icon"><AttachmentIcon size={21} aria-hidden="true"/></span>
+            <div className="overview-attachment-info"><strong title={file.name}>{file.name}</strong><small>{extension.toUpperCase()||'파일'} · {fileSize}</small></div>
+            <button type="button" aria-label="첨부 자료 제거" title="첨부 자료 제거" onClick={()=>{setFile(null);setFileError('');}}><X size={16} aria-hidden="true"/></button>
+          </div>
+        </div>}
         <textarea aria-label="자동화할 업무" placeholder="예: 매출표에서 지점별 합계를 구해 엑셀로 정리해 줘." value={prompt}
           onChange={event=>setPrompt(event.target.value)}
           onKeyDown={event=>{
@@ -53,19 +68,18 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
             }
           }}
           rows={2} maxLength={4000}/>
-        {file && <div className="overview-attachment"><span>{file.name}</span><button type="button" aria-label="첨부 자료 제거" onClick={()=>setFile(null)}><X size={14}/></button></div>}
         {fileError && <p role="alert">{fileError}</p>}
         <input ref={fileInput} type="file" hidden accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic" onChange={event=>{
           const selected=event.currentTarget.files?.[0];event.currentTarget.value='';
           if(selected)attachFile(selected);
         }}/>
         <div className="overview-composer-actions">
-          <button type="button" className="as-text-button" onClick={()=>fileInput.current?.click()}><Paperclip size={16}/>자료 추가</button>
-          <small>Enter 전송 · Shift+Enter 줄바꿈</small>
+          <button type="button" className="overview-attach-button" aria-label="자료 추가" title="자료 추가" onClick={()=>fileInput.current?.click()}><Plus size={19} aria-hidden="true"/></button>
           <button type="submit" className="as-button as-primary overview-submit" aria-label="업무 입력 확인" disabled={!canStart}>
             <ArrowUp size={17} aria-hidden="true"/>
           </button>
         </div>
+        {dragOver&&<div className="overview-drop-hint"><Plus size={18} aria-hidden="true"/><span>여기에 자료를 놓아주세요</span></div>}
       </form>
     </section>
     <section className="overview-section" aria-labelledby="home-workflows">

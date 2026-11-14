@@ -1,0 +1,29 @@
+/* Bento-inspired feedback, shared by native buttons and UI components. */
+:where(button) { position:relative; }
+:root button:not(:disabled):not([aria-disabled="true"]) {
+ transition:translate 220ms cubic-bezier(.3,.7,.4,1),box-shadow 220ms ease,background-color 180ms ease,color 180ms ease;
+}
+:where(button:not(:disabled):not([aria-disabled="true"]))::before {
+ content:"";
+ position:absolute;
+ inset:0;
+ border-radius:inherit;
+ pointer-events:none;
+ opacity:0;
+ background:radial-gradient(180px circle at var(--button-glow-x,50%) var(--button-glow-y,50%),color-mix(in srgb,var(--a4b-action,#244e73) 4%,transparent),transparent 72%);
+ transition:opacity 300ms ease;
+}
+@media (hover:hover) and (pointer:fine) {
+ :where(button:not(:disabled):not([aria-disabled="true"])):hover::before { opacity:1; }
+ :where(button:not(:disabled):not([aria-disabled="true"]):not(.as-flow-node)):hover { translate:0 -1px; }
+ :where(button.overview-row:not(:disabled),button.workflow-card:not(:disabled)):hover {
+  translate:0 -2px;
+  box-shadow:0 4px 12px color-mix(in srgb,var(--a4b-ink,#172d40) 4%,transparent);
+ }
+}
+:where(button:not(:disabled):not([aria-disabled="true"]):not(.as-flow-node)):active { translate:0 0; }
+@media (prefers-reduced-motion:reduce) {
+ :root button:not(:disabled):not([aria-disabled="true"]) { transition:none; }
+ :where(button:not(:disabled):not([aria-disabled="true"]))::before { transition:none; }
+ :root button:not(:disabled):not([aria-disabled="true"]):is(:hover,:active) { translate:none; }
+}

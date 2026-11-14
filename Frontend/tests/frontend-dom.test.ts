@@ -2818,12 +2818,12 @@ test('workflow folders: create, select, move, filter, rename and delete preserve
   await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택한 워크플로우 이동 (1)'));
   await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
-  await submit(document.querySelector('.workflow-folder-form')!);await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   assert.ok(document.querySelector('button[aria-label="서비스 A 실행하기"]'));
   assert.ok(document.querySelector('button[aria-label="서비스 A 예약 관리"]'));
   await click(button('폴더 이름 변경'));await input(field('폴더 이름'),'정리 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/정리 업무/);
+  assert.match(document.querySelector('.workflow-folder-list')!.textContent!,/정리 업무/);
   await click(button('폴더 삭제'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
   assert.deepEqual(organization.assignments,{});
@@ -2853,7 +2853,7 @@ test('workflow folder pending save rejects duplicate submission and keeps the di
   assert.equal(saves,1);assert.equal(button('취소').disabled,true);
   assert.equal(field('폴더 이름').disabled,true);
   await act(async()=>{pending.resolve({organization:{revision:1,folders:[{id:'pending-folder',name:'중복 방지'}],assignments:{}}});await tick();});
-  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/중복 방지/);
+  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-list')!.textContent!,/중복 방지/);
  }finally{await h.close();}
 });
 
@@ -2866,7 +2866,7 @@ test('workflow folder search and folder changes clear hidden selection',async()=
   assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);
-  await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='unfiled';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await click(button('미분류'));
   assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
  }finally{await h.close();}
@@ -2888,5 +2888,33 @@ test('workflow folder selection caps at 500 and releases a slot when unchecked',
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
   await click(button('선택한 워크플로우 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
+ }finally{await h.close();}
+});
+
+
+test('clarification: paged answers preserve backend ids, arrays, custom and optional skip in one request',async()=>{
+ const qs=[
+  {id:'batch-format',key:'format',text:'결과 형식',options:['CSV','Excel'],response:{type:'single_choice'}},
+  {id:'batch-sections',key:'sections',text:'포함 내용',options:['요약','상세'],response:{type:'multi_choice'}},
+  {id:'batch-notes',key:'notes',text:'추가 조건',response:{type:'text'},required:false},
+ ];
+ const session={id:'batch-session',revision:4,messages:[{role:'assistant',content:'작업 조건을 확인해주세요.'}],draft:{...A.config,questions:qs.map(q=>q.text),question_options:qs.map(q=>q.options||[])},status:'needs_clarification',issues:[],trace:[],resources:[],pending_questions:qs};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/message'))return {...session,revision:5,status:'ready',pending_questions:[],draft:{...session.draft,questions:[]},messages:[...session.messages,{role:'user',content:body.content}]};
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('.clarification-form input[value="CSV"]')!);
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  await click(document.querySelector('.clarification-form input[value="요약"]')!);
+  const fields=document.querySelectorAll('.clarification-form fieldset');
+  await click(fields[1].querySelector('input[id$="custom-choice"]')!);
+  await input(fields[1].querySelector('textarea')!,'예외 내용');
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  await click(button('답변 적용'));await h.flush();
+  const requests=h.calls.filter(call=>call.path.endsWith('/message'));assert.equal(requests.length,1);
+  assert.equal(requests[0].body.id,session.id);assert.equal(requests[0].body.revision,4);
+  assert.deepEqual(requests[0].body.answers,[{questionId:qs[0].id,value:'CSV'},{questionId:qs[1].id,value:['요약','예외 내용'],custom:true},{questionId:qs[2].id,value:null,skip:true}]);
  }finally{await h.close();}
 });

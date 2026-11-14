@@ -68,7 +68,7 @@ export function ClarificationForm({questions,disabled=false,onSubmit,onDirtyChan
  }
  if(!questions.length)return null;
  return <form className="clarification-form" aria-label="요청사항 확인" aria-busy={busy} onSubmit={submit}>
-  <div className="clarification-form-heading"><strong>{questions.some(question=>question.required!==false)?'워크플로우 생성에 필요한 '+questions.filter(question=>question.required!==false).length+'개 항목을 확인해주세요.':'원하는 세부 설정을 선택해주세요.'}</strong><p>아래 항목별로 필요한 내용과 이유를 확인하고 답변을 함께 적용하세요. 선택사항은 건너뛸 수 있습니다.</p></div>
+  <div className="clarification-form-heading"><strong>{questions.some(question=>question.required!==false)?'워크플로우 생성에 필요한 '+questions.filter(question=>question.required!==false).length+'개 항목을 확인해주세요.':'원하는 세부 설정을 선택해주세요.'}</strong><p>입력한 답변만 먼저 적용할 수 있습니다. 비워 둔 필수 항목은 다음 대화에서 다시 묻습니다. 선택사항은 건너뛸 수 있습니다.</p></div>
   {rows.map(({key,index,question})=>{
    const type=responseType(question),value=valueFor(key,question),fieldId=formId+'-'+index;
    const options=Array.from(new Set(question.options??[])).filter(option=>option.trim()&&option.trim()!=='직접 입력');

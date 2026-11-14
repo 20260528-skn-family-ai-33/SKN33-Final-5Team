@@ -309,3 +309,154 @@ def test_unread_today_keeps_both_date_and_unread_filters():
     assert request['count'] == 3
     assert request['query'].startswith('is:unread after:')
     assert request['query'].endswith('-in:sent -in:drafts')
+
+
+@pytest.mark.parametrize('period_answer', ['최근 3일', '최근 3일간', '최근 3일 동안'])
+def test_recent_days_followup_uses_a_relative_gmail_window(period_answer):
+    current = state('매일 Gmail에서 받은 메일 3건을 요약해서 Slack으로 보내줘')
+    current['messages'].append(dict(role='user', content=period_answer))
+    request = gmail_slack_request(current)
+    assert request['period'] == 'recent'
+    assert request['recent_days'] == 3
+    assert request['count'] == 3
+    assert request['query'] == 'newer_than:3d -in:sent -in:drafts'
+    assert request['schedule'] is None
+    assert len(request['missing_conditions']) == 2
+
+
+def test_recent_days_in_initial_request_preserves_unread_filter():
+    current = state('매일 Gmail에서 최근 3일 동안 받은 안 읽은 메일 3건을 요약해서 Slack으로 보내줘')
+    request = gmail_slack_request(current)
+    assert request['period'] == 'recent'
+    assert request['recent_days'] == 3
+    assert request['query'] == 'is:unread newer_than:3d -in:sent -in:drafts'
+    assert request['count'] == 3
+
+
+def test_followup_daily_time_phrase_still_sets_the_schedule():
+    current = state('매일 Gmail에서 받은 메일 3건을 요약해서 Slack으로 보내줘')
+    current['messages'].append(dict(role='user', content='최근 3일'))
+    current['messages'].append(dict(role='user', content='매일 오전 9시에 실행해줘'))
+    request = gmail_slack_request(current)
+    assert request['schedule']['hour'] == 9
+    assert request['query'] == 'newer_than:3d -in:sent -in:drafts'
+    assert request['missing_conditions'] == ['요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)']
+
+
+def test_ui_clarification_values_do_not_read_examples_as_user_choices():
+    from agent_builder.design.gmail_slack import _PERIOD_QUESTION, _TIME_QUESTION, _QUESTION
+
+    current = state('매일 Gmail에서 받은 메일 3건을 요약해서 Slack으로 보내줘')
+    current['messages'].append(dict(role='user', content=(
+        _PERIOD_QUESTION + '에 대해 알려주세요. → 최근 3일\n' +
+        _TIME_QUESTION + '에 대해 알려주세요. → 09:00')))
+    request = gmail_slack_request(current)
+    assert request['period'] == 'recent'
+    assert request['recent_days'] == 3
+    assert request['query'] == 'newer_than:3d -in:sent -in:drafts'
+    assert request['schedule']['hour'] == 9
+    assert request['channel_id'] is None
+    assert request['missing_conditions'] == [_QUESTION]
+
+    current['messages'].append(dict(role='user', content=_QUESTION + '에 대해 알려주세요. → ' + CHANNEL))
+    request = gmail_slack_request(current)
+    assert request['channel_id'] == CHANNEL
+    assert request['missing_conditions'] == []
+    result = gmail_slack_reply(current)
+    assert result is not None
+    assert '최근 3일' in result['draft']['name']
+    assert '최근 3일 동안 받은 Gmail 메일' in result['draft']['explanation']
+    args = json.loads(result['draft']['workflow']['nodes'][0]['settings']['arguments_json'])
+    assert args == {'max_results': 3, 'query': 'newer_than:3d -in:sent -in:drafts'}
+
+    current['messages'].append(dict(role='user', content='최근 3일로 하되 캘린더 일정도 추가해줘'))
+    assert not gmail_slack_candidate(current)
+
+
+def test_recent_days_ui_clarifications_reach_saved_daily_workflow(tmp_path):
+    store = Storage(tmp_path)
+    graph, connection = graph_for(store)
+    config = {'configurable': {'thread_id': 'gmail-slack-recent-days-ui'}}
+    try:
+        first = graph.invoke(state('매일 Gmail에서 받은 메일 3건을 요약해서 Slack으로 보내줘'), config)
+        assert first['status'] == 'needs_clarification'
+        period = next(q for q in first['pending_questions'] if '어느 기간' in q['text'])
+        second = graph.invoke(Command(resume={'type': 'message',
+                                               'content': period['text'] + ' → 최근 3일',
+                                               'question_answers': [{'question_id': period['id'],
+                                                                     'value': '최근 3일', 'custom': True}]}), config)
+        assert second['status'] == 'needs_clarification'
+        assert all('기간' not in q['text'] for q in second['pending_questions'])
+        time = next(q for q in second['pending_questions'] if '몇 시' in q['text'])
+        third = graph.invoke(Command(resume={'type': 'message',
+                                              'content': time['text'] + ' → 09:00',
+                                              'question_answers': [{'question_id': time['id'],
+                                                                    'value': '09:00', 'custom': True}]}), config)
+        assert third['status'] == 'needs_clarification'
+        channel = next(q for q in third['pending_questions'] if 'Slack 채널' in q['text'])
+        ready = graph.invoke(Command(resume={'type': 'message',
+                                              'content': channel['text'] + ' → ' + CHANNEL,
+                                              'question_answers': [{'question_id': channel['id'],
+                                                                    'value': CHANNEL, 'custom': True}]}), config)
+        assert ready['status'] == 'ready'
+        assert '최근 3일' in ready['draft']['name']
+        reader = ready['draft']['workflow']['nodes'][0]
+        assert json.loads(reader['settings']['arguments_json']) == {
+            'max_results': 3, 'query': 'newer_than:3d -in:sent -in:drafts'}
+        assert ready['draft']['schedule']['hour'] == 9
+        saved = graph.invoke(Command(resume={'type': 'confirm'}), config)
+        assert saved['status'] == 'saved'
+    finally:
+        connection.close()
+        store.close()
+
+
+def test_service_retry_recent_days(tmp_path, monkeypatch):
+    from infrastructure.persistence.ids import uid
+    from service.worker import handle
+    import service.handlers.design as design
+
+    real_build_graph = design.build_graph
+
+    def bounded_graph(*args, **kwargs):
+        forbidden = Forbidden()
+        kwargs.update(conversation=lambda _: forbidden.invoke(), meaning_transport=forbidden,
+                      capability_mode='enforce', capability_transport=forbidden,
+                      condition_mode='enforce', condition_transport=forbidden,
+                      requirement_mode='enforce', requirement_transport=forbidden,
+                      verifier_mode='off')
+        return real_build_graph(*args, **kwargs)
+
+    monkeypatch.setattr(design, 'build_graph', bounded_graph)
+    session = handle(dict(directory=str(tmp_path), action='new_session', model='test', credential_id=uid()))
+    job = dict(directory=str(tmp_path), id=session['id'], action='message')
+    first = handle({**job, 'revision': session['revision'],
+                    'content': '매일 Gmail에서 받은 메일 3건을 요약해서 Slack으로 보내줘'})
+    period = next(question for question in first['pending_questions'] if '어느 기간' in question['text'])
+    period_response = period['text'] + ' → 최근 3일'
+    second = handle({**job, 'revision': first['revision'], 'content': period_response,
+                     'question_answers': [{'question_id': period['id'],
+                                           'value': '최근 3일', 'custom': True}]})
+    assert second['status'] == 'needs_clarification'
+
+    store = Storage(tmp_path)
+    graph, connection = bounded_graph(store)
+    config = {'configurable': {'thread_id': session['id']}}
+    try:
+        graph.update_state(config, {'status': 'validation_failed', 'route': 'invalid',
+                                    'requirement_failure': {'kind': 'processing_error', 'retryable': True},
+                                    'pending_questions': [], 'capability_questions': []}, as_node='supervisor')
+        assert not graph.get_state(config).next
+    finally:
+        connection.close()
+        store.close()
+
+    retry = handle({**job, 'revision': second['revision'],
+                    'content': '앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.'})
+    assert retry['status'] == 'needs_clarification'
+    assert retry['requirement_failure'] is None
+    assert all('기간' not in question['text'] for question in retry['pending_questions'])
+    assert any('몇 시' in question['text'] for question in retry['pending_questions'])
+    assert any('Slack 채널' in question['text'] for question in retry['pending_questions'])
+    user_messages = [message['content'] for message in retry['messages'] if message['role'] == 'user']
+    assert user_messages == ['매일 Gmail에서 받은 메일 3건을 요약해서 Slack으로 보내줘', period_response]

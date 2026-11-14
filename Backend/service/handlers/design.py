@@ -280,7 +280,9 @@ def _session_action(c):
             if retrying:
                 # Retry is a control action, not a new business requirement or a
                 # response to a pending field. Keep exact source turns and IDs.
-                graph.update_state(config, {'repair_count':0, 'confirmed':False}, as_node='resources')
+                graph.update_state(config, {'repair_count':0, 'confirmed':False,
+                                            'system_failure':None, 'requirement_failure':None,
+                                            'issues':[]}, as_node='resources')
                 graph.invoke(None, config)
             elif has_interrupt:
                 if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:

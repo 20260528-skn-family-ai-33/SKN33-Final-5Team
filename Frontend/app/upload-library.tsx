@@ -1,3 +1,4 @@
+import {PageTransition} from './page-transition';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertCircle, Check, ChevronRight, ExternalLink, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Search, Trash2, Upload as UploadIcon, X} from 'lucide-react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
@@ -348,7 +349,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
   const moving = action?.kind === 'move-folder' || action?.kind === 'move-asset';
   const sameDestination = action?.kind === 'move-folder' ? destination === (action.folder.parent_id || '') : action?.kind === 'move-asset' ? destination === (action.asset.folder_id || '') : false;
 
-  return <div className="asset-library">
+  return <div className="asset-library"><PageTransition active={loading}/>
     <div className="entry-page-heading"><div><h1>자료함</h1></div>
       <div className="asset-library-actions">
         {canEdit && <><button type="button" className="as-button as-primary" disabled={busy} onClick={() => input.current?.click()}><UploadIcon size={15}/>파일 올리기</button>

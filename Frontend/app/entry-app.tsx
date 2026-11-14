@@ -1,3 +1,4 @@
+import {PageTransition} from './page-transition';
 import {useButtonEffects} from './use-button-effects';
 import {settleWithLimit} from '../lib/settle-with-limit';
 import {useEffect,useRef,useState} from 'react';
@@ -57,7 +58,8 @@ export default function EntryApp(){
   historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current,initialPrompt,initialFile},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});return true;
 
  }
- if(!['intro','preview'].includes(route)&&(auth.loading||auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
+ if(auth.loading)return <PageTransition active/>;
+ if(!['intro','preview'].includes(route)&&(auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
  if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('home')}/>;
  const newFlow=()=>navigate('workflow',undefined,true);
@@ -69,7 +71,7 @@ export default function EntryApp(){
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
    <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onCanLeaveChange={fn=>{guard.current=fn;}} onOpen={id=>navigate('schedule',id)} onOpenExternal={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)} onCreate={newFlow}/>:
-    <WorkspaceHome route={route as 'home'|'workflows'|'history'} startExample={startExample} memberName={auth.user?.name?.trim()} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId,external)=>navigate(next,service,false,runId,false,undefined,undefined,external)} newFlow={newFlow}/>}
+    <WorkspaceHome key={route+':'+(new URLSearchParams(location.search).get('service')||'')} route={route as 'home'|'workflows'|'history'} startExample={startExample} memberName={auth.user?.name?.trim()} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId,external)=>navigate(next,service,false,runId,false,undefined,undefined,external)} newFlow={newFlow}/>}
 
    </main>
   </div>
@@ -86,7 +88,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
  async function load(){const token=++generation.current;setLoading(true);setError('');setHistoryErrors([]);setRunRows([]);try{
 
   const {agents:listed=[],organization:folders=emptyOrganization}=await request<{agents?:AgentSummary[];organization?:WorkflowOrganization}>('/api/agent-builder/agents');if(token!==generation.current)return;setAgents(listed);setOrganization(folders);setSelectedWorkflows([]);setActiveFolder(current=>current==='all'||current==='unfiled'||folders.folders.some(f=>f.id===current)?current:'all');
-  if(route==='workflows')void request<{workflows?:ExternalFlowSummary[]}>('/api/workflows').then(result=>{if(token===generation.current)setExternalFlows((result.workflows||[]).filter(flow=>flow.nodes.length>1));}).catch(()=>{});
+  if(route==='workflows')await request<{workflows?:ExternalFlowSummary[]}>('/api/workflows').then(result=>{if(token===generation.current)setExternalFlows((result.workflows||[]).filter(flow=>flow.nodes.length>1));}).catch(()=>{});
   if(route==='history'){const historyAgents=listed.filter(agent=>!historyService||agent.id===historyService);const rows=await settleWithLimit(historyAgents,4,async(agent:AgentSummary)=>{const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(agent.id));return {agent,runs:result.tests||[]};},()=>token===generation.current);if(token!==generation.current)return;setRunRows(rows.flatMap(r=>r.status==='fulfilled'?r.value.runs.map((run:RunSummary)=>({agent:r.value.agent,run})):[]).sort((a,b)=>(Date.parse(b.run.started_at||b.run.created_at||'')||0)-(Date.parse(a.run.started_at||a.run.created_at||'')||0)));setHistoryErrors(rows.flatMap((r,i)=>r.status==='rejected'?[historyAgents[i].config.name]:[]));}
  }catch(e){if(token===generation.current)setError((e as Error).message);}finally{if(token===generation.current)setLoading(false);}}
  useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;};},[route,historyService]);
@@ -103,6 +105,9 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
  }
  const externalMatches=activeFolder==='all'?externalFlows.filter(flow=>flow.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())):[];
  const refreshButton=<button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button>;
+ const initialLoad=useRef(true);
+ if(!loading)initialLoad.current=false;
+ if(loading&&initialLoad.current)return <PageTransition active/>;
  if(route==='home')return <WorkspaceOverview
   workflows={agents.slice().sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)).slice(0,3)}
   memberName={memberName} loading={loading} error={error}

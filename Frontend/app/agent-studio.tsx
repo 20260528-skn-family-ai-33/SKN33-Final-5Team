@@ -1,3 +1,4 @@
+import {PageTransition} from './page-transition';
 import {WorkflowRenameDialog,renameWorkflow} from './workflow-rename-dialog';
 import {WorkflowPreview,type Workflow} from './workflow-preview';
 import {NodeInspector,RuleSummary} from './node-inspector';
@@ -632,7 +633,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const runRequestField=<label className="as-field">{testRun?.question?'확인 질문에 답변':reviewCapable?(requestRequired?'고객 문의':'고객 문의 (선택 · 표의 문의 열 사용)'):requestRequired?'실행 요청':'추가 요청 (선택)'}<textarea placeholder={testRun?.question?"확인 질문에 답변하세요.":requestRequired?"저장한 워크플로우에 맡길 요청이나 질문을 입력하세요.":"비워 두면 저장한 설정으로 실행합니다."} data-tour="run-input" value={testText} onChange={e=>setTestText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||libraryBusy}/>{requestRequired&&!testRun?.question&&<small>이 워크플로우는 이번에 처리할 {reviewCapable?'고객 문의':'질문이나 요청'}가 필요합니다.</small>}</label>;
  const pageNavigation=<div className="workspace-context"><nav className="studio-tabs" aria-label="워크플로우 작업"><button aria-current={screen==='workflow'?'page':undefined} className={screen==='workflow'?'active':''} onClick={()=>switchScreen('workflow')} disabled={!!busy||!!recovery||libraryBusy}>설계</button><button data-tour="run-tab" aria-current={screen==='run'?'page':undefined} className={screen==='run'?'active':''} onClick={()=>switchScreen('run')} disabled={!!busy||!!recovery||libraryBusy}>직접 실행</button>{selected&&<button aria-current={screen==='schedule'?'page':undefined} className={screen==='schedule'?'active':''} onClick={()=>switchScreen('schedule')} disabled={!!busy||!!recovery||libraryBusy}>예약 관리</button>}</nav>{screen==='workflow'&&<button type="button" data-tour="create-workflow" className="as-button as-primary as-new-workflow" disabled={loading||!!busy||!!recovery||libraryBusy} onClick={()=>{if(canLeave())startFreshDesign();}}><Plus size={16}/>새 워크플로우</button>}</div>;
 
- return <div className={"as-app screen-"+screen+(selected?" has-service":"")}>
+ return <div className={"as-app screen-"+screen+(selected?" has-service":"")}><PageTransition active={loading}/>
   {attachMode && !saved && screen==='workflow' && <AttachUploadDialog mode={attachMode} onClose={()=>setAttachMode(null)}
     connected={resources.map(r=>r.id)} formats={receiptQuestion ? receiptFileTypes : undefined}
     onLibrary={()=>setAttachMode('library')} onNew={()=>{setAttachMode(null);fileInput.current?.click();}}

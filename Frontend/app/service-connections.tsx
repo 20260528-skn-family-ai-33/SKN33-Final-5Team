@@ -1,3 +1,4 @@
+import {PageTransition} from './page-transition';
 import {useEffect,useRef,useState} from 'react';
 import {Toaster} from '@/components/ui/sonner';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
@@ -19,6 +20,7 @@ const accountLabel=(credential:DisplayCredential,service:Service)=>credential.ac
 
 export function ServiceConnections(){
   const [status,setStatus]=useState<Status>();
+  const [initialLoading,setInitialLoading]=useState(true);
   const [notice,setNotice]=useState('');
   const [busy,setBusy]=useState<Service|null>(null);
   const [managing,setManaging]=useState<Service|null>(null);
@@ -30,6 +32,7 @@ export function ServiceConnections(){
     const requestId=++statusRequest.current;
     try{const next=await request<Status>('/api/service-connections');if(requestId===statusRequest.current&&!changing.current)setStatus(next);}
     catch(e){if(requestId===statusRequest.current&&!changing.current)setNotice((e as Error).message);}
+    finally{if(requestId===statusRequest.current)setInitialLoading(false);}
   }
   useEffect(()=>{void load();const focus=()=>void load();window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);},[]);
   useEffect(()=>{
@@ -65,7 +68,7 @@ export function ServiceConnections(){
   }
   const managedEntry=entries.find(entry=>entry.id===managing);
   const managedCredential=managing?connected(status,managing):undefined;
-  return <section className="service-connections" aria-labelledby="service-connections-heading">
+  return <section className="service-connections" aria-labelledby="service-connections-heading"><PageTransition active={initialLoading}/>
     <Toaster theme="light" position="top-center"/>
     <div className="entry-page-heading"><div><h1 id="service-connections-heading">서비스 연결</h1></div></div>
     {notice&&!managing&&<p role="status" className="service-connection-feedback">{notice}</p>}

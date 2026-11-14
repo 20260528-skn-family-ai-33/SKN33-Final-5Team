@@ -1,3 +1,4 @@
+import {PageTransition} from './page-transition';
 import {WorkflowRenameDialog,renameWorkflow} from './workflow-rename-dialog';
 import {useEffect,useRef,useState} from 'react';
 import {AlertCircle,ArrowRight,CalendarClock,Pencil,Plus,RefreshCw,Search,X} from 'lucide-react';
@@ -94,7 +95,7 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
   setNotice(schedule?managedAgent.config.name+'의 예약 설정을 저장했습니다.':managedAgent.config.name+'의 예약을 해제했습니다. 워크플로우는 유지됩니다.');
   if(schedule)setAdding(false);else resetManager();
  }
- return <section className="scheduled-workflows" aria-labelledby="schedules-heading">
+ return <section className="scheduled-workflows" aria-labelledby="schedules-heading"><PageTransition active={loading}/>
   <div className="entry-page-heading"><div><h1 id="schedules-heading">예약 관리</h1></div><div className="schedule-page-actions"><button type="button" className="as-button" disabled={loading||busy} onClick={toggleAdding}><Plus size={15}/>기존 워크플로우에 예약 추가</button><button type="button" className="as-button" disabled={busy} onClick={()=>navigate(onCreate)}>새 예약 워크플로우</button><button type="button" className="as-button" aria-label="예약 목록 새로고침" disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={15}/></button></div></div>
   {notice&&<p className="schedule-page-notice" role="status">{notice}</p>}
   {loading?<p className="entry-loading" role="status">예약 목록을 불러오고 있습니다.</p>:error?<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button type="button" onClick={()=>void load()}>다시 시도</button></div>:<>

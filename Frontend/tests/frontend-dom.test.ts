@@ -731,17 +731,25 @@ test('DOM: a fresh file-first design opens real document excerpts and explains u
   assert.equal(document.querySelector('.as-resource-dialog .as-preserve')?.textContent,text);
  }finally{await h.close();}
 });
-test('DOM: a first upload offers observed file values before the first chat message',async()=>{
+for(const drop of [false,true])test('DOM: first attachment shows file values before chat ('+(drop?'drop':'picker')+')',async()=>{
  const file={id:'uploaded',name:'접수.txt',kind:'document',has_readable_text:true,columns:[],fields:[{label:'접수번호',value:'A-120'}],snippets:['접수번호: A-120'],preview:[]};
  const h=await setup('',{},path=>{
   if(path.endsWith('/sessions'))return {id:'new',revision:0};
   if(path.endsWith('/upload'))return {...readySession(),id:'new',revision:1,messages:[],draft:null,status:'empty',file_inspection:[file]};
  });
  try{
-  await click(button('자료 연결'));await click(button('새 파일 올리기'));
-  const picker=document.querySelector('input[type=file]') as HTMLInputElement;
-  Object.defineProperty(picker,'files',{value:[new dom.window.File(['접수번호: A-120'],'접수.txt')]});
-  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const files=[new dom.window.File(['접수번호: A-120'],'접수.txt')];
+  if(drop){
+   const event=new dom.window.Event('drop',{bubbles:true,cancelable:true});
+   Object.defineProperty(event,'dataTransfer',{value:{files}});
+   await act(async()=>{document.querySelector('.as-composer textarea')!.dispatchEvent(event);});
+   assert.ok(event.defaultPrevented);
+  }else{
+   await click(button('자료 연결'));await click(button('새 파일 올리기'));
+   const picker=document.querySelector('input[type=file]') as HTMLInputElement;
+   Object.defineProperty(picker,'files',{value:files});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  }
   const deadline=Date.now()+3000;
   while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
   const card=document.querySelector('.as-inspected-source') as HTMLDetailsElement;assert.ok(card.open);
@@ -1157,7 +1165,7 @@ test('entry: fresh editor starts from the list and browser history returns to th
   await click(button('워크플로우'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   assert.ok(document.querySelector('.as-composer'));
-  await click(button('목록으로'));await t.flush();
+  await click(document.querySelector('[data-tour="menu-workflows"]')!);await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
   const libraryTitle=document.querySelector('.task-library-title > div')?.textContent;
   await click(button('작업 템플릿'));await t.flush();
@@ -2083,7 +2091,7 @@ for(const includeSchedule of [true,false])test('request-led scheduling: save rev
  const config={...A.config,name:'재고 현황 보고서',schedule:spec,report_destination:'reports'};
  const session={id:'intent-session',revision:4,messages:[{role:'user',content:'매일 오전 9시에 재고 현황을 정리해줘.'}],draft:config,status:'ready',issues:[],trace:[],resources:[]};
  const savedAgent={...A,config:{...config,schedule:includeSchedule?spec:null}};
- const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>{
   if(path.includes('/session?'))return session;
   if(path.endsWith('/confirm'))return {...session,status:'saved',saved_agent_id:'A',draft:savedAgent.config};
   if(path.includes('/agent?id=A'))return {...snapshot(savedAgent),source_required:false,schedule_request_required:false};
@@ -2153,7 +2161,7 @@ test('clarification: a legacy choice requires confirmation and submits its quest
 test('execution separation: a manual workflow gains a reservation while direct input stays independent',async()=>{
  let reservation:any={active:false,agent_version:1,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'};
  const finished={id:'separate-run',status:'succeeded',answer:'분리 실행 완료',agent_version:1,steps:[],rows:[],artifact:null};
- const h=await setup('?screen=schedule&service=A',{},(path,body)=>{
+ const h=await setup('?screen=schedule&service=A',{},path=>{
   if(path.includes('/agent?id=A'))return {...snapshot(A),schedule:reservation,request_required:true,schedule_request_required:false,source_required:false,input_requirements:[]};
   if(path.endsWith('/test'))return finished;
   if(path.endsWith('/schedule_remove')){reservation=null;return {schedule:null};}
@@ -2298,7 +2306,7 @@ test('home: linked detail pages keep the selected workflow and return to home',a
   await click(button('설계'));
   route('workflow','A');
   assert.equal(document.querySelector('main h1')?.textContent,'일일 보고서');
-  await click(button('목록으로'));
+  await click(document.querySelector('[data-tour="menu-workflows"]')!);
   route('workflows');
   await click(document.querySelector('[aria-label="일일 보고서 실행 기록"]')!);
   route('history','A');
@@ -2632,7 +2640,7 @@ test('direct run keeps an optional request editor open while clearing and after 
 
 test('home attachment is uploaded before the initial design message',async()=>{
  const prompt='첨부 문서를 요약해줘';
- const h=await setup('?screen=home',{},(path,body)=>{
+ const h=await setup('?screen=home',{},path=>{
   if(path.endsWith('/sessions'))return {...readySession(),revision:1,status:'empty',draft:null,resources:[]};
   if(path.endsWith('/upload'))return {...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'home-file',name:'문서.txt',kind:'document'}]};
   if(path.endsWith('/message'))return {...readySession(),messages:[{role:'user',content:prompt}]};
@@ -2810,12 +2818,12 @@ test('workflow folders: create, select, move, filter, rename and delete preserve
   await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택한 워크플로우 이동 (1)'));
   await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
-  await submit(document.querySelector('.workflow-folder-form')!);await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   assert.ok(document.querySelector('button[aria-label="서비스 A 실행하기"]'));
   assert.ok(document.querySelector('button[aria-label="서비스 A 예약 관리"]'));
   await click(button('폴더 이름 변경'));await input(field('폴더 이름'),'정리 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/정리 업무/);
+  assert.match(document.querySelector('.workflow-folder-list')!.textContent!,/정리 업무/);
   await click(button('폴더 삭제'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
   assert.deepEqual(organization.assignments,{});
@@ -2845,7 +2853,7 @@ test('workflow folder pending save rejects duplicate submission and keeps the di
   assert.equal(saves,1);assert.equal(button('취소').disabled,true);
   assert.equal(field('폴더 이름').disabled,true);
   await act(async()=>{pending.resolve({organization:{revision:1,folders:[{id:'pending-folder',name:'중복 방지'}],assignments:{}}});await tick();});
-  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/중복 방지/);
+  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-list')!.textContent!,/중복 방지/);
  }finally{await h.close();}
 });
 
@@ -2858,7 +2866,7 @@ test('workflow folder search and folder changes clear hidden selection',async()=
   assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);
-  await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='unfiled';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await click(button('미분류'));
   assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
  }finally{await h.close();}
@@ -2880,5 +2888,76 @@ test('workflow folder selection caps at 500 and releases a slot when unchecked',
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
   await click(button('선택한 워크플로우 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
+ }finally{await h.close();}
+});
+
+
+test('clarification: paged answers preserve backend ids, arrays, custom and optional skip in one request',async()=>{
+ const qs=[
+  {id:'batch-format',key:'format',text:'결과 형식',options:['CSV','Excel'],response:{type:'single_choice'}},
+  {id:'batch-sections',key:'sections',text:'포함 내용',options:['요약','상세'],response:{type:'multi_choice'}},
+  {id:'batch-notes',key:'notes',text:'추가 조건',response:{type:'text'},required:false},
+ ];
+ const session={id:'batch-session',revision:4,messages:[{role:'assistant',content:'작업 조건을 확인해주세요.'}],draft:{...A.config,questions:qs.map(q=>q.text),question_options:qs.map(q=>q.options||[])},status:'needs_clarification',issues:[],trace:[],resources:[],pending_questions:qs};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/message'))return {...session,revision:5,status:'ready',pending_questions:[],draft:{...session.draft,questions:[]},messages:[...session.messages,{role:'user',content:body.content}]};
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('.clarification-form input[value="CSV"]')!);
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  await click(document.querySelector('.clarification-form input[value="요약"]')!);
+  const fields=document.querySelectorAll('.clarification-form fieldset');
+  await click(fields[1].querySelector('input[id$="custom-choice"]')!);
+  await input(fields[1].querySelector('textarea')!,'예외 내용');
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  await click(button('답변 적용'));await h.flush();
+  const requests=h.calls.filter(call=>call.path.endsWith('/message'));assert.equal(requests.length,1);
+  assert.equal(requests[0].body.id,session.id);assert.equal(requests[0].body.revision,4);
+  assert.deepEqual(requests[0].body.answers,[{questionId:qs[0].id,value:'CSV'},{questionId:qs[1].id,value:['요약','예외 내용'],custom:true},{questionId:qs[2].id,value:null,skip:true}]);
+ }finally{await h.close();}
+});
+
+
+test('sidebar defaults to icons, pins across navigation and collapses explicitly',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=()=>document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  assert.equal(sidebar().dataset.expanded,'false');assert.equal(sidebar().dataset.pinned,'false');
+  const toggle=()=>document.querySelector<HTMLButtonElement>('.workspace-sidebar-toggle')!;
+  assert.equal(toggle().getAttribute('aria-expanded'),'false');
+  const controls=toggle().getAttribute('aria-controls');assert.ok(controls&&document.getElementById(controls));
+  for(const nav of sidebar().querySelectorAll('.workspace-nav button'))assert.ok(nav.getAttribute('aria-label'));
+  await click(toggle());assert.equal(sidebar().dataset.pinned,'true');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'true');
+  await click(document.querySelector('[data-tour="menu-workflow"]')!);await h.flush();
+  assert.equal(sidebar().dataset.expanded,'true');assert.equal(sidebar().dataset.pinned,'true');
+  await click(toggle());assert.equal(sidebar().dataset.expanded,'false');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false');
+ }finally{await h.close();}
+});
+
+test('sidebar hover and keyboard focus expand temporarily without changing the pinned preference',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'true');assert.equal(sidebar.dataset.pinned,'false');
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');
+  const nav=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{nav.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
+  await act(async()=>{nav.blur();await tick();});assert.equal(sidebar.dataset.expanded,'false');
+  assert.notEqual(localStorage.getItem('a4b-sidebar-pinned'),'true');
+ }finally{await h.close();}
+});
+
+
+test('sidebar pointer click focus cannot hold a transient menu open after mouse leave',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));home.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));home.focus();await tick();});
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');assert.equal(sidebar.dataset.pinned,'false');
  }finally{await h.close();}
 });

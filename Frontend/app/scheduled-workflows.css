@@ -1,5 +1,5 @@
 .schedule-overview{display:flex;flex-wrap:wrap;gap:12px 28px;margin-bottom:24px;padding:16px 0;border-top:1px solid var(--a4b-border);border-bottom:1px solid var(--a4b-border);font-size:12px;color:var(--a4b-muted)}
-.schedule-overview strong{margin-left:8px;font-size:18px;font-weight:650;font-variant-numeric:tabular-nums;color:var(--a4b-ink)}
+.schedule-overview>span{display:inline-flex;align-items:center;gap:10px;min-height:28px}.schedule-overview strong{margin-left:0;line-height:1;font-size:18px;font-weight:650;font-variant-numeric:tabular-nums;color:var(--a4b-ink)}
 .schedule-list-tools select{min-height:38px;padding:7px 30px 7px 10px;border:1px solid var(--a4b-input-border);border-radius:4px;background:var(--a4b-surface);color:var(--a4b-ink);font:inherit;font-size:12px;cursor:pointer}
 .schedule-list-tools select:focus-visible{outline:2px solid var(--a4b-action);outline-offset:2px}
 .schedule-table{width:100%;border-collapse:collapse;text-align:left;table-layout:fixed}

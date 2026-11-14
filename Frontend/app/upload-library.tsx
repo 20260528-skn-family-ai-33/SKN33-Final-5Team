@@ -1,3 +1,4 @@
+import {PageTransition} from './page-transition';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertCircle, Check, ChevronRight, ExternalLink, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Search, Trash2, Upload as UploadIcon, X} from 'lucide-react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
@@ -348,7 +349,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
   const moving = action?.kind === 'move-folder' || action?.kind === 'move-asset';
   const sameDestination = action?.kind === 'move-folder' ? destination === (action.folder.parent_id || '') : action?.kind === 'move-asset' ? destination === (action.asset.folder_id || '') : false;
 
-  return <div className="asset-library">
+  return <div className="asset-library"><PageTransition active={loading}/>
     <div className="entry-page-heading"><div><h1>자료함</h1></div>
       <div className="asset-library-actions">
         {canEdit && <><button type="button" className="as-button as-primary" disabled={busy} onClick={() => input.current?.click()}><UploadIcon size={15}/>파일 올리기</button>
@@ -362,9 +363,9 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
         {trail.map(folder => <span key={folder.id}><ChevronRight size={13} aria-hidden="true"/><button type="button" disabled={mutating} onClick={() => navigate(folder.id)} aria-current={folder.id === folderId ? 'page' : undefined}>{folder.name}</button></span>)}
       </nav>
       <form className="asset-library-search" role="search" onSubmit={event => {event.preventDefault(); if (!running.current && !writing.current) setQuery(search.trim());}}>
-        <Search size={15} aria-hidden="true"/><input aria-label="현재 폴더에서 검색" placeholder="현재 폴더에서 검색" value={search} disabled={mutating} onChange={event => setSearch(event.target.value)}/>
+        <input aria-label="현재 폴더에서 검색" placeholder="현재 폴더에서 검색" value={search} disabled={mutating} onChange={event => setSearch(event.target.value)}/>
         {search && <button type="button" disabled={mutating} aria-label="자료 검색 지우기" onClick={() => {setSearch(''); setQuery('');}}><X size={14}/></button>}
-        <button type="submit" disabled={mutating}>검색</button>
+        <button type="submit" disabled={mutating} aria-label="자료 검색" title="검색"><Search size={16} aria-hidden="true"/></button>
       </form>
     </div>
     {canEdit && <><div className="asset-dropzone" role="region" data-dragging={dragging} aria-label="파일 업로드" onDragOver={event => {event.preventDefault(); if (!busy) setDragging(true);}}

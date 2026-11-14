@@ -58,9 +58,9 @@ export function AccountMenu({showLocalStatus=false}:{showLocalStatus?:boolean}){
   }catch(error){setError((error as Error).message);setBusy(false);}
  }
  if(auth.loading)return null;
- if(!auth.enabled)return showLocalStatus?<span className="a4b-account-local" title="로컬 미리보기는 로그인 없이 실행됩니다."><Monitor size={15} aria-hidden="true"/>로그인 계정 없음</span>:null;
- if(!auth.user)return <a className="a4b-account-button" href={loginUrl()}><LogIn size={15} aria-hidden="true"/>로그인</a>;
- return <div className="a4b-account-menu"><span className="a4b-account-identity" title={auth.user.email}><UserRound size={16} aria-hidden="true"/><span className="a4b-account-label">로그인 계정</span><span className="a4b-account-name">{auth.user.name}</span></span><button className="a4b-account-button" type="button" disabled={busy} onClick={()=>void logout()}><LogOut size={15} aria-hidden="true"/>{busy?'로그아웃 중…':'로그아웃'}</button>{error&&<span role="alert">{error}</span>}</div>;
+ if(!auth.enabled)return showLocalStatus?<span className="a4b-account-local" title="로컬 미리보기는 로그인 없이 실행됩니다."><Monitor size={15} aria-hidden="true"/><span className="workspace-menu-label">로그인 계정 없음</span></span>:null;
+ if(!auth.user)return <a className="a4b-account-button" aria-label="로그인" title="로그인" href={loginUrl()}><LogIn size={15} aria-hidden="true"/><span className="workspace-menu-label">로그인</span></a>;
+ return <div className="a4b-account-menu"><span className="a4b-account-identity" title={auth.user.email}><UserRound size={16} aria-hidden="true"/><span className="a4b-account-label">로그인 계정</span><span className="a4b-account-name">{auth.user.name}</span></span><button className="a4b-account-button" type="button" aria-label="로그아웃" title="로그아웃" disabled={busy} onClick={()=>void logout()}><LogOut size={15} aria-hidden="true"/><span className="workspace-menu-label">{busy?'로그아웃 중…':'로그아웃'}</span></button>{error&&<span role="alert">{error}</span>}</div>;
 }
 export function SignIn({onHome}:{onHome:()=>void}){
  const auth=useAuth();const reason=new URLSearchParams(location.search).get('auth_error');

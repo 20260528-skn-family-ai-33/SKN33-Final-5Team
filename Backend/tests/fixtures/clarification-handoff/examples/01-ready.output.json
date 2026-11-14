@@ -1313,9 +1313,24 @@
         },
         "native_settings": [],
         "operation_contract_fingerprint": "d193f0a71192f993c76ac953639e5e29bc78267a1f4edc595f563953e67a415b"
+      },
+      {
+        "id": "slack.post_message",
+        "version": 1,
+        "description": "앞 단계의 text 출력을 지정한 Slack 채널에 전송합니다. 확장 동작은 operation_contracts의 operation·인자·범위를 사용합니다.",
+        "input_ports": {
+          "channel_id": "json",
+          "text": "text"
+        },
+        "output_ports": {
+          "result": "json",
+          "text": "text"
+        },
+        "native_settings": [],
+        "operation_contract_fingerprint": "4bf522f3fbd050ddd91a83b862b07e306d8b8ddb045d214257c29640e989da6d"
       }
     ],
-    "tool_catalog_fingerprint": "8ade920787a4437f358c8ec0f4f5200d1ea1aa60dba49501235681ad3f81cd02",
+    "tool_catalog_fingerprint": "06018d4fdbbca0ba773f84fae1b9f2482b9e843149fdb190dbf5cb4d267a3f0f",
     "ml_advice": {
       "status": "not_requested",
       "ml_candidates": [],

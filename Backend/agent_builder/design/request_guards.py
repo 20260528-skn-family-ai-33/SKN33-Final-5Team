@@ -156,13 +156,17 @@ def _review_path_issues(path, final, text):
     return []
 
 
-def unary_filter_issue(rule, text):
+def unary_filter_issue(rule, text, *, state=None):
     """A categorical comparison must not silently become an emptiness predicate."""
     operator = rule.get('operator')
     if operator not in ('is_empty', 'not_empty'):
         return None
     if rule.get('value') is not None or rule.get('compare_field'):
         return '빈값 선별에는 비교 값을 넣을 수 없습니다. 값과 비교하려면 비교 조건을 사용하세요.'
+    if state is not None:
+        from .compound_table_request import grounded_compound_rule
+        if grounded_compound_rule(state, rule):
+            return None
     empty = r'빈\s*(?:값|칸|행|셀)|비어\s*있|비었|결측|누락|공백|값(?:이|은)?\s*없|\b(?:null|empty|blank|missing)\b'
     nonempty = r'비어\s*있지\s*않|빈\s*값이\s*아닌|값(?:이)?\s*있는|채워진|입력된|\bnon[- ]?empty\b'
     selection = r'골라|선별|필터|추려|남겨|남기|제외|제거|삭제|\b(?:select|filter|keep|drop|remove)\b'
@@ -211,6 +215,8 @@ def request_guard_issues(state, draft):
     issues = review_workflow_issues(state, draft)
     if draft.get('questions') or draft.get('unsupported'):
         return issues
+    from .compound_table_request import compound_draft_issues
+    issues.extend(compound_draft_issues(state, draft))
     from .output_selection_request import output_selection_issues
     issues.extend(output_selection_issues(state, draft))
     from .numeric_filter_proof import numeric_filter_issues
@@ -222,7 +228,7 @@ def request_guard_issues(state, draft):
             plans.append(node['settings'].get('execution_plan') or draft.get('execution_plan'))
     for plan in plans:
         for rule in (plan or {}).get('filters', []):
-            issue = unary_filter_issue(rule, text)
+            issue = unary_filter_issue(rule, text, state=state)
             if issue:
                 issues.append(issue)
     return list(dict.fromkeys(issues))

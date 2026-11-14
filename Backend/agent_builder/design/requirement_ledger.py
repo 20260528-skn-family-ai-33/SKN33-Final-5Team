@@ -284,7 +284,7 @@ def validate_plan(raw, state):
                 unary=f['operator'] in ('is_empty','not_empty')
                 if unary:
                     from .request_guards import unary_filter_issue
-                    issue = unary_filter_issue(f, task['quote'])
+                    issue = unary_filter_issue(f, task['quote'], state=state)
                     if issue:
                         raise ValueError(issue)
                 if not unary and ((f['value'] is None)==(f['compare_field'] is None)):
@@ -311,6 +311,8 @@ def validate_plan(raw, state):
     validate_group_aggregations(plan, state)
     validate_grouped_result(plan, state)
     validate_explicit_ledger(plan,state)
+    from .compound_table_request import validate_compound_ledger
+    validate_compound_ledger(plan,state)
     from .output_selection_request import validate_output_selection
     validate_output_selection(plan,state)
     from .request_guards import review_request
@@ -581,6 +583,11 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
 
     def check(state):
         target='template' if state.get('condition_route')=='template_plan' else 'plan'
+        from .compound_table_request import compound_table_request, request_specs
+        compound = compound_table_request(state)
+        if compound is not None:
+            raw = dict(tasks=[dict(source_message=0,description=s['kind'],spec=s) for s in request_specs(compound)],unresolved=[])
+            return _completed(state, target, extract_plan(raw, state), ledger_fingerprint(state), 0)
         from .gmail_slack import gmail_slack_plan
         slack_plan=gmail_slack_plan(state)
         if slack_plan:
@@ -647,7 +654,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             from .explicit_review_contract import explicit_review_contract, unrequested_review_kinds
             review_contract=explicit_review_contract(state)
             owned.update(unrequested_review_kinds(state))
-            from .output_selection_request import output_selection
+            from .output_selection_request import output_selection, cancelled_numeric_fields
             selected_columns=output_selection(state)
             if multiple_outputs(state):
                 owned.discard('export')
@@ -692,6 +699,10 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             numeric_filters=literal_numeric_filters(state)
             if numeric_filters:
                 payload['explicit_numeric_filters']=numeric_filters
+            cancelled = cancelled_numeric_fields(state)
+            if cancelled:
+                payload['cancelled_filter_fields'] = sorted(cancelled)
+                payload['cancelled_filter_instruction'] = '이 열의 선별 조건은 사용자가 취소했다. 해당 필터를 제거하고 다른 열의 조건과 계산·출력 업무는 유지한다.'
             computation=literal_output_compute(state)
             if computation:
                 payload['explicit_required_computation']=computation

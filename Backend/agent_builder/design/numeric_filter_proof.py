@@ -19,7 +19,10 @@ def contains_alternative(plan, rule):
 
 
 def numeric_filter_issues(state, draft):
-    from .output_selection_request import literal_numeric_filters, literal_or_filters
+    from .output_selection_request import literal_numeric_filters, literal_or_filters, cancelled_numeric_fields
+    cancellation_issues = _cancelled_filter_issues(cancelled_numeric_fields(state), draft)
+    if cancellation_issues:
+        return cancellation_issues
     required = [(r, guarantees_filter) for r in literal_numeric_filters(state)]
     required += [(r, contains_alternative) for r in literal_or_filters(state)]
     if not required:
@@ -74,3 +77,35 @@ def numeric_filter_issues(state, draft):
         return [] if writers else error
     except (ValueError, KeyError, TypeError):
         return error
+
+
+def _cancelled_filter_issues(cancelled, draft):
+    """Reject cancelled predicates on reachable data paths, including operations."""
+    if not cancelled:
+        return []
+    error = ['취소한 열의 선별 조건이 실제 실행 경로에 남아 있습니다.']
+    if not draft.get('workflow'):
+        return error if any(r['field'] in cancelled for r in
+                            (draft.get('execution_plan') or {}).get('filters', [])) else []
+    from .workflow_paths import workflow_paths
+    from .requirement_coverage import _arguments
+    try:
+        # A reachable filter may execute even when its output is later ignored.
+        # Check all reachable nodes; disconnected branches are not executed.
+        for path, _ in workflow_paths(draft['workflow']):
+            for node in path:
+                if node['tool'] != 'filter_sort':
+                    continue
+                operation = node['settings'].get('operation')
+                if not operation:
+                    plan = node['settings'].get('execution_plan') or draft.get('execution_plan') or {}
+                    if any(r['field'] in cancelled for r in plan.get('filters', [])):
+                        return error
+                elif operation == 'filter':
+                    predicates = _arguments(node).get('predicates')
+                    if not isinstance(predicates, list) or any(
+                            not isinstance(p, dict) or p.get('column') in cancelled for p in predicates):
+                        return error
+        return []
+    except (ValueError, KeyError, TypeError):
+        return ['취소한 선별 조건이 제거됐는지 실행 경로를 확인하지 못했습니다.']

@@ -6,7 +6,7 @@
   "condition_protocol": "condition-contracts-v8-dedup-scope",
   "decision": "UNSUPPORTED",
   "next_action": "SHOW_UNSUPPORTED",
-  "reason": "등록 도구에 Slack 전송이 없습니다.",
+  "reason": "등록 도구에 SMS 문자 전송이 없습니다.",
   "confirmed_conditions": {},
   "unresolved_conditions": {
     "filter.field": {
@@ -39,7 +39,7 @@
   "questions": [],
   "issues": [],
   "unsupported_actions": [
-    "등록 도구에 Slack 전송이 없습니다."
+    "등록 도구에 SMS 문자 전송이 없습니다."
   ],
   "resource_versions": {},
   "input_requirements": [

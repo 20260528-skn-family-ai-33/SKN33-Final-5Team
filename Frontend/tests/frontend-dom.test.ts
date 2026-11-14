@@ -1165,7 +1165,7 @@ test('entry: fresh editor starts from the list and browser history returns to th
   await click(button('워크플로우'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   assert.ok(document.querySelector('.as-composer'));
-  await click(button('목록으로'));await t.flush();
+  await click(document.querySelector('[data-tour="menu-workflows"]')!);await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
   const libraryTitle=document.querySelector('.task-library-title > div')?.textContent;
   await click(button('작업 템플릿'));await t.flush();
@@ -2306,7 +2306,7 @@ test('home: linked detail pages keep the selected workflow and return to home',a
   await click(button('설계'));
   route('workflow','A');
   assert.equal(document.querySelector('main h1')?.textContent,'일일 보고서');
-  await click(button('목록으로'));
+  await click(document.querySelector('[data-tour="menu-workflows"]')!);
   route('workflows');
   await click(document.querySelector('[aria-label="일일 보고서 실행 기록"]')!);
   route('history','A');
@@ -2916,5 +2916,48 @@ test('clarification: paged answers preserve backend ids, arrays, custom and opti
   const requests=h.calls.filter(call=>call.path.endsWith('/message'));assert.equal(requests.length,1);
   assert.equal(requests[0].body.id,session.id);assert.equal(requests[0].body.revision,4);
   assert.deepEqual(requests[0].body.answers,[{questionId:qs[0].id,value:'CSV'},{questionId:qs[1].id,value:['요약','예외 내용'],custom:true},{questionId:qs[2].id,value:null,skip:true}]);
+ }finally{await h.close();}
+});
+
+
+test('sidebar defaults to icons, pins across navigation and collapses explicitly',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=()=>document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  assert.equal(sidebar().dataset.expanded,'false');assert.equal(sidebar().dataset.pinned,'false');
+  const toggle=()=>document.querySelector<HTMLButtonElement>('.workspace-sidebar-toggle')!;
+  assert.equal(toggle().getAttribute('aria-expanded'),'false');
+  const controls=toggle().getAttribute('aria-controls');assert.ok(controls&&document.getElementById(controls));
+  for(const nav of sidebar().querySelectorAll('.workspace-nav button'))assert.ok(nav.getAttribute('aria-label'));
+  await click(toggle());assert.equal(sidebar().dataset.pinned,'true');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'true');
+  await click(document.querySelector('[data-tour="menu-workflow"]')!);await h.flush();
+  assert.equal(sidebar().dataset.expanded,'true');assert.equal(sidebar().dataset.pinned,'true');
+  await click(toggle());assert.equal(sidebar().dataset.expanded,'false');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false');
+ }finally{await h.close();}
+});
+
+test('sidebar hover and keyboard focus expand temporarily without changing the pinned preference',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'true');assert.equal(sidebar.dataset.pinned,'false');
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');
+  const nav=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{nav.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
+  await act(async()=>{nav.blur();await tick();});assert.equal(sidebar.dataset.expanded,'false');
+  assert.notEqual(localStorage.getItem('a4b-sidebar-pinned'),'true');
+ }finally{await h.close();}
+});
+
+
+test('sidebar pointer click focus cannot hold a transient menu open after mouse leave',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));home.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));home.focus();await tick();});
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');assert.equal(sidebar.dataset.pinned,'false');
  }finally{await h.close();}
 });

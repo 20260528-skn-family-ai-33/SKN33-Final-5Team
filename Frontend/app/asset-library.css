@@ -13,3 +13,6 @@
 .asset-selection-label input,.asset-file-list article > input[type=checkbox] {
   width:16px;height:16px;flex:none;margin:0;accent-color:var(--a4b-action);
 }
+
+.asset-library-search button[type=submit] { justify-content:center; width:28px; height:28px; flex:none; border-radius:5px; }
+.asset-library-search button:focus-visible { outline:2px solid var(--a4b-action); outline-offset:2px; }

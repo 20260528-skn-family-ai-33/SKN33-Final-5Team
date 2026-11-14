@@ -362,9 +362,9 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
         {trail.map(folder => <span key={folder.id}><ChevronRight size={13} aria-hidden="true"/><button type="button" disabled={mutating} onClick={() => navigate(folder.id)} aria-current={folder.id === folderId ? 'page' : undefined}>{folder.name}</button></span>)}
       </nav>
       <form className="asset-library-search" role="search" onSubmit={event => {event.preventDefault(); if (!running.current && !writing.current) setQuery(search.trim());}}>
-        <Search size={15} aria-hidden="true"/><input aria-label="현재 폴더에서 검색" placeholder="현재 폴더에서 검색" value={search} disabled={mutating} onChange={event => setSearch(event.target.value)}/>
+        <input aria-label="현재 폴더에서 검색" placeholder="현재 폴더에서 검색" value={search} disabled={mutating} onChange={event => setSearch(event.target.value)}/>
         {search && <button type="button" disabled={mutating} aria-label="자료 검색 지우기" onClick={() => {setSearch(''); setQuery('');}}><X size={14}/></button>}
-        <button type="submit" disabled={mutating}>검색</button>
+        <button type="submit" disabled={mutating} aria-label="자료 검색" title="검색"><Search size={16} aria-hidden="true"/></button>
       </form>
     </div>
     {canEdit && <><div className="asset-dropzone" role="region" data-dragging={dragging} aria-label="파일 업로드" onDragOver={event => {event.preventDefault(); if (!busy) setDragging(true);}}

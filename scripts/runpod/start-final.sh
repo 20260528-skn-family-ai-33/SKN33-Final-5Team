@@ -27,6 +27,7 @@ for runtime in parser mineru; do
     touch "/opt/a4b-envs/$runtime/.a4b-runtime-complete"
   fi
 done
+bash "$runpod_scripts/pdf-runtime.sh" restore
 [[ -s /run/a4b-auth/gateway-token && -s /run/a4b-auth/parser-api-key ]]
 export A4B_GATEWAY_TOKEN
 export A4B_PARSER_API_KEY
@@ -35,7 +36,7 @@ A4B_PARSER_API_KEY=$(cat /run/a4b-auth/parser-api-key)
 [[ ${#A4B_GATEWAY_TOKEN} -ge 24 && ${#A4B_PARSER_API_KEY} -ge 24 ]]
 
 # RunPod recreates the container root on stop/start; Python environments and
-# model files stay on /workspace. Only small OS libraries may need restoration.
+# archives and model files stay on /workspace; runtimes execute on local disk.
 if ! dpkg-query -W -f='${Status}' libgl1 2>/dev/null | grep -q 'install ok installed'; then
   apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgl1 libglib2.0-0

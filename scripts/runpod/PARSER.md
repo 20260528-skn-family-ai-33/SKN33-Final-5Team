@@ -22,14 +22,15 @@ PDF 내부의 이미지 보완은 같은 팟의 layout/PaddleOCR 서버로 요�
 | `A4B_PARSER_PORT`, `A4B_PARSER_BIND` | 서버 포트(기본 8100), 바인드 주소(기본 0.0.0.0) |
 | `A4B_BASE_DIR` | 네트워크 볼륨의 데이터·환경 루트. 기본 `/workspace/a4b` |
 | `A4B_PARSER_SOURCE_ROOT` | 서버·worker 소스 루트. 기본은 시작 스크립트가 있는 Git 체크아웃의 루트 |
-| `A4B_PDF_VENV`, `A4B_PDF_MODELS` | 설치 위치. 기본 `$A4B_BASE_DIR/envs/pdf`, `$A4B_BASE_DIR/models/pdf` |
+| `A4B_PDF_VENV`, `A4B_PDF_MODELS` | 실행 환경은 로컬 `/opt/a4b-envs/pdf`, 모델은 `$A4B_BASE_DIR/models/pdf` |
 | `A4B_PDF_ROUTER_PYTHON` | PDF worker Python. 기본 `$A4B_PDF_VENV/bin/python` |
+| `EASYFLOW_DOCLING_PYTHON` | Docling 자식 프로세스 Python. 기본 `$A4B_PDF_VENV/bin/python` |
 | `A4B_MINERU_PYTHON` | 설정되어 있으면 Pod의 기본 PDF 엔진은 MinerU, 없으면 Docling |
 | `A4B_PDF_ARTIFACTS_DIR`, `A4B_PDF_OCR_MODEL_DIR` | 기본 `$A4B_PDF_MODELS/docling`, 그 아래 `EasyOcr` |
 | `A4B_POD_PADDLE_URL` | PDF 보완용 이미지 엔진 주소. 기본은 로컬 서버 포트 |
 | `A4B_API_AUTH_REQUIRED` | 기본 인증 사용. 명시적으로 0이면 기존 Pod의 인증 우회 정책 유지 |
 
-소스 통합 자체는 운영 인증 정책, 모델, 패키지 버전, 저장 경로를 변경하지 않는다.
+Docling 런타임은 로컬 디스크에서 실행한다. 운영 인증 정책, 모델, 패키지 버전은 유지한다.
 키 값은 Git이나 배포 manifest에 포함하지 않는다.
 
 `setup-pdf-router.sh`와 `start-final.sh`는 같은 `parser-paths.sh`를 사용한다.
@@ -40,6 +41,26 @@ PDF 내부의 이미지 보완은 같은 팟의 layout/PaddleOCR 서버로 요�
 준비되지 않은 PDF 요청은 503으로 거절하며, 이미지 엔진 상태는 별도로 유지한다.
 supervisor는 이 검사와 실행 중 서버의 소스 루트까지 확인한 후 게이트웨이를 연다.
 이 검사는 파일 경로에 대한 검사이며 모델의 CUDA 실행 여부는 실제 PDF 호출로 검증한다.
+
+## Docling 로컬 실행 환경
+
+네트워크 볼륨의 작은 Python 파일을 요청마다 읽는 지연을 줄이기 위해 PDF worker와
+Docling 자식 프로세스를 `/opt/a4b-envs/pdf/bin/python`으로 실행한다.
+모델 원본은 기존 네트워크 볼륨 경로를 사용한다. 엔진 제한 시간 240초는 유지한다.
+
+1. 새 배포본에서 `bash scripts/runpod/pdf-runtime.sh prepare`를 실행한다.
+   고정 패키지를 로컬에 설치하고 Docling import와 CUDA를 확인한 뒤,
+   `$A4B_BASE_DIR/runtime-archives/pdf.tar.gz`와 SHA-256 파일을 만든다.
+2. `start-final.sh`는 서비스 실행 전에 `pdf-runtime.sh restore`를 호출한다.
+   새 컨테이너에서는 압축본 검증·임시 폴더 추출을 마친 뒤 로컬 환경을 배치한다.
+   이미 동일 압축본으로 복원된 환경은 재사용한다. 압축본 누락·손상은 시작 실패로 처리한다.
+3. 기존 시작 설정의 `A4B_PDF_VENV`, `A4B_PDF_ROUTER_PYTHON`,
+   `EASYFLOW_DOCLING_PYTHON`도 같은 로컬 경로로 갱신한다. 이전 환경은 롤백용으로 보존한다.
+   다른 압축본이나 불완전한 로컬 환경이 있으면 서비스를 중지하고 별도 위치로 옮긴 뒤 복원한다.
+
+가상환경의 실행 스크립트에는 절대 경로가 있으므로 준비·복원 경로가 같아야 한다.
+압축본은 같은 Python/CUDA 베이스 이미지에서 사용한다. 베이스 이미지 변경 시 다시 준비한다.
+새 기본값으로 시작하기 전에 `prepare`를 완료해야 하며, 기존 네트워크 환경으로 자동 우회하지 않는다.
 
 ## 배포 확인 순서
 

@@ -65,6 +65,8 @@ class SupervisorTests(unittest.TestCase):
         parser = self.app/'gpu_parser_server.py'
         (self.app/'pod_pdf_worker.py').touch()
         (self.app/'parser-paths.sh').write_text((SCRIPTS/'parser-paths.sh').read_text())
+        # Archive restoration is exercised separately; keep supervisor fixtures GPU-free.
+        (self.app/'pdf-runtime.sh').write_text('exit 0\n')
         legacy = self.base/'app/legacy-pdf/scripts/runpod/gpu_parser_server.py'
         legacy.parent.mkdir(parents=True)
         legacy.write_text(self.common+"(r/'legacy-started').touch()\n")

@@ -8,6 +8,11 @@ import tarfile
 
 import pytest
 
+# Skip during collection, before importing the Linux runtime's fcntl dependency.
+# A skipif marker is evaluated too late to prevent a module-level ImportError.
+if sys.platform != 'linux':
+    pytest.skip('RunPod runtime recovery requires Linux', allow_module_level=True)
+
 SCRIPTS = Path(__file__).resolve().parents[3] / 'scripts/runpod'
 sys.path.insert(0, str(SCRIPTS))
 import pdf_runtime

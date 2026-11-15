@@ -1,3 +1,4 @@
+import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
 import {useButtonEffects} from './use-button-effects';
 import {settleWithLimit} from '../lib/settle-with-limit';
@@ -114,7 +115,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   onRetry={()=>void load()} onStart={startExample} onNavigate={navigate}/>;
  return <>{route==='workflows'
   ? <TaskLibraryHeader active="workflows" onNavigate={next=>{if(next==='nodes')navigate(next);}} actions={refreshButton}/>
-  : <div className="entry-page-heading"><div><h1>실행 기록</h1>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div>{refreshButton}</div>}{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}
+  : <div className="entry-page-heading"><div><WorkspacePageTitle icon={History}>실행 기록</WorkspacePageTitle>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div>{refreshButton}</div>}{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}
  {route==='workflows'&&<>
   {renameNotice&&<p className="entry-rename-notice" role="status">{renameNotice}</p>}
   <div className="entry-list-tools" aria-label="워크플로우 목록 도구"><label><Search size={18}/><input aria-label="워크플로우 검색" value={query} onChange={e=>{setQuery(e.target.value);setSelectedWorkflows([]);}} placeholder="워크플로우 검색"/></label><span>{loading?'불러오는 중…':(matches.length+externalMatches.length)+'개'}</span></div>

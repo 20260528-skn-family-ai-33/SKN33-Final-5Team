@@ -1,3 +1,4 @@
+import {WorkspacePageTitle} from './workspace-page-title';
 import {useId,useRef,useState,type ReactNode} from 'react';
 import {AccountMenu} from './auth';
 import {House, Workflow, CalendarClock, History, Layers, FolderOpen, Unplug, PanelLeft} from 'lucide-react';
@@ -37,9 +38,7 @@ export function TaskLibraryHeader({active, onNavigate, actions, disabled = false
 }) {
   return <div className="task-library-header">
     <div className="task-library-title">
-      <div>
-        <h1>작업 라이브러리</h1>
-      </div>
+      <WorkspacePageTitle icon={Layers}>작업 라이브러리</WorkspacePageTitle>
       {actions}
     </div>
     <nav className="task-library-tabs" aria-label="라이브러리 보기">

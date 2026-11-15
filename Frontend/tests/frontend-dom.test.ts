@@ -1123,7 +1123,7 @@ test('entry: introduction has one start action and uses the actual editor views 
   await click(document.querySelectorAll('.landing-studio-preview .as-flow-node')[1]);
   assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/부족한 재고 찾기/);
   assert.ok(document.querySelector('.as-node-inspector-title svg'));
-  await click(button('직접 실행'));
+  await click(button('실행'));
   assert.ok(document.querySelector('.run-workflow-diagram'));
   assert.match(document.querySelector('.landing-preview-run')?.textContent||'',/키보드/);
   await click(document.getElementById('a4b-preview-tab-document')!);
@@ -1249,7 +1249,7 @@ test('navigation: internal back/forward preserves unsent workflow text and avoid
   const loads=t.calls.filter(c=>c.path.endsWith('/catalog')).length;
   await click(button('작업 찾아보기'));assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
 
-  await click(button('설계로 돌아가기'));await click(button('직접 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
+  await click(button('설계로 돌아가기'));await click(button('실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
   await travel('back');assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement)?.value,'탭 이동 후 유지할 업무');
@@ -1919,7 +1919,7 @@ test('folder source: unsaved manual settings block execution and survive cancell
  },createElement(EntryApp));
  try{
   const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
-  await click(tab('직접 실행'));
+  await click(tab('실행'));
   await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
   await chooseSource('예약 자료 읽기 방식','latest');
   assert.equal(button('워크플로우 실행').disabled,true);
@@ -1939,14 +1939,14 @@ test('folder source: unsaved manual settings block execution and survive cancell
   const unload=new dom.window.Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
   window.confirm=()=>{prompts++;return true;};
   await click(tab('설계'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
-  await click(tab('직접 실행'));
+  await click(tab('실행'));
   await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='all');
   assert.equal(button('워크플로우 실행').disabled,false);
   assert.equal(h.calls.some(call=>call.path.endsWith('/schedule_source')&&call.body),false);
   await chooseSource('예약 자료 읽기 방식','latest');assert.equal(button('워크플로우 실행').disabled,true);
   await click(button('자료함 연결 저장'));assert.equal(button('워크플로우 실행').disabled,false);
   const count=prompts;await click(tab('설계'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(prompts,count);
-  await click(tab('직접 실행'));
+  await click(tab('실행'));
   await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='latest');
   await chooseSource('예약 자료 읽기 방식','all');assert.equal(button('워크플로우 실행').disabled,true);
   const beforeSwitch=prompts;await click(otherLink());
@@ -2171,7 +2171,7 @@ test('execution separation: a manual workflow gains a reservation while direct i
   assert.equal(button('예약 켜기').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
   await click(button('예약 자료로 지금 실행'));
   let sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[0].body,{id:'A',content:'',fileIds:[],useSchedule:true});
-  await click(button('직접 실행'));assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
+  await click(button('실행'));assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
   assert.equal(button('워크플로우 실행').disabled,true);await input(document.querySelector<HTMLTextAreaElement>('textarea[data-tour="run-input"]')!,'이번에는 다른 요청');
   await click(button('워크플로우 실행'));sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[1].body,{id:'A',content:'이번에는 다른 요청',fileIds:[]});
   await click(Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent==='예약 관리')!);await click(button('예약 해제'));
@@ -2190,12 +2190,12 @@ test('reservation edits survive cancelled tab, browser-back and new-workflow nav
  try{
   const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
   await click(tab('예약 관리'));await click(button('일정 수정'));await input(field('실행 시간'),'10:00');
-  window.confirm=()=>{prompts++;return false;};await click(tab('직접 실행'));
+  window.confirm=()=>{prompts++;return false;};await click(tab('실행'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
   await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,100));});
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
   await click(button('홈'));assert.equal(field('실행 시간').value,'10:00');assert.ok(prompts>=3);
-  await click(button('일정 저장'));const count=prompts;await click(tab('직접 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.equal(prompts,count);
+  await click(button('일정 저장'));const count=prompts;await click(tab('실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.equal(prompts,count);
   assert.equal(h.calls.filter(call=>call.body).length,1);
  }finally{await h.close();}
 });
@@ -2242,6 +2242,17 @@ test('home: all sidebar destinations return to home and recent entries retain th
    await click(nav(page));
    assert.equal(location.search,'?screen='+page);
    assert.equal(document.querySelector('main h1')?.textContent,title);
+   const heading=document.querySelector('main h1')!;
+   assert.equal(heading.parentElement?.className,'workspace-page-title',page);
+   assert.equal(heading.parentElement?.querySelector('svg')?.getAttribute('aria-hidden'),'true',page);
+   const localTabs=document.querySelector('main .studio-tabs,main .task-library-tabs');
+   if(localTabs)assert.ok(heading.compareDocumentPosition(localTabs)&Node.DOCUMENT_POSITION_FOLLOWING,page);
+   if(page==='workflow'){
+    for(const item of document.querySelectorAll('main .studio-tabs button'))assert.ok(item.querySelector('svg'),item.textContent||'');
+    assert.equal(document.querySelector('[data-tour="run-tab"]')?.textContent,'실행');
+   }
+   if(page==='connections')assert.equal(document.querySelector('.service-connections-note'),null);
+
    assert.equal(nav(page).getAttribute('aria-current'),'page');
    assert.ok(document.querySelector('.workspace-header .ai-status-badge'));
    assert.equal(document.querySelector('.workspace-header .a4b-account-local'),null);
@@ -2633,7 +2644,7 @@ test('direct run keeps an optional request editor open while clearing and after 
    assert.equal(requestField().closest('details')?.open,true);
    await input(requestField(),'이번 실행의 추가 요청');
   await click(button('설계'));
-  await click(button('직접 실행'));
+  await click(button('실행'));
   assert.equal(requestField().value,'이번 실행의 추가 요청');
   assert.equal(requestField().closest('details')?.open,true);
  }finally{await h.close();}

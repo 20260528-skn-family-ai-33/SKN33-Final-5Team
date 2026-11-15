@@ -65,7 +65,7 @@ export default function LandingPage({onStart}:{onStart:()=>void}){
     <div className="a4b-hero-enter" style={order(4)}><a className="a4b-landing-text-link a4b-scroll-cue" href="#a4b-product-preview" onClick={scrollTo('a4b-product-preview')}>화면 살펴보기<ArrowDown size={16} aria-hidden="true"/></a></div>
    </section>
    <section className="a4b-product-section" id="a4b-product-preview" aria-labelledby="a4b-product-title"><div className="a4b-landing-container">
-    <div className="a4b-section-heading" data-reveal><div><h2 id="a4b-product-title">설명한 업무가<br/>이렇게 만들어집니다.</h2></div><p>작업을 눌러 설정을 확인하고,<br className="a4b-desktop-break"/> 직접 실행 탭에서 결과 예시를 살펴보세요.</p></div>
+    <div className="a4b-section-heading" data-reveal><div><h2 id="a4b-product-title">설명한 업무가<br/>이렇게 만들어집니다.</h2></div><p>작업을 눌러 설정을 확인하고,<br className="a4b-desktop-break"/> 실행 탭에서 결과 예시를 살펴보세요.</p></div>
     <div className="a4b-live-preview" data-reveal style={order(1)}>
      <div className="a4b-preview-tabs" role="tablist" aria-label="업무 예시">{scenarios.map((item,index)=><button key={item.id} type="button" role="tab" id={'a4b-preview-tab-'+item.id} aria-selected={active===item.id} aria-controls={'a4b-preview-panel-'+item.id} tabIndex={active===item.id?0:-1} ref={element=>{tabRefs.current[index]=element;}} onClick={()=>setActive(item.id)} onKeyDown={event=>handleTabKey(event,index)}>{item.label}</button>)}</div>
      {scenarios.map(item=><div key={item.id} role="tabpanel" hidden={active!==item.id} id={'a4b-preview-panel-'+item.id} aria-labelledby={'a4b-preview-tab-'+item.id} tabIndex={0}>{active===item.id&&<LandingStudioPreview scenario={item}/>}</div>)}

@@ -168,7 +168,7 @@
 
 .entry-workspace-main:has(>.entry-run-history){display:flex;flex-direction:column}
 .entry-workspace-main>.entry-run-history:empty{display:none}
-.entry-workspace-main:has(>.entry-run-history)>.entry-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px}
+.entry-workspace-main:has(>.entry-run-history)>.entry-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px;padding-bottom:96px}
 .entry-workspace-main:has(>.entry-run-history)>.entry-empty>svg{margin:0}
 
 /* Page actions share a second row below the title and refresh control. */
@@ -183,4 +183,26 @@
 .workspace-header-actions{position:relative;top:3px}
 @media(max-width:650px){
  :is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title,.as-page-title) h1{font-size:23px}
+}
+
+/* Continue the workspace surface behind the status badge up to the top edge. */
+@media(min-width:651px){
+ .workspace-header .workspace-brand,.workspace-header-actions{position:relative;z-index:1}
+ .as-app .as-main,.entry-app .entry-workspace-main{position:relative;border-top:0;border-radius:0;box-shadow:none}
+ .as-app .as-main::before,.entry-app .entry-workspace-main::before{
+  content:"";position:absolute;left:-1px;right:-1px;top:-48px;height:48px;
+  box-sizing:border-box;background:var(--a4b-surface);border:1px solid var(--a4b-border);
+  border-bottom:0;border-radius:24px 24px 0 0;pointer-events:none;
+ }
+}
+
+/* Page identity sits on the same baseline before local navigation. */
+:is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title,.as-page-title){min-height:38px;align-items:center;gap:16px;margin-bottom:20px}
+.workspace-page-title{display:flex;align-items:center;gap:10px;min-width:0}
+.workspace-page-title>svg{flex:none;width:22px;height:22px;color:var(--a4b-muted)}
+.workspace-page-title>h1{min-width:0;margin:0;overflow-wrap:anywhere}
+.studio-tabs button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;line-height:20px}
+.studio-tabs button>svg{width:16px;height:16px;flex:none}
+@media(max-width:650px){
+ :is(.as-app,.entry-app) :is(.entry-page-heading,.task-library-title,.as-page-title){align-items:flex-start;flex-wrap:wrap}
 }

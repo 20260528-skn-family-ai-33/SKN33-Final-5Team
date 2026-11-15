@@ -1,3 +1,5 @@
+import {WorkspacePageTitle} from './workspace-page-title';
+import {Unplug} from 'lucide-react';
 import {PageTransition} from './page-transition';
 import {useEffect,useRef,useState} from 'react';
 import {Toaster} from '@/components/ui/sonner';
@@ -70,7 +72,7 @@ export function ServiceConnections(){
   const managedCredential=managing?connected(status,managing):undefined;
   return <section className="service-connections" aria-labelledby="service-connections-heading"><PageTransition active={initialLoading}/>
     <Toaster theme="light" position="top-center"/>
-    <div className="entry-page-heading"><div><h1 id="service-connections-heading">서비스 연결</h1></div></div>
+    <div className="entry-page-heading"><WorkspacePageTitle icon={Unplug} id="service-connections-heading">서비스 연결</WorkspacePageTitle></div>
     {notice&&!managing&&<p role="status" className="service-connection-feedback">{notice}</p>}
     <div className="service-connection-grid"><GmailConnection disabled={false} variant="card"/>
       {entries.map(({id,label,description,permission})=>{
@@ -109,6 +111,5 @@ export function ServiceConnections(){
       </DialogContent>}
     </Dialog>
     {pending&&<a href={pending.attempt.authorizationUrl} className="as-text-button" referrerPolicy="no-referrer">팝업이 보이지 않으면 계정 연결 계속</a>}
-    <p className="service-connections-note">서비스에서 허용한 권한은 연결된 워크플로우 단계에서 사용합니다.</p>
   </section>;
 }

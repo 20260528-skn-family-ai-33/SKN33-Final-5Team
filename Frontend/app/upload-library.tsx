@@ -1,3 +1,4 @@
+import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {AlertCircle, Check, ChevronRight, ExternalLink, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Search, Trash2, Upload as UploadIcon, X} from 'lucide-react';
@@ -350,7 +351,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
   const sameDestination = action?.kind === 'move-folder' ? destination === (action.folder.parent_id || '') : action?.kind === 'move-asset' ? destination === (action.asset.folder_id || '') : false;
 
   return <div className="asset-library"><PageTransition active={loading}/>
-    <div className="entry-page-heading"><div><h1>자료함</h1></div><button type="button" className="as-button" onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={16}/></button></div>
+    <div className="entry-page-heading"><WorkspacePageTitle icon={FolderOpen}>자료함</WorkspacePageTitle><button type="button" className="as-button" onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={16}/></button></div>
       {canEdit && <div className="asset-library-actions workspace-page-actions">
         {canEdit && <><button type="button" className="as-button as-primary" disabled={busy} onClick={() => input.current?.click()}><UploadIcon size={15}/>파일 올리기</button>
         <button type="button" className="as-button as-secondary" disabled={busy} onClick={() => openAction({kind: 'create', parentId: folderId})}><FolderPlus size={15}/>새 폴더</button></>}

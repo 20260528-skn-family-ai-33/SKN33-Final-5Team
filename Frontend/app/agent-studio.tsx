@@ -32,7 +32,7 @@ import {GmailConnection} from './gmail-connection';
 import {scheduleDescription,scheduleDateNote,type ScheduleSpec} from '../lib/schedule-spec';
 import {ScheduleLibrarySourceSettings,type ScheduleLibrarySource} from './schedule-library-source';
 import {ScheduleSettings} from './schedule-settings';
-import {type QuestionResponse,type ClarificationQuestionData} from './clarification-question';
+import {type QuestionResponse,type ClarificationQuestionData} from './clarification-types';
 import {ClarificationForm,type ClarificationAnswer} from './clarification-form';
 import {SlackChannelPicker} from './slack-channel-picker';
 

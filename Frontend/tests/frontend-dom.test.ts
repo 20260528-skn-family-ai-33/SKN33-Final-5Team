@@ -2933,19 +2933,22 @@ test('clarification: paged answers preserve backend ids, arrays, custom and opti
 });
 
 
-test('sidebar defaults to icons, pins across navigation and collapses explicitly',async()=>{
+test('sidebar defaults to icons and stays pinned across navigation until explicitly unpinned',async()=>{
  const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
  try{
   const sidebar=()=>document.querySelector<HTMLElement>('.workspace-sidebar')!;
-  assert.equal(sidebar().dataset.expanded,'false');assert.equal(sidebar().dataset.pinned,'false');
-  const toggle=()=>document.querySelector<HTMLButtonElement>('.workspace-sidebar-toggle')!;
-  assert.equal(toggle().getAttribute('aria-expanded'),'false');
-  const controls=toggle().getAttribute('aria-controls');assert.ok(controls&&document.getElementById(controls));
+  const pin=()=>sidebar().querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
+  assert.equal(sidebar().dataset.expanded,'false');assert.equal(sidebar().dataset.pinned,'false');assert.equal(pin().hidden,true);
+  assert.equal(sidebar().querySelector('.workspace-sidebar-toggle'),null);
+  const controls=pin().getAttribute('aria-controls');assert.ok(controls&&document.getElementById(controls));
   for(const nav of sidebar().querySelectorAll('.workspace-nav button'))assert.ok(nav.getAttribute('aria-label'));
-  await click(toggle());assert.equal(sidebar().dataset.pinned,'true');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'true');
-  await click(document.querySelector('[data-tour="menu-workflow"]')!);await h.flush();
+  await sidebarPointerEnter(sidebar());await sidebarPointerClick(pin());
+  assert.equal(sidebar().dataset.pinned,'true');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'true');
+  await click(document.querySelector('[data-tour="menu-workflow"]')!);await h.flush();await sidebarPointerLeave(sidebar());
   assert.equal(sidebar().dataset.expanded,'true');assert.equal(sidebar().dataset.pinned,'true');
-  await click(toggle());assert.equal(sidebar().dataset.expanded,'false');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false');
+  await sidebarPointerEnter(sidebar());await sidebarPointerClick(pin());
+  assert.equal(sidebar().dataset.expanded,'true');assert.equal(sidebar().dataset.pinned,'false');
+  await sidebarPointerLeave(sidebar());assert.equal(sidebar().dataset.expanded,'false');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false');
  }finally{await h.close();}
 });
 
@@ -3020,30 +3023,89 @@ test('visible design canvas refits on sidebar resize and keeps manual zoom for u
 });
 
 
-test('sidebar hover-expanded menu closes on the first toggle click and can reopen on re-entry',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
- try{
-  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,toggle=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-toggle')!;
-  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
-  assert.equal(sidebar.dataset.expanded,'true');assert.equal(toggle.getAttribute('aria-label'),'메뉴 접기');
-  await act(async()=>{toggle.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));toggle.focus();await tick();});
-  await click(toggle);
-  assert.equal(sidebar.dataset.expanded,'false');assert.equal(sidebar.dataset.pinned,'false');
-  assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false');
-  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
-  assert.equal(sidebar.dataset.expanded,'true');
- }finally{await h.close();}
-});
-
-
-test('all workspace pages close a keyboard-expanded sidebar with one pointer click',async()=>{
- for(const page of ['home','workflow','workflows','nodes','schedules','history','assets','connections']){
-  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+test('sidebar saved pin restores on every workspace screen and Escape does not unpin it',async()=>{
+ for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
+  const h=await setup('?screen='+page,{'a4b-sidebar-pinned':'true'},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
   try{
-   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!,toggle=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-toggle')!;
-   await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true',page);
-   await act(async()=>{toggle.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));toggle.focus();await tick();});
-   await click(toggle);assert.equal(sidebar.dataset.expanded,'false',page);assert.equal(sidebar.dataset.pinned,'false',page);
+   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
+   assert.equal(sidebar.dataset.expanded,'true',page);assert.equal(sidebar.dataset.pinned,'true',page);
+   assert.equal(sidebar.querySelector('.workspace-sidebar-toggle'),null,page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'true',page);
+   await act(async()=>{pin.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
+   assert.equal(sidebar.dataset.pinned,'true',page);
+   await sidebarPointerEnter(sidebar);await sidebarPointerClick(pin);
+   assert.equal(sidebar.dataset.pinned,'false',page);assert.equal(sidebar.dataset.expanded,'true',page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'false',page);
   }finally{await h.close();}
  }
+});
+
+test('all workspace pages retain keyboard expansion after unpin until focus leaves',async()=>{
+ for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
+  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  try{
+   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!,pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
+   await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true',page);
+   assert.equal(pin.hidden,false,page);await act(async()=>{pin.focus();await tick();});
+   await click(pin);assert.equal(sidebar.dataset.pinned,'true',page);
+   await click(pin);assert.equal(sidebar.dataset.pinned,'false',page);assert.equal(sidebar.dataset.expanded,'true',page);
+   await act(async()=>{document.querySelector<HTMLButtonElement>('.workspace-brand')!.focus();await tick();});
+   assert.equal(sidebar.dataset.expanded,'false',page);
+  }finally{await h.close();}
+ }
+});
+
+async function sidebarPointerClick(control:HTMLButtonElement){
+ assert.equal(control.hidden,false,'a hidden sidebar control cannot be clicked');
+ await act(async()=>{control.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));control.focus();await tick();});
+ await act(async()=>{control.dispatchEvent(new dom.window.MouseEvent('pointerup',{bubbles:true}));await tick();});
+ await click(control);
+}
+
+async function sidebarPointerEnter(sidebar:HTMLElement){
+ await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true,relatedTarget:document.body}));await tick();});
+ assert.equal(sidebar.dataset.expanded,'true');
+}
+
+async function sidebarPointerLeave(sidebar:HTMLElement){
+ await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+}
+
+test('sidebar pin is reachable after actual pointer entry on every workspace screen',async()=>{
+ for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
+  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  try{
+   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
+   assert.equal(sidebar.dataset.expanded,'false',page);assert.equal(sidebar.dataset.pinned,'false',page);
+   await sidebarPointerEnter(sidebar);
+   const pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin');assert.ok(pin,'separate pin control on '+page);
+   await sidebarPointerClick(pin);assert.equal(sidebar.dataset.pinned,'true',page);assert.equal(pin.getAttribute('aria-pressed'),'true',page);
+   assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'true',page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'true',page);
+   await sidebarPointerEnter(sidebar);await sidebarPointerClick(pin);
+   assert.equal(sidebar.dataset.pinned,'false',page);assert.equal(sidebar.dataset.expanded,'true',page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'false',page);
+   assert.equal(sidebar.querySelector('.workspace-sidebar-toggle'),null,page);
+   assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false',page);
+  }finally{await h.close();}
+ }
+});
+
+test('sidebar keyboard pinning survives escape and unpinning preserves temporary keyboard expansion',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  const home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{home.focus();await tick();});
+  const pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin');assert.ok(pin);assert.equal(pin.hidden,false);
+  await act(async()=>{pin.focus();pin.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await tick();});
+  await click(pin);assert.equal(sidebar.dataset.pinned,'true');
+  await act(async()=>{pin.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'true');assert.equal(sidebar.dataset.pinned,'true');
+  await click(pin);assert.equal(sidebar.dataset.pinned,'false');assert.equal(sidebar.dataset.expanded,'true');
+  await act(async()=>{document.querySelector<HTMLTextAreaElement>('.overview-composer textarea')!.focus();await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');
+  await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
+  await act(async()=>{home.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});assert.equal(sidebar.dataset.expanded,'false');
+ }finally{await h.close();}
 });

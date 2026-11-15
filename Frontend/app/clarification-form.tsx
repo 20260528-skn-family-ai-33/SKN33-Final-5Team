@@ -1,6 +1,6 @@
 import {useEffect,useId,useRef,useState,type FormEvent} from 'react';
 import {ChevronLeft,ChevronRight,MessageCircleQuestion} from 'lucide-react';
-import type {ClarificationQuestionData} from './clarification-question';
+import type {ClarificationQuestionData} from './clarification-types';
 import './clarification-question.css';
 import './clarification-form.css';
 import {normalizeTimeInput} from '../lib/time-input';

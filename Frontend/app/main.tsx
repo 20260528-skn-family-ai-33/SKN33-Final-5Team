@@ -4,4 +4,5 @@ import Home from './entry-app';
 import {AuthProvider,AuthNotice} from './auth';
 import './globals.css';
 import './color-theme.css';
+import './typography.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthProvider><AuthNotice/><Home/></AuthProvider></React.StrictMode>);

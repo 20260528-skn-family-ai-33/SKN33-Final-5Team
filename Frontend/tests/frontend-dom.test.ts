@@ -3007,3 +3007,32 @@ test('visible design canvas refits on sidebar resize and keeps manual zoom for u
  }finally{await h.close();}
  assert.equal(observers[0].disconnected,true);
 });
+
+
+test('sidebar hover-expanded menu closes on the first toggle click and can reopen on re-entry',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,toggle=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-toggle')!;
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'true');assert.equal(toggle.getAttribute('aria-label'),'메뉴 접기');
+  await act(async()=>{toggle.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));toggle.focus();await tick();});
+  await click(toggle);
+  assert.equal(sidebar.dataset.expanded,'false');assert.equal(sidebar.dataset.pinned,'false');
+  assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false');
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'true');
+ }finally{await h.close();}
+});
+
+
+test('all workspace pages close a keyboard-expanded sidebar with one pointer click',async()=>{
+ for(const page of ['home','workflow','workflows','nodes','schedules','history','assets','connections']){
+  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  try{
+   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!,toggle=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-toggle')!;
+   await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true',page);
+   await act(async()=>{toggle.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));toggle.focus();await tick();});
+   await click(toggle);assert.equal(sidebar.dataset.expanded,'false',page);assert.equal(sidebar.dataset.pinned,'false',page);
+  }finally{await h.close();}
+ }
+});

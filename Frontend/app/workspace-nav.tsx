@@ -68,15 +68,15 @@ export function WorkspaceSidebar({active, onNavigate, help, disabled = false, ch
   const [pinned,setPinned]=useState(()=>{try{return localStorage.getItem('a4b-sidebar-pinned')==='true';}catch{return false;}});
   const [hovered,setHovered]=useState(false),[focused,setFocused]=useState(false),[suppressed,setSuppressed]=useState(false);
   const expanded=pinned||!suppressed&&(hovered||focused);
-  function toggle(){const next=!pinned;setPinned(next);setSuppressed(!next);if(!next){setHovered(false);setFocused(false);}try{localStorage.setItem('a4b-sidebar-pinned',String(next));}catch{}}
+  function toggle(){const next=!expanded;setPinned(next);setSuppressed(!next);if(!next){setHovered(false);setFocused(false);}try{localStorage.setItem('a4b-sidebar-pinned',String(next));}catch{}}
   return <aside className="workspace-sidebar" data-expanded={expanded} data-pinned={pinned}
     onPointerEnter={event=>{if(event.pointerType!=='touch'){setHovered(true);setSuppressed(false);}}}
     onPointerLeave={()=>{setHovered(false);if(pointerFocus.current)setFocused(false);setSuppressed(false);}}
-    onPointerDownCapture={()=>{pointerFocus.current=true;setFocused(false);}}
+    onPointerDownCapture={()=>{pointerFocus.current=true;}}
     onKeyDownCapture={event=>{if(event.key==='Tab'||event.key.startsWith('Arrow')){pointerFocus.current=false;setFocused(true);setSuppressed(false);}if(event.key==='Escape'&&!pinned){setHovered(false);setFocused(false);setSuppressed(true);}}}
     onFocusCapture={()=>{if(!pointerFocus.current){setFocused(true);setSuppressed(false);}}}
     onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){pointerFocus.current=false;setFocused(false);setSuppressed(false);}}}>
-    <div className="workspace-sidebar-header"><button className="workspace-sidebar-toggle" type="button" aria-label={pinned?'메뉴 접기':'메뉴 펼치기'} title={pinned?'메뉴 접기':'메뉴 펼친 상태로 고정'} aria-expanded={expanded} aria-controls={contentId} onClick={toggle}>
+    <div className="workspace-sidebar-header"><button className="workspace-sidebar-toggle" type="button" aria-label={expanded?'메뉴 접기':'메뉴 펼치기'} title={expanded?'메뉴 접기':'메뉴 펼치기'} aria-expanded={expanded} aria-controls={contentId} onClick={toggle}>
       <PanelLeft size={15} aria-hidden="true"/>
     </button></div>
     <div id={contentId} className="workspace-sidebar-content">

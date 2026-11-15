@@ -75,7 +75,7 @@ export function WorkspaceSidebar({active, onNavigate, help, disabled = false, ch
     onPointerDownCapture={()=>{pointerFocus.current=true;setFocused(false);}}
     onKeyDownCapture={event=>{if(event.key==='Tab'||event.key.startsWith('Arrow')){pointerFocus.current=false;setFocused(true);setSuppressed(false);}if(event.key==='Escape'&&!pinned){setHovered(false);setFocused(false);setSuppressed(true);}}}
     onFocusCapture={()=>{if(!pointerFocus.current){setFocused(true);setSuppressed(false);}}}
-    onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){setFocused(false);setSuppressed(false);}}}>
+    onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){pointerFocus.current=false;setFocused(false);setSuppressed(false);}}}>
     <div className="workspace-sidebar-header"><button className="workspace-sidebar-toggle" type="button" aria-label={pinned?'메뉴 접기':'메뉴 펼치기'} title={pinned?'메뉴 접기':'메뉴 펼친 상태로 고정'} aria-expanded={expanded} aria-controls={contentId} onClick={toggle}>
       <PanelLeft size={15} aria-hidden="true"/>
     </button></div>

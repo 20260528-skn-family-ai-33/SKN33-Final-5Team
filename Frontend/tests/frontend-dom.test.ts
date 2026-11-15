@@ -2963,3 +2963,47 @@ test('sidebar pointer click focus cannot hold a transient menu open after mouse 
   assert.equal(sidebar.dataset.expanded,'false');assert.equal(sidebar.dataset.pinned,'false');
  }finally{await h.close();}
 });
+
+
+test('sidebar keyboard re-entry expands after pointer focus leaves for the main page',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  const outside=document.querySelector<HTMLTextAreaElement>('.overview-composer textarea')!;
+  await act(async()=>{home.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));home.focus();await tick();});
+  await act(async()=>{outside.focus();await tick();});assert.equal(sidebar.dataset.expanded,'false');
+  // Tab/Shift+Tab entering the sidebar has no keydown inside the sidebar.
+  await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
+  assert.equal(sidebar.dataset.pinned,'false');
+ }finally{await h.close();}
+});
+
+test('visible design canvas refits on sidebar resize and keeps manual zoom for unchanged sizes',async()=>{
+ const code=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/workflow-preview.tsx')],absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',write:false,logLevel:'silent'}).outputFiles[0].text;
+ const Preview=load(code).WorkflowPreview;
+ let w=900,hgt=900;const observers:{callback:()=>void;disconnected:boolean}[]=[];
+ const workflow={entry:'one',nodes:[{id:'one',tool:'read_table',label:'입력',bindings:[],settings:{}},{id:'two',tool:'finish',label:'출력',bindings:[],settings:{}}],edges:[{source:'one',target:'two',branch:'next'}]};
+ function SizedPreview(){
+  require('react').useLayoutEffect(()=>{
+   const canvas=document.querySelector('.as-desktop-canvas')!;
+   Object.defineProperties(canvas,{clientWidth:{get:()=>w,configurable:true},clientHeight:{get:()=>hgt,configurable:true}});
+   Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class{
+    state:{callback:()=>void;disconnected:boolean};
+    constructor(callback:()=>void){this.state={callback,disconnected:false};observers.push(this.state);}
+    observe(){}disconnect(){this.state.disconnected=true;}
+   }});
+  },[]);
+  return createElement(Preview,{workflow,autoFit:false});
+ }
+ const h=await setup('',{},undefined,createElement(SizedPreview));
+ try{
+  const percent=()=>document.querySelector('.as-zoom span')!.textContent;
+  assert.equal(percent(),'85%');assert.equal(observers.length,1);
+  await click(document.querySelector('[aria-label="캔버스 확대"]')!);assert.equal(percent(),'95%');
+  await act(async()=>{observers[0].callback();});assert.equal(percent(),'95%');
+  w=220;await act(async()=>{observers[0].callback();});assert.equal(percent(),'62%');
+  w=0;hgt=0;await act(async()=>{observers[0].callback();});assert.equal(percent(),'62%');
+  w=900;hgt=900;await act(async()=>{observers[0].callback();});assert.equal(percent(),'85%');
+ }finally{await h.close();}
+ assert.equal(observers[0].disconnected,true);
+});

@@ -27,19 +27,17 @@ export function WorkflowPreview({workflow,selectedId,onSelect,autoFit=false}:{wo
  const hasWorkflow=Boolean(workflow);
  useEffect(()=>{
   const element=viewport.current;
-  if(autoFit||!hasWorkflow||!element)return;
-  if(element.clientWidth&&element.clientHeight){fit();return;}
-  // A narrow layout may mount the canvas while its panel is hidden.
-  if(typeof ResizeObserver==='undefined')return;
-  const observer=new ResizeObserver(()=>{if(element.clientWidth&&element.clientHeight){fit();observer.disconnect();}});
-  observer.observe(element);return()=>observer.disconnect();
- },[autoFit,hasWorkflow,width,height]);
- useEffect(()=>{
-  if(!autoFit)return;const element=viewport.current;if(!element)return;
-  const resize=()=>{if(element.clientWidth>0&&element.clientHeight>0)fit();};resize();
+  if(!hasWorkflow||!element)return;
+  let lastWidth=-1,lastHeight=-1;
+  const resize=()=>{
+   const nextWidth=element.clientWidth,nextHeight=element.clientHeight;
+   if(nextWidth<=0||nextHeight<=0||nextWidth===lastWidth&&nextHeight===lastHeight)return;
+   lastWidth=nextWidth;lastHeight=nextHeight;fit();
+  };
+  resize();
   if(typeof ResizeObserver==='undefined')return;
   const observer=new ResizeObserver(resize);observer.observe(element);return()=>observer.disconnect();
- },[autoFit,width,height]);
+ },[autoFit,hasWorkflow,width,height]);
  function changeDirection(){setVertical(v=>!v);reset();}
  const label=(tool:string)=>['read_document','read_table'].includes(tool)?'입력':tool==='condition'?'조건':tool==='ask_user'?'확인':['finish','export_result','write_result','create_spreadsheet'].includes(tool)?'출력':tool==='agent_node'?'분석·작성':'처리';
  return <><div className="as-canvas-toolbar"><span><Box size={16}/>워크플로우 <small>{workflow?workflow.nodes.length+'개 작업':'초안 대기'}</small></span>{workflow&&<button type="button" className="as-text-button" onClick={changeDirection}>{vertical?'가로로 보기':'세로로 보기'}</button>}</div><div tabIndex={0} role="region" aria-label="처리 흐름" className={'as-desktop-canvas'+(!workflow?' is-empty':'')+(dragging?' is-dragging':'')} ref={viewport} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onLostPointerCapture={pointerUp} onKeyDown={event=>{

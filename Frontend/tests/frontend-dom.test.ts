@@ -1406,7 +1406,113 @@ test('simplified settings render saved filter rules in overview and node inspect
  const plan={filters:[{field:'amount',operator:'gte',value:100,compare_field:null,value_type:'number'}],sort:[],match:'all',missing_policy:'keep',duplicate_policy:'keep',duplicate_field:null,output_format:'csv'};
  const saved={...A,config:{...A.config,tool_ids:['filter_sort'],execution_plan:plan,workflow:{entry:'filter',nodes:[{id:'filter',label:'금액 선별',tool:'filter_sort',settings:{execution_plan:plan},bindings:[]}],edges:[]}}};
  const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(saved):undefined);
- try{await click(button('설계'));assert.match(document.querySelector('.as-rule-summary')?.textContent||'',/amount/);await click(document.querySelector('.as-flow-node')!);assert.match(document.querySelector('.as-node-inspector .as-rule-summary')?.textContent||'',/amount/);}finally{await h.close();}
+ try{await click(button('설계'));assert.match(document.querySelector('.as-rule-summary')?.textContent||'',/amount/);await click(document.querySelector('.as-flow-node')!);const popup=document.querySelector('.as-node-popover.is-canvas')!;assert.ok(popup);assert.equal(popup.getAttribute('role'),'dialog');assert.match(popup.querySelector('.as-rule-summary')?.textContent||'',/amount/);assert.ok(document.querySelector('.as-conversation'));await click(popup.querySelector('button')!);assert.equal(document.querySelector('.as-node-popover'),null);}finally{await h.close();}
+});
+
+test('draft node popup keeps the design chat visible and prepares a scoped edit request',async()=>{
+ const workflow={entry:'filter',nodes:[{id:'filter',label:'금액 선별',tool:'filter_sort',settings:{arguments_json:'{"threshold":100,"query":"older_than:3d"}'},bindings:[]}],edges:[]};
+ const session={...readySession(),draft:{...A.config,workflow}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  await click(document.querySelector('.as-flow-node')!);
+  const popup=document.querySelector('.as-node-popover.is-canvas')!;assert.ok(popup);
+  assert.match(popup.textContent||'',/기준값/);assert.match(popup.textContent||'',/100/);
+  assert.ok(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]'));
+  await input(popup.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.threshold"]')!,'0');
+  await input(popup.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.query"]')!,'newer_than:3d');
+  await click(popup.querySelector('.as-node-popover-actions button')!);
+  assert.equal(document.querySelector('.as-node-popover'),null);
+  const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
+  assert.match(request,/금액 선별.*노드 ID: filter/);
+  assert.ok(request.includes('기준값 (arguments_json.threshold): 100 → 0'));
+  assert.ok(request.includes('검색 조건 (arguments_json.query): older_than:3d → newer_than:3d'));
+  assert.equal(workflow.nodes[0].settings.arguments_json,'{"threshold":100,"query":"older_than:3d"}');
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'x'.repeat(3999));
+  await click(document.querySelector('.as-flow-node')!);
+  const reopened=document.querySelector('.as-node-popover.is-canvas')!;
+  await input(reopened.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.threshold"]')!,'0');
+  await click(reopened.querySelector('.as-node-popover-actions button')!);
+  assert.ok(document.querySelector('.as-node-popover'),'too-long requests stay in the popup');
+  assert.match(document.body.textContent||'',/대화 입력은 4,000자까지/);
+ }finally{await h.close();}
+});
+
+test('numeric filter popup switches between direct values and comparison columns in a chat request',async()=>{
+ const plan={filters:[
+  {field:'stock',operator:'lt',value:30,compare_field:null,value_type:'number'},
+  {field:'price',operator:'gte',value:null,compare_field:'minimum',value_type:'number'}
+ ],sort:[],match:'all',missing_policy:'keep',duplicate_policy:'keep',duplicate_field:null,output_format:'csv'};
+ const workflow={entry:'filter',nodes:[{id:'filter',label:'재고 기준 선별',tool:'filter_sort',settings:{execution_plan:plan},bindings:[]}],edges:[]};
+ const session={...readySession(),draft:{...A.config,workflow}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  await click(document.querySelector('.as-flow-node')!);
+  const popup=document.querySelector('.as-node-popover.is-canvas')!;
+  const first=popup.querySelector('[data-comparison-index="0"]')!,second=popup.querySelector('[data-comparison-index="1"]')!;
+  const firstModes=first.querySelectorAll('[role="group"] button'),secondModes=second.querySelectorAll('[role="group"] button');
+  assert.equal(firstModes[0].getAttribute('aria-pressed'),'true');
+  assert.equal(secondModes[1].getAttribute('aria-pressed'),'true');
+  await click(firstModes[1]);
+  const action=popup.querySelector<HTMLButtonElement>('.as-node-popover-actions button')!;
+  assert.ok(action.disabled,'a comparison column is required after switching modes');
+  await input(first.querySelector<HTMLInputElement>('[data-setting-path="execution_plan.filters[0].compare_field"]')!,'reorder_level');
+  await click(secondModes[0]);
+  assert.ok(action.disabled,'a number is required after switching modes');
+  await input(second.querySelector<HTMLInputElement>('[data-setting-path="execution_plan.filters[1].value"]')!,'0');
+  assert.equal(action.disabled,false);
+  await click(action);
+  const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
+  assert.match(request,/재고 기준 선별.*노드 ID: filter/);
+  assert.ok(request.includes('execution_plan.filters[0].value: 30 → null'));
+  assert.ok(request.includes('execution_plan.filters[0].compare_field: null → "reorder_level"'));
+  assert.ok(request.includes('execution_plan.filters[1].value: null → 0'));
+  assert.ok(request.includes('execution_plan.filters[1].compare_field: "minimum" → null'));
+  assert.equal((request.match(/value_type은 number로 유지/g)||[]).length,2);
+  assert.equal(plan.filters[0].value,30,'the original draft remains unchanged until the chat request is sent');
+  assert.equal(plan.filters[1].compare_field,'minimum');
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+ }finally{await h.close();}
+});
+
+test('saved run node popup reads the selected run snapshot and closes with Escape',async()=>{
+ const currentFlow={entry:'read',nodes:[{id:'read',label:'현재 읽기',tool:'read_document',settings:{arguments_json:'{"max_results":10}'},bindings:[]}],edges:[]};
+ const oldFlow={entry:'read',nodes:[{id:'read',label:'이전 읽기',tool:'read_document',settings:{arguments_json:'{"max_results":3}'},bindings:[]}],edges:[]};
+ const saved={...A,version:2,config:{...A.config,workflow:currentFlow}};
+ const historical={id:'old-run',status:'succeeded',agent_version:1,answer:'완료',rows:[],steps:[],artifact:null,config_snapshot:{workflow:oldFlow}};
+ const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(saved,[historical]):undefined);
+ try{
+  const card=document.querySelector<HTMLButtonElement>('.rwd-card.is-selectable')!;assert.ok(card);
+  await click(card);
+  const popup=document.querySelector('.as-node-popover.is-run')!;assert.ok(popup);
+  assert.match(popup.textContent||'',/이전 읽기/);assert.match(popup.textContent||'',/조회 한도/);assert.match(popup.textContent||'',/3/);
+  assert.doesNotMatch(popup.textContent||'',/현재 읽기/);
+  assert.equal(popup.querySelector('.as-node-popover-actions'),null,'historical settings cannot edit the latest version');
+  await click(button('최신 실행 보기'));
+  assert.equal(document.querySelector('.as-node-popover'),null,'changing the run closes stale settings');
+  await click(document.querySelector('.rwd-card.is-selectable')!);
+  await act(async()=>{window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
+  assert.equal(document.querySelector('.as-node-popover'),null);
+ }finally{await h.close();}
+});
+
+test('current saved node opens the existing design edit conversation',async()=>{
+ const workflow={entry:'read',nodes:[{id:'read',label:'메일 읽기',tool:'email.list',settings:{arguments_json:'{"max_results":25}'},bindings:[]}],edges:[]};
+ const saved={...A,config:{...A.config,workflow}};
+ const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(saved):path.endsWith('/sessions')?{id:'edit-session',revision:0}:undefined);
+ try{
+  await click(document.querySelector('.rwd-card.is-selectable')!);
+  const popup=document.querySelector('.as-node-popover.is-run')!;assert.ok(popup);
+  assert.match(popup.textContent||'',/25/);
+  await input(popup.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.max_results"]')!,'0');
+  await click(popup.querySelector('.as-node-popover-actions button')!);
+  assert.equal(document.querySelector('.as-node-popover'),null);
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
+  const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
+  assert.match(request,/메일 읽기.*노드 ID: read/);
+  assert.ok(request.includes('조회 한도 (arguments_json.max_results): 25 → 0'));
+  assert.equal(workflow.nodes[0].settings.arguments_json,'{"max_results":25}');
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,1);
+ }finally{await h.close();}
 });
 
 

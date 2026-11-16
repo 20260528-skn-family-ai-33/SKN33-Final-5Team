@@ -1,15 +1,28 @@
 """Bounded diagnostic metadata: no prompts, input values or provider response bodies."""
 import os
 import re
+from pathlib import Path
 
 
 def token(value, limit=120):
     return re.sub(r'[^a-zA-Z0-9_.:/-]', '', str(value if value is not None else ''))[:limit] or None
 
 
+def release_version():
+    # Deployment preserves the old container environment. Keep the image's own
+    # revision in a file so a previous A4B_RELEASE cannot override a new build.
+    try:
+        revision = (Path(__file__).resolve().parents[3] / '.a4b-release').read_text().strip()
+        if revision:
+            return token(revision)
+    except OSError:
+        pass
+    return token(os.getenv('A4B_RELEASE'))
+
+
 def diagnostic_metadata(error=None, *, trace_id=None, model=None):
     result = {'trace_id': token(trace_id), 'model': token(model or os.getenv('A4B_MAIN_MODEL')),
-              'release': token(os.getenv('A4B_RELEASE')), 'validation': []}
+              'release': release_version(), 'validation': []}
     if error is None:
         return result
     code = getattr(error, 'status_code', None)

@@ -63,7 +63,7 @@ COPY infrastructure/db/migrations/ /app/infrastructure/db/migrations/
 # .dockerignore rule once dropped workflow_engine/executors/output).
 RUN cd /app/Backend && /app/Backend/.venv-agent/bin/python -c "import importlib; from workflow_engine.catalog.registry import TOOLS; [importlib.import_module(t['module_path'].split(':')[0]) for t in TOOLS]; print(len(TOOLS), 'executors importable')"
 ARG A4B_FRONTEND_COMMIT
-ENV A4B_RELEASE=${A4B_FRONTEND_COMMIT}
+RUN printf '%s\n' "$A4B_FRONTEND_COMMIT" > /app/.a4b-release
 ENV HOST=0.0.0.0 PORT=3030 EASYFLOW_DATA_DIR=/app/data A4B_FOCUSED_DEMO=1
 EXPOSE 3030
 CMD ["node","Backend/api/build-server/index.mjs"]

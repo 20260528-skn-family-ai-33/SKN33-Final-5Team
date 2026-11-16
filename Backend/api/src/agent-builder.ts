@@ -4,6 +4,7 @@ import {agentPython,backendPath,dataDirectory} from './paths';
 import {builderNeedsGmail,builderNeedsModel,builderNeedsSlack} from './builder-model-requirements';
 import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {extname} from 'node:path';
+import {StringDecoder} from 'node:string_decoder';
 import {existsSync,mkdirSync,appendFileSync} from 'node:fs';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {convertBuilderPdf} from './builder-documents';
@@ -129,7 +130,8 @@ async function runBuilderWorker(payload:Record<string,unknown>):Promise<any>{
   let child:ChildProcessWithoutNullStreams;
   try{child=spawn(python,[backendPath('service/worker.py')],{stdio:['pipe','pipe','pipe'],env:{...process.env,EASYFLOW_DATA_DIR:dataDirectory(),A4B_TIMING_LOG:timingPath,LANGCHAIN_TRACING_V2:'false',LANGSMITH_TRACING:'false'}});}
   catch(error){release();throw new BuilderWorkerError('Python 실행 환경을 시작하지 못했습니다.','worker_start_failed');}
-  let stdout='',settled=false,heartbeatBusy=false;
+  const stdoutDecoder=new StringDecoder('utf8');
+  let stdout='',stdoutBytes=0,settled=false,heartbeatBusy=false;
   let heartbeat:ReturnType<typeof setInterval>|undefined;
   const clear=()=>{clearTimeout(timer);if(heartbeat)clearInterval(heartbeat);};
   const fail=async(message:string,reasonCode='worker_failed')=>{
@@ -149,12 +151,19 @@ async function runBuilderWorker(payload:Record<string,unknown>):Promise<any>{
   }
   // The slot is freed only when the process is gone, not when the request settles.
   child.on('error',()=>{release();void fail('Python 실행 환경을 시작하지 못했습니다.','worker_start_failed');});
-  child.stdout.on('data',chunk=>{stdout+=String(chunk);if(Buffer.byteLength(stdout)>12*1024*1024)void fail('에이전트 결과 크기 제한을 넘었습니다.');});
+  child.stdout.on('data',chunk=>{
+   if(settled)return;
+   const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);stdoutBytes+=bytes.length;
+   if(stdoutBytes>12*1024*1024){void fail('에이전트 결과 크기 제한을 넘었습니다.');return;}
+   // Pipe chunks can split a Korean/emoji code point; retain incomplete UTF-8 bytes.
+   stdout+=stdoutDecoder.write(bytes);
+  });
   child.stderr.resume();child.stdin.on('error',()=>{});
   child.on('close',()=>{
    release();
    if(settled)return;
    timing('worker_exit');
+   stdout+=stdoutDecoder.end();
    try{const data=JSON.parse(stdout.trim());if(!data.ok){void fail(data.error||'에이전트 실행에 실패했습니다.');return;}settled=true;clear();
     // The worker has committed the run and produced the local report before returning.
     const report=data.result?.artifact?.content;

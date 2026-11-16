@@ -19,7 +19,7 @@ function gate():Gate{
 }
 async function fixture(t:TestContext){
  const directory=await mkdtemp(join(tmpdir(),'a4b-gmail-shutdown-'));
- const env={EASYFLOW_DATA_DIR:directory,A4B_FOCUSED_DEMO:'1',A4B_GMAIL_CLIENT_ID:'fixture-client',A4B_GMAIL_CLIENT_SECRET:'fixture-secret'};
+ const env={EASYFLOW_DATA_DIR:directory,A4B_FOCUSED_DEMO:'1',A4B_LEGACY_FLOWS_RETIRED:'0',A4B_GMAIL_CLIENT_ID:'fixture-client',A4B_GMAIL_CLIENT_SECRET:'fixture-secret'};
  const previous=new Map(Object.keys(env).map(key=>[key,process.env[key]]));
  for(const [key,value] of Object.entries(env))process.env[key]=value;
  let now=1700000000000,access='',refresh='',refreshCalls=0,codeCalls=0,rejectExchanges=false,app:ReturnType<typeof createApplication>,port=0;

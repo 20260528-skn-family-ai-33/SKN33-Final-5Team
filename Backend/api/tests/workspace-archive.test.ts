@@ -26,6 +26,8 @@ function workflow(name: string, nodes: FlowNode[]): Flow {
 test('failed S3 archival preserves the webhook execution error and dispatches its error workflow', {timeout: 45000}, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'a4b-archive-test-'));
   process.env.EASYFLOW_DATA_DIR = directory;
+  const previousLegacy=process.env.A4B_LEGACY_FLOWS_RETIRED;
+  process.env.A4B_LEGACY_FLOWS_RETIRED='0';
   process.env.A4B_S3_BUCKET = 'test-bucket';
   process.env.AWS_REGION = 'ap-northeast-2';
   const {createWorkspaceRuntime} = await import('../src/workspace-runtime');
@@ -45,6 +47,7 @@ test('failed S3 archival preserves the webhook execution error and dispatches it
     await new Promise<void>(resolve => server.close(() => resolve()));
     await runtime?.close();
     await rm(directory, {recursive: true, force: true});
+    if(previousLegacy===undefined)delete process.env.A4B_LEGACY_FLOWS_RETIRED;else process.env.A4B_LEGACY_FLOWS_RETIRED=previousLegacy;
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);

@@ -50,7 +50,7 @@ test('workspace directory context stays isolated across concurrent async request
 });
 
 test('signed Cognito login protects APIs, separates members, refreshes and revokes sessions',async t=>{
- const directory=await mkdtemp(join(tmpdir(),'a4b-cognito-')),previous=process.env.EASYFLOW_DATA_DIR;process.env.EASYFLOW_DATA_DIR=directory;
+ const directory=await mkdtemp(join(tmpdir(),'a4b-cognito-')),previous=process.env.EASYFLOW_DATA_DIR,previousLegacy=process.env.A4B_LEGACY_FLOWS_RETIRED;process.env.EASYFLOW_DATA_DIR=directory;process.env.A4B_LEGACY_FLOWS_RETIRED='0';
  let now=Date.now(),refreshCalls=0,revocations=0;
  const codes=new Map<string,{subject:string;nonce:string;verifierChallenge:string;override?:Record<string,unknown>}>();
  const accessVerifier=CognitoJwtVerifier.create({userPoolId:pool,clientId:client,tokenUse:'access'}),idVerifier=CognitoJwtVerifier.create({userPoolId:pool,clientId:client,tokenUse:'id'});
@@ -188,6 +188,7 @@ test('signed Cognito login protects APIs, separates members, refreshes and revok
  }finally{
   await app.close();await new Promise<void>(resolve=>app.server.close(()=>resolve()));
   if(previous===undefined)delete process.env.EASYFLOW_DATA_DIR;else process.env.EASYFLOW_DATA_DIR=previous;
+  if(previousLegacy===undefined)delete process.env.A4B_LEGACY_FLOWS_RETIRED;else process.env.A4B_LEGACY_FLOWS_RETIRED=previousLegacy;
   await rm(directory,{recursive:true,force:true});
  }
 });

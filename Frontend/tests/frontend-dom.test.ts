@@ -52,20 +52,49 @@ async function setup(search='',stored:Record<string,string>={},override?:(path:s
 }
 const buttons=()=>Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
 
-test('incomplete external workflow explains missing settings in the conversation',async()=>{
- const h=await setup('?screen=workflow',{},path=>path==='/api/workflows/from-request'?{
-  summary:'재고 흐름',questions:[{question:'어느 시트 범위를 읽을까요?'}],
-  requirements:[{id:'range',description:'원본 시트 범위 지정',status:'needs_input'}],
- }:undefined);
+test('external API request stays in the current designer and reports capability limits',async()=>{
+ const prompt='Google Sheets 재고를 Slack으로 알려줘';
+ const h=await setup('?screen=workflow',{},path=>path==='/api/agent-builder/sessions'?{id:'external-capability',revision:0}:path==='/api/agent-builder/message'?{id:'external-capability',revision:1,status:'missing_capability',messages:[{role:'user',content:prompt},{role:'assistant',content:'현재 Google Sheets 원격 조회는 지원하지 않습니다.'}],draft:null,issues:[],trace:[],resources:[]}:undefined);
  try{
-  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'Google Sheets 재고를 Slack으로 알려줘');
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,prompt);
   await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
   const messages=Array.from(document.querySelectorAll('.as-messages .as-message'));
   assert.equal(messages.length,2);
   assert.match(messages[0].textContent||'',/Google Sheets 재고를 Slack으로 알려줘/);
-  assert.match(messages[1].textContent||'',/원본 시트 범위 지정/);
-  assert.match(messages[1].textContent||'',/어느 시트 범위를 읽을까요/);
-  assert.equal(document.querySelector('.as-global-error'),null);
+  assert.match(messages[1].textContent||'',/지원하지 않습니다/);
+  assert.ok(h.calls.some(call=>call.path==='/api/agent-builder/message'));
+  assert.equal(h.calls.some(call=>call.path==='/api/workflows/from-request'),false);
+  assert.equal(document.querySelector('main.workspace'),null);
+ }finally{await h.close();}
+});
+test('the library keeps agent builder cards without loading retired visual flows',async()=>{
+ const agents=Array.from({length:31},(_,index)=>agent('agent-'+index,'내 작업 '+index));
+ const h=await setup('?screen=workflows',{},path=>path==='/api/agent-builder/agents'?{agents}:path==='/api/workflows'?{workflows:[{id:'legacy',name:'나의 첫 번째 자동화',nodes:[{},{}]}]}:undefined,createElement(EntryApp));
+ try{
+  assert.equal(document.querySelectorAll('.entry-workflow-card').length,31);
+  assert.equal(document.querySelector('.entry-list-tools>span')?.textContent,'31개');
+  assert.equal(document.body.textContent?.includes('나의 첫 번째 자동화'),false);
+  assert.equal(h.calls.some(call=>call.path==='/api/workflows'),false);
+ }finally{await h.close();}
+});
+test('retired external workflow links show a clear notice without opening another design',async()=>{
+ const h=await setup('?screen=workflow&external=legacy-flow',{'a4b-builder-session':'keep-current-design'},undefined,createElement(EntryApp));
+ try{
+  assert.match(document.querySelector('[role="alert"]')?.textContent||'',/이전 자동화 링크를 열 수 없습니다/);
+  assert.match(document.querySelector('[role="alert"]')?.textContent||'',/이전 자동화 설계 화면은 종료되었습니다/);
+  assert.equal(document.querySelector('main.workspace'),null);
+  assert.equal(h.calls.some(call=>call.path==='/api/workflows'),false);
+  await click(button('작업 라이브러리로 돌아가기'));
+  assert.equal(new URL(location.href).searchParams.has('external'),false);
+  assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
+  assert.equal(localStorage.getItem('a4b-builder-session'),'keep-current-design');
+ }finally{await h.close();}
+});
+test('schedule management loads only current agent builder workflows',async()=>{
+ const h=await setup('?screen=schedules',{},path=>path==='/api/agent-builder/schedules'?{workflows:[]}:undefined,createElement(EntryApp));
+ try{
+  assert.ok(document.querySelector('[aria-labelledby="schedules-heading"]'));
+  assert.equal(h.calls.some(call=>call.path==='/api/workflows'),false);
  }finally{await h.close();}
 });
 test('Gmail unread summary offers connected Slack channels and sends the chosen ID',async()=>{
@@ -352,7 +381,16 @@ test('connections: a connected Gmail card shows one management action with verif
  }finally{await h.close();}
 });
 
-test('connections: Sheets and Slack show account identity with actions inside management',async()=>{
+test('connections: unconnected Sheets has no card or new connection action',async()=>{
+ const h=await setup('?screen=connections',{},path=>path==='/api/service-connections'?{services:{googleSheets:{configured:true},slack:{configured:true}},credentials:[]}:undefined,createElement(EntryApp));
+ try{
+  assert.equal(document.querySelector('article[aria-label="Google Sheets 서비스"]'),null);
+  assert.ok(document.querySelector('article[aria-label="Slack 서비스"]'));
+  assert.equal(h.calls.some(call=>call.path==='/api/service-connections/connect'&&call.body?.service==='googleSheets'),false);
+ }finally{await h.close();}
+});
+
+test('connections: existing Sheets is management-only while Slack keeps its actions',async()=>{
  let sheetsConnected=true;
  const h=await setup('?screen=connections',{},(path,body,method)=>{
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:false,connectionVersion:0,email:null};
@@ -363,7 +401,6 @@ test('connections: Sheets and Slack show account identity with actions inside ma
     {id:'slack-1',provider:'slack',service:'slack',name:'Slack',accountLabel:'skn33',updatedAt:'2026-11-13T00:00:00Z'},
    ],
   };
-  if(path==='/api/credentials/test'){assert.deepEqual(body,{id:'sheet-1'});return {message:'연결이 정상입니다.'};}
   if(path==='/api/credentials?id=sheet-1'&&method==='DELETE'){sheetsConnected=false;return {};}
  },createElement(EntryApp));
  try{
@@ -372,15 +409,18 @@ test('connections: Sheets and Slack show account identity with actions inside ma
   assert.match(sheet.querySelector('.service-connection-account')!.textContent!,/계정 이메일 확인 필요/);
   assert.doesNotMatch(sheet.querySelector('.service-connection-account')!.textContent!,/Google Sheets/);
   assert.match(slack.querySelector('.service-connection-account')!.textContent!,/skn33/);
+  assert.match(sheet.textContent!,/이전 자동화 전용 연결/);
+  assert.match(sheet.textContent!,/새 작업에서는 사용할 수 없습니다/);
   assert.deepEqual(Array.from(sheet.querySelectorAll('.service-connection-actions button')).map(item=>item.textContent?.trim()),['연결 관리']);
   assert.deepEqual(Array.from(slack.querySelectorAll('.service-connection-actions button')).map(item=>item.textContent?.trim()),['연결 관리']);
   await click(sheet.querySelector('.service-connection-actions button')!);
-  assert.match(document.querySelector('[role="dialog"]')!.textContent!,/다시 연결하면 연결된 Google 계정의 이메일을 표시/);
-  await click(button('연결 확인'));
-  assert.match(document.querySelector('[role="dialog"]')!.textContent!,/연결이 정상입니다/);
+  assert.match(document.querySelector('[role="dialog"]')!.textContent!,/이전 자동화 전용 연결/);
+  assert.match(document.querySelector('[role="dialog"]')!.textContent!,/연결된 Google 계정의 이메일을 확인할 수 없습니다/);
+  assert.equal(buttons().some(item=>item.textContent?.trim()==='계정 다시 연결'||item.textContent?.trim()==='연결 확인'),false);
+  assert.equal(h.calls.some(call=>call.path==='/api/credentials/test'),false);
   await click(button('A4B 연결 해제'));
-  assert.equal(sheet.querySelector('.service-connection-account'),null);
-  assert.equal(sheet.querySelector('.service-connection-actions button')?.textContent,'Google에서 연결');
+  assert.equal(document.querySelector('article[aria-label="Google Sheets 서비스"]'),null);
+  assert.equal(h.calls.some(call=>call.path==='/api/service-connections/connect'&&call.body?.service==='googleSheets'),false);
   await click(slack.querySelector('.service-connection-actions button')!);
   assert.match(document.querySelector('[role="dialog"]')!.textContent!,/skn33/);
   assert.ok(button('계정 다시 연결'));
@@ -403,10 +443,9 @@ test('connections: a late Sheets status refresh cannot restore a disconnected ac
   assert.equal(reads,2);
   await click(button('A4B 연결 해제'));
   await act(async()=>{connected=false;removed.resolve({});await tick();});
-  assert.equal(sheet.querySelector('.service-connection-account'),null);
+  assert.equal(document.querySelector('article[aria-label="Google Sheets 서비스"]'),null);
   await act(async()=>{stale.resolve({services:{googleSheets:{configured:true},slack:{configured:true}},credentials:[{id:'sheet-1',provider:'google',service:'googleSheets',name:'Google Sheets',accountLabel:'old@example.com',updatedAt:'2026-11-13T00:00:00Z'}]});await tick();});
-  assert.equal(sheet.querySelector('.service-connection-account'),null);
-  assert.equal(sheet.querySelector('.service-connection-actions button')?.textContent,'Google에서 연결');
+  assert.equal(document.querySelector('article[aria-label="Google Sheets 서비스"]'),null);
  }finally{removed.resolve({});stale.resolve(status());await h.close();}
 });
 

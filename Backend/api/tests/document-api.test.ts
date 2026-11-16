@@ -23,7 +23,7 @@ class ProductionServer {
  constructor(readonly port:number,readonly directory:string){}
  get base(){return `http://127.0.0.1:${this.port}`;}
  async start(){
-  const environment={...process.env,PORT:String(this.port),HOST:'127.0.0.1',EASYFLOW_DATA_DIR:this.directory};for(const key of Object.keys(environment))if(/^N8N_/i.test(key))delete environment[key as keyof typeof environment];
+  const environment={...process.env,A4B_LEGACY_FLOWS_RETIRED:'0',PORT:String(this.port),HOST:'127.0.0.1',EASYFLOW_DATA_DIR:this.directory};for(const key of Object.keys(environment))if(/^N8N_/i.test(key))delete environment[key as keyof typeof environment];
   // Exercise the production bundle; TypeScript source is never launched here.
   const child=this.child=spawn(process.execPath,['build-server/index.mjs'],{cwd:project,env:environment,stdio:SERVER_STDIO});let failure:Error|undefined;
   child.stdout?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});child.stderr?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});child.once('error',error=>{failure=error;});

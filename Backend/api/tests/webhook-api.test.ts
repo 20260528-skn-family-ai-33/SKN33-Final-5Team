@@ -31,7 +31,7 @@ class Server {
   get base() { return `http://127.0.0.1:${this.port}`; }
 
   async start() {
-    const environment: NodeJS.ProcessEnv = { ...process.env, PORT: String(this.port), HOST: '127.0.0.1', EASYFLOW_DATA_DIR: this.directory, EASYFLOW_WEBHOOK_RESPONSE_TIMEOUT_MS: '2000' };
+    const environment: NodeJS.ProcessEnv = { ...process.env, A4B_LEGACY_FLOWS_RETIRED: '0', PORT: String(this.port), HOST: '127.0.0.1', EASYFLOW_DATA_DIR: this.directory, EASYFLOW_WEBHOOK_RESPONSE_TIMEOUT_MS: '2000' };
     for (const key of Object.keys(environment)) if (/^N8N_/i.test(key)) delete environment[key];
     const child = this.child = spawn(process.execPath, ['--import', 'tsx', 'src/index.ts'], { cwd: project, env: environment, stdio: SERVER_STDIO });
     child.stdout?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });

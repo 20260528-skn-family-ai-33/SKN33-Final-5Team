@@ -25,7 +25,7 @@ import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
 import {withScheduleSourceContext,type ScheduleSourceContext} from './schedule-source';
-import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
+import {validateFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
 // Enforce isolation at the HTTP boundary for every MIME, including SVG/XHTML.
 // Workflow headers cannot opt back into the authenticated application's origin.
@@ -36,7 +36,14 @@ const webhookSecurityHeaders=Object.freeze({
 
 /** Each member has independent stores, credentials, execution queues and OAuth state. */
 export function createWorkspaceRuntime(port:number,ownerId?:string,publicOrigin?:string,sourceAuthorization?:Pick<ScheduleSourceContext,'authorizeOwner'|'authorizeTeam'>){
- const visualSchedulerEnabled=process.env.A4B_VISUAL_SCHEDULER_ENABLED==='1'||(process.env.A4B_VISUAL_SCHEDULER_ENABLED===undefined&&process.env.A4B_FOCUSED_DEMO!=='1');
+ const legacyFlowsRetired=process.env.A4B_LEGACY_FLOWS_RETIRED!=='0';
+ const legacyRetiredMessage='이전 형식의 워크플로우는 더 이상 만들거나 실행할 수 없습니다. 기존 기록은 보관됩니다.';
+ const retiredLegacyPostPaths=new Set([
+  '/api/workflows','/api/workflows/from-request','/api/activation','/api/runs','/api/executions/retry',
+  '/api/assistant/sessions','/api/assistant/converse','/api/assistant/generate','/api/assistant/analyze-error',
+  '/api/evidence-review','/api/files',
+ ]);
+ const visualSchedulerEnabled=!legacyFlowsRetired&&(process.env.A4B_VISUAL_SCHEDULER_ENABLED==='1'||(process.env.A4B_VISUAL_SCHEDULER_ENABLED===undefined&&process.env.A4B_FOCUSED_DEMO!=='1'));
 const sourceContext:ScheduleSourceContext={directory:dataDirectory(),ownerId,...sourceAuthorization};
 const store=new Store(dataDirectory());
 function recordGmailEvent(event:Parameters<Store['recordGmailEvent']>[0]){
@@ -136,10 +143,12 @@ const responseTimeout=Number(process.env.EASYFLOW_WEBHOOK_RESPONSE_TIMEOUT_MS??6
 if(!Number.isInteger(responseTimeout)||responseTimeout<0||responseTimeout>2147483647)throw new Error('Webhook 응답 제한 시간은 0부터 2147483647 사이의 밀리초로 설정해주세요.');
 let closing=false;
 let closePromise:Promise<void>|undefined;
-if(!store.listFlows().length)store.saveFlow(makeFlow());
 // Completed node checkpoints are durable. An interrupted external request may
 // already have taken effect, so restart it only after the user explicitly retries.
-for(const e of store.listPendingExecutions())if(e.status==='running')store.saveExecution({...e,status:'error',error:'프로그램이 실행 도중 종료됐어요. 마지막 외부 작업의 결과를 확인한 뒤 다시 실행해주세요.'});
+if(legacyFlowsRetired){
+ store.retireActiveFlows(legacyRetiredMessage);
+ for(const execution of store.listPendingExecutions())store.saveExecution({...execution,status:'canceled',error:'이전 형식의 워크플로우 실행이 중단됐습니다. 외부 작업의 결과를 확인해주세요.'});
+}else for(const e of store.listPendingExecutions())if(e.status==='running')store.saveExecution({...e,status:'error',error:'프로그램이 실행 도중 종료됐어요. 마지막 외부 작업의 결과를 확인한 뒤 다시 실행해주세요.'});
 function json(res:ServerResponse,status:number,data:any){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));}
 function respondWebhook(res:ServerResponse,id:string,response:WebhookResponse):void {
  if(res.writableEnded||res.destroyed)return;const prepared=prepareWebhookResponse(response);const bytes=prepared.binary?decodeBinaryFile(prepared.binary):prepared.body===undefined?undefined:typeof prepared.body==='string'?prepared.body:JSON.stringify(prepared.body);
@@ -175,6 +184,7 @@ function checkLive(flow:Flow){
  }
 }
 function enqueue(flow:Flow,input:Json[],mode:'learning'|'live',extra:Json={},onReserved?:(execution:Execution)=>void,reservedId?:string){
+ if(legacyFlowsRetired)throw new Error(legacyRetiredMessage);
  if(mode==='live')checkLive(flow);
  const e:Execution={id:reservedId??randomUUID(),workflowId:flow.id,workflowName:flow.name,status:'queued',startedAt:new Date().toISOString(),duration:0,runs:[],mode,...extra};
  if(!store.reserveExecution(e,clone(flow),input,extra.dedupeKey))return null;
@@ -224,8 +234,9 @@ async function run(e:Execution){
  catch(err){const failed:Execution={...store.getExecution(e.id)!,status:controller.signal.aborted?'canceled':'error',error:(err as Error).message};store.saveExecution(failed);settleWebhook(failed);}
  finally{controllers.delete(e.id);inFlight.delete(e.id);void pump();}
 }
-async function pump(){if(closing)return;for(const e of store.listPendingExecutions()){if(inFlight.size>=2)break;if(inFlight.has(e.id))continue;if(e.status==='queued'||e.status==='waiting'&&Date.parse(e.resumeAt||'')<=Date.now()){inFlight.add(e.id);void run(e);}}}
+async function pump(){if(closing||legacyFlowsRetired)return;for(const e of store.listPendingExecutions()){if(inFlight.size>=2)break;if(inFlight.has(e.id))continue;if(e.status==='queued'||e.status==='waiting'&&Date.parse(e.resumeAt||'')<=Date.now()){inFlight.add(e.id);void run(e);}}}
 function activate(flow:Flow,active:boolean){
+ if(legacyFlowsRetired&&active)throw new Error(legacyRetiredMessage);
  if(active){checkLive(flow);const triggers=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(triggers.length!==1)throw new Error('자동 실행에는 예약 시작 또는 Webhook 시작 단계 하나가 필요해요.');const allStarts=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.manualTrigger')||n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(allStarts.length!==1)throw new Error('시작 단계는 하나만 사용해주세요. 기존 시작 단계에서 시작 방식을 바꿀 수 있어요.');const n=triggers[0];if(n.type.endsWith('.scheduleTrigger')){validateSchedule(n,flow.settings.timezone||'Asia/Seoul');const activatedAt=Date.now();flow.schedule={triggerId:n.id,activatedAt,nextRunAt:nextRunAt({...n,scheduleAnchorAt:activatedAt},activatedAt,flow.settings.timezone||'Asia/Seoul')};}if(n.type.endsWith('.webhook')){validateWebhookConfiguration(flow,n);flow.hookToken??=randomBytes(24).toString('hex');}}
  else delete flow.schedule;
  return store.saveFlow({...flow,active});
@@ -239,6 +250,10 @@ const timer=setInterval(()=>{
 const handle=async(req:IncomingMessage,res:ServerResponse)=>{
  try{
   const authority=req.headers.host||`127.0.0.1:${port}`;const url=new URL(req.url||'/',`http://${authority}`);const path=url.pathname;const method=req.method||'GET';
+  if(legacyFlowsRetired){
+   const legacyMutation=method==='POST'&&(retiredLegacyPostPaths.has(path)||path.startsWith('/api/assistant/sessions/'))||method==='DELETE'&&path==='/api/workflows';
+   if(legacyMutation||path.startsWith('/hooks/'))return json(res,410,{error:legacyRetiredMessage});
+  }
   if(path.startsWith('/api/')){
    if(!['GET','HEAD'].includes(method)&&req.headers['content-type']&&!String(req.headers['content-type']).startsWith('application/json'))return json(res,415,{error:'JSON 입력을 사용해주세요.'});
    if(path==='/api/agent-builder/schedule-health'&&method==='GET')return json(res,200,{...scheduleState});
@@ -312,7 +327,11 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    if(path==='/api/activation'&&method==='POST'){const data=await body(req);return json(res,200,{workflow:activate(getFlow(data.workflowId),!!data.active)});}
    if(path==='/api/credentials'){
     if(method==='GET')return json(res,200,{credentials:store.listCredentials()});
-    if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});
+    if(method==='POST'){
+     const input=await body(req);
+     if(legacyFlowsRetired&&input?.data?.service==='googleSheets'&&!store.listCredentials().some(credential=>credential.id===input.id&&credential.service==='googleSheets'))return json(res,410,{error:legacyRetiredMessage});
+     return json(res,200,{credential:store.saveCredential(input)});
+    }
     if(method==='DELETE'){const id=url.searchParams.get('id')||'';if(store.listFlows().some(f=>f.active&&f.nodes.some(n=>n.credentialId===id)))throw new Error('이 계정을 사용하는 자동 실행을 먼저 꺼주세요.');oauth.cancel(id);store.deleteCredential(id);return json(res,200,{ok:true});}
    }
    if(path==='/api/service-connections'&&method==='GET'){
@@ -339,6 +358,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    }
    if(path==='/api/service-connections/connect'&&method==='POST'){
     const input=await body(req),service=input?.service;
+    if(legacyFlowsRetired&&service==='googleSheets')return json(res,410,{error:legacyRetiredMessage});
     if(service!=='googleSheets'&&service!=='slack')throw new Error('연결할 서비스를 확인해주세요.');
     const clientId=service==='googleSheets'?sheetsClientId:slackClientId;
     const clientSecret=service==='googleSheets'?sheetsClientSecret:slackClientSecret;
@@ -349,6 +369,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    }
    if(path==='/api/oauth/begin'&&method==='POST'){
     const input=await body(req);
+    if(legacyFlowsRetired&&input?.service==='googleSheets')return json(res,410,{error:legacyRetiredMessage});
     if(input?.id===GMAIL_CONNECTION_ID||input?.service==='gmail')throw new Error('Gmail 설정에서 계정을 연결해주세요.');
     return json(res,200,oauth.begin(input,authority));
    }

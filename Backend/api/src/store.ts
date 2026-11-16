@@ -38,6 +38,8 @@ export class Store {
  listFlows():Flow[] {return this.db.prepare('SELECT json FROM flows ORDER BY updated_at DESC').all().map(row=>JSON.parse(String(row.json)));}
  getFlow(id:string):Flow|undefined {const row=this.db.prepare('SELECT json FROM flows WHERE id=?').get(id);return row?JSON.parse(String(row.json)):undefined;}
  saveFlow(value:Flow):Flow {const flow={...validateFlow(clone(value)),updatedAt:new Date().toISOString()};this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at').run(flow.id,JSON.stringify(flow),flow.updatedAt);return flow;}
+ // Retire persisted graphs without revalidating old node schemas or changing their original update time.
+ retireActiveFlows(reason:string):void {this.db.prepare("UPDATE flows SET json=json_set(json,'$.active',json('false'),'$.activationError',?) WHERE json_extract(json,'$.active')=1").run(reason);}
  deleteFlow(id:string):boolean {return this.db.prepare('DELETE FROM flows WHERE id=?').run(id).changes>0;}
  private public(row:Record<string,any>):CredentialPublic {return {id:String(row.id),name:String(row.name),provider:row.provider as Provider,...(row.service?{service:String(row.service)}:{}),...(row.auth_type==='oauth2'?{authType:'oauth2' as const}:{}),createdAt:String(row.created_at),updatedAt:String(row.updated_at)};}
  listCredentials():CredentialPublic[] {return this.db.prepare('SELECT id,name,provider,service,auth_type,created_at,updated_at FROM credentials WHERE id<>? ORDER BY updated_at DESC').all(GMAIL_CONNECTION_ID).map(row=>this.public(row));}

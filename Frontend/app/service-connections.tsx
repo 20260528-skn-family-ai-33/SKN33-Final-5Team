@@ -13,7 +13,7 @@ type DisplayCredential=CredentialPublic&{accountLabel?:string};
 type Status={services:Record<Service,{configured:boolean}>;credentials:DisplayCredential[]};
 type Attempt={authorizationUrl:string;expiresAt:number};
 const entries=[
-  {id:'googleSheets' as const,label:'Google Sheets',description:'시트를 읽고 결과 행을 기록합니다.',permission:'읽기·수정'},
+  {id:'googleSheets' as const,label:'Google Sheets',description:'이전 자동화 전용 연결입니다. 새 작업에서는 사용할 수 없습니다.',permission:'기존 연결 관리'},
   {id:'slack' as const,label:'Slack',description:'워크플로 결과를 채널로 보냅니다.',permission:'메시지 전송·채널 조회'},
 ];
 const connected=(status:Status|undefined,service:Service)=>status?.credentials.find(c=>service==='slack'?c.service==='slack'||c.provider==='slack':c.service==='googleSheets');
@@ -75,7 +75,7 @@ export function ServiceConnections(){
     <div className="entry-page-heading"><WorkspacePageTitle icon={Unplug} id="service-connections-heading">서비스 연결</WorkspacePageTitle></div>
     {notice&&!managing&&<p role="status" className="service-connection-feedback">{notice}</p>}
     <div className="service-connection-grid"><GmailConnection disabled={false} variant="card"/>
-      {entries.map(({id,label,description,permission})=>{
+      {entries.filter(entry=>entry.id!=='googleSheets'||!!connected(status,'googleSheets')).map(({id,label,description,permission})=>{
         const credential=connected(status,id),configured=status?.services[id].configured;
         return <article className="service-connection-card" key={id} aria-label={label+' 서비스'}>
           <div className="service-connection-card-heading"><span className="service-connection-logo"><img src={`/service-icons/${id.toLowerCase()}.svg`} width={22} height={22} alt=""/></span><h3>{label}</h3><span className={'service-connection-state'+(credential?' connected':'')}>{credential?'연결됨':status?configured?'연결 안 됨':'설정 대기':'확인 중'}</span></div>
@@ -85,7 +85,7 @@ export function ServiceConnections(){
           <div className="service-connection-actions">
             {credential
               ? <button type="button" className="as-button service-connection-manage" disabled={!!busy} onClick={()=>{setNotice('');setManaging(id);}} aria-label={label+' 연결 관리'}>연결 관리</button>
-              : <button type="button" className="as-button as-primary" disabled={!!busy||!configured} onClick={()=>void connect(id)}>{id==='slack'?'Slack에서 연결':'Google에서 연결'}</button>}
+              : id==='slack'&&<button type="button" className="as-button as-primary" disabled={!!busy||!configured} onClick={()=>void connect(id)}>Slack에서 연결</button>}
           </div>
         </article>;
       })}
@@ -94,18 +94,18 @@ export function ServiceConnections(){
       {managedEntry&&managedCredential&&<DialogContent className="as-dialog">
         <DialogHeader>
           <DialogTitle>{managedEntry.label} 연결 관리</DialogTitle>
-          <DialogDescription>{managedEntry.label} 계정의 연결 상태를 확인하고 관리하세요.</DialogDescription>
+          <DialogDescription>{managedEntry.id==='googleSheets'?'이전 자동화 전용 연결입니다. 새 작업에서는 사용할 수 없습니다. 필요하면 연결을 해제하세요.':managedEntry.label+' 계정의 연결 상태를 확인하고 관리하세요.'}</DialogDescription>
         </DialogHeader>
         <div className="gmail-connected-account">
           {managedEntry&&<img src={`/service-icons/${managedEntry.id.toLowerCase()}.svg`} width={20} height={20} alt=""/>}
           <div><span>연결된 계정</span><strong>{accountLabel(managedCredential,managedEntry.id)}</strong></div>
         </div>
-        {managedEntry.id==='googleSheets'&&!managedCredential.accountLabel?.trim()&&<p className="gmail-account-notice">계정을 다시 연결하면 연결된 Google 계정의 이메일을 표시할 수 있어요.</p>}
+        {managedEntry.id==='googleSheets'&&!managedCredential.accountLabel?.trim()&&<p className="gmail-account-notice">연결된 Google 계정의 이메일을 확인할 수 없습니다.</p>}
         {notice&&<p role="status" className="service-connection-feedback">{notice}</p>}
         {pending?.service===managedEntry.id&&<a href={pending.attempt.authorizationUrl} className="as-text-button" referrerPolicy="no-referrer">팝업이 보이지 않으면 계정 연결 계속</a>}
         <div className="service-connection-dialog-actions">
-          <button type="button" className="as-button as-primary" disabled={!!busy} onClick={()=>void connect(managedEntry.id)}>계정 다시 연결</button>
-          <button type="button" className="as-button" disabled={!!busy} onClick={()=>void manage(managedEntry.id,managedCredential.id,'test')}>연결 확인</button>
+          {managedEntry.id==='slack'&&<><button type="button" className="as-button as-primary" disabled={!!busy} onClick={()=>void connect(managedEntry.id)}>계정 다시 연결</button>
+          <button type="button" className="as-button" disabled={!!busy} onClick={()=>void manage(managedEntry.id,managedCredential.id,'test')}>연결 확인</button></>}
           <button type="button" className="as-text-button service-connection-disconnect" disabled={!!busy} onClick={()=>void manage(managedEntry.id,managedCredential.id,'disconnect')}>A4B 연결 해제</button>
         </div>
       </DialogContent>}

@@ -8,7 +8,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import type { Flow, FlowNode, Execution, Json } from '../../../shared/workflow';
+import { DatabaseSync } from 'node:sqlite';
+import { Store } from '../src/store';
+import { makeFlow, validateFlow, type Flow, type FlowNode, type Execution, type Json } from '../../../shared/workflow';
 
 const project = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const delay = (milliseconds: number) => new Promise<void>(resolve => setTimeout(resolve, milliseconds));
@@ -26,15 +28,15 @@ async function freePort(): Promise<number> {
 class Server {
   child?: ChildProcess;
   output = '';
-  constructor(readonly port: number, readonly directory: string) {}
+  constructor(readonly port: number, readonly directory: string, readonly environmentOverrides: NodeJS.ProcessEnv = {}) {}
   get base() { return `http://127.0.0.1:${this.port}`; }
 
   async start(): Promise<void> {
     assert.ok(!this.child, 'previous test server must stop before restart');
     this.output = '';
-    const environment: NodeJS.ProcessEnv = { ...process.env, PORT: String(this.port), HOST: '127.0.0.1', EASYFLOW_DATA_DIR: this.directory };
+    const environment: NodeJS.ProcessEnv = { ...process.env, A4B_LEGACY_FLOWS_RETIRED:'0', ...this.environmentOverrides, PORT: String(this.port), HOST: '127.0.0.1', EASYFLOW_DATA_DIR: this.directory };
     // Integration tests run our own process with no n8n configuration or external service.
-    for (const key of Object.keys(environment)) if (/^N8N_/i.test(key)) delete environment[key];
+    for (const key of Object.keys(environment)) if (/^N8N_/i.test(key) || environment[key] === undefined) delete environment[key];
     const child = this.child = spawn(process.execPath, ['--import','tsx','src/index.ts'], { cwd: project, env: environment, stdio: SERVER_STDIO });
     child.stdout?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
     child.stderr?.on('data', chunk => { this.output = (this.output + String(chunk)).slice(-16_000); });
@@ -96,6 +98,17 @@ function workflow(name: string, nodes: FlowNode[]): Flow {
 }
 function rawSet(name: string) { return stage('set',name,{mode:'raw',jsonOutput:'={{ $json }}',includeOtherFields:false,options:{}}); }
 
+test('legacy Flow creation is retired by default while AgentBuilder remains available', async () => {
+  const directory=await mkdtemp(join(tmpdir(),'easyflow-retired-default-'));
+  const server=new Server(await freePort(),directory,{A4B_LEGACY_FLOWS_RETIRED:undefined});
+  try{
+    await server.start();
+    assert.deepEqual((await server.request('/api/workflows')).data.workflows,[]);
+    assert.equal((await server.request('/api/workflows','POST',makeFlow())).status,410);
+    assert.equal((await server.request('/api/agent-builder/connection?profile=1')).status,200);
+  }finally{try{await server.stop();}finally{await removeDirectory(directory);}}
+});
+
 test('standalone server persists and executes workflows, credentials, schedules and webhooks without n8n', {timeout:scaled(60_000)}, async t => {
   const directory = await mkdtemp(join(tmpdir(),'easyflow-api-'));
   const server = new Server(await freePort(),directory);
@@ -103,6 +116,17 @@ test('standalone server persists and executes workflows, credentials, schedules 
   const secret = 'example-only-bearer-token-'+randomUUID();
   try {
     await server.start();
+
+    await t.test('a new workspace stays empty after a server restart', async () => {
+      const initial = await server.request('/api/workflows');
+      assert.equal(initial.status,200);
+      assert.deepEqual(initial.data.workflows,[]);
+      await server.stop();
+      await server.start();
+      const restarted = await server.request('/api/workflows');
+      assert.equal(restarted.status,200);
+      assert.deepEqual(restarted.data.workflows,[]);
+    });
 
     await t.test('OAuth authorization begins locally without exposing secrets and canceled callbacks consume the state',async()=>{
       const privateValue='example-oauth-client-secret-'+randomUUID();const input={name:'Google 로그인 테스트',service:'googleSheets',clientId:'example-client-id.apps.googleusercontent.com',clientSecret:privateValue};
@@ -124,11 +148,15 @@ test('standalone server persists and executes workflows, credentials, schedules 
       const f=workflow('2MB 파일 그대로 전달',[stage('manualTrigger','파일 입력'),stage('noOp','파일 통과')]);assert.equal((await server.request('/api/workflows','POST',f)).status,200);const started=await server.request('/api/runs','POST',{workflowId:f.id,mode:'learning',input:uploaded.data.input});assert.equal(started.status,202);const result=await server.execution(started.data.executionId,e=>['success','error'].includes(e.status));assert.equal(result.status,'success',result.error);const download=await fetch(server.base+'/api/files/download?'+new URLSearchParams({executionId:result.id,runIndex:'1',property:'data'}));assert.equal(download.status,200);assert.equal(Buffer.compare(Buffer.from(await download.arrayBuffer()),bytes),0);
       uploaded.data.input[0].__easyflowBinary.data.fileSize=1;const invalid=await server.request('/api/runs','POST',{workflowId:f.id,mode:'learning',input:uploaded.data.input});assert.equal(invalid.status,400);assert.match(invalid.data.error,/크기/);
     });
-    await t.test('default workflow executes live and the server owns its execution record', async () => {
+    await t.test('an explicitly saved starter workflow executes live and remains stored', async () => {
       const response = await server.request('/api/workflows');
       assert.equal(response.status,200);
-      const first = response.data.workflows.find((f:Flow)=>f.name==='나의 첫 번째 자동화') as Flow;
+      assert.ok(!response.data.workflows.some((f:Flow)=>f.name==='나의 첫 번째 자동화'));
+      const saved = await server.request('/api/workflows','POST',makeFlow());
+      assert.equal(saved.status,200);
+      const first = saved.data.workflow as Flow;
       assert.ok(first?.id);
+      assert.ok((await server.request('/api/workflows')).data.workflows.some((f:Flow)=>f.id===first.id));
       const run = await server.request('/api/runs','POST',{workflowId:first.id,mode:'live'});
       assert.equal(run.status,202);
       assert.equal(typeof run.data.executionId,'string');
@@ -356,6 +384,70 @@ test('standalone server persists and executes workflows, credentials, schedules 
       assert.ok(!JSON.stringify((await server.request('/api/executions')).data).includes(secret));
       assert.equal((await server.request('/api/activation','POST',{workflowId:hookFlow.id,active:false})).status,200);
       assert.equal((await server.request(`/hooks/${hookFlow.id}/${hookFlow.nodes[0].id}`,'POST',{}, {'x-easyflow-token':hookToken})).status,404);
+    });
+
+    await t.test('retirement preserves data but disables legacy creation and every execution entry point', async () => {
+      const retiredHook=workflow('보존할 외부 시작',[stage('webhook','외부 시작',{httpMethod:'POST',path:'retired-hook',authentication:'none',responseMode:'onReceived'})]);
+      assert.equal((await server.request('/api/workflows','POST',retiredHook)).status,200);
+      assert.equal((await server.request('/api/activation','POST',{workflowId:retiredHook.id,active:true})).status,200);
+      const sheetsCredential=(await server.request('/api/credentials','POST',{name:'기존 Sheets 연결',provider:'bearer',data:{service:'googleSheets',token:'existing-test-token'}})).data.credential;
+      const before=(await server.request('/api/workflows')).data.workflows as Flow[];
+      await server.stop();
+      const pending=new Store(directory);
+      const pendingIds=['queued','running','waiting'].map(status=>{
+        const id=randomUUID();
+        const execution:Execution={id,workflowId:retiredHook.id,workflowName:retiredHook.name,status:status as Execution['status'],startedAt:new Date().toISOString(),duration:0,runs:[],mode:'live',...(status==='waiting'?{resumeAt:new Date(Date.now()-1000).toISOString()}:{})};
+        assert.equal(pending.reserveExecution(execution,retiredHook,[{}]),true);
+        return id;
+      });
+      pending.close();
+      const legacyUpdatedAt='2001-01-01T00:00:00.000Z';
+      const legacySnapshot={...retiredHook,active:true,nodes:[{...retiredHook.nodes[0],typeVersion:'old'}],updatedAt:legacyUpdatedAt};
+      assert.throws(()=>validateFlow(structuredClone(legacySnapshot)),/버전/);
+      const raw=new DatabaseSync(join(directory,'easyflow.sqlite'));
+      assert.equal(raw.prepare('UPDATE flows SET json=?,updated_at=? WHERE id=?').run(JSON.stringify(legacySnapshot),legacyUpdatedAt,retiredHook.id).changes,1);
+      raw.close();
+      server.environmentOverrides.A4B_LEGACY_FLOWS_RETIRED='1';
+      server.environmentOverrides.A4B_VISUAL_SCHEDULER_ENABLED='1';
+      server.environmentOverrides.A4B_SLACK_CLIENT_ID='fixture-slack-client';
+      server.environmentOverrides.A4B_SLACK_CLIENT_SECRET='fixture-slack-secret';
+      await server.start();
+      const listed=(await server.request('/api/workflows')).data.workflows as Flow[];
+      assert.equal(listed.length,before.length);
+      assert.equal(listed.find(flow=>flow.id===retiredHook.id)?.active,false);
+      assert.match(listed.find(flow=>flow.id===retiredHook.id)?.activationError||'',/이전 형식의 워크플로우/);
+      assert.deepEqual(listed.find(flow=>flow.id===retiredHook.id)?.nodes,legacySnapshot.nodes);
+      assert.deepEqual(listed.find(flow=>flow.id===retiredHook.id)?.connections,legacySnapshot.connections);
+      assert.equal(listed.find(flow=>flow.id===retiredHook.id)?.updatedAt,legacyUpdatedAt);
+      const audit=new DatabaseSync(join(directory,'easyflow.sqlite'));
+      assert.equal(audit.prepare('SELECT updated_at FROM flows WHERE id=?').get(retiredHook.id)?.updated_at,legacyUpdatedAt);
+      audit.close();
+      assert.ok(listed.some(flow=>flow.id===savedFlow.id));
+      for(const id of pendingIds){const execution=(await server.request('/api/executions?id='+id)).data.execution as Execution;assert.equal(execution.status,'canceled');assert.deepEqual(execution.runs,[]);}
+      assert.equal((await server.request('/api/executions?id='+successId)).data.execution.status,'success');
+      assert.ok((await server.request('/api/credentials')).data.credentials.some((item:Json)=>item.id===credentialId));
+      assert.ok((await server.request('/api/credentials')).data.credentials.some((item:Json)=>item.id===sheetsCredential.id));
+      assert.equal((await server.request('/api/agent-builder/connection?profile=1')).status,200);
+      assert.equal((await server.request('/api/agent-builder/schedule-health')).status,200);
+      assert.equal((await server.request('/api/service-connections/connect','POST',{service:'googleSheets'})).status,410);
+      assert.equal((await server.request('/api/oauth/begin','POST',{name:'Google Sheets',service:'googleSheets'})).status,410);
+      assert.equal((await server.request('/api/credentials','POST',{name:'새 Google Sheets',provider:'bearer',data:{service:'googleSheets',token:'test'}})).status,410);
+      assert.equal((await server.request('/api/credentials','POST',{id:sheetsCredential.id,name:'기존 Sheets 연결 수정',provider:'bearer',data:{service:'googleSheets',token:'renewed-test-token'}})).status,200);
+      assert.equal((await server.request('/api/credentials','POST',{name:'새 AI 연결',provider:'bearer',data:{service:'openai',token:'test'}})).status,200);
+      assert.equal((await server.request('/api/service-connections/connect','POST',{service:'slack'})).status,200);
+      const executionCount=(await server.request('/api/executions')).data.executions.length;
+      for(const [path,method,data] of [
+        ['/api/workflows','POST',makeFlow()],['/api/workflows?id='+retiredHook.id,'DELETE',undefined],
+        ['/api/workflows/from-request','POST',{prompt:'외부 API 사용'}],['/api/activation','POST',{workflowId:retiredHook.id,active:true}],
+        ['/api/runs','POST',{workflowId:retiredHook.id,mode:'live'}],['/api/executions/retry','POST',{id:pendingIds[0]}],
+        ['/api/assistant/sessions','POST',{}],['/api/assistant/sessions/OLD-ID','POST',{prompt:'예시'}],
+        ['/api/assistant/converse','POST',{prompt:'예시'}],['/api/assistant/generate','POST',{prompt:'예시'}],
+        ['/api/assistant/analyze-error','POST',{executionId:successId}],['/api/evidence-review','POST',{id:successId}],
+        ['/api/files','POST',{data:''}],
+      ] as const){const refused=await server.request(path,method,data);assert.equal(refused.status,410,path);assert.match(refused.data.error,/기존 기록은 보관/);}
+      assert.equal((await server.request(`/hooks/${retiredHook.id}/${retiredHook.nodes[0].id}`,'POST',{})).status,410);
+      assert.equal((await server.request('/api/workflows')).data.workflows.length,before.length);
+      assert.equal((await server.request('/api/executions')).data.executions.length,executionCount);
     });
   } finally {
     try { await server.stop(); } finally { await removeDirectory(directory); }

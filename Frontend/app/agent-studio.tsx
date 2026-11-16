@@ -48,26 +48,6 @@ type RunInputs = {schedule_request_required?:boolean;request_required?:boolean; 
 type Session={last_generation_request_id?:string;requirement_failure?:{kind:string;retryable:boolean}|null;execution_mode?:'manual'|'scheduled'|null;file_inspection?:InspectedFile[];tool_gap?:{gap_id:string;revision:number}|null;input_requirements?:InputRequirement[];pending_questions?:{id:string;key:string;text:string;options?:string[];response?:QuestionResponse;group?:string;reason?:string;required?:boolean;action?:ReceiptAction;supersedes_texts?:string[]}[];id:string;revision:number;model:string;credential_id:string;agent_id:string|null;base_version:number;messages:{role:string;content:string}[];draft:Draft|null;status:string;issues:string[];trace:{node:string;label:string;status:string;detail:string}[];resources:Resource[];saved_agent_id?:string};
 type ConversationRecovery={before:Session;requestId:string;action:'message'|'confirm';includeSchedule?:boolean;content?:string;draftText?:string;fromComposer?:boolean;error:string;running:boolean;pollCount?:number};
 type GenerationRequest={request_id:string;result_revision?:number;workflow_id?:string;action:string;session_revision:number;request_text:string;status:string;reason?:string|null};
-type IncompleteWorkflow={summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{description:string;status:string}[]};
-
-function explainIncompleteWorkflow(result:IncompleteWorkflow,request:string):string {
- const unique=(items:string[])=>[...new Set(items.map(item=>item.trim()).filter(Boolean))];
- const needsInput=unique((result.requirements||[]).filter(item=>item.status==='needs_input').map(item=>item.description));
- const unsupported=unique((result.requirements||[]).filter(item=>item.status==='unsupported').map(item=>item.description));
- const questions=unique((result.questions||[]).map(item=>item.question));
- const checklist=unique((result.checklist||[]).filter(item=>
-  !needsInput.some(detail=>item.includes(detail))&&!unsupported.some(detail=>item.includes(detail))));
- const parts=['워크플로우 초안을 아직 만들지 못했어요.'];
- const summary=result.summary?.trim();
- if(summary&&summary!==request.trim()&&![...needsInput,...unsupported,...questions,...checklist].includes(summary))parts.push(summary);
- if(needsInput.length)parts.push('아직 정해지지 않은 내용:\n'+needsInput.map(item=>'• '+item).join('\n'));
- if(unsupported.length)parts.push('지원 여부를 확인할 작업:\n'+unsupported.map(item=>'• '+item).join('\n'));
- if(checklist.length)parts.push('추가 확인 사항:\n'+checklist.map(item=>'• '+item).join('\n'));
- if(questions.length)parts.push('답변해 주세요:\n'+questions.map((item,index)=>`${index+1}. ${item}`).join('\n'));
- if(parts.length===1)parts.push('필요한 자료, 처리 조건, 결과를 보낼 곳을 알려주세요.');
- return parts.join('\n\n');
-}
-
 type Agent={id:string;version:number;config:Draft;model:string;credential_id:string;updated_at:string;workflow_dependencies?:Record<string,Agent>};
 function evidenceLocation(evidence:{page?:number|null;native_location?:Record<string,unknown>}|null):string {
  const loc=evidence?.native_location;
@@ -95,11 +75,10 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onLocationChange,onCanLeaveChange,initialPrompt,initialFile}:{onNewWorkflow?:()=>void;initialPrompt?:string;initialFile?:File;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void;onExternalFlow?:(id:string)=>void}={}){
+export default function AgentStudio({onNewWorkflow,onNavigate,onLocationChange,onCanLeaveChange,initialPrompt,initialFile}:{onNewWorkflow?:()=>void;initialPrompt?:string;initialFile?:File;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections')=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'|'schedule'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'||initialScreen==='schedule'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const screenRef=useRef(screen);screenRef.current=screen;
- const externalPromptContext=useRef('');
  const scheduleDirtyRef=useRef(false),internalHistoryIndex=useRef(Number(window.history.state?.a4bIndex||0));
  const editorGrid=useRef<HTMLDivElement>(null);
 
@@ -136,7 +115,6 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const [agents,setAgents]=useState<Agent[]>([]),[credentialId,setCredentialId]=useState(''),[model,setModel]=useState('');
  const [session,setSession]=useState<Session|null>(null),[selected,setSelected]=useState<Agent|null>(null),[agentResources,setAgentResources]=useState<Resource[]>([]),[text,setText]=useState(initialPrompt ?? ''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  const [animatedMessage,setAnimatedMessage]=useState('');
- const [externalMessages,setExternalMessages]=useState<Session['messages']>([]);
  useEffect(()=>{
   if(initialPrompt!==undefined&&window.history.state?.initialPrompt===initialPrompt){
    const {initialPrompt:consumed,...state}=window.history.state;
@@ -320,7 +298,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   setAgentResources(prior=>prior.map(item=>item.id===next.id?next:item));setRunFiles(prior=>prior.map(item=>item.id===next.id?next:item));
   setSource(prior=>prior?.asset.id===next.id?{...prior,asset:next}:prior);
  }
- function reset(){if(inFlight.current||recovery?.running)return;setRecovery(null);externalPromptContext.current='';setExternalMessages([]);go('workflow');window.scrollTo({top:0,behavior:'instant'});setChosenRefs([]);setChosenSnapshots([]);setSelectedNodeId(null);setEditorPanel('conversation');generation.current++;setSelected(null);setSession(null);setHistory([]);pinnedRun.current=false;setRunFiles([]);setSchedule(null);setSource(null);setJobs([]);setQueuedSourceRuns([]);setSaveReviewOpen(false);setScheduleSourceDirty(false);setScheduleSettingsDirty(false);setClarificationDirty(false);setScheduleNotice('');setText('');setTestText('');setTestRun(null);setAgentResources([]);setError('');localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');const url=new URL(location.href);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('executionMode');window.history.replaceState(window.history.state,'',url);setReplyDraft('');requestAnimationFrame(()=>input.current?.focus({preventScroll:true}));}
+ function reset(){if(inFlight.current||recovery?.running)return;setRecovery(null);go('workflow');window.scrollTo({top:0,behavior:'instant'});setChosenRefs([]);setChosenSnapshots([]);setSelectedNodeId(null);setEditorPanel('conversation');generation.current++;setSelected(null);setSession(null);setHistory([]);pinnedRun.current=false;setRunFiles([]);setSchedule(null);setSource(null);setJobs([]);setQueuedSourceRuns([]);setSaveReviewOpen(false);setScheduleSourceDirty(false);setScheduleSettingsDirty(false);setClarificationDirty(false);setScheduleNotice('');setText('');setTestText('');setTestRun(null);setAgentResources([]);setError('');localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');const url=new URL(location.href);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('executionMode');window.history.replaceState(window.history.state,'',url);setReplyDraft('');requestAnimationFrame(()=>input.current?.focus({preventScroll:true}));}
 
  async function ensureSession(){generation.current++;if(session)return session;if(!credentialId)throw new Error('설계 서비스를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.');const s=await request('/api/agent-builder/sessions',{credentialId,model,nodeRefs:chosenRefs});return {...s,messages:[],draft:null,status:'empty',issues:[],trace:[],resources:[]} as Session;}
  async function send(event?:FormEvent,choice?:string,questionId?:string,answers?:ClarificationAnswer[]){
@@ -337,17 +315,6 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   setError('');
   let sentSession:Session|null=null;
   try{
-   const gmailSlackRequest=/(?:Gmail|지메일)/i.test(content)&&/(?:Slack|슬랙)/i.test(content);
-   if(!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
-    const prompt=externalPromptContext.current?`${externalPromptContext.current}\n추가 답변: ${content}`:content;
-    const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{id:string;description:string;status:string}[]}>('/api/workflows/from-request',{prompt});
-    if(!result.workflow){externalPromptContext.current=prompt;setExternalMessages(prior=>[...prior,{role:'user',content},{role:'assistant',content:explainIncompleteWorkflow(result,prompt)}]);return;}
-    externalPromptContext.current='';
-    setExternalMessages([]);
-    onExternalFlow?.(result.workflow.id);
-    return;
-   }
-   if(gmailSlackRequest&&externalPromptContext.current){externalPromptContext.current='';setExternalMessages([]);}
    const s=await ensureSession();
    sentSession=s;
    remember(s);
@@ -690,7 +657,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
         <RunFileDownload key={testRun.id} file={resultFile}
           url={testRun.report_path ? '/api/agent-builder/report?id='+encodeURIComponent(testRun.id) : undefined}/>
       </div>}
-      <RunWorkflowDiagram workflow={runWorkflow} steps={testRun.steps} runStatus={testRun.status} waitingNodeId={testRun.question?.node_id}/>{testRun.source_version&&<p className="as-small-muted">이 실행에 사용한 소스: v{testRun.source_version}</p>}{!!testRun.library_source_files?.length&&<details className="as-evidence-list"><summary>실행에 사용한 자료함 파일 ({testRun.library_source_files.length})</summary>{testRun.library_source_files.map(file=><p key={file.space+":"+file.asset_id+":"+file.version}><strong>{file.name}</strong> · {file.space==="team"?"팀 자료함":"내 자료함"}<small className="as-source-version"> · 버전 {file.version}</small></p>)}</details>}{unverifiedFields.length>0&&<p role="status">원문에서 확인하지 못해 빈칸으로 둔 항목: {unverifiedFields.join(' · ')}</p>}{testRun.rows?.length>0&&<div className="as-table-scroll"><table><thead><tr>{Object.keys(testRun.rows[0]).map(k=><th key={k}>{("evidence" in testRun.rows[0]&&"field" in testRun.rows[0])?({file_name:"파일",field:"항목",value:"추출값",status:"확인 상태",evidence:"근거"} as Record<string,string>)[k]||k:k}</th>)}</tr></thead><tbody>{testRun.rows.slice(0,10).map((r,i)=><tr key={i}>{Object.keys(testRun.rows[0]).map(k=><td key={k}>{k==='evidence'&&r[k]?<button className="as-text-button" onClick={()=>setEvidence(r[k] as any)}>원문 확인</button>:typeof r[k]==='object'&&r[k]!==null?JSON.stringify(r[k]):k==='status'?({verified:'원문 일치',not_found_or_unverified:'누락 또는 근거 미확인'} as Record<string,string>)[String(r[k])]||String(r[k]):String(r[k]??'')}</td>)}</tr>)}</tbody></table><small>전체 {testRun.rows.length}행 · 최대 10행 미리보기</small></div>}{testRun.public_projection&&(testRun.public_projection.evidence_truncated||testRun.public_projection.quote_truncated)&&<p className="as-small-muted" role="status">근거 {testRun.public_projection.evidence_total}개 중 {testRun.public_projection.evidence_returned}개를 표시합니다. 긴 인용은 앞부분을 표시하며 전체 실행 데이터는 서버에 보관됩니다.</p>}<details className="as-evidence-list"><summary>실행에 사용한 근거 확인 ({testRun.evidence?.length||0})</summary>{testRun.evidence?.map((e,i)=><button key={i} className="as-resource" onClick={()=>setEvidence(e)}>{e.file_name}{e.page?` · ${e.page}쪽`:""}<span>원문 보기</span></button>)}</details>{testRun.status==='failed'&&!uncertainSlackDelivery&&<button className="as-button" disabled={!!busy||!!recovery||libraryBusy||(slackRequired&&!slackConnected)} onClick={retryRun}>실패 단계부터 재시도</button>}{!!testRun.reviews?.length&&<ReplyReviewPanel reviews={testRun.reviews} runId={testRun.id} disabled={!!busy||!!recovery||libraryBusy} canDecide={testRun.status==='succeeded'} onDecision={decideReply}/>}{(testRun.attempts?.length||0)>1&&<details className="as-evidence-list"><summary>실행·재개 이력 ({testRun.attempts!.length}회)</summary>{testRun.attempts!.map(a=><p key={a.number}>{a.number}차 · {({succeeded:'성공',failed:'실패',running:'실행 중',needs_input:'응답 대기'} as Record<string,string>)[a.status]||a.status}{a.error?' · '+a.error:''}</p>)}</details>}<Trace steps={testRun.steps}/></div>}</div>:<><div className={'as-messages'+(!pendingMessage&&!externalMessages.length&&!session?.messages.length&&!session?.file_inspection?.length?' is-empty':'')} tabIndex={0} role="region" aria-label="대화 내용">{loading?<div className="as-loading"><Loader2 className="as-spin"/>저장한 대화를 확인하고 있습니다.</div>:!pendingMessage&&!externalMessages.length&&!session?.messages.length&&!session?.file_inspection?.length?<div className="as-welcome"><span className="as-welcome-icon"><WorkflowIcon size={27}/></span><h2>어떤 일을 처리할까요?</h2><p>사용할 자료, 처리할 조건, 원하는 결과를 설명하세요.</p>{samples.length>0&&<div className="as-examples">{samples.map(s=><button key={s.label} onClick={()=>{setText(s.text);input.current?.focus();}}><strong>{s.label}<ArrowUp size={14}/></strong><span>{s.text.slice(0,75)}…</span></button>)}</div>}</div>:session?.messages.map((message, i) => {
+      <RunWorkflowDiagram workflow={runWorkflow} steps={testRun.steps} runStatus={testRun.status} waitingNodeId={testRun.question?.node_id}/>{testRun.source_version&&<p className="as-small-muted">이 실행에 사용한 소스: v{testRun.source_version}</p>}{!!testRun.library_source_files?.length&&<details className="as-evidence-list"><summary>실행에 사용한 자료함 파일 ({testRun.library_source_files.length})</summary>{testRun.library_source_files.map(file=><p key={file.space+":"+file.asset_id+":"+file.version}><strong>{file.name}</strong> · {file.space==="team"?"팀 자료함":"내 자료함"}<small className="as-source-version"> · 버전 {file.version}</small></p>)}</details>}{unverifiedFields.length>0&&<p role="status">원문에서 확인하지 못해 빈칸으로 둔 항목: {unverifiedFields.join(' · ')}</p>}{testRun.rows?.length>0&&<div className="as-table-scroll"><table><thead><tr>{Object.keys(testRun.rows[0]).map(k=><th key={k}>{("evidence" in testRun.rows[0]&&"field" in testRun.rows[0])?({file_name:"파일",field:"항목",value:"추출값",status:"확인 상태",evidence:"근거"} as Record<string,string>)[k]||k:k}</th>)}</tr></thead><tbody>{testRun.rows.slice(0,10).map((r,i)=><tr key={i}>{Object.keys(testRun.rows[0]).map(k=><td key={k}>{k==='evidence'&&r[k]?<button className="as-text-button" onClick={()=>setEvidence(r[k] as any)}>원문 확인</button>:typeof r[k]==='object'&&r[k]!==null?JSON.stringify(r[k]):k==='status'?({verified:'원문 일치',not_found_or_unverified:'누락 또는 근거 미확인'} as Record<string,string>)[String(r[k])]||String(r[k]):String(r[k]??'')}</td>)}</tr>)}</tbody></table><small>전체 {testRun.rows.length}행 · 최대 10행 미리보기</small></div>}{testRun.public_projection&&(testRun.public_projection.evidence_truncated||testRun.public_projection.quote_truncated)&&<p className="as-small-muted" role="status">근거 {testRun.public_projection.evidence_total}개 중 {testRun.public_projection.evidence_returned}개를 표시합니다. 긴 인용은 앞부분을 표시하며 전체 실행 데이터는 서버에 보관됩니다.</p>}<details className="as-evidence-list"><summary>실행에 사용한 근거 확인 ({testRun.evidence?.length||0})</summary>{testRun.evidence?.map((e,i)=><button key={i} className="as-resource" onClick={()=>setEvidence(e)}>{e.file_name}{e.page?` · ${e.page}쪽`:""}<span>원문 보기</span></button>)}</details>{testRun.status==='failed'&&!uncertainSlackDelivery&&<button className="as-button" disabled={!!busy||!!recovery||libraryBusy||(slackRequired&&!slackConnected)} onClick={retryRun}>실패 단계부터 재시도</button>}{!!testRun.reviews?.length&&<ReplyReviewPanel reviews={testRun.reviews} runId={testRun.id} disabled={!!busy||!!recovery||libraryBusy} canDecide={testRun.status==='succeeded'} onDecision={decideReply}/>}{(testRun.attempts?.length||0)>1&&<details className="as-evidence-list"><summary>실행·재개 이력 ({testRun.attempts!.length}회)</summary>{testRun.attempts!.map(a=><p key={a.number}>{a.number}차 · {({succeeded:'성공',failed:'실패',running:'실행 중',needs_input:'응답 대기'} as Record<string,string>)[a.status]||a.status}{a.error?' · '+a.error:''}</p>)}</details>}<Trace steps={testRun.steps}/></div>}</div>:<><div className={'as-messages'+(!pendingMessage&&!session?.messages.length&&!session?.file_inspection?.length?' is-empty':'')} tabIndex={0} role="region" aria-label="대화 내용">{loading?<div className="as-loading"><Loader2 className="as-spin"/>저장한 대화를 확인하고 있습니다.</div>:!pendingMessage&&!session?.messages.length&&!session?.file_inspection?.length?<div className="as-welcome"><span className="as-welcome-icon"><WorkflowIcon size={27}/></span><h2>어떤 일을 처리할까요?</h2><p>사용할 자료, 처리할 조건, 원하는 결과를 설명하세요.</p>{samples.length>0&&<div className="as-examples">{samples.map(s=><button key={s.label} onClick={()=>{setText(s.text);input.current?.focus();}}><strong>{s.label}<ArrowUp size={14}/></strong><span>{s.text.slice(0,75)}…</span></button>)}</div>}</div>:session?.messages.map((message, i) => {
 
       let content = message.content;
       if (!selected && i === lastAssistant) {
@@ -704,7 +671,6 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
       }
       return content ? <StudioMessage key={i} role={message.role} content={content} animate={animatedMessage===session?.id+':'+i}/> : null;
     })}
-     {externalMessages.map((message,index)=><StudioMessage key={'external-'+index} role={message.role} content={message.content} animate={index===externalMessages.length-1}/>)}
     {!selected&&session?.file_inspection?.length ? <FileInspection files={session.file_inspection}
       detailsFor={id=>{
         const asset=session.resources.find(resource=>resource.id===id);

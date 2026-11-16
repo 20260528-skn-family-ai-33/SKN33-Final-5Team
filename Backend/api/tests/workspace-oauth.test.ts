@@ -13,9 +13,10 @@ import {GMAIL_OAUTH,GOOGLE_SHEETS_OAUTH,SLACK_OAUTH} from '../src/oauth';
 import {GMAIL_CONNECTION_ID,Store} from '../src/store';
 
 test('HTTP workspace routing preserves public OAuth callbacks and isolates concurrent refreshes',async t=>{
- const directory=await mkdtemp(join(tmpdir(),'a4b-workspace-oauth-')),previousDirectory=process.env.EASYFLOW_DATA_DIR,previousFetch=globalThis.fetch;
+ const directory=await mkdtemp(join(tmpdir(),'a4b-workspace-oauth-')),previousDirectory=process.env.EASYFLOW_DATA_DIR,previousLegacy=process.env.A4B_LEGACY_FLOWS_RETIRED,previousFetch=globalThis.fetch;
  const previousGmailId=process.env.A4B_GMAIL_CLIENT_ID,previousGmailSecret=process.env.A4B_GMAIL_CLIENT_SECRET;
  process.env.EASYFLOW_DATA_DIR=directory;
+ process.env.A4B_LEGACY_FLOWS_RETIRED='0';
  process.env.A4B_GMAIL_CLIENT_ID='gmail-test-client';process.env.A4B_GMAIL_CLIENT_SECRET='gmail-test-secret';
  const config=authConfig({A4B_AUTH_MODE:'cognito',EASYFLOW_PUBLIC_URL:'https://app.example.com:8443',A4B_COGNITO_USER_POOL_ID:'ap-northeast-2_TestPool',A4B_COGNITO_CLIENT_ID:'testclient',A4B_COGNITO_DOMAIN:'https://test.auth.ap-northeast-2.amazoncognito.com',A4B_AUTH_USER_STORE:'postgres',A4B_DATABASE_URL:'postgresql://test@db.example.com/test'})!;
  const member=(name:string):AuthUser=>({id:randomUUID(),name,email:name+'@example.com',role:'member',status:'active'}),alice=member('alice'),bob=member('bob'),carol=member('carol');
@@ -263,6 +264,7 @@ test('HTTP workspace routing preserves public OAuth callbacks and isolates concu
  }finally{
   globalThis.fetch=previousFetch;await app.close();await new Promise<void>(resolve=>app.server.close(()=>resolve()));
   if(previousDirectory===undefined)delete process.env.EASYFLOW_DATA_DIR;else process.env.EASYFLOW_DATA_DIR=previousDirectory;
+  if(previousLegacy===undefined)delete process.env.A4B_LEGACY_FLOWS_RETIRED;else process.env.A4B_LEGACY_FLOWS_RETIRED=previousLegacy;
   if(previousGmailId===undefined)delete process.env.A4B_GMAIL_CLIENT_ID;else process.env.A4B_GMAIL_CLIENT_ID=previousGmailId;
   if(previousGmailSecret===undefined)delete process.env.A4B_GMAIL_CLIENT_SECRET;else process.env.A4B_GMAIL_CLIENT_SECRET=previousGmailSecret;
   await rm(directory,{recursive:true,force:true});

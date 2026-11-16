@@ -23,7 +23,7 @@ class OwnServer {
  constructor(readonly port:number,readonly directory:string){}
  get base(){return `http://127.0.0.1:${this.port}`;}
  async start():Promise<void>{
-  assert.ok(!this.child);this.output='';const environment={...process.env,HOST:'127.0.0.1',PORT:String(this.port),EASYFLOW_DATA_DIR:this.directory};
+  assert.ok(!this.child);this.output='';const environment={...process.env,A4B_LEGACY_FLOWS_RETIRED:'0',HOST:'127.0.0.1',PORT:String(this.port),EASYFLOW_DATA_DIR:this.directory};
   for(const key of Object.keys(environment))if(/^N8N_/i.test(key))delete (environment as NodeJS.ProcessEnv)[key];
   const child=this.child=spawn(process.execPath,['--import','tsx','src/index.ts'],{cwd:project,env:environment,stdio:SERVER_STDIO});
   child.stdout?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});child.stderr?.on('data',chunk=>{this.output=(this.output+String(chunk)).slice(-16000);});

@@ -6,7 +6,8 @@ type Node = {id:string; label:string; tool:string};
 type Edge = {source:string; target:string; branch:string};
 export type RunWorkflow = {entry:string; nodes:Node[]; edges:Edge[]};
 type Step = {node:string; label:string; status:string};
-type Props = {workflow?:RunWorkflow|null; steps?:Step[]; runStatus?:string; waitingNodeId?:string|null};
+type Props = {workflow?:RunWorkflow|null; steps?:Step[]; runStatus?:string; waitingNodeId?:string|null;
+ selectedNodeId?:string|null; onSelectNode?:(node:RunWorkflow['nodes'][number],trigger:HTMLButtonElement)=>void};
 
 const branchNames:Record<string,string> = {next:'다음', yes:'조건 충족', no:'조건 미충족'};
 const states = {
@@ -58,7 +59,7 @@ function graphLayout(flow: RunWorkflow) {
   return {ordered, outgoing, indices, rails, laneCount:lanes.length};
 }
 
-export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId}:Props) {
+export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId,selectedNodeId,onSelectNode}:Props) {
   const graph = workflow?.nodes.length ? graphLayout(workflow) : null;
   if (!graph && !steps.length) return null;
   const recorded = new Map(steps.map(step => [step.node,step.status]));
@@ -82,9 +83,7 @@ export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId}:P
         const status = !graph ? steps[index].status
           : runStatus === 'needs_input' && waitingNodeId === node.id ? 'needs_input'
           : recorded.get(node.id) || (runStatus ? 'unrecorded' : undefined);
-        return <div role="listitem" key={graph ? node.id : index} data-workflow-node={node.id}
-          className="rwd-row" style={{gridRow:index+1}}>
-          <div className="rwd-card">
+        const card=<>
             <span className="rwd-type"><WorkflowToolIcon tool={node.tool} size={21}/></span>
             <div className="rwd-copy"><span className="rwd-index">{index+1}단계</span><strong>{node.label}</strong></div>
             <Badge status={status}/>
@@ -94,8 +93,11 @@ export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId}:P
                 return <span key={edge.branch+':'+edge.target} className="rwd-branch">{branchNames[edge.branch] || edge.branch}{' '}
                   <ArrowRight aria-hidden="true" size={13}/>{target+1}단계 {nodes[target].label}</span>;
               })}
-            </div>}
-          </div>
+            </div>}</>;
+        return <div role="listitem" key={graph ? node.id : index} data-workflow-node={node.id}
+          className="rwd-row" style={{gridRow:index+1}}>
+          {onSelectNode&&graph?<button type="button" className="rwd-card is-selectable" aria-pressed={selectedNodeId===node.id}
+            title={node.label+' 설정 보기'} onClick={event=>onSelectNode(node,event.currentTarget)}>{card}</button>:<div className="rwd-card">{card}</div>}
           {straight && <ArrowDown aria-hidden="true" className="rwd-next" size={20}/>}
         </div>;
       })}

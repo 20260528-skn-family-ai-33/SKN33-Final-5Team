@@ -39,16 +39,23 @@ const tick=()=>new Promise(r=>setImmediate(r));
 function deferred(){let resolve!:(v:any)=>void;const promise=new Promise<any>(r=>{resolve=r;});return {promise,resolve};}
 async function setup(search='',stored:Record<string,string>={},override?:(path:string,body:any,method:string)=>Promise<any>|any,component?:any){
  dom.window.close();installDOM(search);for(const [k,v] of Object.entries(stored))localStorage.setItem(k,v);
- const calls:{path:string;body:any}[]=[];
+ const calls:{path:string;body:any}[]=[];const signals:{path:string;signal?:AbortSignal}[]=[];
  globalThis.fetch=(async(input:any,init:any)=>{
-  const path=String(input),body=init?.body?JSON.parse(init.body):undefined;calls.push({path,body});
-  let value=override?await override(path,body,init?.method||'GET'):undefined;
-  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path==='/api/workflows')value={workflows:[]};else if(path.endsWith('/agents'))value={agents:[A,B]};else if(path.endsWith('/schedules'))value={workflows:[]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(path.startsWith('/api/agent-builder/schedule_source'))value={selection:null};else if(/\/library(?:\?|$)/.test(path))value={space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[],next:null};else if(path.includes('/connection'))value={connection:{model:'qwen3:8b-q4_K_M',credential:{id:'local-model',provider:'openai',name:'Ollama · Qwen'}},health:{status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'}};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
+  const path=String(input),body=init?.body?JSON.parse(init.body):undefined;calls.push({path,body});signals.push({path,signal:init?.signal});
+  let value:any;
+  if(path.endsWith('/studio')){
+   const get=async(endpoint:string,fallback:any)=>(override?await override(endpoint,undefined,'GET'):undefined)??fallback;
+   const [agents,nodes,catalog]=await Promise.all([get('/api/agent-builder/agents',{agents:[A,B]}),get('/api/agent-builder/nodes',{nodes:[],defaults:[]}),get('/api/agent-builder/catalog',{tools:[]})]);
+   const failed=[agents,nodes,catalog].find(result=>result instanceof Response&&!result.ok);
+   if(failed)value=failed;
+   else{const values=await Promise.all([agents,nodes,catalog].map(result=>result instanceof Response?result.json():result));value=Object.assign({},...values);}
+  }else value=override?await override(path,body,init?.method||'GET'):undefined;
+  if(value===undefined){if(path==='/api/credentials')value={credentials:[{id:'cred',provider:'openai',name:'테스트 연결'}]};else if(path==='/api/workflows')value={workflows:[]};else if(path.split('?')[0].endsWith('/agents'))value={agents:[A,B]};else if(path.split('?')[0].endsWith('/schedules'))value={workflows:[]};else if(path.endsWith('/nodes'))value={nodes:[],defaults:[]};else if(path.endsWith('/catalog'))value={tools:[]};else if(path.startsWith('/api/agent-builder/schedule_source'))value={selection:null};else if(/\/library(?:\?|$)/.test(path))value={space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[],next:null};else if(path.includes('/connection'))value={connection:{model:'qwen3:8b-q4_K_M',credential:{id:'local-model',provider:'openai',name:'Ollama · Qwen'}},health:{status:'ready',message:'Qwen 서버 응답 확인 · 모델 준비됨'}};else if(path.includes('/agent?'))value=snapshot(path.endsWith('B')?B:A);else throw Error('Unexpected API '+path);}
   return value instanceof Response?value:new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
  }) as any;
  const root=createRoot(document.getElementById('root'));await act(async()=>{root.render(component||createElement(AgentStudio));await tick();});
  const flush=()=>act(async()=>{await tick();});
- return {root,calls,flush,close:async()=>{await act(async()=>{root.unmount();await new Promise(resolve=>setTimeout(resolve,0));});globalThis.fetch=originalFetch;}};
+ return {root,calls,signals,flush,close:async()=>{await act(async()=>{root.unmount();await new Promise(resolve=>setTimeout(resolve,0));});globalThis.fetch=originalFetch;}};
 }
 const buttons=()=>Array.from(document.querySelectorAll('button')) as HTMLButtonElement[];
 
@@ -1152,7 +1159,7 @@ test('entry: use cases select the matching sample while keyboard tabs keep ARIA 
 });
 test('entry: list failures are recoverable and never displayed as an empty success',async()=>{
  let failed=true;
- const t=await setup('?screen=workflows',{},async path=>{if(path.endsWith('/agents')&&failed)throw Error('목록 연결 실패');},createElement(EntryApp));
+ const t=await setup('?screen=workflows',{},async path=>{if(path.split('?')[0].endsWith('/agents')&&failed)throw Error('목록 연결 실패');},createElement(EntryApp));
  try{
   assert.match(document.querySelector('[role=alert]')?.textContent||'',/목록 연결 실패/);
   assert.ok(!document.body.textContent?.includes('첫 워크플로우를 만들어보세요.'));
@@ -1370,7 +1377,7 @@ test('product tour: library guidance points at the two distinct preset actions a
  }finally{await h.close();}
 });
 test('product tour: an empty run page points to create rather than an empty saved list',async()=>{
- const h=await setup('?screen=run',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=run',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
  try{await click(button('사용 안내'));assert.equal(document.querySelector('.product-tour-card')?.getAttribute('data-tour-target'),'create-workflow');assert.match(document.querySelector('[role=dialog]')!.textContent!,/먼저 워크플로우/);assert.ok(!buttons().some(b=>b.textContent?.trim()==='다음'));}finally{await h.close();}
 });
 test('product tour: preview guidance explains that sample actions are not persisted',async()=>{
@@ -1386,7 +1393,7 @@ test('product tour: Escape closes the guide and restores the original mobile pan
 
 test('run page: a pending workflow list must not announce that no saved workflow exists',async()=>{
  const waiting=deferred();
- const h=await setup('?screen=run',{},path=>path.endsWith('/agents')?waiting.promise:undefined);
+ const h=await setup('?screen=run',{},path=>path.split('?')[0].endsWith('/agents')?waiting.promise:undefined);
  try{
   assert.match(document.querySelector('.as-loading[role="status"]')!.textContent!,/불러오고/);
   assert.ok(!document.body.textContent?.includes('저장한 워크플로우가 필요합니다.'));
@@ -1444,7 +1451,7 @@ async function chooseScheduleStatus(value:string){
 
 test('schedules: shared navigation shows actual statuses and Seoul-standard next executions without writing',async()=>{
  const methods:string[]=[];
- const h=await setup('?screen=workflows',{},(path,_body,method)=>{methods.push(method);if(path.endsWith('/schedules'))return {workflows:scheduleFixtures()};},createElement(EntryApp));
+ const h=await setup('?screen=workflows',{},(path,_body,method)=>{methods.push(method);if(path.split('?')[0].endsWith('/schedules'))return {workflows:scheduleFixtures()};},createElement(EntryApp));
  try{
   await click(button('예약 관리'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedules');
@@ -1464,7 +1471,7 @@ test('schedules: shared navigation shows actual statuses and Seoul-standard next
 });
 
 test('schedules: search and state filters combine and never include unrelated manual workflows',async()=>{
- const h=await setup('?screen=schedules',{},path=>path.endsWith('/schedules')?{workflows:scheduleFixtures()}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=schedules',{},path=>path.split('?')[0].endsWith('/schedules')?{workflows:scheduleFixtures()}:undefined,createElement(EntryApp));
  try{
   assert.equal(document.querySelectorAll('[data-schedule-id]').length,4);
   assert.doesNotMatch(document.querySelector('main')!.textContent!,/서비스 A|서비스 B/);
@@ -1487,7 +1494,7 @@ test('schedules: the new menu preserves an unsent design when leaving is cancell
   window.confirm=()=>false;await click(button('예약 관리'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,'예약 화면으로 이동해도 확인 없이 버리지 않을 입력');
-  assert.equal(h.calls.some(call=>call.path.endsWith('/schedules')),false);
+  assert.equal(h.calls.some(call=>call.path.split('?')[0].endsWith('/schedules')),false);
   window.confirm=()=>true;await click(button('예약 관리'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedules');
   assert.match(document.body.textContent!,/등록한 예약이 없습니다\./);assert.equal(h.calls.some(call=>call.body),false);
@@ -1496,7 +1503,7 @@ test('schedules: the new menu preserves an unsent design when leaving is cancell
 
 test('schedules: a schedule tied to an older workflow version requires review instead of appearing active',async()=>{
  const row=scheduleFixtures()[0];
- const h=await setup('?screen=schedules',{},path=>path.endsWith('/schedules')?{workflows:[{...row,schedule:{...row.schedule!,agent_version:0}}]}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=schedules',{},path=>path.split('?')[0].endsWith('/schedules')?{workflows:[{...row,schedule:{...row.schedule!,agent_version:0}}]}:undefined,createElement(EntryApp));
  try{
   assert.match(scheduleRow('A').querySelector('[data-label="상태"]')!.textContent!,/설정 확인 필요/);
   assert.doesNotMatch(scheduleRow('A').querySelector('[data-label="다음 실행"]')!.textContent!,/11월 11일/);
@@ -1508,7 +1515,7 @@ test('schedules: a schedule tied to an older workflow version requires review in
 test('schedules: pending and failed requests are not presented as an empty schedule list and retry recovers',async()=>{
  const waiting=deferred();let reads=0;
  const h=await setup('?screen=schedules',{},path=>{
-  if(!path.endsWith('/schedules'))return undefined;
+  if(!path.split('?')[0].endsWith('/schedules'))return undefined;
   return ++reads===1?waiting.promise:{workflows:scheduleFixtures().slice(0,1)};
  },createElement(EntryApp));
  try{
@@ -1525,7 +1532,7 @@ test('rename: design and reservation detail persist the title across screens',as
  let current=A;
  const h=await setup('?screen=workflow&service=A',{},(path,body)=>{
   if(path.includes('/agent?id=A'))return snapshot(current);
-  if(path.endsWith('/agents'))return {agents:[current,B]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[current,B]};
   if(path.endsWith('/rename_agent')){
    assert.equal(body.version,current.version);
    current={...current,version:current.version+1,config:{...current.config,name:body.name}};
@@ -1552,7 +1559,7 @@ test('rename: reservation list preserves active status after changing the name',
  const workflows=scheduleFixtures();
  const initial=workflows.find(row=>row.agent.id==='A')!;
  const h=await setup('?screen=schedules',{},(path,body)=>{
-  if(path.endsWith('/schedules'))return {workflows};
+  if(path.split('?')[0].endsWith('/schedules'))return {workflows};
   if(path.endsWith('/rename_agent'))return {agent:{...initial.agent,version:initial.agent.version+1,config:{...initial.agent.config,name:body.name}}};
  },createElement(EntryApp));
  try{
@@ -1581,7 +1588,7 @@ test('schedules: an empty list offers a fresh workflow without changing an exist
 test('schedules: management opens the chosen workflow and leaving a pending list ignores its response',async()=>{
  const daily=agent('A','일일 보고서',dailySchedule),waiting=deferred();let reads=0;
  const h=await setup('?screen=schedules',{},path=>{
-  if(path.endsWith('/schedules'))return ++reads===1?{workflows:scheduleFixtures()}:waiting.promise;
+  if(path.split('?')[0].endsWith('/schedules'))return ++reads===1?{workflows:scheduleFixtures()}:waiting.promise;
   if(path.includes('/agent?id=A'))return snapshot(daily);
  },createElement(EntryApp));
  try{
@@ -1602,7 +1609,7 @@ for(const nextState of ['disconnected','account-error'])test('Gmail schedules: w
  const base=agent('G','전날 Gmail 요약',dailySchedule),gmail={...base,config:{...base.config,tool_ids:['email.list','compose_answer']}};
  let current='ready';
  const h=await setup('?screen=schedule&service=G',{},path=>{
-  if(path.endsWith('/agents'))return {agents:[gmail]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[gmail]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:current!=='disconnected',connectionVersion:1,email:current==='ready'?'scheduled@example.com':null,...(current==='account-error'?{accountError:'Gmail 읽기 권한을 다시 확인해주세요.'}:{})};
  },createElement(EntryApp));
@@ -1626,7 +1633,7 @@ test('Gmail schedules: a connected account can activate, enqueue a test and run 
  let active=false,latest:any[]=[];
  const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
  const h=await setup('?screen=schedule&service=G',{},(path,body)=>{
-  if(path.endsWith('/agents'))return {agents:[gmail]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[gmail]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail,latest),schedule:schedule(),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:true,connectionVersion:1,email:'scheduled@example.com'};
   if(path.endsWith('/schedule')){assert.deepEqual(body,{id:'G',active:!active});active=body.active;return {schedule:schedule()};}
@@ -1656,7 +1663,7 @@ test('Gmail schedules: a connected account can activate, enqueue a test and run 
 for(const required of [true,undefined])test(`Gmail schedules: file schedules keep managed-source requirements when source_required is ${required}`,async()=>{
  const fileAgent=agent('F','정기 재고 집계',dailySchedule);
  const h=await setup('?screen=schedule&service=F',{},path=>{
-  if(path.endsWith('/agents'))return {agents:[fileAgent]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[fileAgent]};
   if(path.includes('/agent?id=F'))return {...snapshot(fileAgent),...(required===undefined?{}:{source_required:required}),request_required:false,input_requirements:[{kind:'table',required_before_start:true,ready:false,issues:['실행할 표 파일을 연결하세요.']}]};
  },createElement(EntryApp));
  try{
@@ -1671,7 +1678,7 @@ for(const required of [true,undefined])test(`Gmail schedules: file schedules kee
 test('Gmail schedules: switching to a file schedule restores its file requirement instead of keeping the Gmail source mode',async()=>{
  const gmail=agent('G','전날 Gmail 요약',dailySchedule),fileAgent=agent('F','정기 재고 집계',dailySchedule);
  const h=await setup('?screen=schedule&service=G',{},path=>{
-  if(path.endsWith('/agents'))return {agents:[gmail,fileAgent]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[gmail,fileAgent]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path.includes('/agent?id=F'))return {...snapshot(fileAgent),source_required:true,request_required:false,input_requirements:[{kind:'table',required_before_start:true,ready:false}]};
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:true,connectionVersion:1,email:'scheduled@example.com'};
@@ -1692,7 +1699,7 @@ test('source-free schedules: non-Gmail workflows can activate and run without re
  let active=false;
  const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
  const h=await setup('?screen=schedule&service=N',{},(path,body)=>{
-  if(path.endsWith('/agents'))return {agents:[scalar]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[scalar]};
   if(path.includes('/agent?id=N'))return {...snapshot(scalar),schedule:schedule(),source_required:false,required_connections:[],request_required:false,input_requirements:[]};
   if(path.endsWith('/schedule')){assert.deepEqual(body,{id:'N',active:!active});active=body.active;return {schedule:schedule()};}
   if(path.endsWith('/schedule_test')){assert.deepEqual(body,{id:'N'});return {job:{id:'scalar-test-job',kind:'schedule_test',due_at:'2026-11-10T00:00:15Z'}};}
@@ -1714,7 +1721,7 @@ test('Gmail schedules: disconnecting blocks new work while still allowing an act
  const gmail=agent('G','전날 Gmail 요약',dailySchedule);let connected=true,active=true;
  const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
  const h=await setup('?screen=schedule&service=G',{},(path,body,method)=>{
-  if(path.endsWith('/agents'))return {agents:[gmail]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[gmail]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail),schedule:schedule(),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path==='/api/agent-builder/gmail'){
    if(method==='DELETE')connected=false;
@@ -1843,7 +1850,7 @@ test('folder source: a manual workflow configures a folder and runs one report w
  flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
  let selection:any=null;
  const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
-  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[flow]};
   if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
   if(path.startsWith('/api/agent-builder/schedule_source')){
    if(method==='GET')return {selection};
@@ -1876,7 +1883,7 @@ test('folder source: manual attachments override the folder and still require th
  flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_document',label:'업무보고 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
  const selection={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
  const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
-  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[flow]};
   if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
   if(path.startsWith('/api/agent-builder/schedule_source')&&method==='GET')return {selection};
   if(path.includes('/library'))return {folders:sourceFolders,assets:[],next:null};
@@ -1908,7 +1915,7 @@ test('folder source: unsaved manual settings block execution and survive cancell
  const other=agent('other-folder','다른 보고서');
  let selection:any={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
  const h=await setup('?screen=workflow&service=manual-folder',{},(path,body,method)=>{
-  if(path.endsWith('/agents'))return {agents:[flow,other]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[flow,other]};
   if(path.includes('/agent?id=other-folder'))return {...snapshot(other),request_required:false};
 
   if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
@@ -1965,7 +1972,7 @@ test('folder source: failed workflow selection preserves the source draft and ex
  const other=agent('other-folder','다른 보고서');
  let selection:any={mode:'all',space:'personal',team_id:null,folder_id:'folder-1',asset_ids:[],target_node_id:'read',revision:1};
  const h=await setup('?screen=run&service=manual-folder',{},(path,body,method)=>{
-  if(path.endsWith('/agents'))return {agents:[flow,other]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[flow,other]};
   if(path.includes('/agent?id=manual-folder'))return {...snapshot(flow),library_source:selection,request_required:false,input_requirements:[{node_id:'read',kind:'document',required_before_start:true,ready:false,issues:[]}]};
   if(path.includes('/agent?id=other-folder'))return new Response(JSON.stringify({error:'다른 워크플로우 조회 실패'}),{status:503});
   if(path.startsWith('/api/agent-builder/schedule_source')){
@@ -2036,7 +2043,7 @@ test('schedule source: saving refreshes the actual paused schedule before enabli
  const flow=agent('F','월별 매출 보고',dailySchedule);flow.config.workflow={entry:'read',edges:[],nodes:[{id:'read',tool:'read_table',label:'매출 표 읽기',settings:{file_ids:[]},bindings:[]}]} as any;
  let active=true,selection:any=null;
  const h=await setup('?screen=schedule&service=F',{},(path,body,method)=>{
-  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[flow]};
   if(path.includes('/agent?id=F'))return {...snapshot(flow),schedule:{active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'},source_required:true,required_connections:[],library_source:selection,input_requirements:[{node_id:'read',kind:'table',required_before_start:true,ready:false,issues:[]}],request_required:false};
   if(path.startsWith('/api/agent-builder/schedule_source')){if(method==='GET')return {selection};selection={...body.selection,revision:1};active=false;return {selection};}
   if(path.includes('/library'))return sourceLibraryResponse();
@@ -2056,7 +2063,7 @@ test('schedule source: skipped new-file runs remain empty after polling instead 
  const selection={mode:'new',space:'personal',team_id:null,folder_id:null,asset_ids:[],target_node_id:'read',revision:1};
  const oldRun={id:'old-success',status:'succeeded',answer:'과거 파일의 성공 결과입니다.',agent_version:1,steps:[],rows:[],artifact:null,error:null};
  const h=await setup('?screen=schedule&service=F',{},(path,_body,method)=>{
-  if(path.endsWith('/agents'))return {agents:[flow]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[flow]};
   if(path.includes('/agent?id=F'))return {...snapshot(flow,[oldRun]),source_required:true,required_connections:[],library_source:selection,input_requirements:[{node_id:'read',kind:'table',required_before_start:true,ready:false,issues:[]}],request_required:false};
   if(path.startsWith('/api/agent-builder/schedule_source')&&method==='GET')return {selection};
   if(path.includes('/library'))return sourceLibraryResponse();
@@ -2202,7 +2209,7 @@ test('reservation edits survive cancelled tab, browser-back and new-workflow nav
 });
 
 test('home: typed request waits for submission then starts a fresh design',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:path.endsWith('/sessions')?{...readySession(),draft:null,status:'empty'}:path.endsWith('/message')?readySession():undefined,createElement(EntryApp));
+ const h=await setup('?screen=home',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:path.endsWith('/sessions')?{...readySession(),draft:null,status:'empty'}:path.endsWith('/message')?readySession():undefined,createElement(EntryApp));
  try{
   const arrow=document.querySelector<HTMLButtonElement>('.overview-composer button[type=submit]')!;
   assert.ok(arrow.disabled);
@@ -2297,8 +2304,8 @@ test('home: linked detail pages keep the selected workflow and return to home',a
  const h=await setup('?screen=home',{},(path,_body,method)=>{
   methods.push(method);
   if(path.includes('/history'))return {agents:[scheduled],rows:[latest,old].map(run=>({agent:scheduled,run}))};
-  if(path.endsWith('/agents'))return {agents:[scheduled,B]};
-  if(path.endsWith('/schedules'))return {workflows:scheduleFixtures()};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[scheduled,B]};
+  if(path.split('?')[0].endsWith('/schedules'))return {workflows:scheduleFixtures()};
   if(path.includes('/agent?id=A'))return snapshot(scheduled,[latest,old]);
   if(path.endsWith('/library'))return {space:{id:'personal',kind:'personal',name:'내 자료'},folder_id:null,folders:[],assets:[asset],next:null};
   if(path.includes('/asset_preview?'))return {text:'영수증 미리보기 내용',columns:[],rows:[]};
@@ -2818,7 +2825,7 @@ test('workflow sidebar contains only navigation while the upper selector preserv
 test('workflow folders: create, select, move, filter, rename and delete preserve workflow actions',async()=>{
  let organization:any={revision:0,folders:[],assignments:{}};
  const h=await setup('?screen=workflows',{},(path,body)=>{
-  if(path.endsWith('/agents'))return {agents:[A,B],organization};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[A,B],organization};
   if(path.endsWith('/workflow_folders')){
    assert.equal(body.revision,organization.revision);
    const folders=organization.folders.map((f:any)=>({...f})),assignments={...organization.assignments};
@@ -2873,7 +2880,7 @@ test('workflow folder pending save rejects duplicate submission and keeps the di
 });
 
 test('workflow folder search and folder changes clear hidden selection',async()=>{
- const h=await setup('?screen=workflows',{},path=>path.endsWith('/agents')?{agents:[A,B],organization:{revision:1,folders:[{id:'f',name:'정리'}],assignments:{A:'f'}}}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=workflows',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[A,B],organization:{revision:1,folders:[{id:'f',name:'정리'}],assignments:{A:'f'}}}:undefined,createElement(EntryApp));
  try{
   await click(document.querySelector('input[aria-label="현재 목록 전체 선택"]')!);
   assert.equal(button('선택한 워크플로우 이동 (2)').disabled,false);
@@ -2890,7 +2897,7 @@ test('workflow folder search and folder changes clear hidden selection',async()=
 test('workflow folder selection caps at 500 and releases a slot when unchecked',async()=>{
  const agents=Array.from({length:501},(_,i)=>({...A,id:'bulk-'+i,config:{...A.config,name:'대량 '+i}}));let moved:string[]=[];
  const h=await setup('?screen=workflows',{},(path,body)=>{
-  if(path.endsWith('/agents'))return {agents};
+  if(path.split('?')[0].endsWith('/agents'))return {agents};
   if(path.endsWith('/workflow_folders')){moved=body.agent_ids;return {organization:{revision:1,folders:[],assignments:{}}};}
  },createElement(EntryApp));
  try{
@@ -2936,7 +2943,7 @@ test('clarification: paged answers preserve backend ids, arrays, custom and opti
 
 
 test('sidebar defaults to icons and stays pinned across navigation until explicitly unpinned',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=home',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
  try{
   const sidebar=()=>document.querySelector<HTMLElement>('.workspace-sidebar')!;
   const pin=()=>sidebar().querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
@@ -2955,7 +2962,7 @@ test('sidebar defaults to icons and stays pinned across navigation until explici
 });
 
 test('sidebar hover and keyboard focus expand temporarily without changing the pinned preference',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=home',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
  try{
   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
   await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
@@ -2971,7 +2978,7 @@ test('sidebar hover and keyboard focus expand temporarily without changing the p
 
 
 test('sidebar pointer click focus cannot hold a transient menu open after mouse leave',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=home',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
  try{
   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
   await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));home.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));home.focus();await tick();});
@@ -2982,7 +2989,7 @@ test('sidebar pointer click focus cannot hold a transient menu open after mouse 
 
 
 test('sidebar keyboard re-entry expands after pointer focus leaves for the main page',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=home',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
  try{
   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
   const outside=document.querySelector<HTMLTextAreaElement>('.overview-composer textarea')!;
@@ -3027,7 +3034,7 @@ test('visible design canvas refits on sidebar resize and keeps manual zoom for u
 
 test('sidebar saved pin restores on every workspace screen and Escape does not unpin it',async()=>{
  for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
-  const h=await setup('?screen='+page,{'a4b-sidebar-pinned':'true'},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  const h=await setup('?screen='+page,{'a4b-sidebar-pinned':'true'},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
   try{
    const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
    assert.equal(sidebar.dataset.expanded,'true',page);assert.equal(sidebar.dataset.pinned,'true',page);
@@ -3044,7 +3051,7 @@ test('sidebar saved pin restores on every workspace screen and Escape does not u
 
 test('all workspace pages retain keyboard expansion after unpin until focus leaves',async()=>{
  for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
-  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  const h=await setup('?screen='+page,{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
   try{
    const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!,pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
    await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true',page);
@@ -3075,7 +3082,7 @@ async function sidebarPointerLeave(sidebar:HTMLElement){
 
 test('sidebar pin is reachable after actual pointer entry on every workspace screen',async()=>{
  for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
-  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  const h=await setup('?screen='+page,{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
   try{
    const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
    assert.equal(sidebar.dataset.expanded,'false',page);assert.equal(sidebar.dataset.pinned,'false',page);
@@ -3094,7 +3101,7 @@ test('sidebar pin is reachable after actual pointer entry on every workspace scr
 });
 
 test('sidebar keyboard pinning survives escape and unpinning preserves temporary keyboard expansion',async()=>{
- const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ const h=await setup('?screen=home',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
  try{
   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
   const home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
@@ -3124,5 +3131,62 @@ test('entry: leaving a pending history keeps navigation usable and ignores late 
   await act(async()=>{pending.resolve({agents:[A],rows:[{agent:A,run:{id:'obsolete',status:'succeeded'}}]});await tick();});
   assert.ok(document.querySelector('.workspace-overview'));assert.equal(document.querySelector('.entry-history-list'),null);
   assert.equal(document.querySelector('[inert]'),null);
+ }finally{await h.close();}
+});
+
+
+test('menu loading: library requests both sources concurrently and uses compact node counts',async()=>{
+ const agents=deferred(),external=deferred();
+ const h=await setup('?screen=workflows',{},path=>path.includes('/agents')?agents.promise:path==='/api/workflows'?external.promise:undefined,createElement(EntryApp));
+ try{
+  assert.ok(h.calls.some(call=>call.path==='/api/agent-builder/agents?summary=1'));
+  assert.ok(h.calls.some(call=>call.path==='/api/workflows'));
+  await act(async()=>{agents.resolve({agents:[{...A,node_count:7}]});external.resolve({workflows:[]});await tick();});
+  assert.match(document.querySelector('.entry-workflow-card footer')!.textContent!,/작업 7개/);
+ }finally{agents.resolve({agents:[]});external.resolve({workflows:[]});await h.close();}
+});
+test('menu loading: studio starts linked detail alongside one bootstrap and aborts them on exit',async()=>{
+ const metadata=deferred(),detail=deferred();
+ const h=await setup('?screen=run&service=A',{},path=>path.endsWith('/nodes')?metadata.promise:path.includes('/agent?id=A')?detail.promise:undefined);
+ try{
+  assert.ok(h.calls.some(call=>call.path==='/api/agent-builder/studio'));
+  assert.ok(h.calls.some(call=>call.path==='/api/agent-builder/agent?id=A'));
+  assert.ok(!h.calls.some(call=>/\/(agents|nodes|catalog)(?:\?|$)/.test(call.path)));
+  const requests=h.signals.filter(item=>item.path.includes('/studio')||item.path.includes('/agent?'));
+  assert.equal(requests.length,2);
+  await h.close();assert.ok(requests.every(item=>item.signal?.aborted));
+ }finally{metadata.resolve({nodes:[],defaults:[]});detail.resolve(snapshot(A));}
+});
+test('menu loading: templates do not restore a remembered workflow or design session',async()=>{
+ const h=await setup('?screen=nodes',{'a4b-builder-session':'old','a4b-selected-agent':'A'});
+ try{assert.ok(!h.calls.some(call=>/\/(agent|session)\?/.test(call.path)));assert.ok(document.querySelector('main'));}
+ finally{await h.close();}
+});
+test('menu loading: reservations reuse picker data from their own response',async()=>{
+ const h=await setup('?screen=schedules',{},path=>path.split('?')[0].endsWith('/schedules')?{agents:[A,B],workflows:[]}:undefined,createElement(EntryApp));
+ try{
+  assert.ok(!h.calls.some(call=>call.path.includes('/agents')));
+  await click(button('기존 워크플로우에 예약 추가'));
+  assert.match(document.querySelector('.schedule-workflow-picker')!.textContent!,/서비스 A/);
+ }finally{await h.close();}
+});
+test('menu loading: leaving an asset listing aborts its pending request',async()=>{
+ const pending=deferred();
+ const h=await setup('?screen=assets',{},path=>path.endsWith('/library')?pending.promise:undefined,createElement(EntryApp));
+ try{
+  const request=h.signals.find(item=>item.path.endsWith('/library'));assert.ok(request?.signal);
+  await click(document.querySelector('[data-tour="menu-home"]')!);await h.flush();
+  assert.equal(request.signal.aborted,true);
+  await act(async()=>{pending.resolve({space:{id:'personal',kind:'personal'},assets:[],folders:[],next:null});await tick();});
+  assert.ok(document.querySelector('.workspace-overview'));
+ }finally{pending.resolve({assets:[],folders:[],next:null});await h.close();}
+});
+test('menu loading: repeated focus events share a pending service-status request',async()=>{
+ const pending=deferred();
+ const h=await setup('?screen=connections',{},path=>path==='/api/service-connections'?pending.promise:path.endsWith('/gmail')?{configured:false,connected:false}:undefined,createElement(EntryApp));
+ try{
+  await act(async()=>{for(let i=0;i<3;i++)window.dispatchEvent(new Event('focus'));await tick();});
+  assert.equal(h.calls.filter(call=>call.path==='/api/service-connections').length,1);
+  await act(async()=>{pending.resolve({services:{googleSheets:{configured:false},slack:{configured:false}},credentials:[]});await tick();});
  }finally{await h.close();}
 });

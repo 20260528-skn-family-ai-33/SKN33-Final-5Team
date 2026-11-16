@@ -30,28 +30,37 @@ export function ServiceConnections(){
   const popup=useRef<Window|null>(null);
   const statusRequest=useRef(0);
   const changing=useRef(false);
-  async function load(){
-    const requestId=++statusRequest.current;
-    try{const next=await request<Status>('/api/service-connections');if(requestId===statusRequest.current&&!changing.current)setStatus(next);}
-    catch(e){if(requestId===statusRequest.current&&!changing.current)setNotice((e as Error).message);}
-    finally{if(requestId===statusRequest.current)setInitialLoading(false);}
+  const loadingRequest=useRef<{id:number;controller:AbortController;promise:Promise<void>}|null>(null);
+  function load(){
+    if(loadingRequest.current?.id===statusRequest.current)return loadingRequest.current.promise;
+    loadingRequest.current?.controller.abort();
+    const requestId=++statusRequest.current,controller=new AbortController();
+    const promise=(async()=>{
+      try{const next=await request<Status>('/api/service-connections',undefined,undefined,controller.signal);if(requestId===statusRequest.current&&!changing.current)setStatus(next);}
+      catch(e){if(requestId===statusRequest.current&&!changing.current)setNotice((e as Error).message);}
+      finally{if(requestId===statusRequest.current)setInitialLoading(false);if(loadingRequest.current?.id===requestId)loadingRequest.current=null;}
+    })();
+    loadingRequest.current={id:requestId,controller,promise};return promise;
   }
-  useEffect(()=>{void load();const focus=()=>void load();window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);},[]);
+  useEffect(()=>{void load();const focus=()=>void load();window.addEventListener('focus',focus);return()=>{statusRequest.current++;loadingRequest.current?.controller.abort();window.removeEventListener('focus',focus);};},[]);
   useEffect(()=>{
     if(!pending)return;
-    const finish=()=>{popup.current?.close();popup.current=null;changing.current=false;statusRequest.current++;setPending(null);setBusy(null);void load();};
+    let checking=false,cancelled=false;const controller=new AbortController();
+    const finish=()=>{if(cancelled)return;cancelled=true;controller.abort();popup.current?.close();popup.current=null;changing.current=false;statusRequest.current++;setPending(null);setBusy(null);void load();};
     const receive=(event:MessageEvent)=>{
       if(event.origin!==location.origin||event.source!==popup.current||event.data?.type!=='easyflow-oauth')return;
       if(event.data.ok)finish();else{setNotice('계정 연결을 완료하지 못했어요. 다시 시도해주세요.');finish();}
     };
     const timer=window.setInterval(async()=>{
-      if(Date.now()>=pending.attempt.expiresAt){changing.current=false;statusRequest.current++;setPending(null);setBusy(null);setNotice('연결 요청이 만료됐어요. 다시 시도해주세요.');return;}
-      try{const latest=await request<Status>('/api/service-connections');const after=connected(latest,pending.service);
+      if(cancelled)return;
+      if(Date.now()>=pending.attempt.expiresAt){cancelled=true;controller.abort();changing.current=false;statusRequest.current++;setPending(null);setBusy(null);setNotice('연결 요청이 만료됐어요. 다시 시도해주세요.');return;}
+      if(checking)return;checking=true;
+      try{const latest=await request<Status>('/api/service-connections',undefined,undefined,controller.signal);if(cancelled)return;const after=connected(latest,pending.service);
         if(after&&after.updatedAt!==pending.previous)finish();
-      }catch{}
+      }catch{}finally{checking=false;}
     },1200);
     window.addEventListener('message',receive);
-    return()=>{window.clearInterval(timer);window.removeEventListener('message',receive);};
+    return()=>{cancelled=true;controller.abort();window.clearInterval(timer);window.removeEventListener('message',receive);};
   },[pending]);
   async function connect(service:Service){
     if(busy)return;changing.current=true;statusRequest.current++;setBusy(service);setNotice('');

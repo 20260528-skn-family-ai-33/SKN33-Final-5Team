@@ -24,9 +24,9 @@ test('history uses one scoped worker, validates filters and prevents cached run 
    calls.push(JSON.parse(input));child.stdout.end(JSON.stringify({ok:true,result:{agents:[],rows:[]}}));child.exitCode=0;queueMicrotask(()=>child.emit('close'));done();
   }});return child;
  });syncBuiltinESMExports();
- async function call(query='',method='GET'){
+ async function call(query='',method='GET',action='history'){
   const headers:Record<string,string>={};let status=0,result:any;
-  await withDataDirectory(directory,()=>handleAgentBuilder({method} as IncomingMessage,{setHeader(key:string,value:string){headers[key]=value;}} as unknown as ServerResponse,new URL('http://localhost/api/agent-builder/history'+query),{} as Store,async()=>({}),(_res,code,body)=>{status=code;result=body;}));
+  await withDataDirectory(directory,()=>handleAgentBuilder({method} as IncomingMessage,{setHeader(key:string,value:string){headers[key]=value;}} as unknown as ServerResponse,new URL('http://localhost/api/agent-builder/'+action+query),{} as Store,async()=>({}),(_res,code,body)=>{status=code;result=body;}));
   return {status,result,headers};
  }
  try{
@@ -34,6 +34,11 @@ test('history uses one scoped worker, validates filters and prevents cached run 
   const id=randomUUID();await call('?id='+id);assert.equal(calls.length,2);assert.equal(calls[1].id,id);
   await assert.rejects(()=>call('?id=invalid'),/ID/);assert.equal(calls.length,2);
   assert.equal((await call('','POST')).status,405);assert.equal(calls.length,2);
+  assert.equal((await call('','GET','studio')).status,200);assert.equal(calls.length,3);assert.equal(calls[2].action,'studio');
+  await call('?summary=1','GET','agents');assert.equal(calls[3].summary,true);
+  await call('','GET','agents');assert.equal(calls[4].summary,undefined);
+  await call('?include_agents=1','GET','schedules');assert.equal(calls[5].include_agents,true);
+  await call('','GET','schedules');assert.equal(calls[6].include_agents,undefined);
  }finally{
   t.mock.restoreAll();syncBuiltinESMExports();if(previous===undefined)delete process.env.A4B_AGENT_PYTHON;else process.env.A4B_AGENT_PYTHON=previous;
   await rm(directory,{recursive:true,force:true});

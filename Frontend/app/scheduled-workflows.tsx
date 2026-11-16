@@ -38,6 +38,7 @@ function formatNextAt(value:string|number|undefined):string {
 }
 
 export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveChange}:{onOpen:(id:string)=>void;onOpenExternal:(id:string)=>void;onCreate:()=>void;onCanLeaveChange?:(guard:()=>boolean)=>void}) {
+ const loadRequest=useRef<AbortController|null>(null);
  const [workflows,setWorkflows]=useState<ScheduledWorkflow[]>([]),[agents,setAgents]=useState<WorkflowSummary[]>([]),[externalFlows,setExternalFlows]=useState<ExternalFlow[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
  const [renaming,setRenaming]=useState<WorkflowSummary|null>(null);
  const [query,setQuery]=useState(''),[filter,setFilter]=useState<'all'|Status>('all');
@@ -55,19 +56,21 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
  },[]);
  async function load() {
   if(!canLeave())return;
+  loadRequest.current?.abort();const controller=new AbortController();loadRequest.current=controller;
   const token=++generation.current;setLoading(true);setError('');
   try {
-   const [result,listed,external]=await Promise.all([
-    request<{workflows:ScheduledWorkflow[]}>('/api/agent-builder/schedules'),
-    request<{agents:WorkflowSummary[]}>('/api/agent-builder/agents'),
-    request<{workflows:ExternalFlow[]}>('/api/workflows'),
+   const [result,external]=await Promise.all([
+    request<{workflows:ScheduledWorkflow[];agents?:WorkflowSummary[]}>('/api/agent-builder/schedules?include_agents=1',undefined,undefined,controller.signal),
+    request<{workflows:ExternalFlow[]}>('/api/workflows',undefined,undefined,controller.signal),
    ]);
+   // Older servers can still serve the separate workflow-list endpoint during rollout.
+   const listed=result.agents?{agents:result.agents}:await request<{agents:WorkflowSummary[]}>('/api/agent-builder/agents?summary=1',undefined,undefined,controller.signal);
    if(!Array.isArray(result?.workflows)||!Array.isArray(listed?.agents)||!Array.isArray(external?.workflows))throw new Error('예약 목록 응답을 확인하지 못했습니다. 다시 시도해주세요.');
    if(token===generation.current){setWorkflows(result.workflows);setAgents(listed.agents);setExternalFlows(external.workflows);}
   }catch(err){if(token===generation.current)setError((err as Error).message);}
   finally{if(token===generation.current)setLoading(false);}
  }
- useEffect(()=>{void load();return()=>{generation.current++;};},[]);
+ useEffect(()=>{void load();return()=>{generation.current++;loadRequest.current?.abort();};},[]);
  const externalScheduled=externalFlows.filter(flow=>flow.nodes.some(node=>!node.disabled&&node.type.endsWith('.scheduleTrigger')));
  const rows:ScheduleListRow[]=[
   ...workflows.map(row=>({id:row.agent.id,name:row.agent.config.name,purpose:row.agent.config.purpose,description:row.schedule?.spec?scheduleDescription(row.schedule.spec):row.agent.config.schedule?scheduleDescription(row.agent.config.schedule):'일정 설정 필요',timezone:'Asia/Seoul',status:statusOf(row),nextRunAt:row.schedule?.next_run_at,kind:'agent' as const})),

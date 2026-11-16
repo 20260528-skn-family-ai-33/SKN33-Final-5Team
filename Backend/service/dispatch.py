@@ -49,6 +49,7 @@ ACTIONS={
     'finish_asset_delete':uploads.finish_delete,
     'document_review':reviews.document_review,
     'agents':library.agents,
+    'studio':library.studio,
     'history':library.history,
     'schedules':library.schedules,
     'agent':library.agent,

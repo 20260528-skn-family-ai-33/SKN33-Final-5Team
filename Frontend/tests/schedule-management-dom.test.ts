@@ -106,8 +106,8 @@ test('reservation management protects dirty forms when closing, refreshing, swit
  const agent=(id:string)=>({id,version:1,config:{name:id,purpose:'자료 요약',schedule:null}}),agents=['A','B','C','D'].map(agent);
  let guard:()=>boolean=()=>true;
  const h=await mount(createElement(ScheduledWorkflows,{onOpen:()=>{},onCreate:()=>{},onCanLeaveChange:(value:()=>boolean)=>{guard=value;}}),path=>{
-  if(path.endsWith('/schedules'))return {workflows:agents.slice(0,2).map(value=>({agent:value,schedule:saved}))};
-  if(path.endsWith('/agents'))return {agents};throw Error('Unexpected '+path);
+  if(path.split('?')[0].endsWith('/schedules'))return {workflows:agents.slice(0,2).map(value=>({agent:value,schedule:saved}))};
+  if(path.split('?')[0].endsWith('/agents'))return {agents};throw Error('Unexpected '+path);
  });
  let confirmations=0,allowDiscard=false;dom.window.confirm=()=>{confirmations++;return allowDiscard;};
  try{
@@ -129,8 +129,8 @@ test('reservation management uses saved schedule and keeps an unscheduled workfl
  const agent={id:'A',version:1,config:{name:'보고서',purpose:'자료 요약',schedule:null}},manual={id:'B',version:1,config:{name:'직접 작업',purpose:'직접 실행',schedule:null}};
  const opened:string[]=[];
  const h=await mount(createElement(ScheduledWorkflows,{onOpen:(id:string)=>opened.push(id),onCreate:()=>{}}),(path,body)=>{
-  if(path.endsWith('/schedules'))return {workflows:[{agent,schedule:saved}]};
-  if(path.endsWith('/agents'))return {agents:[agent,manual]};
+  if(path.split('?')[0].endsWith('/schedules'))return {workflows:[{agent,schedule:saved}]};
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[agent,manual]};
   if(path.endsWith('/schedule_remove'))return {schedule:null};
   if(path.endsWith('/schedule_configure'))return {schedule:{...saved,spec:body.spec}};
   throw Error('Unexpected '+path);

@@ -2,6 +2,7 @@
 import json,os
 from datetime import datetime,timedelta,timezone
 from infrastructure.persistence.ids import now
+from infrastructure.persistence.diagnostics import diagnostic_metadata, token as diagnostic_token
 
 LEASE_SECONDS=90
 
@@ -42,6 +43,9 @@ class RunLifecycle:
             for key in ['_previous_status','_previous_error','_previous_updated_at']:run.pop(key,None)
             attempts.append({'number':len(attempts)+1,'status':'running','started_at':stamp.isoformat(),'error':None})
             run.pop('diagnostics',None);run.pop('error_type',None);run.pop('diagnostic_frames',None)
+            # Persist this worker's context before execution; recovery may run in a newer image.
+            context = diagnostic_metadata(trace_id=run['id'], model=run.get('model'))
+            run['attempt_metadata'] = {key: context[key] for key in ('trace_id','model','release')}
             self.db.execute('INSERT INTO builder_run_leases({wsc}run_id,token,expires_at,pid,active) VALUES({wsv}?,?,?,?,1) ON CONFLICT({wsc}run_id) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at,pid=excluded.pid,active=1',(run['id'],token,(stamp+timedelta(seconds=LEASE_SECONDS)).isoformat(),os.getpid()))
             self._save(run);self.db.commit()
         except Exception:self.db.rollback();raise
@@ -103,6 +107,11 @@ class RunLifecycle:
             run=json.loads(row[0])
             if run['status']!='running':self.db.commit();return {'status':'unchanged'}
             run.update(status='failed',error=reason,error_type='InterruptedExecution',updated_at=now())
+            context = run.get('attempt_metadata') or {}
+            # Never attribute an older run to the recovery worker's model/release.
+            run['diagnostics'] = {'trace_id': diagnostic_token(run['id']),
+                                  'model': diagnostic_token(context.get('model') if context else run.get('model')),
+                                  'release': diagnostic_token(context.get('release')), 'validation': []}
             run.setdefault('steps',[]).append({'node':'execution','label':'실행 중단','status':'failed','detail':reason})
             attempts=run.setdefault('attempts',[{'number':1,'started_at':run['created_at']}])
             if not attempts:attempts.append({'number':1,'started_at':run['created_at']})

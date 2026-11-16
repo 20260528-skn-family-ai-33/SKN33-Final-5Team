@@ -86,6 +86,7 @@ def test_member_design_checkpoints_and_failed_run_retry_in_existing_tables(postg
                  'config_snapshot':{'workflow':{'nodes':[{'id':'parse'}]}}}
             lifecycle = RunLifecycle(store)
             token=uid(); lifecycle.start(run,token)
+            assert admin.execute("SELECT state_json->'attempt_metadata' FROM a4b.workflow_runs WHERE id=%s", (run['id'],)).fetchone()[0] == run['attempt_metadata']
             run.update(status='failed',error='parser',steps=[{'node':'parse','status':'failed','detail':'parser'}])
             lifecycle.finish(run,token)
             token=uid(); lifecycle.start(run,token)
@@ -1030,3 +1031,49 @@ def test_workflow_folder_concurrent_writers_do_not_overwrite(backend,tmp_path):
         state=change(store,{'operation':'create','name':'새로고침 후 재시도','revision':1})
         assert state['revision']==2 and len(state['folders'])==2
     finally:store.close()
+
+
+@pytest.mark.parametrize('cause', ['dead_process', 'expired_lease', 'legacy'])
+def test_interrupted_run_uses_persisted_attempt_context(backend, tmp_path, monkeypatch, cause):
+    folder = workspace(tmp_path)
+    store, _, agent_id = seed(folder)
+    from infrastructure.persistence import diagnostics
+    monkeypatch.setattr(diagnostics, 'release_version', lambda: 'execution-image')
+    monkeypatch.setenv('A4B_MAIN_MODEL', 'execution-default')
+    run = {'id': uid(), 'agent_id': agent_id, 'model': 'execution-model',
+           'created_at': datetime.now(timezone.utc).isoformat(), 'status': 'queued'}
+    try:
+        RunLifecycle(store).start(run, 'original-owner')
+        if cause == 'legacy':
+            run.pop('attempt_metadata')
+            store.write_test(run)
+        if cause == 'expired_lease':
+            store.db.execute('UPDATE builder_run_leases SET expires_at=? WHERE {ws} AND run_id=?',
+                             ('2000-01-01T00:00:00+00:00', run['id']))
+        store.db.commit()
+    finally:
+        store.close()
+    # Simulate a separate recovery process/image after reopening durable storage.
+    monkeypatch.setattr(diagnostics, 'release_version', lambda: 'recovery-image')
+    monkeypatch.setenv('A4B_MAIN_MODEL', 'recovery-default')
+    monkeypatch.setattr('workflow_engine.lifecycle.run_lifecycle.alive', lambda pid: cause == 'expired_lease')
+    store = Storage(folder)
+    try:
+        lifecycle = RunLifecycle(store)
+        assert lifecycle.recover()['recovered'] == [run['id']]
+        failed = store.test(run['id'])
+        assert failed['error_type'] == 'InterruptedExecution'
+        assert failed['diagnostics'] == {'trace_id': run['id'], 'model': 'execution-model',
+                                         'release': None if cause == 'legacy' else 'execution-image', 'validation': []}
+        assert lifecycle.recover()['recovered'] == []
+        # A retry snapshots its own context; a stale owner cannot overwrite it.
+        monkeypatch.setattr(diagnostics, 'release_version', lambda: 'retry-image')
+        failed['model'] = 'retry-model'
+        lifecycle.start(failed, 'new-owner')
+        assert not store.test(run['id']).get('diagnostics')
+        assert lifecycle.interrupt(run['id'], 'original-owner')['status'] == 'unchanged'
+        assert lifecycle.interrupt(run['id'], 'new-owner')['status'] == 'failed'
+        assert store.test(run['id'])['diagnostics'] == {'trace_id':run['id'], 'model':'retry-model',
+                                                      'release':'retry-image', 'validation':[]}
+    finally:
+        store.close()

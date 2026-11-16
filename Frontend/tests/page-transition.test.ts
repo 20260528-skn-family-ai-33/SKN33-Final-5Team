@@ -55,4 +55,46 @@ test('an existing interaction lock is preserved when a loader exits',async()=>{
   await act(async()=>{root.unmount();await tick();});assert.equal(element.hasAttribute('inert'),true);
  }finally{element.removeAttribute('inert');}
 });
+test('workspace loaders cover only the main panel and leave navigation interactive',async()=>{
+ dom.window.close();installDOM();const root=createRoot(document.getElementById('root'));
+ const view=(active:boolean)=>createElement('div',null,
+  createElement('header',null,createElement('button',null,'브랜드')),
+  createElement('aside',null,createElement('button',null,'홈')),
+  createElement('main',null,createElement('section',null,createElement('button',null,'본문')),createElement(PageTransition,{active})));
+ try{
+  await act(async()=>{root.render(view(true));await tick();});
+  const overlay=document.querySelector('.page-transition')!;
+  assert.equal(overlay.parentElement?.tagName,'MAIN');assert.ok(!overlay.classList.contains('page-transition-fullscreen'));
+  assert.equal(document.querySelector('main section')!.hasAttribute('inert'),true);
+  assert.equal(document.querySelector('aside')!.closest('[inert]'),null);
+  assert.equal(document.querySelector('header')!.closest('[inert]'),null);
+  assert.equal(document.getElementById('root')!.hasAttribute('inert'),false);
+  await act(async()=>{root.render(view(false));await tick();});
+  assert.equal(document.querySelector('[inert]'),null);
+ }finally{await act(async()=>{root.unmount();await tick();});}
+});
+test('a nested studio loader targets only its containing main panel',async()=>{
+ dom.window.close();installDOM();const root=createRoot(document.getElementById('root'));
+ try{
+  await act(async()=>{root.render(createElement('div',null,createElement('header'),createElement('div',null,createElement('aside'),createElement('main',null,createElement('button',null,'본문'),createElement('div',null,createElement(PageTransition,{active:true}))))));await tick();});
+  assert.equal(document.querySelector('.page-transition')!.parentElement?.tagName,'MAIN');
+  assert.equal(document.querySelector('aside')!.closest('[inert]'),null);
+ }finally{await act(async()=>{root.unmount();await tick();});}
+});
+test('overlapping panel loaders restore layout and new content only after the last owner exits',async()=>{
+ dom.window.close();installDOM();const root=createRoot(document.getElementById('root'));
+ const view=(first:boolean,second:boolean,extra=false)=>createElement('main',null,
+  createElement('section',null,'본문'),extra&&createElement('button',null,'늦게 도착한 내용'),
+  first&&createElement(PageTransition,{key:'first',active:true}),second&&createElement(PageTransition,{key:'second',active:true}));
+ try{
+  await act(async()=>{root.render(view(true,true));await tick();});
+  const main=document.querySelector('main')!;
+  await act(async()=>{root.render(view(false,true,true));await tick();});
+  assert.equal(main.querySelector('section')!.hasAttribute('inert'),true);
+  assert.equal(main.querySelector('button')!.hasAttribute('inert'),true);
+  assert.ok(main.style.getPropertyValue('--page-loading-top'));
+  await act(async()=>{root.render(view(false,false,true));await tick();});
+  assert.equal(document.querySelector('[inert]'),null);assert.equal(main.style.getPropertyValue('--page-loading-top'),'');
+ }finally{await act(async()=>{root.unmount();await tick();});}
+});
 test.after(()=>{dom.window.close();for(const [key,descriptor] of original)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);});

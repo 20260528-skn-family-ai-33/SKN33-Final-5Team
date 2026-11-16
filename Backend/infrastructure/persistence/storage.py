@@ -238,6 +238,17 @@ class Storage:
     def tests(self,agent_id):
         return [self._read_test(r[0]) for r in self.db.execute('SELECT json FROM agent_tests WHERE {ws} AND agent_id=? ORDER BY {seq} DESC LIMIT 20',(agent_id,))]
 
+    def run_history(self,agent_id=None):
+        """Read only list fields, retaining the existing 20 runs per workflow window."""
+        fields=('id','status','agent_version','created_at','started_at','error')
+        columns=','.join(self.json_text('json',field) for field in fields)
+        condition=' AND agent_id=?' if agent_id else ''
+        rows=self.db.execute('SELECT agent_id,'+columns+' FROM ('
+            'SELECT agent_id,json,ROW_NUMBER() OVER (PARTITION BY agent_id ORDER BY {seq} DESC) AS position '
+            'FROM agent_tests WHERE {ws}'+condition+') recent WHERE position<=20',
+            (agent_id,) if agent_id else ())
+        return [(row[0],{key:int(value) if key=='agent_version' else value for key,value in zip(fields,row[1:]) if value is not None}) for row in rows]
+
     def test(self,id):
         row=self.db.execute('SELECT json FROM agent_tests WHERE {ws} AND id=?',(id,)).fetchone()
         if not row:raise ValueError('실행을 찾을 수 없습니다.')

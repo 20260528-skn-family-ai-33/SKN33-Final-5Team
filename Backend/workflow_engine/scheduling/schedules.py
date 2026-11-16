@@ -184,12 +184,18 @@ class Schedules:
             self.db.commit()
             return None
         except Exception:self.db.rollback();raise
-    def get(self,agent_id):
-        row=self.db.execute('SELECT json,next_at,active FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
+    @staticmethod
+    def _reservation(row):
         if not row:return None
         data=json.loads(row[0])
         if data.get('removed'):return None
         return {**data,'next_run_at':row[1],'active':bool(row[2])}
+    def listing(self):
+        rows=self.db.execute('SELECT agent_id,json,next_at,active FROM builder_schedules WHERE {ws}')
+        return {row[0]:reservation for row in rows if (reservation:=self._reservation(row[1:])) is not None}
+    def get(self,agent_id):
+        row=self.db.execute('SELECT json,next_at,active FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
+        return self._reservation(row)
     def was_removed(self,agent_id):
         row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
         return bool(row and json.loads(row[0]).get('removed'))

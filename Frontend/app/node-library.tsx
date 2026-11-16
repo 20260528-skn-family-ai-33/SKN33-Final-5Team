@@ -8,7 +8,7 @@ export type LibraryNode={id:string;version:number;ref:string;saved_at:string;ori
 const processing=[['read_document','문서 읽기'],['read_table','표 파일 읽기'],['filter_sort','조건 필터'],['aggregate_table','목록 집계']];
 const ports:Record<string,string>={agent_node:'요청·문서·앞 단계 결과 → 답변',read_document:'연결 문서 → 문서 구간',read_table:'연결 표 파일 → 표 데이터',filter_sort:'표 데이터 → 조건에 맞는 표',aggregate_table:'표 데이터 → 집계 표'};
 export type ToolInfo={id:string;name:string;description:string;input_ports:Record<string,string>;output_ports:Record<string,string>;business_tool?:boolean;execution_status?:string;operation_contracts?:{id:string;arguments:{name:string;required:boolean}[];scope:string;status:string}[]};
-export function NodeLibrary({nodes,defaults:presets,onSaved,onUse,onBusyChange,onDirtyChange,loading=false,unavailable=false,header}:{loading?:boolean;unavailable?:boolean;header?:ReactNode;nodes:LibraryNode[];defaults:LibraryNode[];catalog:ToolInfo[];onSaved:()=>Promise<void>;onUse:(node:LibraryNode)=>void;onToolUse:(tool:ToolInfo)=>void;onBusyChange?:(busy:boolean)=>void;onDirtyChange?:(dirty:boolean)=>void}){
+export function NodeLibrary({nodes,defaults:presets,onSaved,onUse,onBusyChange,onDirtyChange,loading=false,unavailable=false,header,loadingView}:{loading?:boolean;unavailable?:boolean;header?:ReactNode;loadingView?:ReactNode;nodes:LibraryNode[];defaults:LibraryNode[];catalog:ToolInfo[];onSaved:()=>Promise<void>;onUse:(node:LibraryNode)=>void;onToolUse:(tool:ToolInfo)=>void;onBusyChange?:(busy:boolean)=>void;onDirtyChange?:(dirty:boolean)=>void}){
  const [editing,setEditing]=useState<LibraryNode|null>(null),[kind,setKind]=useState<'agent'|'processing'>('agent'),[name,setName]=useState(''),[purpose,setPurpose]=useState(''),[instructions,setInstructions]=useState(''),[reference,setReference]=useState(''),[model,setModel]=useState(''),[tool,setTool]=useState('read_document'),[field,setField]=useState(''),[operator,setOperator]=useState('lt'),[value,setValue]=useState(''),[group,setGroup]=useState(''),[aggregation,setAggregation]=useState('count'),[sumField,setSumField]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [editorOpen,setEditorOpen]=useState(false);
  const saving=useRef(false);
@@ -28,7 +28,7 @@ export function NodeLibrary({nodes,defaults:presets,onSaved,onUse,onBusyChange,o
   try{await onSaved();setRefreshNeeded(false);}catch(e){setRefreshNeeded(true);setError('저장은 완료됐지만 목록을 갱신하지 못했습니다. '+(e as Error).message);}
  }catch(e){setError((e as Error).message);}finally{lock(false);}}
 
- return <main className="as-main task-library-main">{header ?? <h1>작업 라이브러리</h1>}
+ return <main className="as-main task-library-main">{loadingView}{header ?? <h1>작업 라이브러리</h1>}
  {loading?<p className="workspace-loading" role="status">작업 라이브러리를 불러오고 있습니다.</p>:unavailable?<p className="workspace-loading" role="status">자료를 불러오지 못했습니다. 새로고침한 뒤 다시 확인해주세요.</p>:<>
  {!editorOpen&&notice&&<p role="status" className="nl-notice">{notice}</p>}{!editorOpen&&error&&<p role="alert" className="as-error">{error}</p>}<div className="nl-grid" style={{gridTemplateColumns:editorOpen?undefined:"minmax(0, 1fr)"}}>{editorOpen&&<form data-tour="task-form" ref={editor} className="nl-form" aria-label="작업 설정" onSubmit={save} onChangeCapture={()=>onDirtyChange?.(true)}><fieldset disabled={busy} className="nl-form-fields"><h2 className="nl-editor-title">작업 설정</h2>
  <label className="as-field">작업 이름<input required maxLength={60} value={name} onChange={e=>setName(e.target.value)}/></label>

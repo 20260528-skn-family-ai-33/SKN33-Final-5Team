@@ -1,1 +1,6 @@
-.page-transition{position:fixed;inset:0;z-index:2147483000;display:grid;place-content:center;background:var(--a4b-surface,#fff);pointer-events:auto}.page-transition img{display:block;animation:page-mark-breathe 1.4s ease-in-out infinite}.page-transition-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}@keyframes page-mark-breathe{0%,100%{opacity:.45}50%{opacity:1}}@media(prefers-reduced-motion:reduce){.page-transition img{animation:none}}
+.page-transition{position:absolute;inset:0;z-index:10;display:grid;place-content:center;background:var(--a4b-surface,#fff);pointer-events:auto}.page-transition img{display:block;animation:page-mark-breathe 1.4s ease-in-out infinite}.page-transition-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}@keyframes page-mark-breathe{0%,100%{opacity:.45}50%{opacity:1}}@media(prefers-reduced-motion:reduce){.page-transition img{animation:none}}
+
+.page-transition-fullscreen{position:fixed;z-index:2147483000}
+
+:is(.as-main,.entry-workspace-main):has(>.page-transition){position:relative;min-height:max(320px,calc(100dvh - var(--page-loading-top,48px)))}
+:is(.as-main,.entry-workspace-main):has(>.page-transition)>:not(.page-transition){display:none!important}

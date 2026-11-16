@@ -16,11 +16,12 @@ type HeaderProps = {
   onHome: () => void;
   onNew?: () => void;
   disabled?: boolean;
+  pending?: boolean;
   actionLabel?: string;
   actions?: ReactNode;
 };
 
-export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = '새 워크플로우', actions}: HeaderProps) {
+export function WorkspaceHeader({onHome, onNew, disabled = false, pending = false, actionLabel = '새 워크플로우', actions}: HeaderProps) {
   const preview = new URLSearchParams(location.search).get('screen') === 'preview';
 
   return <header className="workspace-header">
@@ -32,7 +33,7 @@ export function WorkspaceHeader({onHome, onNew, disabled = false, actionLabel = 
       {onNew && <button data-tour="create-workflow" className="as-button as-primary" onClick={onNew} disabled={disabled}>
         <Plus size={16} aria-hidden="true"/>{actionLabel}
       </button>}
-      {preview ? <AccountMenu/> : <AiStatus/>}
+      {pending ? <span className="ai-status-badge" role="status">연결 확인 중</span> : preview ? <AccountMenu/> : <AiStatus/>}
     </div>
   </header>;
 }

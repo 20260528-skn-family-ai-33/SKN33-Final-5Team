@@ -16,8 +16,6 @@ COPY scripts/model-environment.mjs ./scripts/model-environment.mjs
 RUN npm run build:server
 
 FROM node:24-bookworm-slim AS backend
-ARG A4B_FRONTEND_COMMIT
-ENV A4B_RELEASE=${A4B_FRONTEND_COMMIT}
 WORKDIR /app
 RUN mkdir -p /app/Frontend/dist-app
 # libgl1/libglib2.0-0/libgomp1 are runtime libraries of the Paddle OCR stack (OpenCV, OpenMP).
@@ -64,6 +62,8 @@ COPY infrastructure/db/migrations/ /app/infrastructure/db/migrations/
 # Fail the build if any registered tool's executor is missing from the image (a broad
 # .dockerignore rule once dropped workflow_engine/executors/output).
 RUN cd /app/Backend && /app/Backend/.venv-agent/bin/python -c "import importlib; from workflow_engine.catalog.registry import TOOLS; [importlib.import_module(t['module_path'].split(':')[0]) for t in TOOLS]; print(len(TOOLS), 'executors importable')"
+ARG A4B_FRONTEND_COMMIT
+ENV A4B_RELEASE=${A4B_FRONTEND_COMMIT}
 ENV HOST=0.0.0.0 PORT=3030 EASYFLOW_DATA_DIR=/app/data A4B_FOCUSED_DEMO=1
 EXPOSE 3030
 CMD ["node","Backend/api/build-server/index.mjs"]

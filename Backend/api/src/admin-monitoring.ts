@@ -22,7 +22,7 @@ const identifier=(v:unknown)=>typeof v==='string'?v.replace(/[^a-zA-Z0-9_.:/-]/g
 export function safeRecord(raw:any){
  const diagnostics=raw.diagnostics&&typeof raw.diagnostics==='object'?raw.diagnostics:{};
  return {kind:identifier(raw.kind),id:identifier(raw.id),request_id:identifier(raw.request_id||raw.id),member_id:identifier(raw.member_id),status:identifier(raw.status),stage:identifier(raw.stage),node:identifier(raw.node),
-  reason_code:identifier(raw.reason_code),reason:diagnosticText(raw.reason),error_type:identifier(raw.error_type),started_at:raw.started_at,finished_at:raw.finished_at,workflow_id:identifier(raw.workflow_id),
+  reason_code:identifier(raw.reason_code),reason:diagnosticText(raw.reason),error_type:identifier(raw.error_type),occurred_at:raw.occurred_at||raw.started_at,started_at:raw.started_at,finished_at:raw.finished_at,workflow_id:identifier(raw.workflow_id),
   diagnostics:{trace_id:identifier(diagnostics.trace_id),model:identifier(diagnostics.model),release:identifier(diagnostics.release),http_status:Number.isInteger(diagnostics.http_status)?diagnostics.http_status:null,
    validation:Array.isArray(diagnostics.validation)?diagnostics.validation.slice(0,20).map((e:any)=>({field:diagnosticText(e.field,150),type:identifier(e.type)})):[]},
   events:Array.isArray(raw.events)?raw.events.slice(0,100).map((e:any)=>({at:e.at,stage:identifier(e.stage),node:identifier(e.node),status:identifier(e.status),reason_code:identifier(e.reason_code),attempt:e.attempt})):[]};
@@ -75,7 +75,7 @@ export class AdminMonitoring {
     (SELECT count(*)::integer FROM filtered) total,
     (SELECT jsonb_build_object('requests',count(*),'failed',count(*) FILTER(WHERE record->>'status'='failed'),
      'blocked',count(*) FILTER(WHERE record->>'status'='blocked'),'affected_users',count(DISTINCT record->>'member_id') FILTER(WHERE record->>'status'='failed')) FROM scoped) summary,
-    coalesce((SELECT jsonb_agg(to_jsonb(p)) FROM (SELECT * FROM filtered ORDER BY (record->>'started_at')::timestamptz DESC,record->>'kind',record->>'id' LIMIT 25 OFFSET $9) p),'[]'::jsonb) items,
+    coalesce((SELECT jsonb_agg(to_jsonb(p)) FROM (SELECT * FROM filtered ORDER BY coalesce(record->>'occurred_at',record->>'started_at')::timestamptz DESC,record->>'kind',record->>'id' LIMIT 25 OFFSET $9) p),'[]'::jsonb) items,
     coalesce((SELECT jsonb_agg(to_jsonb(g)) FROM (SELECT record->>'stage' stage,record->>'node' node,record->>'reason_code' reason_code,count(*)::integer count
      FROM scoped WHERE record->>'status'='failed' GROUP BY 1,2,3 ORDER BY count(*) DESC LIMIT 8) g),'[]'::jsonb) groups`,
     [user.id,since.toISOString(),until.toISOString(),match?.[2]||null,match?.[1]||filters.kind,match?'all':filters.status,filters.triage,filters.query,(filters.page-1)*25]);

@@ -234,3 +234,30 @@ def test_usable_branched_or_ambiguous_workflows_keep_their_edges():
     fanout=copy.deepcopy(ok);fanout['nodes'].append(node('w2','write_result',[bind('table','s','table')],format='csv'))
     fanout['edges']=[edge('r','s'),edge('s','missing')]
     assert normalize_connections(copy.deepcopy(fanout))['edges']==fanout['edges']
+
+
+@pytest.mark.parametrize('failure', ['report', 'review_report', 'review_guard'])
+def test_report_save_failure_keeps_monitoring_diagnostics(tmp_path, monkeypatch, failure):
+    from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
+    monkeypatch.setenv('A4B_RELEASE', 'review-test-release')
+    from workflow_engine import runner
+    publish = RunLifecycle.publish
+    def fail_publish(self, run_id, token, target, content):
+        if failure == 'report' or (failure == 'review_report' and str(target).endswith('.review.json')):
+            raise OSError('private filesystem detail')
+        return publish(self, run_id, token, target, content)
+    monkeypatch.setattr(RunLifecycle, 'publish', fail_publish)
+    if failure != 'report':
+        monkeypatch.setattr(runner, 'collect_reviews', lambda outputs: [{'test': True}])
+        monkeypatch.setattr(runner, 'is_review_report_artifact', lambda *args: failure != 'review_guard')
+    store, identifier, asset = saved(tmp_path, flow())
+    try:
+        run = run_workflow(store, identifier, '추출', 'unused', file_ids=[asset['id']], llm=FakeLLM())
+        assert run['status'] == 'failed'
+        assert run['diagnostics']['trace_id'] == run['id']
+        assert run['diagnostics']['model']
+        assert run['diagnostics']['release'] == 'review-test-release'
+        assert 'private filesystem detail' not in json.dumps(run['diagnostics'])
+        assert store.test(run['id'])['diagnostics'] == run['diagnostics']
+    finally:
+        store.close()

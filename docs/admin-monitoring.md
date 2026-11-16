@@ -22,7 +22,7 @@
 
 ## 데이터와 권한
 
-`009_admin_monitoring.sql`을 DBA 마이그레이션 계정으로 적용합니다. SECURITY DEFINER 함수는 전용 NOLOGIN·NOBYPASSRLS 역할 `a4b_monitor_owner`가 소유합니다. RDS의 `postgres`도 BYPASSRLS가 없을 수 있으므로, 이 전용 역할에만 생성 이력 SELECT와 처리 이력 접근 정책을 부여합니다. 앱에는 이 역할의 멤버십을 부여하지 않습니다. 앱 연결에는 기존 `a4b_app`을 사용하며 DBA 연결을 앱 런타임에 전달하지 않습니다. 함수는 서버가 세션에서 가져온 회원 ID의 현재 관리자/활성 상태를 검사합니다. 이 함수의 actor 인자는 외부 HTTP 요청에서 받지 않습니다. 일반 작업 공간 RLS 정책은 변경하지 않습니다.
+`009_admin_monitoring.sql`과 후속 `010_admin_monitoring_fixes.sql`을 DBA 마이그레이션 계정으로 순서대로 적용합니다. SECURITY DEFINER 함수는 전용 NOLOGIN·NOBYPASSRLS 역할 `a4b_monitor_owner`가 소유합니다. RDS의 `postgres`도 BYPASSRLS가 없을 수 있으므로, 이 전용 역할에만 생성 이력 SELECT와 처리 이력 접근 정책을 부여합니다. 앱에는 이 역할의 멤버십을 부여하지 않습니다. 앱 연결에는 기존 `a4b_app`을 사용하며 DBA 연결을 앱 런타임에 전달하지 않습니다. 함수는 서버가 세션에서 가져온 회원 ID의 현재 관리자/활성 상태를 검사합니다. 이 함수의 actor 인자는 외부 HTTP 요청에서 받지 않습니다. 일반 작업 공간 RLS 정책은 변경하지 않습니다.
 
 함수는 생성 요청, 실행/노드, 문서 버전의 진단 필드만 투영합니다. 요청 본문·문서 내용·모델 응답·입출력 JSON은 전달하지 않습니다. Node에서 필드를 다시 제한하고 알려진 비밀값, URL, 이메일 등을 마스킹합니다. 원문 예외 문자열을 새로 기록하지 않고 Pydantic 오류의 위치/유형과 HTTP 상태만 수집합니다. 운영 메모에도 마스킹을 적용하지만 민감한 원문은 입력하지 마세요.
 
@@ -39,11 +39,11 @@
 /app/Backend/.venv-agent/bin/python /app/scripts/deploy/set-monitor-admin.py --email skn33team5@gmail.com --apply
 ```
 
-배포는 기존 GitHub Actions를 사용합니다. `main` workflow에서 branch를 `JHD/admin-monitoring`, target을 `all`로 지정하면 기존 운영 서비스에 배포됩니다. 해당 브랜치를 main에 병합하지 않습니다. 자동 마이그레이션에는 기존 `/var/lib/a4b-deploy/migration-env`의 DBA 연결이 필요합니다. 마이그레이션 없이 새 앱을 먼저 시작하면 사전 검사가 실패합니다.
+배포는 기존 GitHub Actions를 사용합니다. PR을 검토한 팀장이 `main`에 병합하면 자동 배포가 실행됩니다. 작업 브랜치에서 운영 배포를 수동 실행하지 않습니다. 자동 마이그레이션에는 기존 `/var/lib/a4b-deploy/migration-env`의 DBA 연결이 필요합니다. 마이그레이션 없이 새 앱을 먼저 시작하면 사전 검사가 실패합니다.
 
 ## 검증
 
-`npm run check`, `npm run build`, `Backend/api/tests/admin-monitoring.test.ts`, 인증 회귀 테스트와 프론트 관리자 테스트, Python 생성 이력·진단 정보 테스트를 실행합니다. PostgreSQL 통합 테스트는 복원한 일회용 업무 스키마와 004/009 마이그레이션 위에서 `A4B_MONITOR_TEST_DATABASE_URL`로 실행합니다. DB 이름에 `test`가 있어야 하며 테스트 데이터는 롤백합니다.
+`npm run check`, `npm run build`, `Backend/api/tests/admin-monitoring.test.ts`, 인증 회귀 테스트와 프론트 관리자 테스트, Python 생성 이력·진단 정보 테스트를 실행합니다. PostgreSQL 통합 테스트는 복원한 일회용 업무 스키마와 010까지의 마이그레이션 위에서 `A4B_MONITOR_TEST_DATABASE_URL`로 실행합니다. DB 이름에 `test`가 있어야 하며 테스트 데이터는 롤백합니다.
 
 ## 2026-11-16 검증 및 반영 상태
 
@@ -54,3 +54,15 @@
 - Python workflow_engine 전체: 757개 통과, 1개 실패. `test_representative_and_extra_cases_cover_all_operation_ids`의 Slack 작업 예시 누락이며, 작업 전 HEAD `9bedf46` 소스 사본에서도 같은 실패를 재현했습니다. 본 변경으로 수정하지 않았습니다.
 - 샘플 데이터로 실제 빌드 화면의 목록·상세 열기와 좁은 화면 배치를 확인했습니다. 운영 로그인 세션으로 화면을 검증한 것은 아닙니다.
 - 운영 DBA 설정은 사용자의 숨김 입력으로 `/var/lib/a4b-deploy/migration-env`에 root 전용 권한 0600으로 저장됐고 연결을 확인했습니다. RDS postgres의 BYPASSRLS가 비활성임을 확인해 전용 함수 소유자 정책으로 보완했습니다. 운영 배포 결과는 별도 확인이 필요합니다.
+
+
+## PR #129 후속 수정 (010)
+
+운영에 적용된 009는 변경하지 않습니다. `010_admin_monitoring_fixes.sql`을 등록하고 앱의 필수 스키마 버전을 10으로 올렸습니다. 기존 배포 스크립트가 새 이미지로 교체하기 전에 root 전용 DBA 설정으로 후속 마이그레이션을 실행합니다. 이 수정 작업 중 운영 010 적용이나 배포는 실행하지 않습니다.
+
+- 실행 조회는 `coalesce(finished_at, created_at)`으로 기간을 비교합니다. 생성 이력은 종료 시각 우선의 `monitor_at timestamptz`를 백필하고 트리거로 유지합니다. 종료 시각이 없는 기록은 시작 시각을 사용합니다. 목록 정렬과 표시에도 같은 시각을 사용하며 상세의 시작/종료 시각은 보존합니다.
+- 생성 이력의 문자열 인덱스를 날짜형 인덱스로 교체합니다. 백필은 기존 NOLOGIN 소유자 역할과 임시 UPDATE 정책으로 FORCE RLS 환경에서도 수행하고, 해당 권한/정책은 즉시 회수합니다. 전체 백필과 인덱스 생성 동안 테이블 잠금이 발생하므로 이력이 큰 환경에서는 배포 시간을 고려해야 합니다.
+- 처리 상태 저장은 종류와 선택 테이블 존재 여부로 분기합니다. 테이블이 없는 종류는 record-not-found, 생성 요청은 정상 저장됩니다.
+- 보고서 저장·검수 보고서 저장·검수 방어 실패도 최종 저장 전에 진단 정보를 채웁니다. 이미 수집한 예외 진단은 덮어쓰지 않습니다.
+
+후속 SQL 회귀 테스트는 비어 있는 전용 로컬 DB(이름 끝 `_review_test`)에 `A4B_MONITOR_MIGRATION_TEST_DATABASE_URL`을 설정해 `Backend/api/tests/admin-monitoring-migration.test.ts`를 실행합니다. 테스트는 자체 `a4b` 스키마를 생성/제거하므로 공유 DB를 사용하지 않습니다. 업무 테이블 유무, 009→010 백필, 시간대 변환, 업데이트 트리거, 실제 인덱스 실행 계획, 오래 대기한 실행의 최근 실패 포함을 검사합니다.

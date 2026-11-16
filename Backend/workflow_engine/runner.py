@@ -256,4 +256,7 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
                   table_run_request_notice(config, run['request'], run.get('workflow_dependencies')))
         if notice:
             run['answer'] = notice + '\n\n' + run['answer']
+    if run['status']=='failed' and not run.get('diagnostics'):
+        from infrastructure.persistence.diagnostics import diagnostic_metadata
+        run['diagnostics'] = diagnostic_metadata(trace_id=run['id'], model=model)
     lifecycle.finish(run,execution_token);return storage.test(run['id'])

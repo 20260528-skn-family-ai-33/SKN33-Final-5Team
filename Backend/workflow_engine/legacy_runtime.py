@@ -76,6 +76,8 @@ def test_agent(storage,agent_id,request,api_key,file_ids=None,agent_snapshot=Non
     except Exception as error:
         import traceback
         frames=[{'function':f.name,'file':Path(f.filename).name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)[-6:]]
+        from infrastructure.persistence.diagnostics import diagnostic_metadata
+        run['diagnostics'] = diagnostic_metadata(error, trace_id=run['id'], model=agent.get('model'))
         run.update(status='failed',error=public_error(error,api_key),error_type=type(error).__name__,error_code=getattr(error,'code',None),error_param=getattr(error,'param',None),diagnostic_frames=frames,steps=context['trace'])
     run['updated_at']=now();storage.save_test(run);return run
 

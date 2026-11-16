@@ -214,6 +214,8 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         from workflow_engine.executors.document.gmail_summary_batches import append_collection_notices
         run['answer']=append_collection_notices(run['answer'],[outputs.get(node_id,{}).get('result',{}) for node_id in gmail_collections])
     except Exception as error:
+        from infrastructure.persistence.diagnostics import diagnostic_metadata
+        run['diagnostics'] = diagnostic_metadata(error, trace_id=run['id'], model=model)
         from infrastructure.llm.errors import public_error
         state=(graph.get_state(cfg).values or {}) if graph else {}
         pending=(graph.get_state(cfg).next or ['workflow'])[0] if graph else 'workflow'

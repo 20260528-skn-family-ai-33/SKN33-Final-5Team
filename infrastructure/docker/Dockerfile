@@ -16,6 +16,8 @@ COPY scripts/model-environment.mjs ./scripts/model-environment.mjs
 RUN npm run build:server
 
 FROM node:24-bookworm-slim AS backend
+ARG A4B_FRONTEND_COMMIT
+ENV A4B_RELEASE=${A4B_FRONTEND_COMMIT}
 WORKDIR /app
 RUN mkdir -p /app/Frontend/dist-app
 # libgl1/libglib2.0-0/libgomp1 are runtime libraries of the Paddle OCR stack (OpenCV, OpenMP).
@@ -57,7 +59,7 @@ RUN if [ "$A4B_WITH_ML" = 1 ]; then cd /app/Backend && .venv-agent/bin/python -m
 COPY scripts/run/run-deferred-verifications.py /app/scripts/run/run-deferred-verifications.py
 RUN ln -s run/run-deferred-verifications.py /app/scripts/run-deferred-verifications.py
 # Business-data PostgreSQL migrations and the one-off SQLite import, run by operators only.
-COPY scripts/deploy/apply-builder-migrations.py scripts/deploy/migrate-sqlite-to-postgres.py /app/scripts/deploy/
+COPY scripts/deploy/set-monitor-admin.py scripts/deploy/apply-builder-migrations.py scripts/deploy/migrate-sqlite-to-postgres.py /app/scripts/deploy/
 COPY infrastructure/db/migrations/ /app/infrastructure/db/migrations/
 # Fail the build if any registered tool's executor is missing from the image (a broad
 # .dockerignore rule once dropped workflow_engine/executors/output).

@@ -10,6 +10,7 @@ import re
 from uuid import UUID
 
 from infrastructure.persistence.ids import uid, now
+from infrastructure.persistence.diagnostics import diagnostic_metadata
 
 STAGES = {
     'resources': 'request_analysis', 'attachment_gate': 'request_analysis',
@@ -85,7 +86,7 @@ class GenerationHistory:
 
     @classmethod
     def start(cls, storage, data):
-        storage.session(data['id'])  # Ownership comes from the authenticated workspace.
+        session = storage.session(data['id'])  # Ownership comes from the authenticated workspace.
         request_id = str(UUID(data.get('generation_request_id') or uid()))
         audit = cls(storage, request_id, data.get('api_key', ''))
         stamp = now()
@@ -101,7 +102,8 @@ class GenerationHistory:
                       request_text=redact(data.get('content', ''), audit.api_key)[:4000],
                       status='running', stage='request_analysis', node='request',
                       reason_code=None, reason=None, error_type=None, workflow_id=None,
-                      started_at=stamp, updated_at=stamp, finished_at=None, events=[])
+                      started_at=stamp, updated_at=stamp, finished_at=None, events=[],
+                      diagnostics=diagnostic_metadata(trace_id=request_id, model=session.get('model')))
         storage.begin_write()
         try:
             old = audit.read(required=False)
@@ -169,7 +171,8 @@ class GenerationHistory:
         self.failure = dict(stage=record['stage'], node=record['node'], **error_info(error, record['stage'], self.api_key))
         if self.failure['reason_code']=='invalid_request' and record['node'] in ('capability_check','condition_check','requirements'):
             self.failure.update(reason_code='invalid_model_response',reason='요청 분석 모델의 응답이 필요한 형식을 충족하지 못했습니다.')
-        self.change(event_status='error', **self.failure)
+        self.change(event_status='error', diagnostics=diagnostic_metadata(error, trace_id=self.id,
+                    model=(record.get('diagnostics') or {}).get('model')), **self.failure)
 
     def observed(self, node, state):
         outcome = self.outcome(state)

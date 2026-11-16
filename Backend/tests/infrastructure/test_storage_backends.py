@@ -104,6 +104,8 @@ def postgres_app_conninfo():
         pytest.fail('A4B_TEST_DATABASE_URL의 DB 이름에 test가 들어간 일회용 DB만 사용할 수 있습니다.')
     with psycopg.connect(TEST_URL, autocommit=True) as connection:
         connection.execute('DROP SCHEMA IF EXISTS a4b_builder CASCADE')
+        connection.execute('DROP TABLE IF EXISTS a4b.monitor_triage_events, a4b.monitor_triage CASCADE')
+        connection.execute('DROP FUNCTION IF EXISTS a4b.monitor_records(uuid,timestamptz,timestamptz,text), a4b.monitor_require_admin(uuid) CASCADE')
         connection.execute('DROP TABLE IF EXISTS a4b.workflow_generation_requests')
         connection.execute("DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='a4b_app') THEN CREATE ROLE a4b_app NOLOGIN; END IF; END$$")
         connection.execute(f"DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{APP_ROLE}') THEN CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'; END IF; END$$")

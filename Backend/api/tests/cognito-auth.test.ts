@@ -91,7 +91,7 @@ test('signed Cognito login protects APIs, separates members, refreshes and revok
    for(const method of ['GET','HEAD']){
     const response=await probe('/api/health',method);assert.equal(response.status,200);
     assert.equal(response.body,method==='HEAD'?'':JSON.stringify({ok:true,standalone:true,auth:'cognito'}));
-    for(const path of ['/api/workflows','/api/auth/me','/auth/login','/api/health/extra'])assert.equal((await probe(path,method)).status,403,path);
+    for(const path of ['/api/admin/monitoring','/api/workflows','/api/auth/me','/auth/login','/api/health/extra'])assert.equal((await probe(path,method)).status,403,path);
    }
    assert.equal((await probe('/api/health','POST')).status,403);
   });
@@ -114,6 +114,10 @@ test('signed Cognito login protects APIs, separates members, refreshes and revok
   const aliceCookie=alice.callback.headers.getSetCookie().find(value=>value.startsWith('a4b-session='))!;assert.match(aliceCookie,/HttpOnly; SameSite=Lax/);assert.ok(!aliceCookie.includes('refresh:'));
   const aliceMe=await (await call('/api/auth/me',alice.session)).json() as any,bobMe=await (await call('/api/auth/me',bob.session)).json() as any;
   assert.notEqual(aliceMe.user.id,bobMe.user.id);assert.equal(aliceMe.user.role,'member');
+  await t.test('monitoring rejects member sessions and caller-supplied administrator identities',async()=>{
+   assert.equal((await call('/api/admin/monitoring?actor='+aliceMe.user.id,alice.session)).status,403);
+   assert.equal((await call('/api/admin/monitoring/generation/request',alice.session,'PATCH',{status:'resolved',note:'x',revision:0,actor:aliceMe.user.id})).status,403);
+  });
   await t.test('an email collision cannot attach a different Cognito identity to an existing member',async()=>{
    const attacker=await login('different-subject',{email:'alice@example.com'});assert.equal(attacker.session,'');
    assert.equal((await (await call('/api/auth/me',alice.session)).json() as any).user.id,aliceMe.user.id);

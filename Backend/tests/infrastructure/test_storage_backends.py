@@ -148,6 +148,39 @@ def workspace(tmp_path):
     return folder
 
 
+def test_agent_summaries_count_latest_workflows_and_isolate_workspaces(backend, tmp_path):
+    from tests.infrastructure.test_menu_loading import seed
+
+    store = Storage(workspace(tmp_path))
+    other = Storage(workspace(tmp_path))
+    try:
+        original = seed(store)
+        latest = {**original, 'version': 2, 'config': {**original['config'],
+                  'name': '최신 업무', 'workflow': {'nodes': [{'id': 'one'}, {'id': 'two'}]}}}
+        store.db.execute('INSERT INTO agent_versions({wsc}agent_id,version,json) VALUES({wsv}?,?,?)',
+                         ('A', 2, json.dumps(latest)))
+        for id, workflow in [('legacy', None), ('empty', {'nodes': []})]:
+            agent = {**original, 'id': id, 'config': {**original['config'], 'workflow': workflow}}
+            store.db.execute('INSERT INTO agent_versions({wsc}agent_id,version,json) VALUES({wsv}?,?,?)',
+                             (id, 1, json.dumps(agent)))
+        store.db.commit()
+        foreign = {**latest, 'version': 3}
+        other.db.execute('INSERT INTO agent_versions({wsc}agent_id,version,json) VALUES({wsv}?,?,?)',
+                         ('A', 3, json.dumps(foreign)))
+        other.db.commit()
+
+        summaries = store.agent_summaries()
+        assert [(a['id'], a['version'], a['node_count']) for a in summaries] == [
+            ('empty', 1, 0), ('legacy', 1, 2), ('A', 2, 2)]
+        assert summaries[-1]['config'] == {'name': '최신 업무', 'purpose': '목록 검증',
+                                           'tool_ids': ['read_table', 'write_result']}
+        assert 'workflow_dependencies' not in summaries[-1]
+        assert 'instructions' not in summaries[-1]['config']
+    finally:
+        other.close()
+        store.close()
+
+
 def test_generation_history_persists_failures_waiting_and_workspace_isolation(backend,tmp_path):
     from infrastructure.persistence.generation_history import GenerationHistory, history
     alice,bob=workspace(tmp_path),workspace(tmp_path)

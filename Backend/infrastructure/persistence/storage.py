@@ -146,7 +146,7 @@ class Storage:
         fields=[self.json_text('v.json',key) for key in ('id','version','model','credential_id','updated_at')]
         fields += [self.json_text(config,key) for key in ('name','purpose','tool_ids')]
         nodes=self.json_text(self.json_text(config,'workflow'),'nodes')
-        count=f'json_array_length({nodes}::json)' if self.dialect=='postgres' else f'json_array_length({nodes})'
+        count=f'json_array_length(({nodes})::json)' if self.dialect=='postgres' else f'json_array_length({nodes})'
         rows=self.db.execute('SELECT '+','.join(fields)+','+count+' FROM agent_versions v WHERE {ws:v} '
             'AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id) ORDER BY {seq} DESC')
         return [{'id':id,'version':int(version),'model':model,'credential_id':credential,'updated_at':updated,

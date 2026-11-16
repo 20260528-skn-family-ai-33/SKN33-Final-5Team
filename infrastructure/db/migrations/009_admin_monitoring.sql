@@ -1,6 +1,16 @@
 -- Admin-only RPCs expose diagnostic projections, never request bodies or file contents.
--- Keep all existing workspace policies unchanged. Functions run as the migration owner
--- (must be a DBA with BYPASSRLS); app users cannot SELECT/modify the triage tables directly.
+-- RDS administrators need not have BYPASSRLS. Use a dedicated NOLOGIN function
+-- owner with explicit role-scoped policies; never grant this role to the app.
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='a4b_monitor_owner') THEN
+  CREATE ROLE a4b_monitor_owner NOLOGIN NOSUPERUSER NOBYPASSRLS;
+ END IF;
+ IF pg_has_role('a4b_app','a4b_monitor_owner','MEMBER') THEN
+  RAISE EXCEPTION 'Monitoring owner must not be granted to the app';
+ END IF;
+ EXECUTE format('GRANT a4b_monitor_owner TO %I',current_user);
+END $$;
+GRANT USAGE,CREATE ON SCHEMA a4b TO a4b_monitor_owner;
 CREATE TABLE a4b.monitor_triage (
  kind text NOT NULL CHECK(kind IN ('generation','execution','document')),
  record_id text NOT NULL,
@@ -24,7 +34,7 @@ CREATE INDEX monitor_triage_events_record ON a4b.monitor_triage_events(kind,reco
 CREATE INDEX generation_monitor_started ON a4b.workflow_generation_requests((json->>'started_at'));
 
 CREATE FUNCTION a4b.monitor_require_admin(actor uuid) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=off AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=on AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM a4b.users WHERE id=actor AND role='admin' AND status='active') THEN
   RAISE EXCEPTION 'Administrator required' USING ERRCODE='42501';
@@ -32,7 +42,7 @@ BEGIN
 END $$;
 
 CREATE FUNCTION a4b.monitor_records(actor uuid, since_at timestamptz, until_at timestamptz, detail_id text DEFAULT NULL)
-RETURNS SETOF jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=off AS $$
+RETURNS SETOF jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=on AS $$
 BEGIN
  PERFORM a4b.monitor_require_admin(actor);
  IF until_at<=since_at OR until_at-since_at>interval '91 days' THEN
@@ -75,15 +85,15 @@ BEGIN
 END $$;
 
 CREATE FUNCTION a4b.monitor_triage_read(actor uuid) RETURNS SETOF a4b.monitor_triage
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=off AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=on AS $$
 BEGIN PERFORM a4b.monitor_require_admin(actor); RETURN QUERY SELECT * FROM a4b.monitor_triage; END $$;
 CREATE FUNCTION a4b.monitor_triage_history(actor uuid,k text,rid text) RETURNS SETOF a4b.monitor_triage_events
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=off AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=on AS $$
 BEGIN PERFORM a4b.monitor_require_admin(actor);
  RETURN QUERY SELECT * FROM a4b.monitor_triage_events WHERE kind=k AND record_id=rid ORDER BY id DESC LIMIT 30;
 END $$;
 CREATE FUNCTION a4b.monitor_triage_save(actor uuid,k text,rid text,s text,n text,expected integer)
-RETURNS a4b.monitor_triage LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=off AS $$
+RETURNS a4b.monitor_triage LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog SET row_security=on AS $$
 DECLARE saved a4b.monitor_triage;
 BEGIN
  PERFORM a4b.monitor_require_admin(actor);
@@ -111,3 +121,26 @@ REVOKE ALL ON FUNCTION a4b.monitor_require_admin(uuid),a4b.monitor_records(uuid,
  a4b.monitor_triage_read(uuid),a4b.monitor_triage_history(uuid,text,text),a4b.monitor_triage_save(uuid,text,text,text,text,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION a4b.monitor_records(uuid,timestamptz,timestamptz,text),a4b.monitor_triage_read(uuid),
  a4b.monitor_triage_history(uuid,text,text),a4b.monitor_triage_save(uuid,text,text,text,text,integer) TO a4b_app;
+
+-- The role is reachable only through the guarded RPCs, not ordinary app SQL.
+GRANT SELECT ON a4b.workflow_generation_requests TO a4b_monitor_owner;
+CREATE POLICY monitor_owner_read ON a4b.workflow_generation_requests
+ FOR SELECT TO a4b_monitor_owner USING (true);
+GRANT SELECT,INSERT,UPDATE ON a4b.monitor_triage TO a4b_monitor_owner;
+GRANT SELECT,INSERT ON a4b.monitor_triage_events TO a4b_monitor_owner;
+GRANT USAGE ON SEQUENCE a4b.monitor_triage_events_id_seq TO a4b_monitor_owner;
+CREATE POLICY monitor_owner_access ON a4b.monitor_triage TO a4b_monitor_owner USING (true) WITH CHECK (true);
+CREATE POLICY monitor_owner_access ON a4b.monitor_triage_events TO a4b_monitor_owner USING (true) WITH CHECK (true);
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['users','workflow_runs','workflow_versions','node_runs','document_versions','documents'] LOOP
+  IF to_regclass('a4b.'||t) IS NOT NULL THEN
+   EXECUTE format('GRANT SELECT ON a4b.%I TO a4b_monitor_owner',t);
+  END IF;
+ END LOOP;
+END $$;
+ALTER FUNCTION a4b.monitor_require_admin(uuid) OWNER TO a4b_monitor_owner;
+ALTER FUNCTION a4b.monitor_records(uuid,timestamptz,timestamptz,text) OWNER TO a4b_monitor_owner;
+ALTER FUNCTION a4b.monitor_triage_read(uuid) OWNER TO a4b_monitor_owner;
+ALTER FUNCTION a4b.monitor_triage_history(uuid,text,text) OWNER TO a4b_monitor_owner;
+ALTER FUNCTION a4b.monitor_triage_save(uuid,text,text,text,text,integer) OWNER TO a4b_monitor_owner;
+REVOKE CREATE ON SCHEMA a4b FROM a4b_monitor_owner;

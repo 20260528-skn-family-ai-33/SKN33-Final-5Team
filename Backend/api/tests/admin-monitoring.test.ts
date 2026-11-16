@@ -33,6 +33,9 @@ test('PostgreSQL: admin projections, workspace isolation, filters, details and c
   await c.query(`INSERT INTO a4b.users(id,email,name,auth_provider,auth_subject,role) VALUES($1,$2,'Admin','fixture',$1::uuid::text,'admin'),($3,$4,'Member','fixture',$3::uuid::text,'member')`,[admin.id,admin.id+'@example.test',member.id,member.id+'@example.test']);
   await c.query(`INSERT INTO a4b.workflow_generation_requests(workspace_id,id,session_id,json) VALUES($1,$2,$3,$4)`,[member.id,id,sid,JSON.stringify({request_id:id,session_id:sid,status:'failed',stage:'request_analysis',node:'requirements',reason_code:'invalid_model_response',reason:'format invalid',started_at:when,request_text:'SECRET PROMPT',events:[{node:'requirements',status:'failed',at:when,input:'SECRET INPUT'}]})]);
   await c.query('SET LOCAL ROLE a4b_app');
+  const owner=(await c.query("SELECT rolsuper,rolbypassrls,rolcanlogin FROM pg_roles WHERE rolname='a4b_monitor_owner'")).rows[0];
+  assert.deepEqual(owner,{rolsuper:false,rolbypassrls:false,rolcanlogin:false});
+  assert.equal((await c.query("SELECT pg_has_role(current_user,'a4b_monitor_owner','MEMBER') member")).rows[0].member,false);
   assert.equal((await c.query('SELECT * FROM a4b.workflow_generation_requests')).rowCount,0,'ordinary workspace visibility unchanged');
   await c.query('SAVEPOINT denied');
   await assert.rejects(c.query('SELECT * FROM a4b.monitor_records($1,now()-interval \'1 day\',now()+interval \'1 second\')',[member.id]),{code:'42501'});await c.query('ROLLBACK TO denied');

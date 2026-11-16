@@ -22,7 +22,7 @@
 
 ## 데이터와 권한
 
-`009_admin_monitoring.sql`을 DBA 마이그레이션 계정으로 적용합니다. SECURITY DEFINER 함수 소유자는 기존 FORCE RLS 표를 읽을 수 있는 DBA/BYPASSRLS 역할이어야 합니다. 앱 연결에는 기존 `a4b_app`을 사용하며 DBA 연결을 앱 런타임에 전달하지 않습니다. 함수는 서버가 세션에서 가져온 회원 ID의 현재 관리자/활성 상태를 검사합니다. 이 함수의 actor 인자는 외부 HTTP 요청에서 받지 않습니다. 일반 작업 공간 RLS 정책은 변경하지 않습니다.
+`009_admin_monitoring.sql`을 DBA 마이그레이션 계정으로 적용합니다. SECURITY DEFINER 함수는 전용 NOLOGIN·NOBYPASSRLS 역할 `a4b_monitor_owner`가 소유합니다. RDS의 `postgres`도 BYPASSRLS가 없을 수 있으므로, 이 전용 역할에만 생성 이력 SELECT와 처리 이력 접근 정책을 부여합니다. 앱에는 이 역할의 멤버십을 부여하지 않습니다. 앱 연결에는 기존 `a4b_app`을 사용하며 DBA 연결을 앱 런타임에 전달하지 않습니다. 함수는 서버가 세션에서 가져온 회원 ID의 현재 관리자/활성 상태를 검사합니다. 이 함수의 actor 인자는 외부 HTTP 요청에서 받지 않습니다. 일반 작업 공간 RLS 정책은 변경하지 않습니다.
 
 함수는 생성 요청, 실행/노드, 문서 버전의 진단 필드만 투영합니다. 요청 본문·문서 내용·모델 응답·입출력 JSON은 전달하지 않습니다. Node에서 필드를 다시 제한하고 알려진 비밀값, URL, 이메일 등을 마스킹합니다. 원문 예외 문자열을 새로 기록하지 않고 Pydantic 오류의 위치/유형과 HTTP 상태만 수집합니다. 운영 메모에도 마스킹을 적용하지만 민감한 원문은 입력하지 마세요.
 
@@ -53,4 +53,4 @@
 - Python 진단 정보·생성 이력: 42개 통과. 전체 마이그레이션을 적용한 로컬 PostgreSQL·SQLite 저장소 회귀: 59개 전부 통과.
 - Python workflow_engine 전체: 757개 통과, 1개 실패. `test_representative_and_extra_cases_cover_all_operation_ids`의 Slack 작업 예시 누락이며, 작업 전 HEAD `9bedf46` 소스 사본에서도 같은 실패를 재현했습니다. 본 변경으로 수정하지 않았습니다.
 - 샘플 데이터로 실제 빌드 화면의 목록·상세 열기와 좁은 화면 배치를 확인했습니다. 운영 로그인 세션으로 화면을 검증한 것은 아닙니다.
-- 운영 서버에 `/var/lib/a4b-deploy/migration-env`가 없어 009 운영 적용과 화면 배포는 보류 상태입니다. DBA 연결 위치 확인 후 마이그레이션, 배포, 운영 조회 검증을 이어가야 합니다.
+- 운영 DBA 설정은 사용자의 숨김 입력으로 `/var/lib/a4b-deploy/migration-env`에 root 전용 권한 0600으로 저장됐고 연결을 확인했습니다. RDS postgres의 BYPASSRLS가 비활성임을 확인해 전용 함수 소유자 정책으로 보완했습니다. 운영 배포 결과는 별도 확인이 필요합니다.

@@ -341,8 +341,9 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   setError('');
   let sentSession:Session|null=null;
   try{
+   const editingWorkflow=!!session?.draft?.workflow;
    const gmailSlackRequest=/(?:Gmail|지메일)/i.test(content)&&/(?:Slack|슬랙)/i.test(content);
-   if(!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
+   if(!editingWorkflow&&!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
     const prompt=externalPromptContext.current?`${externalPromptContext.current}\n추가 답변: ${content}`:content;
     const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{id:string;description:string;status:string}[]}>('/api/workflows/from-request',{prompt});
     if(!result.workflow){externalPromptContext.current=prompt;setExternalMessages(prior=>[...prior,{role:'user',content},{role:'assistant',content:explainIncompleteWorkflow(result,prompt)}]);return;}
@@ -351,7 +352,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     onExternalFlow?.(result.workflow.id);
     return;
    }
-   if(gmailSlackRequest&&externalPromptContext.current){externalPromptContext.current='';setExternalMessages([]);}
+   if((editingWorkflow||gmailSlackRequest)&&externalPromptContext.current){externalPromptContext.current='';setExternalMessages([]);}
    const s=await ensureSession();
    sentSession=s;
    remember(s);

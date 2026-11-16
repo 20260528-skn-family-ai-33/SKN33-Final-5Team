@@ -1495,6 +1495,38 @@ test('saved run node popup reads the selected run snapshot and closes with Escap
  }finally{await h.close();}
 });
 
+for(const source of ['draft','saved'] as const)for(const label of ['Slack 채널에 요약 보내기','Google Sheets 결과 보내기'])test(`${source} node popup submits ${label} edits to the design session`,async()=>{
+ const workflow={entry:'send',nodes:[{id:'send',label,tool:'slack.post_message',settings:{arguments_json:'{"channel_id":"C0123456789"}'},bindings:[]}],edges:[]};
+ const saved={...A,config:{...A.config,workflow}};
+ const session={...readySession(),draft:{...readySession().draft,workflow}};
+ const sessionId=source==='saved'?'edit-session':session.id,revision=source==='saved'?0:session.revision;
+ const h=await setup(source==='saved'?'?service=A':'?screen=workflow',source==='saved'?{}:{'a4b-builder-session':session.id},(path,body)=>{
+  if(path.includes('/agent?'))return snapshot(saved);
+  if(path.startsWith('/api/agent-builder/session?'))return session;
+  if(path.endsWith('/sessions'))return {id:sessionId,revision};
+  if(path.endsWith('/message'))return {...session,id:sessionId,revision:revision+1,messages:[{role:'user',content:body.content},{role:'assistant',content:'채널 설정을 수정했습니다.'}]};
+  if(path==='/api/workflows/from-request')return {workflow:{id:'unrelated-workflow'}};
+ });
+ try{
+  await click(document.querySelector(source==='saved'?'.rwd-card.is-selectable':'.as-flow-node')!);
+  await input(document.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.channel_id"]')!,'C9876543210');
+  await click(document.querySelector('.as-node-popover-actions button')!);
+  const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
+  assert.match(request,/노드 ID: send/);
+  assert.match(request,/C0123456789 → C9876543210/);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0,'preparing an edit does not submit it');
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  assert.equal(h.calls.filter(call=>call.path==='/api/workflows/from-request').length,0,'editing an existing workflow must not create an external workflow');
+  const messages=h.calls.filter(call=>call.path.endsWith('/message'));
+  assert.equal(messages.length,1);
+  assert.equal(messages[0].body.id,sessionId);
+  assert.equal(messages[0].body.revision,revision);
+  assert.equal(messages[0].body.content,request.trim());
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,source==='saved'?1:0);
+  assert.match(document.querySelector('.as-messages')?.textContent||'',/채널 설정을 수정했습니다/);
+ }finally{await h.close();}
+});
+
 test('current saved node opens the existing design edit conversation',async()=>{
  const workflow={entry:'read',nodes:[{id:'read',label:'메일 읽기',tool:'email.list',settings:{arguments_json:'{"max_results":25}'},bindings:[]}],edges:[]};
  const saved={...A,config:{...A.config,workflow}};

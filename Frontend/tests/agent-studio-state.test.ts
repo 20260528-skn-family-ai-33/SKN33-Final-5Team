@@ -9,7 +9,7 @@ const component=sf.statements.find((n):n is ts.FunctionDeclaration=>ts.isFunctio
 const statements=component.body.statements;
 const explanation=sf.statements.find((n):n is ts.FunctionDeclaration=>ts.isFunctionDeclaration(n)&&n.name?.text==='explainIncompleteWorkflow');if(!explanation)throw new Error('Missing workflow explanation');
 const explanationText=explanation.getText(sf);
-const restore=statements.find(n=>ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText(sf)==='useEffect'&&n.getText(sf).includes('await refresh()'));assert.ok(restore);
+const restore=statements.find(n=>ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText(sf)==='useEffect'&&n.getText(sf).includes('refresh(controller.signal,current)'));assert.ok(restore);
 const restoreText=restore.getText(sf);
 function handler(name:string){const n=statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(n);return n.getText(sf);}
 const compile=(s:string)=>ts.transpileModule(s,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
@@ -114,7 +114,7 @@ for(const action of ['reset','openAgent','send'])test(`delayed service restore c
  assert.equal(h.c.selected?.id,action==='openAgent'?'B':undefined);assert.notEqual(h.c.agentResources?.[0]?.id,'resource-A');if(action==='send')assert.equal(h.c.session.id,'new-session');
 });
 test('reset before bootstrap finishes prevents remembered session restoration',async()=>{
- const h=harness('',{'a4b-builder-session':'old'}),boot=deferred();h.c.refresh=()=>boot.promise;h.mount();h.c.reset();boot.resolve({});await flush();assert.equal(h.requests.length,0);assert.equal(h.c.session,null);assert.equal(h.c.loading,false);
+ const h=harness('',{'a4b-builder-session':'old'}),boot=deferred();h.c.refresh=()=>boot.promise;h.load(async()=>{await boot.promise;return {id:'old',status:'ready'};});h.mount();h.c.reset();boot.resolve({});await flush();assert.equal(h.requests.length,1);assert.equal(h.c.session,null);assert.equal(h.c.loading,false);
 });
 test('unmounted restoration cannot change state or storage',async()=>{
  const h=harness('?service=A',{'a4b-builder-session':'old'}),pending=deferred();h.load(()=>pending.promise);h.mount();await flush();h.stop();pending.resolve(snapshot('A'));await flush();assert.equal(h.c.selected,null);assert.equal(h.storage.get('a4b-builder-session'),'old');
@@ -420,4 +420,11 @@ test('correlation: each explicit submission gets a distinct id before transmissi
  const writes=h.requests.filter(call=>call.path.endsWith('/message'));
  assert.deepEqual(writes.map(call=>call.body.generationRequestId),['00000000-0000-4000-8000-000000000091','00000000-0000-4000-8000-000000000092']);
 
+});
+
+
+test('metadata latency does not delay starting the selected workflow request',async()=>{
+ const h=harness('?service=A'),metadata=deferred(),detail=deferred();h.c.refresh=()=>metadata.promise;h.load(()=>detail.promise);
+ h.mount();await flush();assert.equal(h.requests[0].path,'/api/agent-builder/agent?id=A');
+ detail.resolve(snapshot('A'));metadata.resolve({});await flush();assert.equal(h.c.selected.id,'A');assert.equal(h.c.loading,false);
 });

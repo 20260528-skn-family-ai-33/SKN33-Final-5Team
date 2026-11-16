@@ -323,13 +323,14 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   if(!data?.spec||typeof data.spec!=='object'||Array.isArray(data.spec)||data.id!==undefined&&(typeof data.id!=='string'||!idPattern.test(data.id))||data.baseVersion!==undefined&&(!Number.isInteger(data.baseVersion)||data.baseVersion<0))throw new Error('노드 설정과 버전을 확인하세요.');
   json(res,200,await builderWorker({action:'save_node',spec:data.spec,id:data.id,base_version:data.baseVersion??0}));return true;
  }
+ if(action==='studio'&&method==='GET'){json(res,200,await builderWorker({action:'studio'}));return true;}
  if(action==='catalog'&&method==='GET'){json(res,200,await builderWorker({action:'catalog'}));return true;}
  if(action==='history'&&method==='GET'){res.setHeader('Cache-Control','no-store');const id=url.searchParams.get('id');if(id!==null&&!idPattern.test(id))throw new Error('워크플로우 ID를 확인하세요.');json(res,200,await builderWorker({action:'history',...(id?{id}:{})}));return true;}
- if(action==='agents'&&method==='GET'){json(res,200,await builderWorker({action:'agents'}));return true;}
+ if(action==='agents'&&method==='GET'){json(res,200,await builderWorker({action:'agents',...(url.searchParams.get('summary')==='1'?{summary:true}:{})}));return true;}
  if(action==='schedules'){
   res.setHeader('Cache-Control','no-store');
   if(method!=='GET'){res.setHeader('Allow','GET');json(res,405,{error:'지원하지 않는 요청입니다.'});return true;}
-  json(res,200,await builderWorker({action:'schedules'}));return true;
+  json(res,200,await builderWorker({action:'schedules',...(url.searchParams.get('include_agents')==='1'?{include_agents:true}:{})}));return true;
  }
  if(action==='workflow_folders'&&method==='POST'){
   const data=await readBody(req,50000);

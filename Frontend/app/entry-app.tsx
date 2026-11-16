@@ -20,7 +20,7 @@ import {IntroDemo} from './intro-demo';
 import {useAuth,SignIn} from './auth';
 import VisualAutomation from './workspace';
 export type EntryRoute='intro'|'preview'|'home'|'workflows'|'schedules'|'schedule'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections'|'monitoring';
-type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
+type AgentSummary={node_count?:number;id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
 type ExternalFlowSummary={id:string;name:string;nodes:{id:string}[];updatedAt?:string;active?:boolean;schedule?:{nextRunAt:string}};
 function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models'||s==='automation')return 'workflows';return ['intro','preview','home','workflows','schedules','schedule','history','nodes','workflow','run','assets','connections','monitoring'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
@@ -92,8 +92,14 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
    const result=await request<{agents:AgentSummary[];rows:{agent:AgentSummary;run:RunSummary}[]}>('/api/agent-builder/history'+(historyService?'?id='+encodeURIComponent(historyService):''),undefined,undefined,controller.signal);
    if(token!==generation.current)return;setAgents(result.agents);setRunRows(result.rows);
   }else{
-  const {agents:listed=[],organization:folders=emptyOrganization}=await request<{agents?:AgentSummary[];organization?:WorkflowOrganization}>('/api/agent-builder/agents',undefined,undefined,controller.signal);if(token!==generation.current)return;setAgents(listed);setOrganization(folders);setSelectedWorkflows([]);setActiveFolder(current=>current==='all'||current==='unfiled'||folders.folders.some(f=>f.id===current)?current:'all');
-  if(route==='workflows')await request<{workflows?:ExternalFlowSummary[]}>('/api/workflows',undefined,undefined,controller.signal).then(result=>{if(token===generation.current)setExternalFlows((result.workflows||[]).filter(flow=>flow.nodes.length>1));}).catch(()=>{});
+   const [listedResult,external]=await Promise.all([
+    request<{agents?:AgentSummary[];organization?:WorkflowOrganization}>('/api/agent-builder/agents?summary=1',undefined,undefined,controller.signal),
+    route==='workflows'?request<{workflows?:ExternalFlowSummary[]}>('/api/workflows',undefined,undefined,controller.signal).catch(()=>({workflows:[]})):Promise.resolve({workflows:[]}),
+   ]);
+   if(token!==generation.current)return;
+   const {agents:listed=[],organization:folders=emptyOrganization}=listedResult;
+   setAgents(listed);setOrganization(folders);setSelectedWorkflows([]);setActiveFolder(current=>current==='all'||current==='unfiled'||folders.folders.some(f=>f.id===current)?current:'all');
+   if(route==='workflows')setExternalFlows((external.workflows||[]).filter(flow=>flow.nodes.length>1));
   }
 
  }catch(e){if(token===generation.current)setError((e as Error).message);}finally{if(token===generation.current)setLoading(false);}}
@@ -130,7 +136,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   <div className="entry-workflow-grid">{matches.map(a=><article className="entry-workflow-card" key={a.id}>
    <div><label className="workflow-card-select"><input type="checkbox" aria-label={a.config.name+' 선택'} checked={selectedWorkflows.includes(a.id)} disabled={loading||(!selectedWorkflows.includes(a.id)&&selectedWorkflows.length>=MAX_WORKFLOW_SELECTION)} onChange={e=>toggleWorkflow(a.id,e.target.checked)}/><Workflow size={20}/></label><span className="as-status">저장 버전 {a.version}</span></div>
    <div className="entry-workflow-title"><h2>{a.config.name}</h2><button type="button" aria-label={a.config.name+' 이름 변경'} title="이름 변경" disabled={loading} onClick={()=>{setRenameNotice('');setRenaming(a);}}><Pencil size={15} aria-hidden="true"/></button></div>
-   <p>{a.config.purpose}</p><footer><small>작업 {a.config.workflow?.nodes.length??a.config.tool_ids.length}개 · {date(a.updated_at)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',a.id)} aria-label={a.config.name+' 설계 열기'}>설계 열기</button><button className="as-button as-secondary" onClick={()=>navigate('history',a.id)} aria-label={a.config.name+' 실행 기록'}>실행 기록</button><button className="as-button as-secondary" onClick={()=>navigate('schedule',a.id)} aria-label={a.config.name+' 예약 관리'}>예약 관리</button><button className="as-button as-primary" onClick={()=>navigate('run',a.id)} aria-label={a.config.name+' 실행하기'}>실행하기<ArrowRight size={14}/></button></footer>
+   <p>{a.config.purpose}</p><footer><small>작업 {a.node_count??a.config.workflow?.nodes.length??a.config.tool_ids.length}개 · {date(a.updated_at)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',a.id)} aria-label={a.config.name+' 설계 열기'}>설계 열기</button><button className="as-button as-secondary" onClick={()=>navigate('history',a.id)} aria-label={a.config.name+' 실행 기록'}>실행 기록</button><button className="as-button as-secondary" onClick={()=>navigate('schedule',a.id)} aria-label={a.config.name+' 예약 관리'}>예약 관리</button><button className="as-button as-primary" onClick={()=>navigate('run',a.id)} aria-label={a.config.name+' 실행하기'}>실행하기<ArrowRight size={14}/></button></footer>
 
   </article>)}{externalMatches.map(flow=><article className="entry-workflow-card" key={flow.id}><div><Workflow size={20}/><span className="as-status">{flow.active?'자동 실행 중':'초안'}</span></div><div className="entry-workflow-title"><h2>{flow.name}</h2></div><p>연결된 서비스로 실행하는 워크플로우</p><footer><small>작업 {flow.nodes.length}개 · {date(flow.updatedAt)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',undefined,undefined,flow.id)}>설계 열기</button></footer></article>)}</div>
   {renaming&&<WorkflowRenameDialog key={renaming.id} name={renaming.config.name} onClose={()=>setRenaming(null)} onSave={async name=>{

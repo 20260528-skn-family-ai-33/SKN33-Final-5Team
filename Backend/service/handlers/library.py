@@ -19,7 +19,7 @@ def catalog(c):return {'tools':TOOLS,'business_tool_count':56,'control_compatibi
 
 def agents(c):
     from infrastructure.persistence.workflow_folders import organization
-    return {'agents':c.storage.agents(),'organization':organization(c.storage)}
+    return {'agents':c.storage.agent_summaries() if c.data.get('summary') else c.storage.agents(),'organization':organization(c.storage)}
 
 def workflow_folders(c):
     from infrastructure.persistence.workflow_folders import change
@@ -27,8 +27,12 @@ def workflow_folders(c):
 
 def schedules(c):
     reservations=Schedules(c.storage).listing()
-    return {'workflows':[{'agent':agent,'schedule':reservation}
-                         for agent in c.storage.agents() if (reservation:=reservations.get(agent['id'])) is not None]}
+    agents=c.storage.agents()
+    result={'workflows':[{'agent':agent,'schedule':reservation}
+                         for agent in agents if (reservation:=reservations.get(agent['id'])) is not None]}
+    if getattr(c,'data',{}).get('include_agents'):
+        result['agents']=[{'id':a['id'],'version':a['version'],'config':{'name':a['config']['name'],'purpose':a['config'].get('purpose','')}} for a in agents]
+    return result
 
 def rename_agent(c):
     data=c.data
@@ -64,3 +68,8 @@ def history(c):
         except (ValueError,TypeError):return 0
     rows.sort(key=started,reverse=True)
     return {'agents':agents,'rows':rows}
+
+
+def studio(c):
+    # A single worker/storage connection prepares the editor's shared metadata.
+    return {'agents':c.storage.agent_summaries(),**nodes(c),**catalog(c)}

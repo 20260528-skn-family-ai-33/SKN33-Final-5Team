@@ -91,7 +91,7 @@ export class Store {
    this.recordGmailEvent('disconnected');this.db.exec('COMMIT');
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
- listExecutions():Execution[] {return this.db.prepare('SELECT json FROM executions ORDER BY started_at DESC LIMIT 500').all().map(row=>JSON.parse(String(row.json)));}
+ listExecutions(workflowId?:string):Execution[] {const statement=this.db.prepare('SELECT json FROM executions'+(workflowId?' WHERE workflow_id=?':'')+' ORDER BY started_at DESC LIMIT 500');return (workflowId?statement.all(workflowId):statement.all()).map(row=>JSON.parse(String(row.json)));}
  listPendingExecutions():Execution[] {return this.db.prepare("SELECT json FROM executions WHERE json_extract(json,'$.status') IN ('queued','running','waiting') ORDER BY started_at ASC").all().map(row=>JSON.parse(String(row.json)));}
  getExecution(id:string):Execution|undefined {const row=this.db.prepare('SELECT json FROM executions WHERE id=?').get(id);return row?JSON.parse(String(row.json)):undefined;}
  saveWebhookResponse(id:string,bytes:Buffer,mime:string,fileName:string):void {if(bytes.length>48*1024*1024)throw new Error('저장할 Webhook 응답 크기 제한을 넘었어요.');this.db.prepare('INSERT INTO webhook_responses(execution_id,body,mime,file_name) VALUES(?,?,?,?) ON CONFLICT(execution_id) DO NOTHING').run(id,bytes,mime,fileName);}

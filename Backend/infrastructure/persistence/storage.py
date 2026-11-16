@@ -140,6 +140,20 @@ class Storage:
         return json.loads(row[0])
     def agents(self):
         return [json.loads(r[0]) for r in self.db.execute('SELECT json FROM agent_versions v WHERE {ws:v} AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id) ORDER BY {seq} DESC')]
+    def agent_summaries(self):
+        """Menu cards do not need prompts, snapshots, dependencies or saved node settings."""
+        config=self.json_text('v.json','config')
+        fields=[self.json_text('v.json',key) for key in ('id','version','model','credential_id','updated_at')]
+        fields += [self.json_text(config,key) for key in ('name','purpose','tool_ids')]
+        nodes=self.json_text(self.json_text(config,'workflow'),'nodes')
+        count=f'json_array_length({nodes}::json)' if self.dialect=='postgres' else f'json_array_length({nodes})'
+        rows=self.db.execute('SELECT '+','.join(fields)+','+count+' FROM agent_versions v WHERE {ws:v} '
+            'AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id) ORDER BY {seq} DESC')
+        return [{'id':id,'version':int(version),'model':model,'credential_id':credential,'updated_at':updated,
+                 'node_count':int(size) if size is not None else len(json.loads(tools or '[]')),
+                 'config':{'name':name,'purpose':purpose or '', 'tool_ids':json.loads(tools or '[]')}}
+                for id,version,model,credential,updated,name,purpose,tools,size in rows]
+
     def agent(self,id):
         row=self.db.execute('SELECT json FROM agent_versions WHERE {ws} AND agent_id=? ORDER BY version DESC LIMIT 1',(id,)).fetchone()
         if not row: raise ValueError('저장한 에이전트를 찾을 수 없습니다.')

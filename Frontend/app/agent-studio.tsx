@@ -176,24 +176,29 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  useEffect(()=>()=>{generation.current++;},[]);
  const [attachMode,setAttachMode]=useState<'choose'|'library'|null>(null);
  const [saveReviewOpen,setSaveReviewOpen]=useState(false),[includeSchedule,setIncludeSchedule]=useState(true);
- async function refresh(){const [a,n,t,l]=await Promise.all([request('/api/agent-builder/agents'),request('/api/agent-builder/nodes'),request('/api/agent-builder/catalog'),request('/api/agent-builder/connection?profile=1')]);setLibrary(n.nodes);setPresets(n.defaults);setCatalog(t.tools.map((tool:ToolInfo)=>({...tool,description:toolDescription(tool.id,tool.description)})));setAgents(a.agents);setModel(l.connection?.model||'');setCredentialId(l.connection?.credential.id||'');}
+ async function refresh(signal?:AbortSignal,current=()=>true){
+  const [data,connection]=await Promise.all([request('/api/agent-builder/studio',undefined,undefined,signal),request('/api/agent-builder/connection?profile=1',undefined,undefined,signal)]);
+  if(!current())return;
+  setLibrary(data.nodes);setPresets(data.defaults);setCatalog(data.tools.map((tool:ToolInfo)=>({...tool,description:toolDescription(tool.id,tool.description)})));setAgents(data.agents);setModel(connection.connection?.model||'');setCredentialId(connection.connection?.credential.id||'');
+ }
 
  useEffect(()=>{
   let cancelled=false;
+  const controller=new AbortController();
   const token=generation.current;
-  const current=()=>!cancelled&&generation.current===token;
+  const current=()=>!cancelled&&!controller.signal.aborted&&generation.current===token;
   const serviceId=new URLSearchParams(location.search).get('service');
   const sessionId=localStorage.getItem('a4b-builder-session');
   const selectedId=localStorage.getItem('a4b-selected-agent');
   async function restoreAgent(id:string){
-   const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(id));
+   const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(id),undefined,undefined,controller.signal);
    if(!current())return;
    setSelected(result.agent);setSession(null);applyRunInputs(result);
    setSchedule(result.schedule);setSource(result.source);setJobs(result.jobs||[]);
    const linkedRun=new URLSearchParams(location.search).get('run');
    let restored=linkedRun?(result.tests||[]).find((r:TestRun)=>r.id===linkedRun):result.tests[0];
    if(restored?.public_projection?.history_preview){
-    const detail=await request('/api/agent-builder/run?id='+encodeURIComponent(restored.id));
+    const detail=await request('/api/agent-builder/run?id='+encodeURIComponent(restored.id),undefined,undefined,controller.signal);
     if(!current())return;
     restored=detail.run;
    }
@@ -204,20 +209,22 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   }
   void (async()=>{
    try{
-    await refresh();
-    if(!current())return;
+    await Promise.all([refresh(controller.signal,current),(async()=>{
+    // Templates do not need to restore a remembered editor or its run history.
+    if(screen==='nodes')return;
     // An explicit service link takes precedence over a remembered conversation.
     if(serviceId)await restoreAgent(serviceId);
     else if(sessionId){
-     const s=await request('/api/agent-builder/session?id='+encodeURIComponent(sessionId));
+     const s=await request('/api/agent-builder/session?id='+encodeURIComponent(sessionId),undefined,undefined,controller.signal);
      if(!current())return;
      if(s.status==='saved'&&s.saved_agent_id)await restoreAgent(s.saved_agent_id);
      else setSession(s);
     }else if(selectedId)await restoreAgent(selectedId);
-   }catch(e){if(current()){setInitialLoadFailed(true);setError((e as Error).message);}}
+    })()]);
+   }catch(e){if(current()){setInitialLoadFailed(true);setError((e as Error).message);}controller.abort();}
    finally{if(!cancelled)setLoading(false);}
   })();
-  return()=>{cancelled=true;};
+  return()=>{cancelled=true;controller.abort();};
  },[]);
  useEffect(()=>{const messages=end.current?.closest<HTMLElement>('.as-messages');if(messages&&(session?.messages.length||pendingMessage))messages.scrollTo?.({top:messages.scrollHeight,behavior:'smooth'});},[session?.messages.length,pendingMessage,busy]);
  function clearRunInputs(){setRunFiles([]);setReplyDraft('');setTestText('');setScheduleNotice('');pinnedRun.current=false;}

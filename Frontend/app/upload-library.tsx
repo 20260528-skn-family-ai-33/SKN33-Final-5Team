@@ -64,12 +64,15 @@ function useUploads(endpoint = base) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const generation = useRef(0);
+  const loadRequest = useRef<AbortController | null>(null);
 
   async function load(before?: string | null) {
+    loadRequest.current?.abort();
+    const controller = new AbortController();loadRequest.current = controller;
     const current = ++generation.current;
     setLoading(true); setError('');
     try {
-      const page = await request<Page>(endpoint + 'assets' + (before ? '?before=' + encodeURIComponent(before) : ''));
+      const page = await request<Page>(endpoint + 'assets' + (before ? '?before=' + encodeURIComponent(before) : ''),undefined,undefined,controller.signal);
       if (current !== generation.current) return;
       setItems(previous => before ? [...previous, ...page.assets] : page.assets);
       setNext(page.next);
@@ -77,7 +80,7 @@ function useUploads(endpoint = base) {
       if (current === generation.current) setError((e as Error).message);
     } finally {if (current === generation.current) setLoading(false);}
   }
-  useEffect(() => {setItems([]); setNext(null); void load(); return () => {generation.current++;};}, [endpoint]);
+  useEffect(() => {setItems([]); setNext(null); void load(); return () => {generation.current++;loadRequest.current?.abort();};}, [endpoint]);
   return {items, setItems, loading, error, setError, load, next};
 }
 
@@ -149,7 +152,10 @@ function useLibrary(endpoint: string, folderId: string | null, query: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const generation = useRef(0);
+  const loadRequest = useRef<AbortController | null>(null);
   const load = useCallback(async (before?: string | null) => {
+    loadRequest.current?.abort();
+    const controller = new AbortController();loadRequest.current = controller;
     const current = ++generation.current;
     setLoading(true); setError('');
     if (!before) {setItems([]); setNext(null);}
@@ -158,14 +164,14 @@ function useLibrary(endpoint: string, folderId: string | null, query: string) {
     if (query) params.set('q', query);
     if (before) params.set('before', before);
     try {
-      const page = await request<LibraryPage>(endpoint + 'library' + (params.size ? '?' + params : ''));
+      const page = await request<LibraryPage>(endpoint + 'library' + (params.size ? '?' + params : ''),undefined,undefined,controller.signal);
       if (current !== generation.current) return;
       setItems(previous => before ? [...new Map([...previous, ...page.assets].map(item => [item.id, item])).values()] : page.assets);
       setFolders(page.folders); setNext(page.next);
     } catch (e) {if (current === generation.current) setError((e as Error).message);}
     finally {if (current === generation.current) setLoading(false);}
   }, [endpoint, folderId, query]);
-  useEffect(() => {void load(); return () => {generation.current++;};}, [load]);
+  useEffect(() => {void load(); return () => {generation.current++;loadRequest.current?.abort();};}, [load]);
   return {items, setItems, folders, next, loading, error, setError, load};
 }
 

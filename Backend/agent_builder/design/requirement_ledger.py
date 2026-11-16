@@ -754,11 +754,17 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             if error_observer:error_observer(error)
             # Provider exceptions may contain headers, prompts or customer data.
             from .failure_notice import requirement_failure_notice
-            detail=requirement_failure_notice(failure_kind, error)
+            failure_fingerprint=locals().get('fingerprint')
+            previous=state.get('requirement_failure') or {}
+            attempt=(previous.get('attempt', 1) + 1 if failure_fingerprint and previous.get('request_fingerprint') == failure_fingerprint else 1)
+            retained=state.get('draft')
+            detail=requirement_failure_notice(failure_kind, error, retained_draft=bool(retained and retained.get('workflow')), attempt=attempt)
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,
                         status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],
-                        pending_questions=[], draft=None,requirement_failure={'kind':'processing_error','retryable':True},
+                        pending_questions=[], draft=retained,requirement_failure={'kind':'processing_error','retryable':True,
+                            'stage':'requirements',
+                            'attempt':attempt,'request_fingerprint':failure_fingerprint},
                         messages=state.get('messages',[])+[dict(role='assistant',content=detail)],
                         trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='failed',detail=detail,
                                                          failure_kind=failure_kind,error_type=type(error).__name__,model_calls=calls)])

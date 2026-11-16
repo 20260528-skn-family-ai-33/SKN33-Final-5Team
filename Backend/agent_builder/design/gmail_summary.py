@@ -130,6 +130,9 @@ def _gmail_count_evidence(state, *, only=False):
     users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
     if len(users) < 2 or not any(re.search(r'gmail|지메일', text, re.I) for text in users[:-1]):
         return None
+    popup = _popup_count_evidence(state, users[-1])
+    if popup:
+        return popup
     from .processing_guard import _LITERALS
     text = _LITERALS.sub(' ', users[-1])
     compact = re.sub(r'\s+', '', users[-1].strip().rstrip('.!~'))
@@ -155,6 +158,18 @@ def _gmail_count_evidence(state, *, only=False):
     evidence = text[match.start(1):match.end(2)]
     count = _quantity(evidence)
     return (count, evidence) if count and 1 <= count <= MAX_RESULTS else None
+
+
+def _popup_count_evidence(state, text):
+    """Accept a count-only popup request only against the exact current reader and old value."""
+    found = _read_summary_arguments(state.get('draft') or {})
+    if not found:
+        return None
+    reader, _, arguments = found
+    prefix = (f"`{reader['label']}` 작업 (노드 ID: {reader['id']})의 설정을 다음과 같이 바꿔줘.\n"
+              f"- 조회 한도 (arguments_json.max_results): {arguments['max_results']} → ")
+    match = re.fullmatch(re.escape(prefix) + r'([1-9]\d{0,2})\n다른 작업의 설정은 유지해줘\.', text)
+    return (int(match[1]), match[1]) if match and int(match[1]) <= MAX_RESULTS else None
 
 
 def apply_gmail_count(state, draft):

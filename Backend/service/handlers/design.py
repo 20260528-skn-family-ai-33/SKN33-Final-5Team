@@ -75,6 +75,8 @@ def public_state(storage,s,graph):
         state = {**state, 'draft':legacy['draft'], 'pending_questions':legacy['pending_questions']}
     from agent_builder.design.presentation import public_requirement_errors
     state=public_requirement_errors(state)
+    from agent_builder.design.failed_design import retained_design
+    state=retained_design(state,graph,{'configurable':{'thread_id':s['id']}})
     from agent_builder.capabilities.capability_gate import blocking_issue, capability_enforced
     issue=blocking_issue(state) if state.get('status')=='ready' else None
     resources=[storage.asset(id) for id in s['file_ids']]
@@ -217,6 +219,10 @@ def _session_action(c):
         if s['revision']!=data['revision']:raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
         config={'configurable':{'thread_id':s['id']},'recursion_limit':30}
         before=graph.get_state(config);state=before.values or {};has_interrupt=any(task.interrupts for task in before.tasks)
+        from agent_builder.design.failed_design import retained_design, MEANING_FIELDS
+        state=retained_design(state,graph,config)
+        restored={key:state.get(key) for key in ('draft', *MEANING_FIELDS)
+                  if state.get(key) != (before.values or {}).get(key)}
         if action=='confirm':
             if state.get('status')=='saved':return public_state(storage,s,graph)
             from agent_builder.capabilities.capability_gate import require_ready
@@ -280,7 +286,10 @@ def _session_action(c):
             if retrying:
                 # Retry is a control action, not a new business requirement or a
                 # response to a pending field. Keep exact source turns and IDs.
-                graph.update_state(config, {'repair_count':0, 'confirmed':False}, as_node='resources')
+                messages=state.get('messages',[])
+                last=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
+                graph.update_state(config, {**restored,'messages':messages[:last+1],
+                    'repair_count':0, 'confirmed':False,'system_failure':None,'issues':[],'status':'processing'}, as_node='resources')
                 graph.invoke(None, config)
             elif has_interrupt:
                 if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:
@@ -296,8 +305,8 @@ def _session_action(c):
                 # appending a duplicate message.
                 messages=state.get('messages',[])
                 last=max(i for i,m in enumerate(messages) if m.get('role')=='user')
-                graph.update_state(config,{'messages':messages[:last+1],'system_failure':None,'requirement_failure':None,'confirmed':False,
-                                           'repair_count':0,'issues':[]},as_node='resources')
+                graph.update_state(config,{**restored,'messages':messages[:last+1],'system_failure':None,'confirmed':False,
+                                           'repair_count':0,'issues':[],'status':'processing'},as_node='resources')
                 graph.invoke(None,config)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.

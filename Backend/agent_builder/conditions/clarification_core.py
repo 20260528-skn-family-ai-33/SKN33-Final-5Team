@@ -141,10 +141,18 @@ def open_required(state):
     return [q for q in state.get('pending_questions', []) or [] if q.get('required', True)]
 
 
-def system_failure(stage, error, message):
+def system_failure(stage, error, message, *, state=None):
     """A retryable processing failure. It is not a user decision and never a question."""
+    extra={}
+    if state is not None:
+        from agent_builder.capabilities.capability_gate import input_fingerprint
+        fingerprint=input_fingerprint(state)
+        previous=state.get('system_failure') or state.get('previous_system_failure') or {}
+        attempt=(previous.get('attempt',1)+1 if previous.get('stage')==stage and previous.get('request_fingerprint')==fingerprint else 1)
+        extra={'attempt':attempt,'request_fingerprint':fingerprint}
+        if attempt>1:message+=f' 같은 조건의 {attempt}번째 시도도 실패했습니다. 재시도는 실행됐지만 이 단계의 검증을 통과하지 못했습니다.'
     return {'stage': stage, 'error_type': type(error).__name__ if isinstance(error, BaseException) else str(error),
-            'message': message, 'retryable': True}
+            'message': message, 'retryable': True,**extra}
 
 
 RETRY_NOTICE = ' 일시적인 처리 오류라 질문으로 바꾸지 않았습니다. 같은 메시지를 다시 보내면 이 단계부터 다시 시도합니다.'

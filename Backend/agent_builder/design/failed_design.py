@@ -6,7 +6,7 @@ MEANING_FIELDS = ('request_meaning', 'request_meaning_fingerprint', 'request_mea
 
 
 def retained_design(state, graph, config):
-    if state.get('draft') or not (state.get('requirement_failure') or {}).get('retryable'):
+    if state.get('draft') or not (state.get('requirement_failure') or state.get('system_failure') or {}).get('retryable'):
         return state
     def resources(value):
         return [(r['id'], str(r.get('version') or r.get('hash') or '1')) for r in value.get('resources', [])]

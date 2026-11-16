@@ -281,7 +281,7 @@ def _session_action(c):
             from agent_builder.design.retry_request import is_generation_retry
             retrying = (not answers and not data.get('question_id')
                         and is_generation_retry(content)
-                        and (state.get('requirement_failure') or state.get('status') == 'validation_failed'
+                        and (state.get('requirement_failure') or state.get('system_failure') or state.get('status') == 'validation_failed'
                              or before.next and not has_interrupt))
             if retrying:
                 # Retry is a control action, not a new business requirement or a
@@ -289,7 +289,8 @@ def _session_action(c):
                 messages=state.get('messages',[])
                 last=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
                 graph.update_state(config, {**restored,'messages':messages[:last+1],
-                    'repair_count':0, 'confirmed':False,'system_failure':None,'issues':[],'status':'processing'}, as_node='resources')
+                    'repair_count':0, 'confirmed':False,'previous_system_failure':state.get('system_failure'),
+                    'system_failure':None,'issues':[],'status':'processing'}, as_node='resources')
                 graph.invoke(None, config)
             elif has_interrupt:
                 if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:
@@ -305,7 +306,8 @@ def _session_action(c):
                 # appending a duplicate message.
                 messages=state.get('messages',[])
                 last=max(i for i,m in enumerate(messages) if m.get('role')=='user')
-                graph.update_state(config,{**restored,'messages':messages[:last+1],'system_failure':None,'confirmed':False,
+                graph.update_state(config,{**restored,'messages':messages[:last+1],'previous_system_failure':state.get('system_failure'),
+                                           'system_failure':None,'confirmed':False,
                                            'repair_count':0,'issues':[],'status':'processing'},as_node='resources')
                 graph.invoke(None,config)
             elif before.next:

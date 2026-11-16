@@ -1,9 +1,9 @@
 import {WorkspacePageTitle} from './workspace-page-title';
 import {useId,useRef,useState,type ReactNode} from 'react';
-import {AccountMenu} from './auth';
-import {House, Workflow, CalendarClock, History, Layers, FolderOpen, Unplug, Pin, PinOff} from 'lucide-react';
+import {AccountMenu,useAuth} from './auth';
+import {House, Workflow, CalendarClock, History, Layers, FolderOpen, Unplug, Pin, PinOff, Activity} from 'lucide-react';
 
-export type WorkspaceDestination = 'home' | 'workflow' | 'workflows' | 'schedules' | 'history' | 'assets' | 'connections';
+export type WorkspaceDestination = 'home' | 'workflow' | 'workflows' | 'schedules' | 'history' | 'assets' | 'connections' | 'monitoring';
 
 /** The same destinations and labels are available throughout the work area. */
 export function WorkspaceNav({active, onNavigate, disabled = false}: {
@@ -11,6 +11,7 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
   onNavigate: (destination: WorkspaceDestination) => void;
   disabled?: boolean;
 }) {
+  const auth=useAuth();
   return <nav className="workspace-nav" aria-label="작업 공간">
     {([
       ['home', '홈', House],
@@ -27,6 +28,7 @@ export function WorkspaceNav({active, onNavigate, disabled = false}: {
         onClick={() => onNavigate(destination)}>
         <Icon size={17} aria-hidden="true"/><span className="workspace-menu-label">{label}</span>
       </button>)}
+    {auth.user?.role==='admin'&&<button type="button" disabled={disabled} aria-label="모니터링" title="모니터링" aria-current={active==='monitoring'?'page':undefined} onClick={()=>onNavigate('monitoring')}><Activity size={17} aria-hidden="true"/><span className="workspace-menu-label">모니터링</span></button>}
   </nav>;
 }
 

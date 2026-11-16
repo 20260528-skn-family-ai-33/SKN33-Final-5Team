@@ -8,7 +8,7 @@ DIRECTORY=Path(__file__).resolve().parents[3]/'infrastructure'/'db'/'migrations'
 MIGRATIONS=[(1,'001_builder_storage.sql',None),(2,'002_langgraph_checkpoints.sql','langgraph_setup'),
             (3,'003_sqlite_imports.sql',None),(4,'004_generation_requests.sql',None),
             (5,'005_personal_asset_library.sql',None),(6,'006_team_sharing.sql',None),
-            (7,'007_schedule_library_sources.sql',None),(8,'008_workflow_folders.sql',None)]
+            (7,'007_schedule_library_sources.sql',None),(8,'008_workflow_folders.sql',None),(9,'009_admin_monitoring.sql',None),(10,'010_admin_monitoring_fixes.sql',None),(11,'011_monitoring_document_failures.sql',None)]
 assert MIGRATIONS[-1][0]==REQUIRED_SCHEMA_VERSION
 
 

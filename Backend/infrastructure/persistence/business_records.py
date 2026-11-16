@@ -110,7 +110,7 @@ class BusinessRecords:
             if previous[0] != status:
                 raise ValueError('종료한 실행 상태는 수정할 수 없습니다.')
             return
-        state = {k: run[k] for k in ('answer', 'error', 'error_type', 'steps', 'question') if k in run}
+        state = {k: run[k] for k in ('answer', 'error', 'error_type', 'steps', 'question', 'diagnostics', 'attempt_metadata') if k in run}
         state['builder_run_id'] = run['id']
         state['checkpoint_thread_id'] = 'run:' + run['id']
         finished = run.get('updated_at') if status in ('succeeded','failed','canceled') else None

@@ -67,6 +67,13 @@ def test_member_design_checkpoints_and_failed_run_retry_in_existing_tables(postg
             store.add_asset({'id':asset_id,'name':'receipt.pdf','kind':'document','format':'pdf','hash':'a'*64,
                              'size_bytes':10,'original_path':'builder-originals/'+('a'*64)+'.pdf','created_at':now()},[])
             assert admin.execute('SELECT size_bytes FROM a4b.document_versions WHERE document_id=%s',(asset_id,)).fetchone()==(10,)
+            # Real domain guard must still allow failure transitions and remain immutable afterward.
+            admin.execute("UPDATE a4b.document_versions SET status='processing' WHERE document_id=%s", (asset_id,))
+            admin.execute("UPDATE a4b.document_versions SET status='failed',error_json='{}' WHERE document_id=%s", (asset_id,))
+            assert admin.execute("SELECT f.failed_at IS NOT NULL FROM a4b.monitor_document_failures f JOIN a4b.document_versions v ON v.id=f.document_version_id WHERE v.document_id=%s", (asset_id,)).fetchone()==(True,)
+            with pytest.raises(psycopg.errors.CheckViolation):
+                admin.execute("UPDATE a4b.document_versions SET status='processing' WHERE document_id=%s", (asset_id,))
+
             from service.handlers import uploads
             deletion = SimpleNamespace(storage=store, data={'id': asset_id})
             cleanup = uploads.prepare_delete(deletion)
@@ -79,6 +86,7 @@ def test_member_design_checkpoints_and_failed_run_retry_in_existing_tables(postg
                  'config_snapshot':{'workflow':{'nodes':[{'id':'parse'}]}}}
             lifecycle = RunLifecycle(store)
             token=uid(); lifecycle.start(run,token)
+            assert admin.execute("SELECT state_json->'attempt_metadata' FROM a4b.workflow_runs WHERE id=%s", (run['id'],)).fetchone()[0] == run['attempt_metadata']
             run.update(status='failed',error='parser',steps=[{'node':'parse','status':'failed','detail':'parser'}])
             lifecycle.finish(run,token)
             token=uid(); lifecycle.start(run,token)
@@ -104,6 +112,10 @@ def postgres_app_conninfo():
         pytest.fail('A4B_TEST_DATABASE_URL의 DB 이름에 test가 들어간 일회용 DB만 사용할 수 있습니다.')
     with psycopg.connect(TEST_URL, autocommit=True) as connection:
         connection.execute('DROP SCHEMA IF EXISTS a4b_builder CASCADE')
+        connection.execute('DROP FUNCTION IF EXISTS a4b.monitor_document_failure() CASCADE')
+        connection.execute('DROP TABLE IF EXISTS a4b.monitor_document_failures')
+        connection.execute('DROP TABLE IF EXISTS a4b.monitor_triage_events, a4b.monitor_triage CASCADE')
+        connection.execute('DROP FUNCTION IF EXISTS a4b.monitor_records(uuid,timestamptz,timestamptz,text), a4b.monitor_require_admin(uuid) CASCADE')
         connection.execute('DROP TABLE IF EXISTS a4b.workflow_generation_requests')
         connection.execute("DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='a4b_app') THEN CREATE ROLE a4b_app NOLOGIN; END IF; END$$")
         connection.execute(f"DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{APP_ROLE}') THEN CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'; END IF; END$$")
@@ -1019,3 +1031,49 @@ def test_workflow_folder_concurrent_writers_do_not_overwrite(backend,tmp_path):
         state=change(store,{'operation':'create','name':'새로고침 후 재시도','revision':1})
         assert state['revision']==2 and len(state['folders'])==2
     finally:store.close()
+
+
+@pytest.mark.parametrize('cause', ['dead_process', 'expired_lease', 'legacy'])
+def test_interrupted_run_uses_persisted_attempt_context(backend, tmp_path, monkeypatch, cause):
+    folder = workspace(tmp_path)
+    store, _, agent_id = seed(folder)
+    from infrastructure.persistence import diagnostics
+    monkeypatch.setattr(diagnostics, 'release_version', lambda: 'execution-image')
+    monkeypatch.setenv('A4B_MAIN_MODEL', 'execution-default')
+    run = {'id': uid(), 'agent_id': agent_id, 'model': 'execution-model',
+           'created_at': datetime.now(timezone.utc).isoformat(), 'status': 'queued'}
+    try:
+        RunLifecycle(store).start(run, 'original-owner')
+        if cause == 'legacy':
+            run.pop('attempt_metadata')
+            store.write_test(run)
+        if cause == 'expired_lease':
+            store.db.execute('UPDATE builder_run_leases SET expires_at=? WHERE {ws} AND run_id=?',
+                             ('2000-01-01T00:00:00+00:00', run['id']))
+        store.db.commit()
+    finally:
+        store.close()
+    # Simulate a separate recovery process/image after reopening durable storage.
+    monkeypatch.setattr(diagnostics, 'release_version', lambda: 'recovery-image')
+    monkeypatch.setenv('A4B_MAIN_MODEL', 'recovery-default')
+    monkeypatch.setattr('workflow_engine.lifecycle.run_lifecycle.alive', lambda pid: cause == 'expired_lease')
+    store = Storage(folder)
+    try:
+        lifecycle = RunLifecycle(store)
+        assert lifecycle.recover()['recovered'] == [run['id']]
+        failed = store.test(run['id'])
+        assert failed['error_type'] == 'InterruptedExecution'
+        assert failed['diagnostics'] == {'trace_id': run['id'], 'model': 'execution-model',
+                                         'release': None if cause == 'legacy' else 'execution-image', 'validation': []}
+        assert lifecycle.recover()['recovered'] == []
+        # A retry snapshots its own context; a stale owner cannot overwrite it.
+        monkeypatch.setattr(diagnostics, 'release_version', lambda: 'retry-image')
+        failed['model'] = 'retry-model'
+        lifecycle.start(failed, 'new-owner')
+        assert not store.test(run['id']).get('diagnostics')
+        assert lifecycle.interrupt(run['id'], 'original-owner')['status'] == 'unchanged'
+        assert lifecycle.interrupt(run['id'], 'new-owner')['status'] == 'failed'
+        assert store.test(run['id'])['diagnostics'] == {'trace_id':run['id'], 'model':'retry-model',
+                                                      'release':'retry-image', 'validation':[]}
+    finally:
+        store.close()

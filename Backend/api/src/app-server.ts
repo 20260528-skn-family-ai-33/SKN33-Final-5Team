@@ -1,3 +1,4 @@
+import {AdminMonitoring} from './admin-monitoring';
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {existsSync,readdirSync} from 'node:fs';
 import {readFile,stat} from 'node:fs/promises';
@@ -52,9 +53,10 @@ async function frontend(req:IncomingMessage,res:ServerResponse,path:string){
  const content=await readFile(file),mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
  res.writeHead(200,{'Content-Type':mime[extname(file)]||'application/octet-stream','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(req.method==='HEAD'?undefined:content);
 }
-export function createApplication(options:{port:number;config?:AuthConfig;auth?:CognitoAuth;users?:AuthUsers;teams?:TeamService;restore?:boolean}){
+export function createApplication(options:{port:number;config?:AuthConfig;auth?:CognitoAuth;users?:AuthUsers;teams?:TeamService;monitoring?:AdminMonitoring;restore?:boolean}){
  const config=options.config||options.auth?.config,users=options.users||options.auth?.users||(config?(config.userStore==='postgres'?new PostgresAuthUsers(config):new SqliteAuthUsers(baseDataDirectory())):undefined);
  const auth=options.auth||(config&&users?new CognitoAuth(config,users,{store:new SqliteAuthSessionStore(baseDataDirectory())}):undefined);
+ const monitoring=options.monitoring||new AdminMonitoring(config);
  const teams=auth&&users?(options.teams||new TeamService(baseDataDirectory(),users,config)):undefined;
  const registry=new WorkspaceRegistry(options.port,!!auth,config?.origin,ownerId=>{
   const owner=async()=>{const user=await users?.get(ownerId);if(!user||user.status!=='active')throw new AuthError(403,'자료를 사용할 회원 권한을 확인하세요.');return user;};
@@ -81,6 +83,7 @@ export function createApplication(options:{port:number;config?:AuthConfig;auth?:
    if(path.startsWith('/api/')){
     const user=auth?await auth.currentUser(req):undefined;
     if(auth&&!user)throw new AuthError(401,'서비스를 이용하려면 로그인하세요.');
+    if(path.startsWith('/api/admin/')){await monitoring.handle(req,res,url,user);return;}
     if(/^\/api\/(teams|team-invitations)(\/|$)/.test(path)){
      if(!auth||!user||!teams)throw new AuthError(401,'팀 기능을 이용하려면 로그인하세요.');
      const library=/^\/api\/teams\/([^/]+)\/library\/([^/]+)$/.exec(path);
@@ -120,7 +123,7 @@ export function createApplication(options:{port:number;config?:AuthConfig;auth?:
  let closePromise:Promise<void>|undefined;
  return {server,registry,teams,close(){return closePromise??=(async()=>{
   const authentication=auth?.close();
-  await registry.close();await authentication;await teams?.close();await users?.close();
+  await registry.close();await authentication;await teams?.close();await monitoring.close();await users?.close();
  })();}};
 }
 export {authConfig};

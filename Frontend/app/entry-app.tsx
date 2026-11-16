@@ -1,3 +1,4 @@
+import {AdminMonitoring} from './admin-monitoring';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
 import {useButtonEffects} from './use-button-effects';
@@ -19,11 +20,11 @@ import LandingPage from './landing-page';
 import {IntroDemo} from './intro-demo';
 import {useAuth,SignIn} from './auth';
 import VisualAutomation from './workspace';
-export type EntryRoute='intro'|'preview'|'home'|'workflows'|'schedules'|'schedule'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
+export type EntryRoute='intro'|'preview'|'home'|'workflows'|'schedules'|'schedule'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections'|'monitoring';
 type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
 type ExternalFlowSummary={id:string;name:string;nodes:{id:string}[];updatedAt?:string;active?:boolean;schedule?:{nextRunAt:string}};
-function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models'||s==='automation')return 'workflows';return ['intro','preview','home','workflows','schedules','schedule','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
+function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models'||s==='automation')return 'workflows';return ['intro','preview','home','workflows','schedules','schedule','history','nodes','workflow','run','assets','connections','monitoring'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
 
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
 export default function EntryApp(){
@@ -70,8 +71,8 @@ export default function EntryApp(){
  if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} onNewWorkflow={newFlow} initialPrompt={window.history.state?.initialPrompt} initialFile={window.history.state?.initialFile} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)} onExternalFlow={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('home')}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
-  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'}/>}/>
-   <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onCanLeaveChange={fn=>{guard.current=fn;}} onOpen={id=>navigate('schedule',id)} onOpenExternal={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)} onCreate={newFlow}/>:
+  <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'||route==='monitoring'}/>}/>
+   <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':'')}>{route==='monitoring'?<AdminMonitoring/>:route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onCanLeaveChange={fn=>{guard.current=fn;}} onOpen={id=>navigate('schedule',id)} onOpenExternal={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)} onCreate={newFlow}/>:
     <WorkspaceHome key={route+':'+(new URLSearchParams(location.search).get('service')||'')} route={route as 'home'|'workflows'|'history'} startExample={startExample} memberName={auth.user?.name?.trim()} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId,external)=>navigate(next,service,false,runId,false,undefined,undefined,external)} newFlow={newFlow}/>}
 
    </main>

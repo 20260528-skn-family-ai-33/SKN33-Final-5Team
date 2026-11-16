@@ -22,7 +22,7 @@
 
 ## 데이터와 권한
 
-`009_admin_monitoring.sql`과 후속 `010_admin_monitoring_fixes.sql`을 DBA 마이그레이션 계정으로 순서대로 적용합니다. SECURITY DEFINER 함수는 전용 NOLOGIN·NOBYPASSRLS 역할 `a4b_monitor_owner`가 소유합니다. RDS의 `postgres`도 BYPASSRLS가 없을 수 있으므로, 이 전용 역할에만 생성 이력 SELECT와 처리 이력 접근 정책을 부여합니다. 앱에는 이 역할의 멤버십을 부여하지 않습니다. 앱 연결에는 기존 `a4b_app`을 사용하며 DBA 연결을 앱 런타임에 전달하지 않습니다. 함수는 서버가 세션에서 가져온 회원 ID의 현재 관리자/활성 상태를 검사합니다. 이 함수의 actor 인자는 외부 HTTP 요청에서 받지 않습니다. 일반 작업 공간 RLS 정책은 변경하지 않습니다.
+`009_admin_monitoring.sql`과 후속 `010_admin_monitoring_fixes.sql`·`011_monitoring_document_failures.sql`을 DBA 마이그레이션 계정으로 순서대로 적용합니다. SECURITY DEFINER 함수는 전용 NOLOGIN·NOBYPASSRLS 역할 `a4b_monitor_owner`가 소유합니다. RDS의 `postgres`도 BYPASSRLS가 없을 수 있으므로, 이 전용 역할에만 생성 이력 SELECT와 처리 이력 접근 정책을 부여합니다. 앱에는 이 역할의 멤버십을 부여하지 않습니다. 앱 연결에는 기존 `a4b_app`을 사용하며 DBA 연결을 앱 런타임에 전달하지 않습니다. 함수는 서버가 세션에서 가져온 회원 ID의 현재 관리자/활성 상태를 검사합니다. 이 함수의 actor 인자는 외부 HTTP 요청에서 받지 않습니다. 일반 작업 공간 RLS 정책은 변경하지 않습니다.
 
 함수는 생성 요청, 실행/노드, 문서 버전의 진단 필드만 투영합니다. 요청 본문·문서 내용·모델 응답·입출력 JSON은 전달하지 않습니다. Node에서 필드를 다시 제한하고 알려진 비밀값, URL, 이메일 등을 마스킹합니다. 원문 예외 문자열을 새로 기록하지 않고 Pydantic 오류의 위치/유형과 HTTP 상태만 수집합니다. 운영 메모에도 마스킹을 적용하지만 민감한 원문은 입력하지 마세요.
 
@@ -43,7 +43,7 @@
 
 ## 검증
 
-`npm run check`, `npm run build`, `Backend/api/tests/admin-monitoring.test.ts`, 인증 회귀 테스트와 프론트 관리자 테스트, Python 생성 이력·진단 정보 테스트를 실행합니다. PostgreSQL 통합 테스트는 복원한 일회용 업무 스키마와 010까지의 마이그레이션 위에서 `A4B_MONITOR_TEST_DATABASE_URL`로 실행합니다. DB 이름에 `test`가 있어야 하며 테스트 데이터는 롤백합니다.
+`npm run check`, `npm run build`, `Backend/api/tests/admin-monitoring.test.ts`, 인증 회귀 테스트와 프론트 관리자 테스트, Python 생성 이력·진단 정보 테스트를 실행합니다. PostgreSQL 통합 테스트는 복원한 일회용 업무 스키마와 011까지의 마이그레이션 위에서 `A4B_MONITOR_TEST_DATABASE_URL`로 실행합니다. DB 이름에 `test`가 있어야 하며 테스트 데이터는 롤백합니다.
 
 ## 2026-11-16 검증 및 반영 상태
 
@@ -66,3 +66,12 @@
 - 보고서 저장·검수 보고서 저장·검수 방어 실패도 최종 저장 전에 진단 정보를 채웁니다. 이미 수집한 예외 진단은 덮어쓰지 않습니다.
 
 후속 SQL 회귀 테스트는 비어 있는 전용 로컬 DB(이름 끝 `_review_test`)에 `A4B_MONITOR_MIGRATION_TEST_DATABASE_URL`을 설정해 `Backend/api/tests/admin-monitoring-migration.test.ts`를 실행합니다. 테스트는 자체 `a4b` 스키마를 생성/제거하므로 공유 DB를 사용하지 않습니다. 업무 테이블 유무, 009→010 백필, 시간대 변환, 업데이트 트리거, 실제 인덱스 실행 계획, 오래 대기한 실행의 최근 실패 포함을 검사합니다.
+
+
+## 추가 리뷰 수정 (011)
+
+`011_monitoring_document_failures.sql`은 문서 버전의 uploaded/processing → failed 전환을 AFTER 트리거로 관찰하여 별도 RLS 보호 테이블에 실제 관측 시각을 기록합니다. 문서 버전의 불변 스냅샷과 기존 상태 전이 검증은 수정하지 않습니다. 조회·집계·발생 시각·종료 시각은 이 실패 시각을 사용합니다. **011 적용 전에 이미 실패한 문서는 정확한 실패 시각이 없으므로 생성 시각으로 대체하고 종료 시각은 미기록으로 둡니다. 과거 실패 시각을 소급 복원하지 않습니다.**
+
+새 실행 시도 시작 시 이전 diagnostics를 초기화합니다. 재시도가 성공하면 과거 진단이 남지 않고, 후반 저장 실패이면 현재 배포 버전으로 새 진단을 채웁니다. 마이그레이션 테스트 정리는 이번 테스트가 직접 만든 스키마 OID와 일치할 때만 삭제하며, 기존 스키마 생성 충돌 시 표와 데이터가 보존되는 회귀 검증을 추가했습니다.
+
+운영에는 009까지만 적용한 상태이며 010·011은 팀장의 PR 병합 후 배포 마이그레이션 단계에서 적용합니다. 이번 수정 작업은 운영 DB 변경·병합·배포를 실행하지 않습니다.

@@ -67,6 +67,13 @@ def test_member_design_checkpoints_and_failed_run_retry_in_existing_tables(postg
             store.add_asset({'id':asset_id,'name':'receipt.pdf','kind':'document','format':'pdf','hash':'a'*64,
                              'size_bytes':10,'original_path':'builder-originals/'+('a'*64)+'.pdf','created_at':now()},[])
             assert admin.execute('SELECT size_bytes FROM a4b.document_versions WHERE document_id=%s',(asset_id,)).fetchone()==(10,)
+            # Real domain guard must still allow failure transitions and remain immutable afterward.
+            admin.execute("UPDATE a4b.document_versions SET status='processing' WHERE document_id=%s", (asset_id,))
+            admin.execute("UPDATE a4b.document_versions SET status='failed',error_json='{}' WHERE document_id=%s", (asset_id,))
+            assert admin.execute("SELECT f.failed_at IS NOT NULL FROM a4b.monitor_document_failures f JOIN a4b.document_versions v ON v.id=f.document_version_id WHERE v.document_id=%s", (asset_id,)).fetchone()==(True,)
+            with pytest.raises(psycopg.errors.CheckViolation):
+                admin.execute("UPDATE a4b.document_versions SET status='processing' WHERE document_id=%s", (asset_id,))
+
             from service.handlers import uploads
             deletion = SimpleNamespace(storage=store, data={'id': asset_id})
             cleanup = uploads.prepare_delete(deletion)
@@ -104,6 +111,8 @@ def postgres_app_conninfo():
         pytest.fail('A4B_TEST_DATABASE_URL의 DB 이름에 test가 들어간 일회용 DB만 사용할 수 있습니다.')
     with psycopg.connect(TEST_URL, autocommit=True) as connection:
         connection.execute('DROP SCHEMA IF EXISTS a4b_builder CASCADE')
+        connection.execute('DROP FUNCTION IF EXISTS a4b.monitor_document_failure() CASCADE')
+        connection.execute('DROP TABLE IF EXISTS a4b.monitor_document_failures')
         connection.execute('DROP TABLE IF EXISTS a4b.monitor_triage_events, a4b.monitor_triage CASCADE')
         connection.execute('DROP FUNCTION IF EXISTS a4b.monitor_records(uuid,timestamptz,timestamptz,text), a4b.monitor_require_admin(uuid) CASCADE')
         connection.execute('DROP TABLE IF EXISTS a4b.workflow_generation_requests')

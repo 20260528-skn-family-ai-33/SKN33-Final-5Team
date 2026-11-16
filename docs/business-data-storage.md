@@ -23,7 +23,7 @@
 
 자료함에서는 현재 폴더의 파일 검색, 하위 폴더 생성, 폴더 이름 변경·이동, 파일 이동, 기존 내용 보기와 자료 사용처 확인을 제공합니다. 원본 파일 등록은 기존 문서·표 파서와 파일당 8MB 제한을 재사용합니다. 파일이 있거나 하위 폴더가 있는 폴더는 삭제할 수 없습니다. 폴더 이름 중복과 자기 자신·하위 폴더로의 이동도 서버에서 차단합니다.
 
-PostgreSQL 배포에는 `005_personal_asset_library.sql`부터 최신 `010_admin_monitoring_fixes.sql`까지의 적용이 필요합니다. 현재 Node와 Python의 필수 스키마 버전은 10입니다. 운영 배포 전에 새 코드/검증 이미지의 `scripts/deploy/apply-builder-migrations.py --dry-run`으로 미적용 항목을 확인하고 관리자 계정으로 적용한 다음, 같은 이미지의 앱 계정 시작 전 검증을 통과해야 합니다. 기존 RDS에는 신규 빈 DB용 `prerequisites.sql`·`schema.sql`을 다시 적용하지 않습니다. 로컬 SQLite는 자료함 표를 추가하며 기존 자료를 새 파일로 복사하지 않습니다.
+PostgreSQL 배포에는 `005_personal_asset_library.sql`부터 최신 `011_monitoring_document_failures.sql`까지의 적용이 필요합니다. 현재 Node와 Python의 필수 스키마 버전은 11입니다. 운영 배포 전에 새 코드/검증 이미지의 `scripts/deploy/apply-builder-migrations.py --dry-run`으로 미적용 항목을 확인하고 관리자 계정으로 적용한 다음, 같은 이미지의 앱 계정 시작 전 검증을 통과해야 합니다. 기존 RDS에는 신규 빈 DB용 `prerequisites.sql`·`schema.sql`을 다시 적용하지 않습니다. 로컬 SQLite는 자료함 표를 추가하며 기존 자료를 새 파일로 복사하지 않습니다.
 
 ## 팀 공유와 서비스 내부 초대
 

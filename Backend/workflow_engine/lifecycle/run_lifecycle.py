@@ -41,7 +41,7 @@ class RunLifecycle:
                 attempts.append({'number':1,'status':run['_previous_status'],'error':run.get('_previous_error'),'started_at':run['created_at'],'finished_at':run.get('_previous_updated_at')})
             for key in ['_previous_status','_previous_error','_previous_updated_at']:run.pop(key,None)
             attempts.append({'number':len(attempts)+1,'status':'running','started_at':stamp.isoformat(),'error':None})
-            run.pop('error_type',None);run.pop('diagnostic_frames',None)
+            run.pop('diagnostics',None);run.pop('error_type',None);run.pop('diagnostic_frames',None)
             self.db.execute('INSERT INTO builder_run_leases({wsc}run_id,token,expires_at,pid,active) VALUES({wsv}?,?,?,?,1) ON CONFLICT({wsc}run_id) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at,pid=excluded.pid,active=1',(run['id'],token,(stamp+timedelta(seconds=LEASE_SECONDS)).isoformat(),os.getpid()))
             self._save(run);self.db.commit()
         except Exception:self.db.rollback();raise

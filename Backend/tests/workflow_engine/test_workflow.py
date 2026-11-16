@@ -261,3 +261,36 @@ def test_report_save_failure_keeps_monitoring_diagnostics(tmp_path, monkeypatch,
         assert store.test(run['id'])['diagnostics'] == run['diagnostics']
     finally:
         store.close()
+
+
+@pytest.mark.parametrize('late_failure', [False, True])
+def test_retry_resets_previous_diagnostics(tmp_path, monkeypatch, late_failure):
+    from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
+    store, identifier, asset = saved(tmp_path, flow())
+    class RemoteError(Exception):
+        status_code = 503
+        def errors(self, **kwargs):
+            return [{'loc': ('old',), 'type': 'missing'}]
+    def broken(*args):
+        raise RemoteError('old provider failure')
+    try:
+        monkeypatch.setenv('A4B_RELEASE', 'old-release')
+        first = run_workflow(store, identifier, '추출', 'unused', file_ids=[asset['id']], llm=FakeLLM(), executor=broken)
+        assert first['diagnostics']['http_status'] == 503
+        assert first['diagnostics']['validation']
+        monkeypatch.setenv('A4B_RELEASE', 'new-release')
+        if late_failure:
+            def no_disk(*args, **kwargs):
+                raise OSError('disk full')
+            monkeypatch.setattr(RunLifecycle, 'publish', no_disk)
+        result = run_workflow(store, identifier, '추출', 'unused', run_id=first['id'], retry=True, llm=FakeLLM())
+        assert result['status'] == ('failed' if late_failure else 'succeeded')
+        if late_failure:
+            assert result['diagnostics']['release'] == 'new-release'
+            assert 'http_status' not in result['diagnostics']
+            assert result['diagnostics']['validation'] == []
+        else:
+            assert not result.get('diagnostics')
+        assert store.test(result['id']).get('diagnostics') == result.get('diagnostics')
+    finally:
+        store.close()

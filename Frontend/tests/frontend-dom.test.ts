@@ -5,6 +5,7 @@ import {buildSync} from 'esbuild';
 import {JSDOM} from 'jsdom';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {makeFlow} from '../../shared/workflow';
 const FRONTEND_ROOT=resolve(fileURLToPath(new URL('..',import.meta.url)));
 
 const require=createRequire(new URL('../../package.json',import.meta.url));
@@ -14,7 +15,7 @@ const nodeCompiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/node-libra
 const sourceCompiled=buildSync({stdin:{contents:"export {ScheduleLibrarySourceSettings} from './app/schedule-library-source'; export {AuthProvider} from './app/auth';",resolveDir:FRONTEND_ROOT,sourcefile:'schedule-source-test.tsx'},absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
 function load(code:string){const module={exports:{} as any};new Function('require','module','exports',code)(require,module,module.exports);return module.exports;}
 let dom:JSDOM;
-const globals=['crypto','window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
+const globals=['crypto','window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLFormElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
 const old=new Map(globals.map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
 // ReactDOM feature detection must see the DOM on first import.
 function installDOM(search=''){
@@ -23,6 +24,7 @@ function installDOM(search=''){
  Object.defineProperty(dom.window.crypto,'randomUUID',{value:()=>'00000000-0000-4000-8000-000000000081',configurable:true});
  dom.window.localStorage.setItem('a4b-product-tour-v1','done');
  Object.defineProperty(globalThis,'ResizeObserver',{value:class{observe(){}disconnect(){}},configurable:true});
+  dom.window.matchMedia=()=>({matches:false,media:'',onchange:null,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){},dispatchEvent(){return true;}});
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.scrollTo=()=>{};
 }
 installDOM();
@@ -34,6 +36,20 @@ const {ScheduleLibrarySourceSettings:SourceSettings,AuthProvider:SourceAuthProvi
 const originalFetch=globalThis.fetch;
 const agent=(id:string,name=id,schedule:any=null)=>({id,version:1,config:{name,purpose:'동작 검증',instructions:'요청 처리',tool_ids:['read_table'],requirements:[],questions:[],unsupported:[],document_ids:[],workflow:null,schedule},model:'gpt-4.1-mini',credential_id:'cred'});
 const A=agent('A','서비스 A'),B=agent('B','서비스 B');
+function externalFlow(id='external-flow') {
+ const flow=makeFlow();
+ flow.id=id;
+ flow.name='외부 API 재고 동기화';
+ flow.nodes[1].name='API 조회';
+ flow.nodes[1].type='n8n-nodes-base.httpRequest';
+ flow.nodes[1].typeVersion=4.2;
+ flow.nodes[1].parameters={method:'GET',url:'https://api.example.test/items',authentication:'none'};
+ flow.connections['클릭해서 시작'].main[0][0].node='API 조회';
+ flow.connections['API 조회']=flow.connections['데이터 정리'];
+ delete flow.connections['데이터 정리'];
+ flow.updatedAt='2026-11-16T01:00:00.000Z';
+ return flow;
+}
 function snapshot(a:any,tests:any[]=[]) {return {agent:a,resources:[],schedule:a.config.schedule?{active:false,spec:a.config.schedule,next_run_at:'2026-11-01T00:00:00Z'}:null,source:null,jobs:[],tests};}
 const tick=()=>new Promise(r=>setImmediate(r));
 function deferred(){let resolve!:(v:any)=>void;const promise=new Promise<any>(r=>{resolve=r;});return {promise,resolve};}
@@ -3107,5 +3123,127 @@ test('sidebar keyboard pinning survives escape and unpinning preserves temporary
   assert.equal(sidebar.dataset.expanded,'false');
   await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
   await act(async()=>{home.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});assert.equal(sidebar.dataset.expanded,'false');
+ }finally{await h.close();}
+});
+
+test('external workflow library hides only the untouched starter and opens the current studio',async()=>{
+ const seed=makeFlow();seed.id='untouched-starter';seed.updatedAt='2026-11-14T01:00:00.000Z';
+ const used=makeFlow();used.id='used-starter';used.updatedAt='2026-11-15T01:00:00.000Z';
+ const edited=makeFlow();edited.id='edited-starter';edited.updatedAt='2026-11-16T01:00:00.000Z';edited.nodes[1].parameters.assignments.assignments[0].value='사용자가 바꾼 값';
+ const flow=externalFlow();
+ const h=await setup('?screen=workflows',{},path=>path.endsWith('/agents')?{agents:[]}:path==='/api/workflows'?{workflows:[seed,used,edited,flow],executedWorkflowIds:[used.id]}:undefined,createElement(EntryApp));
+ try{
+  const cards=Array.from(document.querySelectorAll<HTMLElement>('.entry-workflow-card'));
+  assert.equal(cards.length,3,'untouched starter is hidden while used, edited and real workflows stay available');
+  assert.equal(cards.filter(card=>card.querySelector('h2')?.textContent==='나의 첫 번째 자동화').length,2);
+  assert.ok(cards.some(card=>card.textContent?.includes(new Date(used.updatedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))),'executed starter remains visible');
+  assert.ok(!cards.some(card=>card.textContent?.includes(new Date(seed.updatedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))),'unused starter stays hidden');
+  const card=cards.find(card=>card.querySelector('h2')?.textContent===flow.name);assert.ok(card);
+  await click(card.querySelector('button')!);
+  assert.equal(new URL(location.href).searchParams.get('external'),flow.id);
+  const studio=document.querySelector('main[aria-label="외부 서비스 워크플로우 설계"]');assert.ok(studio);
+  assert.match(studio.textContent||'',/외부 API 재고 동기화/);
+  assert.equal(document.querySelector('main.workspace'),null,'old visual editor must not mount');
+  assert.ok(Array.from(studio.querySelectorAll('button')).some(button=>button.textContent?.trim()==='설계 수정'));
+ }finally{await h.close();}
+});
+
+test('external workflow deep links open only the requested workflow in the current studio',async()=>{
+ const flow=externalFlow('direct-flow');
+ const h=await setup('?screen=workflow&external=direct-flow',{},path=>path==='/api/workflows'?{workflows:[externalFlow('another-flow'),flow]}:undefined,createElement(EntryApp));
+ try{
+  const studio=document.querySelector('main[aria-label="외부 서비스 워크플로우 설계"]');assert.ok(studio);
+  assert.equal(studio.querySelector('h1')?.textContent,flow.name);
+  assert.equal(document.querySelector('main.workspace'),null);
+  assert.ok(h.calls.some(call=>call.path==='/api/workflows'));
+ }finally{await h.close();}
+});
+
+test('missing external workflow deep links never fall back to another workflow',async()=>{
+ const h=await setup('?screen=workflow&external=missing-flow',{},path=>path==='/api/workflows'?{workflows:[externalFlow('another-flow')]}:undefined,createElement(EntryApp));
+ try{
+  const studio=document.querySelector('main[aria-label="외부 서비스 워크플로우 설계"]');assert.ok(studio);
+  assert.match(studio.textContent||'',/워크플로우를 찾을 수 없습니다/);
+  assert.doesNotMatch(studio.textContent||'',/외부 API 재고 동기화/);
+  assert.equal(document.querySelector('main.workspace'),null);
+ }finally{await h.close();}
+});
+
+test('scheduled external workflows open the current studio',async()=>{
+ const flow=externalFlow('scheduled-flow');
+ flow.nodes[0].type='n8n-nodes-base.scheduleTrigger';
+ flow.nodes[0].parameters={rule:{interval:[{field:'days',triggerAtHour:9,triggerAtMinute:0}]}};
+ flow.active=true;
+ flow.schedule={nextRunAt:Date.parse('2026-11-17T00:00:00Z')};
+ const h=await setup('?screen=schedules',{},path=>path==='/api/workflows'?{workflows:[flow]}:path.endsWith('/schedules')?{workflows:[]}:path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const row=scheduleRow(flow.id);
+  const manage=Array.from(row.querySelectorAll('button')).find(button=>button.textContent?.trim()==='일정 관리');assert.ok(manage);
+  await click(manage);
+  assert.equal(new URL(location.href).searchParams.get('external'),flow.id);
+  assert.ok(document.querySelector('main[aria-label="외부 서비스 워크플로우 설계"]'));
+  assert.equal(document.querySelector('main.workspace'),null);
+ }finally{await h.close();}
+});
+
+test('schedule picker excludes the unused starter but keeps used and edited external workflows',async()=>{
+ const seed=makeFlow();seed.id='unused-schedule-starter';
+ const used=makeFlow();used.id='used-schedule-starter';
+ const edited=makeFlow();edited.id='edited-schedule-starter';edited.nodes[1].parameters.assignments.assignments[0].value='사용자가 바꾼 값';
+ const flow=externalFlow('schedule-picker-flow');
+ const h=await setup('?screen=schedules',{},path=>path==='/api/workflows'?{workflows:[seed,used,edited,flow],executedWorkflowIds:[used.id]}:path.endsWith('/schedules')?{workflows:[]}:path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  await click(button('기존 워크플로우에 예약 추가'));
+  const picker=document.querySelector<HTMLSelectElement>('select[aria-label="예약할 워크플로우"]');assert.ok(picker);
+  const values=Array.from(picker.options).map(option=>option.value);
+  assert.ok(!values.includes('external:'+seed.id));
+  assert.ok(values.includes('external:'+used.id));
+  assert.ok(values.includes('external:'+edited.id));
+  assert.ok(values.includes('external:'+flow.id));
+ }finally{await h.close();}
+});
+
+test('external service design requests open their generated workflow in the current studio',async()=>{
+ const flow=externalFlow('generated-flow');
+ const h=await setup('?screen=workflow',{},path=>path==='/api/workflows/from-request'?{workflow:{id:flow.id}}:path==='/api/workflows'?{workflows:[flow]}:undefined,createElement(EntryApp));
+ try{
+  await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'Google Sheets 재고를 Slack으로 알려줘');
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  assert.ok(h.calls.some(call=>call.path==='/api/workflows/from-request'));
+  assert.equal(new URL(location.href).searchParams.get('external'),flow.id);
+  const studio=document.querySelector('main[aria-label="외부 서비스 워크플로우 설계"]');assert.ok(studio);
+  assert.equal(studio.querySelector('h1')?.textContent,flow.name);
+  assert.equal(document.querySelector('main.workspace'),null);
+ }finally{await h.close();}
+});
+
+test('current external studio edits a task, saves the flow and starts a trial run',async()=>{
+ let stored=externalFlow('editable-flow');
+ const writes:any[]=[],runs:any[]=[];
+ const h=await setup('?screen=workflow&external=editable-flow',{},(path,body,method)=>{
+  if(path==='/api/workflows'&&method==='GET')return {workflows:[stored]};
+  if(path==='/api/workflows'&&method==='POST'){writes.push(body);stored={...body,updatedAt:'2026-11-16T02:00:00.000Z'};return {workflow:stored};}
+  if(path==='/api/runs'&&method==='POST'){
+   runs.push(body);
+   return {executionId:'trial-run',execution:{id:'trial-run',workflowId:stored.id,workflowName:stored.name,status:'success',startedAt:'2026-11-16T02:00:00.000Z',duration:5,runs:[],mode:'learning'}};
+  }
+ },createElement(EntryApp));
+ try{
+  const studio=document.querySelector('main[aria-label="외부 서비스 워크플로우 설계"]');assert.ok(studio);
+  const node=studio.querySelector<HTMLButtonElement>('.as-flow-node[title="API 조회"]');assert.ok(node);
+  await click(node);
+  await click(button('작업 설정'));
+  await input(document.querySelector<HTMLInputElement>('#node-name')!,'API 재고 조회');
+  await click(button('설정 적용'));
+  assert.match(studio.textContent||'',/API 재고 조회/);
+  await click(button('저장'));
+  assert.equal(writes.length,1);
+  assert.ok(writes[0].nodes.some((item:any)=>item.name==='API 재고 조회'));
+  assert.ok(writes[0].connections['API 재고 조회']);
+  await click(button('시험 실행'));
+  assert.equal(runs.length,1);
+  assert.deepEqual(runs[0],{workflowId:stored.id,mode:'learning',input:[{}]});
+  assert.match(studio.textContent||'',/실행 결과 · 완료/);
+  assert.equal(document.querySelector('main.workspace'),null);
  }finally{await h.close();}
 });

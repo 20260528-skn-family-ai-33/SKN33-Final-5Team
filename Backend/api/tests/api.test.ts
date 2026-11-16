@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import type { Flow, FlowNode, Execution, Json } from '../../../shared/workflow';
+import { makeFlow, type Flow, type FlowNode, type Execution, type Json } from '../../../shared/workflow';
 
 const project = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const delay = (milliseconds: number) => new Promise<void>(resolve => setTimeout(resolve, milliseconds));
@@ -104,6 +104,19 @@ test('standalone server persists and executes workflows, credentials, schedules 
   try {
     await server.start();
 
+    await t.test('a new workspace starts empty and stays empty after restart', async () => {
+      const initial = await server.request('/api/workflows');
+      assert.equal(initial.status,200);
+      assert.deepEqual(initial.data.workflows,[]);
+      assert.deepEqual(initial.data.executedWorkflowIds,[]);
+      await server.stop();
+      await server.start();
+      const restarted = await server.request('/api/workflows');
+      assert.equal(restarted.status,200);
+      assert.deepEqual(restarted.data.workflows,[]);
+      assert.deepEqual(restarted.data.executedWorkflowIds,[]);
+    });
+
     await t.test('OAuth authorization begins locally without exposing secrets and canceled callbacks consume the state',async()=>{
       const privateValue='example-oauth-client-secret-'+randomUUID();const input={name:'Google 로그인 테스트',service:'googleSheets',clientId:'example-client-id.apps.googleusercontent.com',clientSecret:privateValue};
       const begin=await server.request('/api/oauth/begin','POST',input);assert.equal(begin.status,200);assert.equal(begin.data.redirectUri,server.base+'/api/oauth/callback');const authorization=new URL(begin.data.authorizationUrl);assert.equal(authorization.hostname,'accounts.google.com');assert.equal(authorization.searchParams.get('code_challenge_method'),'S256');assert.ok(!begin.raw.includes(privateValue));assert.equal(authorization.searchParams.has('client_secret'),false);
@@ -124,11 +137,15 @@ test('standalone server persists and executes workflows, credentials, schedules 
       const f=workflow('2MB 파일 그대로 전달',[stage('manualTrigger','파일 입력'),stage('noOp','파일 통과')]);assert.equal((await server.request('/api/workflows','POST',f)).status,200);const started=await server.request('/api/runs','POST',{workflowId:f.id,mode:'learning',input:uploaded.data.input});assert.equal(started.status,202);const result=await server.execution(started.data.executionId,e=>['success','error'].includes(e.status));assert.equal(result.status,'success',result.error);const download=await fetch(server.base+'/api/files/download?'+new URLSearchParams({executionId:result.id,runIndex:'1',property:'data'}));assert.equal(download.status,200);assert.equal(Buffer.compare(Buffer.from(await download.arrayBuffer()),bytes),0);
       uploaded.data.input[0].__easyflowBinary.data.fileSize=1;const invalid=await server.request('/api/runs','POST',{workflowId:f.id,mode:'learning',input:uploaded.data.input});assert.equal(invalid.status,400);assert.match(invalid.data.error,/크기/);
     });
-    await t.test('default workflow executes live and the server owns its execution record', async () => {
+    await t.test('explicitly saved starter workflow executes live and the server owns its execution record', async () => {
       const response = await server.request('/api/workflows');
       assert.equal(response.status,200);
-      const first = response.data.workflows.find((f:Flow)=>f.name==='나의 첫 번째 자동화') as Flow;
+      assert.ok(!response.data.workflows.some((f:Flow)=>f.name==='나의 첫 번째 자동화'));
+      const saved = await server.request('/api/workflows','POST',makeFlow());
+      assert.equal(saved.status,200);
+      const first = saved.data.workflow as Flow;
       assert.ok(first?.id);
+      assert.ok(!(await server.request('/api/workflows')).data.executedWorkflowIds.includes(first.id));
       const run = await server.request('/api/runs','POST',{workflowId:first.id,mode:'live'});
       assert.equal(run.status,202);
       assert.equal(typeof run.data.executionId,'string');
@@ -139,6 +156,7 @@ test('standalone server persists and executes workflows, credentials, schedules 
       assert.equal(result.runs.length,4);
       assert.ok(result.runs.every(r => r.status === 'success'));
       assert.equal(result.runs.at(-1)?.output[0][0].score,92);
+      assert.ok((await server.request('/api/workflows')).data.executedWorkflowIds.includes(first.id));
       const forged = await server.request('/api/executions','POST',{id:'forged-record',workflowId:first.id,status:'success',runs:[]});
       assert.equal(forged.status,404);
       assert.equal((await server.request('/api/executions?id=forged-record')).status,404);

@@ -4,13 +4,16 @@ import {WorkflowRenameDialog,renameWorkflow} from './workflow-rename-dialog';
 import {useEffect,useRef,useState} from 'react';
 import {AlertCircle,ArrowRight,CalendarClock,Pencil,Plus,RefreshCw,Search,X} from 'lucide-react';
 import {request} from '../components/flow/connection-panel';
+import type {Flow} from '../../shared/workflow';
+import {visibleExternalFlows} from '../lib/visible-external-flows';
 import {scheduleDescription,scheduleDateNote,type ScheduleSpec} from '../lib/schedule-spec';
 import {ScheduleSettings,type ManagedSchedule} from './schedule-settings';
 import './scheduled-workflows.css';
 
 type WorkflowSummary={id:string;version:number;config:{name:string;purpose:string;schedule?:ScheduleSpec|null}};
 type ScheduledWorkflow={agent:WorkflowSummary;schedule:ManagedSchedule|null};
-type ExternalFlow={id:string;name:string;active?:boolean;nodes:{name:string;type:string;disabled?:boolean;parameters?:{rule?:{interval?:{field?:string;triggerAtHour?:number;triggerAtMinute?:number;triggerAtDayOfWeek?:number[];triggerAtDay?:number;expression?:string;secondsInterval?:number;minutesInterval?:number;hoursInterval?:number}[]}}}[];settings?:{timezone?:string};schedule?:{nextRunAt?:number}};
+type ExternalFlow=Flow;
+type ExternalIntervalRule={field?:string;triggerAtHour?:number;triggerAtMinute?:number;triggerAtDayOfWeek?:number[];triggerAtDay?:number;expression?:string;secondsInterval?:number;minutesInterval?:number;hoursInterval?:number};
 type Status='active'|'paused'|'unconfigured';
 type ScheduleListRow={id:string;name:string;purpose:string;description:string;timezone:string;status:Status;nextRunAt?:string|number;kind:'agent'|'external'};
 const statusLabels:Record<Status,string>={active:'활성',paused:'중지',unconfigured:'설정 확인 필요'};
@@ -20,14 +23,14 @@ function statusOf({agent,schedule}:ScheduledWorkflow):Status {
  return schedule.active?'active':'paused';
 }
 function externalScheduleDescription(flow:ExternalFlow):string {
- const rule=flow.nodes.find(node=>!node.disabled&&node.type.endsWith('.scheduleTrigger'))?.parameters?.rule?.interval?.[0];
+ const rule=flow.nodes.find(node=>!node.disabled&&node.type.endsWith('.scheduleTrigger'))?.parameters?.rule?.interval?.[0] as ExternalIntervalRule|undefined;
  if(!rule)return '일정 설정 필요';
  const time=String(rule.triggerAtHour??9).padStart(2,'0')+':'+String(rule.triggerAtMinute??0).padStart(2,'0');
  if(rule.field==='days')return '매일 '+time;
  if(rule.field==='weeks')return '매주 '+(rule.triggerAtDayOfWeek||[]).map(day=>['일','월','화','수','목','금','토'][day]+'요일').join(' · ')+' '+time;
  if(rule.field==='months')return '매월 '+(rule.triggerAtDay??1)+'일 '+time;
  if(rule.field==='cronExpression')return 'Cron '+(rule.expression||'설정 확인 필요');
- if(rule.field==='seconds'||rule.field==='minutes'||rule.field==='hours')return (rule[`${rule.field}Interval` as 'secondsInterval'|'minutesInterval'|'hoursInterval']??1)+({seconds:'초',minutes:'분',hours:'시간'}[rule.field]||'')+'마다';
+ if(rule.field==='seconds'||rule.field==='minutes'||rule.field==='hours')return (rule[`${rule.field}Interval` as 'secondsInterval'|'minutesInterval'|'hoursInterval']??1)+(({seconds:'초',minutes:'분',hours:'시간'} as Record<string,string>)[rule.field]||'')+'마다';
  return '일정 설정 필요';
 }
 function formatNextAt(value:string|number|undefined):string {
@@ -60,10 +63,10 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
    const [result,listed,external]=await Promise.all([
     request<{workflows:ScheduledWorkflow[]}>('/api/agent-builder/schedules'),
     request<{agents:WorkflowSummary[]}>('/api/agent-builder/agents'),
-    request<{workflows:ExternalFlow[]}>('/api/workflows'),
+    request<{workflows:ExternalFlow[];executedWorkflowIds?:string[]}>('/api/workflows'),
    ]);
    if(!Array.isArray(result?.workflows)||!Array.isArray(listed?.agents)||!Array.isArray(external?.workflows))throw new Error('예약 목록 응답을 확인하지 못했습니다. 다시 시도해주세요.');
-   if(token===generation.current){setWorkflows(result.workflows);setAgents(listed.agents);setExternalFlows(external.workflows);}
+   if(token===generation.current){setWorkflows(result.workflows);setAgents(listed.agents);setExternalFlows(visibleExternalFlows(external.workflows,external.executedWorkflowIds));}
   }catch(err){if(token===generation.current)setError((err as Error).message);}
   finally{if(token===generation.current)setLoading(false);}
  }

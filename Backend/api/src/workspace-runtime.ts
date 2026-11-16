@@ -25,7 +25,7 @@ import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
 import {withScheduleSourceContext,type ScheduleSourceContext} from './schedule-source';
-import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
+import {validateFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
 // Enforce isolation at the HTTP boundary for every MIME, including SVG/XHTML.
 // Workflow headers cannot opt back into the authenticated application's origin.
@@ -136,7 +136,6 @@ const responseTimeout=Number(process.env.EASYFLOW_WEBHOOK_RESPONSE_TIMEOUT_MS??6
 if(!Number.isInteger(responseTimeout)||responseTimeout<0||responseTimeout>2147483647)throw new Error('Webhook 응답 제한 시간은 0부터 2147483647 사이의 밀리초로 설정해주세요.');
 let closing=false;
 let closePromise:Promise<void>|undefined;
-if(!store.listFlows().length)store.saveFlow(makeFlow());
 // Completed node checkpoints are durable. An interrupted external request may
 // already have taken effect, so restart it only after the user explicitly retries.
 for(const e of store.listPendingExecutions())if(e.status==='running')store.saveExecution({...e,status:'error',error:'프로그램이 실행 도중 종료됐어요. 마지막 외부 작업의 결과를 확인한 뒤 다시 실행해주세요.'});
@@ -285,7 +284,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     res.writeHead(200,{'Content-Type':response.mime,'Content-Length':response.bytes.length,'Content-Disposition':`attachment; filename="response.${extension}"; filename*=UTF-8''${encodeURIComponent(fileName).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(response.bytes);return;
    }
    if(path==='/api/workflows'){
-    if(method==='GET')return json(res,200,{workflows:store.listFlows()});
+     if(method==='GET')return json(res,200,{workflows:store.listFlows(),executedWorkflowIds:store.listExecutedWorkflowIds()});
     if(method==='POST'){const value=validateFlow(await body(req));if(value.intentReview){if(!value.intentReview.reviewed||!Array.isArray(value.intentReview.requirements)||value.intentReview.requirements.some((r:any)=>r.status!=='mapped'||!Array.isArray(r.nodeIds)||!r.nodeIds.length||r.nodeIds.some((id:string)=>!value.nodes.some(n=>n.id===id))))throw new Error('초안 설계 근거에서 요구사항과 실제 단계를 확인해주세요.');}const prior=store.getFlow(value.id);const same=prior&&JSON.stringify([prior.nodes,prior.connections,prior.settings])===JSON.stringify([value.nodes,value.connections,value.settings]);value.active=!!(same&&prior.active);if(value.active&&prior?.schedule)value.schedule=prior.schedule;else delete value.schedule;if(prior?.hookToken)value.hookToken=prior.hookToken;else delete value.hookToken;delete value.n8nId;return json(res,200,{workflow:store.saveFlow(value)});}
     if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'');return json(res,200,{ok:true});}
    }

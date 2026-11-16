@@ -36,6 +36,7 @@ export class Store {
  getAssistantSession(id:string):any {const r=this.db.prepare('SELECT json FROM assistant_sessions WHERE id=?').get(id);if(!r)throw new Error('대화를 찾지 못했어요.');return JSON.parse(String(r.json));}
  saveAssistantSession(value:any,revision:number){const prior=this.getAssistantSession(value.id);if(prior.revision!==revision)throw new Error('대화가 변경됐어요. 다시 열고 확인해주세요.');value.revision=revision+1;const update=this.db.prepare('UPDATE assistant_sessions SET json=? WHERE id=? AND json=?').run(JSON.stringify(value),value.id,JSON.stringify(prior));if(!update.changes)throw new Error('대화가 변경됐어요.');return value;}
  listFlows():Flow[] {return this.db.prepare('SELECT json FROM flows ORDER BY updated_at DESC').all().map(row=>JSON.parse(String(row.json)));}
+ listExecutedWorkflowIds():string[] {return this.db.prepare('SELECT f.id FROM flows f WHERE EXISTS (SELECT 1 FROM executions e WHERE e.workflow_id=f.id) ORDER BY f.updated_at DESC').all().map(row=>String(row.id));}
  getFlow(id:string):Flow|undefined {const row=this.db.prepare('SELECT json FROM flows WHERE id=?').get(id);return row?JSON.parse(String(row.json)):undefined;}
  saveFlow(value:Flow):Flow {const flow={...validateFlow(clone(value)),updatedAt:new Date().toISOString()};this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at').run(flow.id,JSON.stringify(flow),flow.updatedAt);return flow;}
  deleteFlow(id:string):boolean {return this.db.prepare('DELETE FROM flows WHERE id=?').run(id).changes>0;}

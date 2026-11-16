@@ -18,11 +18,13 @@ import {WorkspaceOverview} from './workspace-overview';
 import LandingPage from './landing-page';
 import {IntroDemo} from './intro-demo';
 import {useAuth,SignIn} from './auth';
-import VisualAutomation from './workspace';
+import {ExternalWorkflowStudio} from './external-workflow-studio';
+import type {Flow} from '../../shared/workflow';
+import {visibleExternalFlows} from '../lib/visible-external-flows';
 export type EntryRoute='intro'|'preview'|'home'|'workflows'|'schedules'|'schedule'|'history'|'nodes'|'workflow'|'run'|'assets'|'connections';
 type AgentSummary={id:string;version:number;model:string;updated_at:string;config:{name:string;purpose:string;tool_ids:string[];workflow?:{nodes:unknown[]}|null}};
 type RunSummary={id:string;status:string;agent_version:number;created_at?:string;started_at?:string;error?:string;approval_status?:string|null};
-type ExternalFlowSummary={id:string;name:string;nodes:{id:string}[];updatedAt?:string;active?:boolean;schedule?:{nextRunAt:string}};
+type ExternalFlowSummary=Flow;
 function routeFromLocation():EntryRoute {const u=new URL(location.href),s=u.searchParams.get('screen');if(s==='models'||s==='automation')return 'workflows';return ['intro','preview','home','workflows','schedules','schedule','history','nodes','workflow','run','assets','connections'].includes(s||'')?s as EntryRoute:u.searchParams.has('service')?'run':'intro';}
 
 function date(value?:string){if(!value)return '저장 시각 없음';const d=new Date(value);return Number.isNaN(d.valueOf())?'저장 시각 확인 필요':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
@@ -40,7 +42,7 @@ export default function EntryApp(){
  const historyIndex=useRef(Number(window.history.state?.a4bIndex||0));
  const updateContext=()=>{context.current=location.search;historyIndex.current=Number(window.history.state?.a4bIndex||0);};
  useEffect(()=>{if(new URLSearchParams(location.search).get('screen')==='models'){const legacy=new URL(location.href);legacy.searchParams.set('screen','workflows');window.history.replaceState(window.history.state,'',legacy);context.current=location.search;}window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',location.href);const pop=()=>{const next=routeFromLocation(),internal=(r:string)=>['nodes','workflow','run','schedule'].includes(r),before=new URLSearchParams(context.current),after=new URLSearchParams(location.search);
-  const remount=!internal(routeRef.current)||!internal(next)||before.get('service')!==after.get('service')||before.get('run')!==after.get('run');
+  const remount=!internal(routeRef.current)||!internal(next)||before.get('service')!==after.get('service')||before.get('run')!==after.get('run')||before.get('external')!==after.get('external');
   const targetIndex=Number(window.history.state?.a4bIndex||0);
   if(remount&&(internal(routeRef.current)||routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current()){
    const delta=historyIndex.current-targetIndex;
@@ -52,7 +54,7 @@ export default function EntryApp(){
   context.current=location.search;setRoute(next);
  };window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
  function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false,initialPrompt?:string,initialFile?:File,externalId?:string){
-  if((routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current())return false;
+  if((routeRef.current==='assets'||routeRef.current==='schedules'||routeRef.current==='workflow'&&new URLSearchParams(location.search).has('external'))&&!guard.current())return false;
   guard.current=()=>true;
   if(fresh||next==='workflow'&&!service||['workflow','nodes','run','schedule'].includes(routeRef.current))clearDesign();
   const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('external');url.searchParams.delete('previewNode');url.searchParams.delete('executionMode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);if(externalId)url.searchParams.set('external',externalId);
@@ -66,7 +68,7 @@ export default function EntryApp(){
  const newFlow=()=>navigate('workflow',undefined,true);
  const startExample=(prompt:string,file?:File)=>navigate('workflow',undefined,true,undefined,false,prompt,file);
  const externalId=route==='workflow'?new URLSearchParams(location.search).get('external'):null;
- if(externalId)return <div className="entry-app"><WorkspaceHeader onHome={()=>navigate('home')}/><div className="entry-workspace-shell"><WorkspaceSidebar active="workflow" onNavigate={next=>navigate(next)} help={<WorkspaceHelp onStart={newFlow}/>}/><main className="entry-workspace-main entry-external-workflow-main"><VisualAutomation key={externalId} embedded initialWorkflowId={externalId} onServiceConnect={()=>navigate('connections')}/></main></div></div>;
+ if(externalId)return <div className="entry-app"><WorkspaceHeader onHome={()=>navigate('home')}/><div className="entry-workspace-shell"><WorkspaceSidebar active="workflow" onNavigate={next=>navigate(next)} help={<WorkspaceHelp onStart={newFlow}/>}/><ExternalWorkflowStudio key={externalId} workflowId={externalId} onBack={()=>navigate('workflows')} onServiceConnect={()=>navigate('connections')} onCanLeaveChange={fn=>{guard.current=fn;}}/></div></div>;
  if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} onNewWorkflow={newFlow} initialPrompt={window.history.state?.initialPrompt} initialFile={window.history.state?.initialFile} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)} onExternalFlow={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('home')}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
@@ -89,7 +91,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
  async function load(){const token=++generation.current;setLoading(true);setError('');setHistoryErrors([]);setRunRows([]);try{
 
   const {agents:listed=[],organization:folders=emptyOrganization}=await request<{agents?:AgentSummary[];organization?:WorkflowOrganization}>('/api/agent-builder/agents');if(token!==generation.current)return;setAgents(listed);setOrganization(folders);setSelectedWorkflows([]);setActiveFolder(current=>current==='all'||current==='unfiled'||folders.folders.some(f=>f.id===current)?current:'all');
-  if(route==='workflows')await request<{workflows?:ExternalFlowSummary[]}>('/api/workflows').then(result=>{if(token===generation.current)setExternalFlows((result.workflows||[]).filter(flow=>flow.nodes.length>1));}).catch(()=>{});
+  if(route==='workflows')await request<{workflows?:ExternalFlowSummary[];executedWorkflowIds?:string[]}>('/api/workflows').then(result=>{if(token===generation.current)setExternalFlows(visibleExternalFlows(result.workflows||[],result.executedWorkflowIds).filter(flow=>flow.nodes.length>1));}).catch(()=>{});
   if(route==='history'){const historyAgents=listed.filter(agent=>!historyService||agent.id===historyService);const rows=await settleWithLimit(historyAgents,4,async(agent:AgentSummary)=>{const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(agent.id));return {agent,runs:result.tests||[]};},()=>token===generation.current);if(token!==generation.current)return;setRunRows(rows.flatMap(r=>r.status==='fulfilled'?r.value.runs.map((run:RunSummary)=>({agent:r.value.agent,run})):[]).sort((a,b)=>(Date.parse(b.run.started_at||b.run.created_at||'')||0)-(Date.parse(a.run.started_at||a.run.created_at||'')||0)));setHistoryErrors(rows.flatMap((r,i)=>r.status==='rejected'?[historyAgents[i].config.name]:[]));}
  }catch(e){if(token===generation.current)setError((e as Error).message);}finally{if(token===generation.current)setLoading(false);}}
  useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;};},[route,historyService]);

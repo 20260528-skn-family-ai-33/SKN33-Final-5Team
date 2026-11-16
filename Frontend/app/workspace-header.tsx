@@ -51,8 +51,8 @@ export function WorkspaceHelp({onStart, deferAutoStart = false, onTourPanelChang
   }, [scope, deferAutoStart]);
 
   return <>
-    <button type="button" data-tour="help" className="as-button as-secondary" onClick={() => setOpen(true)}>
-      <HelpCircle size={16} aria-hidden="true"/>사용 안내
+    <button type="button" data-tour="help" aria-label="사용 안내" title="사용 안내" className="as-button as-secondary" onClick={() => setOpen(true)}>
+      <HelpCircle size={16} aria-hidden="true"/><span className="workspace-menu-label">사용 안내</span>
     </button>
     <ProductTour scope={scope} open={open} onClose={() => setOpen(false)}
       onStart={scope === 'workflows' ? onStart : undefined}

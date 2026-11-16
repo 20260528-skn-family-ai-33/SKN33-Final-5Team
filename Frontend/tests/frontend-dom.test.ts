@@ -731,17 +731,25 @@ test('DOM: a fresh file-first design opens real document excerpts and explains u
   assert.equal(document.querySelector('.as-resource-dialog .as-preserve')?.textContent,text);
  }finally{await h.close();}
 });
-test('DOM: a first upload offers observed file values before the first chat message',async()=>{
+for(const drop of [false,true])test('DOM: first attachment shows file values before chat ('+(drop?'drop':'picker')+')',async()=>{
  const file={id:'uploaded',name:'접수.txt',kind:'document',has_readable_text:true,columns:[],fields:[{label:'접수번호',value:'A-120'}],snippets:['접수번호: A-120'],preview:[]};
  const h=await setup('',{},path=>{
   if(path.endsWith('/sessions'))return {id:'new',revision:0};
   if(path.endsWith('/upload'))return {...readySession(),id:'new',revision:1,messages:[],draft:null,status:'empty',file_inspection:[file]};
  });
  try{
-  await click(button('자료 연결'));await click(button('새 파일 올리기'));
-  const picker=document.querySelector('input[type=file]') as HTMLInputElement;
-  Object.defineProperty(picker,'files',{value:[new dom.window.File(['접수번호: A-120'],'접수.txt')]});
-  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const files=[new dom.window.File(['접수번호: A-120'],'접수.txt')];
+  if(drop){
+   const event=new dom.window.Event('drop',{bubbles:true,cancelable:true});
+   Object.defineProperty(event,'dataTransfer',{value:{files}});
+   await act(async()=>{document.querySelector('.as-composer textarea')!.dispatchEvent(event);});
+   assert.ok(event.defaultPrevented);
+  }else{
+   await click(button('자료 연결'));await click(button('새 파일 올리기'));
+   const picker=document.querySelector('input[type=file]') as HTMLInputElement;
+   Object.defineProperty(picker,'files',{value:files});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  }
   const deadline=Date.now()+3000;
   while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
   const card=document.querySelector('.as-inspected-source') as HTMLDetailsElement;assert.ok(card.open);
@@ -1115,7 +1123,7 @@ test('entry: introduction has one start action and uses the actual editor views 
   await click(document.querySelectorAll('.landing-studio-preview .as-flow-node')[1]);
   assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/부족한 재고 찾기/);
   assert.ok(document.querySelector('.as-node-inspector-title svg'));
-  await click(button('직접 실행'));
+  await click(button('실행'));
   assert.ok(document.querySelector('.run-workflow-diagram'));
   assert.match(document.querySelector('.landing-preview-run')?.textContent||'',/키보드/);
   await click(document.getElementById('a4b-preview-tab-document')!);
@@ -1157,7 +1165,7 @@ test('entry: fresh editor starts from the list and browser history returns to th
   await click(button('워크플로우'));await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   assert.ok(document.querySelector('.as-composer'));
-  await click(button('목록으로'));await t.flush();
+  await click(document.querySelector('[data-tour="menu-workflows"]')!);await t.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');
   const libraryTitle=document.querySelector('.task-library-title > div')?.textContent;
   await click(button('작업 템플릿'));await t.flush();
@@ -1228,7 +1236,8 @@ test('entry: user help has no infrastructure controls and unsent input is guarde
   await click(button('작업 찾아보기'));
   window.confirm=()=>true;await click(home);await n.flush();
   assert.equal(new URL(location.href).searchParams.get('screen'),'home');
-  assert.equal(document.querySelector('main h1')?.textContent,'안녕하세요');
+  assert.equal(document.querySelector('main h1')?.textContent,'안녕하세요무엇을 도와드릴까요?');
+  assert.ok(document.querySelector('main h1 br'));
  }finally{await n.close();}
 });
 
@@ -1240,7 +1249,7 @@ test('navigation: internal back/forward preserves unsent workflow text and avoid
   const loads=t.calls.filter(c=>c.path.endsWith('/catalog')).length;
   await click(button('작업 찾아보기'));assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
 
-  await click(button('설계로 돌아가기'));await click(button('직접 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
+  await click(button('설계로 돌아가기'));await click(button('실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   await travel('back');assert.equal(new URL(location.href).searchParams.get('screen'),'nodes');
   await travel('back');assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement)?.value,'탭 이동 후 유지할 업무');
@@ -1910,7 +1919,7 @@ test('folder source: unsaved manual settings block execution and survive cancell
  },createElement(EntryApp));
  try{
   const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
-  await click(tab('직접 실행'));
+  await click(tab('실행'));
   await sourceSettles(()=>!!document.querySelector('select[aria-label="예약 자료 읽기 방식"]'));
   await chooseSource('예약 자료 읽기 방식','latest');
   assert.equal(button('워크플로우 실행').disabled,true);
@@ -1930,14 +1939,14 @@ test('folder source: unsaved manual settings block execution and survive cancell
   const unload=new dom.window.Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
   window.confirm=()=>{prompts++;return true;};
   await click(tab('설계'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
-  await click(tab('직접 실행'));
+  await click(tab('실행'));
   await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='all');
   assert.equal(button('워크플로우 실행').disabled,false);
   assert.equal(h.calls.some(call=>call.path.endsWith('/schedule_source')&&call.body),false);
   await chooseSource('예약 자료 읽기 방식','latest');assert.equal(button('워크플로우 실행').disabled,true);
   await click(button('자료함 연결 저장'));assert.equal(button('워크플로우 실행').disabled,false);
   const count=prompts;await click(tab('설계'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');assert.equal(prompts,count);
-  await click(tab('직접 실행'));
+  await click(tab('실행'));
   await sourceSettles(()=>document.querySelector<HTMLSelectElement>('select[aria-label="예약 자료 읽기 방식"]')?.value==='latest');
   await chooseSource('예약 자료 읽기 방식','all');assert.equal(button('워크플로우 실행').disabled,true);
   const beforeSwitch=prompts;await click(otherLink());
@@ -2083,7 +2092,7 @@ for(const includeSchedule of [true,false])test('request-led scheduling: save rev
  const config={...A.config,name:'재고 현황 보고서',schedule:spec,report_destination:'reports'};
  const session={id:'intent-session',revision:4,messages:[{role:'user',content:'매일 오전 9시에 재고 현황을 정리해줘.'}],draft:config,status:'ready',issues:[],trace:[],resources:[]};
  const savedAgent={...A,config:{...config,schedule:includeSchedule?spec:null}};
- const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>{
   if(path.includes('/session?'))return session;
   if(path.endsWith('/confirm'))return {...session,status:'saved',saved_agent_id:'A',draft:savedAgent.config};
   if(path.includes('/agent?id=A'))return {...snapshot(savedAgent),source_required:false,schedule_request_required:false};
@@ -2153,7 +2162,7 @@ test('clarification: a legacy choice requires confirmation and submits its quest
 test('execution separation: a manual workflow gains a reservation while direct input stays independent',async()=>{
  let reservation:any={active:false,agent_version:1,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'};
  const finished={id:'separate-run',status:'succeeded',answer:'분리 실행 완료',agent_version:1,steps:[],rows:[],artifact:null};
- const h=await setup('?screen=schedule&service=A',{},(path,body)=>{
+ const h=await setup('?screen=schedule&service=A',{},path=>{
   if(path.includes('/agent?id=A'))return {...snapshot(A),schedule:reservation,request_required:true,schedule_request_required:false,source_required:false,input_requirements:[]};
   if(path.endsWith('/test'))return finished;
   if(path.endsWith('/schedule_remove')){reservation=null;return {schedule:null};}
@@ -2162,7 +2171,7 @@ test('execution separation: a manual workflow gains a reservation while direct i
   assert.equal(button('예약 켜기').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
   await click(button('예약 자료로 지금 실행'));
   let sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[0].body,{id:'A',content:'',fileIds:[],useSchedule:true});
-  await click(button('직접 실행'));assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
+  await click(button('실행'));assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
   assert.equal(button('워크플로우 실행').disabled,true);await input(document.querySelector<HTMLTextAreaElement>('textarea[data-tour="run-input"]')!,'이번에는 다른 요청');
   await click(button('워크플로우 실행'));sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[1].body,{id:'A',content:'이번에는 다른 요청',fileIds:[]});
   await click(Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent==='예약 관리')!);await click(button('예약 해제'));
@@ -2181,12 +2190,12 @@ test('reservation edits survive cancelled tab, browser-back and new-workflow nav
  try{
   const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
   await click(tab('예약 관리'));await click(button('일정 수정'));await input(field('실행 시간'),'10:00');
-  window.confirm=()=>{prompts++;return false;};await click(tab('직접 실행'));
+  window.confirm=()=>{prompts++;return false;};await click(tab('실행'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
   await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,100));});
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
   await click(button('홈'));assert.equal(field('실행 시간').value,'10:00');assert.ok(prompts>=3);
-  await click(button('일정 저장'));const count=prompts;await click(tab('직접 실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.equal(prompts,count);
+  await click(button('일정 저장'));const count=prompts;await click(tab('실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.equal(prompts,count);
   assert.equal(h.calls.filter(call=>call.body).length,1);
  }finally{await h.close();}
 });
@@ -2233,6 +2242,17 @@ test('home: all sidebar destinations return to home and recent entries retain th
    await click(nav(page));
    assert.equal(location.search,'?screen='+page);
    assert.equal(document.querySelector('main h1')?.textContent,title);
+   const heading=document.querySelector('main h1')!;
+   assert.equal(heading.parentElement?.className,'workspace-page-title',page);
+   assert.equal(heading.parentElement?.querySelector('svg')?.getAttribute('aria-hidden'),'true',page);
+   const localTabs=document.querySelector('main .studio-tabs,main .task-library-tabs');
+   if(localTabs)assert.ok(heading.compareDocumentPosition(localTabs)&Node.DOCUMENT_POSITION_FOLLOWING,page);
+   if(page==='workflow'){
+    for(const item of document.querySelectorAll('main .studio-tabs button'))assert.ok(item.querySelector('svg'),item.textContent||'');
+    assert.equal(document.querySelector('[data-tour="run-tab"]')?.textContent,'실행');
+   }
+   if(page==='connections')assert.equal(document.querySelector('.service-connections-note'),null);
+
    assert.equal(nav(page).getAttribute('aria-current'),'page');
    assert.ok(document.querySelector('.workspace-header .ai-status-badge'));
    assert.equal(document.querySelector('.workspace-header .a4b-account-local'),null);
@@ -2298,7 +2318,7 @@ test('home: linked detail pages keep the selected workflow and return to home',a
   await click(button('설계'));
   route('workflow','A');
   assert.equal(document.querySelector('main h1')?.textContent,'일일 보고서');
-  await click(button('목록으로'));
+  await click(document.querySelector('[data-tour="menu-workflows"]')!);
   route('workflows');
   await click(document.querySelector('[aria-label="일일 보고서 실행 기록"]')!);
   route('history','A');
@@ -2624,7 +2644,7 @@ test('direct run keeps an optional request editor open while clearing and after 
    assert.equal(requestField().closest('details')?.open,true);
    await input(requestField(),'이번 실행의 추가 요청');
   await click(button('설계'));
-  await click(button('직접 실행'));
+  await click(button('실행'));
   assert.equal(requestField().value,'이번 실행의 추가 요청');
   assert.equal(requestField().closest('details')?.open,true);
  }finally{await h.close();}
@@ -2632,7 +2652,7 @@ test('direct run keeps an optional request editor open while clearing and after 
 
 test('home attachment is uploaded before the initial design message',async()=>{
  const prompt='첨부 문서를 요약해줘';
- const h=await setup('?screen=home',{},(path,body)=>{
+ const h=await setup('?screen=home',{},path=>{
   if(path.endsWith('/sessions'))return {...readySession(),revision:1,status:'empty',draft:null,resources:[]};
   if(path.endsWith('/upload'))return {...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'home-file',name:'문서.txt',kind:'document'}]};
   if(path.endsWith('/message'))return {...readySession(),messages:[{role:'user',content:prompt}]};
@@ -2770,7 +2790,8 @@ test('home greets the member once and limits recent work to three entries',async
  const navigations:any[]=[];
  const h=await setup('',{},undefined,createElement(Overview,{memberName:'정재',workflows,loading:false,error:'',onStart:()=>{},onNavigate:(...args:any[])=>navigations.push(args),onRetry:()=>{}}));
  try{
-  assert.equal(document.querySelector('h1')?.textContent,'안녕하세요, 정재님');
+  assert.equal(document.querySelector('h1')?.textContent,'안녕하세요, 정재님무엇을 도와드릴까요?');
+  assert.ok(document.querySelector('h1 br'));
   assert.equal(document.querySelector('.overview-greeting'),null);
   assert.equal(document.querySelectorAll('.overview-recent-grid li').length,3);
   await click(document.querySelectorAll('.overview-recent-grid button')[2]);
@@ -2810,12 +2831,12 @@ test('workflow folders: create, select, move, filter, rename and delete preserve
   await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택한 워크플로우 이동 (1)'));
   await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
-  await submit(document.querySelector('.workflow-folder-form')!);await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   assert.ok(document.querySelector('button[aria-label="서비스 A 실행하기"]'));
   assert.ok(document.querySelector('button[aria-label="서비스 A 예약 관리"]'));
   await click(button('폴더 이름 변경'));await input(field('폴더 이름'),'정리 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/정리 업무/);
+  assert.match(document.querySelector('.workflow-folder-list')!.textContent!,/정리 업무/);
   await click(button('폴더 삭제'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,2);
   assert.deepEqual(organization.assignments,{});
@@ -2845,7 +2866,7 @@ test('workflow folder pending save rejects duplicate submission and keeps the di
   assert.equal(saves,1);assert.equal(button('취소').disabled,true);
   assert.equal(field('폴더 이름').disabled,true);
   await act(async()=>{pending.resolve({organization:{revision:1,folders:[{id:'pending-folder',name:'중복 방지'}],assignments:{}}});await tick();});
-  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-scope select')!.textContent!,/중복 방지/);
+  assert.equal(document.querySelector('.workflow-folder-form'),null);assert.match(document.querySelector('.workflow-folder-list')!.textContent!,/중복 방지/);
  }finally{await h.close();}
 });
 
@@ -2858,7 +2879,7 @@ test('workflow folder search and folder changes clear hidden selection',async()=
   assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
   await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);
-  await act(async()=>{const el=document.querySelector<HTMLSelectElement>('.workflow-folder-scope select')!;el.value='unfiled';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  await click(button('미분류'));
   assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,0);
  }finally{await h.close();}
@@ -2880,5 +2901,211 @@ test('workflow folder selection caps at 500 and releases a slot when unchecked',
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
   await click(button('선택한 워크플로우 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
+ }finally{await h.close();}
+});
+
+
+test('clarification: paged answers preserve backend ids, arrays, custom and optional skip in one request',async()=>{
+ const qs=[
+  {id:'batch-format',key:'format',text:'결과 형식',options:['CSV','Excel'],response:{type:'single_choice'}},
+  {id:'batch-sections',key:'sections',text:'포함 내용',options:['요약','상세'],response:{type:'multi_choice'}},
+  {id:'batch-notes',key:'notes',text:'추가 조건',response:{type:'text'},required:false},
+ ];
+ const session={id:'batch-session',revision:4,messages:[{role:'assistant',content:'작업 조건을 확인해주세요.'}],draft:{...A.config,questions:qs.map(q=>q.text),question_options:qs.map(q=>q.options||[])},status:'needs_clarification',issues:[],trace:[],resources:[],pending_questions:qs};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>{
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/message'))return {...session,revision:5,status:'ready',pending_questions:[],draft:{...session.draft,questions:[]},messages:[...session.messages,{role:'user',content:body.content}]};
+ },createElement(EntryApp));
+ try{
+  await click(document.querySelector('.clarification-form input[value="CSV"]')!);
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  await click(document.querySelector('.clarification-form input[value="요약"]')!);
+  const fields=document.querySelectorAll('.clarification-form fieldset');
+  await click(fields[1].querySelector('input[id$="custom-choice"]')!);
+  await input(fields[1].querySelector('textarea')!,'예외 내용');
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  await click(button('답변 적용'));await h.flush();
+  const requests=h.calls.filter(call=>call.path.endsWith('/message'));assert.equal(requests.length,1);
+  assert.equal(requests[0].body.id,session.id);assert.equal(requests[0].body.revision,4);
+  assert.deepEqual(requests[0].body.answers,[{questionId:qs[0].id,value:'CSV'},{questionId:qs[1].id,value:['요약','예외 내용'],custom:true},{questionId:qs[2].id,value:null,skip:true}]);
+ }finally{await h.close();}
+});
+
+
+test('sidebar defaults to icons and stays pinned across navigation until explicitly unpinned',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=()=>document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  const pin=()=>sidebar().querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
+  assert.equal(sidebar().dataset.expanded,'false');assert.equal(sidebar().dataset.pinned,'false');assert.equal(pin().hidden,true);
+  assert.equal(sidebar().querySelector('.workspace-sidebar-toggle'),null);
+  const controls=pin().getAttribute('aria-controls');assert.ok(controls&&document.getElementById(controls));
+  for(const nav of sidebar().querySelectorAll('.workspace-nav button'))assert.ok(nav.getAttribute('aria-label'));
+  await sidebarPointerEnter(sidebar());await sidebarPointerClick(pin());
+  assert.equal(sidebar().dataset.pinned,'true');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'true');
+  await click(document.querySelector('[data-tour="menu-workflow"]')!);await h.flush();await sidebarPointerLeave(sidebar());
+  assert.equal(sidebar().dataset.expanded,'true');assert.equal(sidebar().dataset.pinned,'true');
+  await sidebarPointerEnter(sidebar());await sidebarPointerClick(pin());
+  assert.equal(sidebar().dataset.expanded,'true');assert.equal(sidebar().dataset.pinned,'false');
+  await sidebarPointerLeave(sidebar());assert.equal(sidebar().dataset.expanded,'false');assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false');
+ }finally{await h.close();}
+});
+
+test('sidebar hover and keyboard focus expand temporarily without changing the pinned preference',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'true');assert.equal(sidebar.dataset.pinned,'false');
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');
+  const nav=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{nav.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
+  await act(async()=>{nav.blur();await tick();});assert.equal(sidebar.dataset.expanded,'false');
+  assert.notEqual(localStorage.getItem('a4b-sidebar-pinned'),'true');
+ }finally{await h.close();}
+});
+
+
+test('sidebar pointer click focus cannot hold a transient menu open after mouse leave',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));home.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));home.focus();await tick();});
+  await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');assert.equal(sidebar.dataset.pinned,'false');
+ }finally{await h.close();}
+});
+
+
+test('sidebar keyboard re-entry expands after pointer focus leaves for the main page',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  const outside=document.querySelector<HTMLTextAreaElement>('.overview-composer textarea')!;
+  await act(async()=>{home.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));home.focus();await tick();});
+  await act(async()=>{outside.focus();await tick();});assert.equal(sidebar.dataset.expanded,'false');
+  // Tab/Shift+Tab entering the sidebar has no keydown inside the sidebar.
+  await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
+  assert.equal(sidebar.dataset.pinned,'false');
+ }finally{await h.close();}
+});
+
+test('visible design canvas refits on sidebar resize and keeps manual zoom for unchanged sizes',async()=>{
+ const code=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/workflow-preview.tsx')],absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',write:false,logLevel:'silent'}).outputFiles[0].text;
+ const Preview=load(code).WorkflowPreview;
+ let w=900,hgt=900;const observers:{callback:()=>void;disconnected:boolean}[]=[];
+ const workflow={entry:'one',nodes:[{id:'one',tool:'read_table',label:'입력',bindings:[],settings:{}},{id:'two',tool:'finish',label:'출력',bindings:[],settings:{}}],edges:[{source:'one',target:'two',branch:'next'}]};
+ function SizedPreview(){
+  require('react').useLayoutEffect(()=>{
+   const canvas=document.querySelector('.as-desktop-canvas')!;
+   Object.defineProperties(canvas,{clientWidth:{get:()=>w,configurable:true},clientHeight:{get:()=>hgt,configurable:true}});
+   Object.defineProperty(globalThis,'ResizeObserver',{configurable:true,value:class{
+    state:{callback:()=>void;disconnected:boolean};
+    constructor(callback:()=>void){this.state={callback,disconnected:false};observers.push(this.state);}
+    observe(){}disconnect(){this.state.disconnected=true;}
+   }});
+  },[]);
+  return createElement(Preview,{workflow,autoFit:false});
+ }
+ const h=await setup('',{},undefined,createElement(SizedPreview));
+ try{
+  const percent=()=>document.querySelector('.as-zoom span')!.textContent;
+  assert.equal(percent(),'85%');assert.equal(observers.length,1);
+  await click(document.querySelector('[aria-label="캔버스 확대"]')!);assert.equal(percent(),'95%');
+  await act(async()=>{observers[0].callback();});assert.equal(percent(),'95%');
+  w=220;await act(async()=>{observers[0].callback();});assert.equal(percent(),'62%');
+  w=0;hgt=0;await act(async()=>{observers[0].callback();});assert.equal(percent(),'62%');
+  w=900;hgt=900;await act(async()=>{observers[0].callback();});assert.equal(percent(),'85%');
+ }finally{await h.close();}
+ assert.equal(observers[0].disconnected,true);
+});
+
+
+test('sidebar saved pin restores on every workspace screen and Escape does not unpin it',async()=>{
+ for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
+  const h=await setup('?screen='+page,{'a4b-sidebar-pinned':'true'},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  try{
+   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
+   assert.equal(sidebar.dataset.expanded,'true',page);assert.equal(sidebar.dataset.pinned,'true',page);
+   assert.equal(sidebar.querySelector('.workspace-sidebar-toggle'),null,page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'true',page);
+   await act(async()=>{pin.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
+   assert.equal(sidebar.dataset.pinned,'true',page);
+   await sidebarPointerEnter(sidebar);await sidebarPointerClick(pin);
+   assert.equal(sidebar.dataset.pinned,'false',page);assert.equal(sidebar.dataset.expanded,'true',page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'false',page);
+  }finally{await h.close();}
+ }
+});
+
+test('all workspace pages retain keyboard expansion after unpin until focus leaves',async()=>{
+ for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
+  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  try{
+   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!,home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!,pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin')!;
+   await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true',page);
+   assert.equal(pin.hidden,false,page);await act(async()=>{pin.focus();await tick();});
+   await click(pin);assert.equal(sidebar.dataset.pinned,'true',page);
+   await click(pin);assert.equal(sidebar.dataset.pinned,'false',page);assert.equal(sidebar.dataset.expanded,'true',page);
+   await act(async()=>{document.querySelector<HTMLButtonElement>('.workspace-brand')!.focus();await tick();});
+   assert.equal(sidebar.dataset.expanded,'false',page);
+  }finally{await h.close();}
+ }
+});
+
+async function sidebarPointerClick(control:HTMLButtonElement){
+ assert.equal(control.hidden,false,'a hidden sidebar control cannot be clicked');
+ await act(async()=>{control.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true}));control.focus();await tick();});
+ await act(async()=>{control.dispatchEvent(new dom.window.MouseEvent('pointerup',{bubbles:true}));await tick();});
+ await click(control);
+}
+
+async function sidebarPointerEnter(sidebar:HTMLElement){
+ await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true,relatedTarget:document.body}));await tick();});
+ assert.equal(sidebar.dataset.expanded,'true');
+}
+
+async function sidebarPointerLeave(sidebar:HTMLElement){
+ await act(async()=>{sidebar.dispatchEvent(new dom.window.MouseEvent('pointerout',{bubbles:true,relatedTarget:document.body}));await tick();});
+}
+
+test('sidebar pin is reachable after actual pointer entry on every workspace screen',async()=>{
+ for(const page of ['home','workflow','run','schedule','workflows','nodes','schedules','history','assets','connections']){
+  const h=await setup('?screen='+page,{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+  try{
+   const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
+   assert.equal(sidebar.dataset.expanded,'false',page);assert.equal(sidebar.dataset.pinned,'false',page);
+   await sidebarPointerEnter(sidebar);
+   const pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin');assert.ok(pin,'separate pin control on '+page);
+   await sidebarPointerClick(pin);assert.equal(sidebar.dataset.pinned,'true',page);assert.equal(pin.getAttribute('aria-pressed'),'true',page);
+   assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'true',page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'true',page);
+   await sidebarPointerEnter(sidebar);await sidebarPointerClick(pin);
+   assert.equal(sidebar.dataset.pinned,'false',page);assert.equal(sidebar.dataset.expanded,'true',page);
+   await sidebarPointerLeave(sidebar);assert.equal(sidebar.dataset.expanded,'false',page);
+   assert.equal(sidebar.querySelector('.workspace-sidebar-toggle'),null,page);
+   assert.equal(localStorage.getItem('a4b-sidebar-pinned'),'false',page);
+  }finally{await h.close();}
+ }
+});
+
+test('sidebar keyboard pinning survives escape and unpinning preserves temporary keyboard expansion',async()=>{
+ const h=await setup('?screen=home',{},path=>path.endsWith('/agents')?{agents:[]}:undefined,createElement(EntryApp));
+ try{
+  const sidebar=document.querySelector<HTMLElement>('.workspace-sidebar')!;
+  const home=sidebar.querySelector<HTMLButtonElement>('[data-tour="menu-home"]')!;
+  await act(async()=>{home.focus();await tick();});
+  const pin=sidebar.querySelector<HTMLButtonElement>('.workspace-sidebar-pin');assert.ok(pin);assert.equal(pin.hidden,false);
+  await act(async()=>{pin.focus();pin.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await tick();});
+  await click(pin);assert.equal(sidebar.dataset.pinned,'true');
+  await act(async()=>{pin.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
+  assert.equal(sidebar.dataset.expanded,'true');assert.equal(sidebar.dataset.pinned,'true');
+  await click(pin);assert.equal(sidebar.dataset.pinned,'false');assert.equal(sidebar.dataset.expanded,'true');
+  await act(async()=>{document.querySelector<HTMLTextAreaElement>('.overview-composer textarea')!.focus();await tick();});
+  assert.equal(sidebar.dataset.expanded,'false');
+  await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
+  await act(async()=>{home.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});assert.equal(sidebar.dataset.expanded,'false');
  }finally{await h.close();}
 });

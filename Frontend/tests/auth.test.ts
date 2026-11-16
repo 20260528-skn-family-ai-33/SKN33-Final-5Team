@@ -71,7 +71,7 @@ test('actual product entry does not fetch private data before authentication fin
  const ui=createRoot(document.getElementById('root'));
  try{
   await act(async()=>{ui.render(createElement(AppUnderTest));await tick();});
-  assert.deepEqual(calls,['/api/auth/me']);assert.match(document.body.textContent||'',/로그인 상태를 확인/);
+  assert.deepEqual(calls,['/api/auth/me']);assert.ok(document.querySelector('.page-transition'));assert.equal(document.querySelector('.a4b-auth-primary'),null);assert.equal(document.querySelector('.workspace-overview'),null);
   await act(async()=>{complete(Response.json({enabled:true,authenticated:false,user:null}));await tick();});
   assert.deepEqual(calls,['/api/auth/me']);assert.match(document.body.textContent||'',/내 작업 공간에 로그인/);
  }finally{

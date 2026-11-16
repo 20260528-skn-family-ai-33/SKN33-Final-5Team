@@ -1,0 +1,14 @@
+/* Pretendard v1.3.9, bundled with its SIL Open Font License. */
+@font-face{
+ font-family:Pretendard;
+ font-style:normal;
+ font-weight:45 920;
+ font-display:swap;
+ src:url('/fonts/pretendard/PretendardVariable.woff2') format('woff2');
+}
+:root{
+ --a4b-font-sans:Pretendard,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+ --font-sans:var(--a4b-font-sans);
+ --default-font-family:var(--a4b-font-sans);
+}
+html{font-family:var(--a4b-font-sans)}

@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 
 const frontendRoot=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const require=createRequire(new URL('../../package.json',import.meta.url));
-const compiled=buildSync({stdin:{contents:"export {ScheduleSettings} from './app/schedule-settings';export {ScheduledWorkflows} from './app/scheduled-workflows';export {ClarificationQuestion} from './app/clarification-question';",resolveDir:frontendRoot,sourcefile:'schedule-controls-test.tsx'},absWorkingDir:frontendRoot,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
+const compiled=buildSync({stdin:{contents:"export {ScheduleSettings} from './app/schedule-settings';export {ScheduledWorkflows} from './app/scheduled-workflows';export {ClarificationForm} from './app/clarification-form';",resolveDir:frontendRoot,sourcefile:'schedule-controls-test.tsx'},absWorkingDir:frontendRoot,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
 const globals=['window','document','navigator','location','HTMLElement','HTMLInputElement','HTMLSelectElement','HTMLTextAreaElement','Element','Node','Event','IS_REACT_ACT_ENVIRONMENT'];
 const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
 let dom:JSDOM;
@@ -20,7 +20,7 @@ installDOM();
 const {createElement,act,useState}=require('react');
 const {createRoot}=require('react-dom/client');
 const module={exports:{} as any};new Function('require','module','exports',compiled)(require,module,module.exports);
-const {ScheduleSettings,ScheduledWorkflows,ClarificationQuestion}=module.exports;
+const {ScheduleSettings,ScheduledWorkflows,ClarificationForm}=module.exports;
 const originalFetch=globalThis.fetch,tick=()=>new Promise(done=>setImmediate(done));
 const daily={frequency:'daily',timezone:'Asia/Seoul',hour:9,minute:0,weekday:null,monthday:null,month_end:false};
 const saved={active:false,spec:daily,next_run_at:'2026-11-12T00:00:00Z',agent_version:1};
@@ -147,24 +147,24 @@ test('reservation management uses saved schedule and keeps an unscheduled workfl
 });
 
 test('choice questions use explicit confirmation and multiple selections remain selected',async()=>{
- const answers:string[]=[];
- const h=await mount(createElement(ClarificationQuestion,{question:{id:'one',text:'실행 방식',options:['직접','예약'],response:{type:'single_choice'}},onAnswer:(answer:string)=>answers.push(answer)}));
+ const answers:unknown[]=[];
+ const h=await mount(createElement(ClarificationForm,{questions:[{id:'one',text:'실행 방식',options:['직접','예약'],response:{type:'single_choice'}}],onSubmit:(rows:{value:unknown}[])=>{answers.push(...rows.map(row=>row.value));}}));
  try{
-  assert.equal(button('답변 확인').disabled,true);await click(document.querySelector<HTMLInputElement>('input[value="예약"]')!);assert.equal(answers.length,0);
-  await click(button('답변 확인'));assert.deepEqual([...answers],['예약']);
-  await h.render(createElement(ClarificationQuestion,{question:{id:'two',text:'대상 선택',options:['영업','지원'],response:{type:'multi_choice'}},onAnswer:(answer:string)=>answers.push(answer)}));
-  assert.equal(button('답변 확인').disabled,true);
-  for(const input of document.querySelectorAll<HTMLInputElement>('input[type=checkbox]'))await click(input);
-  await click(button('답변 확인'));assert.deepEqual(answers,['예약','영업, 지원']);
+  assert.equal(document.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled,true);await click(document.querySelector<HTMLInputElement>('input[value="예약"]')!);assert.equal(answers.length,0);
+  await click(button('답변 적용'));assert.deepEqual([...answers],['예약']);
+  await h.render(createElement(ClarificationForm,{questions:[{id:'two',text:'대상 선택',options:['영업','지원'],response:{type:'multi_choice'}}],onSubmit:(rows:{value:unknown}[])=>{answers.push(...rows.map(row=>row.value));}}));
+  assert.equal(document.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled,true);
+  for(const input of document.querySelectorAll<HTMLInputElement>('input[type=checkbox][value]'))await click(input);
+  await click(button('답변 적용'));assert.deepEqual(answers,['예약',['영업','지원']]);
  }finally{await h.close();}
 });
 
 test('numeric questions accept zero and expose bounds and unit as an input',async()=>{
- const answers:string[]=[];
- const h=await mount(createElement(ClarificationQuestion,{question:{id:'limit',text:'조회 건수',response:{type:'number',minimum:0,maximum:100,step:1,unit:'건'}},onAnswer:(answer:string)=>answers.push(answer)}));
+ const answers:unknown[]=[];
+ const h=await mount(createElement(ClarificationForm,{questions:[{id:'limit',text:'조회 건수',response:{type:'number',minimum:0,maximum:100,step:1,unit:'건'}}],onSubmit:(rows:{value:unknown}[])=>{answers.push(...rows.map(row=>row.value));}}));
  try{
   const input=document.querySelector<HTMLInputElement>('input[type=number]')!;assert.ok(input);assert.equal(input.min,'0');assert.equal(input.max,'100');assert.equal(input.step,'1');
-  await change(input,'0');assert.equal(button('답변 확인').disabled,false);await click(button('답변 확인'));assert.deepEqual(answers,['0']);
+  await change(input,'0');assert.equal(button('답변 적용').disabled,false);await click(button('답변 적용'));assert.deepEqual(answers,[0]);
  }finally{await h.close();}
 });
 

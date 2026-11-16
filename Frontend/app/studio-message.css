@@ -1,0 +1,4 @@
+.studio-typing-caret { display:inline-block; width:2px; height:1em; margin-left:3px; vertical-align:-.1em; background:currentColor; opacity:.45; }
+.studio-reveal-message { margin-top:4px; padding:2px 0; border:0; background:transparent; color:var(--a4b-muted); font-size:11px; cursor:pointer; }
+.studio-reveal-message:focus-visible { outline:2px solid var(--a4b-action); outline-offset:3px; }
+@media(prefers-reduced-motion:reduce) { .studio-typing-caret { display:none; } }

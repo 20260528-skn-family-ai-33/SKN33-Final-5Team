@@ -1,3 +1,6 @@
+import {WorkspacePageTitle} from './workspace-page-title';
+import {Unplug} from 'lucide-react';
+import {PageTransition} from './page-transition';
 import {useEffect,useRef,useState} from 'react';
 import {Toaster} from '@/components/ui/sonner';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
@@ -19,6 +22,7 @@ const accountLabel=(credential:DisplayCredential,service:Service)=>credential.ac
 
 export function ServiceConnections(){
   const [status,setStatus]=useState<Status>();
+  const [initialLoading,setInitialLoading]=useState(true);
   const [notice,setNotice]=useState('');
   const [busy,setBusy]=useState<Service|null>(null);
   const [managing,setManaging]=useState<Service|null>(null);
@@ -30,6 +34,7 @@ export function ServiceConnections(){
     const requestId=++statusRequest.current;
     try{const next=await request<Status>('/api/service-connections');if(requestId===statusRequest.current&&!changing.current)setStatus(next);}
     catch(e){if(requestId===statusRequest.current&&!changing.current)setNotice((e as Error).message);}
+    finally{if(requestId===statusRequest.current)setInitialLoading(false);}
   }
   useEffect(()=>{void load();const focus=()=>void load();window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);},[]);
   useEffect(()=>{
@@ -65,9 +70,9 @@ export function ServiceConnections(){
   }
   const managedEntry=entries.find(entry=>entry.id===managing);
   const managedCredential=managing?connected(status,managing):undefined;
-  return <section className="service-connections" aria-labelledby="service-connections-heading">
+  return <section className="service-connections" aria-labelledby="service-connections-heading"><PageTransition active={initialLoading}/>
     <Toaster theme="light" position="top-center"/>
-    <div className="entry-page-heading"><div><h1 id="service-connections-heading">서비스 연결</h1></div></div>
+    <div className="entry-page-heading"><WorkspacePageTitle icon={Unplug} id="service-connections-heading">서비스 연결</WorkspacePageTitle></div>
     {notice&&!managing&&<p role="status" className="service-connection-feedback">{notice}</p>}
     <div className="service-connection-grid"><GmailConnection disabled={false} variant="card"/>
       {entries.map(({id,label,description,permission})=>{
@@ -106,6 +111,5 @@ export function ServiceConnections(){
       </DialogContent>}
     </Dialog>
     {pending&&<a href={pending.attempt.authorizationUrl} className="as-text-button" referrerPolicy="no-referrer">팝업이 보이지 않으면 계정 연결 계속</a>}
-    <p className="service-connections-note">서비스에서 허용한 권한은 연결된 워크플로우 단계에서 사용합니다.</p>
   </section>;
 }

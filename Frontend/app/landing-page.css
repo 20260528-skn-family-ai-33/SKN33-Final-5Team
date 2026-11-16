@@ -5,7 +5,7 @@
  --a4b-line:var(--a4b-border);
  background:var(--a4b-surface);
  color:var(--a4b-ink);
- font-family:Inter,"Pretendard","Apple SD Gothic Neo",Arial,sans-serif;
+ font-family:var(--a4b-font-sans);
  font-size:16px;
  line-height:1.6;
  width:100%;

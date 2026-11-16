@@ -47,6 +47,7 @@ test('independent request controls send all selected values in a single typed su
   assert.match(question(questions[1].text).textContent!,/결과 파일을 만들 때 사용할 형식이 필요합니다/);
   await click(choice(question(questions[0].text),'담당자'));await click(choice(question(questions[0].text),'완료일'));
   await click(choice(question(questions[1].text),'Excel'));await input(question(questions[2].text).querySelector('input')!,'0');
+  await click(document.querySelector('[aria-label="다음 질문"]')!);await click(document.querySelector('[aria-label="다음 질문"]')!);
   assert.equal(submitted.length,0);assert.equal(document.querySelectorAll('button[type="submit"]').length,1);
   await submit();assert.equal(submitted.length,1);
   assert.deepEqual(submitted[0].map((answer:any)=>[answer.questionId,answer.value]),[['fields-id',['담당자','완료일']],['format-id','Excel'],['limit-id',0]]);
@@ -70,7 +71,8 @@ test('optional questions can be skipped without creating dirty input or answerin
  const questions=[{id:'required',key:'hour',text:'몇 시에 실행할까요?',response:{type:'number'}},{id:'optional',key:'style',text:'원하는 표현 방식이 있나요?',options:['간결하게','자세하게'],response:{type:'single_choice'},required:false}];
  const h=await mount({questions,onSubmit:(answers:any)=>submitted.push(answers),onDirtyChange:(value:boolean)=>dirty.push(value)});
  try{
-  assert.equal(document.querySelector('button')!.textContent,'선택사항 건너뛰기');assert.equal(document.querySelector('button')!.disabled,false);assert.equal(dirty.at(-1),false);
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  assert.equal(document.querySelector('button[type="submit"]')!.textContent,'선택사항 건너뛰기');assert.equal((document.querySelector('button[type="submit"]') as HTMLButtonElement).disabled,false);assert.equal(dirty.at(-1),false);
   await submit();assert.deepEqual(submitted[0].map((answer:any)=>[answer.questionId,answer.value,answer.skip]),[['optional',null,true]]);assert.equal(dirty.at(-1),false);
  }finally{await h.close();}
 });
@@ -151,4 +153,80 @@ test('review settings combine selectable, compact numeric and time controls with
   ]);
  }finally{await h.close();}
 });
+
+test('question cards preserve answers across next and previous and submit one complete payload',async()=>{
+ const submitted:any[]=[];
+ const questions=[{id:'one',key:'format',text:'저장 형식',options:['CSV','Excel'],response:{type:'single_choice'}},{id:'two',key:'sections',text:'포함 항목',options:['요약','상세'],response:{type:'multi_choice'}}];
+ const h=await mount({questions,onSubmit:(answers:any)=>submitted.push(answers)});
+ try{
+  const fields=()=>Array.from(document.querySelectorAll('fieldset'));
+  assert.deepEqual(fields().map(el=>el.hidden),[false,true]);
+  assert.equal((document.querySelector('[aria-label="이전 질문"]') as HTMLButtonElement).disabled,true);
+  await click(choice(question('저장 형식'),'CSV'));
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  assert.deepEqual(fields().map(el=>el.hidden),[true,false]);assert.equal(submitted.length,0);
+  await click(choice(question('포함 항목'),'요약'));await click(choice(question('포함 항목'),'상세'));
+  await click(document.querySelector('[aria-label="이전 질문"]')!);
+  assert.equal(choice(question('저장 형식'),'CSV').checked,true);
+  await click(choice(question('저장 형식'),'Excel'));
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  assert.equal(choice(question('포함 항목'),'상세').checked,true);
+  await click(document.querySelector('button[type="submit"]')!);
+  assert.equal(submitted.length,1);assert.deepEqual(submitted[0].map((answer:any)=>[answer.questionId,answer.value]),[['one','Excel'],['two',['요약','상세']]]);
+ }finally{await h.close();}
+});
+
+test('validation returns to the invalid hidden question without losing other answers',async()=>{
+ const questions=[{id:'time',text:'실행 시간',response:{type:'time'}},{id:'notes',text:'추가 설명',response:{type:'text'}}];
+ let requests=0;const h=await mount({questions,onSubmit:()=>{requests++;}});
+ try{
+  await input(question('실행 시간').querySelector('input')!,'24:00');
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  await input(question('추가 설명').querySelector('textarea')!,'입력 보존');
+  await click(document.querySelector('button[type="submit"]')!);
+  assert.equal(requests,0);assert.equal(question('실행 시간').hidden,false);
+  assert.match(document.querySelector('[role="alert"]')!.textContent!,/시:분/);
+  await input(question('실행 시간').querySelector('input')!,'09:30');
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  assert.equal(question('추가 설명').querySelector('textarea')!.value,'입력 보존');
+  await click(document.querySelector('button[type="submit"]')!);assert.equal(requests,1);
+ }finally{await h.close();}
+});
+
+test('question refresh keeps the active request by key and falls back when removed',async()=>{
+ const one={id:'a',key:'a',text:'첫 질문',response:{type:'text'}},two={id:'b',key:'b',text:'둘째 질문',response:{type:'text'}};
+ const onSubmit=()=>{},h=await mount({questions:[one,two],onSubmit});
+ try{
+  await click(document.querySelector('[aria-label="다음 질문"]')!);
+  await input(question('둘째 질문').querySelector('textarea')!,'보존');
+  await h.render({questions:[{...two,id:'b-new'},one],onSubmit});
+  assert.equal(question('둘째 질문').hidden,false);assert.equal(question('둘째 질문').querySelector('textarea')!.value,'보존');
+  await h.render({questions:[one],onSubmit});assert.equal(question('첫 질문').hidden,false);
+ }finally{await h.close();}
+});
+
+
+test('Enter advances numeric input without early submission and IME composition stays untouched',async()=>{
+ let requests=0;const h=await mount({questions:[{id:'amount',text:'수량',response:{type:'number'}},{id:'extra',text:'메모',response:{type:'text'}}],onSubmit:()=>{requests++;}});
+ try{
+  const field=question('수량').querySelector('input')!;
+  await input(field,'0');
+  const composing=new dom.window.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true});
+  await act(async()=>{field.dispatchEvent(composing);await tick();});
+  assert.equal(question('수량').hidden,false);assert.equal(composing.defaultPrevented,false);
+  const enter=new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});
+  await act(async()=>{field.dispatchEvent(enter);await tick();});
+  assert.equal(enter.defaultPrevented,true);assert.equal(question('메모').hidden,false);assert.equal(requests,0);
+ }finally{await h.close();}
+});
+
+test('disabled question cards cannot navigate or submit',async()=>{
+ let requests=0;const h=await mount({questions:[{id:'one',text:'질문 하나'},{id:'two',text:'질문 둘'}],disabled:true,onSubmit:()=>{requests++;}});
+ try{
+  assert.ok(Array.from(document.querySelectorAll('button')).every(button=>button.disabled));
+  await click(document.querySelector('[aria-label="다음 질문"]')!);await submit();
+  assert.equal(question('질문 하나').hidden,false);assert.equal(requests,0);
+ }finally{await h.close();}
+});
+
 test.after(()=>{dom.window.close();for(const [key,descriptor] of original)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);});

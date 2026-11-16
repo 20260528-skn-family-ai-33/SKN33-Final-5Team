@@ -9,6 +9,7 @@ import {WorkflowPreview,type Workflow as PreviewWorkflow} from './workflow-previ
 import {clone,deleteNode,nodeInfo,nodePorts,renameNode,validateFlow,type Execution,type Flow,type FlowNode,type Json} from '../../shared/workflow';
 import type {CredentialPublic} from '../lib/api-contracts';
 import {missingStartFiles} from '../lib/run-readiness';
+import {visibleExternalFlows} from '../lib/visible-external-flows';
 import './agent-studio.css';
 import './external-workflow-studio.css';
 
@@ -16,6 +17,7 @@ type ConversationTurn={role:'user'|'assistant';content:string};
 type DesignResult={workflow?:Flow;summary?:string;checklist?:string[];questions?:{question:string;choices?:string[]}[];requirements?:{id:string;description:string;evidence?:string;status:string;nodeIds?:string[]}[]};
 type DesignSession={id:string;revision:number;conversation:ConversationTurn[];result?:DesignResult|null};
 type WebhookInfo={url:string;active:boolean;authentication:string;httpMethod:string;responseMode:string};
+const executionStatusLabel:Record<Execution['status'],string>={success:'완료',error:'실패',queued:'대기',running:'실행 중',waiting:'입력 대기',canceled:'중지'};
 
 function previewOf(flow:Flow):PreviewWorkflow {
  const ids=new Map(flow.nodes.map(node=>[node.name,node.id]));
@@ -65,16 +67,17 @@ export function ExternalWorkflowStudio({workflowId,onBack,onServiceConnect,onCan
  const preview=useMemo(()=>flow?previewOf(flow):null,[flow]);
  const willDeactivate=!!(saved?.active&&flow&&JSON.stringify([saved.nodes,saved.connections,saved.settings])!==JSON.stringify([flow.nodes,flow.connections,flow.settings]));
  const selected=flow?.nodes.find(node=>node.id===selectedId);
+ const selectedRunIndex=selected&&execution?execution.runs.findLastIndex(item=>item.nodeId===selected.id):-1;
  const requirements=Array.isArray(flow?.intentReview?.requirements)?flow!.intentReview.requirements as {id:string;description:string;evidence?:string;status:string;nodeIds:string[]}[]:[];
  const reviewReady=requirements.every(item=>item.status==='mapped'&&Array.isArray(item.nodeIds)&&item.nodeIds.length>0&&item.nodeIds.every(id=>flow?.nodes.some(node=>node.id===id)));
 
  useEffect(()=>{
   let current=true;
   setLoading(true);setError('');setFlow(null);flowRef.current=null;setSaved(null);setDirty(false);setSelectedId(null);setExecution(null);setHistory(null);setWebhookInfo(null);setConversation([]);setSession(null);sessionRef.current=null;
-  void request<{workflows:Flow[]}>('/api/workflows').then(result=>{
+  void request<{workflows:Flow[];executedWorkflowIds?:string[]}>('/api/workflows').then(result=>{
    if(!current)return;
    const found=result.workflows.find(item=>item.id===workflowId);
-   setAllFlows(result.workflows);
+   setAllFlows(visibleExternalFlows(result.workflows,result.executedWorkflowIds));
    if(!found){setError('워크플로우를 찾을 수 없습니다. 작업 라이브러리에서 다시 확인해주세요.');return;}
    setFlow(found);flowRef.current=found;setSaved(found);
   }).catch(cause=>{if(current)setError((cause as Error).message);}).finally(()=>{if(current)setLoading(false);});
@@ -88,9 +91,9 @@ export function ExternalWorkflowStudio({workflowId,onBack,onServiceConnect,onCan
  },[dirty,onCanLeaveChange]);
 
  useEffect(()=>{
-  if(!execution||!['queued','running'].includes(execution.status))return;
+  if(!execution||!['queued','running','waiting'].includes(execution.status))return;
   let stopped=false;
-  const timer=setInterval(()=>{void request<{execution:Execution}>('/api/executions?id='+encodeURIComponent(execution.id)).then(result=>{if(!stopped)setExecution(result.execution);}).catch(cause=>{if(!stopped)setError((cause as Error).message);});},900);
+  const timer=setInterval(()=>{void request<{execution:Execution}>('/api/executions?id='+encodeURIComponent(execution.id)).then(result=>{if(!stopped){setExecution(result.execution);setHistory(items=>items?items.map(item=>item.id===result.execution.id?result.execution:item):items);}}).catch(cause=>{if(!stopped)setError((cause as Error).message);});},900);
   return()=>{stopped=true;clearInterval(timer);};
  },[execution?.id,execution?.status]);
 
@@ -150,7 +153,7 @@ export function ExternalWorkflowStudio({workflowId,onBack,onServiceConnect,onCan
   }catch(cause){setError((cause as Error).message);}finally{setBusy('');}
  }
 
- async function startRun(mode:'learning'|'live',override?:Flow){
+ async function startRun(mode:'learning'|'live',override?:Flow,onlyNode?:string){
   if(busy||fileBusy)return;
   const current=override||flowRef.current;if(!current)return;
   setBusy(mode==='live'?'실제 실행 시작 중':'시험 실행 시작 중');setError('');
@@ -159,7 +162,7 @@ export function ExternalWorkflowStudio({workflowId,onBack,onServiceConnect,onCan
    const input=runInput(inputText,fileInput);
    const missing=missingStartFiles(current,input);if(missing.length)throw new Error(missing.join('\n'));
    const ready=dirty||override?await save(current):current;
-   const result=await request<{executionId:string;execution:Execution}>('/api/runs',{workflowId:ready.id,mode,input});
+   const result=await request<{executionId:string;execution:Execution}>('/api/runs',{workflowId:ready.id,mode,input,...(onlyNode?{onlyNode}:{})});
    setExecution(result.execution);setHistory(items=>items?[result.execution,...items.filter(item=>item.id!==result.execution.id)]:items);setNotice(mode==='live'?'실제 실행을 시작했습니다. 외부 서비스 동작을 실행합니다.':'시험 실행을 시작했습니다.');
   }catch(cause){setError((cause as Error).message);}finally{setBusy('');}
  }
@@ -172,11 +175,11 @@ export function ExternalWorkflowStudio({workflowId,onBack,onServiceConnect,onCan
   flowRef.current=result.workflow;setFlow(result.workflow);setSaved(result.workflow);setDirty(false);setWebhookInfo(null);setNotice(result.workflow.active?'자동 실행을 켰습니다.':'자동 실행을 껐습니다.');
  }catch(cause){setError((cause as Error).message);}finally{setBusy('');}}
 
- function applyNode(node:FlowNode):boolean{try{const current=flowRef.current;if(!current)throw new Error('워크플로우를 불러오는 중입니다.');change(editedNode(current,node));setNodeOpen(false);return true;}catch(cause){setError((cause as Error).message);return false;}}
+ function applyNode(node:FlowNode,close=true):boolean{try{const current=flowRef.current;if(!current)throw new Error('워크플로우를 불러오는 중입니다.');change(editedNode(current,node));if(close)setNodeOpen(false);return true;}catch(cause){setError((cause as Error).message);return false;}}
 
  async function reload(){if(dirty&&!window.confirm('저장하지 않은 변경을 버리고 다시 불러올까요?'))return;setBusy('새로고침 중');setError('');try{
-  const result=await request<{workflows:Flow[]}>('/api/workflows');const found=result.workflows.find(item=>item.id===workflowId);if(!found)throw new Error('워크플로우를 찾을 수 없습니다.');
-  setAllFlows(result.workflows);flowRef.current=found;setFlow(found);setSaved(found);setDirty(false);setNotice('최신 설계를 불러왔습니다.');
+  const result=await request<{workflows:Flow[];executedWorkflowIds?:string[]}>('/api/workflows');const found=result.workflows.find(item=>item.id===workflowId);if(!found)throw new Error('워크플로우를 찾을 수 없습니다.');
+  setAllFlows(visibleExternalFlows(result.workflows,result.executedWorkflowIds));flowRef.current=found;setFlow(found);setSaved(found);setDirty(false);setNotice('최신 설계를 불러왔습니다.');
  }catch(cause){setError((cause as Error).message);}finally{setBusy('');}}
 
  async function loadHistory(){if(busy)return;setBusy('기록 불러오는 중');setError('');try{
@@ -233,11 +236,11 @@ export function ExternalWorkflowStudio({workflowId,onBack,onServiceConnect,onCan
    {flow.intentReview&&<div className="external-studio-review"><h3>요구사항 반영 확인</h3>{requirements.length?<ul>{requirements.map(item=><li key={item.id}><strong>{item.description}</strong><span>{item.nodeIds?.map(id=>flow.nodes.find(node=>node.id===id)?.name||'삭제된 작업').join(' → ')||'연결된 작업 없음'}</span></li>)}</ul>:<p>연결할 요구사항이 있는지 설계를 확인해주세요.</p>}<label><input type="checkbox" checked={!!flow.intentReview.reviewed} disabled={!reviewReady} onChange={event=>change({...flow,intentReview:{...flow.intentReview,reviewed:event.target.checked}})}/> 단계와 연결이 요청 내용을 반영하는지 확인했습니다.</label>{!reviewReady&&<p role="alert">반영되지 않은 요구사항이나 삭제된 작업이 있어 저장할 수 없습니다. 대화에서 수정해주세요.</p>}</div>}
    <div className="external-studio-danger"><button type="button" className="as-text-button" onClick={()=>void removeFlow()} disabled={!!busy}><Trash2 size={15}/>워크플로우 삭제</button></div>
   </section>
-  <section className="external-studio-run" aria-label="워크플로우 실행"><div className="external-studio-section-heading"><div><h2>실행 확인</h2><p>시험 실행은 외부 전송을 수행하지 않습니다. 실제 실행은 연결된 서비스에 작업을 요청합니다.</p></div><div className="as-design-actions">{flow.nodes.some(node=>node.type==='n8n-nodes-base.webhook')&&<button className="as-button" onClick={()=>void showWebhook()} disabled={!!busy}>Webhook 주소</button>}<button className="as-button" onClick={()=>void toggleActive()} disabled={!!busy}>{flow.active?'자동 실행 끄기':'자동 실행 켜기'}</button></div></div>{webhookInfo&&<div className="external-studio-webhook"><strong>{webhookInfo.active?'Webhook 사용 중':'자동 실행을 켜면 사용할 수 있습니다.'}</strong><code>{webhookInfo.httpMethod} {webhookInfo.url}</code><small>주소에 인증 정보가 포함될 수 있습니다. 필요한 서비스에만 전달하세요.</small></div>}<details><summary>시작 데이터 또는 파일 입력</summary><div className="external-studio-input"><FileInput onChange={setFileInput} onBusyChange={setFileBusy}/><label>시작 데이터 (JSON)<textarea aria-label="시작 데이터 (JSON)" value={inputText} onChange={event=>setInputText(event.target.value)} disabled={!!fileInput||!!busy} rows={4}/></label></div></details><div className="as-design-actions"><button className="as-button" onClick={()=>void startRun('learning')} disabled={!!busy||fileBusy}><Play/>시험 실행</button><button className="as-button as-primary" onClick={()=>void startRun('live')} disabled={!!busy||fileBusy}><Play/>실제 실행</button><button className="as-button" onClick={()=>void loadHistory()} disabled={!!busy}>최근 실행 기록</button></div>
-   {history&&<div className="external-studio-history" aria-label="최근 실행 기록">{history.length?<ul>{history.slice(0,20).map(item=><li key={item.id}><button className="as-text-button" onClick={()=>setExecution(item)}>{item.id.slice(0,8)} · {item.mode==='live'?'실제':'시험'} · {item.status} · {new Date(item.startedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</button></li>)}</ul>:<p>최근 실행 기록이 없습니다.</p>}</div>}
-   {execution&&<div className="external-studio-result" role="status"><div className="external-studio-result-heading"><h3>실행 결과 · {({success:'완료',error:'실패',queued:'대기',running:'실행 중',waiting:'입력 대기',canceled:'중지'} as Record<string,string>)[execution.status]}</h3>{['queued','running','waiting'].includes(execution.status)?<button className="as-button" onClick={()=>void cancelExecution()} disabled={!!busy}>실행 중지</button>:['error','canceled'].includes(execution.status)?<button className="as-button" onClick={()=>void retryExecution()} disabled={!!busy}>재시도</button>:null}</div><p>실행 ID {execution.id.slice(0,8)} · {execution.mode==='live'?'실제 실행':'시험 실행'}</p>{execution.error&&<p role="alert">{execution.error}</p>}<ol>{execution.runs.map((item,index)=><li key={index}><strong>{item.name}</strong> · {item.status==='success'?'완료':item.status==='error'?'실패':'건너뜀'}{item.error&&<p role="alert">{item.error}</p>}</li>)}</ol>{execution.runs.at(-1)?.output?.[0]&&<DataView items={execution.runs.at(-1)!.output[0]} executionId={execution.id} runIndex={execution.runs.length-1}/>}</div>}
+  <section className="external-studio-run" aria-label="워크플로우 실행"><div className="external-studio-section-heading"><div><h2>실행 확인</h2><p>시험 실행은 외부 서비스에 데이터를 쓰거나 메시지를 보내지 않습니다. 읽기 요청은 발생할 수 있습니다. 실제 실행은 연결된 서비스에 작업을 요청합니다.</p></div><div className="as-design-actions">{flow.nodes.some(node=>node.type==='n8n-nodes-base.webhook')&&<button className="as-button" onClick={()=>void showWebhook()} disabled={!!busy}>Webhook 주소</button>}<button className="as-button" onClick={()=>void toggleActive()} disabled={!!busy}>{flow.active?'자동 실행 끄기':'자동 실행 켜기'}</button></div></div>{webhookInfo&&<div className="external-studio-webhook"><strong>{webhookInfo.active?'Webhook 사용 중':'자동 실행을 켜면 사용할 수 있습니다.'}</strong><code>{webhookInfo.httpMethod} {webhookInfo.url}</code><small>주소에 인증 정보가 포함될 수 있습니다. 필요한 서비스에만 전달하세요.</small></div>}<details><summary>시작 데이터 또는 파일 입력</summary><div className="external-studio-input"><FileInput onChange={setFileInput} onBusyChange={setFileBusy}/><label>시작 데이터 (JSON)<textarea aria-label="시작 데이터 (JSON)" value={inputText} onChange={event=>setInputText(event.target.value)} disabled={!!fileInput||!!busy} rows={4}/></label></div></details><div className="as-design-actions"><button className="as-button" onClick={()=>void startRun('learning')} disabled={!!busy||fileBusy}><Play/>시험 실행</button><button className="as-button as-primary" onClick={()=>void startRun('live')} disabled={!!busy||fileBusy}><Play/>실제 실행</button><button className="as-button" onClick={()=>void loadHistory()} disabled={!!busy}>최근 실행 기록</button></div>
+   {history&&<div className="external-studio-history" aria-label="최근 실행 기록">{history.length?<ul>{history.slice(0,20).map(item=><li key={item.id}><button className="as-text-button" onClick={()=>setExecution(item)}>{item.id.slice(0,8)} · {item.mode==='live'?'실제':'시험'} · {executionStatusLabel[item.status]} · {new Date(item.startedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</button></li>)}</ul>:<p>최근 실행 기록이 없습니다.</p>}</div>}
+   {execution&&<div className="external-studio-result" role="status"><div className="external-studio-result-heading"><h3>실행 결과 · {executionStatusLabel[execution.status]}</h3>{['queued','running','waiting'].includes(execution.status)?<button className="as-button" onClick={()=>void cancelExecution()} disabled={!!busy}>실행 중지</button>:['error','canceled'].includes(execution.status)?<button className="as-button" onClick={()=>void retryExecution()} disabled={!!busy}>재시도</button>:null}</div><p>실행 ID {execution.id.slice(0,8)} · {execution.mode==='live'?'실제 실행':'시험 실행'}</p>{execution.error&&<p role="alert">{execution.error}</p>}<ol>{execution.runs.map((item,index)=><li key={index}><strong>{item.name}</strong> · {item.status==='success'?'완료':item.status==='error'?'실패':'건너뜀'}{item.error&&<p role="alert">{item.error}</p>}</li>)}</ol>{execution.runs.at(-1)?.output?.[0]&&<DataView items={execution.runs.at(-1)!.output[0]} executionId={execution.id} runIndex={execution.runs.length-1}/>}</div>}
   </section>
-  <NodeEditor node={selected} run={execution?.runs.findLast(item=>item.nodeId===selected?.id)} open={nodeOpen} onClose={()=>setNodeOpen(false)} onApply={applyNode} onDelete={()=>{if(selected){change(deleteNode(flow,selected.id));setSelectedId(null);setNodeOpen(false);}}} onRun={node=>{if(applyNode(node))void startRun('learning',flowRef.current!);}} beginner credentials={credentials} onConnect={onServiceConnect} timezone={String(flow.settings?.timezone||'Asia/Seoul')} workflows={allFlows} currentFlowId={flow.id} execution={execution}/>
+  <NodeEditor node={selected} run={selectedRunIndex>=0?execution!.runs[selectedRunIndex]:undefined} executionId={execution?.id} runIndex={selectedRunIndex>=0?selectedRunIndex:undefined} open={nodeOpen} onClose={()=>setNodeOpen(false)} onApply={node=>applyNode(node)} onDelete={()=>{if(selected){change(deleteNode(flow,selected.id));setSelectedId(null);setNodeOpen(false);}}} onRun={node=>{if(applyNode(node,false))void startRun('learning',flowRef.current!,node.id);}} beginner credentials={credentials} onConnect={onServiceConnect} timezone={String(flow.settings?.timezone||'Asia/Seoul')} workflows={allFlows} currentFlowId={flow.id} execution={execution}/>
   <WorkflowSettings open={settingsOpen} onClose={()=>setSettingsOpen(false)} flow={flow} workflows={allFlows} onApply={settings=>change({...flow,settings})}/>
  </main>;
 }

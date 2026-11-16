@@ -3244,6 +3244,77 @@ test('current external studio edits a task, saves the flow and starts a trial ru
   assert.equal(runs.length,1);
   assert.deepEqual(runs[0],{workflowId:stored.id,mode:'learning',input:[{}]});
   assert.match(studio.textContent||'',/실행 결과 · 완료/);
+  await click(studio.querySelector<HTMLButtonElement>('.as-flow-node[title="API 재고 조회"]')!);
+  await click(button('작업 설정'));
+  await click(button('여기까지 시험 실행'));
+  assert.equal(runs.length,2);
+  assert.deepEqual(runs[1],{workflowId:stored.id,mode:'learning',input:[{}],onlyNode:stored.nodes[1].id});
+  assert.ok(document.querySelector('.node-editor-sheet'),'task editor stays open for the scoped run result');
   assert.equal(document.querySelector('main.workspace'),null);
+ }finally{await h.close();}
+});
+
+test('external task result preserves the execution file download context',async()=>{
+ const flow=externalFlow('binary-result-flow');
+ const execution={id:'binary-run',workflowId:flow.id,workflowName:flow.name,status:'success',startedAt:'2026-11-16T02:00:00.000Z',duration:5,mode:'learning',runs:[
+  {nodeId:flow.nodes[0].id,name:flow.nodes[0].name,input:[{}],output:[[{}]],status:'success',duration:1},
+  {nodeId:flow.nodes[1].id,name:flow.nodes[1].name,input:[{}],output:[[{__easyflowBinary:{data:{fileName:'report.csv',mimeType:'text/csv',fileSize:4}}}]],status:'success',duration:4},
+ ]};
+ const h=await setup('?screen=workflow&external='+flow.id,{},(path,body,method)=>{
+  if(path==='/api/workflows'&&method==='GET')return {workflows:[flow]};
+  if(path==='/api/workflows'&&method==='POST')return {workflow:body};
+  if(path==='/api/runs')return {executionId:execution.id,execution};
+  if(path.startsWith('/api/evidence-review?'))return {checks:{}};
+ },createElement(EntryApp));
+ try{
+  await click(button('시험 실행'));
+  await click(document.querySelector<HTMLButtonElement>('.as-flow-node[title="API 조회"]')!);
+  await click(button('작업 설정'));
+  const link=document.querySelector<HTMLAnchorElement>('.node-editor-sheet a[aria-label="report.csv 파일 받기"]');
+  assert.ok(link,'task result should offer the file download in the task editor');
+  const url=new URL(link.href);
+  assert.equal(url.searchParams.get('executionId'),execution.id);
+  assert.equal(url.searchParams.get('runIndex'),'1');
+ }finally{await h.close();}
+});
+
+test('external run keeps polling while waiting and refreshes its history row',async()=>{
+ const flow=externalFlow('waiting-flow');
+ const base={id:'waiting-run',workflowId:flow.id,workflowName:flow.name,startedAt:'2026-11-16T02:00:00.000Z',duration:0,runs:[],mode:'learning'};
+ let polls=0;
+ const h=await setup('?screen=workflow&external='+flow.id,{},path=>{
+  if(path==='/api/workflows')return {workflows:[flow]};
+  if(path==='/api/runs')return {executionId:base.id,execution:{...base,status:'queued'}};
+  if(path==='/api/executions')return {executions:[]};
+  if(path==='/api/executions?id='+base.id)return {execution:{...base,status:++polls===1?'waiting':'success'}};
+ },createElement(EntryApp));
+ try{
+  await click(button('최근 실행 기록'));
+  await click(button('시험 실행'));
+  assert.match(document.querySelector('.external-studio-history')?.textContent||'',/대기/);
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,1100));await tick();});
+  assert.match(document.querySelector('.external-studio-result')?.textContent||'',/입력 대기/);
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,1100));await tick();});
+  assert.match(document.querySelector('.external-studio-result')?.textContent||'',/실행 결과 · 완료/);
+  assert.match(document.querySelector('.external-studio-history')?.textContent||'',/완료/);
+  assert.equal(polls,2);
+ }finally{await h.close();}
+});
+
+test('external task subworkflow selector excludes an unused starter',async()=>{
+ const flow=externalFlow('parent-flow');
+ flow.nodes[1].type='n8n-nodes-base.executeWorkflow';
+ flow.nodes[1].parameters={workflowId:''};
+ const starter=makeFlow();starter.id='hidden-starter';
+ const other=externalFlow('other-flow');other.name='다른 자동화';
+ const h=await setup('?screen=workflow&external='+flow.id,{},path=>path==='/api/workflows'?{workflows:[starter,other,flow],executedWorkflowIds:[]}:undefined,createElement(EntryApp));
+ try{
+  await click(document.querySelector<HTMLButtonElement>('.as-flow-node[title="API 조회"]')!);
+  await click(button('작업 설정'));
+  const trigger=document.querySelector<HTMLElement>('#sub-workflow');assert.ok(trigger);
+  await act(async()=>{trigger.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));await tick();});
+  const choices=Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).map(item=>item.textContent||'');
+  assert.ok(choices.some(item=>item.includes(other.name)));
+  assert.ok(!choices.some(item=>item.includes(starter.name)));
  }finally{await h.close();}
 });

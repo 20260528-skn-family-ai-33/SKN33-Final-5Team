@@ -26,9 +26,9 @@ def workflow_folders(c):
     return {'organization':change(c.storage,c.data)}
 
 def schedules(c):
-    schedules=Schedules(c.storage)
+    reservations=Schedules(c.storage).listing()
     return {'workflows':[{'agent':agent,'schedule':reservation}
-                         for agent in c.storage.agents() if (reservation:=schedules.get(agent['id'])) is not None]}
+                         for agent in c.storage.agents() if (reservation:=reservations.get(agent['id'])) is not None]}
 
 def rename_agent(c):
     data=c.data
@@ -44,3 +44,23 @@ def agent(c):
             'input_requirements':execution_requirements(agent['config'],storage,[source['asset_id']] if source else [],agent.get('workflow_dependencies')),
             'schedule_request_required':execution_request_required(scheduled_config,agent.get('workflow_dependencies')),
             'request_required':execution_request_required(agent['config'],agent.get('workflow_dependencies'))}
+
+
+def history(c):
+    # History needs names and run list fields, never documents, schedules or run outputs.
+    selected=c.data.get('id')
+    agents=[{'id':agent['id'],'version':agent['version'],'model':agent.get('model',''),
+             'updated_at':agent.get('updated_at',''),'config':{'name':agent['config']['name'],
+             'purpose':agent['config'].get('purpose',''),'tool_ids':[]}}
+            for agent in c.storage.agents() if not selected or agent['id']==selected]
+    by_id={agent['id']:agent for agent in agents}
+    rows=[{'agent':by_id[agent_id],'run':run} for agent_id,run in c.storage.run_history(selected) if agent_id in by_id]
+    from datetime import datetime, timezone
+    def started(row):
+        value=row['run'].get('started_at') or row['run'].get('created_at') or ''
+        try:
+            date=datetime.fromisoformat(value.replace('Z','+00:00'))
+            return (date if date.tzinfo else date.replace(tzinfo=timezone.utc)).timestamp()
+        except (ValueError,TypeError):return 0
+    rows.sort(key=started,reverse=True)
+    return {'agents':agents,'rows':rows}

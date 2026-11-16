@@ -1,7 +1,6 @@
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
 import {useButtonEffects} from './use-button-effects';
-import {settleWithLimit} from '../lib/settle-with-limit';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowRight,Workflow,History,Search,RefreshCw,AlertCircle,Pencil} from 'lucide-react';
 import AgentStudio from './agent-studio';
@@ -59,7 +58,7 @@ export default function EntryApp(){
   historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current,initialPrompt,initialFile},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});return true;
 
  }
- if(auth.loading)return <PageTransition active/>;
+ if(auth.loading)return ['intro','preview'].includes(route)?<PageTransition active/>:<div className="entry-app"><WorkspaceHeader onHome={()=>{}} disabled pending/><div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={()=>{}} help={null} disabled/><main className="entry-workspace-main"><PageTransition active/></main></div></div>;
  if(!['intro','preview'].includes(route)&&(auth.enabled&&!auth.user))return <SignIn onHome={()=>navigate('intro')}/>;
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
  if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('home')}/>;
@@ -81,18 +80,23 @@ export default function EntryApp(){
 function WorkspaceHome({route,historyService,navigate,newFlow,startExample,memberName}:{memberName?:string;route:'home'|'workflows'|'history';startExample:(prompt:string,file?:File)=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string,externalId?:string)=>void;newFlow:()=>void}){
  const [agents,setAgents]=useState<AgentSummary[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[query,setQuery]=useState('');
  const [externalFlows,setExternalFlows]=useState<ExternalFlowSummary[]>([]);
- const [runRows,setRunRows]=useState<{agent:AgentSummary;run:RunSummary}[]>([]),[historyErrors,setHistoryErrors]=useState<string[]>([]);
+ const [runRows,setRunRows]=useState<{agent:AgentSummary;run:RunSummary}[]>([]);
  const [renaming,setRenaming]=useState<AgentSummary|null>(null);
  const [renameNotice,setRenameNotice]=useState('');
  const [organization,setOrganization]=useState<WorkflowOrganization>(emptyOrganization),[activeFolder,setActiveFolder]=useState('all'),[selectedWorkflows,setSelectedWorkflows]=useState<string[]>([]);
- const generation=useRef(0);
- async function load(){const token=++generation.current;setLoading(true);setError('');setHistoryErrors([]);setRunRows([]);try{
+ const generation=useRef(0),loadRequest=useRef<AbortController|null>(null);
+ async function load(){loadRequest.current?.abort();const controller=new AbortController();loadRequest.current=controller;const token=++generation.current;setLoading(true);setError('');setRunRows([]);try{
 
-  const {agents:listed=[],organization:folders=emptyOrganization}=await request<{agents?:AgentSummary[];organization?:WorkflowOrganization}>('/api/agent-builder/agents');if(token!==generation.current)return;setAgents(listed);setOrganization(folders);setSelectedWorkflows([]);setActiveFolder(current=>current==='all'||current==='unfiled'||folders.folders.some(f=>f.id===current)?current:'all');
-  if(route==='workflows')await request<{workflows?:ExternalFlowSummary[]}>('/api/workflows').then(result=>{if(token===generation.current)setExternalFlows((result.workflows||[]).filter(flow=>flow.nodes.length>1));}).catch(()=>{});
-  if(route==='history'){const historyAgents=listed.filter(agent=>!historyService||agent.id===historyService);const rows=await settleWithLimit(historyAgents,4,async(agent:AgentSummary)=>{const result=await request('/api/agent-builder/agent?id='+encodeURIComponent(agent.id));return {agent,runs:result.tests||[]};},()=>token===generation.current);if(token!==generation.current)return;setRunRows(rows.flatMap(r=>r.status==='fulfilled'?r.value.runs.map((run:RunSummary)=>({agent:r.value.agent,run})):[]).sort((a,b)=>(Date.parse(b.run.started_at||b.run.created_at||'')||0)-(Date.parse(a.run.started_at||a.run.created_at||'')||0)));setHistoryErrors(rows.flatMap((r,i)=>r.status==='rejected'?[historyAgents[i].config.name]:[]));}
+  if(route==='history'){
+   const result=await request<{agents:AgentSummary[];rows:{agent:AgentSummary;run:RunSummary}[]}>('/api/agent-builder/history'+(historyService?'?id='+encodeURIComponent(historyService):''),undefined,undefined,controller.signal);
+   if(token!==generation.current)return;setAgents(result.agents);setRunRows(result.rows);
+  }else{
+  const {agents:listed=[],organization:folders=emptyOrganization}=await request<{agents?:AgentSummary[];organization?:WorkflowOrganization}>('/api/agent-builder/agents',undefined,undefined,controller.signal);if(token!==generation.current)return;setAgents(listed);setOrganization(folders);setSelectedWorkflows([]);setActiveFolder(current=>current==='all'||current==='unfiled'||folders.folders.some(f=>f.id===current)?current:'all');
+  if(route==='workflows')await request<{workflows?:ExternalFlowSummary[]}>('/api/workflows',undefined,undefined,controller.signal).then(result=>{if(token===generation.current)setExternalFlows((result.workflows||[]).filter(flow=>flow.nodes.length>1));}).catch(()=>{});
+  }
+
  }catch(e){if(token===generation.current)setError((e as Error).message);}finally{if(token===generation.current)setLoading(false);}}
- useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;};},[route,historyService]);
+ useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;loadRequest.current?.abort();};},[route,historyService]);
  const historyAgent=historyService?agents.find(agent=>agent.id===historyService):undefined;
  const matches=agents.filter(a=>(activeFolder==='all'||(activeFolder==='unfiled'?!organization.assignments[a.id]:organization.assignments[a.id]===activeFolder))&&(a.config.name+' '+a.config.purpose).toLocaleLowerCase().includes(query.toLocaleLowerCase()));
  const selectableMatches=matches.slice(0,MAX_WORKFLOW_SELECTION);
@@ -135,7 +139,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   }}/>}
   {!loading&&!error&&!matches.length&&!externalMatches.length&&<section className="entry-empty"><Workflow size={26}/><h2>{query?'검색 결과가 없습니다.':agents.length?'이 폴더에 워크플로우가 없습니다.':'첫 워크플로우를 만들어보세요.'}</h2><p>{query?'이름이나 설명을 바꿔 검색하세요.':'업무와 자료를 설명하면 흐름을 구성할 수 있습니다.'}</p>{!query&&<button className="as-button" onClick={newFlow}>새 워크플로우</button>}</section>}
  </>}
- {route==='history'&&<>{historyErrors.length>0&&<div className="as-error" role="alert">일부 기록을 불러오지 못했습니다: {historyErrors.join(', ')}. 새로고침하여 다시 확인하세요.</div>}<div className="entry-history-list entry-run-history">{runRows.map(({agent:a,run})=><article key={run.id}><div><h2>{a.config.name}</h2><p>{run.started_at||run.created_at?date(run.started_at||run.created_at):'실행 시각 없음'}</p></div><span className={'entry-run-status '+run.status}>{({succeeded:'완료',failed:'실패',running:'실행 중',needs_input:'답변 대기'})[run.status]||run.status}</span><button className="as-button as-secondary" onClick={()=>navigate('run',a.id,run.id)}>결과 보기</button>{run.error&&<p className="entry-history-error">{run.error}</p>}</article>)}</div>{!loading&&!error&&!runRows.length&&<section className="entry-empty"><History size={26}/><h2>아직 실행 기록이 없습니다.</h2><p>저장한 워크플로우를 실행하면 여기에 표시됩니다.</p><button className="as-button as-primary" onClick={()=>historyAgent?navigate('run',historyAgent.id):navigate('workflows')}>{historyAgent?'워크플로우 실행 화면':'워크플로우로 이동'}</button></section>}</>}
+ {route==='history'&&<><div className="entry-history-list entry-run-history">{runRows.map(({agent:a,run})=><article key={run.id}><div><h2>{a.config.name}</h2><p>{run.started_at||run.created_at?date(run.started_at||run.created_at):'실행 시각 없음'}</p></div><span className={'entry-run-status '+run.status}>{({succeeded:'완료',failed:'실패',running:'실행 중',needs_input:'답변 대기'})[run.status]||run.status}</span><button className="as-button as-secondary" onClick={()=>navigate('run',a.id,run.id)}>결과 보기</button>{run.error&&<p className="entry-history-error">{run.error}</p>}</article>)}</div>{!loading&&!error&&!runRows.length&&<section className="entry-empty"><History size={26}/><h2>아직 실행 기록이 없습니다.</h2><p>저장한 워크플로우를 실행하면 여기에 표시됩니다.</p><button className="as-button as-primary" onClick={()=>historyAgent?navigate('run',historyAgent.id):navigate('workflows')}>{historyAgent?'워크플로우 실행 화면':'워크플로우로 이동'}</button></section>}</>}
 
 
  </>;

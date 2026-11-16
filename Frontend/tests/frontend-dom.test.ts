@@ -536,9 +536,9 @@ test('DOM: historical XLSX chooses its destination before fetching the authentic
 });
 test('entry: a workflow card opens only its execution history',async()=>{
  const h=await setup('?screen=workflows',{},path=>{
-  if(path.includes('/agent?')){
-   const agent=path.includes('id=A')?A:B;
-   return snapshot(agent,[{id:'run-'+agent.id,status:'succeeded',agent_version:1}]);
+  if(path.includes('/history')){
+   const agents=path.includes('id=A')?[A]:[A,B];
+   return {agents,rows:agents.map(agent=>({agent,run:{id:'run-'+agent.id,status:'succeeded',agent_version:1}}))};
   }
  },createElement(EntryApp));
  try{
@@ -546,7 +546,8 @@ test('entry: a workflow card opens only its execution history',async()=>{
   await h.flush();
   assert.equal(new URL(location.href).searchParams.get('service'),'A');
   assert.deepEqual(Array.from(document.querySelectorAll('.entry-history-list h2'),h=>h.textContent),['서비스 A']);
-  assert.ok(!h.calls.some(c=>c.path.includes('/agent?id=B')));
+  assert.ok(!h.calls.some(c=>c.path.includes('/agent?')));
+  assert.equal(h.calls.filter(c=>c.path.includes('/history?id=A')).length,1);
   await click(button('전체 실행 기록'));
   await h.flush();
   assert.equal(document.querySelectorAll('.entry-history-list article').length,2);
@@ -2221,7 +2222,7 @@ test('home: typed request waits for submission then starts a fresh design',async
 
 test('home: all sidebar destinations return to home and recent entries retain their IDs',async()=>{
  const run={id:'stored-run',status:'succeeded',agent_version:1,steps:[],rows:[],created_at:'2026-11-10T01:00:00Z'};
- const h=await setup('?screen=home',{},path=>path.includes('/agent?id=A')?snapshot(A,[run]):undefined,createElement(EntryApp));
+ const h=await setup('?screen=home',{},path=>path.includes('/history')?{agents:[A],rows:[{agent:A,run}]}:path.includes('/agent?id=A')?snapshot(A,[run]):undefined,createElement(EntryApp));
  const nav=(id:string)=>document.querySelector('.workspace-nav [data-tour="menu-'+id+'"]')!;
  const goHome=()=>click(document.querySelector('.workspace-brand')!);
  try{
@@ -2295,6 +2296,7 @@ test('home: linked detail pages keep the selected workflow and return to home',a
  const methods:string[]=[];
  const h=await setup('?screen=home',{},(path,_body,method)=>{
   methods.push(method);
+  if(path.includes('/history'))return {agents:[scheduled],rows:[latest,old].map(run=>({agent:scheduled,run}))};
   if(path.endsWith('/agents'))return {agents:[scheduled,B]};
   if(path.endsWith('/schedules'))return {workflows:scheduleFixtures()};
   if(path.includes('/agent?id=A'))return snapshot(scheduled,[latest,old]);
@@ -3107,5 +3109,20 @@ test('sidebar keyboard pinning survives escape and unpinning preserves temporary
   assert.equal(sidebar.dataset.expanded,'false');
   await act(async()=>{home.focus();await tick();});assert.equal(sidebar.dataset.expanded,'true');
   await act(async()=>{home.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});assert.equal(sidebar.dataset.expanded,'false');
+ }finally{await h.close();}
+});
+
+
+test('entry: leaving a pending history keeps navigation usable and ignores late rows',async()=>{
+ const pending=deferred();
+ const h=await setup('?screen=history',{},path=>path.includes('/history')?pending.promise:undefined,createElement(EntryApp));
+ try{
+  assert.equal(document.querySelector('.page-transition')?.parentElement?.tagName,'MAIN');
+  assert.equal(document.querySelector('.workspace-sidebar')?.closest('[inert]'),null);
+  await click(document.querySelector('[data-tour="menu-home"]')!);await h.flush();
+  assert.equal(new URL(location.href).searchParams.get('screen'),'home');
+  await act(async()=>{pending.resolve({agents:[A],rows:[{agent:A,run:{id:'obsolete',status:'succeeded'}}]});await tick();});
+  assert.ok(document.querySelector('.workspace-overview'));assert.equal(document.querySelector('.entry-history-list'),null);
+  assert.equal(document.querySelector('[inert]'),null);
  }finally{await h.close();}
 });

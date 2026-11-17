@@ -86,7 +86,10 @@ def _pending_draft(state, ledger):
         execution_plan=ExecutionPlan(filters=[], sort=[], match='all', missing_policy='keep', duplicate_policy='keep', duplicate_field=None, output_format='json'),
         workflow=None, schedule=None, report_destination=None).model_dump()
     previous=state.get('draft')
-    if previous and previous.get('workflow'):
+    # Only keep the previous workflow while every file it reads is still attached;
+    # otherwise its document IDs and requirements describe files removed this turn.
+    if (previous and previous.get('workflow')
+            and set(previous.get('document_ids') or []) <= set(pending['document_ids'])):
         # Questions belong to the new turn; executable settings stay visible until a new draft validates.
         preserved=deepcopy(previous)
         preserved.update({key:pending[key] for key in

@@ -21,6 +21,30 @@ def _last_user(state):
     return next((m.get('content') for m in reversed(state.get('messages',[]) or []) if m.get('role')=='user'),None)
 
 
+_FAILURE_KEYS=('system_failure','requirement_failure','issues','status')
+
+
+def _rerun_from_gates(graph,config,state,restored):
+    """Rerun the same request from the gates after a retryable failure.
+
+    Both failure markers are cleared so a rerun that stops before the failed stage cannot
+    leave a stale retry banner; the prior failure moves to previous_system_failure for
+    attempt counting. If the rerun raises, the markers are put back so the session keeps
+    offering a retry instead of sitting in 'processing'."""
+    messages=state.get('messages',[])
+    last=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=None)
+    graph.update_state(config,{**restored,'messages':messages if last is None else messages[:last+1],
+        'repair_count':0,'confirmed':False,
+        'previous_system_failure':state.get('system_failure') or state.get('requirement_failure'),
+        'system_failure':None,'requirement_failure':None,'issues':[],'status':'processing'},as_node='resources')
+    try:
+        graph.invoke(None,config)
+    except Exception:
+        graph.update_state(config,{**{key:state.get(key) for key in _FAILURE_KEYS},
+                                   'status':state.get('status') or 'validation_failed'},as_node='resources')
+        raise
+
+
 def _work_messages(storage,s,graph):
     state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
     if not state and s.get('agent_id'):
@@ -286,12 +310,7 @@ def _session_action(c):
             if retrying:
                 # Retry is a control action, not a new business requirement or a
                 # response to a pending field. Keep exact source turns and IDs.
-                messages=state.get('messages',[])
-                last=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
-                graph.update_state(config, {**restored,'messages':messages[:last+1],
-                    'repair_count':0, 'confirmed':False,'previous_system_failure':state.get('system_failure'),
-                    'system_failure':None,'issues':[],'status':'processing'}, as_node='resources')
-                graph.invoke(None, config)
+                _rerun_from_gates(graph,config,state,restored)
             elif has_interrupt:
                 if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:
                     raise ValueError('현재 대화의 확인 질문에 답변해주세요.')
@@ -304,12 +323,7 @@ def _session_action(c):
                 # A retryable processing failure (clarification core system_failure or main's
                 # requirement_failure): rerun from the gates with the same request instead of
                 # appending a duplicate message.
-                messages=state.get('messages',[])
-                last=max(i for i,m in enumerate(messages) if m.get('role')=='user')
-                graph.update_state(config,{**restored,'messages':messages[:last+1],'previous_system_failure':state.get('system_failure'),
-                                           'system_failure':None,'confirmed':False,
-                                           'repair_count':0,'issues':[],'status':'processing'},as_node='resources')
-                graph.invoke(None,config)
+                _rerun_from_gates(graph,config,state,restored)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.
                 from agent_builder.capabilities.capability_gate import blocking_issue

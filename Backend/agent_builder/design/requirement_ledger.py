@@ -605,6 +605,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             return dict(requirement_route=target,requirement_required=False,requirement_failure=None)
         calls=0
         failure_kind = 'model_output_error'
+        fingerprint = None
         try:
             fingerprint=ledger_fingerprint(state)
             from .request_meaning import answered_mail_spec
@@ -754,9 +755,9 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             if error_observer:error_observer(error)
             # Provider exceptions may contain headers, prompts or customer data.
             from .failure_notice import requirement_failure_notice
-            failure_fingerprint=locals().get('fingerprint')
-            previous=state.get('requirement_failure') or {}
-            attempt=(previous.get('attempt', 1) + 1 if failure_fingerprint and previous.get('request_fingerprint') == failure_fingerprint else 1)
+            from agent_builder.conditions.clarification_core import next_attempt
+            failure_fingerprint=fingerprint
+            attempt=next_attempt(state, 'requirements', failure_fingerprint)
             retained=state.get('draft')
             detail=requirement_failure_notice(failure_kind, error, retained_draft=bool(retained and retained.get('workflow')), attempt=attempt)
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,

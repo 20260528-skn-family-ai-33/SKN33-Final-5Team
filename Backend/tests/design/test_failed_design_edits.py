@@ -190,3 +190,77 @@ def test_legacy_failure_reopens_and_retries_original_edit_without_losing_ready_d
     with pytest.raises(ValueError):
         handle({**job, 'action':'confirm', 'revision':retried['revision']})
     assert handle({**job, 'action':'session'})['draft'] == ready['draft']
+
+
+def test_popup_count_evidence_survives_the_count_already_applied_to_the_draft():
+    state = reviewed_mail()
+    text = popup(state['draft']['workflow']['nodes'][0])
+    assert _popup_count_evidence(state, text) == (5, '5')
+    applied = deepcopy(state)
+    node = applied['draft']['workflow']['nodes'][0]
+    args = json.loads(node['settings']['arguments_json'])
+    node['settings']['arguments_json'] = json.dumps({**args, 'max_results':5}, ensure_ascii=False)
+    assert _popup_count_evidence(applied, text) == (5, '5')
+    node['label'] = node['label'].replace('100건', '5건')
+    assert _popup_count_evidence(applied, text) == (5, '5')
+    node['settings']['arguments_json'] = json.dumps({**args, 'max_results':7}, ensure_ascii=False)
+    assert _popup_count_evidence(applied, text) is None
+
+
+def test_attempts_count_only_consecutive_failures_of_the_same_stage_and_input():
+    from agent_builder.conditions.clarification_core import next_attempt
+    previous = {'stage':'capability_check', 'request_fingerprint':'f', 'attempt':2}
+    assert next_attempt({'previous_system_failure':previous}, 'capability_check', 'f') == 3
+    assert next_attempt({'previous_system_failure':previous}, 'condition_check', 'f') == 1
+    assert next_attempt({'previous_system_failure':previous}, 'capability_check', 'other') == 1
+    assert next_attempt({'requirement_failure':{**previous, 'stage':'requirements'}}, 'requirements', 'f') == 3
+    assert next_attempt({'previous_system_failure':previous}, 'capability_check', None) == 1
+
+
+class RecordingGraph:
+    def __init__(self, error=None):
+        self.updates, self.error = [], error
+
+    def update_state(self, config, values, as_node=None):
+        self.updates.append((values, as_node))
+
+    def invoke(self, value, config):
+        if self.error:
+            raise self.error
+
+
+def test_retry_clears_both_failure_markers_and_keeps_the_prior_for_attempt_counting():
+    from service.handlers.design import _rerun_from_gates
+    failure = {'kind':'processing_error', 'retryable':True, 'stage':'requirements', 'attempt':1}
+    state = {'messages':[{'role':'user','content':'a'}, {'role':'assistant','content':'failed'}],
+             'requirement_failure':failure, 'status':'validation_failed', 'issues':['failed']}
+    graph = RecordingGraph()
+    _rerun_from_gates(graph, {}, state, {})
+    values, node = graph.updates[0]
+    assert node == 'resources' and len(graph.updates) == 1
+    assert values['requirement_failure'] is None and values['system_failure'] is None
+    assert values['previous_system_failure'] == failure
+    assert values['messages'] == state['messages'][:1]
+
+
+def test_retry_that_raises_restores_the_failure_instead_of_leaving_processing():
+    from service.handlers.design import _rerun_from_gates
+    failure = {'stage':'capability_check', 'retryable':True, 'message':'x'}
+    state = {'messages':[], 'system_failure':failure, 'status':'validation_failed', 'issues':['x']}
+    graph = RecordingGraph(RuntimeError('boom'))
+    with pytest.raises(RuntimeError):
+        _rerun_from_gates(graph, {}, state, {})
+    assert graph.updates[0][0]['messages'] == []
+    restored, node = graph.updates[-1]
+    assert node == 'resources'
+    assert restored['system_failure'] == failure and restored['status'] == 'validation_failed'
+    assert restored['issues'] == ['x']
+
+
+def test_condition_question_keeps_the_workflow_only_while_its_files_remain():
+    from agent_builder.conditions.condition_check import _pending_draft
+    previous = {**reviewed_mail()['draft'], 'document_ids':['a']}
+    ledger = {'questions':[], 'slots':{}, 'decision':'clarify'}
+    state = {'draft':previous, 'resources':[{'id':'a'}, {'id':'b'}]}
+    assert _pending_draft(state, ledger)['workflow'] == previous['workflow']
+    assert _pending_draft({**state, 'resources':[{'id':'b'}]}, ledger)['workflow'] is None

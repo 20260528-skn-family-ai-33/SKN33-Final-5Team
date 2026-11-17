@@ -161,15 +161,32 @@ def _gmail_count_evidence(state, *, only=False):
 
 
 def _popup_count_evidence(state, text):
-    """Accept a count-only popup request only against the exact current reader and old value."""
+    """Accept a count-only popup request only against the exact current reader.
+
+    The request names the reader and its old value. It stays valid after the new count has
+    been applied to the draft in the same turn (old value and label already rewritten),
+    so later nodes that re-read the evidence see the same bound."""
     found = _read_summary_arguments(state.get('draft') or {})
     if not found:
         return None
     reader, _, arguments = found
-    prefix = (f"`{reader['label']}` 작업 (노드 ID: {reader['id']})의 설정을 다음과 같이 바꿔줘.\n"
-              f"- 조회 한도 (arguments_json.max_results): {arguments['max_results']} → ")
-    match = re.fullmatch(re.escape(prefix) + r'([1-9]\d{0,2})\n다른 작업의 설정은 유지해줘\.', text)
-    return (int(match[1]), match[1]) if match and int(match[1]) <= MAX_RESULTS else None
+    pattern = (r'`(?P<label>[^`\n]+)` 작업 \(노드 ID: ' + re.escape(reader['id']) +
+               r'\)의 설정을 다음과 같이 바꿔줘\.\n'
+               r'- 조회 한도 \(arguments_json\.max_results\): (?P<old>[1-9]\d{0,2}) → (?P<new>[1-9]\d{0,2})\n'
+               r'다른 작업의 설정은 유지해줘\.')
+    match = re.fullmatch(pattern, text)
+    if not match:
+        return None
+    old, new, current = int(match['old']), int(match['new']), arguments['max_results']
+    if new > MAX_RESULTS or old == new:
+        return None
+    if current == old:
+        labels = {reader['label']}
+    elif current == new:
+        labels = {reader['label'], reader['label'].replace(f'{new}건', f'{old}건')}
+    else:
+        return None
+    return (new, match['new']) if match['label'] in labels else None
 
 
 def apply_gmail_count(state, draft):

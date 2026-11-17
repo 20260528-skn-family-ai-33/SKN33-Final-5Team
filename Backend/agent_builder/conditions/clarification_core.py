@@ -141,16 +141,31 @@ def open_required(state):
     return [q for q in state.get('pending_questions', []) or [] if q.get('required', True)]
 
 
+def attempt_notice(attempt):
+    """The repeated-failure sentence shared by every retryable stage."""
+    return (f' 같은 조건의 {attempt}번째 시도도 실패했습니다. 재시도는 실행됐지만 이 단계의 검증을 통과하지 못했습니다.'
+            if attempt > 1 else '')
+
+
+def next_attempt(state, stage, fingerprint):
+    """Count consecutive failures of one stage for the same input; other input restarts at 1."""
+    if not fingerprint:
+        return 1
+    for previous in (state.get('system_failure'), state.get('requirement_failure'), state.get('previous_system_failure')):
+        if previous and previous.get('stage') == stage and previous.get('request_fingerprint') == fingerprint:
+            return previous.get('attempt', 1) + 1
+    return 1
+
+
 def system_failure(stage, error, message, *, state=None):
     """A retryable processing failure. It is not a user decision and never a question."""
     extra={}
     if state is not None:
         from agent_builder.capabilities.capability_gate import input_fingerprint
         fingerprint=input_fingerprint(state)
-        previous=state.get('system_failure') or state.get('previous_system_failure') or {}
-        attempt=(previous.get('attempt',1)+1 if previous.get('stage')==stage and previous.get('request_fingerprint')==fingerprint else 1)
+        attempt=next_attempt(state, stage, fingerprint)
         extra={'attempt':attempt,'request_fingerprint':fingerprint}
-        if attempt>1:message+=f' 같은 조건의 {attempt}번째 시도도 실패했습니다. 재시도는 실행됐지만 이 단계의 검증을 통과하지 못했습니다.'
+        message+=attempt_notice(attempt)
     return {'stage': stage, 'error_type': type(error).__name__ if isinstance(error, BaseException) else str(error),
             'message': message, 'retryable': True,**extra}
 

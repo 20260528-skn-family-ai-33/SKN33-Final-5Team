@@ -51,6 +51,6 @@ def requirement_failure_notice(kind, error, *, retained_draft=False, attempt=1, 
         action = label+' 단계에서 처리를 완료하지 못했습니다. 선택한 모델의 연결 상태를 확인한 뒤 같은 조건으로 다시 시도해주세요.'
     if retained_draft:
         action += ' 이전 워크플로우 초안은 유지했으며, 이번 변경은 아직 적용되지 않았습니다.'
-    if attempt > 1:
-        action += f' 같은 조건의 {attempt}번째 시도도 실패했습니다. 재시도는 실행됐지만 이 단계의 검증을 통과하지 못했습니다.'
+    from agent_builder.conditions.clarification_core import attempt_notice
+    action += attempt_notice(attempt)
     return prefix + action

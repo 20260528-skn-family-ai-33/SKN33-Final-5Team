@@ -118,6 +118,14 @@ test('012: admin-only identity/context, exact owner/version linkage and safe API
    const safe=(await get('/execution/'+run+'?days=7')).item.context;
    assert.equal(safe.conversation.length,2);assert.ok(!JSON.stringify(safe).includes(cookie));
   }
+  for(const [value,expected] of [['첨부 이름 ops@example.com.7z','첨부 이름 [이메일 숨김].7z'],['백업 로그 ops@example.com.log.1','백업 로그 [이메일 숨김].1']]){
+   await c.query('RESET ROLE');
+   await c.query('UPDATE a4b.workflow_runs SET input_json=$1 WHERE id=$2',[JSON.stringify({request:value}),run]);
+   await c.query('UPDATE a4b.design_sessions SET messages_json=$1 WHERE id=$2',[JSON.stringify([{role:'user',content:value},{role:'assistant',content:value}]),session]);
+   await c.query('SET LOCAL ROLE a4b_app');
+   const safe=(await get('/execution/'+run+'?days=7')).item.context;
+   assert.equal(safe.prompt,expected);assert.deepEqual(safe.conversation.map((t:any)=>t.content),[expected,expected]);
+  }
   assert.equal(detail.item.context.prompt_storage_limit,4000);
   assert.equal(detail.item.context.prompt_storage_truncated,null,'old records have unknown truncation');
   for(const truncated of [null,false,true]){

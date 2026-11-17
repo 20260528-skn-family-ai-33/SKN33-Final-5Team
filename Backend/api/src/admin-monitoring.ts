@@ -44,13 +44,20 @@ function maskSecretFields(text:string):string {
 // Consume each candidate once; never retry an email pattern at every character.
 function maskEmails(text:string):string {
  return text.replace(/[\w.+@-]+/g,candidate=>{
-  let end=candidate.length;while(end>0&&candidate[end-1]==='.')end--;
-  const trimmed=candidate.slice(0,end),parts=trimmed.split('@');
+  const parts=candidate.split('@');let offset=parts[0].length+1,maskedEnd=0;
   for(let i=1;i<parts.length;i++){
-   const domain=parts[i],dot=domain.lastIndexOf('.');
-   if(parts[i-1]&&dot>0&&/^[A-Za-z]{2,}/.test(domain.slice(dot+1)))return '[이메일 숨김]'+candidate.slice(trimmed.length);
+   const domain=parts[i];let dot=-1,letters=0;
+   // Record every valid suffix endpoint, including one before .7z or .1.
+   for(let j=0;j<domain.length;j++){
+    const ch=domain[j];if(ch==='+')break;
+    if(ch==='.') {dot=j;letters=0;}
+    else if(dot>0&&letters>=0&&/[A-Za-z]/.test(ch)){
+     letters++;if(letters>=2&&parts[i-1])maskedEnd=offset+j+1;
+    }else letters=-1;
+   }
+   offset+=domain.length+1;
   }
-  return candidate;
+  return maskedEnd?'[이메일 숨김]'+candidate.slice(maskedEnd):candidate;
  });
 }
 function displayText(text:string,max:number){

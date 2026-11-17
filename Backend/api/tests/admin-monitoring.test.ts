@@ -179,3 +179,19 @@ test('long non-email text and mixed email text are processed without quadratic s
  assert.equal(mixed,plain+' [이메일 숨김] '+plain);
  assert.ok(performance.now()-start<2000,'100k inputs should finish within a generous 2s budget');
 });
+
+test('email filename and rotated log suffixes survive masking in every context field',()=>{
+ for(const [input,expected] of [
+  ['첨부 이름 ops@example.com.7z','첨부 이름 [이메일 숨김].7z'],
+  ['백업 로그 ops@example.com.log.1','백업 로그 [이메일 숨김].1'],
+  ['수신자 ops@example.com','수신자 [이메일 숨김]'],
+  ['ops@example.com.7z.1','[이메일 숨김].7z.1'],
+  ['ops@example.com123','[이메일 숨김]123'],
+  ['plain.7z','plain.7z'],['ops@host.1','ops@host.1']]){
+  const safe=safeRequestContext({prompt:input,conversation:[{role:'user',content:input},{role:'assistant',content:input}]});
+  for(const text of [safe.prompt,...safe.conversation.map((t:{content:string})=>t.content)])assert.equal(text,expected);
+ }
+ const start=performance.now(),input='ops@example.com'+'.1'.repeat(50000);
+ assert.equal(diagnosticText(input,Infinity),'[이메일 숨김]'+'.1'.repeat(50000));
+ assert.ok(performance.now()-start<2000,'many suffix segments remain linear');
+});

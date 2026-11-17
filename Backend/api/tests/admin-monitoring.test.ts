@@ -154,3 +154,28 @@ test('secret key quoting preserves closed-value suffixes and masks incomplete va
  assert.ok(!diagnosticText(String.raw`password="alpha \"beta\" gamma"; 설명 유지`).includes('gamma'));
  assert.ok(!diagnosticText(String.raw`\"password\"\=\"alpha beta gamma`).includes('gamma'));
 });
+
+test('session cookie credentials disappear from prompt and both conversation roles',()=>{
+ const secret='A'.repeat(43);
+ for(const name of ['__Host-a4b-session','a4b-session'])for(const value of [`Cookie: ${name}=${secret}; other=value`,`Set-Cookie: ${name}=${secret}; HttpOnly`,`${name}=${secret}`,JSON.stringify({Cookie:`${name}=${secret}`})]){
+  const safe=safeRequestContext({prompt:value,conversation:[{role:'user',content:value},{role:'assistant',content:value}]});
+  assert.ok(!JSON.stringify(safe).includes(secret),value);
+ }
+});
+test('Unicode display limits keep complete code points and accurate flags',()=>{
+ for(const extra of ['', '나']){
+  const prompt='가'.repeat(7999)+'📄'+extra,content='가'.repeat(3999)+'📄'+extra;
+  const safe=safeRequestContext({prompt,conversation:[{role:'user',content},{role:'assistant',content}]});
+  assert.equal(safe.prompt,'가'.repeat(7999)+'📄');assert.equal(safe.prompt_truncated,!!extra);
+  for(const turn of safe.conversation){assert.equal(turn.content,'가'.repeat(3999)+'📄');assert.equal(turn.truncated,!!extra);}
+ }
+});
+test('long non-email text and mixed email text are processed without quadratic scanning',()=>{
+ const plain='a'.repeat(100000),start=performance.now();
+ assert.equal(diagnosticText('.'.repeat(100000)+'a',Infinity),'.'.repeat(100000)+'a');
+ assert.equal(diagnosticText('user@example.test.'),'[이메일 숨김].');
+ assert.equal(diagnosticText(plain,Infinity),plain);
+ const mixed=diagnosticText(plain+' user.name+tag@example.test '+plain,Infinity);
+ assert.equal(mixed,plain+' [이메일 숨김] '+plain);
+ assert.ok(performance.now()-start<2000,'100k inputs should finish within a generous 2s budget');
+});

@@ -99,6 +99,25 @@ test('012: admin-only identity/context, exact owner/version linkage and safe API
     assert.ok(!JSON.stringify(safe).includes('FAKEBOUNDA'),'no partial credential in response');
    }
   }finally{if(previousSecret===undefined)delete process.env[secretKey];else process.env[secretKey]=previousSecret;}
+  for(const extra of ['', '나']){
+   const prompt='가'.repeat(7999)+'📄'+extra,content='가'.repeat(3999)+'📄'+extra;
+   await c.query('RESET ROLE');
+   await c.query('UPDATE a4b.workflow_runs SET input_json=$1 WHERE id=$2',[JSON.stringify({request:prompt}),run]);
+   await c.query('UPDATE a4b.design_sessions SET messages_json=$1 WHERE id=$2',[JSON.stringify([{role:'user',content},{role:'assistant',content}]),session]);
+   await c.query('SET LOCAL ROLE a4b_app');
+   const safe=(await get('/execution/'+run+'?days=7')).item.context;
+   assert.equal(safe.prompt,'가'.repeat(7999)+'📄');assert.equal(safe.prompt_truncated,!!extra);
+   for(const turn of safe.conversation){assert.equal(turn.content,'가'.repeat(3999)+'📄');assert.equal(turn.truncated,!!extra);}
+  }
+  for(const name of ['__Host-a4b-session','a4b-session']){
+   const cookie='A'.repeat(43),value=`Cookie: ${name}=${cookie}`;
+   await c.query('RESET ROLE');
+   await c.query('UPDATE a4b.workflow_runs SET input_json=$1 WHERE id=$2',[JSON.stringify({request:value}),run]);
+   await c.query('UPDATE a4b.design_sessions SET messages_json=$1 WHERE id=$2',[JSON.stringify([{role:'user',content:value},{role:'assistant',content:value}]),session]);
+   await c.query('SET LOCAL ROLE a4b_app');
+   const safe=(await get('/execution/'+run+'?days=7')).item.context;
+   assert.equal(safe.conversation.length,2);assert.ok(!JSON.stringify(safe).includes(cookie));
+  }
   assert.equal(detail.item.context.prompt_storage_limit,4000);
   assert.equal(detail.item.context.prompt_storage_truncated,null,'old records have unknown truncation');
   for(const truncated of [null,false,true]){

@@ -21,7 +21,7 @@ function maskStandaloneBasic(value:string):string {
 // Parse quoted secret values separately from unquoted values. Missing closing
 // delimiters hide the remaining value rather than falling back to its first word.
 function maskSecretFields(text:string):string {
- const keys=/(?<![\p{L}\p{N}_])(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|비밀번호|비밀키|토큰)(?:\\*["'])?\s*\\*[:=：]\s*/giu;
+ const keys=/(?<![\p{L}\p{N}_])(?:(?:__Host-)?a4b-session|password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|비밀번호|비밀키|토큰)(?:\\*["'])?\s*\\*[:=：]\s*/giu;
  let result='',cursor=0,match:RegExpExecArray|null;
  while((match=keys.exec(text))!==null){
   const start=keys.lastIndex;
@@ -41,13 +41,30 @@ function maskSecretFields(text:string):string {
  }
  return result+text.slice(cursor);
 }
+// Consume each candidate once; never retry an email pattern at every character.
+function maskEmails(text:string):string {
+ return text.replace(/[\w.+@-]+/g,candidate=>{
+  let end=candidate.length;while(end>0&&candidate[end-1]==='.')end--;
+  const trimmed=candidate.slice(0,end),parts=trimmed.split('@');
+  for(let i=1;i<parts.length;i++){
+   const domain=parts[i],dot=domain.lastIndexOf('.');
+   if(parts[i-1]&&dot>0&&/^[A-Za-z]{2,}/.test(domain.slice(dot+1)))return '[이메일 숨김]'+candidate.slice(trimmed.length);
+  }
+  return candidate;
+ });
+}
+function displayText(text:string,max:number){
+ let end=0,count=0;
+ for(const point of text){if(count===max)break;end+=point.length;count++;}
+ return {content:text.slice(0,end),truncated:end<text.length};
+}
 // Diagnostic projections never include raw payloads. Request context is a separate admin-only projection.
 export function diagnosticText(value:unknown,max=1000):string {
  let text=typeof value==='string'?value:'';
  for(const [key,secret] of Object.entries(process.env))if(/KEY|PASSWORD|SECRET|TOKEN|DATABASE_URL/.test(key)&&secret&&secret.length>=6)text=text.split(secret).join('[보호된 값]');
  // Header values can contain a scheme and spaces; unquoted headers are
  // conservatively redacted to EOL. Secret field values are parsed independently.
- return maskStandaloneBasic(maskSecretFields(text)).replace(/(["']?(?:proxy-)?authorization["']?[ \t]*[:=：][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)/gi,'$1[보호된 값]')
+ const masked=maskStandaloneBasic(maskSecretFields(text.replace(/\b(?:set-cookie|cookie)[\\"' \t]*[:=：][^\r\n]*/gi,'Cookie: [보호된 값]'))).replace(/(["']?(?:proxy-)?authorization["']?[ \t]*[:=：][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)/gi,'$1[보호된 값]')
   // Free text may contain escaped, nested or unfinished quotes. Treat the rest
   // of a Bearer credential line as sensitive instead of guessing its closing delimiter.
   .replace(/\bBearer[ \t]+[^\r\n]*/gi,'[보호된 인증값]').replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[보호된 키]')
@@ -55,9 +72,8 @@ export function diagnosticText(value:unknown,max=1000):string {
   .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,'[보호된 토큰]')
   .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,'[보호된 키]')
   .replace(/(?:https?:\/\/|postgres(?:ql)?:\/\/)[^\s]+/gi,'[주소 숨김]')
-  .replace(/\bsk-[\w-]+/g,'[보호된 키]')
-  .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[이메일 숨김]')
-  .slice(0,max);
+  .replace(/\bsk-[\w-]+/g,'[보호된 키]');
+ return displayText(maskEmails(masked),max).content;
 }
 const identifier=(v:unknown)=>typeof v==='string'?v.replace(/[^a-zA-Z0-9_.:/-]/g,'').slice(0,120):null;
 export function safeRecord(raw:any){
@@ -75,13 +91,13 @@ export function memberEmail(value:unknown):string|null {
 export function safeRequestContext(raw:any){
  const input=raw&&typeof raw==='object'?raw:{};
  const valid=Array.isArray(input.conversation)?input.conversation.filter((m:any)=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string'):[];
- const prompt=typeof input.prompt==='string'&&input.prompt.trim()?diagnosticText(input.prompt,Infinity):null;
+ const prompt=typeof input.prompt==='string'&&input.prompt.trim()?displayText(diagnosticText(input.prompt,Infinity),8000):null;
  return {
-  prompt:prompt===null?null:prompt.slice(0,8000),
+  prompt:prompt?.content??null,
   prompt_storage_limit:input.prompt_storage_limit===4000?4000:null,
   prompt_storage_truncated:typeof input.prompt_storage_truncated==='boolean'?input.prompt_storage_truncated:null,
-  prompt_truncated:input.prompt_truncated===true||(prompt!==null&&prompt.length>8000),
-  conversation:valid.slice(-40).map((m:any)=>{const content=diagnosticText(m.content,Infinity);return {role:m.role as 'user'|'assistant',content:content.slice(0,4000),truncated:content.length>4000};}),
+  prompt_truncated:input.prompt_truncated===true||(prompt?.truncated??false),
+  conversation:valid.slice(-40).map((m:any)=>{return {role:m.role as 'user'|'assistant',...displayText(diagnosticText(m.content,Infinity),4000)};}),
   conversation_source:input.conversation_source==='session_latest'?'session_latest':'unavailable',
   conversation_truncated:input.conversation_truncated===true||valid.length>40,
  };

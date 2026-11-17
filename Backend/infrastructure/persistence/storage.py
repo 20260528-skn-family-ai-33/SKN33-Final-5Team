@@ -252,10 +252,21 @@ class Storage:
     def tests(self,agent_id):
         return [self._read_test(r[0]) for r in self.db.execute('SELECT json FROM agent_tests WHERE {ws} AND agent_id=? ORDER BY {seq} DESC LIMIT 20',(agent_id,))]
 
+    def history_agents(self, ids):
+        """Only the names for this history page, never full workflow snapshots."""
+        if not ids:return []
+        fields=','.join(self.json_text('v.json',key) for key in ('version','model','updated_at'))
+        name=self.json_text(self.json_text('v.json','config'),'name')
+        rows=self.db.execute('SELECT v.agent_id,'+fields+',substr(('+name+'),1,60) FROM agent_versions v WHERE {ws:v} '
+            'AND v.agent_id IN ('+','.join('?' for _ in ids)+') '
+            'AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id)',tuple(ids))
+        return [{'id':id,'version':int(version),'model':model or '', 'updated_at':updated or '',
+                 'config':{'name':name,'purpose':'','tool_ids':[]}} for id,version,model,updated,name in rows]
+
     def run_history(self,agent_id=None):
         """Read only list fields, retaining the existing 20 runs per workflow window."""
         fields=('id','status','agent_version','created_at','started_at','error')
-        columns=','.join(self.json_text('json',field) for field in fields)
+        columns=','.join('substr(('+self.json_text('json',field)+'),1,1000)' if field=='error' else self.json_text('json',field) for field in fields)
         condition=' AND agent_id=?' if agent_id else ''
         rows=self.db.execute('SELECT agent_id,'+columns+' FROM ('
             'SELECT agent_id,json,ROW_NUMBER() OVER (PARTITION BY agent_id ORDER BY {seq} DESC) AS position '

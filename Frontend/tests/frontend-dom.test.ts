@@ -554,7 +554,7 @@ test('entry: a workflow card opens only its execution history',async()=>{
   assert.equal(new URL(location.href).searchParams.get('service'),'A');
   assert.deepEqual(Array.from(document.querySelectorAll('.entry-history-list h2'),h=>h.textContent),['서비스 A']);
   assert.ok(!h.calls.some(c=>c.path.includes('/agent?')));
-  assert.equal(h.calls.filter(c=>c.path.includes('/history?id=A')).length,1);
+  assert.equal(h.calls.filter(c=>c.path.startsWith('/api/agent-builder/history?')&&new URL(c.path,'http://localhost').searchParams.get('id')==='A').length,1);
   await click(button('전체 실행 기록'));
   await h.flush();
   assert.equal(document.querySelectorAll('.entry-history-list article').length,2);
@@ -3326,5 +3326,60 @@ test('menu loading: repeated focus events share a pending service-status request
   await act(async()=>{for(let i=0;i<3;i++)window.dispatchEvent(new Event('focus'));await tick();});
   assert.equal(h.calls.filter(call=>call.path==='/api/service-connections').length,1);
   await act(async()=>{pending.resolve({services:{googleSheets:{configured:false},slack:{configured:false}},credentials:[]});await tick();});
+ }finally{await h.close();}
+});
+
+
+test('history pages resolve normalized agents and keep the workflow filter on result navigation',async()=>{
+ const h=await setup('?screen=history&service=A',{},path=>{
+  if(path.includes('/agent-builder/history')){
+   const page=new URL(path,'http://localhost').searchParams.get('page');
+   return {agents:[A],rows:[{agent_id:'A',run:{id:page==='2'?'older-run':'newer-run',status:'succeeded',agent_version:1,created_at:'2026-11-17T00:00:00Z'}}],total:51,page:Number(page),page_size:50};
+  }
+  if(path.includes('/agent?id=A'))return snapshot(A);
+ },createElement(EntryApp));
+ try{
+  const pager=()=>document.querySelector('[aria-label="실행 기록 페이지"]')!;
+  assert.match(document.querySelector('.entry-history-list')!.textContent!,/서비스 A/);
+  assert.equal((pager().querySelector('button') as HTMLButtonElement).disabled,true);
+  await click(pager().querySelectorAll('button')[1]);
+  assert.ok(h.calls.some(call=>call.path==='/api/agent-builder/history?page=2&id=A'));
+  assert.match(pager().textContent!,/2 \/ 2/);
+  assert.equal((pager().querySelectorAll('button')[1] as HTMLButtonElement).disabled,true);
+  await click(pager().querySelector('button')!);
+  assert.match(pager().textContent!,/1 \/ 2/);
+  await click(pager().querySelectorAll('button')[1]);
+  await click(document.querySelector('.entry-history-list article button')!);
+  assert.equal(new URLSearchParams(location.search).get('service'),'A');
+  assert.equal(new URLSearchParams(location.search).get('run'),'older-run');
+ }finally{await h.close();}
+});
+
+for(const screen of ['workflow','run'])test(`node popup on ${screen}: standard close, outside pointer and focus behavior`,async()=>{
+ const workflow={entry:'read',nodes:[{id:'read',label:'자료 읽기',tool:'read_document',settings:{arguments_json:'{"max_results":10}'},bindings:[]},{id:'next',label:'다음 작업',tool:'read_document',settings:{},bindings:[]}],edges:[{source:'read',target:'next',branch:'next'}]};
+ const session={...readySession(),draft:{...A.config,workflow}};
+ const saved={...A,config:{...A.config,workflow}};
+ const h=await setup(screen==='run'?'?screen=run&service=A':'?screen=workflow',screen==='workflow'?{'a4b-builder-session':'ready'}:{},path=>path.startsWith('/api/agent-builder/session?')?session:path.includes('/agent?')?snapshot(saved):undefined);
+ const nodes=()=>document.querySelectorAll<HTMLButtonElement>(screen==='run'?'.rwd-card.is-selectable':'.as-flow-node');
+ const pointer=async(target:Element)=>act(async()=>{target.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true,composed:true}));await tick();});
+ try{
+  const trigger=nodes()[0];trigger.focus();await click(trigger);
+  const popup=document.querySelector('.as-node-popover')!;
+  const close=popup.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!;
+  assert.equal(close.getAttribute('aria-label'),'닫기');assert.ok(close.querySelector('svg'));
+  assert.equal(popup.querySelector('.as-node-inspector > button'),null);
+  assert.ok(document.activeElement===close);
+  const field=popup.querySelector('input')!;
+  await pointer(field);assert.equal(document.querySelector('.as-node-popover'),popup);
+  await click(close);assert.equal(document.querySelector('.as-node-popover'),null);assert.ok(document.activeElement===trigger);
+  await click(trigger);
+  const outside=document.querySelector<HTMLTextAreaElement>(screen==='run'?'[data-tour="run-input"]':'textarea[aria-label="업무 설명"]')!;
+  outside.focus();await pointer(outside);
+  assert.equal(document.querySelector('.as-node-popover'),null);assert.ok(document.activeElement===outside);
+  await click(trigger);
+  await pointer(nodes()[1]);nodes()[1].focus();await click(nodes()[1]);
+  assert.match(document.querySelector('.as-node-popover')!.getAttribute('aria-label')!,/다음 작업/);
+  await act(async()=>{window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
+  assert.equal(document.querySelector('.as-node-popover'),null);assert.ok(document.activeElement===nodes()[1]);
  }finally{await h.close();}
 });

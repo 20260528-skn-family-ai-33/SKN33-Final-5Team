@@ -405,6 +405,9 @@ MATCH_CHOICES = {'모두 만족': 'all', '하나라도 만족': 'any'}
 
 def match_answer(text, count):
     """Only complete answers to the pending relation question; 'one only' is not OR."""
+    word = text.strip().casefold()
+    if word in ('and', 'or'):
+        return 'all' if word == 'and' else 'any'
     text = re.sub(r'\s+', '', text.strip().rstrip('.!?。'))
     choices = {re.sub(r'\s+', '', label): mode for label, mode in MATCH_CHOICES.items()}
     if count == 2:

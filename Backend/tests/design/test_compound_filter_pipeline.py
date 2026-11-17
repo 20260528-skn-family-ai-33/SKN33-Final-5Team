@@ -172,6 +172,11 @@ def test_ambiguous_text_amendment_returns_validation_issues_instead_of_raising()
     ('비용은 10원 이상, 수량은 3개 이상인 행', '둘 다', False, [(15, 4)]),
     ('비용은 10원 이상, 수량은 3개 이상인 행', '둘 다', True, [(15, 4)]),
     ('비용은 10원 이상, 수량은 3개 미만인 행', '모두 만족', False, [(15, 1)]),
+] + [
+    ('비용은 10원 미만, 수량은 3개 미만인 행' if token.casefold() == 'or' else
+     '비용은 10원 이상, 수량은 3개 이상인 행', token, structured,
+     [(15, 1), (5, 4)] if token.casefold() == 'or' else [(15, 4)])
+    for token in ('AND', 'and', 'AnD', 'OR', 'or', 'oR') for structured in (False, True)
 ])
 def test_only_missing_relation_is_asked_and_resumed_to_execution(tmp_path, criteria, answer, structured, expected):
     from langgraph.types import Command
@@ -226,7 +231,7 @@ def test_only_missing_relation_is_asked_and_resumed_to_execution(tmp_path, crite
         store.close()
 
 
-@pytest.mark.parametrize('answer', ['하나만', '아무거나', '둘 중 하나만', '모르겠어'])
+@pytest.mark.parametrize('answer', ['하나만', '아무거나', '둘 중 하나만', '모르겠어', 'o r', 'a n d', 'AND/OR', 'OR 아님'])
 def test_uncertain_or_exclusive_answers_do_not_confirm_a_boolean_relation(answer):
     s = compound_state('비용은 10원 미만, 수량은 3개 미만인 행', answer)
     assert compound_filter_state(s)['pending'] == 'match'
@@ -235,3 +240,9 @@ def test_uncertain_or_exclusive_answers_do_not_confirm_a_boolean_relation(answer
 def test_two_both_does_not_mean_all_three_conditions():
     s = compound_state('비용은 10원 미만, 수량은 3개 미만, 할인은 5원 미만인 행', '둘 다')
     assert compound_filter_state(s)['pending'] == 'match'
+
+
+@pytest.mark.parametrize('answer', ['OR', 'or', 'AND', 'AnD'])
+def test_boolean_keyword_does_not_change_an_already_confirmed_relation(answer):
+    from tests.conditions.test_clarification_choices import BASE
+    assert compound_filter_state(compound_state(BASE, answer))['mode'] == 'all'

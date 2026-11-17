@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import pg from 'pg';
-import {AdminMonitoring,requireAdmin,diagnosticText,safeRecord,monitorFilters} from '../src/admin-monitoring';
+import {AdminMonitoring,requireAdmin,diagnosticText,safeRecord,monitorFilters,safeRequestContext,memberEmail} from '../src/admin-monitoring';
 import type {AuthUser} from '../src/auth-users';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 const admin:AuthUser={id:randomUUID(),email:'admin@example.test',name:'Admin',role:'admin',status:'active'};
@@ -14,7 +14,7 @@ test('monitoring denies anonymous, member and disabled administrator before data
  const service=new AdminMonitoring(undefined,{query:async()=>{throw Error('database must not be called');},end:async()=>{}});
  for(const user of [undefined,member,{...admin,status:'disabled' as const}]){
   assert.throws(()=>requireAdmin(user),{status:user?403:401});
-  await assert.rejects(service.handle(request(),response().res,new URL('http://localhost/api/admin/monitoring'),user),{status:user?403:401});
+  for(const path of ['', '/generation/member:request'])await assert.rejects(service.handle(request(),response().res,new URL('http://localhost/api/admin/monitoring'+path),user),{status:user?403:401});
  }
 });
 test('diagnostic projections omit raw payloads and redact credentials',()=>{
@@ -55,4 +55,19 @@ test('PostgreSQL: admin projections, workspace isolation, filters, details and c
   await c.query('RESET ROLE');await c.query("UPDATE a4b.users SET role='member' WHERE id=$1",[admin.id]);await c.query('SET LOCAL ROLE a4b_app');
   await c.query('SAVEPOINT revoked');await assert.rejects(service.handle(request(),response().res,new URL('http://localhost/api/admin/monitoring'),admin),{status:403});await c.query('ROLLBACK TO revoked');
  }finally{await c.query('ROLLBACK');await c.end();}
+});
+
+test('request context masks secrets, excludes system/tool payloads and bounds readable text',()=>{
+ const secret='known-test-secret-123';process.env.A4B_MONITOR_TEST_SECRET=secret;
+ try{
+  const raw='안녕하세요 '+secret+' {"password":"two word password","access_token":"access-secret"} API key=api-secret 비밀번호="한글 비밀" Authorization: Bearer bearer-secret https://host/?token=url-secret user@example.test sk-testsecret';
+  const safe=safeRequestContext({prompt:raw,conversation_source:'session_latest',conversation:[{role:'system',content:'private system'},{role:'tool',content:'private tool'},{role:'user',content:raw,credentials:'do not expose'},{role:'assistant',content:'<script>alert(1)</script> 정상 답변'},{role:'assistant',content:{secret:'object'}}]});
+  const encoded=JSON.stringify(safe);
+  for(const value of [secret,'two word password','access-secret','api-secret','한글 비밀','bearer-secret','url-secret','user@example.test','sk-testsecret','private system','private tool','credentials'])assert.ok(!encoded.includes(value),value);
+  assert.match(safe.prompt!,/안녕하세요/);assert.equal(safe.conversation.length,2);assert.match(safe.conversation[1].content,/정상 답변/);
+  assert.equal(memberEmail('member@example.test'),'member@example.test');assert.equal(memberEmail('bad\nemail@example.test'),null);
+  assert.equal(safeRequestContext(null).prompt,null);assert.equal(safeRequestContext({prompt:'  '}).prompt,null);
+  const long=safeRequestContext({prompt:'a'.repeat(9000),conversation:Array.from({length:45},()=>({role:'user',content:'나'.repeat(5000)}))});
+  assert.equal(long.prompt!.length,8000);assert.equal(long.prompt_truncated,true);assert.equal(long.conversation.length,40);assert.equal(long.conversation_truncated,true);assert.equal(long.conversation[0].content.length,4000);assert.equal(long.conversation[0].truncated,true);
+ }finally{delete process.env.A4B_MONITOR_TEST_SECRET;}
 });

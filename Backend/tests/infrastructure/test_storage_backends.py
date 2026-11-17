@@ -116,6 +116,7 @@ def postgres_app_conninfo():
         connection.execute('DROP TABLE IF EXISTS a4b.monitor_document_failures')
         connection.execute('DROP TABLE IF EXISTS a4b.monitor_triage_events, a4b.monitor_triage CASCADE')
         connection.execute('DROP FUNCTION IF EXISTS a4b.monitor_records(uuid,timestamptz,timestamptz,text), a4b.monitor_require_admin(uuid) CASCADE')
+        connection.execute('DROP FUNCTION IF EXISTS a4b.monitor_member_emails(uuid,text[]), a4b.monitor_request_context(uuid,text,text)')
         connection.execute('DROP TABLE IF EXISTS a4b.workflow_generation_requests')
         connection.execute("DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='a4b_app') THEN CREATE ROLE a4b_app NOLOGIN; END IF; END$$")
         connection.execute(f"DO $$BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='{APP_ROLE}') THEN CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}'; END IF; END$$")

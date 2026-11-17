@@ -20,20 +20,20 @@ async function withOwnedSchema(c:pg.Client, body:()=>Promise<void>){
  }
 }
 // Dedicated empty database: each case creates and removes its own schema.
-for(const business of [false,true])test(`009 -> 011: backfill, indexed dates and triage (business tables=${business})`,{skip:!url},async()=>{
+for(const business of [false,true])test(`009 -> 012: backfill, indexed dates and triage (business tables=${business})`,{skip:!url},async()=>{
  assert.match(new URL(url!).pathname,/_review_test$/);
  const c=new pg.Client({connectionString:url});await c.connect();
  try{await withOwnedSchema(c,async()=>{
   await c.query(`GRANT USAGE ON SCHEMA a4b TO a4b_app;
-   CREATE TABLE a4b.users(id uuid PRIMARY KEY,role text,status text);
+   CREATE TABLE a4b.users(id uuid PRIMARY KEY,role text,status text,email text);
    CREATE TABLE a4b.workflow_generation_requests(workspace_id text,id text,session_id text,json json);
    ALTER TABLE a4b.workflow_generation_requests ENABLE ROW LEVEL SECURITY;
    ALTER TABLE a4b.workflow_generation_requests FORCE ROW LEVEL SECURITY;
    GRANT SELECT,INSERT,UPDATE ON a4b.workflow_generation_requests TO a4b_app;
    CREATE POLICY workspace_access ON a4b.workflow_generation_requests TO a4b_app USING(workspace_id=current_setting('app.workspace_id',true));`);
-  await c.query("INSERT INTO a4b.users VALUES($1,'admin','active')",[actor]);
-  if(business)await c.query(`CREATE TABLE a4b.workflow_versions(id uuid,workflow_id uuid);
-   CREATE TABLE a4b.workflow_runs(id uuid,requested_by uuid,status text,state_json jsonb,created_at timestamptz,finished_at timestamptz,workflow_version_id uuid);
+  await c.query("INSERT INTO a4b.users(id,role,status) VALUES($1,'admin','active')",[actor]);
+  if(business)await c.query(`CREATE TABLE a4b.workflow_versions(id uuid,workflow_id uuid,version_no integer);
+   CREATE TABLE a4b.workflow_runs(id uuid,requested_by uuid,status text,state_json jsonb,created_at timestamptz,finished_at timestamptz,workflow_version_id uuid,input_json jsonb);
    CREATE TABLE a4b.documents(id uuid,created_by uuid);
    CREATE TABLE a4b.document_versions(id uuid,document_id uuid,status text,created_at timestamptz,error_json jsonb,parser_metadata_json jsonb);
    CREATE TABLE a4b.node_runs(run_id uuid,node_key text,status text,started_at timestamptz,finished_at timestamptz,attempt_no integer);`);
@@ -41,6 +41,7 @@ for(const business of [false,true])test(`009 -> 011: backfill, indexed dates and
   await c.query(`INSERT INTO a4b.workflow_generation_requests(workspace_id,id,session_id,json) VALUES($1,'older','s',json_build_object('status','failed','started_at',now()-interval '10 days','finished_at',now()-interval '1 hour'))`,[actor]);
   await c.query(await readFile('infrastructure/db/migrations/010_admin_monitoring_fixes.sql','utf8'));
   await c.query(await readFile('infrastructure/db/migrations/011_monitoring_document_failures.sql','utf8'));
+  await c.query(await readFile('infrastructure/db/migrations/012_monitoring_request_context.sql','utf8'));
   // Commit DDL/backfill before checking planner visibility of the new index.
   await c.query('COMMIT');await c.query('BEGIN');
   assert.equal((await c.query("SELECT count(*) FROM a4b.workflow_generation_requests WHERE monitor_at>now()-interval '1 day'")).rows[0].count,'1','backfill under FORCE RLS');
@@ -74,8 +75,8 @@ for(const business of [false,true])test(`009 -> 011: backfill, indexed dates and
    assert.deepEqual((await c.query('SELECT failed_at FROM a4b.monitor_document_failures')).rows[0].failed_at,stamp);
    await c.query("UPDATE a4b.monitor_document_failures SET failed_at=now()-interval '2 days'");
    assert.equal((await c.query("SELECT r FROM a4b.monitor_records($1,now()-interval '1 day',clock_timestamp()) r WHERE r->>'kind'='document'",[actor])).rowCount,0);
-   await c.query('INSERT INTO a4b.workflow_versions VALUES($1,$1)',[actor]);
-   await c.query(`INSERT INTO a4b.workflow_runs VALUES($1,$1,'failed','{}',now()-interval '10 days',now()-interval '1 hour',$1)`,[actor]);
+   await c.query('INSERT INTO a4b.workflow_versions(id,workflow_id) VALUES($1,$1)',[actor]);
+   await c.query(`INSERT INTO a4b.workflow_runs(id,requested_by,status,state_json,created_at,finished_at,workflow_version_id) VALUES($1,$1,'failed','{}',now()-interval '10 days',now()-interval '1 hour',$1)`,[actor]);
    await c.query('SET LOCAL ROLE a4b_app');
    const rows=(await c.query("SELECT r FROM a4b.monitor_records($1,now()-interval '1 day',now()) r WHERE r->>'kind'='execution'",[actor])).rows;
    assert.equal(rows.length,1,'old run failing today included');assert.ok(rows[0].r.occurred_at>rows[0].r.started_at);

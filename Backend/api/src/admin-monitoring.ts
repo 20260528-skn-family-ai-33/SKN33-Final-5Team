@@ -9,14 +9,18 @@ export function requireAdmin(user?:AuthUser):asserts user is AuthUser {
  if(!user)throw new AuthError(401,'관리자 계정으로 로그인하세요.');
  if(user.role!=='admin'||user.status!=='active')throw new AuthError(403,'관리자만 모니터링을 사용할 수 있습니다.');
 }
-// Never return provider bodies, exception reprs, prompts, credentials or document contents.
+// Diagnostic projections never include raw payloads. Request context is a separate admin-only projection.
 export function diagnosticText(value:unknown,max=1000):string {
  let text=typeof value==='string'?value:'';
  for(const [key,secret] of Object.entries(process.env))if(/KEY|PASSWORD|SECRET|TOKEN|DATABASE_URL/.test(key)&&secret&&secret.length>=6)text=text.split(secret).join('[보호된 값]');
- return text.replace(/(?:https?:\/\/|postgres(?:ql)?:\/\/)[^\s]+/gi,'[주소 숨김]')
-  .replace(/Bearer\s+[^\s,;]+/gi,'Bearer [보호된 값]').replace(/\bsk-[\w-]+/g,'[보호된 키]')
+ return text.replace(/Bearer\s+[^\s,;"']+/gi,'Bearer [보호된 값]').replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[보호된 키]')
+  .replace(/(["']?(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|authorization|비밀번호|비밀키|토큰)["']?\s*[:=：]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,'$1[보호된 값]')
+  .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,'[보호된 토큰]')
+  .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,'[보호된 키]')
+  .replace(/(?:https?:\/\/|postgres(?:ql)?:\/\/)[^\s]+/gi,'[주소 숨김]')
+  .replace(/\bsk-[\w-]+/g,'[보호된 키]')
   .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[이메일 숨김]')
-  .replace(/((?:password|token|secret|api[_-]?key)\s*[=:]\s*)[^\s,;]+/gi,'$1[보호된 값]').slice(0,max);
+  .slice(0,max);
 }
 const identifier=(v:unknown)=>typeof v==='string'?v.replace(/[^a-zA-Z0-9_.:/-]/g,'').slice(0,120):null;
 export function safeRecord(raw:any){
@@ -26,6 +30,21 @@ export function safeRecord(raw:any){
   diagnostics:{trace_id:identifier(diagnostics.trace_id),model:identifier(diagnostics.model),release:identifier(diagnostics.release),http_status:Number.isInteger(diagnostics.http_status)?diagnostics.http_status:null,
    validation:Array.isArray(diagnostics.validation)?diagnostics.validation.slice(0,20).map((e:any)=>({field:diagnosticText(e.field,150),type:identifier(e.type)})):[]},
   events:Array.isArray(raw.events)?raw.events.slice(0,100).map((e:any)=>({at:e.at,stage:identifier(e.stage),node:identifier(e.node),status:identifier(e.status),reason_code:identifier(e.reason_code),attempt:e.attempt})):[]};
+}
+// Login email is deliberately exposed only from the users RPC, never extracted from free text.
+export function memberEmail(value:unknown):string|null {
+ return typeof value==='string'&&value.length<=254&&/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(value)?value:null;
+}
+export function safeRequestContext(raw:any){
+ const input=raw&&typeof raw==='object'?raw:{};
+ const valid=Array.isArray(input.conversation)?input.conversation.filter((m:any)=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string'):[];
+ return {
+  prompt:typeof input.prompt==='string'&&input.prompt.trim()?diagnosticText(input.prompt,8000):null,
+  prompt_truncated:input.prompt_truncated===true||(typeof input.prompt==='string'&&input.prompt.length>8000),
+  conversation:valid.slice(-40).map((m:any)=>({role:m.role as 'user'|'assistant',content:diagnosticText(m.content,4000),truncated:m.content.length>4000})),
+  conversation_source:input.conversation_source==='session_latest'?'session_latest':'unavailable',
+  conversation_truncated:input.conversation_truncated===true||valid.length>40,
+ };
 }
 export function monitorFilters(url:URL){
  const p=url.searchParams,days=Number(p.get('days')||7),page=Number(p.get('page')||1),kind=p.get('kind')||'all',status=p.get('status')||'failed',triage=p.get('triage')||'all';
@@ -80,12 +99,17 @@ export class AdminMonitoring {
      FROM scoped WHERE record->>'status'='failed' GROUP BY 1,2,3 ORDER BY count(*) DESC LIMIT 8) g),'[]'::jsonb) groups`,
     [user.id,since.toISOString(),until.toISOString(),match?.[2]||null,match?.[1]||filters.kind,match?'all':filters.status,filters.triage,filters.query,(filters.page-1)*25]);
    const items=(result.items||[]).map((x:any)=>({...safeRecord(x.record),triage:x.triage?.status?{...x.triage,note:diagnosticText(x.triage.note,2000)}:{status:'unreviewed',note:'',revision:0}}));
+   const memberIds=[...new Set<string>(items.map((x:any)=>x.member_id).filter((id:any)=>typeof id==='string'))];
+   const emails=memberIds.length?(await db.query('SELECT * FROM a4b.monitor_member_emails($1,$2::text[])',[user.id,memberIds])).rows:[];
+   const emailById=new Map(emails.map((row:any)=>[row.member_id,memberEmail(row.email)]));
+   const identified=items.map((item:any)=>({...item,member_email:emailById.get(item.member_id)||null}));
    if(match){
-    const item=items.find((x:any)=>x.kind===match[1]&&x.id===match[2]);if(!item)throw new AuthError(404,'선택 기간에서 요청을 찾을 수 없습니다.');
+    const item=identified.find((x:any)=>x.kind===match[1]&&x.id===match[2]);if(!item)throw new AuthError(404,'선택 기간에서 요청을 찾을 수 없습니다.');
     const history=await db.query('SELECT * FROM a4b.monitor_triage_history($1,$2,$3)',[user.id,match[1],match[2]]);
-    authJson(res,200,{item,history:history.rows.map(x=>({...x,note:diagnosticText(x.note,2000)}))});return;
+    const context=await db.query('SELECT a4b.monitor_request_context($1,$2,$3) AS context',[user.id,match[1],match[2]]);
+    authJson(res,200,{item:{...item,context:safeRequestContext(context.rows[0]?.context)},history:history.rows.map(x=>({...x,note:diagnosticText(x.note,2000)}))});return;
    }
-   authJson(res,200,{...result,items,groups:result.groups.map((g:any)=>({...g,stage:identifier(g.stage),node:identifier(g.node),reason_code:identifier(g.reason_code)})),page:filters.page,page_size:25,checked_at:until.toISOString()});
+   authJson(res,200,{...result,items:identified,groups:result.groups.map((g:any)=>({...g,stage:identifier(g.stage),node:identifier(g.node),reason_code:identifier(g.reason_code)})),page:filters.page,page_size:25,checked_at:until.toISOString()});
   }catch(error){
    if(error instanceof AuthError)throw error;
    const code=(error as any)?.code;

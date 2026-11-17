@@ -6,7 +6,7 @@ import {PageTransition} from './page-transition';
 import {WorkflowRenameDialog,renameWorkflow} from './workflow-rename-dialog';
 import {WorkflowPreview,type Workflow} from './workflow-preview';
 import {RuleSummary} from './node-inspector';
-import {NodePopover} from './node-popover';
+import {NodePopover,type NodeEditRequest} from './node-popover';
 import {StudioMessage} from './studio-message';
 import {GmailSummaryResult,isGmailSlackSummaryWorkflow} from './gmail-summary-result';
 import {RunAnswer} from './run-answer';
@@ -158,6 +158,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const [initialFileReady,setInitialFileReady]=useState(!initialFiles?.length);
  const initialPromptPending=useRef(!!initialPrompt?.trim());
  const [pendingMessage,setPendingMessage]=useState('');
+  const pendingNodeEdit=useRef<NodeEditRequest|null>(null);
  const [recovery,setRecovery]=useState<ConversationRecovery|null>(null);
  const [initialLoadFailed,setInitialLoadFailed]=useState(false);
  const [libraryBusy,setLibraryBusy]=useState(false),[libraryDirty,setLibraryDirty]=useState(false);
@@ -367,9 +368,11 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   const requestId=crypto.randomUUID();
   inFlight.current=true;
   const fromComposer=choice===undefined;
+  const preparedNodeEdit=fromComposer&&!answers?.length&&!selectedFiles?.length&&
+   pendingNodeEdit.current?.request===content&&!!pendingNodeEdit.current.changes.length;
   if(fromComposer)setText('');
   setPendingMessage(content);
-  setBusy(choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
+  setBusy(preparedNodeEdit?'설정 변경을 검증하고 있습니다.':choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
   setSelectedNodeId(null);
   setError('');
   let sentSession:Session|null=null;
@@ -408,9 +411,12 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
      setPendingMessage(content);
     }
     sentSession=s;
-    setBusy(choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
+    const nodeEdit=fromComposer&&!files?.length&&pendingNodeEdit.current?.request===content&&pendingNodeEdit.current.changes.length
+     ?pendingNodeEdit.current:undefined;
+    setBusy(nodeEdit?'설정 변경을 검증하고 있습니다.':choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
-   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
+    const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(nodeEdit?{nodeEdit}:{}),...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
+    if(nodeEdit)pendingNodeEdit.current=null;
    const lastReply=(result.messages as Session['messages']|undefined)?.findLastIndex(message=>message.role==='assistant')??-1;
    setAnimatedMessage(result.id+':'+lastReply);
    remember(result);
@@ -688,11 +694,13 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const inspectedNode=inspectedWorkflow?.nodes.find(node=>node.id===selectedNodeId)||null;
  const canModifyInspectedNode=!busy&&!recovery&&!libraryBusy&&(screen==='workflow'?!!selected||!!session&&!saved
   : !!selected&&(!testRun||testRun.agent_version===selected.version));
- function modifyInspectedNode(request:string){
+ function modifyInspectedNode(nodeEdit:NodeEditRequest){
+  const {request}=nodeEdit;
   if(request.length>4000){setError('변경 요청이 너무 깁니다. 값을 줄여 다시 시도해주세요.');return;}
-  if(selected){void edit(request);return;}
+  if(selected){pendingNodeEdit.current=nodeEdit.changes.length?nodeEdit:null;void edit(request);return;}
   const next=text.trim()?text.trimEnd()+'\n'+request:request;
   if(next.length>4000){setError('대화 입력은 4,000자까지 가능합니다. 기존 입력을 줄인 뒤 다시 시도해주세요.');return;}
+  pendingNodeEdit.current=next===request&&nodeEdit.changes.length?nodeEdit:null;
   setText(next);
   setConversationCollapsed(false);
   setSelectedNodeId(null);

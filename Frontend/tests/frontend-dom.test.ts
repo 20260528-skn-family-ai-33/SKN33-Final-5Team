@@ -1452,7 +1452,9 @@ test('numeric filter popup switches between direct values and comparison columns
  ],sort:[],match:'all',missing_policy:'keep',duplicate_policy:'keep',duplicate_field:null,output_format:'csv'};
  const workflow={entry:'filter',nodes:[{id:'filter',label:'재고 기준 선별',tool:'filter_sort',settings:{execution_plan:plan},bindings:[]}],edges:[]};
  const session={...readySession(),draft:{...A.config,workflow}};
- const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},(path,body)=>
+  path.startsWith('/api/agent-builder/session?')?session:path.endsWith('/message')?
+   {...session,revision:session.revision+1,messages:[{role:'user',content:body.content},{role:'assistant',content:'설정을 수정했습니다.'}]}:undefined);
  try{
   await openNode(document.querySelector('.as-flow-node')!);
   const popup=document.querySelector('.as-node-popover.is-canvas')!;
@@ -1479,6 +1481,14 @@ test('numeric filter popup switches between direct values and comparison columns
   assert.equal(plan.filters[0].value,30,'the original draft remains unchanged until the chat request is sent');
   assert.equal(plan.filters[1].compare_field,'minimum');
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  const sent=h.calls.findLast(call=>call.path.endsWith('/message'))!;
+  assert.deepEqual(sent.body.nodeEdit.changes,[
+   {path:'execution_plan.filters[0].value',oldValue:30,newValue:null},
+   {path:'execution_plan.filters[0].compare_field',oldValue:null,newValue:'reorder_level'},
+   {path:'execution_plan.filters[1].value',oldValue:null,newValue:0},
+   {path:'execution_plan.filters[1].compare_field',oldValue:'minimum',newValue:null},
+  ]);
  }finally{await h.close();}
 });
 
@@ -1530,8 +1540,47 @@ for(const source of ['draft','saved'] as const)for(const label of ['Slack 채널
   assert.equal(messages[0].body.id,sessionId);
   assert.equal(messages[0].body.revision,revision);
   assert.equal(messages[0].body.content,request.trim());
+   assert.deepEqual(messages[0].body.nodeEdit,{request:request.trim(),nodeId:'send',label,
+    changes:[{path:'arguments_json.channel_id',oldValue:'C0123456789',newValue:'C9876543210'}]});
   assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,source==='saved'?1:0);
   assert.match(document.querySelector('.as-messages')?.textContent||'',/채널 설정을 수정했습니다/);
+ }finally{await h.close();}
+});
+
+test('editing the prepared popup text does not send stale structured node changes',async()=>{
+ const workflow={entry:'send',nodes:[{id:'send',label:'Slack 전송',tool:'slack.post_message',
+  settings:{arguments_json:'{"channel_id":"C0123456789"}'},bindings:[]}],edges:[]};
+ const session={...readySession(),draft:{...readySession().draft,workflow}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},(path,body)=>
+  path.startsWith('/api/agent-builder/session?')?session:path.endsWith('/message')?
+   {...session,revision:session.revision+1,messages:[{role:'user',content:body.content},{role:'assistant',content:'확인했습니다.'}]}:undefined);
+ try{
+  await openNode(document.querySelector('.as-flow-node')!);
+  await input(document.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.channel_id"]')!,'C9876543210');
+  await click(document.querySelector('.as-node-popover-actions button')!);
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,composer.value+'\n그리고 결과를 메일로 보내줘.');
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  const sent=h.calls.findLast(call=>call.path.endsWith('/message'))!;
+  assert.equal(sent.body.nodeEdit,undefined);
+  assert.match(sent.body.content,/그리고 결과를 메일로 보내줘/);
+ }finally{await h.close();}
+});
+
+test('a structured popup edit shows its validation state while the request is pending',async()=>{
+ const workflow={entry:'mail',nodes:[{id:'mail',label:'메일 읽기',tool:'email.list',
+  settings:{arguments_json:'{"max_results":100}'},bindings:[]}],edges:[]};
+ const session={...readySession(),draft:{...readySession().draft,workflow}};
+ const pending=deferred();
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>
+  path.startsWith('/api/agent-builder/session?')?session:path.endsWith('/message')?pending.promise:undefined);
+ try{
+  await openNode(document.querySelector('.as-flow-node')!);
+  await input(document.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.max_results"]')!,'10');
+  await click(document.querySelector('.as-node-popover-actions button')!);
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  assert.match(document.querySelector('.as-operation-progress')?.textContent||'',/설정 변경을 검증하고 있습니다/);
+  await act(async()=>{pending.resolve({...session,revision:session.revision+1});await tick();});
  }finally{await h.close();}
 });
 

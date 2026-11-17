@@ -71,7 +71,7 @@ def get(storage, ref):
 
 def list_nodes(storage):
     init(storage)
-    return [json.loads(r[0]) for r in storage.db.execute('SELECT json FROM reusable_nodes n WHERE {ws:n} AND version=(SELECT MAX(version) FROM reusable_nodes WHERE {ws} AND id=n.id) ORDER BY {seq} DESC')]
+    return [value for r in storage.db.execute('SELECT json FROM reusable_nodes n WHERE {ws:n} AND version=(SELECT MAX(version) FROM reusable_nodes WHERE {ws} AND id=n.id) ORDER BY {seq} DESC') if not (value:=json.loads(r[0])).get('deleted_at')]
 
 def save(storage, raw, id=None, base_version=0):
     spec=NodeSpec.model_validate(raw).model_dump()
@@ -84,6 +84,7 @@ def save(storage, raw, id=None, base_version=0):
     storage.begin_write()
     try:
         version=storage.db.execute('SELECT MAX(version) FROM reusable_nodes WHERE {ws} AND id=?',(id,)).fetchone()[0] or 0
+        if version and get(storage, f'{id}:{version}').get('deleted_at'):raise ValueError('삭제된 작업은 수정할 수 없습니다.')
         if version!=base_version: raise ValueError('노드가 다른 요청에서 변경됐습니다. 최신 버전을 다시 열어주세요.')
         snapshot={'id':id,'version':version+1,'ref':f'{id}:{version+1}','spec':spec,'saved_at':now()}
         storage.db.execute('INSERT INTO reusable_nodes({wsc}id,version,json) VALUES({wsv}?,?,?)',(id,version+1,json.dumps(snapshot,ensure_ascii=False)))

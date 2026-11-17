@@ -40,7 +40,9 @@ def rename_agent(c):
 
 def agent(c):
     data=c.data;storage=c.storage
-    agent=storage.agent(data['id']);schedules=Schedules(storage)
+    agent=storage.agent(data['id'],include_deleted=True);schedules=Schedules(storage)
+    if agent.get('deleted_at'):
+        return {'agent':agent,'tests':storage.tests(data['id']),'resources':[],'schedule':None,'source':None,'library_source':None,'source_required':False,'required_connections':[],'jobs':[],'input_requirements':[],'request_required':False}
     reservation=schedules.get(data['id'])
     scheduled_config=scheduled_agent(agent,reservation['spec'] if reservation else {'timezone':'Asia/Seoul'})['config']
     source=schedules.execution_source(agent)
@@ -76,3 +78,8 @@ def history(c):
 def studio(c):
     # A single worker/storage connection prepares the editor's shared metadata.
     return {'agents':c.storage.agent_summaries(),**nodes(c),**catalog(c)}
+
+
+def delete_entry(c):
+    from infrastructure.persistence.library_deletion import remove
+    return remove(c.storage, c.data['kind'], c.data['id'], c.data['base_version'])

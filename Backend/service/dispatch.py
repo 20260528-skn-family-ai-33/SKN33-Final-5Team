@@ -28,6 +28,7 @@ ACTIONS={
     'recover_runs':runs.recover_runs,
     'interrupt_run':runs.interrupt_run,
     'heartbeat_run':runs.heartbeat_run,
+    'delete_entry':library.delete_entry,
     'nodes':library.nodes,
     'save_node':library.save_node,
     'catalog':library.catalog,

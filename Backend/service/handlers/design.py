@@ -100,7 +100,8 @@ def public_state(storage,s,graph):
     from agent_builder.design.presentation import public_requirement_errors
     state=public_requirement_errors(state)
     from agent_builder.design.failed_design import retained_design
-    state=retained_design(state,graph,{'configurable':{'thread_id':s['id']}})
+    state=retained_design(state,graph,{'configurable':{'thread_id':s['id']}},
+                          (snapshot.config or {}).get('configurable',{}).get('checkpoint_id'))
     from agent_builder.capabilities.capability_gate import blocking_issue, capability_enforced
     issue=blocking_issue(state) if state.get('status')=='ready' else None
     resources=[storage.asset(id) for id in s['file_ids']]
@@ -244,7 +245,7 @@ def _session_action(c):
         config={'configurable':{'thread_id':s['id']},'recursion_limit':30}
         before=graph.get_state(config);state=before.values or {};has_interrupt=any(task.interrupts for task in before.tasks)
         from agent_builder.design.failed_design import retained_design, MEANING_FIELDS
-        state=retained_design(state,graph,config)
+        state=retained_design(state,graph,config,(before.config or {}).get('configurable',{}).get('checkpoint_id'))
         restored={key:state.get(key) for key in ('draft', *MEANING_FIELDS)
                   if state.get(key) != (before.values or {}).get(key)}
         if action=='confirm':

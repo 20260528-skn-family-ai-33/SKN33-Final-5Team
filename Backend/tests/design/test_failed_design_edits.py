@@ -264,3 +264,36 @@ def test_condition_question_keeps_the_workflow_only_while_its_files_remain():
     state = {'draft':previous, 'resources':[{'id':'a'}, {'id':'b'}]}
     assert _pending_draft(state, ledger)['workflow'] == previous['workflow']
     assert _pending_draft({**state, 'resources':[{'id':'b'}]}, ledger)['workflow'] is None
+
+
+def test_a_stage_that_succeeds_forgets_its_carried_over_failure():
+    from agent_builder.conditions.clarification_core import settled_stage
+    previous = {'stage':'capability_check', 'request_fingerprint':'f', 'attempt':2}
+    state = {'previous_system_failure':previous}
+    assert settled_stage('capability_check', lambda s: {'status':'ready'})(state)['previous_system_failure'] is None
+    failed = settled_stage('capability_check', lambda s: {'system_failure':{**previous, 'attempt':3}})(state)
+    assert 'previous_system_failure' not in failed
+    other = settled_stage('requirements', lambda s: {'status':'ready'})(state)
+    assert 'previous_system_failure' not in other
+
+
+def test_recovery_lookup_is_reused_for_the_same_checkpoint():
+    prior = {**initial(), 'status':'ready', 'draft':reviewed_mail()['draft'], 'issues':[]}
+    failed = {**prior, 'draft':None, 'requirement_failure':{'retryable':True}}
+    calls = []
+    def history(*args, **kwargs):
+        calls.append(1)
+        return iter([SimpleNamespace(values=prior, next=('await_approval',))])
+    graph = SimpleNamespace(get_state_history=history)
+    config = {'configurable':{'thread_id':'cache-thread'}}
+    first = retained_design(failed, graph, config, 'checkpoint-1')
+    second = retained_design(failed, graph, config, 'checkpoint-1')
+    assert first['draft'] == second['draft'] == prior['draft'] and len(calls) == 1
+    first['draft']['name'] = 'mutated'
+    assert retained_design(failed, graph, config, 'checkpoint-1')['draft'] == prior['draft']
+    retained_design(failed, graph, config, 'checkpoint-2')
+    assert len(calls) == 2
+    missing = SimpleNamespace(get_state_history=lambda *a, **k: (calls.append(1), iter([]))[1])
+    assert retained_design(failed, missing, config, 'checkpoint-3')['draft'] is None
+    assert retained_design(failed, missing, config, 'checkpoint-3')['draft'] is None
+    assert len(calls) == 3

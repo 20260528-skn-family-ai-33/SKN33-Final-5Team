@@ -157,6 +157,24 @@ def next_attempt(state, stage, fingerprint):
     return 1
 
 
+def _failed_at(result, stage):
+    return any((result.get(key) or {}).get('stage') == stage for key in ('system_failure', 'requirement_failure'))
+
+
+def settled_stage(stage, node):
+    """Forget the carried-over failure of `stage` once that stage completes without failing.
+
+    previous_system_failure only links a retry to the failure it repeats; after the stage
+    succeeds, a later failure of the same input is a fresh first attempt."""
+    def run(state):
+        result = node(state)
+        previous = state.get('previous_system_failure') or {}
+        if isinstance(result, dict) and previous.get('stage') == stage and not _failed_at(result, stage):
+            result = {**result, 'previous_system_failure': None}
+        return result
+    return run
+
+
 def system_failure(stage, error, message, *, state=None):
     """A retryable processing failure. It is not a user decision and never a question."""
     extra={}

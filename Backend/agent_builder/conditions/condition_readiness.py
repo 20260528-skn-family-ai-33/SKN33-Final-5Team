@@ -1636,23 +1636,66 @@ def judge_conditions(state, transport, max_contract_repairs=0):
                 'metrics': response.get('metrics', {}), 'attempts': attempts}
 
 
-_ASCENDING = r'오름차순|작은\s*순|낮은\s*순|오래된\s*순'
-_DESCENDING = r'내림차순|큰\s*순|높은\s*순|최신\s*순'
+_WRITTEN_SORT = re.compile(
+    r'\s*(?:을|를|은|는|의)?\s*(?:값\s*)?(?P<type>숫자|문자|날짜)?\s*(?:기준\s*)?(?:으로\s*)?'
+    r'(?:(?P<asc>오름차순|작은\s*순|낮은\s*순|오래된\s*순)|(?P<desc>내림차순|큰\s*순|높은\s*순|최신\s*순))')
 
 
-def _requested_sorts(plans, state):
-    """Every sort key is a column the user wrote right before the same sort direction."""
-    users = '\n'.join(m['content'] for m in (state or {}).get('messages', []) if m.get('role') == 'user')
-    sorts = [item for plan in plans for item in plan.get('sort') or []]
-    for item in sorts:
-        field = item.get('field')
-        if not isinstance(field, str) or not field.strip():
-            return False
-        direction = _DESCENDING if item.get('direction') == 'descending' else _ASCENDING
-        pattern = re.compile(r'^\s*(?:값\s*)?(?:숫자|문자|날짜)?\s*(?:기준\s*)?(?:으로\s*)?(?:' + direction + ')')
-        if not any(pattern.match(users[m.end():m.end() + 24]) for m in re.finditer(re.escape(field), users)):
-            return False
-    return bool(sorts)
+def requested_sorts(state):
+    """Sort keys the user wrote: an exact attached-table column right before a direction.
+
+    Columns are matched whole ("예정주문일" is never "주문일"), longest first, in the
+    latest user turn that names one. Returns [{'field', 'direction', 'value_type'|None}].
+    """
+    tables = [r for r in (state or {}).get('resources', []) if r.get('kind') == 'table']
+    columns = sorted({c for r in tables for c in r.get('columns', []) if isinstance(c, str) and c.strip()},
+                     key=len, reverse=True)
+    if not columns:
+        return []
+    pattern = re.compile(r'(?<![가-힣A-Za-z0-9_])(?P<field>' + '|'.join(map(re.escape, columns)) + r')(?![A-Za-z0-9_])')
+    for message in reversed((state or {}).get('messages', [])):
+        if message.get('role') != 'user':
+            continue
+        found = []
+        for match in pattern.finditer(message['content']):
+            written = _WRITTEN_SORT.match(message['content'], match.end())
+            if not written or any(item['field'] == match['field'] for item in found):
+                continue
+            kind = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
+            found.append({'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
+                          'value_type': kind})
+        if found:
+            return found
+    return []
+
+
+def _final_sort(draft):
+    """The order the output receives: the last native sort on the executable path."""
+    from workflow_engine.execution_path import execution_path
+    path = execution_path(draft.get('workflow') or {})
+    order = []
+    for node in path:
+        if node['tool'] == 'filter_sort' and not node['settings'].get('operation'):
+            sort = (node['settings'].get('execution_plan') or draft.get('execution_plan') or {}).get('sort') or []
+            if sort:
+                order = sort
+    return order
+
+
+def _sort_issue(requested, draft):
+    label = ', '.join(item['field'] + (' 내림차순' if item['direction'] == 'descending' else ' 오름차순') for item in requested)
+    try:
+        actual = _final_sort(draft)
+    except (KeyError, TypeError, ValueError):
+        return f'요청한 정렬({label})이 최종 결과에 적용되는지 확인하지 못했습니다.'
+    same = len(actual) == len(requested) and all(
+        a.get('field') == r['field'] and a.get('direction') == r['direction']
+        and (r['value_type'] is None or a.get('value_type') == r['value_type'])
+        for a, r in zip(actual, requested))
+    if same:
+        return None
+    return (f'요청한 정렬({label})이 최종 결과를 만드는 filter_sort의 sort와 다릅니다. '
+            '요청한 열·방향 그대로 sort에 넣고, 다른 정렬은 넣지 마세요.')
 
 
 def plan_issues(ledger, draft, *, state=None):
@@ -1689,8 +1732,14 @@ def plan_issues(ledger, draft, *, state=None):
         # filtering/sorting. Combined requests need an expanded condition contract.
         if any(plan.get('filters') for plan in plans):
             problems.append('단일 중복 제거 계약에 없는 선별 조건이 추가됐습니다. filters=[]로 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
-        if any(plan.get('sort') for plan in plans) and not _requested_sorts(plans, state):
-            problems.append('단일 중복 제거 계약에 없는 정렬이 추가됐습니다. sort=[]로 입력 행 순서를 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
+    sorts = [] if slots.get('sort.policy') == 'none' else requested_sorts(state)
+    if sorts and nodes and set(ledger['operations']) <= {'filter', 'deduplicate'}:
+        # A written sort is part of the request: the output must carry exactly it.
+        issue = _sort_issue(sorts, draft)
+        if issue:
+            problems.append(issue)
+    elif ledger['operations'] == ['deduplicate'] and any(plan.get('sort') for plan in plans):
+        problems.append('단일 중복 제거 계약에 없는 정렬이 추가됐습니다. sort=[]로 입력 행 순서를 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
     if 'filter' in ledger['operations']:
         value=slots.get('filter.value')
         expected = {'field': slots.get('filter.field'), 'operator': slots.get('filter.operator'), 'value': value,

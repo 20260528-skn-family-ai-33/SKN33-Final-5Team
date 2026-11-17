@@ -59,32 +59,67 @@ def dedup_draft(sort, filters=()):
               'bindings': [{'input': 'table', 'node_id': 'read', 'output': 'table'}], 'settings': {'execution_plan': plan}},
              {'id': 'out', 'tool': 'write_result', 'label': 'out',
               'bindings': [{'input': 'table', 'node_id': 'sort', 'output': 'table'}], 'settings': {'format': 'csv'}}]
-    return {'questions': [], 'unsupported': [], 'execution_plan': plan, 'workflow': {'entry': 'read', 'nodes': nodes, 'edges': []}}
+    edges = [{'source': 'read', 'target': 'sort', 'branch': 'next'}, {'source': 'sort', 'target': 'out', 'branch': 'next'}]
+    return {'questions': [], 'unsupported': [], 'execution_plan': plan, 'workflow': {'entry': 'read', 'nodes': nodes, 'edges': edges}}
 
 
-def sort_problems(text, sort):
-    state = {'messages': [{'role': 'user', 'content': text}], 'resources': []}
-    return [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(sort), state=state) if '정렬' in p]
+PLANNED = ['주문번호', '고객명', '주문일', '예정주문일', '금액']
+PLANNED_REQUEST = REQUEST.replace('주문일 오름차순', '예정주문일 오름차순')
+
+
+def table_state(text, columns=COLUMNS):
+    return {'messages': [{'role': 'user', 'content': text}], 'resources': [{'id': 't', 'kind': 'table', 'columns': columns}]}
+
+
+def sort_problems(text, sort, columns=COLUMNS):
+    return [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(sort), state=table_state(text, columns)) if '정렬' in p]
+
+
+def test_requested_sorts_use_whole_attached_column_names():
+    from agent_builder.conditions.condition_readiness import requested_sorts
+    assert requested_sorts(table_state(REQUEST)) == [{'field': '주문일', 'direction': 'ascending', 'value_type': None}]
+    assert requested_sorts(table_state(PLANNED_REQUEST, PLANNED)) == [
+        {'field': '예정주문일', 'direction': 'ascending', 'value_type': None}]
+    # "예정주문일" written while only 주문일 is attached is not a 주문일 sort.
+    assert requested_sorts(table_state(PLANNED_REQUEST, COLUMNS)) == []
+    assert requested_sorts(table_state('금액을 숫자 기준으로 내림차순, 주문일은 오름차순으로 정렬해줘.')) == [
+        {'field': '금액', 'direction': 'descending', 'value_type': 'number'},
+        {'field': '주문일', 'direction': 'ascending', 'value_type': None}]
+    later = table_state(REQUEST)
+    later['messages'] += [{'role': 'assistant', 'content': '확인'}, {'role': 'user', 'content': '주문일 내림차순으로 바꿔줘'}]
+    assert requested_sorts(later) == [{'field': '주문일', 'direction': 'descending', 'value_type': None}]
 
 
 def test_written_sort_key_and_direction_are_allowed():
     assert sort_problems(REQUEST, SORT) == []
     assert sort_problems('주문번호 중복은 첫 행만 남기고 금액 숫자 내림차순으로 정렬해줘.',
                          [{'field': '금액', 'direction': 'descending', 'value_type': 'number'}]) == []
+    assert sort_problems(PLANNED_REQUEST, [{'field': '예정주문일', 'direction': 'ascending', 'value_type': 'text'}], PLANNED) == []
 
 
-@pytest.mark.parametrize('text,sort', [
-    ('주문번호 중복은 첫 행만 남겨줘.', SORT),                                  # no sort requested
-    (REQUEST, [{'field': '주문일', 'direction': 'descending', 'value_type': 'text'}]),  # opposite direction
-    (REQUEST, [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}]),   # another column
-    (REQUEST, SORT + [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}]),
+@pytest.mark.parametrize('text,sort,columns', [
+    ('주문번호 중복은 첫 행만 남겨줘.', SORT, COLUMNS),                                    # no sort requested
+    (REQUEST, [], COLUMNS),                                                              # requested sort dropped (PR #142 P1)
+    (REQUEST, [{'field': '주문일', 'direction': 'descending', 'value_type': 'text'}], COLUMNS),  # opposite direction
+    (REQUEST, [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}], COLUMNS),   # another column
+    (REQUEST, SORT + [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}], COLUMNS),
+    (PLANNED_REQUEST, SORT, PLANNED),                                                    # 주문일 for 예정주문일 (PR #142 P1)
+    ('주문번호 중복은 첫 행만 남기고 금액 숫자 내림차순으로 정렬해줘.',
+     [{'field': '금액', 'direction': 'descending', 'value_type': 'text'}], COLUMNS),         # written type changed
 ])
-def test_unrequested_or_changed_sort_is_still_rejected(text, sort):
-    assert sort_problems(text, sort)
+def test_missing_unrequested_or_changed_sort_is_rejected(text, sort, columns):
+    assert sort_problems(text, sort, columns)
+
+
+def test_sort_before_the_output_path_is_judged_on_the_executable_path():
+    draft = dedup_draft(SORT)
+    draft['workflow']['edges'] = []  # the sort node is not on the path to the output
+    draft['workflow']['entry'] = 'out'
+    assert any('정렬' in p for p in plan_issues(ready_dedup_ledger(), draft, state=table_state(REQUEST)))
 
 
 def test_dedup_contract_still_rejects_an_added_filter():
-    state = {'messages': [{'role': 'user', 'content': REQUEST}], 'resources': []}
+    state = table_state(REQUEST)
     added = [{'field': '금액', 'operator': 'gt', 'value': 100, 'compare_field': None, 'value_type': 'number'}]
     assert any('선별' in p for p in plan_issues(ready_dedup_ledger(), dedup_draft(SORT, added), state=state))
 
@@ -110,9 +145,12 @@ class Fake:
         return {'content': json.dumps(self.make(messages), ensure_ascii=False)}
 
 
+CURRENT = {'request': REQUEST}
+
+
 def capability(messages):
     return dict(decision='existing_tools', tool_ids=['read_table', 'filter_sort', 'write_result'],
-                missing_conditions=[], missing_actions=[], reason='fixture', user_quotes=[REQUEST])
+                missing_conditions=[], missing_actions=[], reason='fixture', user_quotes=[CURRENT['request']])
 
 
 def condition(messages):
@@ -141,7 +179,7 @@ def make_planner(calls, sort=SORT, schedule=None):
         edges = [{'source': 'read', 'target': 'sort', 'branch': 'next'}, {'source': 'sort', 'target': 'out', 'branch': 'next'}]
         draft = AgentDraft(name='중복 주문 정리', purpose='중복 제거 후 정렬', instructions='요청대로 처리',
                            tool_ids=['read_table', 'filter_sort', 'write_result'], document_ids=[file_id],
-                           requirements=[{'description': '요청', 'source_id': 'user', 'quote': REQUEST}],
+                           requirements=[{'description': '요청', 'source_id': 'user', 'quote': CURRENT['request']}],
                            questions=[], question_options=[], unsupported=[], explanation='x', execution_plan=plan,
                            workflow={'entry': 'read', 'nodes': nodes, 'edges': edges}, schedule=schedule).model_dump()
         draft = public_draft_explanation(draft)
@@ -177,6 +215,14 @@ def service(monkeypatch):
         store = Storage(directory)
         try:return len(store.agents())
         finally:store.close()
+
+    def run(agent_id):
+        from workflow_engine.runner import run_workflow
+        store = Storage(directory)
+        try:return run_workflow(store, agent_id, '저장한 조건으로 실행', api_key='')
+        finally:store.close()
+    fakes['run'] = run
+    CURRENT['request'] = REQUEST
     return act, saved, fakes
 
 
@@ -228,3 +274,47 @@ def test_a_change_request_still_replans(service):
     act('message', planner, content=REQUEST)
     act('message', planner, content='저장 형식을 JSON으로 바꿔줘')
     assert len(calls) >= 2 and calls[1] == '저장 형식을 JSON으로 바꿔줘' and saved() == 0
+
+
+PLANNED_TABLE = {**TABLE, 'columns': PLANNED}
+PLANNED_ROWS = [{**ROWS[0], '예정주문일': '2026-01-01'}, {**ROWS[1], '예정주문일': '2026-01-01'},
+                {**ROWS[2], '예정주문일': '2026-01-02'}]
+PLANNED_SORT = [{'field': '예정주문일', 'direction': 'ascending', 'value_type': 'text'}]
+
+
+@pytest.mark.parametrize('table,rows,request_text,sort,order', [
+    (TABLE, ROWS, REQUEST, SORT, ['B2', 'A1']),
+    (PLANNED_TABLE, PLANNED_ROWS, PLANNED_REQUEST, PLANNED_SORT, ['A1', 'B2']),
+])
+def test_correct_sort_saves_by_chat_and_runs_in_the_requested_order(service, table, rows, request_text, sort, order):
+    act, saved, fakes = service
+    CURRENT['request'] = request_text
+    calls = []
+    planner = make_planner(calls, sort=sort)
+    act('upload', planner, asset=dict(table), rows=rows)
+    assert act('message', planner, content=request_text)['status'] == 'ready'
+    done = act('message', planner, content='확인완료. 저장')
+    assert done['status'] == 'saved' and saved() == 1
+    result = fakes['run'](done['saved_agent_id'])
+    assert result['status'] == 'succeeded'
+    assert [row['주문번호'] for row in result['rows']] == order
+
+
+@pytest.mark.parametrize('table,rows,request_text,sort', [
+    (TABLE, ROWS, REQUEST, []),                           # PR #142 P1: the requested sort is dropped
+    (PLANNED_TABLE, PLANNED_ROWS, PLANNED_REQUEST, SORT),  # PR #142 P1: 주문일 used for 예정주문일
+])
+def test_draft_without_the_requested_sort_cannot_be_saved(service, table, rows, request_text, sort):
+    act, saved, fakes = service
+    CURRENT['request'] = request_text
+    calls = []
+    planner = make_planner(calls, sort=sort)
+    act('upload', planner, asset=dict(table), rows=rows)
+    first = act('message', planner, content=request_text)
+    assert first['status'] == 'validation_failed' and any('요청한 정렬' in issue for issue in first['issues'])
+    reply = act('message', planner, content='확인완료. 저장')
+    assert saved() == 0 and reply['status'] == 'validation_failed'
+    assert '요청한 정렬' in reply['messages'][-1]['content']
+    with pytest.raises(ValueError):
+        act('confirm', planner)
+    assert saved() == 0

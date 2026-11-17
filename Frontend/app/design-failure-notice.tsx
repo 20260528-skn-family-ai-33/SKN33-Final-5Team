@@ -1,4 +1,4 @@
-export type DesignFailure={kind?:string;failure_kind?:string;stage?:string;retryable:boolean;reason?:string;action?:string;attempt?:number;attempt_notice?:string};
+export type DesignFailure={kind?:string;failure_kind?:string;stage?:string;retryable:boolean;recovery_pending?:boolean;reason?:string;action?:string;attempt?:number;attempt_notice?:string};
 
 const stages:Record<string,string>={requirements:'요청을 작업 목록으로 정리하는 단계',capability_check:'작업 지원 여부를 확인하는 단계',condition_check:'업무 조건을 확인하는 단계'};
 

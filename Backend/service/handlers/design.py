@@ -130,7 +130,8 @@ def new_session(c):
 
 
 def _install_receipt_question(graph, config, prompt, resources):
-    graph.update_state(config, {**prompt, 'resources':resources, 'attachment_route':'ask'}, as_node='attachment_gate')
+    graph.update_state(config, {**prompt, 'resources':resources, 'attachment_route':'ask',
+        'system_failure':None,'requirement_failure':None}, as_node='attachment_gate')
     graph.invoke(None, config)
 
 
@@ -237,6 +238,17 @@ def _session_action(c):
                 # requirement failure stays so the user can retry with the new file at once.
                 update={'resources':resources,'issues':[],'semantic_issues':[]}
                 if state.get('status') not in (None,'empty','needs_clarification'):update['status']='needs_clarification'
+                from agent_builder.design.failure_recovery import current_failure, normalize_active_failures
+                diagnosed=normalize_active_failures(state)
+                failure=current_failure(diagnosed)
+                if failure and failure.get('retryable') is True:
+                    # This recovery is explicit: an old failure carried into a
+                    # genuine later question must not activate the retry UI.
+                    for key in ('system_failure','requirement_failure'):
+                        update[key]={**failure,'recovery_pending':True} if diagnosed.get(key) is failure else None
+                    update['pending_questions']=[]
+                    if isinstance(state.get('draft'),dict):
+                        update['draft']={**state['draft'],'questions':[],'question_options':[],'question_responses':[]}
                 graph.update_state(config,update)
             return public_state(storage,s,graph)
         if action not in ['message','confirm']:raise ValueError('지원하지 않는 요청입니다.')
@@ -282,9 +294,10 @@ def _session_action(c):
                      for i,text in enumerate(draft.get('questions') or [])] if has_interrupt else []
             waiting=pending or planner
             pending_texts=[q['text'] for q in waiting if q.get('text')]
-            # Old failure metadata may survive a later clarification. As in the
-            # UI, only the current failed status makes it active guidance.
-            failure=(state.get('system_failure') or state.get('requirement_failure')) if state.get('status')=='validation_failed' else None
+            # A current failure or explicit file-recovery marker is guidance;
+            # old metadata attached to a real later question is inactive.
+            from agent_builder.design.failure_recovery import current_failure
+            failure=current_failure(state)
             turn=split_turn(content,state,waiting) if not structured else {'work':content,'side':[],'kinds':[]}
             if turn['side']:
                 shown=len(state.get('messages') or _work_messages(storage,s,graph))
@@ -336,8 +349,7 @@ def _session_action(c):
                     **({'node_edit':node_edit} if node_edit is not None else {}),
                     **({'question_id':data['question_id']} if data.get('question_id') else {}),
                     **({'question_answers':answers} if answers else {})}),config)
-            elif (state.get('status')=='validation_failed' and (state.get('system_failure') or state.get('requirement_failure'))
-                  and _last_user(state)==content):
+            elif failure and _last_user(state)==content:
                 # Resending the request of a current processing failure reruns it from the gates
                 # instead of appending a duplicate turn. This holds whether or not the failure was
                 # diagnosed as retryable, so the same fingerprint keeps counting attempts.

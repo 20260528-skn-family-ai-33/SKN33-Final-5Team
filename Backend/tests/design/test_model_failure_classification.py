@@ -5,7 +5,7 @@ import urllib.error
 
 import httpx
 import pytest
-from openai import BadRequestError, InternalServerError
+from openai import APIStatusError, BadRequestError, InternalServerError
 
 from agent_builder.conditions.clarification_core import system_failure
 from agent_builder.design.failure_notice import requirement_failure_details, requirement_failure_notice
@@ -187,3 +187,63 @@ def test_unknown_metadata_is_not_echoed_or_assigned_a_guessed_failure_category()
     details=requirement_failure_details('system_error',error_code=PRIVATE)
     assert details['reason_code']=='processing_error' and not details['retryable']
     assert 'private' not in json.dumps(details)
+
+
+@pytest.mark.parametrize('stage', ['capability_check', 'condition_check'])
+@pytest.mark.parametrize('status,code,kind,reason_fragment', [
+    (408, 'model_timeout', 'model_error', '응답 시간'),
+    (400, 'context_budget_exceeded', 'model_input_error', '입력 길이'),
+])
+def test_sdk_gate_failure_diagnosis_survives_first_and_repeated_attempts(
+        tmp_path, stage, status, code, kind, reason_fragment):
+    from agent_builder.capabilities.capability_check import make_capability_check
+    from agent_builder.conditions.condition_check import make_condition_check
+    from tests.conditions.test_condition_readiness import state as table_state
+
+    response=httpx.Response(status, request=httpx.Request('POST', 'https://private.example/model'))
+    cls=APIStatusError if status==408 else BadRequestError
+    body={'message': PRIVATE}
+    if status==400:
+        body['code']='context_length_exceeded'
+    error=cls(PRIVATE, response=response, body=body)
+
+    class Rejected:
+        calls=0
+        def invoke(self, messages):
+            self.calls+=1
+            raise error
+
+    transport=Rejected()
+    storage=Storage(tmp_path)
+    try:
+        session=storage.new_session('fixture',uid())
+        initial={**table_state(), 'session_id':session['id']}
+        current=initial
+        for attempt in (1,2):
+            audit=GenerationHistory.start(storage,{'action':'message','id':session['id'],'revision':0,
+                'content':initial['messages'][0]['content'],'generation_request_id':uid()})
+            audit.enter(stage)
+            if stage=='capability_check':
+                check=make_capability_check('fixture',transport=transport,mode='enforce',error_observer=audit.error)
+                ledger_key='capability_assessment'
+            else:
+                check=make_condition_check(transport=transport,mode='enforce',error_observer=audit.error)
+                ledger_key='condition_ledger'
+            result=check(current)
+            failure=result['system_failure']
+            record=audit.finish(result)
+            chat=result['messages'][-1]['content']
+            assert result['status']=='validation_failed' and result['pending_questions']==[]
+            assert result[ledger_key]['error_code']==failure['reason_code']==record['reason_code']==code
+            assert failure['failure_kind']==kind and failure['stage']==stage and failure['attempt']==attempt
+            assert failure['retryable'] is (status==408 and attempt==1)
+            assert reason_fragment in failure['reason'] and failure['reason'] in chat
+            assert failure['action'] in chat
+            assert record['status']=='failed' and record['node']==stage
+            if attempt==2:
+                assert failure['attempt_notice'] in chat and chat.count('2번째')==1
+            assert 'private' not in json.dumps(result)+json.dumps(record)
+            current={**initial, 'previous_system_failure':failure}
+        assert transport.calls==2
+    finally:
+        storage.close()

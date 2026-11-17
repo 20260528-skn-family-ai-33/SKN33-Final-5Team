@@ -1,5 +1,6 @@
 """Recovery controls must recover the persisted graph, not become business input."""
 from copy import deepcopy
+import json
 
 import pytest
 
@@ -104,6 +105,84 @@ def test_a_changed_request_shows_its_new_failed_stage_instead_of_the_previous_fa
     assert calls == [] and saved() == 0
 
 
+@pytest.mark.parametrize('retry_control', [True, False], ids=['retry-control', 'same-request'])
+def test_upload_after_a_processing_failure_keeps_recovery_and_the_answered_request(service, tmp_path, retry_control):
+    from agent_builder.design.graph import build_graph
+    from infrastructure.persistence.storage import Storage
+    from service.worker import handle
+    from tests.design.test_attachment_is_not_a_request import DOC
+    from tests.design.test_clarification_core import REQUEST, RequirementTransport, analysis_planner, extraction
+    from tests.design.test_clarification_turns import Fake, assessment
+
+    box, act, saved = service
+    box['cap'] = Fake([assessment(REQUEST)] * 4)
+
+    class QuestionThenTimeout:
+        schema = None
+        calls = 0
+
+        def invoke(self, messages):
+            self.calls += 1
+            if self.calls == 1:
+                return {'content': json.dumps(extraction('위험 판단 기준을 알려주세요.'), ensure_ascii=False)}
+            raise TimeoutError('private_model_response Bearer private_token')
+
+    transport = QuestionThenTimeout()
+    box['requirement'] = transport
+    calls = []
+    first = act('message', analysis_planner(calls, REQUEST), content=REQUEST)
+    answer = '위약금이 있는 조항을 위험으로 봐줘'
+    failed = act('message', analysis_planner(calls, REQUEST), content=answer,
+                 question_id=first['pending_questions'][0]['id'])
+    assert failed['status'] == 'validation_failed'
+    assert failed['requirement_failure']['reason_code'] == 'model_timeout'
+    assert failed['requirement_failure']['retryable'] and calls == []
+    assert 'private_' not in json.dumps(failed)
+    history = handle({'directory': str(tmp_path), 'action': 'generation_history', 'id': first['id']})
+    assert 'private_' not in json.dumps(history)  # The model observer also sees the private exception.
+
+    def persisted():
+        storage = Storage(tmp_path)
+        graph, connection = build_graph(storage, conversation=lambda _: {})
+        try:
+            return deepcopy(graph.get_state({'configurable': {'thread_id': first['id']}}).values)
+        finally:
+            connection.close()
+            storage.close()
+
+    before = persisted()
+    assert len(before['requirement_answers']) == len(before['clarification_answers']) == 1
+    uploaded = act('upload', asset=dict(DOC), rows=[])
+    assert transport.calls == 2 and calls == []
+    assert uploaded['status'] == 'needs_clarification'
+    assert uploaded['requirement_failure']['reason_code'] == 'model_timeout'
+    assert uploaded['requirement_failure']['retryable']
+    assert uploaded['requirement_failure']['recovery_pending'] is True
+    assert not uploaded['pending_questions'] and not uploaded['draft']['questions']
+    after_upload = persisted()
+    shown = act('session')
+    assert shown['requirement_failure'] == uploaded['requirement_failure']
+    assert persisted() == after_upload  # Reading the recovery view never edits a checkpoint.
+
+    box['requirement'] = RequirementTransport([extraction()])
+    incoming = []
+    planner = analysis_planner(calls, REQUEST)
+
+    def capture(state):
+        incoming.append(deepcopy(state))
+        return planner(state)
+
+    retry = '앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해 주세요.' if retry_control else answer
+    recovered = act('message', capture, content=retry)
+    assert recovered['status'] == 'ready' and recovered['requirement_failure'] is None
+    assert len(incoming) == 1 and saved() == 0
+    assert [m['content'] for m in incoming[0]['messages'] if m['role'] == 'user'] == [REQUEST, answer]
+    for key in ('condition_answers', 'requirement_answers', 'clarification_answers'):
+        assert incoming[0].get(key) == before.get(key)
+    assert [m['content'] for m in recovered['messages'] if m['role'] == 'user'] == [REQUEST, answer]
+    assert 'private_' not in json.dumps(recovered)
+
+
 def _interrupted_session(tmp_path, monkeypatch, question, response):
     from agent_builder.design.graph import build_graph
     from agent_builder.design.temporal_context import ensure_temporal_context
@@ -170,6 +249,55 @@ def test_public_legacy_timeout_keeps_its_known_cause_when_old_generic_chat_is_sa
     assert '응답 시간' in failure['reason'] and '작업 간 연결' not in failure['reason']
     if key == 'requirement_failure':
         assert failure['reason'] in shown['messages'][-1]['content']
+
+
+@pytest.mark.parametrize('metadata,code,retryable', [
+    ({}, 'invalid_model_response', False),
+    ({'error_type': 'APITimeoutError'}, 'model_timeout', True),
+])
+def test_public_legacy_requirement_failure_uses_current_trace_without_overriding_known_transport_cause(
+        tmp_path, monkeypatch, metadata, code, retryable):
+    from agent_builder.design.graph import build_graph
+    from infrastructure.persistence.storage import Storage
+    from service.worker import handle
+
+    session, original = _interrupted_session(tmp_path, monkeypatch, '실행 시각은 몇 시인가요?', {'type': 'time'})
+    config = {'configurable': {'thread_id': session['id']}}
+    storage = Storage(tmp_path)
+    graph, connection = build_graph(storage, conversation=lambda _: {})
+    try:
+        graph.update_state(config, {
+            'status': 'validation_failed', 'route': 'invalid',
+            'requirement_failure': {'kind': 'processing_error', 'stage': 'requirements',
+                                    'retryable': True, 'attempt': 1, **metadata},
+            'messages': original['messages'] + [{'role': 'assistant', 'content':
+                '입력하신 조건은 보존했습니다. 현재 이 요청을 처리할 수 없습니다.'}],
+            'issues': ['요청 업무 목록을 확정하지 못했습니다. private_model_response Bearer private_token'],
+            'trace': [{'node': 'requirements', 'status': 'failed', 'failure_kind': 'model_output_error',
+                       'error_type': 'ValueError', 'detail':
+                       '요청 업무 목록을 확정하지 못했습니다. private_model_response Bearer private_token'},
+                      {'node': 'requirements', 'label': '단계 소요 시간', 'elapsed_ms': 1000}],
+        }, as_node='supervisor')
+        before = deepcopy(graph.get_state(config))
+    finally:
+        connection.close()
+        storage.close()
+
+    shown = handle({'directory': str(tmp_path), 'action': 'session', 'id': session['id']})
+    failure = shown['requirement_failure']
+    assert failure['reason_code'] == code and failure['retryable'] is retryable
+    assert failure['reason'] in shown['messages'][-1]['content']
+    assert failure['action'] in shown['issues'][0]
+    assert 'private_' not in json.dumps(shown)
+    storage = Storage(tmp_path)
+    graph, connection = build_graph(storage, conversation=lambda _: {})
+    try:
+        after = graph.get_state(config)
+        assert after.values == before.values
+        assert after.config == before.config and after.next == before.next
+    finally:
+        connection.close()
+        storage.close()
 
 
 @pytest.mark.parametrize('question,response,kind', [

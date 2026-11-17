@@ -671,10 +671,12 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   window.addEventListener('beforeunload',beforeUnload);return()=>window.removeEventListener('beforeunload',beforeUnload);
  },[text,testText,replyDraft,runFiles.length,chosenRefs.length,libraryDirty,scheduleSourceDirty,scheduleSettingsDirty,clarificationDirty]);
 
- // Stored failures can outlive a later clarification, so only a failed status makes them current.
+ // Stored failures can outlive a later clarification; attachment recovery needs an explicit marker and no open questions.
  // Read-time projections are recomputed on every snapshot and are current in any status.
+ const attachmentRecovery=session?.status==='needs_clarification'&&!session.pending_questions?.length&&!session.draft?.questions.length
+  ?[session.requirement_failure,session.system_failure].find(failure=>failure?.recovery_pending===true&&failure.retryable):undefined;
  const generationFailure=session?.status==='validation_failed'?(session.requirement_failure||session.system_failure)
-  :session?.requirement_failure&&PROJECTED_FAILURES.has(session.requirement_failure.kind||'')?session.requirement_failure:undefined;
+  :session?.requirement_failure&&PROJECTED_FAILURES.has(session.requirement_failure.kind||'')?session.requirement_failure:attachmentRecovery;
  const draft=selected?.config||session?.draft,resources=selected?(source?[source.asset,...agentResources.filter(r=>r.kind==='document')]:agentResources):session?.resources||[],ready=session?.status==='ready',saved=!!selected||session?.status==='saved';
  const collecting=session?.status==='needs_clarification'&&!draft?.workflow&&!!draft?.questions.length&&!draft?.tool_ids.length;
  const lastAssistant = session?.messages.map(message => message.role).lastIndexOf('assistant');

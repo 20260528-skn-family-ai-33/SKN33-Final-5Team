@@ -112,8 +112,8 @@ def requirement_failure_details(kind, error=None, *, attempt=1, stage='requireme
     return result
 
 
-def requirement_failure_notice(kind, error, *, retained_draft=False, attempt=1, stage='requirements'):
-    details = requirement_failure_details(kind, error, attempt=attempt, stage=stage)
+def requirement_failure_notice(kind, error, *, retained_draft=False, attempt=1, stage='requirements', error_code=None):
+    details = requirement_failure_details(kind, error, attempt=attempt, stage=stage, error_code=error_code)
     label={'requirements':'요청을 작업 목록으로 정리하는', 'capability_check':'사용할 도구의 지원 여부를 확인하는',
            'condition_check':'입력한 처리 조건을 확인하는'}.get(stage,'업무 흐름을 구성하는')
     notice = f"{label} 단계에서 중단됐습니다. {details['reason']} {details['action']}"

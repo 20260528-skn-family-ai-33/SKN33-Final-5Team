@@ -175,7 +175,7 @@ def settled_stage(stage, node):
     return run
 
 
-def system_failure(stage, error, message, *, state=None):
+def system_failure(stage, error, message, *, state=None, error_code=None):
     """A diagnosed processing failure, separate from a missing user answer."""
     extra={}
     if state is not None:
@@ -185,10 +185,14 @@ def system_failure(stage, error, message, *, state=None):
         extra={'attempt':attempt,'request_fingerprint':fingerprint}
     from agent_builder.design.failure_notice import requirement_failure_details, requirement_failure_notice
     name=type(error).__name__ if isinstance(error, BaseException) else str(error)
-    details=requirement_failure_details('model_error',error,stage=stage,attempt=extra.get('attempt',1))
+    # Gates diagnose the live exception before retaining only its class name.
+    # Their fixed code keeps response status/context evidence across that boundary.
+    source=error if isinstance(error,BaseException) or error_code is None else None
+    details=requirement_failure_details('model_error',source,stage=stage,attempt=extra.get('attempt',1),
+        error_code=error_code)
     if extra.get('attempt',1)>1:
-        message=requirement_failure_notice(details['failure_kind'],error,stage=stage,attempt=extra['attempt'],
-            retained_draft=bool((state.get('draft') or {}).get('workflow')))
+        message=requirement_failure_notice(details['failure_kind'],source,stage=stage,attempt=extra['attempt'],
+            retained_draft=bool((state.get('draft') or {}).get('workflow')),error_code=details['reason_code'])
     return {**details, 'error_type':name, 'message':message, **extra}
 
 

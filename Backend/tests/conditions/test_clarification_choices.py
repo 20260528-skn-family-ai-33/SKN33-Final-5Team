@@ -531,6 +531,81 @@ def test_long_runs_of_spaces_are_read_once(head):
     numeric_filter_issues(s, draft)
 
 
+SAVE_TABLE = {**TABLE, 'columns': ['거래ID', '비용', '수량', '날짜'],
+              'profile': {column: {'types': ['number'], 'missing': 0, 'duplicateValues': 0, 'numericStrings': 3}
+                          for column in ('비용', '수량')}}
+
+
+def save_ready_state(request_text, first, rules, match):
+    from tests.conditions.test_condition_readiness import workflow_draft
+
+    s = state(request_text + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'); s['resources'] = [SAVE_TABLE]
+    operator, word = first
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (operator, word),
+                       'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
+    assert ledger['decision'] == 'ready'
+    draft = workflow_draft(s, threshold=10, operator=operator)
+    plan = draft['workflow']['nodes'][1]['settings']['execution_plan']
+    plan.update(filters=rules, match=match)
+    draft['execution_plan'] = plan
+    s.update(condition_enforced=True, condition_ledger=ledger, confirmed=True, draft=draft)
+    return s
+
+
+@pytest.mark.parametrize(('request_text', 'first', 'mode', 'second'), [
+    ('비용이 10원보다 적은 행 또는 수량이 3개보다 적은 행', ('lt', '적은'), 'any', ('수량', 'lt', 3)),
+    ('비용이 10원 이상이면서 수량이 3개 이상인 행', ('gte', '이상'), 'all', ('수량', 'gte', 3)),
+    ('비용이 10원 이상이고 수량이 3개 이상인 행', ('gte', '이상'), 'all', ('수량', 'gte', 3)),
+])
+def test_save_accepts_the_complete_compound_filter_and_nothing_less(request_text, first, mode, second):
+    from agent_builder.capabilities.capability_gate import require_save_ready
+
+    cost = dict(field='비용', operator=first[0], value=10.0, compare_field=None, value_type='number')
+    other = dict(field=second[0], operator=second[1], value=float(second[2]), compare_field=None, value_type='number')
+    require_save_ready(save_ready_state(request_text, first, [cost, other], mode))
+    for rules, match in (([cost], 'all'), ([cost, other], 'all' if mode == 'any' else 'any')):
+        with pytest.raises(ValueError, match='확정 업무 조건'):
+            require_save_ready(save_ready_state(request_text, first, rules, match))
+
+
+def confirmed_single(*follow_ups):
+    s = state('비용이 10원 이상인 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'); s['resources'] = [SAVE_TABLE]
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+                       'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
+    assert ledger['decision'] == 'ready'
+    s.update(condition_ledger=ledger, pending_questions=[], condition_enforced=True)
+    for text in follow_ups:
+        s['messages'] += [{'role': 'assistant', 'content': '확인 질문'}, {'role': 'user', 'content': text}]
+    return s
+
+
+@pytest.mark.parametrize('follow_up', ['아까 기준을 좀 높여줘', '기준 좀 낮춰 줘', '필터 조건 바꿔줘'])
+def test_change_to_the_criterion_without_a_value_is_asked(follow_up):
+    from agent_builder.conditions.condition_readiness import KEEP_ALL, compound_filter_state
+
+    s = confirmed_single(follow_up)
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+                       'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
+    assert ledger['decision'] == 'clarify' and 'filter.match' in ledger['unresolved']
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.match')
+    assert '비용 10 이상' in question['text'] and question['options'] == [KEEP_ALL]
+    assert compound_filter_state(confirmed_single(follow_up, KEEP_ALL))['pending'] is None
+    retyped = compound_filter_state(confirmed_single(follow_up, '비용이 20원 이상'))
+    assert retyped['pending'] is None and [r['value'] for r in retyped['rules']] == [20]
+
+    found = compound_filter_state(compound_state(BASE, follow_up))
+    assert found['pending'] == 'revise' and len(found['rules']) == 2
+
+
+@pytest.mark.parametrize('follow_up', ['JSON 말고 CSV로 저장해줘', '중복 기준은 거래ID로 해줘', '날짜 기준으로 정렬해줘'])
+def test_other_follow_ups_do_not_reopen_the_criterion(follow_up):
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+
+    assert compound_filter_state(confirmed_single(follow_up))['pending'] is None
+    s = compound_state(BASE, follow_up); s['resources'] = [SAVE_TABLE]  # 날짜 is a column of this table
+    assert compound_filter_state(s)['pending'] is None
+
+
 @pytest.mark.parametrize('reply', ['아까 기준을 좀 높여줘', '기준을 20으로 바꿔줘'])
 def test_unnamed_compound_edit_requires_clarification_before_save(reply):
     from agent_builder.conditions.condition_readiness import compound_filter_state, plan_issues
@@ -590,3 +665,27 @@ def test_compound_validation_save_and_execution_agree(tmp_path, request_text, mo
                 assert [(row['비용'], row['수량']) for row in result['rows']] == expected
     finally:
         store.close()
+
+
+def test_cancelled_compound_is_not_restored_from_the_old_single_filter_ledger():
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    s = compound_state(BASE)
+    s['condition_ledger'] = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+                                    'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
+    s['messages'] += [{'role': 'user', 'content': '전체 필터 제거해줘'},
+                      {'role': 'user', 'content': 'CSV로 바꿔줘'}]
+    found = compound_filter_state(s)
+    assert found['rules'] == [] and found['pending'] is None
+
+
+def test_compound_save_rejects_a_ledger_value_not_in_the_confirmed_rules():
+    from copy import deepcopy
+    from agent_builder.conditions.condition_readiness import compound_filter_state, plan_issues
+    s = compound_state(BASE)
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+                       'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
+    draft = filter_draft(s, compound_filter_state(s)['rules'], 'all')
+    stale = deepcopy(ledger)
+    stale['slots']['filter.value']['value'] = 50
+    assert plan_issues(stale, draft, state=s)
+    assert not plan_issues(ledger, draft, state=s)

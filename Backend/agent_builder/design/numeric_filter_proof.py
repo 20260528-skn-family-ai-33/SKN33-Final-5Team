@@ -22,7 +22,7 @@ def numeric_filter_issues(state, draft):
     from agent_builder.conditions.condition_readiness import compound_filter_state
     found = compound_filter_state(state)
     rules = found['rules']
-    if not rules or found['pending'] not in (None, 'match'):
+    if not rules or found['seeded'] or found['pending'] not in (None, 'match'):
         # While the user is revising the conditions they are not a requirement yet.
         return _filter_issues(state, draft, None)
     if found['mode']:

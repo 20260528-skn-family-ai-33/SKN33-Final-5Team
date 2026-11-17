@@ -401,6 +401,12 @@ _ALL_JOIN = re.compile(r'(?:이고|이며|이면서|면서|그리고|및)(?=[\s,
 _ANY_JOIN = re.compile(r'(?:이거나|거나|또는|혹은)(?=[\s,]|$)')
 # Clickable answers. A clicked label is matched exactly, so no synonym is guessed.
 MATCH_CHOICES = {'모두 만족': 'all', '하나라도 만족': 'any'}
+# Words that name the selection criterion itself, and the subjects of the empty-value and
+# duplicate policies. Both were already used below to read amendments and policy questions.
+_CRITERION_NOUN = re.compile(r'(?:기준(?:값|액|점)?|임계값|문턱값|선별|조건|필터)')
+_POLICY_SUBJECTS = {'missing.policy': r'빈\s*(?:값|칸|셀|행)|빈\s+\S+|비어\s*있|결측|누락|값이\s*없',
+                    'duplicate.field': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치',
+                    'duplicate.policy': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치'}
 KEEP_ALL, KEEP_OTHERS, ONLY_NEW = '기존 조건 모두 유지', '나머지 조건 유지', '새 조건만 적용'
 
 
@@ -526,6 +532,7 @@ def compound_filter_state(state):
     """
     fields = _table_fields(state)
     mode, rules, pending, candidate = None, [], None, None
+    seed, seed_turn, seeded = _confirmed_filter(state)
 
     def merged(rule):
         replaced = [rule if old['field'] == rule['field'] else old for old in rules]
@@ -538,11 +545,16 @@ def compound_filter_state(state):
         if text is None:
             continue
         text = text.strip().rstrip('.!?')
+        if seed and not rules and not seeded and index > seed_turn:
+            # A single filter confirmed earlier is followed like a chain of one.
+            mode, rules, seeded = 'all', [seed], True
         if re.fullmatch(r'(?:모든|전체|기존)\s*(?:숫자\s*)?(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text):
             mode, rules, pending, candidate = None, [], None, None
+            seed = None
             continue
         turn = _compound_filter_in_turn(state, text)
         if turn:
+            seed = None  # An explicit chain supersedes the older single-filter ledger.
             kind, found = turn
             candidate = None
             if kind == 'rewrite':
@@ -602,16 +614,39 @@ def compound_filter_state(state):
             else:
                 pending, candidate = 'revise', rule
             continue
-        unnamed_edit = re.search(r'(?:조건|필터|기준).{0,32}(?:높여|낮춰|올려|내려|바꿔|바꾸|변경|수정|조정)', text)
-        if (named and re.search(r'조건|필터|기준', text)) or unnamed_edit:
+        other_columns = fields - {rule['field'] for rule in rules}
+        if named and _CRITERION_NOUN.search(text):
             pending, candidate = 'revise', None
-    return {'mode': mode, 'rules': rules, 'pending': pending, 'candidate': candidate}
+        elif (not matches and _CRITERION_NOUN.search(text)
+              and not any(re.search(r'(?<![\w])' + re.escape(field), text) for field in other_columns)
+              and not any(re.search(subject, text) for subject in _POLICY_SUBJECTS.values())):
+            # "아까 기준을 좀 높여줘": the criterion is being changed but neither the column nor
+            # the new value is written. Keeping the old filter silently would be a guess.
+            pending, candidate = 'revise', None
+    return {'mode': mode, 'rules': rules, 'pending': pending, 'candidate': candidate,
+            'seeded': seeded and len(rules) < 2}
+
+
+def _confirmed_filter(state):
+    """The single numeric filter the last ledger confirmed, and the turn that settled it."""
+    ledger = state.get('condition_ledger') or {}
+    slots = ledger.get('slots') or {}
+    parts = [slots.get(key) or {} for key in ('filter.field', 'filter.operator', 'filter.value')]
+    if (any(part.get('status') != 'specified' for part in parts) or parts[1].get('value') not in _OPERATOR_WORD
+            or isinstance(parts[2].get('value'), bool) or not isinstance(parts[2].get('value'), (int, float))):
+        return None, None, False
+    turns = [item.get('turn') for part in parts for item in part.get('evidence') or []
+             if isinstance(item.get('turn'), int)]
+    if not turns:
+        return None, None, False
+    return (dict(field=parts[0]['value'], operator=parts[1]['value'], value=float(parts[2]['value']),
+                 compare_field=None, value_type='number'), max(turns), False)
 
 
 def literal_compound_filter(state):
     """The confirmed cross-column filter as (mode, rules), or None while none is final."""
     found = compound_filter_state(state)
-    if not found['rules'] or not found['mode'] or found['pending']:
+    if not found['rules'] or not found['mode'] or found['pending'] or found['seeded']:
         return None
     return found['mode'], found['rules']
 
@@ -628,7 +663,7 @@ def compound_filter_question(found):
     if found['pending'] == 'revise':
         return (f"앞서 정한 선별 조건은 {listed}입니다. 어떻게 바꿀까요? "
                 f"값을 바꾸려면 '{describe_rule(rules[0])}'처럼 새 조건을 적어 주세요.",
-                [KEEP_ALL, *(f"{rule['field']} 조건 제거" for rule in rules)])
+                [KEEP_ALL, *(f"{rule['field']} 조건 제거" for rule in rules if len(rules) > 1)])
     return ("여러 열의 선별 조건이 함께 적혀 있는데 서로의 관계를 정확히 읽지 못했습니다. "
             "'A열이 10 이상이고 B열이 3 미만'과 같은 형태로 각 조건을 초과·이상·미만·이하로 적고, "
             "조건 사이는 '이고'(모두 만족)나 '이거나'(하나라도 만족)로 이어 주세요."), []
@@ -1480,7 +1515,7 @@ def _amends_confirmed_slot(key, previous, state, latest):
         return any(slot == key for slot, _, _ in _schedule_evidence(text, follow_up=True))
     if key == 'filter.value':
         old_field = previous['slots'].get('filter.field', {}).get('value')
-        return bool(re.search(r'(?:기준(?:값|액|점)?|임계값|문턱값|선별|조건|필터)\s*(?:은|는|을|를|이|가)?\s*[-+]?\d|'
+        return bool(re.search(_CRITERION_NOUN.pattern + r'\s*(?:은|는|을|를|이|가)?\s*[-+]?\d|'
                               r'\d[\d,.]*\s*(?:천|백|만|억)*\s*(?:원|점|건|명|개|kg|%)?\s*(?:초과|이상|미만|이하)|'
                               r'(?:초과|이상|미만|이하)\s*[-+]?\d', text)
                     or old_field and re.search(re.escape(old_field) + r'\s*(?:열|값|기준)?\s*(?:은|는|을|를|이|가)?\s*[-+]?\d', text)
@@ -1771,9 +1806,7 @@ def validate_conditions(raw, state, catalog):
     if slots.get('duplicate.policy',{}).get('value')=='keep':
         slots.pop('duplicate.field',None)
         operations=[op for op in operations if op!='deduplicate']
-    policy_subjects = {'missing.policy': r'빈\s*(?:값|칸|셀|행)|빈\s+\S+|비어\s*있|결측|누락|값이\s*없',
-                       'duplicate.field': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치',
-                       'duplicate.policy': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치'}
+    policy_subjects = _POLICY_SUBJECTS
     unresolved = [key for key, slot in slots.items() if slot['status'] != 'specified'
                   and not (slot['status'] == 'missing' and key in policy_subjects and key not in required
                            and not re.search(policy_subjects[key], user_text))]
@@ -1993,7 +2026,7 @@ def plan_issues(ledger, draft, *, state=None):
         if any(plan.get('sort') for plan in plans):
             problems.append('단일 중복 제거 계약에 없는 정렬이 추가됐습니다. sort=[]로 입력 행 순서를 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
     compound = compound_filter_state(state) if state else None
-    compound_filter = bool(compound and compound['rules'])
+    compound_filter = bool(compound and compound['rules'] and not compound['seeded'])
     if compound and compound['pending']:
         problems.append('선별 조건의 수정 내용이나 AND/OR 관계를 먼저 확인해야 합니다.')
     elif compound_filter:
@@ -2001,6 +2034,12 @@ def plan_issues(ledger, draft, *, state=None):
         # Reuse the same proof at save time instead of the single-slot contract.
         from agent_builder.design.numeric_filter_proof import numeric_filter_issues
         problems.extend(numeric_filter_issues(state, draft))
+        from agent_builder.design.requirement_coverage import _condition
+        value = slots.get('filter.value')
+        expected = dict(field=slots.get('filter.field'), operator=slots.get('filter.operator'),
+                        value=value, compare_field=None, value_type='number')
+        if 'filter' in ledger['operations'] and _condition(expected) not in {_condition(rule) for rule in compound['rules']}:
+            problems.append('확정된 선별 조건이 원문의 복합 조건에 없습니다.')
     if 'filter' in ledger['operations'] and not compound_filter:
         value=slots.get('filter.value')
         expected = {'field': slots.get('filter.field'), 'operator': slots.get('filter.operator'), 'value': value,

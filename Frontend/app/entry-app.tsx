@@ -1,9 +1,10 @@
+import {EditIconButton} from './edit-icon-button';
 import {AdminMonitoring} from './admin-monitoring';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
 import {useButtonEffects} from './use-button-effects';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowRight,Workflow,History,Search,RefreshCw,AlertCircle,Pencil} from 'lucide-react';
+import {ArrowRight,Workflow,History,Search,RefreshCw,AlertCircle} from 'lucide-react';
 import AgentStudio from './agent-studio';
 import {TaskLibraryHeader,WorkspaceSidebar} from './workspace-nav';
 import {UploadLibrary} from './upload-library';
@@ -140,7 +141,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   {matches.length>MAX_WORKFLOW_SELECTION&&<p className="as-small-muted">한 번에 최대 500개까지 선택해 이동할 수 있습니다.</p>}
   <div className="entry-workflow-grid">{matches.map(a=><article className="entry-workflow-card" key={a.id}>
    <div><label className="workflow-card-select"><input type="checkbox" aria-label={a.config.name+' 선택'} checked={selectedWorkflows.includes(a.id)} disabled={loading||(!selectedWorkflows.includes(a.id)&&selectedWorkflows.length>=MAX_WORKFLOW_SELECTION)} onChange={e=>toggleWorkflow(a.id,e.target.checked)}/><Workflow size={20}/></label><span className="as-status">저장 버전 {a.version}</span></div>
-   <div className="entry-workflow-title"><h2>{a.config.name}</h2><button type="button" aria-label={a.config.name+' 이름 변경'} title="이름 변경" disabled={loading} onClick={()=>{setRenameNotice('');setRenaming(a);}}><Pencil size={15} aria-hidden="true"/></button></div>
+   <div className="entry-workflow-title"><h2>{a.config.name}</h2><EditIconButton type="button" aria-label={a.config.name+' 이름 변경'} title="이름 변경" disabled={loading} onClick={()=>{setRenameNotice('');setRenaming(a);}}/></div>
    <p>{a.config.purpose}</p><footer><small>작업 {a.node_count??a.config.workflow?.nodes.length??a.config.tool_ids.length}개 · {date(a.updated_at)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',a.id)} aria-label={a.config.name+' 설계 열기'}>설계 열기</button><button className="as-button as-secondary" onClick={()=>navigate('history',a.id)} aria-label={a.config.name+' 실행 기록'}>실행 기록</button><button className="as-button as-secondary" onClick={()=>navigate('schedule',a.id)} aria-label={a.config.name+' 예약 관리'}>예약 관리</button><button className="as-button as-primary" onClick={()=>navigate('run',a.id)} aria-label={a.config.name+' 실행하기'}>실행하기<ArrowRight size={14}/></button></footer>
 
   </article>)}{externalMatches.map(flow=><article className="entry-workflow-card" key={flow.id}><div><Workflow size={20}/><span className="as-status">{flow.active?'자동 실행 중':'초안'}</span></div><div className="entry-workflow-title"><h2>{flow.name}</h2></div><p>연결된 서비스로 실행하는 워크플로우</p><footer><small>작업 {flow.nodes.length}개 · {date(flow.updatedAt)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',undefined,undefined,flow.id)}>설계 열기</button></footer></article>)}</div>

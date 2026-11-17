@@ -1,7 +1,8 @@
+import {EditIconButton} from './edit-icon-button';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
-import {AlertCircle, Check, ChevronRight, ExternalLink, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Search, Trash2, Upload as UploadIcon, X} from 'lucide-react';
+import {AlertCircle, Check, ChevronRight, ExternalLink, FileText, Folder, FolderInput, FolderOpen, FolderPlus, RefreshCw, Search, Trash2, Upload as UploadIcon, X} from 'lucide-react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
 import {request} from '../components/flow/connection-panel';
 import {useAuth} from './auth';
@@ -395,7 +396,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
     {loading && <p className="entry-loading" role="status">자료를 불러오는 중입니다.</p>}
     {!!children.length && <section aria-label="폴더"><div className="asset-section-heading"><h2>폴더</h2><span>{children.length}개</span></div><div className="asset-folder-grid">{children.map(folder => <article key={folder.id}>
       <button type="button" className="asset-folder-open" disabled={busy} onClick={() => navigate(folder.id)} aria-label={folder.name + ' 폴더 열기'}><Folder size={20}/><strong>{folder.name}</strong></button>
-      {canEdit && <div className="asset-folder-actions"><button type="button" disabled={busy} aria-label={folder.name + ' 폴더 이름 변경'} onClick={() => openAction({kind: 'rename', folder})}><Pencil size={14}/></button>
+      {canEdit && <div className="asset-folder-actions"><EditIconButton type="button" disabled={busy} aria-label={folder.name + ' 폴더 이름 변경'} onClick={() => openAction({kind: 'rename', folder})}/>
         <button type="button" disabled={busy} aria-label={folder.name + ' 폴더 이동'} onClick={() => openAction({kind: 'move-folder', folder})}><FolderInput size={15}/></button>
         <button type="button" disabled={busy} aria-label={folder.name + ' 폴더 삭제'} onClick={() => openAction({kind: 'delete', folder})}><Trash2 size={14}/></button></div>}
     </article>)}</div></section>}

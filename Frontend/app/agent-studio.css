@@ -175,20 +175,25 @@ details.as-setting-section:not([open]) > summary > svg { transform:rotate(0); }
 }
 /* Auto margins center a graph that fits and keep oversized graphs scrollable. */
 .as-desktop-canvas { align-items:flex-start; }
+.as-flow-node.selected {
+  outline:3px solid #0ea5e9;
+  outline-offset:3px;
+  box-shadow:0 0 0 7px #38bdf826,0 0 22px #0ea5e955;
+}
+.as-flow-highlight { opacity:.65; stroke-linecap:round; }
 .as-flow-beam {
-  stroke-dasharray: .14 1;
-  stroke-dashoffset: 1;
-  stroke-linecap: round;
-  animation: as-flow-beam-travel 3.6s linear infinite;
+  stroke-dasharray:.28 1;
+  stroke-dashoffset:.28;
+  stroke-linecap:round;
+  filter:drop-shadow(0 0 4px #38bdf8) drop-shadow(0 0 8px #0ea5e9aa);
+  animation:as-flow-beam-travel 2.4s linear infinite;
 }
 @keyframes as-flow-beam-travel {
-  0% { stroke-dashoffset: .14; opacity: 0; }
-  10% { opacity: 1; }
-  85% { opacity: 1; }
-  100% { stroke-dashoffset: -1; opacity: 0; }
+  from { stroke-dashoffset:.28; }
+  to { stroke-dashoffset:-1; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .as-flow-beam { display: none; }
+@media (prefers-reduced-motion:reduce) {
+  .as-flow-beam { display:none; }
 }
 .as-setting-section summary:not(:has(> svg))::after {
   content:'⌄'; margin-left:auto; flex:none; transition:transform 160ms ease;

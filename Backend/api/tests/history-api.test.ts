@@ -33,12 +33,15 @@ test('history uses one scoped worker, validates filters and prevents cached run 
   const all=await call();assert.equal(all.status,200);assert.deepEqual(all.result,{agents:[],rows:[]});assert.equal(all.headers['Cache-Control'],'no-store');assert.equal(calls.length,1);assert.equal(calls[0].action,'history');assert.equal(calls[0].directory,directory);
   const id=randomUUID();await call('?id='+id);assert.equal(calls.length,2);assert.equal(calls[1].id,id);
   await assert.rejects(()=>call('?id=invalid'),/ID/);assert.equal(calls.length,2);
+  assert.equal(calls[0].page,1);
+  for(const page of ['0','-1','1.5','no','10001',''])await assert.rejects(()=>call('?page='+page),/페이지/);
   assert.equal((await call('','POST')).status,405);assert.equal(calls.length,2);
   assert.equal((await call('','GET','studio')).status,200);assert.equal(calls.length,3);assert.equal(calls[2].action,'studio');
   await call('?summary=1','GET','agents');assert.equal(calls[3].summary,true);
   await call('','GET','agents');assert.equal(calls[4].summary,undefined);
   await call('?include_agents=1','GET','schedules');assert.equal(calls[5].include_agents,true);
   await call('','GET','schedules');assert.equal(calls[6].include_agents,undefined);
+  await call('?page=2&id='+id);assert.equal(calls[7].page,2);assert.equal(calls[7].id,id);
  }finally{
   t.mock.restoreAll();syncBuiltinESMExports();if(previous===undefined)delete process.env.A4B_AGENT_PYTHON;else process.env.A4B_AGENT_PYTHON=previous;
   await rm(directory,{recursive:true,force:true});

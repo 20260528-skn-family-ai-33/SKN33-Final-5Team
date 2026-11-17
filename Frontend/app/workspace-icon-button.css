@@ -1,0 +1,13 @@
+button.workspace-icon-button{display:inline-grid;place-items:center;flex:none;width:30px;height:30px;min-width:30px;min-height:30px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--a4b-muted);cursor:pointer;vertical-align:middle;box-shadow:none;line-height:1}
+button.workspace-icon-button.is-standard{width:38px;height:38px;min-width:38px;min-height:38px}
+button.workspace-icon-button.is-outline{border-color:var(--a4b-input-border);background:var(--a4b-surface);color:var(--a4b-ink)}
+button.workspace-icon-button>svg,button.workspace-icon-button>img{width:var(--workspace-icon-size,16px);height:var(--workspace-icon-size,16px);flex:none;pointer-events:none}
+button.workspace-icon-button:hover:not(:disabled){color:var(--a4b-action);background:var(--a4b-neutral-soft)}
+button.workspace-icon-button.is-outline:hover:not(:disabled){border-color:var(--a4b-muted)}
+button.workspace-icon-button:focus-visible{outline:2px solid var(--a4b-action);outline-offset:3px}
+button.workspace-icon-button:disabled{opacity:.55;cursor:not-allowed}
+
+.as-app button.workspace-icon-button,.entry-app button.workspace-icon-button{color:var(--a4b-muted)}
+.as-app button.workspace-icon-button.is-outline,.entry-app button.workspace-icon-button.is-outline{color:var(--a4b-ink)}
+.as-app button.workspace-icon-button:hover:not(:disabled),.entry-app button.workspace-icon-button:hover:not(:disabled){color:var(--a4b-action)}
+button.workspace-icon-button.workspace-dialog-close{position:absolute;top:10px;right:10px}

@@ -7,7 +7,7 @@ type Edge = {source:string; target:string; branch:string};
 export type RunWorkflow = {entry:string; nodes:Node[]; edges:Edge[]};
 type Step = {node:string; label:string; status:string};
 type Props = {workflow?:RunWorkflow|null; steps?:Step[]; runStatus?:string; waitingNodeId?:string|null;
- selectedNodeId?:string|null; onSelectNode?:(node:RunWorkflow['nodes'][number],trigger:HTMLButtonElement)=>void};
+ selectedNodeId?:string|null; onSelectNode?:(node:RunWorkflow['nodes'][number],trigger:HTMLButtonElement)=>void; onOpenNodeSettings?:(node:RunWorkflow['nodes'][number],trigger:HTMLButtonElement)=>void};
 
 const branchNames:Record<string,string> = {next:'다음', yes:'조건 충족', no:'조건 미충족'};
 const states = {
@@ -59,7 +59,7 @@ function graphLayout(flow: RunWorkflow) {
   return {ordered, outgoing, indices, rails, laneCount:lanes.length};
 }
 
-export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId,selectedNodeId,onSelectNode}:Props) {
+export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId,selectedNodeId,onSelectNode,onOpenNodeSettings}:Props) {
   const graph = workflow?.nodes.length ? graphLayout(workflow) : null;
   if (!graph && !steps.length) return null;
   const recorded = new Map(steps.map(step => [step.node,step.status]));
@@ -97,7 +97,7 @@ export function RunWorkflowDiagram({workflow,steps=[],runStatus,waitingNodeId,se
         return <div role="listitem" key={graph ? node.id : index} data-workflow-node={node.id}
           className="rwd-row" style={{gridRow:index+1}}>
           {onSelectNode&&graph?<button type="button" className="rwd-card is-selectable" aria-pressed={selectedNodeId===node.id}
-            title={node.label+' 설정 보기'} onClick={event=>onSelectNode(node,event.currentTarget)}>{card}</button>:<div className="rwd-card">{card}</div>}
+            title={node.label+' · 오른쪽 클릭으로 설정 보기'} onContextMenu={event=>{if(onOpenNodeSettings){event.preventDefault();onOpenNodeSettings(node,event.currentTarget);}}} onKeyDown={event=>{if(onOpenNodeSettings&&(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10')){event.preventDefault();onOpenNodeSettings(node,event.currentTarget);}}} onClick={event=>onSelectNode(node,event.currentTarget)}>{card}</button>:<div className="rwd-card">{card}</div>}
           {straight && <ArrowDown aria-hidden="true" className="rwd-next" size={20}/>}
         </div>;
       })}

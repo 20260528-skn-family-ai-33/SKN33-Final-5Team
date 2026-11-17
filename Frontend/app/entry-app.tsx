@@ -1,9 +1,11 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
+import {EditIconButton} from './edit-icon-button';
 import {AdminMonitoring} from './admin-monitoring';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
 import {useButtonEffects} from './use-button-effects';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowRight,Workflow,History,Search,RefreshCw,AlertCircle,Pencil} from 'lucide-react';
+import {ArrowRight,Workflow,History,Search,RefreshCw,AlertCircle} from 'lucide-react';
 import AgentStudio from './agent-studio';
 import {TaskLibraryHeader,WorkspaceSidebar} from './workspace-nav';
 import {UploadLibrary} from './upload-library';
@@ -51,12 +53,12 @@ export default function EntryApp(){
   if(remount){if(internal(routeRef.current)&&!internal(next))clearDesign();guard.current=()=>true;setNavigationKey(n=>n+1);}historyIndex.current=targetIndex;
   context.current=location.search;setRoute(next);
  };window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
- function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false,initialPrompt?:string,initialFile?:File,externalId?:string){
+ function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false,initialPrompt?:string,initialFiles?:File[],externalId?:string){
   if((routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current())return false;
   guard.current=()=>true;
   if(fresh||next==='workflow'&&!service||['workflow','nodes','run','schedule'].includes(routeRef.current))clearDesign();
   const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('external');url.searchParams.delete('previewNode');url.searchParams.delete('executionMode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);if(externalId)url.searchParams.set('external',externalId);
-  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current,initialPrompt,initialFile},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});return true;
+  historyIndex.current++;window.history.pushState({a4bIndex:historyIndex.current,initialPrompt,initialFiles},'',url);context.current=location.search;setRoute(next);setNavigationKey(n=>n+1);window.scrollTo({top:0,behavior:'instant'});return true;
 
  }
  if(auth.loading)return ['intro','preview'].includes(route)?<PageTransition active/>:<div className="entry-app"><WorkspaceHeader onHome={()=>{}} disabled pending/><div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={()=>{}} help={null} disabled/><main className="entry-workspace-main"><PageTransition active/></main></div></div>;
@@ -64,10 +66,10 @@ export default function EntryApp(){
  const preview=(node=false)=>navigate('preview',undefined,false,undefined,node);
  if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('home')}/>;
  const newFlow=()=>navigate('workflow',undefined,true);
- const startExample=(prompt:string,file?:File)=>navigate('workflow',undefined,true,undefined,false,prompt,file);
+ const startExample=(prompt:string,files?:File[])=>navigate('workflow',undefined,true,undefined,false,prompt,files);
  const externalId=route==='workflow'?new URLSearchParams(location.search).get('external'):null;
  if(externalId)return <div className="entry-app"><WorkspaceHeader onHome={()=>navigate('home')}/><div className="entry-workspace-shell"><WorkspaceSidebar active="workflow" onNavigate={next=>navigate(next)} help={<WorkspaceHelp onStart={newFlow}/>}/><main className="entry-workspace-main entry-external-workflow-main"><VisualAutomation key={externalId} embedded initialWorkflowId={externalId} onServiceConnect={()=>navigate('connections')}/></main></div></div>;
- if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} onNewWorkflow={newFlow} initialPrompt={window.history.state?.initialPrompt} initialFile={window.history.state?.initialFile} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)} onExternalFlow={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)}/>;
+ if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} onNewWorkflow={newFlow} initialPrompt={window.history.state?.initialPrompt} initialFiles={window.history.state?.initialFiles} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)} onExternalFlow={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('home')}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'||route==='monitoring'}/>}/>
@@ -78,9 +80,10 @@ export default function EntryApp(){
   </div>
  </div>;
 }
-function WorkspaceHome({route,historyService,navigate,newFlow,startExample,memberName}:{memberName?:string;route:'home'|'workflows'|'history';startExample:(prompt:string,file?:File)=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string,externalId?:string)=>void;newFlow:()=>void}){
+function WorkspaceHome({route,historyService,navigate,newFlow,startExample,memberName}:{memberName?:string;route:'home'|'workflows'|'history';startExample:(prompt:string,files?:File[])=>void;historyService:string|null;navigate:(next:EntryRoute,service?:string,runId?:string,externalId?:string)=>void;newFlow:()=>void}){
  const [agents,setAgents]=useState<AgentSummary[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[query,setQuery]=useState('');
  const [externalFlows,setExternalFlows]=useState<ExternalFlowSummary[]>([]);
+ const [historyPage,setHistoryPage]=useState(1),[historyTotal,setHistoryTotal]=useState(0),[historyPageSize,setHistoryPageSize]=useState(50);
  const [runRows,setRunRows]=useState<{agent:AgentSummary;run:RunSummary}[]>([]);
  const [renaming,setRenaming]=useState<AgentSummary|null>(null);
  const [renameNotice,setRenameNotice]=useState('');
@@ -89,8 +92,12 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
  async function load(){loadRequest.current?.abort();const controller=new AbortController();loadRequest.current=controller;const token=++generation.current;setLoading(true);setError('');setRunRows([]);try{
 
   if(route==='history'){
-   const result=await request<{agents:AgentSummary[];rows:{agent:AgentSummary;run:RunSummary}[]}>('/api/agent-builder/history'+(historyService?'?id='+encodeURIComponent(historyService):''),undefined,undefined,controller.signal);
-   if(token!==generation.current)return;setAgents(result.agents);setRunRows(result.rows);
+   const params=new URLSearchParams({page:String(historyPage)});if(historyService)params.set('id',historyService);
+   const result=await request<{agents:AgentSummary[];rows:{agent_id?:string;agent?:AgentSummary;run:RunSummary}[];total?:number;page_size?:number}>('/api/agent-builder/history?'+params,undefined,undefined,controller.signal);
+   if(token!==generation.current)return;
+   const byId=new Map(result.agents.map(agent=>[agent.id,agent]));
+   setAgents(result.agents);setRunRows(result.rows.flatMap(row=>{const agent=row.agent||byId.get(row.agent_id||'');return agent?[{agent,run:row.run}]:[];}));
+   setHistoryTotal(result.total??result.rows.length);setHistoryPageSize(result.page_size??50);
   }else{
    const [listedResult,external]=await Promise.all([
     request<{agents?:AgentSummary[];organization?:WorkflowOrganization}>('/api/agent-builder/agents?summary=1',undefined,undefined,controller.signal),
@@ -103,7 +110,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   }
 
  }catch(e){if(token===generation.current)setError((e as Error).message);}finally{if(token===generation.current)setLoading(false);}}
- useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;loadRequest.current?.abort();};},[route,historyService]);
+ useEffect(()=>{setQuery('');setRenaming(null);setRenameNotice('');void load();return()=>{generation.current++;loadRequest.current?.abort();};},[route,historyService,historyPage]);
  const historyAgent=historyService?agents.find(agent=>agent.id===historyService):undefined;
  const matches=agents.filter(a=>(activeFolder==='all'||(activeFolder==='unfiled'?!organization.assignments[a.id]:organization.assignments[a.id]===activeFolder))&&(a.config.name+' '+a.config.purpose).toLocaleLowerCase().includes(query.toLocaleLowerCase()));
  const selectableMatches=matches.slice(0,MAX_WORKFLOW_SELECTION);
@@ -116,7 +123,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   });
  }
  const externalMatches=activeFolder==='all'?externalFlows.filter(flow=>flow.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())):[];
- const refreshButton=<button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button>;
+ const refreshButton=<WorkspaceIconButton size="standard" variant="outline"  disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></WorkspaceIconButton>;
  const initialLoad=useRef(true);
  if(!loading)initialLoad.current=false;
  if(loading&&initialLoad.current)return <PageTransition active/>;
@@ -135,7 +142,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   {matches.length>MAX_WORKFLOW_SELECTION&&<p className="as-small-muted">한 번에 최대 500개까지 선택해 이동할 수 있습니다.</p>}
   <div className="entry-workflow-grid">{matches.map(a=><article className="entry-workflow-card" key={a.id}>
    <div><label className="workflow-card-select"><input type="checkbox" aria-label={a.config.name+' 선택'} checked={selectedWorkflows.includes(a.id)} disabled={loading||(!selectedWorkflows.includes(a.id)&&selectedWorkflows.length>=MAX_WORKFLOW_SELECTION)} onChange={e=>toggleWorkflow(a.id,e.target.checked)}/><Workflow size={20}/></label><span className="as-status">저장 버전 {a.version}</span></div>
-   <div className="entry-workflow-title"><h2>{a.config.name}</h2><button type="button" aria-label={a.config.name+' 이름 변경'} title="이름 변경" disabled={loading} onClick={()=>{setRenameNotice('');setRenaming(a);}}><Pencil size={15} aria-hidden="true"/></button></div>
+   <div className="entry-workflow-title"><h2>{a.config.name}</h2><EditIconButton type="button" aria-label={a.config.name+' 이름 변경'} title="이름 변경" disabled={loading} onClick={()=>{setRenameNotice('');setRenaming(a);}}/></div>
    <p>{a.config.purpose}</p><footer><small>작업 {a.node_count??a.config.workflow?.nodes.length??a.config.tool_ids.length}개 · {date(a.updated_at)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',a.id)} aria-label={a.config.name+' 설계 열기'}>설계 열기</button><button className="as-button as-secondary" onClick={()=>navigate('history',a.id)} aria-label={a.config.name+' 실행 기록'}>실행 기록</button><button className="as-button as-secondary" onClick={()=>navigate('schedule',a.id)} aria-label={a.config.name+' 예약 관리'}>예약 관리</button><button className="as-button as-primary" onClick={()=>navigate('run',a.id)} aria-label={a.config.name+' 실행하기'}>실행하기<ArrowRight size={14}/></button></footer>
 
   </article>)}{externalMatches.map(flow=><article className="entry-workflow-card" key={flow.id}><div><Workflow size={20}/><span className="as-status">{flow.active?'자동 실행 중':'초안'}</span></div><div className="entry-workflow-title"><h2>{flow.name}</h2></div><p>연결된 서비스로 실행하는 워크플로우</p><footer><small>작업 {flow.nodes.length}개 · {date(flow.updatedAt)}</small><button className="as-button as-secondary" onClick={()=>navigate('workflow',undefined,undefined,flow.id)}>설계 열기</button></footer></article>)}</div>
@@ -146,7 +153,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   }}/>}
   {!loading&&!error&&!matches.length&&!externalMatches.length&&<section className="entry-empty"><Workflow size={26}/><h2>{query?'검색 결과가 없습니다.':agents.length?'이 폴더에 워크플로우가 없습니다.':'첫 워크플로우를 만들어보세요.'}</h2><p>{query?'이름이나 설명을 바꿔 검색하세요.':'업무와 자료를 설명하면 흐름을 구성할 수 있습니다.'}</p>{!query&&<button className="as-button" onClick={newFlow}>새 워크플로우</button>}</section>}
  </>}
- {route==='history'&&<><div className="entry-history-list entry-run-history">{runRows.map(({agent:a,run})=><article key={run.id}><div><h2>{a.config.name}</h2><p>{run.started_at||run.created_at?date(run.started_at||run.created_at):'실행 시각 없음'}</p></div><span className={'entry-run-status '+run.status}>{({succeeded:'완료',failed:'실패',running:'실행 중',needs_input:'답변 대기'})[run.status]||run.status}</span><button className="as-button as-secondary" onClick={()=>navigate('run',a.id,run.id)}>결과 보기</button>{run.error&&<p className="entry-history-error">{run.error}</p>}</article>)}</div>{!loading&&!error&&!runRows.length&&<section className="entry-empty"><History size={26}/><h2>아직 실행 기록이 없습니다.</h2><p>저장한 워크플로우를 실행하면 여기에 표시됩니다.</p><button className="as-button as-primary" onClick={()=>historyAgent?navigate('run',historyAgent.id):navigate('workflows')}>{historyAgent?'워크플로우 실행 화면':'워크플로우로 이동'}</button></section>}</>}
+ {route==='history'&&<><div className="entry-history-list entry-run-history">{runRows.map(({agent:a,run})=><article key={run.id}><div><h2>{a.config.name}</h2><p>{run.started_at||run.created_at?date(run.started_at||run.created_at):'실행 시각 없음'}</p></div><span className={'entry-run-status '+run.status}>{({succeeded:'완료',failed:'실패',running:'실행 중',needs_input:'답변 대기'})[run.status]||run.status}</span><button className="as-button as-secondary" onClick={()=>navigate('run',a.id,run.id)}>결과 보기</button>{run.error&&<p className="entry-history-error">{run.error}</p>}</article>)}</div>{historyTotal>historyPageSize&&<nav aria-label="실행 기록 페이지" className="entry-history-pagination"><button className="as-button" disabled={loading||historyPage<=1} onClick={()=>setHistoryPage(value=>value-1)}>이전</button><span>{historyPage} / {Math.ceil(historyTotal/historyPageSize)}</span><button className="as-button" disabled={loading||historyPage*historyPageSize>=historyTotal} onClick={()=>setHistoryPage(value=>value+1)}>다음</button></nav>}{!loading&&!error&&!runRows.length&&<section className="entry-empty"><History size={26}/><h2>아직 실행 기록이 없습니다.</h2><p>저장한 워크플로우를 실행하면 여기에 표시됩니다.</p><button className="as-button as-primary" onClick={()=>historyAgent?navigate('run',historyAgent.id):navigate('workflows')}>{historyAgent?'워크플로우 실행 화면':'워크플로우로 이동'}</button></section>}</>}
 
 
  </>;

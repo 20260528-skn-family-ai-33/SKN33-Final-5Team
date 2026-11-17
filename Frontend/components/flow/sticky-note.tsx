@@ -1,7 +1,8 @@
+import {EditIconButton} from '../../app/edit-icon-button';
 "use client";
 
 import {useEffect, useState, type ReactNode, type PointerEvent, type KeyboardEvent} from 'react';
-import {Check, Grip, Pencil, StickyNote as NoteIcon, X} from 'lucide-react';
+import {Check, Grip, StickyNote as NoteIcon, X} from 'lucide-react';
 import type {FlowNode, Json} from '@/lib/workflow';
 
 export const stickyNoteType = 'n8n-nodes-base.stickyNote';
@@ -77,7 +78,7 @@ export function StickyNote({node, selected, editing, onStartEdit, onSave, onCanc
   >
     <div className="sticky-note-drag" onPointerDown={editing ? undefined : onPointerDown} onPointerUp={editing ? undefined : onPointerUp}>
       <span><NoteIcon size={14}/>{node.name}</span>
-      {!editing && <button className="icon-btn" onClick={onStartEdit} aria-label={`${node.name} 내용 편집`} title="메모 편집"><Pencil/></button>}
+      {!editing && <EditIconButton onClick={onStartEdit} aria-label={`${node.name} 내용 편집`} title="메모 편집"/>}
     </div>
     {!editing && <div className="sticky-note-body" onDoubleClick={onStartEdit}><NoteMarkdown content={content || '두 번 눌러 설명을 적어보세요.'}/></div>}
     {!editing && <button className="sticky-note-resize" aria-label={`${node.name} 크기 조절. 방향키로 20픽셀씩 변경`} title="드래그 또는 방향키로 크기 조절" onPointerDown={onResizeStart} onPointerUp={onPointerUp} onKeyDown={onResizeKey}><Grip size={14}/></button>}

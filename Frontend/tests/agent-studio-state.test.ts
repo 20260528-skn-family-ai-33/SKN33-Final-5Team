@@ -1,3 +1,4 @@
+import {designAttachmentError} from '../app/design-attachments';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
@@ -22,13 +23,15 @@ function harness(search='',stored:Record<string,string>={}){
  const storage=new Map(Object.entries(stored)),requests:{path:string;body:any}[]=[];let cleanup:(()=>void)|undefined;
  let load:(p:string,b:any)=>Promise<any>=async()=>snapshot('A');
  const c:any={screen:'run',executionMode:'manual',crypto:{randomUUID:()=>'00000000-0000-4000-8000-000000000081'},AbortController,setTimeout,clearTimeout,URLSearchParams,URL,location:{search,href:'http://localhost/'+search},generation:{current:0},inFlight:{current:false},pinnedRun:{current:false},runDetailRequest:{current:0},selected:null,session:null,recovery:null,testRun:null,history:[],chosenSnapshots:[],schedule:null,fileInput:{current:null},sourceInput:{current:null},runFileInput:{current:null},asBase64:async()=>'',text:'새 업무',testText:'네, 승인합니다',credentialId:'account',model:'model',chosenRefs:[],runFiles:[],replyDraft:'',agentResources:[],input:{current:null},resultPanel:{current:null},requestAnimationFrame:()=>{},usesTool:()=>false,go:()=>{},window:{scrollTo:(options:any)=>{c.scrollTarget=options;},history:{replaceState:()=>{}}},refresh:async()=>{},localStorage:{getItem:(k:string)=>storage.get(k)||null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)},useEffect:(f:()=>()=>void)=>{cleanup=f();}};
+ c.conversationCollapsed=false;c.designAttachmentError=designAttachmentError;
+ c.initialPromptPending={current:false};c.receiptQuestion=null;c.receiptFileTypes='';
  c.queuedSourceRuns=[];c.freshFiles={session:'',ids:[]};c.externalPromptContext={current:''};c.externalMessages=[];
  c.sourceDirtyRef={current:false};c.scheduleDirtyRef={current:false};c.window.confirm=()=>true;
  c.setScheduleSourceDirty=(value:boolean)=>{c.scheduleSourceDirty=value;};
- for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns','SaveReviewOpen','ScheduleSettingsDirty','ClarificationDirty','FreshFiles','ExternalMessages','AnimatedMessage']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
+ for(const key of ['Selected','Session','AgentResources','RunInputs','Schedule','Source','Jobs','TestRun','History','Loading','Error','Busy','Text','PendingMessage','Recovery','TestText','SelectedNodeId','EditorPanel','InitialLoadFailed','ChosenRefs','ChosenSnapshots','RunFiles','ScheduleNotice','ReplyDraft','QueuedSourceRuns','SaveReviewOpen','ScheduleSettingsDirty','ClarificationDirty','FreshFiles','ExternalMessages','AnimatedMessage','ConversationCollapsed']){const name=key[0].toLowerCase()+key.slice(1);c['set'+key]=(v:any)=>{c[name]=typeof v==='function'?v(c[name]):v;};}
  Object.defineProperty(c,'canStartRun',{get:()=>!!c.testText.trim()||!!c.selected?.config?.schedule});
  c.request=(path:string,body:any)=>{requests.push({path,body});return load(path,body);};createContext(c);
- runInContext(compile(explanationText+'\n'+['applyRunInputs','clearRunInputs','confirmSettingsExit','clearSettingsDirty','remember','recoverConversation','reloadConversation','resumeConversation','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
+ runInContext(compile(explanationText+'\n'+['applyRunInputs','clearRunInputs','confirmSettingsExit','clearSettingsDirty','remember','recoverConversation','reloadConversation','resumeConversation','ensureSession','send','reset','openAgent','edit','save','resumeRun','runTest','attachResource','attachResources','uploadRun','uploadSource','selectRun','refreshScheduleSource'].map(handler).join('\n')),c);
 
  return {c,storage,requests,load:(f:typeof load)=>{load=f;},mount:()=>runInContext(compile(restoreText),c),stop:()=>cleanup?.()};
 }
@@ -184,7 +187,7 @@ test('manual execution keeps explicit files and review draft',async()=>{
  const h=harness();h.c.selected={id:'A',config:{}};h.c.runFiles=[{id:'new'}];h.c.replyDraft='new';h.load(async()=>({id:'run'}));await h.c.runTest();assert.equal(h.requests[0].body.fileIds[0],'new');assert.equal(h.requests[0].body.replyDraft,'new');
 });
 test('edit clears previous run inputs after new session creation',async()=>{
- const h=harness();h.c.selected={id:'A',config:{},credential_id:'c',model:'m'};h.c.runFiles=[{id:'old'}];h.c.replyDraft='old';h.load(async()=>({id:'edit'}));await h.c.edit();assert.equal(h.c.runFiles.length,0);assert.equal(h.c.replyDraft,'');assert.equal(h.c.testText,'');
+ const h=harness();h.c.selected={id:'A',config:{},credential_id:'c',model:'m'};h.c.runFiles=[{id:'old'}];h.c.replyDraft='old';h.c.conversationCollapsed=true;h.load(async()=>({id:'edit'}));await h.c.edit();assert.equal(h.c.conversationCollapsed,false);assert.equal(h.c.runFiles.length,0);assert.equal(h.c.replyDraft,'');assert.equal(h.c.testText,'');
 });
 for(const action of ['save','runTest','resumeRun','uploadRun'])test(`double ${action} cannot duplicate a pending mutation`,async()=>{
  const h=harness(),pending=deferred();h.c.session={id:'draft',status:'ready',revision:1};h.c.selected={id:'A',config:{}};h.c.testRun={id:'run'};h.load(()=>pending.promise);
@@ -192,7 +195,7 @@ for(const action of ['save','runTest','resumeRun','uploadRun'])test(`double ${ac
  pending.resolve(action==='save'?{id:'draft',status:'saved',saved_agent_id:'A'}:action==='uploadRun'?{asset:{id:'file'}}:{id:'run'});await first;
 });
 for(const action of ['attachResource','uploadRun','uploadSource'])test(`${action} rejects oversized files before reading or sending`,async()=>{
- const h=harness();h.c.selected={id:'A'};let reads=0;h.c.asBase64=async()=>{reads++;return '';};await h.c[action]({size:8*1024*1024+1});assert.equal(reads,0);assert.equal(h.requests.length,0);assert.match(h.c.error,/8MB/);
+ const h=harness();h.c.selected={id:'A'};let reads=0;h.c.asBase64=async()=>{reads++;return '';};await h.c[action]({size:8*1024*1024+1});assert.equal(reads,0);assert.equal(h.requests.length,0);assert.equal(h.c.error,action==='attachResource'?'자료는 파일당 8MB 이하로 연결하세요.':'자료는 8MB 이하로 연결하세요.');
 });
 test('obsolete openAgent error cannot replace current view error',async()=>{
  const h=harness(),pending=deferred();h.load(async()=>{await pending.promise;throw Error('old');});const open=h.c.openAgent({id:'A'});h.c.reset();h.c.error='new';pending.resolve({});await open;assert.equal(h.c.error,'new');
@@ -211,7 +214,7 @@ test('unpinning history or starting a mutation ignores pending detail errors',as
 });
 
 test('starting a new workflow restores the page top without scrolling to the focused composer',()=>{
- const h=harness('?screen=workflow');let focusOptions:any;h.c.input.current={focus:(options:any)=>{focusOptions=options;}};h.c.requestAnimationFrame=(f:()=>void)=>f();h.c.reset();assert.equal(h.c.scrollTarget.top,0);assert.equal(focusOptions.preventScroll,true);assert.equal(h.c.editorPanel,'conversation');
+ const h=harness('?screen=workflow');let focusOptions:any;h.c.input.current={focus:(options:any)=>{focusOptions=options;}};h.c.requestAnimationFrame=(f:()=>void)=>f();h.c.conversationCollapsed=true;h.c.reset();assert.equal(h.c.conversationCollapsed,false);assert.equal(h.c.scrollTarget.top,0);assert.equal(focusOptions.preventScroll,true);assert.equal(h.c.editorPanel,'conversation');
 });
 
 test('new-file expansion queues its own jobs and cannot reuse an older successful result',async()=>{

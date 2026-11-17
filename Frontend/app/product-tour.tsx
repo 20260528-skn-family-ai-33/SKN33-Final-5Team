@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { X, ArrowLeft, ArrowRight } from 'lucide-react';
@@ -174,7 +175,7 @@ export function ProductTour({ scope, open, onClose, onStart, onPanelChange, curr
                 onPointerDownOutside={event => event.preventDefault()}>
                 <div className="product-tour-top">
                     <span>화면 둘러보기 · {index + 1} / {steps.length}</span>
-                    <button type="button" onClick={()=>close()} aria-label="안내 닫기"><X size={16}/></button>
+                    <WorkspaceIconButton type="button" onClick={()=>close()} aria-label="안내 닫기"><X size={16}/></WorkspaceIconButton>
                 </div>
                 <DialogTitle className="product-tour-title">{step?.title}</DialogTitle>
                 <DialogDescription className="product-tour-description">{step?.text}</DialogDescription>

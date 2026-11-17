@@ -94,7 +94,9 @@ def test_blocking_decisions_never_generate_or_save_even_after_restart(tmp_path,d
         assert first['pending_questions'][0]['source']=='capability'
         import re
         assert re.fullmatch(r'[a-f0-9]{24}',first['pending_questions'][0]['id'])
-    else:assert first['status']=='validation_failed' and not first.get('__interrupt__')
+    else:
+        assert first['status']=='validation_failed' and not first.get('__interrupt__')
+        assert '제어한 지원 판단' in first['messages'][-1]['content']
     conn.close();store.close()
     store=Storage(tmp_path);graph,conn=setup(store,s,calls,Fake([]),mode='off')
     before=graph.get_state(cfg).values

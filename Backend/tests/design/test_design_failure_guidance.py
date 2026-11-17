@@ -55,7 +55,8 @@ def test_only_identified_transient_errors_offer_one_retry(error, code):
     first = requirement_failure_details('system_error', error)
     repeated = requirement_failure_details('system_error', error, attempt=2)
     assert first['reason_code'] == code and first['retryable']
-    assert not repeated['retryable'] and '2번째 시도도 실패' in repeated['action']
+    assert not repeated['retryable'] and '2번째 시도도 실패' in repeated['attempt_notice']
+    assert '2번째' not in repeated['action']
     assert 'private' not in str(first) + str(repeated)
 
 

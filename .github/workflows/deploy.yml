@@ -182,6 +182,8 @@ jobs:
                       tests/design/test_saved_requirement_failure_diagnostics.py tests/design/test_multiple_output_scope.py \
                       tests/design/test_requirement_clarification.py tests/design/test_requirement_error_presentation.py \
                       tests/design/test_failed_design_edits.py tests/design/test_beta_feedback.py \
+                      tests/design/test_failure_recovery.py tests/design/test_model_failure_classification.py \
+                      tests/design/test_manual_execution_questions.py tests/design/test_question_language.py \
                       tests/design/test_pending_question_followups.py; do
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done

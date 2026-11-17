@@ -39,7 +39,7 @@ def test_current_saved_generic_failure_is_diagnosed_without_another_identical_re
     assert failure['attempt'] == 2 and failure['request_fingerprint'] == 'same-input'
     assert failure['reason'] in shown['messages'][-1]['content']
     assert failure['action'] in shown['issues'][0]
-    assert '2' in failure['action'] and '관리자' in failure['action']
+    assert '2' in failure['attempt_notice'] and '관리자' in failure['action']
     assert shown['trace'][0]['detail'] == shown['messages'][-1]['content']
     assert current == original
 

@@ -52,37 +52,48 @@ def requirement_failure_reason(error):
     return reasons.get(message, 'AI가 작성한 작업 목록의 설정이나 작업 간 연결을 검증하지 못했습니다.')
 
 
-def requirement_failure_details(kind, error=None, *, attempt=1, stage='requirements'):
+def requirement_failure_details(kind, error=None, *, attempt=1, stage='requirements', http_status=None, error_code=None):
     """Public, allowlisted diagnosis; a processing failure is never a missing user answer.
 
     Two invalid model responses have already been repaired internally. Offering another
     identical request as the solution hides a contract defect. Only identified transient
     transport errors get one user retry; the diagnosis survives independently of it.
     """
-    name = type(error).__name__ if isinstance(error, BaseException) else str(error or '')
+    from infrastructure.llm.failure_classification import classify_model_failure
+    code, canonical_kind = classify_model_failure(kind, error, http_status=http_status, error_code=error_code)
     transient = False
-    if name in ('APITimeoutError', 'TimeoutError', 'ReadTimeout', 'ConnectTimeout'):
-        code, reason = 'model_timeout', 'AI 응답 시간이 초과돼 처리 결과를 받지 못했습니다.'
+    if code == 'context_budget_exceeded':
+        reason = 'AI 서버가 처리할 수 있는 입력 길이를 초과했습니다.'
+        action = '관리자가 대화·자료의 크기와 AI 서버의 문맥 한도를 확인해야 합니다. 업무 조건을 임의로 바꾸지 않아도 됩니다.'
+    elif code == 'model_timeout':
+        reason = 'AI 응답 시간이 초과돼 처리 결과를 받지 못했습니다.'
         action = 'AI 서버의 응답 상태가 회복된 뒤 다시 시도해주세요.'
         transient = True
-    elif name in ('AuthenticationError', 'PermissionDeniedError'):
-        code, reason = 'model_auth_failed', 'AI 서버의 연결 계정이나 접근 권한 확인에 실패했습니다.'
+    elif code == 'model_auth_failed':
+        reason = 'AI 서버의 연결 계정이나 접근 권한 확인에 실패했습니다.'
         action = '관리자가 AI 서버의 연결 계정과 사용 권한을 확인해야 합니다.'
-    elif name == 'RateLimitError':
-        code, reason = 'model_rate_limited', 'AI 서버의 사용 한도 또는 동시 요청 제한에 도달했습니다.'
+    elif code == 'model_rate_limited':
+        reason = 'AI 서버의 사용 한도 또는 동시 요청 제한에 도달했습니다.'
         action = '사용 한도나 동시 요청 제한이 해제된 뒤 다시 시도해주세요.'
         transient = True
-    elif name in ('APIConnectionError', 'ConnectionError', 'ConnectError'):
-        code, reason = 'model_connection_failed', 'AI 서버에 연결하지 못했습니다.'
+    elif code == 'model_server_error':
+        reason = 'AI 서버가 일시적인 서버 오류를 반환했습니다.'
+        action = 'AI 서버의 장애가 해소된 뒤 다시 시도해주세요.'
+        transient = True
+    elif code == 'model_request_rejected':
+        reason = 'AI 서버가 요청을 거부했습니다. 현재 기록만으로 구체적인 거부 원인을 확인하지 못했습니다.'
+        action = '관리자가 AI 서버의 요청 규격과 입력 한도를 확인해야 합니다.'
+    elif code == 'generation_step_limit':
+        reason = '설계·검증 처리가 단계 수 제한 안에 완료되지 못했습니다.'
+        action = '관리자가 설계·검증의 반복 경로를 확인해야 합니다.'
+    elif code == 'model_connection_failed':
+        reason = 'AI 서버에 연결하지 못했습니다.'
         action = 'AI 서버의 연결 상태가 회복된 뒤 다시 시도해주세요.'
         transient = True
-    elif kind == 'condition_state_error':
-        code, reason = 'condition_state_invalid', '이미 확인한 답변을 현재 요청의 처리 조건과 연결해 검증하지 못했습니다.'
+    elif code == 'condition_state_invalid':
+        reason = '이미 확인한 답변을 현재 요청의 처리 조건과 연결해 검증하지 못했습니다.'
         action = '확정된 답변을 처리하는 앱의 오류 확인이 필요합니다. 관리자에게 이 안내를 전달해주세요.'
-    elif kind == 'model_output_error' or name in (
-            'ValueError', 'TypeError', 'KeyError', 'ValidationError', 'JSONDecodeError',
-            'ConditionContractError', 'AssessmentConflictError', 'StructuredOutputError'):
-        code = 'invalid_model_response'
+    elif code == 'invalid_model_response':
         if stage == 'requirements':
             reason = requirement_failure_reason(error)
         elif stage == 'condition_check':
@@ -91,12 +102,14 @@ def requirement_failure_details(kind, error=None, *, attempt=1, stage='requireme
             reason = 'AI의 도구 지원 판단과 작업에 필요한 조건이 서로 맞지 않거나 응답 형식이 잘못됐습니다.'
         action = 'AI 응답을 구성·검증하는 처리의 오류 확인이 필요합니다. 관리자에게 이 안내를 전달해주세요.'
     else:
-        code, reason = 'processing_error', '처리 중 오류가 발생했으며 현재 기록만으로 구체적인 원인을 확인하지 못했습니다.'
+        reason = '처리 중 오류가 발생했으며 현재 기록만으로 구체적인 원인을 확인하지 못했습니다.'
         action = '관리자가 실패 기록을 확인해야 합니다. 필요한 조건을 추측해 다시 입력하지 않아도 됩니다.'
+    result = dict(stage=stage, failure_kind=canonical_kind, reason_code=code, reason=reason,
+                  action=action, retryable=transient and attempt < 2)
     if attempt > 1:
-        action = f'같은 조건의 {attempt}번째 시도도 실패했습니다. 관리자에게 실패 단계와 이 안내를 전달해주세요.'
-    return dict(stage=stage, failure_kind=kind, reason_code=code, reason=reason,
-                action=action, retryable=transient and attempt < 2)
+        result['attempt_notice'] = f'같은 조건의 {attempt}번째 시도도 실패했습니다. 반복 전송으로 해결되지 않고 있어 오류 확인이 필요합니다.'
+        result['action'] = '관리자에게 실패 단계와 이 안내를 전달해 원인을 확인해주세요.'
+    return result
 
 
 def requirement_failure_notice(kind, error, *, retained_draft=False, attempt=1, stage='requirements'):
@@ -104,6 +117,8 @@ def requirement_failure_notice(kind, error, *, retained_draft=False, attempt=1, 
     label={'requirements':'요청을 작업 목록으로 정리하는', 'capability_check':'사용할 도구의 지원 여부를 확인하는',
            'condition_check':'입력한 처리 조건을 확인하는'}.get(stage,'업무 흐름을 구성하는')
     notice = f"{label} 단계에서 중단됐습니다. {details['reason']} {details['action']}"
+    if details.get('attempt_notice'):
+        notice += ' ' + details['attempt_notice']
     notice += ' 입력하신 조건은 보존했습니다. 변경 사항을 적용하거나 저장하지 않았으며 저장을 중단했습니다.'
     if retained_draft:
         notice += ' 이전 워크플로우 초안은 유지했으며, 이번 변경은 아직 적용되지 않았습니다.'

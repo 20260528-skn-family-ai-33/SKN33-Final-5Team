@@ -106,7 +106,10 @@ def test_composite_meta_instruction_never_becomes_a_required_capability_question
     assert len(calls)==2
     assert result['status']=='validation_failed'
     assert result['pending_questions']==[]
-    assert result['system_failure']['retryable'] is True
+    assert result['system_failure']['retryable'] is False
+    assert result['system_failure']['reason'].strip()
+    assert '관리자' in result['system_failure']['action']
+    assert '다시 시도' not in result['messages'][-1]['content']
 
 
 def test_composite_meta_clause_is_removed_when_a_real_question_remains():

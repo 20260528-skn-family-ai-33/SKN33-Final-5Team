@@ -39,7 +39,7 @@ def korean_clock_text(text):
     return re.sub(r'몇\s*시\s*몇\s*분','몇 시 몇 분',text)
 
 
-def normalize_question_language(state):
+def normalize_question_language(state, *, report_failure=True):
     """Project old and new question copies alike; never rewrite the user's turn."""
     result={**state,'messages':[dict(message) for message in state.get('messages',[])],
             'pending_questions':[dict(question) for question in state.get('pending_questions',[])]}
@@ -62,17 +62,19 @@ def normalize_question_language(state):
         visible.append(question)
     result['pending_questions']=visible
     last_assistant=max((i for i,message in enumerate(result['messages']) if message.get('role')=='assistant'),default=-1)
+    last_user=max((i for i,message in enumerate(result['messages']) if message.get('role')=='user'),default=-1)
     for index,message in enumerate(result.get('messages',[])):
         if message.get('role')=='assistant':
             lines=[]
             for line in message.get('content','').split('\n'):
                 line=_normalize(line,sources)
                 if _unexpected(line,sources):
-                    if index==last_assistant:blocked=True
-                    line=_LANGUAGE_NOTICE
+                    if index==last_assistant and index>last_user:blocked=True
+                    line=(_LANGUAGE_NOTICE if report_failure and index>last_user and state.get('status')!='saved'
+                          else '이전 확인 질문의 문구는 표시하지 않았습니다.')
                 if not lines or line!=_LANGUAGE_NOTICE or lines[-1]!=line:lines.append(line)
             message['content']='\n'.join(lines)
-    if blocked:
+    if blocked and report_failure and state.get('status')!='saved':
         result['requirement_failure']={'kind':'question_language_error','retryable':True,
             'reason':'AI가 만든 확인 질문에 요청과 다른 언어의 문구가 섞여 있어 표시하지 않았습니다.',
             'action':'조건 그대로 다시 시도하면 확인 질문을 다시 만듭니다.'}

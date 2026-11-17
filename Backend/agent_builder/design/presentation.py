@@ -181,8 +181,10 @@ def public_requirement_errors(state):
             details=requirement_failure_details(kind,latest.get('error_type'),attempt=attempt)
             projected={**failure,'kind':failure.get('kind','processing_error'),**details}
         notice=('요청을 작업 목록으로 정리하는 단계에서 중단됐습니다. '
-                +details['reason']+' '+details['action']
-                +' 입력하신 조건은 보존했습니다. 변경 사항을 적용하거나 저장하지 않았습니다.')
+                +details['reason']+' '+details['action'])
+        if details.get('attempt_notice'):
+            notice+=' '+details['attempt_notice']
+        notice+=' 입력하신 조건은 보존했습니다. 변경 사항을 적용하거나 저장하지 않았습니다.'
         if (state.get('draft') or {}).get('workflow'):
             notice+=' 이전 워크플로우 초안은 유지했으며, 이번 변경은 아직 적용되지 않았습니다.'
     def public(text, current=False):

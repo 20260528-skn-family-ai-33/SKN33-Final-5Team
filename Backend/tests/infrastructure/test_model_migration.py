@@ -8,6 +8,7 @@ import pytest
 
 from infrastructure.llm.model_aliases import model_aliases, resolve_ollama_model
 from infrastructure.llm.model_factory import create_chat_model
+from infrastructure.llm.failure_classification import ModelTransportError
 from infrastructure.persistence.storage import Storage
 from service.worker import handle
 from tests.design.test_direct_conversation import draft as native_draft
@@ -86,8 +87,9 @@ def test_existing_session_uses_9b_without_rewriting_its_model(tmp_path, monkeypa
         assert result['status'] == 'ready'
         assert result['capability_assessment']['decision'] == 'existing_tools'
     else:
-        with pytest.raises(ValueError, match='404'):
+        with pytest.raises(ModelTransportError) as caught:
             handle(request)
+        assert caught.value.status_code == 404
     assert calls == [CAPABILITY, NEW if success else stored_model]
     store = Storage(directory)
     assert store.session(session['id'])['model'] == stored_model

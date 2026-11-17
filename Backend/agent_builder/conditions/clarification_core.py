@@ -183,14 +183,11 @@ def system_failure(stage, error, message, *, state=None):
         fingerprint=input_fingerprint(state)
         attempt=next_attempt(state, stage, fingerprint)
         extra={'attempt':attempt,'request_fingerprint':fingerprint}
-        message+=attempt_notice(attempt)
     from agent_builder.design.failure_notice import requirement_failure_details, requirement_failure_notice
     name=type(error).__name__ if isinstance(error, BaseException) else str(error)
-    kind='model_output_error' if name in ('ValueError','TypeError','KeyError','ValidationError',
-        'JSONDecodeError','ConditionContractError','AssessmentConflictError') else 'model_error'
-    details=requirement_failure_details(kind,error,stage=stage,attempt=extra.get('attempt',1))
+    details=requirement_failure_details('model_error',error,stage=stage,attempt=extra.get('attempt',1))
     if extra.get('attempt',1)>1:
-        message=requirement_failure_notice(kind,error,stage=stage,attempt=extra['attempt'],
+        message=requirement_failure_notice(details['failure_kind'],error,stage=stage,attempt=extra['attempt'],
             retained_draft=bool((state.get('draft') or {}).get('workflow')))
     return {**details, 'error_type':name, 'message':message, **extra}
 

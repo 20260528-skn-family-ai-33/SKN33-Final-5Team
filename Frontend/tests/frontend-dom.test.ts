@@ -1607,7 +1607,8 @@ for(const succeeds of [true,false])test(`failed node edit retains its canvas whi
   const newFlow={...workflow,nodes:[{...workflow.nodes[0],label:'메일 최대 5건 읽기',settings:{operation:'read_messages',arguments_json:'{"max_results":5}'}}]};
   const result=succeeds?{...session,revision:session.revision+1,status:'ready',issues:[],requirement_failure:null,
    draft:{...session.draft,workflow:newFlow},messages:[...session.messages,{role:'assistant',content:'조회 한도를 5건으로 수정했습니다.'}]}:
-   {...session,revision:session.revision+1,requirement_failure:{...session.requirement_failure,attempt:2},
+   {...session,revision:session.revision+1,requirement_failure:{...session.requirement_failure,attempt:2,
+     attempt_notice:'같은 조건의 2번째 시도도 실패했습니다.',action:'관리자에게 실패 단계와 이 안내를 전달해주세요.'},
     messages:[...session.messages,{role:'assistant',content:failureText+' 같은 조건의 2번째 시도도 실패했습니다.'}]};
   await act(async()=>{pending.resolve(result);await tick();});
   assert.equal(document.querySelector('.as-operation-progress'),null);
@@ -1616,7 +1617,7 @@ for(const succeeds of [true,false])test(`failed node edit retains its canvas whi
   else{
    assert.match(document.querySelector('.as-messages')?.textContent||'',/2번째 시도도 실패/);
    assert.equal(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'),false);
-   assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/반복 전송으로 해결되지 않고/);
+   assert.equal((document.querySelector('.as-requirement-retry')?.textContent?.match(/2번째 시도/g)||[]).length,1);
    assert.ok((button('저장') as HTMLButtonElement).disabled);
   }
  }finally{await h.close();}
@@ -1641,12 +1642,28 @@ test('design processing failure explains the cause and action without repeating 
  }finally{await h.close();}
 });
 
-test('legacy design processing failure reports missing diagnostics without promising a retry',async()=>{
- const session={...readySession(),status:'validation_failed',requirement_failure:{kind:'processing_error',retryable:true}};
+for(const retryable of [true,false])test(`legacy design processing failure preserves explicit retry eligibility (${retryable}) without inventing diagnostics`,async()=>{
+ const session={...readySession(),status:'validation_failed',requirement_failure:{kind:'processing_error',retryable}};
  const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
  try{
   assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/상세 원인이 기록되지 않아/);
   assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/관리자에게 이 안내와 요청 시각/);
+  assert.equal(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'),retryable);
+ }finally{await h.close();}
+});
+
+for(const details of [
+ {label:'structured diagnosis',attempt_notice:'같은 조건의 2번째 시도도 실패했습니다.',action:'관리자에게 실패 단계와 이 안내를 전달해주세요.'},
+ {label:'legacy action',action:'같은 조건의 2번째 시도도 실패했습니다. 관리자에게 실패 단계와 이 안내를 전달해주세요.'},
+ {label:'legacy without action'},
+])test(`repeated design failure reports its attempt only once with ${details.label}`,async()=>{
+ const {label:_,...diagnosis}=details;
+ const session={...readySession(),status:'validation_failed',requirement_failure:{kind:'processing_error',retryable:true,attempt:2,...diagnosis}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  const notice=document.querySelector('.as-requirement-retry')?.textContent||'';
+  assert.equal((notice.match(/2번째 시도/g)||[]).length,1);
+  assert.match(notice,/관리자에게/);
   assert.equal(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'),false);
  }finally{await h.close();}
 });

@@ -408,7 +408,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
      setPendingMessage(content);
     }
     sentSession=s;
-    setBusy('업무를 이해하고 설정을 구성하고 있습니다.');
+    setBusy(choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
    const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
    const lastReply=(result.messages as Session['messages']|undefined)?.findLastIndex(message=>message.role==='assistant')??-1;

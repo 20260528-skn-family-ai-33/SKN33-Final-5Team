@@ -97,12 +97,27 @@ test('authorization values are fully masked in prompts and both conversation rol
 test('escaped and unfinished authentication quotes never leave token fragments',()=>{
  for(const scheme of ['Bearer','Basic'])for(const quote of ['"',"'"])for(const slashes of [0,1,2,3])for(const closed of [false,true]){
   const delimiter='\\'.repeat(slashes)+quote;
-  const value=`안내 ${scheme} ${delimiter}sample-token${closed?delimiter:''}\n다음 줄 설명`;
-  assert.ok(!diagnosticText(value).includes('sample-token'),JSON.stringify(value));
+  const token=scheme==='Basic'?'dXNlcjpwYXNz':'sample-token';
+  const value=`안내 ${scheme} ${delimiter}${token}${closed?delimiter:''}\n다음 줄 설명`;
+  assert.ok(!diagnosticText(value).includes(token),JSON.stringify(value));
   const context=safeRequestContext({prompt:value,conversation:[{role:'user',content:value},{role:'assistant',content:value}]});
   for(const text of [context.prompt,...context.conversation.map((t:{content:string})=>t.content)]){
-   assert.ok(!text?.includes('sample-token'),JSON.stringify(value));
+   assert.ok(!text?.includes(token),JSON.stringify(value));
    assert.match(text!,/안내/);assert.match(text!,/보호된/);assert.match(text!,/다음 줄 설명/);
   }
+ }
+});
+
+test('ordinary basic prose is preserved while standalone Basic credentials are masked',()=>{
+ for(const value of ['Please create a basic workflow to summarize invoices.','Basic workflow automation','Basic d29ya2Zsb3c=','BASIC invoice summary', 'Use basic "workflow" steps.', 'basic knowledge for invoice processing']){
+  const result=safeRequestContext({prompt:value,conversation:[{role:'user',content:value},{role:'assistant',content:value}]});
+  assert.equal(result.prompt,value);assert.deepEqual(result.conversation.map((t:{content:string})=>t.content),[value,value]);
+ }
+ for(const credentials of ['user:pass',':password','user:','사용자:비밀번호']){
+  const encoded=Buffer.from(credentials).toString('base64');
+  assert.equal(diagnosticText('Basic '+encoded+' 끝 설명'),'Basic [보호된 인증값] 끝 설명');
+ }
+ for(const value of ['Basic dXNlcjpwYXNz then summarize invoices.', 'basic dXNlcjpwYXNz, keep this explanation.']){
+  const result=diagnosticText(value);assert.ok(!result.includes('dXNlcjpwYXNz'));assert.match(result,/보호된/);assert.match(result,/then summarize|keep this/);
  }
 });

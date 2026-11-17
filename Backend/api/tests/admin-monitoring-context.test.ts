@@ -55,15 +55,23 @@ test('012: admin-only identity/context, exact owner/version linkage and safe API
   for(const statement of ['SELECT * FROM a4b.monitor_member_emails($1,ARRAY[\''+member+'\'])',"SELECT a4b.monitor_request_context($1,'generation','"+member+":same-request')"]){
    await c.query('SAVEPOINT forbidden');await assert.rejects(c.query(statement,[member]),{code:'42501'});await c.query('ROLLBACK TO forbidden');
   }
-  for(const value of [String.raw`Bearer \"sample-token\"`, 'Bearer "sample-token', String.raw`Basic \'sample-token\'`, "Basic 'sample-token"]){
+  for(const value of [String.raw`Bearer \"sample-token\"`, 'Bearer "sample-token', String.raw`Basic \'dXNlcjpwYXNz\'`, "Basic 'dXNlcjpwYXNz"]){
    await c.query('RESET ROLE');
    await c.query('UPDATE a4b.workflow_runs SET input_json=$1 WHERE id=$2',[JSON.stringify({request:value}),run]);
    await c.query('UPDATE a4b.design_sessions SET messages_json=$1 WHERE id=$2',[JSON.stringify([{role:'user',content:value},{role:'assistant',content:value}]),session]);
    await c.query('SET LOCAL ROLE a4b_app');
    const safe=(await get('/execution/'+run+'?days=7')).item.context;
-   assert.equal(safe.conversation.length,2);assert.ok(!JSON.stringify(safe).includes('sample-token'));
+   assert.equal(safe.conversation.length,2);assert.ok(!JSON.stringify(safe).includes('sample-token'));assert.ok(!JSON.stringify(safe).includes('dXNlcjpwYXNz'));
    assert.match(safe.prompt,/보호된/);
   }
+  await c.query('RESET ROLE');
+  const ordinary='Please create a basic workflow to summarize invoices.';
+  await c.query('UPDATE a4b.workflow_runs SET input_json=$1 WHERE id=$2',[JSON.stringify({request:ordinary}),run]);
+  await c.query('UPDATE a4b.design_sessions SET messages_json=$1 WHERE id=$2',[JSON.stringify([{role:'user',content:ordinary},{role:'assistant',content:ordinary}]),session]);
+  await c.query('SET LOCAL ROLE a4b_app');
+  const ordinaryContext=(await get('/execution/'+run+'?days=7')).item.context;
+  assert.equal(ordinaryContext.prompt,ordinary);
+  assert.deepEqual(ordinaryContext.conversation.map((t:any)=>t.content),[ordinary,ordinary]);
   assert.equal(detail.item.context.prompt_storage_limit,4000);
   assert.equal(detail.item.context.prompt_storage_truncated,null,'old records have unknown truncation');
   for(const truncated of [null,false,true]){

@@ -9,16 +9,25 @@ export function requireAdmin(user?:AuthUser):asserts user is AuthUser {
  if(!user)throw new AuthError(401,'관리자 계정으로 로그인하세요.');
  if(user.role!=='admin'||user.status!=='active')throw new AuthError(403,'관리자만 모니터링을 사용할 수 있습니다.');
 }
+// Standalone Basic is ambiguous prose: require canonical Base64 containing the
+// username/password separator. Headers remain masked independently below.
+function maskStandaloneBasic(value:string):string {
+ return value.replace(/\bBasic[ \t]+\\*["']?([A-Za-z0-9+/]+={0,2})\\*["']?(?=$|[\s,;.)}\]])/gi,(match,encoded:string)=>{
+  const decoded=Buffer.from(encoded,'base64');
+  const canonical=decoded.toString('base64').replace(/=+$/,'');
+  return canonical===encoded.replace(/=+$/,'')&&decoded.includes(0x3a)?'Basic [보호된 인증값]':match;
+ });
+}
 // Diagnostic projections never include raw payloads. Request context is a separate admin-only projection.
 export function diagnosticText(value:unknown,max=1000):string {
  let text=typeof value==='string'?value:'';
  for(const [key,secret] of Object.entries(process.env))if(/KEY|PASSWORD|SECRET|TOKEN|DATABASE_URL/.test(key)&&secret&&secret.length>=6)text=text.split(secret).join('[보호된 값]');
  // Header values can contain a scheme and spaces. Consume the whole value before
  // generic key/value masking; unquoted headers are conservatively redacted to EOL.
- return text.replace(/(["']?(?:proxy-)?authorization["']?[ \t]*[:=：][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)/gi,'$1[보호된 값]')
+ return maskStandaloneBasic(text).replace(/(["']?(?:proxy-)?authorization["']?[ \t]*[:=：][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)/gi,'$1[보호된 값]')
   // Free text may contain escaped, nested or unfinished quotes. Treat the rest
-  // of this credential line as sensitive instead of guessing its closing delimiter.
-  .replace(/\b(?:Bearer|Basic)[ \t]+[^\r\n]*/gi,'[보호된 인증값]').replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[보호된 키]')
+  // of a Bearer credential line as sensitive instead of guessing its closing delimiter.
+  .replace(/\bBearer[ \t]+[^\r\n]*/gi,'[보호된 인증값]').replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[보호된 키]')
   .replace(/(["']?(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|비밀번호|비밀키|토큰)["']?\s*[:=：]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,'$1[보호된 값]')
   .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,'[보호된 토큰]')
   .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,'[보호된 키]')

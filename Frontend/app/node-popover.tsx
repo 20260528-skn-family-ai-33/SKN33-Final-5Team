@@ -107,7 +107,7 @@ export function NodePopover({node,workflow,tool,placement,onClose,onModify,retur
  return <div ref={root} className={'as-node-popover '+(placement==='run'?'is-run':'is-canvas')}
   role="dialog" aria-modal="false" aria-label={node.label+' 작업 설정'}>
   <button type="button" data-slot="dialog-close" aria-label="닫기" onClick={onClose}
-   className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"><XIcon/></button>
+   className="as-node-popover-close"><XIcon/></button>
   <div className="as-node-popover-heading"><strong>작업 설정</strong><span>{onModify?'변경은 채팅에서 적용':'읽기 전용'}</span></div>
   <div className="as-node-popover-content"><NodeInspector node={node} workflow={workflow} tool={tool}
    onClose={onClose} showBackButton={false} footerNote={onModify?'값을 입력해도 아직 저장되지 않습니다. 아래 버튼으로 설계 대화에 변경 요청을 준비하세요.':'이 실행 시점의 설정을 읽기 전용으로 보여줍니다.'}/>

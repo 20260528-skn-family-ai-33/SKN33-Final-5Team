@@ -1,28 +1,32 @@
-import {useEffect,useId,useState} from 'react';
-import {Box,ZoomIn,ZoomOut,Maximize2} from 'lucide-react';
+import {useEffect,useId,useState,type CSSProperties} from 'react';
+import {Box,ZoomIn,ZoomOut,Maximize2,PanelLeftClose,PanelLeftOpen} from 'lucide-react';
 import {useCanvasNavigation} from './use-canvas-navigation';
 import {WorkflowToolIcon} from './workflow-tool-icon';
 export type Workflow={entry:string;nodes:{id:string;tool:string;label:string;bindings:{input:string;node_id:string;output:string}[];settings:Record<string,unknown>}[];edges:{source:string;target:string;branch:string}[]};
-export function WorkflowPreview({workflow,selectedId,onSelect,autoFit=false}:{workflow?:Workflow|null;selectedId?:string|null;onSelect?:(node:Workflow['nodes'][number])=>void;autoFit?:boolean}){
- const [vertical,setVertical]=useState(true);
+export function WorkflowPreview({workflow,selectedId,onSelect,autoFit=false,onToggleConversation,conversationCollapsed=false,onOpenSettings}:{workflow?:Workflow|null;selectedId?:string|null;onSelect?:(node:Workflow['nodes'][number])=>void;autoFit?:boolean;onToggleConversation?:()=>void;conversationCollapsed?:boolean;onOpenSettings?:(node:Workflow['nodes'][number],trigger:HTMLButtonElement)=>void}){
+ const [vertical,setVertical]=useState(false);
  const [beamRun,setBeamRun]=useState(0);
  const markerId=useId();
  const {viewport,zoom,pan,dragging,changeZoom,reset,pointerDown,pointerMove,pointerUp}=useCanvasNavigation(!!workflow);
- const nodeWidth=236,nodeHeight=116,margin=20;
- const columnGap=vertical?32:78,rowGap=vertical?58:28;
+ const nodeWidth=168,nodeHeight=208,squareSize=112,squareX=(nodeWidth-squareSize)/2,squareY=30,margin=32;
+ const columnGap=vertical?64:100,rowGap=vertical?64:40;
  const levels:Record<string,number>=workflow?{[workflow.entry]:0}:{};
  if(workflow)for(let pass=0;pass<workflow.nodes.length;pass++)for(const e of workflow.edges)if(levels[e.source]!==undefined)levels[e.target]=Math.min(workflow.nodes.length,Math.max(levels[e.target]||0,levels[e.source]+1));
  const counts:Record<number,number>={}, positions:Record<string,{x:number;y:number}>={};
- for(const n of workflow?.nodes||[]){
+ const ordered=[...(workflow?.nodes||[])].sort((a,b)=>(levels[a.id]||0)-(levels[b.id]||0));
+ const sequence=new Map(ordered.map((node,index)=>[node.id,index]));
+ for(const n of ordered){
   const level=levels[n.id]||0, lane=counts[level]||0;
   positions[n.id]={x:margin+(vertical?lane:level)*(nodeWidth+columnGap),y:margin+(vertical?level:lane)*(nodeHeight+rowGap)};
   counts[level]=lane+1;
  }
+ const maxLanes=Math.max(1,...Object.values(counts));
+ for(const n of ordered){const level=levels[n.id]||0;positions[n.id][vertical?'x':'y']+=(maxLanes-counts[level])/2*(vertical?nodeWidth+columnGap:nodeHeight+rowGap);}
  const positionsList=Object.values(positions);
  const width=Math.max(0,...positionsList.map(p=>p.x))+nodeWidth+margin, height=Math.max(0,...positionsList.map(p=>p.y))+nodeHeight+margin;
- function fit(){
+ function fit(full=false){
   const el=viewport.current;
-  if(el)reset(Math.min(.85,Math.max(.35,Math.min((el.clientWidth-48)/width,(el.clientHeight-48)/height))));
+  if(el)reset(Math.min(1,Math.max(full ? .35 : .7,Math.min((el.clientWidth-48)/width,(el.clientHeight-48)/height))));
  }
  const hasWorkflow=Boolean(workflow);
  useEffect(()=>{
@@ -40,14 +44,18 @@ export function WorkflowPreview({workflow,selectedId,onSelect,autoFit=false}:{wo
  },[autoFit,hasWorkflow,width,height]);
  function changeDirection(){setVertical(v=>!v);reset();}
  const label=(tool:string)=>['read_document','read_table'].includes(tool)?'입력':tool==='condition'?'조건':tool==='ask_user'?'확인':['finish','export_result','write_result','create_spreadsheet'].includes(tool)?'출력':tool==='agent_node'?'분석·작성':'처리';
- return <><div className="as-canvas-toolbar"><span><Box size={16}/>워크플로우 <small>{workflow?workflow.nodes.length+'개 작업':'초안 대기'}</small></span>{workflow&&<button type="button" className="as-text-button" onClick={changeDirection}>{vertical?'가로로 보기':'세로로 보기'}</button>}</div><div tabIndex={0} role="region" aria-label="처리 흐름" className={'as-desktop-canvas'+(!workflow?' is-empty':'')+(dragging?' is-dragging':'')} ref={viewport} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onLostPointerCapture={pointerUp} onKeyDown={event=>{
+ return <><div className="as-canvas-toolbar"><span><Box size={16}/>워크플로우 <small>{workflow?workflow.nodes.length+'개 작업':'초안 대기'}</small></span><div className="as-canvas-toolbar-actions">{onToggleConversation&&<button type="button" className="as-text-button as-conversation-toggle" onClick={onToggleConversation} aria-expanded={!conversationCollapsed}>{conversationCollapsed?<PanelLeftOpen size={15}/>:<PanelLeftClose size={15}/>}{conversationCollapsed?'대화 펼치기':'대화 접기'}</button>}{workflow&&<button type="button" className="as-text-button" onClick={changeDirection}>{vertical?'가로로 보기':'세로로 보기'}</button>}</div></div><div tabIndex={0} role="region" aria-label="처리 흐름" className={'as-desktop-canvas'+(!workflow?' is-empty':'')+(dragging?' is-dragging':'')} ref={viewport} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onLostPointerCapture={pointerUp} onKeyDown={event=>{
  if(!workflow||event.target!==event.currentTarget)return;
  if(event.key==='+'||event.key==='='){event.preventDefault();changeZoom(zoom+.1);}
  if(event.key==='-'){event.preventDefault();changeZoom(zoom-.1);}
- if(event.key==='0'){event.preventDefault();fit();}
-}}>{workflow?<div style={{width:width*zoom,height:height*zoom,translate:`${pan.x}px ${pan.y}px`}} className="as-canvas-size"><div className={'as-flow-canvas '+(vertical?'flow-vertical':'flow-horizontal')} style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg width={width} height={height} aria-hidden="true"><defs><marker id={markerId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="var(--a4b-flow-line)"/></marker></defs>{workflow.edges.map((e,i)=>{const a=positions[e.source],b=positions[e.target];if(!a||!b)return null;const x1=a.x+(vertical?nodeWidth/2:nodeWidth), y1=a.y+(vertical?nodeHeight:nodeHeight/2);
- const x2=b.x+(vertical?nodeWidth/2:0), y2=b.y+(vertical?0:nodeHeight/2);
+ if(event.key==='0'){event.preventDefault();fit(true);}
+}}>{workflow?<div style={{width:width*zoom,height:height*zoom,translate:`${pan.x}px ${pan.y}px`}} className="as-canvas-size"><div className={'as-flow-canvas '+(vertical?'flow-vertical':'flow-horizontal')} style={{width,height,transform:`scale(${zoom})`,transformOrigin:'top left'}}><svg width={width} height={height} aria-hidden="true"><defs><marker id={markerId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="var(--a4b-flow-line)"/></marker></defs>{workflow.edges.map(e=>{const a=positions[e.source],b=positions[e.target];if(!a||!b)return null;const x1=a.x+squareX+(vertical?squareSize/2:squareSize)+(vertical?(e.branch==='yes'?-18:e.branch==='no'?18:0):0), y1=a.y+squareY+(vertical?squareSize:squareSize/2)+(vertical?0:e.branch==='yes'?-18:e.branch==='no'?18:0);
+ const x2=b.x+squareX+(vertical?squareSize/2:0), y2=b.y+squareY+(vertical?0:squareSize/2);
  const mx=(x1+x2)/2, my=(y1+y2)/2;
  const path=vertical?`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`:`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
- return <g key={i}><path d={path} fill="none" stroke="var(--a4b-flow-line)" strokeWidth="1.7" markerEnd={'url(#'+markerId+')'}/>{selectedId&&(e.source===selectedId||e.target===selectedId)&&<g><path className="as-flow-highlight" d={path} fill="none" stroke="#0284c7" strokeWidth={4}/><path key={selectedId+":"+beamRun} className="as-flow-beam" d={path} pathLength={1} fill="none" stroke="#0ea5e9" strokeWidth={7}/></g>}{e.branch!=='next'&&<text x={mx+4} y={my-6} fill="var(--a4b-muted)" fontSize="13">{e.branch==='yes'?'조건 충족':'조건 미충족'}</text>}</g>;})}</svg>{workflow.nodes.map((n,index)=><button key={n.id} aria-pressed={selectedId===n.id} className={'as-flow-node kind-'+n.tool+(selectedId===n.id?' selected':'')+(n.tool==='condition'?' branch':'')} style={{left:positions[n.id].x,top:positions[n.id].y,width:nodeWidth,height:nodeHeight,animationDelay:`${Math.min(index,12)*65}ms`}} title={n.label} onClick={()=>{setBeamRun(run=>run+1);onSelect?.(n);}}><span className="as-node-kind"><WorkflowToolIcon tool={n.tool} size={17}/>{label(n.tool)}</span><strong>{n.label}</strong><small>{n.bindings.length?'앞 단계 결과 사용':'실행 요청·연결 자료'}</small><i className="as-port-in"/><i className="as-port-out"/></button>)}</div></div>:<div className="as-canvas-empty"><div className="as-empty-flow"><span>자료 입력</span><span>작업 처리</span><span>결과 출력</span></div><h2>워크플로우 초안 대기 중</h2></div>}</div><div className="as-canvas-footer"><small>{workflow?'배경 드래그로 이동 · Ctrl/⌘+휠로 확대·축소':'설명한 업무에 필요한 작업을 구성합니다.'}</small><div className="as-zoom"><button onClick={()=>changeZoom(zoom-.1)} disabled={!workflow||zoom<=.35} aria-label="캔버스 축소"><ZoomOut size={16}/></button><span>{Math.round(zoom*100)}%</span><button onClick={()=>changeZoom(zoom+.1)} disabled={!workflow||zoom>=2} aria-label="캔버스 확대"><ZoomIn size={16}/></button><button onClick={fit} disabled={!workflow} aria-label="화면에 맞추기"><Maximize2 size={16}/></button></div></div></>;
+ return <g key={e.source+':'+e.target+':'+e.branch} style={{animationDelay:((sequence.get(e.target)||0)*130+100)+'ms'}}><path className="as-flow-connection" pathLength={1} style={{animationDelay:((sequence.get(e.target)||0)*130+100)+'ms'}} d={path} fill="none" stroke="var(--a4b-flow-line)" strokeWidth="2.5" markerEnd={'url(#'+markerId+')'}/>{selectedId&&(e.source===selectedId||e.target===selectedId)&&<g><path className="as-flow-highlight" d={path} fill="none" stroke="#0284c7" strokeWidth={2.5}/><path key={selectedId+":"+beamRun} className="as-flow-beam" d={path} pathLength={1} fill="none" stroke="#0ea5e9" strokeWidth={3.5}/></g>}{e.branch!=='next'&&<text x={mx+4} y={my-6} fill={e.branch==='yes'?'var(--a4b-success)':'var(--a4b-danger)'} fontSize="13">{e.branch==='yes'?'맞아요':'아니에요'}</text>}</g>;})}</svg>{ordered.map((n,index)=><button key={n.id} type="button" aria-pressed={selectedId===n.id} className={'as-flow-node kind-'+n.tool+(selectedId===n.id?' selected':'')+(n.tool==='condition'?' branch':'')} style={{left:positions[n.id].x,top:positions[n.id].y,width:nodeWidth,height:nodeHeight,animationDelay:`${index*130}ms`,'--as-node-delay':`${index*130}ms`} as CSSProperties} title={n.label} aria-description="왼쪽 클릭으로 선택, 오른쪽 클릭 또는 Shift+F10으로 설정 열기" onContextMenu={event=>{if(onOpenSettings){event.preventDefault();onOpenSettings(n,event.currentTarget);}}} onKeyDown={event=>{if(onOpenSettings&&(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10')){event.preventDefault();onOpenSettings(n,event.currentTarget);}}} onClick={()=>{setBeamRun(run=>run+1);onSelect?.(n);}}>
+ <span className="as-node-step">STEP {String(index+1).padStart(2,'0')}</span>
+ <span className="as-node-square"><WorkflowToolIcon tool={n.tool} size={44}/><i className="as-port-in"/>{n.tool==='condition'?<><i className="as-port-out is-yes"/><i className="as-port-out is-no"/></>:<i className="as-port-out"/>}</span>
+ <strong>{n.label}</strong><small className="as-node-kind">{label(n.tool)}</small>
+ </button>)}</div></div>:<div className="as-canvas-empty"><div className="as-empty-flow"><span>자료 입력</span><span>작업 처리</span><span>결과 출력</span></div><h2>워크플로우 초안 대기 중</h2></div>}</div><div className="as-canvas-footer"><small>{workflow?'배경 드래그로 이동 · Ctrl/⌘+휠로 확대·축소':'설명한 업무에 필요한 작업을 구성합니다.'}</small><div className="as-zoom"><button onClick={()=>changeZoom(zoom-.1)} disabled={!workflow||zoom<=.35} aria-label="캔버스 축소"><ZoomOut size={16}/></button><span>{Math.round(zoom*100)}%</span><button onClick={()=>changeZoom(zoom+.1)} disabled={!workflow||zoom>=2} aria-label="캔버스 확대"><ZoomIn size={16}/></button><button onClick={()=>fit(true)} disabled={!workflow} aria-label="화면에 맞추기"><Maximize2 size={16}/></button></div></div></>;
 }

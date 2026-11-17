@@ -14,7 +14,7 @@ const nodeCompiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/node-libra
 const sourceCompiled=buildSync({stdin:{contents:"export {ScheduleLibrarySourceSettings} from './app/schedule-library-source'; export {AuthProvider} from './app/auth';",resolveDir:FRONTEND_ROOT,sourcefile:'schedule-source-test.tsx'},absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
 function load(code:string){const module={exports:{} as any};new Function('require','module','exports',code)(require,module,module.exports);return module.exports;}
 let dom:JSDOM;
-const globals=['crypto','window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
+const globals=['crypto','window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','DOMRect','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
 const old=new Map(globals.map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
 // ReactDOM feature detection must see the DOM on first import.
 function installDOM(search=''){
@@ -141,6 +141,7 @@ function capturePicker(write:(blob:Blob)=>void,onPick?:(options:any)=>void) {
 }
 function button(text:string){const b=buttons().find(b=>b.textContent?.trim()===text);assert.ok(b,'Missing button '+text);return b;}
 async function click(b:Element){await act(async()=>{(b as HTMLElement).click();await tick();});}
+async function openNode(b:Element){await act(async()=>{(b as HTMLElement).focus();b.dispatchEvent(new dom.window.MouseEvent('contextmenu',{bubbles:true,button:2}));await tick();});}
 function field(label:string){const l=Array.from(document.querySelectorAll('label')).find(l=>l.textContent?.startsWith(label));assert.ok(l,'Missing field '+label);const input=l.querySelector('input,textarea,select')||l.control;assert.ok(input);return input as HTMLInputElement;}
 async function input(el:HTMLInputElement|HTMLTextAreaElement,value:string){await act(async()=>{const proto=el.tagName==='TEXTAREA'?dom.window.HTMLTextAreaElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(el,value);el.dispatchEvent(new dom.window.Event('input',{bubbles:true}));el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});}
 async function submit(form:HTMLFormElement){await act(async()=>{form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));await tick();});}
@@ -578,13 +579,13 @@ test('DOM: run history draws the saved version and design opens at reading size 
   assert.ok(document.querySelector('.as-test-result')?.textContent?.includes(previous.answer));
   await click(button('설계'));
   const cards=()=>Array.from(document.querySelectorAll<HTMLElement>('.as-flow-canvas .as-flow-node'));
-  assert.equal(cards()[0].style.left,cards()[1].style.left);
-  assert.notEqual(cards()[0].style.top,cards()[1].style.top);
-  assert.equal(document.querySelector('.as-zoom span')?.textContent,'100%');
-  await click(button('가로로 보기'));
   assert.equal(cards()[0].style.top,cards()[1].style.top);
   assert.notEqual(cards()[0].style.left,cards()[1].style.left);
-  await click(cards()[1]);
+  assert.equal(document.querySelector('.as-zoom span')?.textContent,'100%');
+  await click(button('세로로 보기'));
+  assert.equal(cards()[0].style.left,cards()[1].style.left);
+  assert.notEqual(cards()[0].style.top,cards()[1].style.top);
+  await openNode(cards()[1]);
   assert.ok(document.querySelector('.as-node-inspector')?.textContent?.includes('엑셀 만들기'));
  }finally{await h.close();}
 });
@@ -1127,8 +1128,8 @@ test('entry: introduction has one start action and uses the actual editor views 
   assert.equal(buttons().filter(b=>b.textContent?.trim()==='A4B 시작하기').length,1);
   assert.ok(!document.body.textContent?.match(/FROM WORDS|MADE FOR|YOUR WORK|A CLEAR WAY/));
   assert.equal(document.querySelectorAll('.landing-studio-preview .as-flow-node').length,3);
-  for(const node of document.querySelectorAll('.landing-studio-preview .as-flow-node'))assert.ok(node.querySelector('.as-node-kind svg'));
-  await click(document.querySelectorAll('.landing-studio-preview .as-flow-node')[1]);
+  for(const node of document.querySelectorAll('.landing-studio-preview .as-flow-node'))assert.ok(node.querySelector('.as-node-square svg'));
+  await openNode(document.querySelectorAll('.landing-studio-preview .as-flow-node')[1]);
   assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/부족한 재고 찾기/);
   assert.ok(document.querySelector('.as-node-inspector-title svg'));
   await click(button('실행'));
@@ -1413,7 +1414,7 @@ test('simplified settings render saved filter rules in overview and node inspect
  const plan={filters:[{field:'amount',operator:'gte',value:100,compare_field:null,value_type:'number'}],sort:[],match:'all',missing_policy:'keep',duplicate_policy:'keep',duplicate_field:null,output_format:'csv'};
  const saved={...A,config:{...A.config,tool_ids:['filter_sort'],execution_plan:plan,workflow:{entry:'filter',nodes:[{id:'filter',label:'금액 선별',tool:'filter_sort',settings:{execution_plan:plan},bindings:[]}],edges:[]}}};
  const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(saved):undefined);
- try{await click(button('설계'));assert.match(document.querySelector('.as-rule-summary')?.textContent||'',/amount/);await click(document.querySelector('.as-flow-node')!);const popup=document.querySelector('.as-node-popover.is-canvas')!;assert.ok(popup);assert.equal(popup.getAttribute('role'),'dialog');assert.match(popup.querySelector('.as-rule-summary')?.textContent||'',/amount/);assert.ok(document.querySelector('.as-conversation'));await click(popup.querySelector('button')!);assert.equal(document.querySelector('.as-node-popover'),null);}finally{await h.close();}
+ try{await click(button('설계'));assert.match(document.querySelector('.as-rule-summary')?.textContent||'',/amount/);await openNode(document.querySelector('.as-flow-node')!);const popup=document.querySelector('.as-node-popover.is-canvas')!;assert.ok(popup);assert.equal(popup.getAttribute('role'),'dialog');assert.match(popup.querySelector('.as-rule-summary')?.textContent||'',/amount/);assert.ok(document.querySelector('.as-conversation'));await click(popup.querySelector('button')!);assert.equal(document.querySelector('.as-node-popover'),null);}finally{await h.close();}
 });
 
 test('draft node popup keeps the design chat visible and prepares a scoped edit request',async()=>{
@@ -1421,7 +1422,7 @@ test('draft node popup keeps the design chat visible and prepares a scoped edit 
  const session={...readySession(),draft:{...A.config,workflow}};
  const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
  try{
-  await click(document.querySelector('.as-flow-node')!);
+  await openNode(document.querySelector('.as-flow-node')!);
   const popup=document.querySelector('.as-node-popover.is-canvas')!;assert.ok(popup);
   assert.match(popup.textContent||'',/기준값/);assert.match(popup.textContent||'',/100/);
   assert.ok(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]'));
@@ -1435,7 +1436,7 @@ test('draft node popup keeps the design chat visible and prepares a scoped edit 
   assert.ok(request.includes('검색 조건 (arguments_json.query): older_than:3d → newer_than:3d'));
   assert.equal(workflow.nodes[0].settings.arguments_json,'{"threshold":100,"query":"older_than:3d"}');
   await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'x'.repeat(3999));
-  await click(document.querySelector('.as-flow-node')!);
+  await openNode(document.querySelector('.as-flow-node')!);
   const reopened=document.querySelector('.as-node-popover.is-canvas')!;
   await input(reopened.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.threshold"]')!,'0');
   await click(reopened.querySelector('.as-node-popover-actions button')!);
@@ -1453,7 +1454,7 @@ test('numeric filter popup switches between direct values and comparison columns
  const session={...readySession(),draft:{...A.config,workflow}};
  const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
  try{
-  await click(document.querySelector('.as-flow-node')!);
+  await openNode(document.querySelector('.as-flow-node')!);
   const popup=document.querySelector('.as-node-popover.is-canvas')!;
   const first=popup.querySelector('[data-comparison-index="0"]')!,second=popup.querySelector('[data-comparison-index="1"]')!;
   const firstModes=first.querySelectorAll('[role="group"] button'),secondModes=second.querySelectorAll('[role="group"] button');
@@ -1489,14 +1490,14 @@ test('saved run node popup reads the selected run snapshot and closes with Escap
  const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(saved,[historical]):undefined);
  try{
   const card=document.querySelector<HTMLButtonElement>('.rwd-card.is-selectable')!;assert.ok(card);
-  await click(card);
+  await openNode(card);
   const popup=document.querySelector('.as-node-popover.is-run')!;assert.ok(popup);
   assert.match(popup.textContent||'',/이전 읽기/);assert.match(popup.textContent||'',/조회 한도/);assert.match(popup.textContent||'',/3/);
   assert.doesNotMatch(popup.textContent||'',/현재 읽기/);
   assert.equal(popup.querySelector('.as-node-popover-actions'),null,'historical settings cannot edit the latest version');
   await click(button('최신 실행 보기'));
   assert.equal(document.querySelector('.as-node-popover'),null,'changing the run closes stale settings');
-  await click(document.querySelector('.rwd-card.is-selectable')!);
+  await openNode(document.querySelector('.rwd-card.is-selectable')!);
   await act(async()=>{window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
   assert.equal(document.querySelector('.as-node-popover'),null);
  }finally{await h.close();}
@@ -1515,7 +1516,7 @@ for(const source of ['draft','saved'] as const)for(const label of ['Slack 채널
   if(path==='/api/workflows/from-request')return {workflow:{id:'unrelated-workflow'}};
  });
  try{
-  await click(document.querySelector(source==='saved'?'.rwd-card.is-selectable':'.as-flow-node')!);
+  await openNode(document.querySelector(source==='saved'?'.rwd-card.is-selectable':'.as-flow-node')!);
   await input(document.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.channel_id"]')!,'C9876543210');
   await click(document.querySelector('.as-node-popover-actions button')!);
   const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
@@ -1539,7 +1540,7 @@ test('current saved node opens the existing design edit conversation',async()=>{
  const saved={...A,config:{...A.config,workflow}};
  const h=await setup('?service=A',{},path=>path.includes('/agent?')?snapshot(saved):path.endsWith('/sessions')?{id:'edit-session',revision:0}:undefined);
  try{
-  await click(document.querySelector('.rwd-card.is-selectable')!);
+  await openNode(document.querySelector('.rwd-card.is-selectable')!);
   const popup=document.querySelector('.as-node-popover.is-run')!;assert.ok(popup);
   assert.match(popup.textContent||'',/25/);
   await input(popup.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.max_results"]')!,'0');
@@ -2878,7 +2879,7 @@ test('canvas supports wheel zoom, zoom buttons, drag navigation and reset withou
   assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="캔버스 확대"]')!.disabled,true);
   await zoomAt(10000);assert.equal(percent(),'35%');
   assert.equal(document.querySelector<HTMLButtonElement>('[aria-label="캔버스 축소"]')!.disabled,true);
-  await click(button('가로로 보기'));assert.equal(percent(),'100%');
+  await click(button('세로로 보기'));assert.equal(percent(),'100%');
   await zoomAt(-100);assert.equal(percent(),'122%');
   await click(document.querySelector('[aria-label="캔버스 확대"]')!);assert.equal(percent(),'132%');
   await click(document.querySelector('[aria-label="캔버스 축소"]')!);assert.equal(percent(),'122%');
@@ -2905,7 +2906,7 @@ test('canvas supports wheel zoom, zoom buttons, drag navigation and reset withou
   await click(document.querySelector('[aria-label="화면에 맞추기"]')!);
   assert.equal(canvas.scrollLeft,0);assert.equal(canvas.scrollTop,0);assert.equal(size.style.translate,'0px 0px');
   assert.equal(document.querySelectorAll('.as-flow-node').length,2);
-  await click(document.querySelectorAll('.as-flow-node')[1]);
+  await openNode(document.querySelectorAll('.as-flow-node')[1]);
   assert.match(document.querySelector('.as-node-inspector')?.textContent||'',/완료/);
  }finally{await h.close();}
 });
@@ -3159,12 +3160,12 @@ test('visible design canvas refits on sidebar resize and keeps manual zoom for u
  const h=await setup('',{},undefined,createElement(SizedPreview));
  try{
   const percent=()=>document.querySelector('.as-zoom span')!.textContent;
-  assert.equal(percent(),'85%');assert.equal(observers.length,1);
-  await click(document.querySelector('[aria-label="캔버스 확대"]')!);assert.equal(percent(),'95%');
-  await act(async()=>{observers[0].callback();});assert.equal(percent(),'95%');
-  w=220;await act(async()=>{observers[0].callback();});assert.equal(percent(),'62%');
-  w=0;hgt=0;await act(async()=>{observers[0].callback();});assert.equal(percent(),'62%');
-  w=900;hgt=900;await act(async()=>{observers[0].callback();});assert.equal(percent(),'85%');
+  assert.equal(percent(),'100%');assert.equal(observers.length,1);
+  await click(document.querySelector('[aria-label="캔버스 확대"]')!);assert.equal(percent(),'110%');
+  await act(async()=>{observers[0].callback();});assert.equal(percent(),'110%');
+  w=220;await act(async()=>{observers[0].callback();});assert.equal(percent(),'70%');
+  w=0;hgt=0;await act(async()=>{observers[0].callback();});assert.equal(percent(),'70%');
+  w=900;hgt=900;await act(async()=>{observers[0].callback();});assert.equal(percent(),'100%');
  }finally{await h.close();}
  assert.equal(observers[0].disconnected,true);
 });
@@ -3363,7 +3364,7 @@ for(const screen of ['workflow','run'])test(`node popup on ${screen}: standard c
  const nodes=()=>document.querySelectorAll<HTMLButtonElement>(screen==='run'?'.rwd-card.is-selectable':'.as-flow-node');
  const pointer=async(target:Element)=>act(async()=>{target.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true,composed:true}));await tick();});
  try{
-  const trigger=nodes()[0];trigger.focus();await click(trigger);
+  const trigger=nodes()[0];trigger.focus();await click(trigger);assert.equal(document.querySelector('.as-node-popover'),null);assert.equal(trigger.getAttribute('aria-pressed'),'true');await openNode(trigger);
   const popup=document.querySelector('.as-node-popover')!;
   const close=popup.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!;
   assert.equal(close.getAttribute('aria-label'),'닫기');assert.ok(close.querySelector('svg'));
@@ -3372,14 +3373,69 @@ for(const screen of ['workflow','run'])test(`node popup on ${screen}: standard c
   const field=popup.querySelector('input')!;
   await pointer(field);assert.equal(document.querySelector('.as-node-popover'),popup);
   await click(close);assert.equal(document.querySelector('.as-node-popover'),null);assert.ok(document.activeElement===trigger);
-  await click(trigger);
+  await openNode(trigger);
   const outside=document.querySelector<HTMLTextAreaElement>(screen==='run'?'[data-tour="run-input"]':'textarea[aria-label="업무 설명"]')!;
   outside.focus();await pointer(outside);
   assert.equal(document.querySelector('.as-node-popover'),null);assert.ok(document.activeElement===outside);
-  await click(trigger);
-  await pointer(nodes()[1]);nodes()[1].focus();await click(nodes()[1]);
+  await openNode(trigger);
+  await pointer(nodes()[1]);nodes()[1].focus();await openNode(nodes()[1]);
   assert.match(document.querySelector('.as-node-popover')!.getAttribute('aria-label')!,/다음 작업/);
   await act(async()=>{window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
   assert.equal(document.querySelector('.as-node-popover'),null);assert.ok(document.activeElement===nodes()[1]);
+ }finally{await h.close();}
+});
+
+test('design canvas uses ordered square steps, staged entrances and a collapsible conversation without mutating the draft',async()=>{
+ const workflow={entry:'start',nodes:[{id:'no',tool:'finish',label:'확인 필요',bindings:[],settings:{}},{id:'yes',tool:'finish',label:'처리 완료',bindings:[],settings:{}},{id:'check',tool:'condition',label:'조건 확인',bindings:[],settings:{}},{id:'start',tool:'read_table',label:'자료 읽기',bindings:[],settings:{}}],edges:[{source:'start',target:'check',branch:'next'},{source:'check',target:'yes',branch:'yes'},{source:'check',target:'no',branch:'no'}]};
+ const session={...readySession(),draft:{...readySession().draft,workflow}};
+ const before=JSON.stringify(workflow);
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined);
+ try{
+  const nodes=Array.from(document.querySelectorAll<HTMLButtonElement>('.as-flow-node'));
+  assert.equal(nodes[0].title,'자료 읽기');assert.equal(nodes[1].title,'조건 확인');
+  assert.ok(document.querySelector('.as-flow-canvas.flow-horizontal'));
+  assert.equal(nodes[0].querySelector('.as-node-step')?.textContent,'STEP 01');
+  assert.ok(nodes.every(node=>node.querySelector('.as-node-square svg')));
+  assert.ok(nodes.every((node,index)=>index===0||parseFloat(node.style.animationDelay)>parseFloat(nodes[index-1].style.animationDelay)));
+  assert.equal(document.querySelectorAll('.as-port-out.is-yes').length,1);
+  assert.equal(document.querySelectorAll('.as-port-out.is-no').length,1);
+  await click(button('대화 접기'));
+  assert.equal(document.querySelector<HTMLElement>('.as-editor-grid')!.dataset.chatCollapsed,'true');
+  await click(button('대화 펼치기'));
+  assert.equal(document.querySelector<HTMLElement>('.as-editor-grid')!.dataset.chatCollapsed,'false');
+  await click(nodes[1]);assert.equal(document.querySelector('.as-node-popover'),null);assert.equal(nodes[1].getAttribute('aria-pressed'),'true');
+  await act(async()=>{nodes[1].dispatchEvent(new dom.window.MouseEvent('contextmenu',{bubbles:true,button:2,clientX:100,clientY:100}));await tick();});
+  assert.match(document.querySelector('.as-node-popover')?.getAttribute('aria-label')||'',/조건 확인/);
+  assert.equal(JSON.stringify(workflow),before);
+  assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);
+ }finally{await h.close();}
+});
+
+test('all saved-design entry paths preserve left selection and right-click settings',async()=>{
+ const workflow={entry:'read',nodes:[{id:'read',tool:'read_document',label:'문서 읽기',bindings:[],settings:{}},{id:'out',tool:'finish',label:'완료',bindings:[],settings:{}}],edges:[{source:'read',target:'out',branch:'next'}]};
+ const saved={...A,config:{...A.config,workflow}};
+ const run={id:'saved-run',agent_version:1,status:'succeeded',created_at:'2026-11-17T00:00:00Z',config_snapshot:{workflow},steps:[],rows:[],answer:'완료'};
+ const h=await setup('?screen=workflows',{},path=>{
+  if(path.split('?')[0].endsWith('/agents'))return {agents:[saved]};
+  if(path.includes('/agent?id=A'))return snapshot(saved,[run]);
+  if(path.includes('/history'))return {agents:[saved],rows:[{agent_id:'A',run}],total:1,page:1,page_size:50};
+  if(path.split('?')[0].endsWith('/schedules'))return {agents:[saved],workflows:[{agent:saved,schedule:{agent_version:1,active:false,spec:{frequency:'daily',timezone:'Asia/Seoul',hour:9,minute:0}}}]};
+ },createElement(EntryApp));
+ async function verify(path:string){
+  const node=document.querySelector<HTMLButtonElement>('.as-flow-node')!;assert.ok(node,path);
+  await click(node);assert.equal(document.querySelector('.as-node-popover'),null,path+' left click');assert.equal(node.getAttribute('aria-pressed'),'true');
+  await openNode(node);assert.match(document.querySelector('.as-node-popover')?.getAttribute('aria-label')||'',/문서 읽기/);
+  await click(document.querySelector('.as-node-popover-close')!);assert.equal(document.querySelector('.as-node-popover'),null);
+  await act(async()=>{node.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true}));await tick();});
+  assert.ok(document.querySelector('.as-node-popover'),path+' keyboard settings');
+  await act(async()=>{window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await tick();});
+ }
+ try{
+  await click(document.querySelector('[aria-label="서비스 A 설계 열기"]')!);await verify('library design');
+  await click(document.querySelector('[data-tour="menu-schedules"]')!);
+  await click(document.querySelector('[aria-label="서비스 A 예약 자료·실행 확인"]')!);await click(button('설계'));await verify('schedule detail to design');
+  await click(document.querySelector('[data-tour="menu-history"]')!);await click(button('결과 보기'));await click(button('설계'));await verify('history result to design');
+  await click(document.querySelector('.as-workflow-switcher summary')!);await click(document.querySelector('.as-workflow-switcher nav button')!);await click(button('설계'));await verify('saved workflow switcher to design');
+  assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);
  }finally{await h.close();}
 });

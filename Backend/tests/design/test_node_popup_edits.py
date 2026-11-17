@@ -79,6 +79,73 @@ def test_unread_gmail_slack_count_popup_is_fast_and_preserves_other_settings(tmp
         store.close()
 
 
+def test_gmail_count_popup_keeps_verified_origin_across_repeated_edits(tmp_path):
+    store = Storage(tmp_path)
+    graph, connection = _graph(store)
+    config = {'configurable': {'thread_id': 'popup-count-repeated'}}
+    try:
+        revised = _ready(graph, config)
+        base_turn = None
+        for number, (old, new) in enumerate(((100, 10), (10, 20), (20, 30)), 1):
+            reader = revised['draft']['workflow']['nodes'][0]
+            edit = _popup(reader, 'max_results', old, new, '조회 한도')
+            revised = graph.invoke(Command(resume={'type': 'message', 'content': edit['request'],
+                                                    'node_edit': edit}), config)
+            assert revised['status'] == 'ready', revised['issues']
+            assert proof_issue(revised) is None
+            assert sum(item['node'] == 'node_edit' and item['model_calls'] == 0
+                       for item in revised['trace'] if 'model_calls' in item) == number
+            if base_turn is None:
+                base_turn = revised['node_edit_proof']['base_turn']
+            assert revised['node_edit_proof']['base_turn'] == base_turn
+            nodes = revised['draft']['workflow']['nodes']
+            assert json.loads(nodes[0]['settings']['arguments_json'])['max_results'] == new
+            for text in (nodes[0]['label'], nodes[1]['settings']['instructions'],
+                         revised['draft']['instructions'], revised['draft']['explanation']):
+                assert f'최대 {new}건' in text
+                assert f'최대 {old}건' not in text
+        saved = graph.invoke(Command(resume={'type': 'confirm'}), config)
+        assert saved['status'] == 'saved'
+        persisted = store.agent(saved['saved_agent_id'])['config']
+        assert json.loads(persisted['workflow']['nodes'][0]['settings']['arguments_json'])['max_results'] == 30
+    finally:
+        connection.close()
+        store.close()
+
+
+def test_gmail_count_popup_retry_keeps_verified_origin(tmp_path):
+    store = Storage(tmp_path)
+    graph, connection = _graph(store)
+    config = {'configurable': {'thread_id': 'popup-count-retry'}}
+    try:
+        ready = _ready(graph, config)
+        first = _popup(ready['draft']['workflow']['nodes'][0], 'max_results', 100, 10, '조회 한도')
+        revised = graph.invoke(Command(resume={'type': 'message', 'content': first['request'],
+                                               'node_edit': first}), config)
+        assert revised['status'] == 'ready'
+        reader = revised['draft']['workflow']['nodes'][0]
+        stale = _popup(reader, 'max_results', 11, 20, '조회 한도')
+        failed = graph.invoke(Command(resume={'type': 'message', 'content': stale['request'],
+                                              'node_edit': stale}), config)
+        assert failed['status'] == 'validation_failed'
+        assert '이전 값이 변경' in failed['issues'][0]
+        assert failed['node_edit_failure']['base_turn'] == revised['node_edit_proof']['base_turn']
+        corrected = _popup(reader, 'max_results', 10, 20, '조회 한도')
+        retry = graph.invoke({**failed, 'messages': failed['messages'] +
+                              [{'role': 'user', 'content': corrected['request']}],
+                              'node_edit': corrected}, config)
+        assert retry['status'] == 'ready', retry['issues']
+        assert proof_issue(retry) is None
+        assert retry['node_edit_proof']['base_turn'] == revised['node_edit_proof']['base_turn']
+        nodes = retry['draft']['workflow']['nodes']
+        assert json.loads(nodes[0]['settings']['arguments_json'])['max_results'] == 20
+        assert '최대 20건' in nodes[1]['settings']['instructions']
+        assert '최대 10건' not in retry['draft']['explanation']
+    finally:
+        connection.close()
+        store.close()
+
+
 def test_stale_or_hidden_popup_value_stops_with_specific_error(tmp_path):
     for kind in ('stale', 'hidden'):
         store = Storage(tmp_path / kind)

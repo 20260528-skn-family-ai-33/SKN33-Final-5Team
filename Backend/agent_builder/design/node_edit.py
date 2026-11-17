@@ -203,7 +203,29 @@ def _dependent_text(draft):
     return '\n'.join([*top, *settings])
 
 
-def _sync_known_count_text(state, before, after, edit, source_turn):
+def _recipe_base_turn(state, source_turn):
+    """Reuse the original request only while each direct edit's draft is proven."""
+    draft = state.get('draft') or {}
+    failure = state.get('node_edit_failure') or {}
+    try:
+        unchanged = failure.get('draft_digest') == _digest(draft) if failure else False
+    except (ValueError, KeyError, TypeError):
+        unchanged = False
+    base_turn = failure.get('base_turn')
+    if unchanged and type(base_turn) is int and 0 <= base_turn < source_turn:
+        return base_turn
+    proof = state.get('node_edit_proof') or {}
+    previous_turn = proof.get('source_turn')
+    if type(previous_turn) is int and 0 <= previous_turn < source_turn:
+        previous = {**state, 'messages': state['messages'][:previous_turn + 1]}
+        if proof_issue(previous, draft) is None:
+            base_turn = proof.get('base_turn', previous_turn)
+            if type(base_turn) is int and 0 <= base_turn <= previous_turn:
+                return base_turn
+    return source_turn
+
+
+def _sync_known_count_text(state, before, after, edit, source_turn, base_turn):
     """Refresh generated Gmail→summary→Slack count prose only when its recipe is proven."""
     changes = edit['changes']
     if (len(changes) != 1 or changes[0]['path'] != 'arguments_json.max_results'
@@ -214,14 +236,18 @@ def _sync_known_count_text(state, before, after, edit, source_turn):
             ['email.list', 'compose_answer', 'slack.post_message'] or nodes[0]['id'] != edit['node_id']):
         return False
     from .gmail_slack import gmail_slack_request
-    base_turn = (state.get('node_edit_failure') or {}).get('base_turn', source_turn)
     prior = {**state, 'messages': state['messages'][:base_turn], 'base_agent_id': None,
              'resources': [], 'required_node_refs': []}
     recipe = gmail_slack_request(prior)
+    if not recipe:
+        return False
     summary = nodes[1]['settings'].get('instructions')
     old, new = changes[0]['old_value'], changes[0]['new_value']
     old_phrase, new_phrase = f'최대 {old}건', f'최대 {new}건'
-    if (not recipe or recipe['count'] != old or summary != recipe['summary_instructions']
+    original_phrase = f"최대 {recipe['count']}건"
+    expected_summary = recipe['summary_instructions'].replace(original_phrase, old_phrase)
+    if ((base_turn == source_turn and recipe['count'] != old)
+            or summary != expected_summary
             or before.get('instructions') != before.get('explanation')
             or old_phrase not in before.get('instructions', '') or old_phrase not in summary):
         return False
@@ -311,7 +337,8 @@ def apply_node_edit(state):
         if not changed:
             raise ValueError('변경된 설정 값이 없습니다.')
         _sync_count_label(targets[0], edit['changes'])
-        reconciled = _sync_known_count_text(state, state['draft'], draft, edit, source_turn)
+        base_turn = _recipe_base_turn(state, source_turn)
+        reconciled = _sync_known_count_text(state, state['draft'], draft, edit, source_turn, base_turn)
         note = _check_semantic_dependencies(state['draft'], draft, edit, reconciled)
         checked = AgentDraft.model_validate({k: v for k, v in draft.items() if k != 'node_snapshots'}).model_dump()
         issues = workflow_errors(checked['workflow'], checked['tool_ids'], state.get('resources', []), checked['execution_plan'])
@@ -322,7 +349,7 @@ def apply_node_edit(state):
         reply = f"{edit['node_id']} 설정을 변경했습니다: {summary}. {note}다른 작업의 실행 설정은 유지했습니다. 저장 전에 변경된 값을 확인해 주세요."
         proof = {'request': edit['request'], 'source_turn': source_turn, 'node_id': edit['node_id'],
                  'edit': deepcopy(edit), 'baseline_node': baseline_node,
-                 'result_digest': _digest(draft)}
+                 'result_digest': _digest(draft), 'base_turn': base_turn}
         return {'draft': draft, 'node_edit': None, 'node_edit_proof': proof, 'node_edit_failure': None,
                 'edit_route': 'validate',
                 'messages': state.get('messages', []) + [{'role': 'assistant',
@@ -340,11 +367,10 @@ def apply_node_edit(state):
         marker = None
         if state.get('draft') and (state.get('status') == 'ready' or state.get('base_agent_id')
                                    or state.get('node_edit_failure')):
-            previous = state.get('node_edit_failure') or {}
             last_user = max((i for i, message in enumerate(state.get('messages', []))
                              if message.get('role') == 'user'), default=0)
             try: marker = {'draft_digest': _digest(state['draft']),
-                           'base_turn': previous.get('base_turn', last_user)}
+                           'base_turn': _recipe_base_turn(state, last_user)}
             except (ValueError, TypeError, KeyError): pass
         return {'node_edit': None, 'node_edit_proof': None, 'node_edit_failure': marker,
                 'edit_route': 'stop',

@@ -2816,7 +2816,7 @@ test('home attachment is uploaded before the initial design message',async()=>{
   const calls=h.calls.filter(call=>/\/(upload|message)$/.test(call.path));
   assert.deepEqual(calls.map(call=>call.path.split('/').pop()),['upload','message']);
   assert.equal(calls[1].body.revision,2);
-  assert.equal(window.history.state.initialFile,undefined);
+  assert.equal(window.history.state.initialFiles,undefined);
  }finally{await h.close();}
 });
 
@@ -3475,5 +3475,95 @@ test('editing a saved workflow and starting a new design reset conversation coll
   await click(button('새 워크플로우'));
   assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'false');
   assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,'');
+ }finally{await h.close();}
+});
+
+for(const origin of ['home','workflow'] as const)for(const method of ['picker','drop'] as const)test(`${origin} ${method} uploads multiple attachments sequentially with the latest revision`,async()=>{
+ const resources:any[]=[],prompt='모든 자료를 함께 정리해줘';
+ const h=await setup('?screen='+origin,origin==='workflow'?{'a4b-builder-session':'ready'}:{},(path,body)=>{
+  if(path.endsWith('/sessions')||path.includes('/session?'))return {...readySession(),draft:null,status:'empty',resources:[],revision:1};
+  if(path.endsWith('/upload')){
+   assert.equal(body.revision,1+resources.length);
+   resources.push({id:'file-'+resources.length,name:body.fileName,kind:'document'});
+   return {...readySession(),draft:null,status:'empty',revision:1+resources.length,resources:[...resources]};
+  }
+  if(path.endsWith('/message'))return {...readySession(),resources:[...resources]};
+ },createElement(StrictMode,null,createElement(EntryApp)));
+ try{
+  const picker=document.querySelector<HTMLInputElement>(origin==='home'?'.overview-composer input[type=file]':'input[type=file][multiple]')!;
+  assert.ok(picker.multiple);
+  const chosen=['보고서.txt','규칙.txt'].map(name=>new dom.window.File(['내용'],name));
+  if(method==='picker'){
+   Object.defineProperty(picker,'files',{configurable:true,value:chosen});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await tick();});
+  }else{
+   const drop=new dom.window.Event('drop',{bubbles:true,cancelable:true});
+   Object.defineProperty(drop,'dataTransfer',{value:{files:chosen,types:['Files']}});
+   await act(async()=>{document.querySelector(origin==='home'?'.overview-composer':'.as-composer')!.dispatchEvent(drop);await tick();});
+  }
+  if(origin==='home'){
+   assert.equal(document.querySelectorAll('.overview-attachment').length,2);
+   await input(document.querySelector('[aria-label="자동화할 업무"]')!,prompt);
+   await submit(document.querySelector('.overview-composer')!);
+  }
+  await sourceSettles(()=>h.calls.filter(call=>call.path.endsWith('/upload')).length===2);
+  await h.flush();
+  assert.deepEqual(h.calls.filter(call=>call.path.endsWith('/upload')).map(call=>call.body.fileName),['보고서.txt','규칙.txt']);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,origin==='home'?1:0);
+  if(origin==='home'){
+   await sourceSettles(()=>h.calls.some(call=>call.path.endsWith('/message')));
+   assert.equal(h.calls.find(call=>call.path.endsWith('/message'))!.body.revision,3);
+   assert.equal(window.history.state.initialFiles,undefined);
+  }else assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+ }finally{await h.close();}
+});
+
+test('home accumulates attachments, removes one, and rejects over-limit batches without replacing files',async()=>{
+ const h=await setup('?screen=home',{},undefined,createElement(EntryApp));
+ try{
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type=file]')!;
+  async function choose(files:File[]){Object.defineProperty(picker,'files',{configurable:true,value:files});await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));}
+  const files=Array.from({length:10},(_,i)=>new dom.window.File(['a'],'資料'+i+'.txt'));
+  await choose(files.slice(0,2));await choose(files.slice(2));assert.equal(document.querySelectorAll('.overview-attachment').length,10);
+  await choose([new dom.window.File(['a'],'11.txt')]);assert.match(document.body.textContent||'',/최대 10개/);assert.equal(document.querySelectorAll('.overview-attachment').length,10);
+  await click(document.querySelector('[aria-label="資料0.txt 첨부 제거"]')!);assert.equal(document.querySelectorAll('.overview-attachment').length,9);
+  const large=new dom.window.File(['a'],'large.txt');Object.defineProperty(large,'size',{value:8*1024*1024+1});
+  await choose([large]);assert.match(document.body.textContent||'',/파일당 8MB/);assert.equal(document.querySelectorAll('.overview-attachment').length,9);
+ }finally{await h.close();}
+});
+
+test('a failed second home attachment preserves connected files and prompt without sending a partial design',async()=>{
+ let uploaded=0;
+ const h=await setup('?screen=home',{},(path)=>{
+  if(path.endsWith('/sessions'))return {...readySession(),draft:null,status:'empty',resources:[]};
+  if(path.endsWith('/upload')){
+   if(++uploaded===2)return new Response(JSON.stringify({error:'두 번째 자료 업로드 실패'}),{status:500});
+   return {...readySession(),draft:null,status:'empty',revision:2,resources:[{id:'first',name:'첫째.txt',kind:'document'}]};
+  }
+ },createElement(EntryApp));
+ try{
+  await input(document.querySelector('[aria-label="자동화할 업무"]')!,'두 자료를 함께 정리');
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type=file]')!;
+  Object.defineProperty(picker,'files',{value:['첫째.txt','둘째.txt','셋째.txt'].map(name=>new dom.window.File(['a'],name))});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  await submit(document.querySelector('.overview-composer')!);await h.flush();
+  await sourceSettles(()=>document.body.textContent?.includes('두 번째 자료 업로드 실패')===true);
+  assert.equal(uploaded,2);assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
+  assert.match(document.body.textContent||'',/첫째.txt/);assert.match(document.body.textContent||'',/두 번째 자료 업로드 실패/);
+  assert.equal(document.querySelector<HTMLTextAreaElement>('[aria-label="업무 설명"]')!.value,'두 자료를 함께 정리');
+ }finally{await h.close();}
+});
+
+test('design batch limits count existing attachments and reject oversize files before upload',async()=>{
+ const session={...readySession(),resources:Array.from({length:9},(_,i)=>({id:'old-'+i,name:'기존'+i+'.txt',kind:'document'}))};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined);
+ try{
+  const picker=document.querySelector<HTMLInputElement>('input[type=file][multiple]')!;
+  async function choose(files:File[]){Object.defineProperty(picker,'files',{configurable:true,value:files});await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));}
+  await choose(['one.txt','two.txt'].map(name=>new dom.window.File(['a'],name)));
+  assert.match(document.body.textContent||'',/최대 10개/);
+  const large=new dom.window.File(['a'],'large.txt');Object.defineProperty(large,'size',{value:8*1024*1024+1});
+  await choose([large]);assert.match(document.body.textContent||'',/파일당 8MB/);
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/upload')).length,0);
  }finally{await h.close();}
 });

@@ -1,3 +1,4 @@
+import {designAttachmentError} from './design-attachments';
 import {WorkspaceIconButton} from './workspace-icon-button';
 import {EditIconButton} from './edit-icon-button';
 import {WorkspacePageTitle} from './workspace-page-title';
@@ -98,7 +99,7 @@ async function downloadToolGap(session:Session){
  const result=await request('/api/agent-builder/tool_gap?id='+encodeURIComponent(session.id)+'&revision='+session.revision);
  download({name:'tool-gap-'+session.id+'.json',mime:'application/json',content:JSON.stringify(result.tool_gap,null,2)});
 }
-export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onLocationChange,onCanLeaveChange,initialPrompt,initialFile}:{onNewWorkflow?:()=>void;initialPrompt?:string;initialFile?:File;onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'|'monitoring')=>void;onExternalFlow?:(id:string)=>void}={}){
+export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onLocationChange,onCanLeaveChange,initialPrompt,initialFiles}:{onNewWorkflow?:()=>void;initialPrompt?:string;initialFiles?:File[];onLocationChange?:()=>void;onCanLeaveChange?:(fn:()=>boolean)=>void;onNavigate?:(next:'home'|'workflows'|'schedules'|'history'|'assets'|'connections'|'monitoring')=>void;onExternalFlow?:(id:string)=>void}={}){
  const initialScreen=new URLSearchParams(location.search).get('screen');
  const [screen,setScreen]=useState<'nodes'|'workflow'|'run'|'schedule'>(initialScreen==='nodes'||initialScreen==='run'||initialScreen==='workflow'||initialScreen==='schedule'?initialScreen:new URLSearchParams(location.search).has('service')?'run':'workflow');
  const screenRef=useRef(screen);screenRef.current=screen;
@@ -150,8 +151,8 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
    window.history.replaceState(state,'',location.href);
   }
  },[initialPrompt]);
- const initialFilePending=useRef(initialFile);
- const [initialFileReady,setInitialFileReady]=useState(!initialFile);
+ const initialFilePending=useRef(initialFiles);
+ const [initialFileReady,setInitialFileReady]=useState(!initialFiles?.length);
  const initialPromptPending=useRef(!!initialPrompt?.trim());
  const [pendingMessage,setPendingMessage]=useState('');
  const [recovery,setRecovery]=useState<ConversationRecovery|null>(null);
@@ -392,10 +393,10 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  },[loading,initialLoadFailed,credentialId,screen,initialFileReady,session]);
  useEffect(()=>{
   if(!initialFilePending.current||loading||initialLoadFailed||!credentialId||screen!=='workflow')return;
-  const file=initialFilePending.current;initialFilePending.current=undefined;
-  const {initialFile:consumed,...historyState}=window.history.state||{};
+  const files=initialFilePending.current;initialFilePending.current=undefined;
+  const {initialFiles:consumed,...historyState}=window.history.state||{};
   window.history.replaceState(historyState,'',window.location.href);
-  void attachResource(file).then(()=>setInitialFileReady(true));
+  void attachResources(files).then(()=>setInitialFileReady(true));
  },[loading,initialLoadFailed,credentialId,screen]);
  async function answerQuestions(answers:ClarificationAnswer[]){
   const content=answers.map(answer=>answer.text+' → '+(answer.skip?'선택사항 건너뛰기':Array.isArray(answer.value)?answer.value.join(', '):String(answer.value))).join('\n');
@@ -404,27 +405,33 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  }
  // Files attached since the last message, per session: only these get a summary mid-conversation.
  const [freshFiles,setFreshFiles]=useState<{session:string;ids:string[]}>({session:'',ids:[]});
- async function attachResource(source:File|string) {
-  if(inFlight.current||recovery)return;
-  if(typeof source!=='string' && source.size>8*1024*1024){setError('자료는 8MB 이하로 연결하세요.');return;}
-  if(typeof source!=='string' && receiptQuestion && !receiptFileTypes.split(',').some(ext => source.name.toLowerCase().endsWith(ext))) {
-   setError('영수증 사진이나 PDF 파일을 선택해 주세요.');
-   return;
+ async function attachResource(source:File|string){return attachResources([source]);}
+ async function attachResources(sources:(File|string)[]) {
+  if(inFlight.current||recovery||!sources.length)return;
+  const files=sources.filter((source):source is File=>typeof source!=='string');
+  const validation=designAttachmentError(files,session?.resources?.length||0);
+  if(validation){initialPromptPending.current=false;setError(validation);return;}
+  if(receiptQuestion&&files.some(file=>!receiptFileTypes.split(',').some(ext=>file.name.toLowerCase().endsWith(ext)))){
+   initialPromptPending.current=false;setError('영수증 사진이나 PDF 파일을 선택해 주세요.');return;
   }
-  inFlight.current=true;setBusy(typeof source==='string'?'기존 자료를 설계에 연결하고 있습니다.':'파일의 열과 내용을 확인하고 있습니다.');setError('');
+  inFlight.current=true;setBusy('자료의 열과 내용을 확인하고 있습니다.');setError('');
   try {
-   const s=await ensureSession();remember(s);
-   const sessionRef={id:s.id,revision:s.revision};
-   const before=new Set((s.resources||[]).map(resource=>resource.id));
-   const result=typeof source==='string'
-     ? await request('/api/agent-builder/attach_asset',{...sessionRef,assetId:source})
-     : await request('/api/agent-builder/upload',{...sessionRef,fileName:source.name,data:await asBase64(source)});
-   remember(result);
-   const added=((result.resources||[]) as Resource[]).map(resource=>resource.id).filter(id=>!before.has(id));
-   setFreshFiles(prior=>({session:result.id,ids:[...(prior.session===result.id?prior.ids:[]),...added]}));
+   let current=await ensureSession();remember(current);
+   for(const [index,source] of sources.entries()){
+    setBusy(`자료를 연결하고 있습니다. (${index+1}/${sources.length})`);
+    const sessionRef={id:current.id,revision:current.revision};
+    const before=new Set((current.resources||[]).map(resource=>resource.id));
+    const result=typeof source==='string'
+      ? await request('/api/agent-builder/attach_asset',{...sessionRef,assetId:source})
+      : await request('/api/agent-builder/upload',{...sessionRef,fileName:source.name,data:await asBase64(source)});
+    remember(result);current=result;
+    const added=((result.resources||[]) as Resource[]).map(resource=>resource.id).filter(id=>!before.has(id));
+    setFreshFiles(prior=>({session:result.id,ids:[...(prior.session===result.id?prior.ids:[]),...added]}));
+   }
   } catch(e){initialPromptPending.current=false;setError((e as Error).message);}
   finally{inFlight.current=false;setBusy('');}
  }
+
  function reviewSave(){if(session?.draft?.schedule){setIncludeSchedule(true);setSaveReviewOpen(true);}else void save(false);}
  async function save(includeSchedule=!!session?.draft?.schedule){
   if(!session||session.status==='saved'||inFlight.current||recovery)return;
@@ -760,8 +767,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
      if(!files.length)return;
      event.preventDefault();
      if(busy||recovery||libraryBusy||saved||!credentialId&&!session)return;
-     if(files.length!==1){setError('자료를 한 번에 하나씩 놓아주세요.');return;}
-     void attachResource(files[0]);
+     void attachResources(Array.from(files));
     }}><textarea ref={input} aria-label="업무 설명" placeholder={collecting?'확인 질문에 답해주세요.':draft?'추가하거나 바꿀 조건을 설명하세요.':'예: 여러 자료에서 필요한 내용을 찾아 정리하는 기능이 필요해요.'} value={text} onChange={e=>setText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||saved} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div className="as-composer-footer"><button data-tour="attach" type="button" className="as-text-button" onClick={()=>setAttachMode('choose')} disabled={!!busy||!!recovery||saved||!credentialId&&!session}><Paperclip size={16}/>자료 연결</button><small>Enter 전송 · Shift+Enter 줄바꿈</small><button type="submit" className="as-send" disabled={!!busy||!text.trim()||saved||!credentialId&&!session} aria-label="업무 설명 보내기"><ArrowUp size={19}/></button></div></form></>}
 
    </section>
@@ -771,7 +777,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     {draft?<>{draft.schedule&&!saved&&<div className="as-setting-section"><label>예약 트리거</label><p>{scheduleDescription(draft.schedule)} · {draft.schedule.timezone||'시간대 확인 필요'}</p><p>저장 위치: {draft.report_destination==='reports'?'A4B 서버 보고서 보관함':'확인 필요'}</p></div>}<div className="as-setting-section"><label>이름과 역할</label><h3>{draft.name||'이름 확인 필요'}</h3><p>{draft.purpose}</p></div><div className="as-setting-section"><label>지시사항</label><details open={saved || undefined}><summary>작업 내용 자세히 보기<ChevronDown size={15}/></summary><p className="as-preserve as-instructions">{draft.instructions||'업무를 더 설명해주세요.'}</p></details></div>{draft.workflow?.nodes.filter(n=>n.tool==='filter_sort').map(n=><div className="as-setting-section" key={n.id}><label>{n.label} · 개별 실행 규칙</label><RuleSummary plan={(n.settings.execution_plan||draft.execution_plan) as Draft['execution_plan']}/></div>)}<details className="as-setting-section"><summary>처리 기능 {draft.tool_ids.length}개 보기</summary>{draft.tool_ids.map(id=>{const info=toolDetails[id];const actual=info||{label:({aggregate_table:'목록 집계',calculate_columns:'표 열 계산·이름 변경',text_transform:'문자열 바꾸기',base64_codec:'Base64 문자열 변환',text_hash:'문자열 SHA-256',date_transform:'날짜·시간 변환',text_statistics:'문자·단어 수 세기',finish:'완료 안내',read_document:'문서 읽기',search_document:'관련 내용 검색',extract_information:'정보 추출',compose_answer:'근거 기반 답변',export_result:'결과 저장',condition:'조건 분기',ask_user:'사용자 확인',agent_node:'AI 작업',reply_review:'응대 초안 검수',review_summary:'검수 보고서 정리',saved_workflow:'저장된 워크플로우 실행'} as Record<string,string>)[id]||id,description:'등록된 공통 작업 코드를 실행합니다.',Icon:FileText};const Icon=actual.Icon;return <div key={id} className="as-tool"><Icon size={17}/><div><strong>{actual.label}</strong><small>{toolDescription(id,actual.description)}</small></div><Check size={14}/></div>;})}</details><div className="as-setting-section"><label>업무 조건과 근거</label>{draft.requirements.map((r,i)=><details key={i} className="as-evidence"><summary>{r.description}<ChevronDown size={13}/></summary><small>{r.source_id==='user'?'사용자 대화':resources.find(f=>f.id===r.source_id)?.name||'연결 자료'}</small><blockquote>{r.quote}</blockquote></details>)}</div></>:<div className="as-empty-config"><FileText size={26}/><p>업무를 설명하면 처리 순서와 확인할 조건이 정리됩니다.</p></div>}
     {!selected&&session?.input_requirements?.map((item,i)=><div className="as-setting-section" key={"input-"+i}><label>{item.timing==='design'?'지금 필요한 자료':'실행 전에 필요한 자료'}</label><p>{item.description}</p>{item.fields.length>0&&<p>필요한 열: {item.fields.join(' · ')}</p>}<p>{item.ready?'연결 자료 있음 · 실제 실행 전 재확인':'파일 미연결'}</p><button type="button" className="as-text-button" disabled={!!busy||!!recovery||saved} onClick={()=>setAttachMode('choose')}>자료 연결</button></div>)}<div className="as-setting-section"><label>연결 자료 <span>{resources.length}/10</span></label>{resources.map(r=><button key={r.id} className="as-resource" onClick={()=>setResource(r)}><FileText size={17}/><span><strong>{r.name}</strong><small>{r.kind==='table'?r.row_count+'행 · '+r.columns.length+'개 열':'업무 규칙 문서'}</small></span><ChevronDown size={14}/></button>)}{!resources.length&&<p className="as-small-muted">파일 구조나 업무 규칙을 참고하려면 자료를 연결하세요.</p>}</div>
     {session && !collecting && session.issues.length>0&&<div className="as-validation" role="status">{session.issues.map((issue,i)=><p key={i}>{issue}</p>)}</div>}{draft && draft.unsupported.length>0&&<div className="as-validation"><p>요청한 작업에 필요한 기능과 연결 상태를 추가로 확인해야 합니다.</p></div>}{session?.tool_gap&&<div className="as-validation"><p>부족한 기능을 기록했습니다. 기존 도구로 가능한지 검토한 뒤 임시 도구 시험으로 연결할 수 있습니다.</p><button type="button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>downloadToolGap(session).catch(e=>setError((e as Error).message))}>부족 기능 명세 받기</button></div>}{session && session.trace.length>0&&<Trace steps={session.trace}/>}</></div></aside>{inspectedNode&&inspectedWorkflow&&<NodePopover key={screen+':'+(screen==='workflow'?(session?.revision??selected?.version??'draft'):(testRun?.id||selected?.version||'current'))+':'+inspectedNode.id} node={inspectedNode} workflow={inspectedWorkflow} tool={catalog.find(tool=>tool.id===inspectedNode.tool)} placement={screen==='workflow'?'canvas':'run'} onClose={()=>setSelectedNodeId(null)} onModify={canModifyInspectedNode?request=>modifyInspectedNode(request):undefined} returnFocus={nodeTrigger}/>}</div>
-  </main>}</div><input ref={fileInput} hidden type="file" accept={receiptQuestion ? receiptFileTypes : ".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic"} onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void attachResource(file);}}/>
+  </main>}</div><input ref={fileInput} hidden multiple type="file" accept={receiptQuestion ? receiptFileTypes : ".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic"} onChange={e=>{const files=Array.from(e.currentTarget.files||[]);e.currentTarget.value='';if(files.length)void attachResources(files);}}/>
   <input ref={sourceInput} hidden type="file" accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic" onChange={e=>{const f=e.target.files?.[0];if(f)void uploadSource(f);}}/><input ref={runFileInput} hidden type="file" accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic" onChange={e=>{const f=e.target.files?.[0];if(f)void uploadRun(f);}}/><Dialog open={!!evidence} onOpenChange={v=>{if(!v)setEvidence(null);}}><DialogContent className="as-dialog"><DialogHeader><DialogTitle>실행 근거 원문</DialogTitle><DialogDescription>{evidence?.file_name}{evidenceLocation(evidence)}</DialogDescription></DialogHeader><p className="as-preserve">{evidence?.quote||evidence?.text}</p>{evidence?.file_id&&<a className="as-button" href={(testRun?.library_source_files?.some(file=>file.execution_asset_id===evidence.file_id)?"/api/agent-builder/source_original?run_id="+encodeURIComponent(testRun.id)+"&asset_id="+encodeURIComponent(evidence.file_id):"/api/agent-builder/original?id="+encodeURIComponent(evidence.file_id))+(evidence.page?"#page="+evidence.page:"")} target="_blank" rel="noreferrer">원본 파일 열기{evidence.page?` · ${evidence.page}쪽`:""}</a>}<p className="as-small-muted">파서가 읽은 원문입니다. 추출 결과의 인용은 이 원문과 일치하는지 검사합니다. 답변에 사용한 구간은 답변 전체의 정확성을 보증하지 않습니다.</p></DialogContent></Dialog>
 
 

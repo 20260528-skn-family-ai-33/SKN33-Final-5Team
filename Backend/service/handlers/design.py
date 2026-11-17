@@ -347,8 +347,23 @@ def _session_action(c):
                     graph.invoke(None,config)
             else:
                 base=storage.agent(s['agent_id']) if s.get('agent_id') else None
-                base_messages=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}).get('messages',[]) if base else []
+                base_state=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}) if base else {}
+                base_messages=base_state.get('messages',[])
+                saved_proof=None
+                if (node_edit is not None and base and not state and base['version']==s['base_version']
+                        and base_state.get('status')=='saved'
+                        and base_state.get('saved_agent_id')==base['id']):
+                    proof=base_state.get('node_edit_proof')
+                    source_turn=proof.get('source_turn') if isinstance(proof,dict) else None
+                    if type(source_turn) is int and 0 <= source_turn < len(base_messages):
+                        from agent_builder.design.node_edit import proof_issue
+                        saved_draft={k:v for k,v in base['config'].items() if k!='node_snapshots'}
+                        # Save choices may add later user turns; verify against the edit's own request.
+                        prior={**base_state,'messages':base_messages[:source_turn+1]}
+                        if proof_issue(prior,saved_draft) is None:
+                            saved_proof=proof
                 initial={**state,'session_id':s['id'],'messages':(state.get('messages',[]) or base_messages)+[{'role':'user','content':content}],'resources':[storage.asset(id) for id in s['file_ids']],'draft':state.get('draft') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'trace':state.get('trace',[]),'repair_count':0,'confirmed':False,'saved_agent_id':None,'verification_last_candidate':state.get('verification_last_candidate') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'base_agent_id':s.get('agent_id'),'base_version':s['base_version'],'model':s['model'],'credential_id':s['credential_id'],'node_library':s.get('node_library',[]),'required_node_refs':s.get('required_node_refs',[]),'node_edit':node_edit}
+                if saved_proof:initial['node_edit_proof']=saved_proof
                 initial['execution_mode']=s.get('execution_mode')
                 graph.invoke(initial,config)
         after=graph.get_state(config).values

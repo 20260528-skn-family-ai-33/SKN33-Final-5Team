@@ -146,6 +146,104 @@ def test_gmail_count_popup_retry_keeps_verified_origin(tmp_path):
         store.close()
 
 
+def test_saved_gmail_count_popup_can_be_revised_in_new_session(tmp_path):
+    store = Storage(tmp_path)
+    graph, connection = _graph(store)
+    config = {'configurable': {'thread_id': 'popup-count-before-save'}}
+    try:
+        ready = _ready(graph, config)
+        first = _popup(ready['draft']['workflow']['nodes'][0], 'max_results', 100, 10, '조회 한도')
+        revised = graph.invoke(Command(resume={'type': 'message', 'content': first['request'],
+                                               'node_edit': first}), config)
+        assert revised['status'] == 'ready', revised['issues']
+        saved = graph.invoke(Command(resume={'type': 'confirm'}), config)
+        assert saved['status'] == 'saved'
+        persisted = store.agent(saved['saved_agent_id'])['config']
+        reader = persisted['workflow']['nodes'][0]
+        assert json.loads(reader['settings']['arguments_json'])['max_results'] == 10
+
+        session = handle({'directory': str(tmp_path), 'action': 'new_session',
+                          'model': 'gpt-4.1-mini', 'credential_id': uid(),
+                          'agent_id': saved['saved_agent_id']})
+        second = _popup(reader, 'max_results', 10, 20, '조회 한도')
+        reopened = handle({'directory': str(tmp_path), 'action': 'message',
+                           'id': session['id'], 'revision': session['revision'],
+                           'content': second['request'], 'node_edit': second,
+                           'generation_request_id': uid()},
+                          conversation=lambda _: Forbidden().invoke())
+        assert reopened['status'] == 'ready', reopened['issues']
+        assert not reopened['pending_questions']
+        nodes = reopened['draft']['workflow']['nodes']
+        assert json.loads(nodes[0]['settings']['arguments_json'])['max_results'] == 20
+        for text in (nodes[0]['label'], nodes[1]['settings']['instructions'],
+                     reopened['draft']['instructions'], reopened['draft']['explanation']):
+            assert '최대 20건' in text
+            assert '최대 10건' not in text
+        assert nodes[2] == persisted['workflow']['nodes'][2]
+        resaved = handle({'directory': str(tmp_path), 'action': 'confirm',
+                          'id': session['id'], 'revision': reopened['revision'],
+                          'generation_request_id': uid()})
+        assert resaved['status'] == 'saved'
+        latest = store.agent(resaved['saved_agent_id'])['config']
+        assert json.loads(latest['workflow']['nodes'][0]['settings']['arguments_json'])['max_results'] == 20
+
+        next_session = handle({'directory': str(tmp_path), 'action': 'new_session',
+                               'model': 'gpt-4.1-mini', 'credential_id': uid(),
+                               'agent_id': resaved['saved_agent_id']})
+        third = _popup(latest['workflow']['nodes'][0], 'max_results', 20, 30, '조회 한도')
+        reopened_again = handle({'directory': str(tmp_path), 'action': 'message',
+                                 'id': next_session['id'], 'revision': next_session['revision'],
+                                 'content': third['request'], 'node_edit': third,
+                                 'generation_request_id': uid()},
+                                conversation=lambda _: Forbidden().invoke())
+        assert reopened_again['status'] == 'ready', reopened_again['issues']
+        assert json.loads(reopened_again['draft']['workflow']['nodes'][0]['settings']['arguments_json'])['max_results'] == 30
+        assert '최대 30건' in reopened_again['draft']['workflow']['nodes'][1]['settings']['instructions']
+        final = handle({'directory': str(tmp_path), 'action': 'confirm',
+                        'id': next_session['id'], 'revision': reopened_again['revision'],
+                        'generation_request_id': uid()})
+        assert final['status'] == 'saved'
+        final_config = store.agent(final['saved_agent_id'])['config']
+        assert json.loads(final_config['workflow']['nodes'][0]['settings']['arguments_json'])['max_results'] == 30
+    finally:
+        connection.close()
+        store.close()
+
+
+def test_saved_popup_does_not_reuse_proof_after_config_changes(tmp_path):
+    store = Storage(tmp_path)
+    graph, connection = _graph(store)
+    config = {'configurable': {'thread_id': 'popup-count-renamed'}}
+    try:
+        ready = _ready(graph, config)
+        first = _popup(ready['draft']['workflow']['nodes'][0], 'max_results', 100, 10, '조회 한도')
+        revised = graph.invoke(Command(resume={'type': 'message', 'content': first['request'],
+                                               'node_edit': first}), config)
+        assert revised['status'] == 'ready'
+        saved = graph.invoke(Command(resume={'type': 'confirm'}), config)
+        assert saved['status'] == 'saved'
+        agent = store.agent(saved['saved_agent_id'])
+        renamed = store.rename_agent(agent['id'], '검증 기록과 다른 이름', agent['version'])
+        assert renamed['version'] == agent['version'] + 1
+
+        session = handle({'directory': str(tmp_path), 'action': 'new_session',
+                          'model': 'gpt-4.1-mini', 'credential_id': uid(),
+                          'agent_id': agent['id']})
+        reader = renamed['config']['workflow']['nodes'][0]
+        second = _popup(reader, 'max_results', 10, 20, '조회 한도')
+        result = handle({'directory': str(tmp_path), 'action': 'message',
+                         'id': session['id'], 'revision': session['revision'],
+                         'content': second['request'], 'node_edit': second,
+                         'generation_request_id': uid()},
+                        conversation=lambda _: Forbidden().invoke())
+        assert result['status'] == 'validation_failed'
+        assert '이전 수량이 남아 있어' in result['issues'][0]
+        assert json.loads(result['draft']['workflow']['nodes'][0]['settings']['arguments_json'])['max_results'] == 10
+    finally:
+        connection.close()
+        store.close()
+
+
 def test_stale_or_hidden_popup_value_stops_with_specific_error(tmp_path):
     for kind in ('stale', 'hidden'):
         store = Storage(tmp_path / kind)

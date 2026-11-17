@@ -163,3 +163,75 @@ def test_ambiguous_text_amendment_returns_validation_issues_instead_of_raising()
     s['resources'][0]['columns'].append('상태')
     rules = compound_filter_state(s)['rules']
     assert numeric_filter_issues(s, filter_draft(s, rules, 'all'))
+
+
+@pytest.mark.parametrize(('criteria', 'answer', 'structured', 'expected'), [
+    ('비용은 10원 미만, 수량은 3개 미만인 행', '하나라도 만족', True, [(15, 1), (5, 4)]),
+    ('비용은 10원 미만, 수량은 3개 미만인 행', '하나라도 만족', False, [(15, 1), (5, 4)]),
+    ('비용은 10원 이상, 수량은 3개 이상인 행', '모두 만족', True, [(15, 4)]),
+    ('비용은 10원 이상, 수량은 3개 이상인 행', '둘 다', False, [(15, 4)]),
+    ('비용은 10원 이상, 수량은 3개 이상인 행', '둘 다', True, [(15, 4)]),
+    ('비용은 10원 이상, 수량은 3개 미만인 행', '모두 만족', False, [(15, 1)]),
+])
+def test_only_missing_relation_is_asked_and_resumed_to_execution(tmp_path, criteria, answer, structured, expected):
+    from langgraph.types import Command
+    from agent_builder.design.graph import build_graph
+    from tests.conditions.test_condition_readiness import Fake, proposal
+    s = compound_state(criteria + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = s['resources'][0]
+    asset.update(format='csv', profile={key: {'types': ['number']} for key in asset['columns']})
+    raw = proposal(s, {'filter.field': '비용', 'filter.operator': None, 'filter.value': None,
+                       'output.format': 'json', 'missing.policy': 'error', 'duplicate.policy': 'keep'})
+    transport = Fake([raw])
+    store = Storage(tmp_path)
+    rows = [dict(비용=a, 수량=b) for a, b in [(15, 1), (15, 4), (5, 4)]]
+    store.add_asset(asset, rows)
+    planned = []
+
+    def conversation(current):
+        planned.append(current)
+        return compile_conditions(current)
+
+    graph, conn = build_graph(store, conversation=conversation, condition_transport=transport, condition_mode='enforce')
+    cfg = {'configurable': {'thread_id': s['session_id']}}
+    try:
+        first = graph.invoke(s, cfg)
+        assert first['status'] == 'needs_clarification'
+        assert [q['key'] for q in first['pending_questions']] == ['filter.match']
+        assert first['condition_ledger']['slots']['filter.value']['value'] == 10
+        assert first['condition_ledger']['slots']['filter.operator']['status'] == 'specified'
+        assert not planned
+        q = first['pending_questions'][0]
+        reply = dict(type='message', content=answer, question_id=q['id'])
+        if structured:
+            reply.update(content=q['text'] + ' → ' + answer,
+                         question_answers=[dict(question_id=q['id'], value=answer, custom=answer not in q['options'])])
+        ready = graph.invoke(Command(resume=reply), cfg)
+        assert ready['status'] == 'ready', ready.get('issues')
+        assert not ready['pending_questions']
+        assert transport.calls == 1
+        assert len(planned) == 1
+        bad = deepcopy(ready['draft'])
+        bad['workflow']['nodes'][1]['settings']['execution_plan']['filters'] = bad['workflow']['nodes'][1]['settings']['execution_plan']['filters'][:1]
+        with pytest.raises(ValueError, match='확정 업무 조건'):
+            store.save_agent({**ready, 'draft': bad, 'confirmed': True})
+        assert not store.agents()
+        saved = graph.invoke(Command(resume={'type': 'confirm'}), cfg)
+        assert saved['status'] == 'saved'
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[asset['id']])
+        assert result['status'] == 'succeeded'
+        assert [(row['비용'], row['수량']) for row in result['rows']] == expected
+    finally:
+        conn.close()
+        store.close()
+
+
+@pytest.mark.parametrize('answer', ['하나만', '아무거나', '둘 중 하나만', '모르겠어'])
+def test_uncertain_or_exclusive_answers_do_not_confirm_a_boolean_relation(answer):
+    s = compound_state('비용은 10원 미만, 수량은 3개 미만인 행', answer)
+    assert compound_filter_state(s)['pending'] == 'match'
+
+
+def test_two_both_does_not_mean_all_three_conditions():
+    s = compound_state('비용은 10원 미만, 수량은 3개 미만, 할인은 5원 미만인 행', '둘 다')
+    assert compound_filter_state(s)['pending'] == 'match'

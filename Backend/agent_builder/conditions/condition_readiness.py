@@ -401,6 +401,17 @@ _ALL_JOIN = re.compile(r'(?:이고|이며|이면서|면서|그리고|및)(?=[\s,
 _ANY_JOIN = re.compile(r'(?:이거나|거나|또는|혹은)(?=[\s,]|$)')
 # Clickable answers. A clicked label is matched exactly, so no synonym is guessed.
 MATCH_CHOICES = {'모두 만족': 'all', '하나라도 만족': 'any'}
+
+
+def match_answer(text, count):
+    """Only complete answers to the pending relation question; 'one only' is not OR."""
+    text = re.sub(r'\s+', '', text.strip().rstrip('.!?。'))
+    choices = {re.sub(r'\s+', '', label): mode for label, mode in MATCH_CHOICES.items()}
+    if count == 2:
+        choices.update({'둘다': 'all', '둘다만족': 'all'})
+    return choices.get(text)
+
+
 # Words that name the selection criterion itself, and the subjects of the empty-value and
 # duplicate policies. Both were already used below to read amendments and policy questions.
 _CRITERION_NOUN = re.compile(r'(?:기준(?:값|액|점)?|임계값|문턱값|선별|조건|필터)')
@@ -597,8 +608,8 @@ def compound_filter_state(state):
             continue
         if not rules:
             continue
-        if pending == 'match' and text in MATCH_CHOICES:
-            mode, pending = MATCH_CHOICES[text], None
+        if pending == 'match' and match_answer(text, len(rules)):
+            mode, pending = match_answer(text, len(rules)), None
             continue
         if pending == 'revise':
             dropped = next((rule['field'] for rule in rules if text == f"{rule['field']} 조건 제거"), None)
@@ -689,6 +700,12 @@ def literal_compound_filter(state):
     return found['mode'], found['rules']
 
 
+def explicit_filter_operands(state):
+    """Individually exact predicates do not depend on whether AND/OR is settled."""
+    found = compound_filter_state(state)
+    return found['rules'] if found['pending'] in (None, 'match') and not found['seeded'] else []
+
+
 def compound_filter_question(found):
     """The question and its clickable answers for an undecided compound filter."""
     rules = found['rules']
@@ -744,7 +761,7 @@ def _literal_threshold(state, catalog, field, *, require_named_field=False, allo
         if require_named_field:
             if not field:
                 return None
-            if len(matches) != 1 and not literal_compound_filter(state):
+            if len(matches) != 1 and not explicit_filter_operands(state):
                 return None
             matches = [match for index, match in enumerate(matches)
                        if _comparison_subject(field, text[matches[index - 1].end() if index else 0:match.start()])]
@@ -1719,7 +1736,7 @@ def validate_conditions(raw, state, catalog):
     latest_text = state['messages'][latest]['content'] if latest >= 0 else ''
     explicit_threshold = (field_slot.get('status') == 'specified'
                           and field_slot['value'] in latest_text
-                          and (numeric_column(state, field_slot['value']) or literal_compound_filter(state))
+                          and (numeric_column(state, field_slot['value']) or explicit_filter_operands(state))
                           and not previous.get('operations'))
     if (asked_value or explicit_threshold) and not proposed_value and slots.get('filter.value', {}).get('status') == 'missing':
         literal = _literal_threshold(state, catalog, field_slot.get('value'),

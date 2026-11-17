@@ -79,6 +79,16 @@ def option_answer(state):
                for q in state.get('pending_questions', [])
                if not event or q['id'] in event.get('question_ids', [])
                for option in q.get('options', []) if _compact(option) == text]
+    if not matches and any(q.get('key') == 'filter.match' for q in state.get('pending_questions', [])):
+        from .condition_readiness import MATCH_CHOICES, compound_filter_state, match_answer
+        answers = [item.get('answer', '') for item in (event or {}).get('answers', [])
+                   if item.get('key') == 'filter.match']
+        reply = answers[0] if len(answers) == 1 else messages[latest]['content']
+        mode = match_answer(reply, len(compound_filter_state(state)['rules']))
+        matches = [{'key': q['key'], 'label': label, 'question_id': q['id'], 'turn': latest}
+                   for q in state.get('pending_questions', []) if q.get('key') == 'filter.match'
+                   and (not event or q['id'] in event.get('question_ids', []))
+                   for label in q.get('options', []) if mode and MATCH_CHOICES.get(label) == mode]
     return matches[0] if len(matches) == 1 else None
 
 

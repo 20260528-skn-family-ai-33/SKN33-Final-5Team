@@ -44,13 +44,12 @@ def requirement_failure_notice(kind, error, *, retained_draft=False, attempt=1, 
     elif kind == 'condition_state_error':
         action = '확정 조건을 다시 확인하지 못했습니다. 대화를 다시 열어 기존 답변을 확인한 뒤 재시도해주세요.'
     elif kind == 'model_output_error':
-        subject={'capability_check':'도구 지원 판단','condition_check':'처리 조건'}.get(stage,'작업 목록')
-        action = (label + ' 단계에서 ' + requirement_failure_reason(error).replace('작업 목록',subject) +
-                  ' 변경 적용과 저장을 중단했습니다. 같은 조건으로 다시 시도할 수 있습니다.')
+        action = '현재 이 요청을 처리할 수 없습니다. 변경 사항은 적용하거나 저장하지 않았습니다.'
     else:
         action = label+' 단계에서 처리를 완료하지 못했습니다. 선택한 모델의 연결 상태를 확인한 뒤 같은 조건으로 다시 시도해주세요.'
     if retained_draft:
         action += ' 이전 워크플로우 초안은 유지했으며, 이번 변경은 아직 적용되지 않았습니다.'
     from agent_builder.conditions.clarification_core import attempt_notice
-    action += attempt_notice(attempt)
+    if kind != 'model_output_error':
+        action += attempt_notice(attempt)
     return prefix + action

@@ -20,6 +20,7 @@ _DAILY = re.compile(r'매일\s*(?:(오전|오후)\s*)?(\d{1,2})\s*시(?:\s*(\d{1
 _TIME = re.compile(r'(?:(오전|오후)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?')
 _OTHER_WORK = re.compile(r'구글\s*시트|스프레드시트|캘린더|첨부|번역|표로|엑셀|웹훅|카카오|텔레그램|문서\s*파일|그리고\s*(?:또|추가)|중요\s*표시|별표\s*표시|지난\s*주|이번\s*주|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}', re.I)
 _QUESTION = '요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456789)'
+_FORMAT_QUESTION = 'Slack에 올릴 내용은 메일 원문 전체인가요, 핵심 요약인가요? 요약을 원하면 "요약"이라고 답해주세요.'
 _PERIOD_QUESTION = '어느 기간에 받은 Gmail 메일을 요약할까요? (예: 어제, 오늘, 최근)'
 _TIME_QUESTION = '매일 몇 시에 실행할까요? (한국 시간, 예: 오전 9시)'
 SUMMARY_CARD_FORMAT = (
@@ -37,6 +38,28 @@ def _users(state):
     return [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
 
 
+def _summary_answer(text):
+    answer = re.sub(r'\s+', '', text.rsplit('→', 1)[-1]).rstrip('.!?')
+    return bool(re.fullmatch(r'요약(?:해서|해|으로)?(?:(?:Slack에|슬랙에)?(?:올려|보내|전송)(?:줘|주세요)?)?', answer))
+
+
+def gmail_slack_format_question(state):
+    """Ask what to send before a vague Gmail-to-Slack request reaches the model gate."""
+    if state.get('resources') or state.get('required_node_refs') or state.get('base_agent_id'):
+        return None
+    users = _users(state)
+    if len(users) != 1:
+        return None
+    first = users[0]
+    if (len(first) > 1200 or _OTHER_WORK.search(first) or '요약' in first
+            or not re.search(r'Gmail|지메일', first, re.I)
+            or not re.search(r'Slack|슬랙', first, re.I)
+            or not re.search(r'읽|조회|가져', first)
+            or not re.search(r'보내|전송|전달|올려', first)):
+        return None
+    return _FORMAT_QUESTION
+
+
 def gmail_slack_candidate(state):
     if state.get('resources') or state.get('required_node_refs') or state.get('base_agent_id'):
         return False
@@ -46,7 +69,7 @@ def gmail_slack_candidate(state):
     first = users[0]
     if (len(first) > 1200 or _OTHER_WORK.search(first) or _UNREAD_EXCLUSION.search(first)
             or not re.search(r'Gmail|지메일', first, re.I)
-            or '요약' not in first
+             or not ('요약' in first or any(_summary_answer(reply) for reply in users[1:]))
             or not re.search(r'Slack|슬랙', first, re.I)
             or not re.search(r'보내|전송|전달|올려|알려', first)):
         return False
@@ -57,6 +80,8 @@ def gmail_slack_candidate(state):
     # Follow-up turns can supply the requested channel, a revised count or a
     # daily time. A new instruction is sent through the full planner.
     for followup in users[1:]:
+        if _summary_answer(followup):
+            continue
         compact = re.sub(r'\s+', '', followup).rstrip('.!?')
         if CHANNEL.fullmatch(compact):
             continue

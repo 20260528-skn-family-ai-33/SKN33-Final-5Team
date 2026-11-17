@@ -310,3 +310,222 @@ def test_compound_filter_survives_output_reply_and_explicit_edits():
     assert [(r['field'], r['value']) for r in literal_compound_filter(s)[1]] == [('비용', 20)]
     reply('전체 필터 제거해줘')
     assert literal_compound_filter(s) is None
+
+
+# --- Compound filters: every stated condition is applied, or the user is asked. ---
+
+COMPOUND_TABLE = {**TABLE, 'columns': ['비용', '수량', '할인'], 'profile': {}}
+ROWS = [(15, 1), (15, 4), (5, 4)]
+PARTIAL = {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')}
+
+
+def compound_state(*turns):
+    s = state(turns[0]); s['resources'] = [COMPOUND_TABLE]
+    for turn in turns[1:]:
+        s['messages'] += [{'role': 'assistant', 'content': '확인 질문'}, {'role': 'user', 'content': turn}]
+    return s
+
+
+def filter_draft(s, rules, match):
+    from tests.conditions.test_condition_readiness import workflow_draft
+    draft = workflow_draft(s)
+    draft['workflow']['nodes'][1]['settings']['execution_plan'].update(filters=rules, match=match)
+    return draft
+
+
+def kept_rows(rules, match):
+    from workflow_engine.executors.legacy_tools.filter_sort import filter_sort_node
+    ctx = {'rows': [{'비용': cost, '수량': count} for cost, count in ROWS],
+           'columns': ['비용', '수량'], 'file_id': 'table', 'trace': []}
+    filter_sort_node(ctx, rules, [], match=match)
+    return [(row['비용'], row['수량']) for row in ctx['rows']]
+
+
+@pytest.mark.parametrize(('request_text', 'mode', 'expected'), [
+    ('비용이 10원 이상이면서 수량이 3개 이상인 행', 'all', [(15, 4)]),
+    ('비용이 10원 이상인 행 그리고 수량이 3개 이상인 행', 'all', [(15, 4)]),
+    ('비용이 10원 이상이고 수량도 3개 이상인 행', 'all', [(15, 4)]),
+    ('비용이 10원보다 적은 행 또는 수량이 3개보다 적은 행', 'any', [(15, 1), (5, 4)]),
+    ('비용이 10원 미만인 거래 혹은 수량이 3개 미만인 거래', 'any', [(15, 1), (5, 4)]),
+])
+def test_compound_filter_is_read_through_the_noun_between_its_conditions(request_text, mode, expected):
+    from agent_builder.conditions.condition_readiness import literal_compound_filter
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+
+    s = compound_state(request_text + '을 JSON으로 저장해줘.')
+    found, rules = literal_compound_filter(s)
+    assert found == mode and [rule['field'] for rule in rules] == ['비용', '수량']
+    assert numeric_filter_issues(s, filter_draft(s, rules[:1], 'all'))
+    assert numeric_filter_issues(s, filter_draft(s, rules, 'all' if mode == 'any' else 'any'))
+    assert not numeric_filter_issues(s, filter_draft(s, rules, mode))
+    assert kept_rows(rules, mode) == expected
+
+
+@pytest.mark.parametrize('request_text', [
+    '비용은 10원 이상, 수량은 3개 이상인 행',
+    '비용이 10원 이상인 거래들 중 수량이 3개 이상인 것',
+])
+def test_unstated_relation_between_conditions_is_asked_and_never_ready(request_text):
+    from agent_builder.conditions.clarification_contract import Question
+    from agent_builder.conditions.condition_readiness import MATCH_CHOICES, compound_filter_state, literal_compound_filter
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+
+    s = compound_state(request_text + '을 JSON으로 저장해줘.')
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+                       'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
+    assert ledger['decision'] == 'clarify' and 'filter.match' in ledger['unresolved']
+    found = compound_filter_state(s)
+    assert found['pending'] == 'match' and literal_compound_filter(s) is None
+    # A draft that drops a condition is stopped even before the answer arrives.
+    assert numeric_filter_issues(s, filter_draft(s, found['rules'][:1], 'all'))
+    assert not numeric_filter_issues(s, filter_draft(s, found['rules'], 'any'))
+
+    s.update(condition_ledger=ledger, pending_questions=ledger['questions'], condition_enforced=True)
+    others = [q for q in ledger['questions'] if q['key'] != 'filter.match']
+    for question in others:  # at most two questions are shown at a time
+        s = click(s, question, {'missing.policy': '빈 값이면 오류'}.get(question['key'], 'JSON'))
+        ledger = judge_conditions(s, Fake([]))['ledger']
+        s.update(condition_ledger=ledger, pending_questions=ledger['questions'])
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.match')
+    Question.model_validate(question)
+    assert question['options'] == list(MATCH_CHOICES) and '비용 10 이상' in question['text'] and '수량 3 이상' in question['text']
+    for label, mode in MATCH_CHOICES.items():
+        answered = click(s, question, label)
+        assert literal_compound_filter(answered)[0] == mode
+        assert 'filter.match' not in judge_conditions(answered, Fake([]))['ledger']['unresolved']
+        rules = literal_compound_filter(answered)[1]
+        assert numeric_filter_issues(answered, filter_draft(answered, rules[:1], 'all'))
+        assert not numeric_filter_issues(answered, filter_draft(answered, rules, mode))
+
+
+@pytest.mark.parametrize('request_text', [
+    '비용이 10원 이상이고 수량이 3개 이상이 아닌 행',
+    '비용이 10원보다 큰 게 아니고 수량이 3개 이상인 행',
+    '비용이 10원 이상이고 수량이 3개 이상이거나 할인이 5원 이하인 행',
+])
+def test_denied_or_mixed_compound_filter_asks_for_the_conditions_again(request_text):
+    from agent_builder.conditions.condition_readiness import compound_filter_state, literal_compound_filter
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+
+    s = compound_state(request_text + '을 JSON으로 저장해줘.')
+    assert compound_filter_state(s)['pending'] == 'rewrite'
+    ledger = judge(s, {**PARTIAL, 'output.format': ('json', 'JSON')})
+    assert ledger['decision'] == 'clarify' and 'filter.match' in ledger['unresolved']
+    from agent_builder.conditions.clarification_contract import Question
+    from agent_builder.design.question_controls import project_question_controls
+    s.update(condition_ledger=ledger, pending_questions=ledger['questions'], condition_enforced=True)
+    from agent_builder.conditions.clarification_contract import _contract_questions
+    for exported in _contract_questions(ledger):
+        Question.model_validate(exported)
+    for shown in project_question_controls(s)['pending_questions']:
+        if shown['key'] == 'filter.match':  # written out again, never picked from guessed labels
+            assert shown['options'] == [] and shown['response'] == {'type': 'text'}
+    # Nothing unread is enforced: the opposite of what the user wrote is not required of a draft.
+    wrong = [dict(field='수량', operator='lt', value=3.0, compare_field=None, value_type='number')]
+    assert not numeric_filter_issues(s, filter_draft(s, wrong, 'all'))
+    rewritten = compound_state(request_text, '비용이 10원 이상이고 수량이 3개 미만인 행')
+    mode, rules = literal_compound_filter(rewritten)
+    assert mode == 'all' and [(r['field'], r['operator'], r['value']) for r in rules] == [('비용', 'gte', 10), ('수량', 'lt', 3)]
+
+
+@pytest.mark.parametrize(('text', 'operator'), [
+    ('비용이 10원보다 큰 게 아닌 거래를 보여줘.', None),
+    ('비용이 10원 이상이 아닌 거래를 보여줘.', None),
+    ('비용이 10원 이상인 거래 중 취소되지 않은 것을 보여줘.', 'gte'),
+    ('비용이 10원보다 큰 거래를 보여줘.', 'gt'),
+])
+def test_denial_right_after_a_comparison_is_not_confirmed_as_that_comparison(text, operator):
+    s = state(text); s['resources'] = [TABLE]
+    result = judge(s, PARTIAL)
+    slot = result['slots']['filter.operator']
+    assert slot.get('value') == operator and (slot['status'] == 'specified') == bool(operator)
+    assert result['slots']['filter.value']['value'] == 10
+    assert bool(operator) != any(q['key'] == 'filter.operator' for q in result['questions'])
+
+
+BASE = '비용이 10원 이상이고 수량이 3개 이상인 행을 JSON으로 저장해줘'
+
+
+def test_later_single_condition_asks_what_happens_to_the_rest():
+    from agent_builder.conditions.condition_readiness import KEEP_OTHERS, ONLY_NEW, compound_filter_state, literal_compound_filter
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+
+    s = compound_state(BASE, '아니야, 그냥 비용이 50원 이상인 행만 저장해줘')
+    found = compound_filter_state(s)
+    assert found['pending'] == 'revise' and found['candidate']['value'] == 50
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+                       'filter.value': ('50', '50원'), 'output.format': ('json', 'JSON')})
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.match')
+    assert question['options'] == [KEEP_OTHERS, ONLY_NEW] and '수량 3 이상' in question['text']
+    only_cost = [dict(field='비용', operator='gte', value=50.0, compare_field=None, value_type='number')]
+    assert not numeric_filter_issues(s, filter_draft(s, only_cost, 'all'))  # not blocked on the old filter
+
+    dropped = compound_state(BASE, '아니야, 그냥 비용이 50원 이상인 행만 저장해줘', ONLY_NEW)
+    assert compound_filter_state(dropped)['rules'] == [] and not numeric_filter_issues(dropped, filter_draft(dropped, only_cost, 'all'))
+    kept = compound_state(BASE, '아니야, 그냥 비용이 50원 이상인 행만 저장해줘', KEEP_OTHERS)
+    assert [(r['field'], r['value']) for r in literal_compound_filter(kept)[1]] == [('비용', 50), ('수량', 3)]
+    assert numeric_filter_issues(kept, filter_draft(kept, only_cost, 'all'))
+
+
+def test_unclear_change_to_a_condition_offers_the_current_conditions():
+    from agent_builder.conditions.condition_readiness import KEEP_ALL, compound_filter_state, literal_compound_filter
+
+    s = compound_state(BASE, '수량 조건은 빼줘')
+    found = compound_filter_state(s)
+    assert found['pending'] == 'revise' and found['candidate'] is None
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+                       'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.match')
+    assert question['options'] == [KEEP_ALL, '비용 조건 제거', '수량 조건 제거']
+    removed = compound_state(BASE, '수량 조건은 빼줘', '수량 조건 제거')
+    assert [r['field'] for r in literal_compound_filter(removed)[1]] == ['비용']
+    assert len(literal_compound_filter(compound_state(BASE, '수량 조건은 빼줘', KEEP_ALL))[1]) == 2
+    typed = compound_state(BASE, '비용 기준을 올려줘', '비용이 20원 이상')
+    assert [(r['field'], r['value']) for r in literal_compound_filter(typed)[1]] == [('비용', 20), ('수량', 3)]
+    # A reply to another question leaves the filter as it was.
+    assert literal_compound_filter(compound_state(BASE, 'CSV로 바꿔줘'))[0] == 'all'
+
+
+def test_branch_that_returns_no_rows_does_not_block_a_complete_compound_filter():
+    from agent_builder.conditions.condition_readiness import literal_compound_filter
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+    from tests.workflow_engine.test_workflow import node, edge
+
+    s = compound_state(BASE)
+    _, rules = literal_compound_filter(s)
+    for filters, blocked in ((rules, False), (rules[:1], True)):
+        draft = filter_draft(s, filters, 'all')
+        draft['workflow']['nodes'].append(node('notice', 'finish', []))
+        draft['workflow']['edges'].append(edge('read', 'notice'))
+        assert bool(numeric_filter_issues(s, draft)) == blocked
+
+
+def test_grouped_threshold_question_is_exported_in_the_published_question_shape():
+    from agent_builder.conditions.clarification_contract import Question, _contract_questions
+
+    _, ledger = vague()
+    assert any('response' in question for question in ledger['questions'])
+    for exported in _contract_questions(ledger):
+        Question.model_validate(exported)
+
+
+MESSAGE_LIMIT = 4000  # the longest design message the API accepts (Backend/api/src/agent-builder.ts)
+
+
+@pytest.mark.parametrize('head', ['비용이 10', '비용이 10원보다', '비용', '비용이 10원 이상이고'])
+def test_long_runs_of_spaces_are_read_once(head):
+    """A message of spaces after a number or column finishes like any other message.
+
+    Before the whitespace runs were taken whole, each optional piece between them
+    could claim any share of the run and this input took minutes to reject.
+    """
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+    from tests.conditions.test_condition_readiness import workflow_draft
+
+    draft = workflow_draft(state('비용이 10원 이상인 행'))
+    text = (head + ' ' * MESSAGE_LIMIT)[:MESSAGE_LIMIT]
+    s = state(text); s['resources'] = [COMPOUND_TABLE]
+    assert compound_filter_state(s)['rules'] == []
+    assert judge(s, PARTIAL)['decision'] != 'ready'
+    numeric_filter_issues(s, draft)

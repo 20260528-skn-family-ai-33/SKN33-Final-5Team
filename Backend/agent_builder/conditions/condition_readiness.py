@@ -383,104 +383,254 @@ def _extract_amounts(text, field):
     return result - {None}
 
 
+# Each run of spaces is taken whole (possessive, Python 3.11+ as setup requires). The pieces it
+# separates never start with a space, so nothing is lost, and a long run of spaces after a
+# number cannot be split in every possible way between the optional pieces.
 _COMPARATOR_SPAN = re.compile(
-    r'(?<![\d.,+-])(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?'
-    r'\s*(?:(?:을|를|이|가)?\s*(?:초과|이상|미만|이하)|보다\s*(?:작은|적은|낮은|큰|많은|높은|작거나|적거나|낮거나|크거나|많거나|높거나))')
+    r'(?<![\d.,+-])(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)\s*+(?:천만|백만|십만|만|천|백)?\s*+(?:원|점|개|명|건|kg)?'
+    r'\s*+(?:(?:을|를|이|가)?\s*+(?:초과|이상|미만|이하)|보다\s*+(?:작은|적은|낮은|큰|많은|높은|작거나|적거나|낮거나|크거나|많거나|높거나))')
 
 
 _NATURAL_COMPARISON = re.compile(r'보다\s*(작은|적은|낮은|큰|많은|높은)$')
 _NATURAL_OPERATORS = {'작은': 'lt', '적은': 'lt', '낮은': 'lt', '큰': 'gt', '많은': 'gt', '높은': 'gt'}
+_JOINING_OPERATORS = {'작거나': 'lt', '적거나': 'lt', '낮거나': 'lt', '크거나': 'gt', '많거나': 'gt', '높거나': 'gt'}
+_COMPARISON_WORD = re.compile('(' + '|'.join(['초과', '이상', '미만', '이하', *_NATURAL_OPERATORS, *_JOINING_OPERATORS]) + ')$')
+_SUBJECT_END = r'\s*(?:열\s*)?(?:이|가|은|는|도|을|를)?\s*$'
+# Connective endings join two conditions of one clause; anything else between them is asked about.
+_ALL_JOIN = re.compile(r'(?:이고|이며|이면서|면서|그리고|및)(?=[\s,]|$)')
+_ANY_JOIN = re.compile(r'(?:이거나|거나|또는|혹은)(?=[\s,]|$)')
+# Clickable answers. A clicked label is matched exactly, so no synonym is guessed.
+MATCH_CHOICES = {'모두 만족': 'all', '하나라도 만족': 'any'}
+KEEP_ALL, KEEP_OTHERS, ONLY_NEW = '기존 조건 모두 유지', '나머지 조건 유지', '새 조건만 적용'
 
 
 def _comparison_subject(field, prefix):
-    return bool(field and re.search(
-        r'(?<![\w])' + re.escape(field) + r'\s*(?:열\s*)?(?:이|가|은|는)?\s*$', prefix))
+    return bool(field and re.search(r'(?<![\w])' + re.escape(field) + _SUBJECT_END, prefix))
+
+
+def _own_clause(tail):
+    """The words after a comparison that still belong to its clause."""
+    tail = re.split(r'[.!?\n]', tail, maxsplit=1)[0]
+    tail = _RANGE_CLAUSE_END.split(tail, maxsplit=1)[0]
+    ends = [match.end() for match in (_ALL_JOIN.search(tail), _ANY_JOIN.search(tail)) if match]
+    return tail[:min(ends)] if ends else tail
 
 
 def _uncertain_comparison(tail):
-    return bool(re.match(r'\s*(?:경우|행|것|값)?\s*(?:이|가)?\s*(?:아니|않|말고)', tail)
-                or re.match(r'\s*(?:지|은지|는지|을지|인지)', tail))
+    """True when the words after a comparison deny it or leave its direction open.
+
+    A copula denial ("…이 아닌", "…게 아니라") anywhere in the comparison's own
+    clause is about that comparison. "-지 않" denies the verb it is attached to,
+    so it counts only when attached to the comparison itself.
+    """
+    return bool(re.search(r'아니|아닌|아님|말고', _own_clause(tail))
+                or re.match(r'\s*(?:이|하)?지\s*(?:는|도)?\s*않', tail)
+                or re.match(r'\s*(?:인지|은지|는지|을지|지)(?:는|도|를|가)?(?![가-힣])', tail))
 
 
-def literal_compound_filter(state):
-    """Recognize a directly named chain of numeric comparisons in the current request."""
-    fields = {field for resource in state.get('resources', []) if resource.get('kind') == 'table'
-              for field in resource.get('columns', [])}
-    active = None
-    for message in state.get('messages', []):
-        if message.get('role') != 'user':
-            continue
-        text = message['content'].strip().rstrip('.!?')
-        if re.fullmatch(r'(?:모든|전체|기존)\s*(?:숫자\s*)?(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text):
-            active = None
-            continue
-        replacement = _compound_filter_in_turn(state, text)
-        if replacement:
-            active = replacement
-            continue
-        if not active:
-            continue
-        mode, rules = active
-        for field in fields:
-            if re.fullmatch(re.escape(field) + r'\s*(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text):
-                rules = [rule for rule in rules if rule['field'] != field]
-                active = (mode if len(rules) > 1 else 'all', rules) if rules else None
-                break
-            matches = list(_COMPARATOR_SPAN.finditer(text))
-            if len(matches) != 1:
-                continue
-            match = matches[0]
-            if not _comparison_subject(field, text[:match.start()]) or not re.fullmatch(
-                r'\s*(?:으로|로)?\s*(?:바꿔|변경해)\s*(?:줘|주세요)?', text[match.end():]
-            ):
-                continue
-            word = re.search(r'(초과|이상|미만|이하|작은|적은|낮은|큰|많은|높은)$', match.group())
-            values = _amounts(match.group(), field)
-            if word and len(values) == 1 and executable_number(next(iter(values))):
-                op = (_WRITTEN_OPERATOR | _NATURAL_OPERATORS)[word[1]]
-                active = (mode, [{**rule, 'operator': op, 'value': float(next(iter(values)))}
-                                 if rule['field'] == field else rule for rule in rules])
-                break
-    return active
+def _starts_other_work(gap):
+    """True when the words between two comparisons end one instruction and begin another."""
+    return bool(re.search(r'[.!?\n]', gap) or _NEXT_OPERATION.search(gap)
+                or _RANGE_CLAUSE_END.search(gap.replace(',', ' ')))
+
+
+def _table_fields(state):
+    return {field for resource in state.get('resources', []) if resource.get('kind') == 'table'
+            for field in resource.get('columns', []) if isinstance(field, str) and field.strip()}
+
+
+def _stated_rule(field, span):
+    """The rule one comparison span states for its column, or None when it is not exact."""
+    word = _COMPARISON_WORD.search(span)
+    values = _amounts(span, field)
+    if not word or len(values) != 1 or not executable_number(next(iter(values))):
+        return None
+    operator = (_WRITTEN_OPERATOR | _NATURAL_OPERATORS | _JOINING_OPERATORS)[word[1]]
+    return dict(field=field, operator=operator, value=float(next(iter(values))),
+                compare_field=None, value_type='number')
 
 
 def _compound_filter_in_turn(state, text):
+    """Read one turn as a chain of comparisons on different columns.
+
+    Returns None when the turn is not such a chain, (mode, rules) when it is read
+    exactly, ('ask', rules) when only the AND/OR relation is unstated, and
+    ('rewrite', None) when the chain is there but one part cannot be trusted.
+    """
     text = _QUOTED_TEXT.sub(' ', text)
     comparisons = list(_COMPARATOR_SPAN.finditer(text))
-    if len(comparisons) < 2 or _uncertain_comparison(text[comparisons[-1].end():]):
+    if len(comparisons) < 2:
         return None
-    fields = {f for resource in state.get('resources', []) if resource.get('kind') == 'table'
-              for f in resource.get('columns', [])}
-    rules, joins = [], []
-    end = 0
+    fields = _table_fields(state)
+    owners, end = [], 0
+    for match in comparisons:
+        prefix = text[end:match.start()]
+        named = [field for field in fields if _comparison_subject(field, prefix)]
+        # "비용이 10원 이상 100원 이하": a bound written right after another shares its column.
+        owners.append(named[0] if len(named) == 1 else owners[-1] if owners and not prefix.strip() else None)
+        end = match.end()
+    if len({owner for owner in owners if owner}) < 2:
+        return None  # one column, or amounts that name no column
+    rules, joins, end = [], [], 0
     for index, match in enumerate(comparisons):
         prefix = text[end:match.start()]
-        suffix = re.search(r'(초과|이상|미만|이하|작은|적은|낮은|큰|많은|높은|작거나|적거나|낮거나|크거나|많거나|높거나)$',
-                           match.group())
-        owners = [field for field in fields if _comparison_subject(field, prefix)]
-        if (not suffix or len(owners) != 1 or _excludes_named_range(text, match.end())
-                or _uncertain_comparison(text[match.end():])):
-            return None
-        field = owners[0]
-        values = _amounts(match.group(), field)
-        if len(values) != 1 or not executable_number(next(iter(values))):
-            return None
-        word = suffix[1]
-        if index:
-            if comparisons[index - 1].group().endswith('거나') or re.match(r'\s*(?:이거나|또는|혹은)\s*', prefix):
-                joins.append('any')
-            elif re.match(r'\s*(?:이고|이며|그리고|및)\s*', prefix):
-                joins.append('all')
-            else:
-                return None
-        operator = (_WRITTEN_OPERATOR | _NATURAL_OPERATORS |
-                    {'작거나':'lt','적거나':'lt','낮거나':'lt','크거나':'gt','많거나':'gt','높거나':'gt'})[word]
-        rules.append(dict(field=field, operator=operator, value=float(next(iter(values))),
-                          compare_field=None, value_type='number'))
         end = match.end()
-    if len(set(joins)) != 1 or len({rule['field'] for rule in rules}) < 2:
+        if index:
+            if not prefix.strip():
+                joins.append('all')
+            elif comparisons[index - 1].group().endswith('거나'):
+                joins.append('any')
+            else:
+                gap = prefix if owners[index] is None else re.sub(
+                    r'(?<![\w])' + re.escape(owners[index]) + _SUBJECT_END, '', prefix)
+                if _starts_other_work(gap):
+                    return None  # two instructions, not one compound filter
+                together, either = bool(_ALL_JOIN.search(gap)), bool(_ANY_JOIN.search(gap))
+                joins.append(None if together == either else 'all' if together else 'any')
+        rule = owners[index] and _stated_rule(owners[index], match.group())
+        if (not rule or _excludes_named_range(text, match.end())
+                or _uncertain_comparison(text[match.end():])):
+            return 'rewrite', None
+        rules.append(rule)
+    known = {join for join in joins if join}
+    if len(known) > 1:
+        return 'rewrite', None  # AND and OR together: their grouping is the user's to state
+    if None in joins:
+        return 'ask', rules
+    return known.pop(), rules
+
+
+def _compound_turn_text(state, index, message):
+    """The user's own words in a turn; a form reply echoes question labels before '→'."""
+    event = next((e for e in reversed(state.get('condition_answers', []) or []) if e.get('turn') == index), None)
+    if event and event.get('answers'):
+        own = [a.get('answer', '') for a in event['answers'] if a.get('key') == 'filter.match']
+        return own[0] if own else None
+    content = message['content']
+    return content.rsplit('→', 1)[1] if '→' in content else content
+
+
+def describe_rule(rule):
+    return f"{rule['field']} {rule['value']:g} {_OPERATOR_WORD[rule['operator']]}"
+
+
+def compound_filter_state(state):
+    """Follow the cross-column numeric filter through the conversation.
+
+    `rules` with a `mode` is the filter a draft must apply. `pending` names what
+    the user still has to decide before it is final: 'match' (AND or OR),
+    'rewrite' (the chain could not be read exactly) or 'revise' (a later turn
+    touched one of its conditions without saying what happens to the rest).
+    Nothing is inferred from a reply: it is one of the offered labels or a
+    condition written out again.
+    """
+    fields = _table_fields(state)
+    mode, rules, pending, candidate = None, [], None, None
+
+    def merged(rule):
+        replaced = [rule if old['field'] == rule['field'] else old for old in rules]
+        return replaced if rule in replaced else [*rules, rule]
+
+    for index, message in enumerate(state.get('messages', [])):
+        if message.get('role') != 'user':
+            continue
+        text = _compound_turn_text(state, index, message)
+        if text is None:
+            continue
+        text = text.strip().rstrip('.!?')
+        if re.fullmatch(r'(?:모든|전체|기존)\s*(?:숫자\s*)?(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text):
+            mode, rules, pending, candidate = None, [], None, None
+            continue
+        turn = _compound_filter_in_turn(state, text)
+        if turn:
+            kind, found = turn
+            candidate = None
+            if kind == 'rewrite':
+                mode, rules, pending = None, [], 'rewrite'
+            elif kind == 'ask':
+                mode, rules, pending = None, found, 'match'
+            else:
+                mode, rules, pending = kind, found, None
+            continue
+        if not rules:
+            continue
+        if pending == 'match' and text in MATCH_CHOICES:
+            mode, pending = MATCH_CHOICES[text], None
+            continue
+        if pending == 'revise':
+            dropped = next((rule['field'] for rule in rules if text == f"{rule['field']} 조건 제거"), None)
+            if text == KEEP_ALL:
+                pending, candidate = None, None
+                continue
+            if candidate and text in (KEEP_OTHERS, ONLY_NEW):
+                rules = merged(candidate) if text == KEEP_OTHERS else []
+                pending, candidate = None, None
+            elif dropped:
+                rules = [rule for rule in rules if rule['field'] != dropped]
+                pending, candidate = None, None
+            if pending is None:
+                mode = mode if len(rules) > 1 else 'all' if rules else None
+                continue
+        named = [field for field in {rule['field'] for rule in rules}
+                 if re.search(r'(?<![\w])' + re.escape(field), text)]
+        cancelled = next((field for field in named if re.fullmatch(
+            re.escape(field) + r'\s*(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text)), None)
+        if cancelled:
+            rules = [rule for rule in rules if rule['field'] != cancelled]
+            if len(rules) < 2:
+                mode, pending = 'all' if rules else None, None
+            candidate = None
+            continue
+        matches = list(_COMPARATOR_SPAN.finditer(text))
+        owners = [field for field in fields if len(matches) == 1 and _comparison_subject(field, text[:matches[0].start()])]
+        if len(owners) == 1:
+            match = matches[0]
+            denied = _excludes_named_range(text, match.end()) or _uncertain_comparison(text[match.end():])
+            rule = None if denied else _stated_rule(owners[0], match.group())
+            if rule in rules:
+                continue
+            if rule is None:
+                if owners[0] in named:
+                    pending, candidate = 'revise', None
+                continue
+            edits = re.fullmatch(r'\s*(?:으로|로)?\s*(?:바꿔|변경해)\s*(?:줘|주세요)?', text[match.end():])
+            if owners[0] in named and (edits or pending == 'revise' and candidate is None):
+                # A stated edit, or the condition we asked the user to write out: the rest stays.
+                rules = merged(rule)
+                if pending == 'revise':
+                    pending, candidate = None, None
+            else:
+                pending, candidate = 'revise', rule
+            continue
+        if named and re.search(r'조건|필터|기준', text):
+            pending, candidate = 'revise', None
+    return {'mode': mode, 'rules': rules, 'pending': pending, 'candidate': candidate}
+
+
+def literal_compound_filter(state):
+    """The confirmed cross-column filter as (mode, rules), or None while none is final."""
+    found = compound_filter_state(state)
+    if not found['rules'] or not found['mode'] or found['pending']:
         return None
-    return joins[0], rules
+    return found['mode'], found['rules']
+
+
+def compound_filter_question(found):
+    """The question and its clickable answers for an undecided compound filter."""
+    rules = found['rules']
+    listed = ', '.join(describe_rule(rule) for rule in rules)
+    if found['pending'] == 'match':
+        return f'선별 조건({listed})을 모두 만족하는 행만 남길까요, 하나라도 만족하면 남길까요?', list(MATCH_CHOICES)
+    if found['pending'] == 'revise' and found['candidate']:
+        return (f"새 조건 '{describe_rule(found['candidate'])}'을 말씀하셨습니다. 앞서 정한 조건({listed})은 어떻게 할까요?",
+                [KEEP_OTHERS, ONLY_NEW])
+    if found['pending'] == 'revise':
+        return (f"앞서 정한 선별 조건은 {listed}입니다. 어떻게 바꿀까요? "
+                f"값을 바꾸려면 '{describe_rule(rules[0])}'처럼 새 조건을 적어 주세요.",
+                [KEEP_ALL, *(f"{rule['field']} 조건 제거" for rule in rules)])
+    return ("여러 열의 선별 조건이 함께 적혀 있는데 서로의 관계를 정확히 읽지 못했습니다. "
+            "'A열이 10 이상이고 B열이 3 미만'과 같은 형태로 각 조건을 초과·이상·미만·이하로 적고, "
+            "조건 사이는 '이고'(모두 만족)나 '이거나'(하나라도 만족)로 이어 주세요."), []
 
 
 # Sort directions and selection words are closed sets checked around the proposed column only.
@@ -695,7 +845,7 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=
          {'CSV': 'csv', 'JSON': 'json'}),
         ('sort.policy', r'정렬\s*(?:은|을)?\s*(하지\s*말|하지\s*마|하지\s*않|안\s*해|없이)',
          {'하지 말': 'none', '하지 마': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
-        ('filter.operator', r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?\s*(초과|이상|미만|이하)',
+        ('filter.operator', r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*+(?:천만|백만|십만|만|천|백)?\s*+(?:원|점|개|명|건|kg)?\s*+(초과|이상|미만|이하)',
          {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}),
     ]
     for turn, message in enumerate(state.get('messages', [])):
@@ -766,7 +916,8 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=
                 if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
                     continue  # the named range is dropped; leave the operator to a question
                 tail = message['content'][match.end():match.end() + 16]
-                negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|않|하지\s*마)', tail))
+                negated = bool(re.match(r'\s*(?:가|이)?\s*(?:아니|아닌|아님|않|하지\s*마)', tail)
+                               or key == 'filter.operator' and _uncertain_comparison(tail))
                 token = re.sub(r'\s+', ' ', match.group(1))
                 value = None if negated else mapping.get(token, mapping.get(token.upper()))
                 refs = [e for e in catalog if e.get('turn') == turn and match.group(0) in e['quote']]
@@ -1036,8 +1187,8 @@ _WRITTEN_OPERATOR = {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 
 _OPERATOR_WORD = {value: word for word, value in _WRITTEN_OPERATOR.items()}
 _OPPOSITE_BOUND = {'gte': 'lt', 'gt': 'lte', 'lte': 'gt', 'lt': 'gte'}
 _WRITTEN_BOUND = re.compile(
-    r'(?<![\d.+-])(?P<amount>\d[\d,]*(?:\.\d+)?\s*(?:천만|백만|십만|만|천|백|억)?\s*(?:원|개|점|명|건|kg|%)?)'
-    r'\s*(?P<operator>초과|이상|미만|이하)')
+    r'(?<![\d.+-])(?P<amount>\d[\d,]*(?:\.\d+)?\s*+(?:천만|백만|십만|만|천|백|억)?\s*+(?:원|개|점|명|건|kg|%)?)'
+    r'\s*+(?P<operator>초과|이상|미만|이하)')
 _BOUND_JOIN = re.compile(r'\s*(?:이고|이며|이거나|또는|혹은|및|,)\s*')
 _BOUND_SUBJECT_END = r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:값\s*)?(?:이|가|은|는)?\s*(?:기준으로|기준)?\s*$'
 _RANGE_PROHIBITION = re.compile(r'^\s*(?:두|놓)?(?:하|으)?면\s*안\s*(?:돼요?|됩니다|된다|됨)(?=\s*(?:[.!?,;\n]|$))')
@@ -1280,7 +1431,8 @@ def _grounded_enum(key, value, quote, state=None, evidence=()):
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
         matches = list(re.finditer(aliases[value], quote))
-        if value in ('gt', 'gte', 'lt', 'lte') and any(_excludes_named_range(quote, m.end()) for m in matches):
+        if value in ('gt', 'gte', 'lt', 'lte') and any(
+                _excludes_named_range(quote, m.end()) or _uncertain_comparison(quote[m.end():]) for m in matches):
             return False
         return bool(matches)
     return True
@@ -1627,6 +1779,10 @@ def validate_conditions(raw, state, catalog):
     needs_table = 'schedule' in operations and not any(r.get('kind') == 'table' for r in state.get('resources', []))
     if needs_table:
         unresolved.append('input.table')
+    compound = compound_filter_state(state)
+    if compound['pending']:
+        # Several columns are compared but the filter is not settled; never finish on a part of it.
+        unresolved.append('filter.match')
     issues = input_issues(state)
     last_user = state.get('messages', [])[latest]['content'] if latest >= 0 else ''
     # Cancelling only the optional trigger keeps the workflow's processing
@@ -1657,12 +1813,18 @@ def validate_conditions(raw, state, catalog):
             question_keys.remove('filter.operator')
         direction = None
         if numeric_filter:
-            field_prefix = r'(?<![\w])' + re.escape(field['value']) + r'\s*(?:이|가|은|는)?\s*(?:\d[\d,.]*\s*(?:원|개|건|점)?\s*기준(?:으로)?\s*)?'
+            field_prefix = r'(?<![\w])' + re.escape(field['value']) + r'\s*+(?:이|가|은|는)?\s*+(?:\d[\d,.]*\s*+(?:원|개|건|점)?\s*+기준(?:으로)?\s*+)?'
             lower = re.search(field_prefix + r'(?:작은|적은|낮은|부족한)(?![가-힣])', user_text)
             upper = re.search(field_prefix + r'(?:큰|많은|높은)(?![가-힣])', user_text)
             if bool(lower) != bool(upper):
                 direction = 'lower' if lower else 'upper'
         for key in question_keys[:2]:
+            if key == 'filter.match':
+                text, options = compound_filter_question(compound)
+                questions.append({'id': hashlib.sha256((identity + key).encode()).hexdigest()[:24], 'key': key,
+                                  'text': text, **({} if options else {'response': {'type': 'text'}}),
+                                  'options': options})
+                continue
             text = ('예약에는 지금 관리 표 파일이 필요합니다. 자료 연결로 업로드해주세요.' if key == 'input.table' else
                     ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') +
                     ('몇 시 몇 분에 실행할까요? 오전·오후도 함께 알려주세요.' if grouped_time and key == 'schedule.hour' else QUESTIONS[key]))

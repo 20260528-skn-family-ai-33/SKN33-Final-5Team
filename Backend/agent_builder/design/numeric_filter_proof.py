@@ -19,14 +19,26 @@ def contains_alternative(plan, rule):
 
 
 def numeric_filter_issues(state, draft):
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    found = compound_filter_state(state)
+    rules = found['rules']
+    if not rules or found['pending'] not in (None, 'match'):
+        # While the user is revising the conditions they are not a requirement yet.
+        return _filter_issues(state, draft, None)
+    if found['mode']:
+        return _filter_issues(state, draft, (found['mode'], rules))
+    # AND or OR is still being asked: a draft must at least apply every condition one way.
+    strict = _filter_issues(state, draft, ('all', rules))
+    return strict and _filter_issues(state, draft, ('any', rules)) and strict
+
+
+def _filter_issues(state, draft, compound):
     from .output_selection_request import literal_numeric_filters, literal_or_filters
     required = [(r, guarantees_filter) for r in literal_numeric_filters(state)]
     required += [(r, contains_alternative) for r in literal_or_filters(state)]
-    from agent_builder.conditions.condition_readiness import literal_compound_filter
-    compound = literal_compound_filter(state)
     if compound:
         match, rules = compound
-        if match == 'all':
+        if match == 'all' or len(rules) < 2:
             required.extend((rule, guarantees_filter) for rule in rules)
         else:
             from .requirement_coverage import _condition
@@ -93,8 +105,6 @@ def numeric_filter_issues(state, draft):
                 checked_outputs += 1
                 if any(not proven(node['id'], output, rule, check, active, set()) for rule, check in required):
                     return error
-            if compound and not endpoints:
-                return error
         return [] if checked_outputs else error
     except (ValueError, KeyError, TypeError):
         return error

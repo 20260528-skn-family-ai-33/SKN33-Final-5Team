@@ -31,7 +31,7 @@ export function WorkflowFolders({organization,onChange,active,onActive,selected,
   </div>}
   <div className="workflow-folder-actions">
    <button className="as-button" disabled={busy||disabled} onClick={()=>open('create')}><FolderPlus size={16}/>폴더 만들기</button>
-   {folder&&<><button className="as-button" disabled={busy||disabled} onClick={()=>open('rename')}><Pencil size={16}/>폴더 이름 변경</button><button className="as-button" disabled={busy||disabled} onClick={()=>open('delete')}><Trash2 size={16}/>폴더 삭제</button></>}
+   {folder&&<><button className="as-button" disabled={busy||disabled} onClick={()=>open('rename')}><Pencil size={15} strokeWidth={2} aria-hidden="true"/>폴더 이름 변경</button><button className="as-button" disabled={busy||disabled} onClick={()=>open('delete')}><Trash2 size={16}/>폴더 삭제</button></>}
   </div></div>
   {selected.length>0&&<button className="as-button workflow-folder-move" disabled={busy||disabled||!selected.length||selected.length>MAX_WORKFLOW_SELECTION} onClick={()=>open('move')}><FolderInput size={16}/>선택한 워크플로우 이동{selected.length?` (${selected.length})`:''}</button>}
   {notice&&<p role="status">{notice}</p>}

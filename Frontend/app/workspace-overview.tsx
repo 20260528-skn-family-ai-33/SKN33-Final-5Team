@@ -1,5 +1,7 @@
+import {designAttachmentError} from './design-attachments';
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {useRef,useState} from 'react';
-import {ArrowRight, ArrowUp, FileText, FileSpreadsheet, FileImage, File as FileIcon, Plus, X, Layers, Workflow} from 'lucide-react';
+import {ArrowRight, ArrowUp, FileText, FileSpreadsheet, FileImage, Plus, X, Layers, Workflow} from 'lucide-react';
 import './workspace-overview.css';
 
 type RecentWorkflow = {id:string; updated_at:string; config:{name:string}};
@@ -15,24 +17,22 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
   workflows:RecentWorkflow[];
   loading:boolean;
   error:string;
-  onStart:(prompt:string,file?:File)=>void;
+  onStart:(prompt:string,files?:File[])=>void;
   onNavigate:(page:'workflows'|'workflow'|'nodes', service?:string)=>void;
   onRetry:()=>void;
 }) {
   const [prompt,setPrompt]=useState('');
-  const [file,setFile]=useState<File|null>(null);
+  const [files,setFiles]=useState<File[]>([]);
   const [fileError,setFileError]=useState('');
   const fileInput=useRef<HTMLInputElement>(null);
   const dragDepth=useRef(0);
   const [dragOver,setDragOver]=useState(false);
-  function attachFile(selected:File) {
-    if(selected.size>8*1024*1024){setFileError('자료는 8MB 이하로 연결하세요.');return;}
-    setFile(selected);setFileError('');
+  function attachFiles(selected:File[]) {
+    const error=designAttachmentError(selected,files.length);
+    if(error){setFileError(error);return;}
+    setFiles(prior=>[...prior,...selected]);setFileError('');
   }
-  const canStart=!!prompt.trim()||!!file;
-  const extension=file?.name.split('.').pop()?.toLowerCase()||'';
-  const AttachmentIcon=/^(csv|tsv|xlsx|xls)$/.test(extension)?FileSpreadsheet:/^(jpg|jpeg|png|bmp|webp|tif|tiff|heic)$/.test(extension)?FileImage:/^(pdf|doc|docx|txt|md|hwp|hwpx|ppt|pptx)$/.test(extension)?FileText:FileIcon;
-  const fileSize=file?(file.size>=1024*1024?`${(file.size/(1024*1024)).toFixed(1)} MB`:file.size>=1024?`${Math.ceil(file.size/1024)} KB`:`${file.size} B`):'';
+  const canStart=!!prompt.trim()||files.length>0;
 
   return <div className="workspace-overview">
     <section className="overview-welcome" aria-labelledby="overview-title">
@@ -43,21 +43,25 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
         onDragOver={event=>{if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault();}}
         onDrop={event=>{
           dragDepth.current=0;setDragOver(false);
-          const files=event.dataTransfer.files;
-          if(!files.length)return;
+          const dropped=Array.from(event.dataTransfer.files);
+          if(!dropped.length)return;
           event.preventDefault();
-          if(files.length!==1){setFileError('자료를 한 번에 하나씩 놓아주세요.');return;}
-          attachFile(files[0]);
+          attachFiles(dropped);
         }} onSubmit={event=>{
         event.preventDefault();
-        if(canStart)onStart(prompt.trim(),file??undefined);
+        if(canStart)onStart(prompt.trim(),files);
       }}>
-        {file && <div className="overview-attachment-tray" aria-label="첨부 자료">
-          <div className="overview-attachment">
-            <span className="overview-attachment-icon"><AttachmentIcon size={21} aria-hidden="true"/></span>
-            <div className="overview-attachment-info"><strong title={file.name}>{file.name}</strong><small>{extension.toUpperCase()||'파일'} · {fileSize}</small></div>
-            <button type="button" aria-label="첨부 자료 제거" title="첨부 자료 제거" onClick={()=>{setFile(null);setFileError('');}}><X size={16} aria-hidden="true"/></button>
-          </div>
+        {files.length>0 && <div className="overview-attachment-tray" aria-label="첨부 자료">
+          {files.map((file,index)=>{
+            const extension=file.name.split('.').pop()?.toLowerCase()||'';
+            const AttachmentIcon=/^(csv|tsv|xlsx|xls)$/.test(extension)?FileSpreadsheet:/^(jpg|jpeg|png|bmp|webp|tif|tiff|heic)$/.test(extension)?FileImage:FileText;
+            const size=file.size>=1024*1024?`${(file.size/(1024*1024)).toFixed(1)} MB`:`${Math.ceil(file.size/1024)} KB`;
+            return <div className="overview-attachment" key={index}>
+              <span className="overview-attachment-icon"><AttachmentIcon size={21} aria-hidden="true"/></span>
+              <div className="overview-attachment-info"><strong title={file.name}>{file.name}</strong><small>{extension.toUpperCase()||'파일'} · {size}</small></div>
+              <WorkspaceIconButton type="button" aria-label={file.name+' 첨부 제거'} title="첨부 자료 제거" onClick={()=>{setFiles(prior=>prior.filter((_,i)=>i!==index));setFileError('');}}><X size={16} aria-hidden="true"/></WorkspaceIconButton>
+            </div>;
+          })}
         </div>}
         <textarea aria-label="자동화할 업무" placeholder="예: 매출표에서 지점별 합계를 구해 엑셀로 정리해 줘." value={prompt}
           onChange={event=>setPrompt(event.target.value)}
@@ -69,12 +73,12 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
           }}
           rows={2} maxLength={4000}/>
         {fileError && <p role="alert">{fileError}</p>}
-        <input ref={fileInput} type="file" hidden accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic" onChange={event=>{
-          const selected=event.currentTarget.files?.[0];event.currentTarget.value='';
-          if(selected)attachFile(selected);
+        <input ref={fileInput} type="file" multiple hidden accept=".csv,.tsv,.xlsx,.xls,.json,.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.hwp,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.heic" onChange={event=>{
+          const selected=Array.from(event.currentTarget.files||[]);event.currentTarget.value='';
+          if(selected.length)attachFiles(selected);
         }}/>
         <div className="overview-composer-actions">
-          <button type="button" className="overview-attach-button" aria-label="자료 추가" title="자료 추가" onClick={()=>fileInput.current?.click()}><Plus size={19} aria-hidden="true"/></button>
+          <WorkspaceIconButton type="button" className="overview-attach-button" aria-label="자료 추가" title="자료 추가" onClick={()=>fileInput.current?.click()}><Plus size={19} aria-hidden="true"/></WorkspaceIconButton>
           <button type="submit" className="as-button as-primary overview-submit" aria-label="업무 입력 확인" disabled={!canStart}>
             <ArrowUp size={17} aria-hidden="true"/>
           </button>

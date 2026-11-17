@@ -325,7 +325,7 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
  }
  if(action==='studio'&&method==='GET'){json(res,200,await builderWorker({action:'studio'}));return true;}
  if(action==='catalog'&&method==='GET'){json(res,200,await builderWorker({action:'catalog'}));return true;}
- if(action==='history'&&method==='GET'){res.setHeader('Cache-Control','no-store');const id=url.searchParams.get('id');if(id!==null&&!idPattern.test(id))throw new Error('워크플로우 ID를 확인하세요.');json(res,200,await builderWorker({action:'history',...(id?{id}:{})}));return true;}
+ if(action==='history'&&method==='GET'){res.setHeader('Cache-Control','no-store');const id=url.searchParams.get('id');if(id!==null&&!idPattern.test(id))throw new Error('워크플로우 ID를 확인하세요.');const page=Number(url.searchParams.get('page')??'1');if(!Number.isInteger(page)||page<1||page>10000)throw new Error('실행 기록 페이지를 확인하세요.');json(res,200,await builderWorker({action:'history',page,...(id?{id}:{})}));return true;}
  if(action==='agents'&&method==='GET'){json(res,200,await builderWorker({action:'agents',...(url.searchParams.get('summary')==='1'?{summary:true}:{})}));return true;}
  if(action==='schedules'){
   res.setHeader('Cache-Control','no-store');

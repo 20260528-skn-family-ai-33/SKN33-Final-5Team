@@ -53,12 +53,10 @@ def agent(c):
 def history(c):
     # History needs names and run list fields, never documents, schedules or run outputs.
     selected=c.data.get('id')
-    agents=[{'id':agent['id'],'version':agent['version'],'model':agent.get('model',''),
-             'updated_at':agent.get('updated_at',''),'config':{'name':agent['config']['name'],
-             'purpose':agent['config'].get('purpose',''),'tool_ids':[]}}
-            for agent in c.storage.agents() if not selected or agent['id']==selected]
-    by_id={agent['id']:agent for agent in agents}
-    rows=[{'agent':by_id[agent_id],'run':run} for agent_id,run in c.storage.run_history(selected) if agent_id in by_id]
+    page=c.data.get('page',1)
+    if type(page) is not int or not 1<=page<=10000:raise ValueError('실행 기록 페이지를 확인하세요.')
+    page_size=50
+    rows=[{'agent_id':agent_id,'run':run} for agent_id,run in c.storage.run_history(selected)]
     from datetime import datetime, timezone
     def started(row):
         value=row['run'].get('started_at') or row['run'].get('created_at') or ''
@@ -66,8 +64,13 @@ def history(c):
             date=datetime.fromisoformat(value.replace('Z','+00:00'))
             return (date if date.tzinfo else date.replace(tzinfo=timezone.utc)).timestamp()
         except (ValueError,TypeError):return 0
-    rows.sort(key=started,reverse=True)
-    return {'agents':agents,'rows':rows}
+    rows.sort(key=lambda row:(started(row),row['agent_id'],row['run']['id']),reverse=True)
+    total=len(rows)
+    rows=rows[(page-1)*page_size:page*page_size]
+    ids={row['agent_id'] for row in rows}
+    if selected:ids.add(selected)
+    agents=c.storage.history_agents(sorted(ids))
+    return {'agents':agents,'rows':rows,'total':total,'page':page,'page_size':page_size}
 
 
 def studio(c):

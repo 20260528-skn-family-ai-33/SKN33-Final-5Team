@@ -177,6 +177,11 @@ def test_agent_summaries_count_latest_workflows_and_isolate_workspaces(backend, 
                                            'tool_ids': ['read_table', 'write_result']}
         assert 'workflow_dependencies' not in summaries[-1]
         assert 'instructions' not in summaries[-1]['config']
+        names=store.history_agents(['A','missing'])
+        assert len(names)==1 and names[0]['id']=='A' and names[0]['version']==2
+        assert names[0]['config']=={'name':'최신 업무','purpose':'','tool_ids':[]}
+        assert other.history_agents(['A'])[0]['version']==3
+        assert store.history_agents([])==[]
     finally:
         other.close()
         store.close()

@@ -218,6 +218,7 @@ class BuilderState(TypedDict, total=False):
     # Clarification core: answers to core-registered questions, and retryable processing failures.
     clarification_answers: list[dict]
     system_failure: dict | None
+    previous_system_failure: dict | None
     # Orchestration stage 2: verified selection criteria and their questions.
     orchestration: dict | None
     orchestration_route: str

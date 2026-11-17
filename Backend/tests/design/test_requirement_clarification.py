@@ -69,7 +69,7 @@ def test_unknown_internal_name_is_retried_then_presented_as_a_normal_question():
     assert len(model.calls)==2
     assert result['status']=='validation_failed'
     assert not result.get('pending_questions')
-    assert result['requirement_failure']=={'kind':'processing_error','retryable':True}
+    assert result['requirement_failure']['kind']=='processing_error' and result['requirement_failure']['retryable']
     assert 'invented_customer_internal_field' not in json.dumps(result)
 
 
@@ -115,8 +115,8 @@ def test_bad_extraction_keeps_technical_error_out_of_customer_message():
     assert 'bad_schema_field' not in json.dumps(result)
     notice=result['messages'][-1]['content']
     assert '입력하신 조건은 보존' in notice and '저장을 중단' in notice
-    assert '입력 자료 → 처리 조건 → 원하는 결과' in notice
-    assert result['requirement_failure']=={'kind':'processing_error','retryable':True}
+    assert '작업 목록' in notice and '잘못된 형식' in notice
+    assert result['requirement_failure']['kind']=='processing_error' and result['requirement_failure']['retryable']
 
 
 @pytest.mark.parametrize('hour',[0,9])

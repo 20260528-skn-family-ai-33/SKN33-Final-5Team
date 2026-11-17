@@ -8,8 +8,8 @@
 .clarification-form-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; background:var(--a4b-neutral-soft); }
 .clarification-form-title { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--a4b-muted); }
 .clarification-question-nav { display:flex; align-items:center; gap:8px; color:var(--a4b-muted); font-size:12px; font-variant-numeric:tabular-nums; }
-.clarification-question-nav button { display:grid; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:6px; background:transparent; color:inherit; cursor:pointer; }
-.clarification-question-nav button:disabled { opacity:.3; cursor:default; }
+.clarification-question-nav button:not(.workspace-icon-button) { display:grid; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:6px; background:transparent; color:inherit; cursor:pointer; }
+.clarification-question-nav button:not(.workspace-icon-button):disabled { opacity:.3; cursor:default; }
 .clarification-form-question[hidden] { display:none; }
 .clarification-form-question { border-bottom:0; padding:18px 16px 8px; }
 .clarification-form-question legend { position:relative; padding-left:25px; box-sizing:border-box; font-size:14px; }
@@ -23,4 +23,4 @@
 .clarification-form .clarification-option:has(.clarification-option-letter) input { position:absolute; width:1px; height:1px; opacity:0; }
 .clarification-form .clarification-option.selected .clarification-option-letter { color:var(--a4b-action); border-color:var(--a4b-action); }
 .clarification-form-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
-.clarification-question-nav button:focus-visible { outline:2px solid var(--a4b-action); outline-offset:2px; }
+.clarification-question-nav button:not(.workspace-icon-button):focus-visible { outline:2px solid var(--a4b-action); outline-offset:2px; }

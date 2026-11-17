@@ -16,13 +16,13 @@ function displayedSettings(settings:Record<string,unknown>){
   return shown?[{key,name:settingLabels[key]||key,value:shown.slice(0,300)}]:[];
  });
 }
-export function NodeInspector({node,tool,workflow,onClose,backLabel='전체 설정',footerNote='변경할 내용은 대화에서 설명하세요. 저장한 작업을 수정하려면 작업 라이브러리의 작업 템플릿을 열어 주세요.'}:{node:Workflow['nodes'][number];tool?:ToolInfo;workflow?:Workflow|null;onClose:()=>void;backLabel?:string;footerNote?:string}){
+export function NodeInspector({node,tool,workflow,onClose,showBackButton=true,backLabel='전체 설정',footerNote='변경할 내용은 대화에서 설명하세요. 저장한 작업을 수정하려면 작업 라이브러리의 작업 템플릿을 열어 주세요.'}:{node:Workflow['nodes'][number];tool?:ToolInfo;workflow?:Workflow|null;onClose:()=>void;showBackButton?:boolean;backLabel?:string;footerNote?:string}){
  const settings=node.settings;
  const values=displayedSettings(settings);
  const outputNames:Record<string,string>={documents:'문서 내용',table:'표',text:'작성한 내용',answer:'답변',records:'추출한 항목',reviews:'검수 결과',artifact:'결과 파일',decision:'조건 판단'};
  const sourceName=(id:string)=>workflow?.nodes.find(n=>n.id===id)?.label||'이전 작업';
  return <div className="as-node-inspector">
- <button className="as-text-button" onClick={onClose}><ArrowLeft size={14}/>{backLabel}</button>
+ {showBackButton&&<button className="as-text-button" onClick={onClose}><ArrowLeft size={14}/>{backLabel}</button>}
  <div className="as-setting-section"><label>작업</label><h3 className="as-node-inspector-title"><WorkflowToolIcon tool={node.tool}/>{node.label}</h3></div>
  <div className="as-setting-section"><label>사용하는 자료</label>{node.bindings.length?node.bindings.map((b,i)=><p className="as-binding" key={i}>{sourceName(b.node_id)}의 {outputNames[b.output]||'결과'}</p>):<p className="as-small-muted">실행 요청 또는 연결한 자료를 사용합니다.</p>}</div>
  {tool&&<div className="as-setting-section"><label>처리 결과</label>{Object.entries(tool.output_ports).map(([name])=><p key={name}>{outputNames[name]||'처리 결과'}</p>)}</div>}

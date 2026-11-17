@@ -23,19 +23,25 @@ test('admin UI gates data, opens details, uses PATCH and handles denied/revoked 
  assert.ok(document.body.textContent?.includes('관리자 전용'));assert.equal(calls.filter(x=>x.url.startsWith('/api/admin')).length,0);assert.equal(document.querySelector('button[aria-label="모니터링"]'),null);
  role='admin';await act(async()=>{window.dispatchEvent(new Event('focus'));await tick();await tick();});
  assert.ok(document.querySelector('button[aria-label="모니터링"]'));assert.ok(document.body.textContent?.includes('requirements'));assert.ok(document.body.textContent?.includes('member@example.test'));
+ for(const label of ['검색','이전 페이지','다음 페이지']){
+  const button=document.querySelector('button[aria-label="'+label+'"]') as HTMLButtonElement;
+  assert.ok(button.classList.contains('workspace-icon-button'));
+  assert.ok(button.classList.contains('is-standard'));assert.ok(button.classList.contains('is-outline'));
+  if(label!=='검색')assert.equal(button.disabled,true,'single-page navigation stays disabled');
+ }
  await act(async()=>{(document.querySelector('button[aria-label="request-1 상세 보기"]') as HTMLButtonElement).click();await tick();});
  assert.ok(document.body.textContent?.includes('필수 필드 누락'));assert.ok(document.body.textContent?.includes('draft.name: missing'));
  assert.ok(document.body.textContent?.includes('지난주 문의를 요약해줘'));
  assert.match(document.querySelector('.am-storage-limit')!.textContent!,/과거.*4,000.*생략 여부는 미기록/);
  for(const truncated of [true,false]){
   item.context.prompt_storage_truncated=truncated;item.context.prompt_truncated=truncated;
-  await act(async()=>{([...document.querySelectorAll('button')].find(b=>b.textContent==='새로고침')!).click();await tick();await tick();});
+  await act(async()=>{(document.querySelector('button[aria-label="모니터링 새로고침"]') as HTMLButtonElement).click();await tick();await tick();});
   assert.match(document.querySelector('.am-storage-limit')!.textContent!,truncated?/나머지 입력은 생략/:/생략되지 않았습니다/);
  }
  const conversation=document.querySelector('.am-conversation') as HTMLDetailsElement;assert.equal(conversation.open,false);
  conversation.open=true;assert.match(conversation.textContent!,/실패 이후/);assert.match(conversation.textContent!,/어떤 기간인가요/);assert.equal(conversation.querySelector('img'),null,'user content is escaped text');
  item.member_email='';item.context.prompt='';item.context.conversation=[];
- await act(async()=>{([...document.querySelectorAll('button')].find(b=>b.textContent==='새로고침')!).click();await tick();await tick();});
+ await act(async()=>{(document.querySelector('button[aria-label="모니터링 새로고침"]') as HTMLButtonElement).click();await tick();await tick();});
  assert.match(document.body.textContent!,/회원 member-1/);assert.match(document.querySelector('.am-prompt')!.textContent!,/미기록/);assert.match(document.querySelector('.am-conversation')!.textContent!,/연결된 사용자·AI 대화가 없습니다/);
  await act(async()=>{([...document.querySelectorAll('button')].find(b=>b.textContent==='처리 내용 저장')!).click();await tick();await tick();});
  const saved=calls.find(x=>x.init?.method==='PATCH');assert.ok(saved);assert.deepEqual(JSON.parse(saved.init!.body as string),{status:'unreviewed',note:'',revision:0});

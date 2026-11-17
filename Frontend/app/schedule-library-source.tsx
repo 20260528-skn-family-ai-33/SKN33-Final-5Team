@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {useEffect,useRef,useState} from 'react';
 import {FolderOpen,RefreshCw,Save} from 'lucide-react';
 import {request} from '../components/flow/connection-panel';
@@ -92,7 +93,7 @@ export function ScheduleLibrarySourceSettings({workflowId,readers,disabled,onSav
  const rootName=teamId?(spaces.teams.find(team=>team.id===teamId)?.name||'팀 자료함'):'내 자료함';
  const folder=folders.find(item=>item.id===folderId);
  return <section className="schedule-library-source" aria-labelledby="schedule-library-heading">
-  <div className="schedule-source-heading"><h3 id="schedule-library-heading"><FolderOpen size={16} aria-hidden="true"/>자료함에서 읽기</h3><button type="button" className="as-text-button" disabled={disabled||saving||loading||dirty} onClick={()=>void loadSelection()} aria-label="예약 자료 설정 새로고침"><RefreshCw size={14}/></button></div>
+  <div className="schedule-source-heading"><h3 id="schedule-library-heading"><FolderOpen size={16} aria-hidden="true"/>자료함에서 읽기</h3><WorkspaceIconButton type="button"  disabled={disabled||saving||loading||dirty} onClick={()=>void loadSelection()} aria-label="예약 자료 설정 새로고침"><RefreshCw size={14}/></WorkspaceIconButton></div>
   {loading?<p role="status">예약 자료 설정을 불러오고 있습니다.</p>:loadFailed?<div role="alert"><p>{error}</p><button type="button" className="as-button" onClick={()=>void loadSelection()}>자료 설정 다시 불러오기</button></div>:<>
    {selection&&<p className="schedule-source-saved">저장된 읽기 방식: <strong>{modeLabels[selection.mode]}</strong></p>}
    <fieldset disabled={disabled||saving} className="schedule-source-fields">

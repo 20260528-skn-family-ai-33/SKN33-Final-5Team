@@ -147,7 +147,7 @@ def test_failure_notice_is_actionable_without_echoing_provider_data():
     wire = httpx.Request('POST', 'https://example.test/private-key')
     for error, expected in [(APIConnectionError(request=wire), '연결 상태'),
                             (APITimeoutError(request=wire), '응답 시간'),
-                            (ValueError('private-key bad_schema'), '입력 자료 → 처리 조건')]:
+                            (ValueError('private-key bad_schema'), '작업 목록')]:
         notice = requirement_failure_notice('model_output_error', error)
         assert expected in notice and '조건은 보존' in notice
         assert 'private-key' not in notice and 'bad_schema' not in notice

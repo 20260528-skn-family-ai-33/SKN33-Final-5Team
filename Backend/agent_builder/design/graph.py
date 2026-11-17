@@ -114,15 +114,16 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         capability_mode=capability_mode, requirement_mode=requirement_mode)))
     graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'request_meaning','validate':'validate'})
     graph.add_edge('request_meaning','capability_check')
-    add('capability_check',_timed_node('capability_check',make_capability_check(model,capability_transport,capability_mode,error_observer=observed_error,api_key=api_key)))
+    from agent_builder.conditions.clarification_core import settled_stage
+    add('capability_check',_timed_node('capability_check',settled_stage('capability_check',make_capability_check(model,capability_transport,capability_mode,error_observer=observed_error,api_key=api_key))))
     add('await_capability',await_capability_node)
     # Orchestration stage 2: code decides required selection criteria (no-op when mode is off).
     from agent_builder.orchestration.criteria import make_orchestration_node
     add('orchestration',_timed_node('orchestration',make_orchestration_node(model,orchestration_transport,error_observer=observed_error)))
     add('generation_gate',generation_gate)
-    add('condition_check',_timed_node('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode,error_observer=observed_error)))
+    add('condition_check',_timed_node('condition_check',settled_stage('condition_check',make_condition_check(api_key,model,condition_transport,condition_mode,error_observer=observed_error))))
     from agent_builder.design.requirement_ledger import make_requirement_check
-    add('requirements',_timed_node('requirements',make_requirement_check(model,requirement_transport,requirement_mode,api_key=api_key,error_observer=observed_error)))
+    add('requirements',_timed_node('requirements',settled_stage('requirements',make_requirement_check(model,requirement_transport,requirement_mode,api_key=api_key,error_observer=observed_error))))
     planner=conversation or make_conversation(api_key,model)
     def guarded_plan(state):
         # A restored checkpoint can resume directly at this node, bypassing edges.

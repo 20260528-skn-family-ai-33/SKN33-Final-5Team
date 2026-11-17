@@ -740,7 +740,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                 from .requirement_clarification import business_questions, clarification_reply
                 questions,unknown=business_questions(plan['unresolved'],state)
                 if unknown and not attempt:
-                    messages=messages+[dict(role='user',content='업무 조건에 내부 필드 이름이 포함됐습니다. 인증값은 서버가 준비하므로 제거하고, 실제 미정인 업무 조건만 자연스러운 확인 질문으로 unresolved에 적어 다시 추출하세요. 사용자가 요구하지 않은 형식 선호를 필수로 만들지 마세요.')]
+                    messages=messages+[dict(role='user',content='앞선 unresolved에는 내부 필드 이름이나 사용자가 답할 수 없는 작업 지시가 포함됐습니다. 인증값은 서버가 준비하므로 제거하고, 실제 미정인 업무 조건만 자연스러운 확인 질문으로 unresolved에 적어 다시 추출하세요. 사용자가 요구하지 않은 형식 선호를 필수로 만들지 마세요.')]
                     continue
                 if unknown:raise ValueError('고객에게 표시할 구체적인 질문을 구성하지 못했습니다.')
                 from .requirement_contracts import RequirementQuestion

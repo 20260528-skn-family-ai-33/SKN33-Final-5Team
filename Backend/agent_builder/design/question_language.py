@@ -99,6 +99,7 @@ def validate_question_language(questions,state):
 
 def validate_draft_question_language(draft,state):
     """Apply the same guard to both planners and execution-time question nodes."""
+    from agent_builder.conditions.question_quality import strip_known_meta_instructions
     result=deepcopy(draft)
     options=result.get('question_options') or []
     responses=result.get('question_responses') or []
@@ -106,10 +107,19 @@ def validate_draft_question_language(draft,state):
               'response':responses[index] if index<len(responses) else None}
              for index,text in enumerate(result.get('questions',[]))]
     validate_question_language(records,state)
+    for record in records:
+        cleaned=strip_known_meta_instructions(record['text'])
+        if cleaned is None:
+            raise ValueError('설계 모델이 답할 수 없는 확인 문장만 반환했습니다.')
+        record['text']=cleaned
     result['questions']=[record['text'] for record in records]
     for node in (result.get('workflow') or {}).get('nodes',[]):
         if node.get('tool')=='ask_user' and isinstance(node.get('settings'),dict):
             text=node['settings'].get('question')
             if text:
-                record={'text':text};validate_question_language([record],state);node['settings']['question']=record['text']
+                record={'text':text};validate_question_language([record],state)
+                cleaned=strip_known_meta_instructions(record['text'])
+                if cleaned is None:
+                    raise ValueError('설계 모델이 답할 수 없는 확인 문장만 반환했습니다.')
+                node['settings']['question']=cleaned
     return result

@@ -93,3 +93,16 @@ test('authorization values are fully masked in prompts and both conversation rol
  assert.equal(safe.prompt_truncated,true);assert.equal(safe.prompt_storage_limit,4000);assert.equal(safe.prompt_storage_truncated,true);
  assert.equal(safeRequestContext({prompt:'legacy',prompt_storage_limit:4000}).prompt_storage_truncated,null);
 });
+
+test('escaped and unfinished authentication quotes never leave token fragments',()=>{
+ for(const scheme of ['Bearer','Basic'])for(const quote of ['"',"'"])for(const slashes of [0,1,2,3])for(const closed of [false,true]){
+  const delimiter='\\'.repeat(slashes)+quote;
+  const value=`안내 ${scheme} ${delimiter}sample-token${closed?delimiter:''}\n다음 줄 설명`;
+  assert.ok(!diagnosticText(value).includes('sample-token'),JSON.stringify(value));
+  const context=safeRequestContext({prompt:value,conversation:[{role:'user',content:value},{role:'assistant',content:value}]});
+  for(const text of [context.prompt,...context.conversation.map((t:{content:string})=>t.content)]){
+   assert.ok(!text?.includes('sample-token'),JSON.stringify(value));
+   assert.match(text!,/안내/);assert.match(text!,/보호된/);assert.match(text!,/다음 줄 설명/);
+  }
+ }
+});

@@ -602,7 +602,8 @@ def compound_filter_state(state):
             else:
                 pending, candidate = 'revise', rule
             continue
-        if named and re.search(r'조건|필터|기준', text):
+        unnamed_edit = re.search(r'(?:조건|필터|기준).{0,32}(?:높여|낮춰|올려|내려|바꿔|바꾸|변경|수정|조정)', text)
+        if (named and re.search(r'조건|필터|기준', text)) or unnamed_edit:
             pending, candidate = 'revise', None
     return {'mode': mode, 'rules': rules, 'pending': pending, 'candidate': candidate}
 
@@ -1991,7 +1992,16 @@ def plan_issues(ledger, draft, *, state=None):
             problems.append('단일 중복 제거 계약에 없는 선별 조건이 추가됐습니다. filters=[]로 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
         if any(plan.get('sort') for plan in plans):
             problems.append('단일 중복 제거 계약에 없는 정렬이 추가됐습니다. sort=[]로 입력 행 순서를 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
-    if 'filter' in ledger['operations']:
+    compound = compound_filter_state(state) if state else None
+    compound_filter = bool(compound and compound['rules'])
+    if compound and compound['pending']:
+        problems.append('선별 조건의 수정 내용이나 AND/OR 관계를 먼저 확인해야 합니다.')
+    elif compound_filter:
+        # The cross-column contract owns all predicates and their data lineage.
+        # Reuse the same proof at save time instead of the single-slot contract.
+        from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+        problems.extend(numeric_filter_issues(state, draft))
+    if 'filter' in ledger['operations'] and not compound_filter:
         value=slots.get('filter.value')
         expected = {'field': slots.get('filter.field'), 'operator': slots.get('filter.operator'), 'value': value,
                     'value_type':'boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'text'}

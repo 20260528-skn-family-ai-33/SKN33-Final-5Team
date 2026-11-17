@@ -529,3 +529,64 @@ def test_long_runs_of_spaces_are_read_once(head):
     assert compound_filter_state(s)['rules'] == []
     assert judge(s, PARTIAL)['decision'] != 'ready'
     numeric_filter_issues(s, draft)
+
+
+@pytest.mark.parametrize('reply', ['아까 기준을 좀 높여줘', '기준을 20으로 바꿔줘'])
+def test_unnamed_compound_edit_requires_clarification_before_save(reply):
+    from agent_builder.conditions.condition_readiness import compound_filter_state, plan_issues
+    values = {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
+              'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')}
+    s = compound_state(BASE, reply)
+    found = compound_filter_state(s)
+    assert found['pending'] == 'revise'
+    question = next(q for q in judge(s, values)['questions'] if q['key'] == 'filter.match')
+    assert '비용 10 이상' in question['text'] and '수량 3 이상' in question['text']
+    stale = judge(compound_state(BASE), values)
+    assert plan_issues(stale, filter_draft(s, found['rules'], 'all'), state=s)
+    s['messages'].append({'role': 'user', 'content': '비용이 20원 이상'})
+    resolved = compound_filter_state(s)
+    assert resolved['pending'] is None
+    assert [(r['field'], r['value']) for r in resolved['rules']] == [('비용', 20), ('수량', 3)]
+
+
+@pytest.mark.parametrize(('request_text', 'mode', 'expected'), [
+    ('비용이 10원보다 적은 행 또는 수량이 3개보다 적은 행', 'any', [(15, 1), (5, 4)]),
+    ('비용이 10원 이상이면서 수량이 3개 이상인 행', 'all', [(15, 4)]),
+])
+def test_compound_validation_save_and_execution_agree(tmp_path, request_text, mode, expected):
+    from agent_builder.conditions.condition_readiness import compound_filter_state, plan_issues
+    from agent_builder.design.nodes.validation import validate_node
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.runner import run_workflow
+    s = compound_state(request_text + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = s['resources'][0]
+    asset.update(id='table', name='거래.csv', format='csv', row_count=3)
+    rules = compound_filter_state(s)['rules']
+    op, word = ('lt', '적은') if mode == 'any' else ('gte', '이상')
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (op, word),
+                       'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON'),
+                       'missing.policy': ('error', '오류'), 'duplicate.policy': ('keep', '유지')})
+    assert ledger['decision'] == 'ready'
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [{'비용': a, '수량': b} for a, b in ROWS])
+        extra = [*rules, dict(rules[0], value=100)]
+        cases = [(rules[:1], mode, True), (rules, 'all' if mode == 'any' else 'any', True),
+                 (extra, mode, True), (rules, mode, False)]
+        for selected, match, blocked in cases:
+            draft = filter_draft(s, selected, match)
+            draft['execution_plan'] = draft['workflow']['nodes'][1]['settings']['execution_plan']
+            current = {**s, 'draft': draft, 'condition_enforced': True,
+                       'condition_ledger': ledger, 'confirmed': True}
+            assert bool(plan_issues(ledger, draft, state=s)) == blocked
+            assert (validate_node(current)['status'] != 'ready') == blocked
+            if blocked:
+                with pytest.raises(ValueError, match='확정 업무 조건'):
+                    store.save_agent(current)
+            else:
+                identifier = store.save_agent(current)
+                result = run_workflow(store, identifier, '실행', '', file_ids=['table'])
+                assert result['status'] == 'succeeded'
+                assert [(row['비용'], row['수량']) for row in result['rows']] == expected
+    finally:
+        store.close()

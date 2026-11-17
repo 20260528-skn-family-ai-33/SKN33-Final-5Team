@@ -53,6 +53,16 @@ def _filter_issues(state, draft, compound):
     if not required:
         return []
     error = ['명시한 숫자 선별 조건이 최종 저장 경로의 모든 행에 적용되지 않습니다. AND/OR 조건과 데이터 연결을 확인하세요.']
+    if compound:
+        from .requirement_coverage import _condition
+        requested = {_condition(rule) for rule in compound[1]}
+        plans = [n['settings'].get('execution_plan') or draft.get('execution_plan', {})
+                 for n in (draft.get('workflow') or {}).get('nodes', [])
+                 if n['tool'] == 'filter_sort' and not n['settings'].get('operation')]
+        if not draft.get('workflow'):
+            plans = [draft.get('execution_plan') or {}]
+        if any(_condition(rule) not in requested for plan in plans for rule in plan.get('filters', [])):
+            return error
     if not draft.get('workflow'):
         return [] if all(check(draft.get('execution_plan') or {}, r) for r, check in required) else error
     from .workflow_paths import workflow_paths

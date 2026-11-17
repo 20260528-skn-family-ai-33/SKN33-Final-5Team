@@ -13,8 +13,11 @@ export function requireAdmin(user?:AuthUser):asserts user is AuthUser {
 export function diagnosticText(value:unknown,max=1000):string {
  let text=typeof value==='string'?value:'';
  for(const [key,secret] of Object.entries(process.env))if(/KEY|PASSWORD|SECRET|TOKEN|DATABASE_URL/.test(key)&&secret&&secret.length>=6)text=text.split(secret).join('[보호된 값]');
- return text.replace(/Bearer\s+[^\s,;"']+/gi,'Bearer [보호된 값]').replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[보호된 키]')
-  .replace(/(["']?(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|authorization|비밀번호|비밀키|토큰)["']?\s*[:=：]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,'$1[보호된 값]')
+ // Header values can contain a scheme and spaces. Consume the whole value before
+ // generic key/value masking; unquoted headers are conservatively redacted to EOL.
+ return text.replace(/(["']?(?:proxy-)?authorization["']?[ \t]*[:=：][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)/gi,'$1[보호된 값]')
+  .replace(/\b(?:Bearer|Basic)[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;"']+)/gi,'[보호된 인증값]').replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[보호된 키]')
+  .replace(/(["']?(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|비밀번호|비밀키|토큰)["']?\s*[:=：]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,'$1[보호된 값]')
   .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,'[보호된 토큰]')
   .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,'[보호된 키]')
   .replace(/(?:https?:\/\/|postgres(?:ql)?:\/\/)[^\s]+/gi,'[주소 숨김]')
@@ -40,6 +43,8 @@ export function safeRequestContext(raw:any){
  const valid=Array.isArray(input.conversation)?input.conversation.filter((m:any)=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string'):[];
  return {
   prompt:typeof input.prompt==='string'&&input.prompt.trim()?diagnosticText(input.prompt,8000):null,
+  prompt_storage_limit:input.prompt_storage_limit===4000?4000:null,
+  prompt_storage_truncated:typeof input.prompt_storage_truncated==='boolean'?input.prompt_storage_truncated:null,
   prompt_truncated:input.prompt_truncated===true||(typeof input.prompt==='string'&&input.prompt.length>8000),
   conversation:valid.slice(-40).map((m:any)=>({role:m.role as 'user'|'assistant',content:diagnosticText(m.content,4000),truncated:m.content.length>4000})),
   conversation_source:input.conversation_source==='session_latest'?'session_latest':'unavailable',

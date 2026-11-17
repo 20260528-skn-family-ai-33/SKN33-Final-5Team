@@ -596,3 +596,16 @@ print(json.dumps(handle(payload)))
         released.touch()
         if process.poll() is None:process.kill()
         process.communicate(timeout=5)
+
+
+@pytest.mark.parametrize('length', [3999, 4000, 4001, 9000])
+def test_request_storage_records_truncation_boundary(tmp_path, length):
+    s = session(tmp_path)
+    store = Storage(tmp_path)
+    try:
+        audit = GenerationHistory.start(store, {'id':s['id'], 'action':'message', 'content':'가' * length})
+        record = audit.read()
+        assert record['request_text'] == '가' * min(length, 4000)
+        assert record['request_text_truncated'] is (length > 4000)
+    finally:
+        store.close()

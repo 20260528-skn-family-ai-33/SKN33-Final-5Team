@@ -33,7 +33,7 @@ test('012: admin-only identity/context, exact owner/version linkage and safe API
   await c.query("INSERT INTO a4b.users VALUES($1,'admin@example.test','admin','active'),($2,'member@example.test','member','active'),($3,'other@example.test','member','active')",[admin,member,other]);
   for(const name of ['009_admin_monitoring.sql','010_admin_monitoring_fixes.sql','011_monitoring_document_failures.sql','012_monitoring_request_context.sql'])await c.query(await readFile('infrastructure/db/migrations/'+name,'utf8'));
   await c.query('INSERT INTO a4b.design_sessions VALUES($1,$2,$3,$4),($5,$2,$3,$6)',[session,member,workflow,JSON.stringify([{role:'system',content:'HIDDEN SYSTEM'},{role:'user',content:'기존 요청 password="secret value"'},{role:'assistant',content:'추가 질문입니다.'},{role:'tool',content:'HIDDEN TOOL'},{role:'assistant',content:{secret:'HIDDEN OBJECT'}}]),newSession,JSON.stringify([{role:'user',content:'다른 버전의 대화'}])]);
-  for(const owner of [member,other])await c.query('INSERT INTO a4b.workflow_generation_requests(workspace_id,id,session_id,json) VALUES($1,$2,$3,$4)',[owner,'same-request',session,JSON.stringify({request_text:owner===member?'요약해줘 token=prompt-secret':'다른 회원 요청',started_at:new Date(Date.now()-1000).toISOString(),status:'failed',node:'requirements'})]);
+  for(const owner of [member,other])await c.query('INSERT INTO a4b.workflow_generation_requests(workspace_id,id,session_id,json) VALUES($1,$2,$3,$4)',[owner,'same-request',session,JSON.stringify({request_text:owner===member?'요약해줘 token=prompt-secret Authorization: Basic dXNlcjpwYXNz':'다른 회원 요청',started_at:new Date(Date.now()-1000).toISOString(),status:'failed',node:'requirements'})]);
   await c.query('INSERT INTO a4b.workflow_versions VALUES($1,$3,1),($2,$3,2)',[session,newSession,workflow]);
   await c.query('INSERT INTO a4b_builder.agent_versions VALUES($1,$2,1,$3),($1,$2,2,$4)',[member,workflow,JSON.stringify({session_id:session,credential_id:'HIDDEN CREDENTIAL'}),JSON.stringify({session_id:newSession})]);
   await c.query("INSERT INTO a4b.workflow_runs VALUES($1,$2,'failed','{}',$3,now()-interval '1 hour',now()-interval '1 minute',$4)",[run,member,JSON.stringify({request:'실행 요청 api_key=execution-secret',other:'HIDDEN INPUT'}),session]);
@@ -50,10 +50,21 @@ test('012: admin-only identity/context, exact owner/version linkage and safe API
   }
   const listing=await get('?days=7');assert.equal(listing.total,3);assert.equal(listing.items.find((i:any)=>i.member_id===member).member_email,'member@example.test');
   assert.ok(!JSON.stringify(listing).includes('prompt-secret'));assert.ok(!JSON.stringify(listing).includes('기존 요청'));assert.ok(listing.items.every((i:any)=>!('context' in i)));
-  const detail=await get('/generation/'+member+':same-request?days=7');assert.equal(detail.item.member_email,'member@example.test');assert.match(detail.item.context.prompt,/요약해줘/);assert.ok(!JSON.stringify(detail).includes('prompt-secret'));assert.ok(!JSON.stringify(detail).includes('secret value'));
+  const detail=await get('/generation/'+member+':same-request?days=7');assert.equal(detail.item.member_email,'member@example.test');assert.match(detail.item.context.prompt,/요약해줘/);assert.ok(!JSON.stringify(detail).includes('prompt-secret'));assert.ok(!JSON.stringify(detail).includes('dXNlcjpwYXNz'));assert.ok(!JSON.stringify(detail).includes('secret value'));
   const runDetail=await get('/execution/'+run+'?days=7');assert.ok(!JSON.stringify(runDetail).includes('execution-secret'));assert.equal(runDetail.item.context.conversation.length,2);
   for(const statement of ['SELECT * FROM a4b.monitor_member_emails($1,ARRAY[\''+member+'\'])',"SELECT a4b.monitor_request_context($1,'generation','"+member+":same-request')"]){
    await c.query('SAVEPOINT forbidden');await assert.rejects(c.query(statement,[member]),{code:'42501'});await c.query('ROLLBACK TO forbidden');
+  }
+  assert.equal(detail.item.context.prompt_storage_limit,4000);
+  assert.equal(detail.item.context.prompt_storage_truncated,null,'old records have unknown truncation');
+  for(const truncated of [null,false,true]){
+   await c.query('RESET ROLE');
+   const record={request_text:'가'.repeat(4000),started_at:new Date(Date.now()-1000).toISOString(),status:'failed',...(truncated===null?{}:{request_text_truncated:truncated})};
+   await c.query('UPDATE a4b.workflow_generation_requests SET json=$1 WHERE workspace_id=$2',[JSON.stringify(record),member]);
+   await c.query('SET LOCAL ROLE a4b_app');
+   const projected=(await get('/generation/'+member+':same-request?days=7')).item.context;
+   assert.equal(projected.prompt.length,4000);assert.equal(projected.prompt_storage_limit,4000);
+   assert.equal(projected.prompt_storage_truncated,truncated);assert.equal(projected.prompt_truncated,truncated===true);
   }
   await c.query('RESET ROLE');
   await c.query('UPDATE a4b.design_sessions SET workflow_id=$1 WHERE id=$2',[other,session]);await c.query('SET LOCAL ROLE a4b_app');assert.deepEqual((await ctx('execution',run)).conversation,[],'wrong workflow session rejected');await c.query('RESET ROLE');

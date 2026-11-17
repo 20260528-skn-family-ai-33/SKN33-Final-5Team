@@ -16,12 +16,16 @@ DECLARE
  member text; session_key text; workflow_key text; request_text text;
  messages jsonb := '[]'::jsonb; turns jsonb := '[]'::jsonb;
  turn_count integer := 0; source text := 'unavailable';
+ storage_limit integer := NULL; storage_truncated boolean := NULL;
 BEGIN
  PERFORM a4b.monitor_require_admin(actor);
  IF k='generation' THEN
-  SELECT g.workspace_id,g.session_id,g.json->>'request_text'
-   INTO member,session_key,request_text FROM a4b.workflow_generation_requests g
+  SELECT g.workspace_id,g.session_id,g.json->>'request_text',
+    CASE WHEN g.json->>'request_text_truncated' IN ('true','false')
+     THEN (g.json->>'request_text_truncated')::boolean ELSE NULL END
+   INTO member,session_key,request_text,storage_truncated FROM a4b.workflow_generation_requests g
    WHERE g.workspace_id||':'||g.id=rid;
+  storage_limit := 4000;
  ELSIF k='execution' AND to_regclass('a4b.workflow_runs') IS NOT NULL THEN
   SELECT r.requested_by::text,r.input_json->>'request',v.workflow_id::text
    INTO member,request_text,workflow_key
@@ -58,7 +62,8 @@ BEGIN
  SELECT (SELECT count(*)::integer FROM valid),coalesce(jsonb_agg(jsonb_build_object(
   'role',value->>'role','content',left(value->>'content',8001)) ORDER BY ordinality),'[]'::jsonb)
  INTO turn_count,turns FROM recent;
- RETURN jsonb_build_object('prompt',left(request_text,8001),'prompt_truncated',length(request_text)>8000,
+ RETURN jsonb_build_object('prompt',left(request_text,8001),'prompt_truncated',coalesce(storage_truncated,false) OR coalesce(length(request_text)>8000,false),
+  'prompt_storage_limit',storage_limit,'prompt_storage_truncated',storage_truncated,
   'conversation',turns,'conversation_source',source,'conversation_truncated',turn_count>40);
 END $$;
 

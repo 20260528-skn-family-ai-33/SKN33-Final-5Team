@@ -96,10 +96,12 @@ class GenerationHistory:
                 raise ValueError('예약을 함께 저장할지 선택해주세요.')
             request_identity=json.dumps({'content':request_identity,'include_schedule':data['include_schedule']},
                                         sort_keys=True,separators=(',',':'))
+        stored_request = redact(data.get('content', ''), audit.api_key)
         record = dict(request_id=request_id, session_id=data['id'], action=data['action'],
                       session_revision=data.get('revision'),
                       request_hash=hashlib.sha256(request_identity.encode()).hexdigest(),
-                      request_text=redact(data.get('content', ''), audit.api_key)[:4000],
+                      request_text=stored_request[:4000],
+                      request_text_truncated=len(stored_request) > 4000,
                       status='running', stage='request_analysis', node='request',
                       reason_code=None, reason=None, error_type=None, workflow_id=None,
                       started_at=stamp, updated_at=stamp, finished_at=None, events=[],

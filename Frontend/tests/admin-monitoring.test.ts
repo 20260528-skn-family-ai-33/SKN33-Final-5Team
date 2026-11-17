@@ -13,7 +13,7 @@ test('admin UI gates data, opens details, uses PATCH and handles denied/revoked 
  for(const n of names)Object.defineProperty(globalThis,n,{value:n==='IS_REACT_ACT_ENVIRONMENT'?true:(dom.window as any)[n],configurable:true,writable:true});
  const {createElement,act}=require('react'),{createRoot}=require('react-dom/client'),{AuthProvider,AdminMonitoring,WorkspaceNav}=mod.exports;
  const ui=createRoot(document.getElementById('root'));const calls:{url:string;init?:RequestInit}[]=[];
- let role='member';const item={id:'request-1',member_id:'member-1',member_email:'member@example.test',context:{prompt:'지난주 문의를 요약해줘',prompt_truncated:false,conversation:[{role:'user',content:'<img src=x onerror=alert(1)> 문의 요약',truncated:false},{role:'assistant',content:'어떤 기간인가요?',truncated:false}],conversation_source:'session_latest',conversation_truncated:false},kind:'generation',status:'failed',stage:'request_analysis',node:'requirements',reason_code:'invalid_model_response',reason:'필수 필드 누락',started_at:new Date().toISOString(),triage:{status:'unreviewed',note:'',revision:0},events:[{node:'requirements',status:'failed',at:new Date().toISOString()}],diagnostics:{validation:[{field:'draft.name',type:'missing'}]}};
+ let role='member';const item={id:'request-1',member_id:'member-1',member_email:'member@example.test',context:{prompt:'지난주 문의를 요약해줘',prompt_truncated:false,prompt_storage_limit:4000,prompt_storage_truncated:null as boolean|null,conversation:[{role:'user',content:'<img src=x onerror=alert(1)> 문의 요약',truncated:false},{role:'assistant',content:'어떤 기간인가요?',truncated:false}],conversation_source:'session_latest',conversation_truncated:false},kind:'generation',status:'failed',stage:'request_analysis',node:'requirements',reason_code:'invalid_model_response',reason:'필수 필드 누락',started_at:new Date().toISOString(),triage:{status:'unreviewed',note:'',revision:0},events:[{node:'requirements',status:'failed',at:new Date().toISOString()}],diagnostics:{validation:[{field:'draft.name',type:'missing'}]}};
  globalThis.fetch=async(path:any,init?:RequestInit)=>{const url=String(path);calls.push({url,init});if(url==='/api/auth/me')return Response.json({enabled:true,authenticated:true,user:{id:'admin-1',name:'Admin',email:'admin@example.test',role}});
  if(url.includes('/generation/')){if(init?.method==='PATCH')return Response.json({triage:{status:'investigating',revision:1}});return Response.json({item,history:[]});}
  return Response.json({items:[item],total:1,page:1,page_size:25,checked_at:new Date().toISOString(),summary:{requests:1,failed:1,blocked:0,affected_users:1},groups:[]});};
@@ -26,6 +26,12 @@ test('admin UI gates data, opens details, uses PATCH and handles denied/revoked 
  await act(async()=>{(document.querySelector('button[aria-label="request-1 상세 보기"]') as HTMLButtonElement).click();await tick();});
  assert.ok(document.body.textContent?.includes('필수 필드 누락'));assert.ok(document.body.textContent?.includes('draft.name: missing'));
  assert.ok(document.body.textContent?.includes('지난주 문의를 요약해줘'));
+ assert.match(document.querySelector('.am-storage-limit')!.textContent!,/과거.*4,000.*생략 여부는 미기록/);
+ for(const truncated of [true,false]){
+  item.context.prompt_storage_truncated=truncated;item.context.prompt_truncated=truncated;
+  await act(async()=>{([...document.querySelectorAll('button')].find(b=>b.textContent==='새로고침')!).click();await tick();await tick();});
+  assert.match(document.querySelector('.am-storage-limit')!.textContent!,truncated?/나머지 입력은 생략/:/생략되지 않았습니다/);
+ }
  const conversation=document.querySelector('.am-conversation') as HTMLDetailsElement;assert.equal(conversation.open,false);
  conversation.open=true;assert.match(conversation.textContent!,/실패 이후/);assert.match(conversation.textContent!,/어떤 기간인가요/);assert.equal(conversation.querySelector('img'),null,'user content is escaped text');
  item.member_email='';item.context.prompt='';item.context.conversation=[];

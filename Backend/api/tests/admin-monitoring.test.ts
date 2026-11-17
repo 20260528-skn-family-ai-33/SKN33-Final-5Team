@@ -71,3 +71,25 @@ test('request context masks secrets, excludes system/tool payloads and bounds re
   assert.equal(long.prompt!.length,8000);assert.equal(long.prompt_truncated,true);assert.equal(long.conversation.length,40);assert.equal(long.conversation_truncated,true);assert.equal(long.conversation[0].content.length,4000);assert.equal(long.conversation[0].truncated,true);
  }finally{delete process.env.A4B_MONITOR_TEST_SECRET;}
 });
+
+test('authorization values are fully masked in prompts and both conversation roles',()=>{
+ const cases=[
+  'Authorization: Basic dXNlcjpwYXNz',
+  'Authorization: Bearer "quoted-token-secret"',
+  "Authorization: Bearer 'single-token-secret'",
+  '"Authorization": "Bearer json-token-secret"',
+  "'Authorization': 'Basic json-basic-secret'",
+  'Proxy-Authorization: Basic proxy-secret',
+  'Bearer "standalone-secret"',
+ ];
+ for(const value of cases){
+  const safe=safeRequestContext({prompt:value,conversation:[{role:'user',content:value},{role:'assistant',content:value}]});
+  for(const text of [safe.prompt,...safe.conversation.map((t:{content:string})=>t.content)]){
+   assert.ok(text?.includes('보호된'),value);
+   for(const secret of ['dXNlcjpwYXNz','quoted-token-secret','single-token-secret','json-token-secret','json-basic-secret','proxy-secret','standalone-secret'])assert.ok(!text?.includes(secret),value);
+  }
+ }
+ const safe=safeRequestContext({prompt:'x'.repeat(4000),prompt_truncated:true,prompt_storage_limit:4000,prompt_storage_truncated:true});
+ assert.equal(safe.prompt_truncated,true);assert.equal(safe.prompt_storage_limit,4000);assert.equal(safe.prompt_storage_truncated,true);
+ assert.equal(safeRequestContext({prompt:'legacy',prompt_storage_limit:4000}).prompt_storage_truncated,null);
+});

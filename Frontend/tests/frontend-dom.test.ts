@@ -1535,6 +1535,42 @@ for(const source of ['draft','saved'] as const)for(const label of ['Slack 채널
  }finally{await h.close();}
 });
 
+for(const succeeds of [true,false])test(`failed node edit retains its canvas while retrying and shows ${succeeds?'success':'the repeated failure'}`,async()=>{
+ const workflow={entry:'mail',nodes:[{id:'mail',label:'메일 최대 100건 읽기',tool:'email.list',settings:{operation:'read_messages',arguments_json:'{"max_results":100}'},bindings:[]}],edges:[]};
+ const failureText='요청을 작업 목록으로 정리하는 단계에서 AI가 작업 목록을 잘못된 형식으로 반환했습니다.';
+ const session={...readySession(),status:'validation_failed',draft:{...A.config,workflow},
+  messages:[{role:'user',content:'조회 한도를 5건으로 바꿔줘.'},{role:'assistant',content:failureText}],
+  requirement_failure:{kind:'processing_error',retryable:true,attempt:1,stage:'requirements'},issues:[failureText]};
+ const pending=deferred();
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>
+  path.startsWith('/api/agent-builder/session?')?session:path.endsWith('/message')?pending.promise:undefined);
+ try{
+  assert.equal(document.querySelectorAll('.as-flow-node').length,1);
+  assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/이전 워크플로우 초안은 유지/);
+  assert.ok((button('저장') as HTMLButtonElement).disabled);
+  await click(button('조건 그대로 다시 시도'));
+  assert.match(document.querySelector('.as-operation-progress')?.textContent||'',/입력한 조건을 유지하고 다시 구성/);
+  assert.equal(document.querySelectorAll('.as-flow-node').length,1);
+  assert.ok((button('조건 그대로 다시 시도') as HTMLButtonElement).disabled);
+  const message=h.calls.find(call=>call.path.endsWith('/message'))!;
+  assert.equal(message.body.id,session.id);assert.equal(message.body.revision,session.revision);
+  const newFlow={...workflow,nodes:[{...workflow.nodes[0],label:'메일 최대 5건 읽기',settings:{operation:'read_messages',arguments_json:'{"max_results":5}'}}]};
+  const result=succeeds?{...session,revision:session.revision+1,status:'ready',issues:[],requirement_failure:null,
+   draft:{...session.draft,workflow:newFlow},messages:[...session.messages,{role:'assistant',content:'조회 한도를 5건으로 수정했습니다.'}]}:
+   {...session,revision:session.revision+1,requirement_failure:{...session.requirement_failure,attempt:2},
+    messages:[...session.messages,{role:'assistant',content:failureText+' 같은 조건의 2번째 시도도 실패했습니다.'}]};
+  await act(async()=>{pending.resolve(result);await tick();});
+  assert.equal(document.querySelector('.as-operation-progress'),null);
+  assert.match(document.querySelector('.as-flow-node')?.textContent||'',succeeds?/5건/:/100건/);
+  if(succeeds)assert.equal(document.querySelector('.as-requirement-retry'),null);
+  else{
+   assert.match(document.querySelector('.as-messages')?.textContent||'',/2번째 시도도 실패/);
+   assert.equal((button('조건 그대로 다시 시도') as HTMLButtonElement).disabled,false);
+   assert.ok((button('저장') as HTMLButtonElement).disabled);
+  }
+ }finally{await h.close();}
+});
+
 test('current saved node opens the existing design edit conversation',async()=>{
  const workflow={entry:'read',nodes:[{id:'read',label:'메일 읽기',tool:'email.list',settings:{arguments_json:'{"max_results":25}'},bindings:[]}],edges:[]};
  const saved={...A,config:{...A.config,workflow}};

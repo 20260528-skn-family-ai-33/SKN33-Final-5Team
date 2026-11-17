@@ -311,7 +311,10 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                     result = {**result, 'missing_conditions':remaining, 'rejected_metadata_condition_indices':rejected}
         except Exception as error:
             if error_observer:error_observer(error)
-            result={'decision':'system_error','issues':['도구 지원 판단을 완료하지 못했습니다.'], 'error_type':type(error).__name__,'model_calls':None}
+            from agent_builder.design.failure_notice import requirement_failure_notice
+            notice=requirement_failure_notice('model_output_error' if isinstance(error,(ValueError,TypeError,KeyError)) else 'model_error',
+                error,stage='capability_check',retained_draft=bool((state.get('draft') or {}).get('workflow')))
+            result={'decision':'system_error','issues':[notice], 'error_type':type(error).__name__,'model_calls':None}
             if isinstance(error,AssessmentConflictError):
                 result.update(issues=['모델의 지원 판정과 누락 항목이 서로 맞지 않습니다. 요청을 보존하고 생성·저장을 중단했습니다.'],
                               assessment_conflict=error.reported,model_calls=error.model_calls)
@@ -368,10 +371,10 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
             issues=(result.get('issues') if decision=='system_error' else None) or ['지원 여부의 검토가 필요합니다. 요청을 보완한 뒤 다시 확인해주세요.']
             # A model/contract failure (error_type set) is retryable and is not a user decision.
             from agent_builder.conditions.clarification_core import system_failure, RETRY_NOTICE
-            failure=system_failure('capability_check',result['error_type'],' '.join(issues)) if decision=='system_error' and result.get('error_type') else None
+            failure=system_failure('capability_check',result['error_type'],' '.join(issues),state=state) if decision=='system_error' and result.get('error_type') else None
             update.update(capability_route='stop',status='validation_failed',confirmed=False,saved_agent_id=None,gap_condition_review=None,
                 pending_questions=[],capability_questions=[],issues=issues,semantic_issues=[],system_failure=failure,
-                messages=state.get('messages',[])+[{'role':'assistant','content':' '.join(issues)+(RETRY_NOTICE if failure else '')}])
+                messages=state.get('messages',[])+[{'role':'assistant','content':(failure['message']+RETRY_NOTICE) if failure else ' '.join(issues)}])
         return update
     return check
 

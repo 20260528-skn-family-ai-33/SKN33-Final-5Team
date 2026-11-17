@@ -121,3 +121,36 @@ test('ordinary basic prose is preserved while standalone Basic credentials are m
   const result=diagnosticText(value);assert.ok(!result.includes('dXNlcjpwYXNz'));assert.match(result,/보호된/);assert.match(result,/then summarize|keep this/);
  }
 });
+
+test('Basic punctuation and incomplete or serialized secret fields are masked',()=>{
+ const cases=[
+  ['인증값은 `Basic dXNlcjpwYXNz`입니다.','dXNlcjpwYXNz'],
+  ['Basic dXNlcjpwYXNz! continue','dXNlcjpwYXNz'],
+  ['password="alpha beta gamma','alpha beta gamma'],
+  [String.raw`{\"password\":\"alpha beta gamma\"}`, 'alpha beta gamma'],
+  [String.raw`{\"password\":\"alpha beta gamma`, 'alpha beta gamma'],
+ ];
+ for(const [value,secret] of cases){
+  const result=safeRequestContext({prompt:value,conversation:[{role:'user',content:value},{role:'assistant',content:value}]});
+  for(const text of [diagnosticText(value),result.prompt,...result.conversation.map((t:{content:string})=>t.content)]){
+   for(const piece of secret.split(' '))assert.ok(!text?.includes(piece),value);
+  }
+ }
+ assert.equal(diagnosticText('인증값은 `Basic dXNlcjpwYXNz`입니다.'),'인증값은 `Basic [보호된 인증값]`입니다.');
+ assert.equal(diagnosticText('Basic dXNlcjpwYXNz! continue'),'Basic [보호된 인증값]! continue');
+});
+
+test('secret key quoting preserves closed-value suffixes and masks incomplete values',()=>{
+ for(const key of ['password','token','비밀번호'])for(const quote of ['"',"'"])for(const count of [0,1,2,3])for(const closed of [true,false]){
+  const delimiter='\\'.repeat(count)+quote;
+  const value=`${delimiter}${key}${delimiter}: ${delimiter}alpha beta gamma${closed?delimiter+'; 설명 유지':''}`;
+  const safe=safeRequestContext({prompt:value,conversation:[{role:'user',content:value},{role:'assistant',content:value}]});
+  for(const text of [safe.prompt,...safe.conversation.map((t:{content:string})=>t.content)]){
+   for(const fragment of ['alpha','beta','gamma'])assert.ok(!text?.includes(fragment),value);
+   if(closed)assert.match(text!,/설명 유지/);
+  }
+ }
+ assert.match(diagnosticText(String.raw`password="alpha \"beta\" gamma"; 설명 유지`),/설명 유지/);
+ assert.ok(!diagnosticText(String.raw`password="alpha \"beta\" gamma"; 설명 유지`).includes('gamma'));
+ assert.ok(!diagnosticText(String.raw`\"password\"\=\"alpha beta gamma`).includes('gamma'));
+});

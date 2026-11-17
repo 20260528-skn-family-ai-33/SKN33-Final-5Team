@@ -12,23 +12,46 @@ export function requireAdmin(user?:AuthUser):asserts user is AuthUser {
 // Standalone Basic is ambiguous prose: require canonical Base64 containing the
 // username/password separator. Headers remain masked independently below.
 function maskStandaloneBasic(value:string):string {
- return value.replace(/\bBasic[ \t]+\\*["']?([A-Za-z0-9+/]+={0,2})\\*["']?(?=$|[\s,;.)}\]])/gi,(match,encoded:string)=>{
+ return value.replace(/\bBasic[ \t]+\\*["']?([A-Za-z0-9+/]+={0,2})\\*["']?(?![A-Za-z0-9+/=])/gi,(match,encoded:string)=>{
   const decoded=Buffer.from(encoded,'base64');
   const canonical=decoded.toString('base64').replace(/=+$/,'');
   return canonical===encoded.replace(/=+$/,'')&&decoded.includes(0x3a)?'Basic [보호된 인증값]':match;
  });
 }
+// Parse quoted secret values separately from unquoted values. Missing closing
+// delimiters hide the remaining value rather than falling back to its first word.
+function maskSecretFields(text:string):string {
+ const keys=/(?<![\p{L}\p{N}_])(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|비밀번호|비밀키|토큰)(?:\\*["'])?\s*\\*[:=：]\s*/giu;
+ let result='',cursor=0,match:RegExpExecArray|null;
+ while((match=keys.exec(text))!==null){
+  const start=keys.lastIndex;
+  const opening=/^(\\*)(["'])/.exec(text.slice(start));
+  let end=start;
+  if(opening){
+   end=text.length;
+   for(let i=start+opening[0].length;i<text.length;i++){
+    if(text[i]!==opening[2])continue;
+    let slashes=0;for(let j=i-1;j>=start&&text[j]==='\\';j--)slashes++;
+    if(opening[1].length===0?slashes%2===0:slashes===opening[1].length){end=i+1;break;}
+   }
+  }else{
+   while(end<text.length&&!/[\s,;]/.test(text[end]))end++;
+  }
+  result+=text.slice(cursor,start)+'[보호된 값]';cursor=end;keys.lastIndex=end;
+ }
+ return result+text.slice(cursor);
+}
 // Diagnostic projections never include raw payloads. Request context is a separate admin-only projection.
 export function diagnosticText(value:unknown,max=1000):string {
  let text=typeof value==='string'?value:'';
  for(const [key,secret] of Object.entries(process.env))if(/KEY|PASSWORD|SECRET|TOKEN|DATABASE_URL/.test(key)&&secret&&secret.length>=6)text=text.split(secret).join('[보호된 값]');
- // Header values can contain a scheme and spaces. Consume the whole value before
- // generic key/value masking; unquoted headers are conservatively redacted to EOL.
- return maskStandaloneBasic(text).replace(/(["']?(?:proxy-)?authorization["']?[ \t]*[:=：][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)/gi,'$1[보호된 값]')
+ // Header values can contain a scheme and spaces; unquoted headers are
+ // conservatively redacted to EOL. Secret field values are parsed independently.
+ return maskStandaloneBasic(maskSecretFields(text)).replace(/(["']?(?:proxy-)?authorization["']?[ \t]*[:=：][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)/gi,'$1[보호된 값]')
   // Free text may contain escaped, nested or unfinished quotes. Treat the rest
   // of a Bearer credential line as sensitive instead of guessing its closing delimiter.
   .replace(/\bBearer[ \t]+[^\r\n]*/gi,'[보호된 인증값]').replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[보호된 키]')
-  .replace(/(["']?(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|client[_-]?secret|api[ _-]?key|비밀번호|비밀키|토큰)["']?\s*[:=：]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,'$1[보호된 값]')
+
   .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,'[보호된 토큰]')
   .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,'[보호된 키]')
   .replace(/(?:https?:\/\/|postgres(?:ql)?:\/\/)[^\s]+/gi,'[주소 숨김]')

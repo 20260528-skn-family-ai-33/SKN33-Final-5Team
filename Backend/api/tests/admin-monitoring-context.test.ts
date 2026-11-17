@@ -72,6 +72,15 @@ test('012: admin-only identity/context, exact owner/version linkage and safe API
   const ordinaryContext=(await get('/execution/'+run+'?days=7')).item.context;
   assert.equal(ordinaryContext.prompt,ordinary);
   assert.deepEqual(ordinaryContext.conversation.map((t:any)=>t.content),[ordinary,ordinary]);
+  for(const value of ['인증값은 `Basic dXNlcjpwYXNz`입니다.', 'Basic dXNlcjpwYXNz!', 'password="alpha beta gamma', String.raw`{\"password\":\"alpha beta gamma\"}`]){
+   await c.query('RESET ROLE');
+   await c.query('UPDATE a4b.workflow_runs SET input_json=$1 WHERE id=$2',[JSON.stringify({request:value}),run]);
+   await c.query('UPDATE a4b.design_sessions SET messages_json=$1 WHERE id=$2',[JSON.stringify([{role:'user',content:value},{role:'assistant',content:value}]),session]);
+   await c.query('SET LOCAL ROLE a4b_app');
+   const safe=(await get('/execution/'+run+'?days=7')).item.context;
+   for(const fragment of ['dXNlcjpwYXNz','alpha','beta','gamma'])assert.ok(!JSON.stringify(safe).includes(fragment),value);
+   assert.equal(safe.conversation.length,2);
+  }
   assert.equal(detail.item.context.prompt_storage_limit,4000);
   assert.equal(detail.item.context.prompt_storage_truncated,null,'old records have unknown truncation');
   for(const truncated of [null,false,true]){

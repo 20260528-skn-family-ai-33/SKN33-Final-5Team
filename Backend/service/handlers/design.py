@@ -53,6 +53,24 @@ def _work_messages(storage,s,graph):
     return state.get('messages',[])
 
 
+def _chat_save_reply(state,before):
+    """None when a typed save request may run the save-button path; otherwise why not, in plain words."""
+    from agent_builder.design.save_intent import blocked_save_reply
+    reviewing=any(isinstance(item.value,dict) and item.value.get('kind')=='review'
+                  for task in before.tasks for item in task.interrupts)
+    if not reviewing or state.get('status')!='ready':
+        return blocked_save_reply(state)
+    if (state.get('draft') or {}).get('schedule'):
+        # The save button asks whether to store the schedule too; never guess it.
+        return '예약을 함께 저장할지 선택해야 합니다. 오른쪽 위 저장 버튼을 눌러 주세요.'
+    from agent_builder.capabilities.capability_gate import require_ready
+    from agent_builder.conditions.clarification_core import open_required
+    try:require_ready(state)
+    except ValueError as error:return '아직 저장할 수 없습니다. '+str(error)
+    if open_required(state):return blocked_save_reply({**state,'pending_questions':[True]})
+    return None
+
+
 def _with_side_messages(messages,s):
     """Display-only merge. Side remarks never enter graph messages, answers or fingerprints."""
     side=s.get('side_messages') or []
@@ -248,6 +266,21 @@ def _session_action(c):
         state=retained_design(state,graph,config,(before.config or {}).get('configurable',{}).get('checkpoint_id'))
         restored={key:state.get(key) for key in ('draft', *MEANING_FIELDS)
                   if state.get(key) != (before.values or {}).get(key)}
+        from agent_builder.design.save_intent import is_save_request
+        if (action=='message' and not data.get('question_id') and not data.get('question_answers')
+                and is_save_request(data.get('content'))):
+            # "확인완료. 저장" is the save button, not a change request: never re-run
+            # the checks and planner for it (that returned the same draft forever).
+            reply=_chat_save_reply(state,before)
+            shown=len(state.get('messages') or _work_messages(storage,s,graph))
+            side=[{'after':shown,'role':'user','content':data['content'].strip(),'scope':'side'}]
+            if reply:
+                s={**s,'side_messages':s.get('side_messages',[])+side+[{'after':shown,'role':'assistant','content':reply,'scope':'side'}],
+                   'last_generation_request_id':data.get('generation_request_id')}
+                s=storage.update_session(s,data['revision'])
+                return public_state(storage,s,graph)
+            s={**s,'side_messages':s.get('side_messages',[])+side}
+            action='confirm'
         if action=='confirm':
             if state.get('status')=='saved':return public_state(storage,s,graph)
             from agent_builder.capabilities.capability_gate import require_ready

@@ -8,7 +8,9 @@ const sf=ts.createSourceFile('studio.tsx',readFileSync(new URL('../app/agent-stu
 const component=sf.statements.find((n):n is ts.FunctionDeclaration=>ts.isFunctionDeclaration(n)&&n.name?.text==='AgentStudio');assert.ok(component?.body);
 const statements=component.body.statements;
 const explanation=sf.statements.find((n):n is ts.FunctionDeclaration=>ts.isFunctionDeclaration(n)&&n.name?.text==='explainIncompleteWorkflow');if(!explanation)throw new Error('Missing workflow explanation');
-const explanationText=explanation.getText(sf);
+// Module-level constants the extracted handlers read must be compiled alongside them.
+const retryPrompt=sf.statements.find(n=>ts.isVariableStatement(n)&&n.declarationList.declarations.some(d=>d.name.getText(sf)==='RETRY_PROMPT'));if(!retryPrompt)throw new Error('Missing retry prompt');
+const explanationText=explanation.getText(sf)+'\n'+retryPrompt.getText(sf);
 const restore=statements.find(n=>ts.isExpressionStatement(n)&&ts.isCallExpression(n.expression)&&n.expression.expression.getText(sf)==='useEffect'&&n.getText(sf).includes('refresh(controller.signal,current)'));assert.ok(restore);
 const restoreText=restore.getText(sf);
 function handler(name:string){const n=statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name);assert.ok(n);return n.getText(sf);}

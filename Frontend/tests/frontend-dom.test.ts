@@ -1651,6 +1651,17 @@ test('legacy design processing failure reports missing diagnostics without promi
  }finally{await h.close();}
 });
 
+test('read-time projected failure offers a retry outside the failed status',async()=>{
+ const session={...readySession(),status:'needs_clarification',draft:{...A.config,questions:[]},pending_questions:[],
+  requirement_failure:{kind:'execution_mode_questions',retryable:true,
+   reason:'이전 버전에서 만든 확인 질문이 현재 실행 방식과 맞지 않아 표시하지 않았습니다.',action:'조건 그대로 다시 시도하면 기존 요청으로 필요한 질문을 다시 구성합니다.'}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/실행 방식과 맞지 않아/);
+  assert.ok(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'));
+ }finally{await h.close();}
+});
+
 test('genuine missing conditions remain answerable after a processing failure has cleared',async()=>{
  const question={id:'threshold',key:'filter.value',text:'선별할 기준 값은 얼마인가요?',response:{type:'text'}};
  const session={...readySession(),status:'needs_clarification',draft:{...A.config,questions:[question.text]},pending_questions:[question],

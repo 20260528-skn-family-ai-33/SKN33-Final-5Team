@@ -332,10 +332,11 @@ def _session_action(c):
                     **({'node_edit':node_edit} if node_edit is not None else {}),
                     **({'question_id':data['question_id']} if data.get('question_id') else {}),
                     **({'question_answers':answers} if answers else {})}),config)
-            elif (state.get('system_failure') or (state.get('requirement_failure') or {}).get('retryable')) and _last_user(state)==content:
-                # A retryable processing failure (clarification core system_failure or main's
-                # requirement_failure): rerun from the gates with the same request instead of
-                # appending a duplicate message.
+            elif (state.get('status')=='validation_failed' and (state.get('system_failure') or state.get('requirement_failure'))
+                  and _last_user(state)==content):
+                # Resending the request of a current processing failure reruns it from the gates
+                # instead of appending a duplicate turn. This holds whether or not the failure was
+                # diagnosed as retryable, so the same fingerprint keeps counting attempts.
                 _rerun_from_gates(graph,config,state,restored)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.

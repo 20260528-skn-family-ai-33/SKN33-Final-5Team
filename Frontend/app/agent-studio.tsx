@@ -97,6 +97,7 @@ type TestRun={library_source_files?:{space:string;team_id?:string|null;asset_id:
 const toolDetails:Record<string,{label:string;description:string;Icon:typeof Database}>={read_table:{label:'표 파일 읽기',description:'연결 자료의 실제 행을 읽습니다.',Icon:Database},filter_sort:{label:'조건에 따라 정리',description:'조건·정렬·예외 정책을 적용합니다.',Icon:SlidersHorizontal},write_result:{label:'결과 파일 만들기',description:'CSV·JSON 결과를 만듭니다.',Icon:FileOutput}};
 const samples:{label:string;text:string}[]=[];
 const RETRY_PROMPT='앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.'; // must match backend is_generation_retry
+const PROJECTED_FAILURES=new Set(['execution_mode_questions','question_language_error']); // set by execution_mode.py / question_language.py
 async function asBase64(file:File){return new Promise<string>((accept,reject)=>{const reader=new FileReader();reader.onload=()=>accept(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});}
 function download(artifact:{name:string;content:string;mime:string;encoding?:'base64'}){const url=URL.createObjectURL(new Blob([artifact.encoding==='base64'?Uint8Array.from(atob(artifact.content),c=>c.charCodeAt(0)):artifact.content],{type:artifact.mime}));const a=document.createElement('a');a.href=url;a.download=artifact.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function downloadToolGap(session:Session){
@@ -670,7 +671,10 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   window.addEventListener('beforeunload',beforeUnload);return()=>window.removeEventListener('beforeunload',beforeUnload);
  },[text,testText,replyDraft,runFiles.length,chosenRefs.length,libraryDirty,scheduleSourceDirty,scheduleSettingsDirty,clarificationDirty]);
 
- const generationFailure=session?.status==='validation_failed'?(session.requirement_failure||session.system_failure):undefined;
+ // Stored failures can outlive a later clarification, so only a failed status makes them current.
+ // Read-time projections are recomputed on every snapshot and are current in any status.
+ const generationFailure=session?.status==='validation_failed'?(session.requirement_failure||session.system_failure)
+  :session?.requirement_failure&&PROJECTED_FAILURES.has(session.requirement_failure.kind||'')?session.requirement_failure:undefined;
  const draft=selected?.config||session?.draft,resources=selected?(source?[source.asset,...agentResources.filter(r=>r.kind==='document')]:agentResources):session?.resources||[],ready=session?.status==='ready',saved=!!selected||session?.status==='saved';
  const collecting=session?.status==='needs_clarification'&&!draft?.workflow&&!!draft?.questions.length&&!draft?.tool_ids.length;
  const lastAssistant = session?.messages.map(message => message.role).lastIndexOf('assistant');

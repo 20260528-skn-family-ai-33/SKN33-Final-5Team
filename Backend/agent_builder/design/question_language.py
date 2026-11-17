@@ -73,7 +73,9 @@ def normalize_question_language(state):
                 if not lines or line!=_LANGUAGE_NOTICE or lines[-1]!=line:lines.append(line)
             message['content']='\n'.join(lines)
     if blocked:
-        result['requirement_failure']={'kind':'question_language_error','retryable':True}
+        result['requirement_failure']={'kind':'question_language_error','retryable':True,
+            'reason':'AI가 만든 확인 질문에 요청과 다른 언어의 문구가 섞여 있어 표시하지 않았습니다.',
+            'action':'조건 그대로 다시 시도하면 확인 질문을 다시 만듭니다.'}
         if last_assistant>=0:
             if _LANGUAGE_NOTICE not in result['messages'][last_assistant]['content']:
                 result['messages'][last_assistant]['content']+='\n'+_LANGUAGE_NOTICE

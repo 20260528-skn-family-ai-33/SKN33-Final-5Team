@@ -168,7 +168,9 @@ def project_execution_questions(state):
     if removed and not pending and not (draft or {}).get('questions') and state.get('status')=='needs_clarification':
         # An old graph is still interrupted at its original questions. Offer a
         # retry with the existing request, rather than exposing stale controls.
-        result['requirement_failure']={'kind':'execution_mode_questions','retryable':True}
+        result['requirement_failure']={'kind':'execution_mode_questions','retryable':True,
+            'reason':'이전 버전에서 만든 확인 질문이 현재 실행 방식과 맞지 않아 표시하지 않았습니다.',
+            'action':'조건 그대로 다시 시도하면 기존 요청으로 필요한 질문을 다시 구성합니다.'}
     return result
 
 

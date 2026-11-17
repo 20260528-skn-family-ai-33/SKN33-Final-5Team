@@ -89,7 +89,9 @@ def test_old_non_time_questions_are_blocked_without_showing_untranslated_text():
     shown=normalize_question_language(state)
     assert shown['draft']['questions']==[] and shown['pending_questions']==[]
     assert '文件' not in shown['messages'][-1]['content']
-    assert shown['requirement_failure']=={'kind':'question_language_error','retryable':True}
+    failure=shown['requirement_failure']
+    assert failure['kind']=='question_language_error' and failure['retryable'] is True
+    assert failure['reason'].strip() and failure['action'].strip()
 
 
 def test_direct_planner_rewrites_a_non_time_question_within_its_existing_retry_budget(monkeypatch):

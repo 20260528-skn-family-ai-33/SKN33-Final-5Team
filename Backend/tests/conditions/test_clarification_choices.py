@@ -193,12 +193,15 @@ def test_grouped_filter_answer_confirms_both_operator_and_value():
     assert {q['key'] for q in final['questions']} == {'missing.policy'}
 
 
-def test_explicit_less_than_in_initial_request_does_not_ask_for_filter():
-    s = state('비용이 10원보다 적은 거래를 보여줘.')
+@pytest.mark.parametrize(('comparison', 'expected'), [
+    ('10원보다 적은', 10), ('10만원보다 적은', 100000), ('100000원 미만인', 100000),
+])
+def test_explicit_less_than_in_initial_request_does_not_ask_for_filter(comparison, expected):
+    s = state(f'비용이 {comparison} 거래를 보여줘.')
     s['resources'] = [TABLE]
     result = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')})
     assert result['slots']['filter.operator']['value'] == 'lt'
-    assert result['slots']['filter.value']['value'] == 10
+    assert result['slots']['filter.value']['value'] == expected
     assert not any(q['key'].startswith('filter.') for q in result['questions'])
 
 
@@ -207,4 +210,70 @@ def test_threshold_of_another_column_does_not_fill_missing_filter_value():
     s['resources'] = [{**TABLE, 'columns': [*TABLE['columns'], '수량']}]
     result = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')})
     assert result['slots']['filter.value']['status'] == 'missing'
+    assert result['decision'] != 'ready'
+
+
+@pytest.mark.parametrize(('request_text', 'mode', 'expected'), [
+    ('비용이 10원 이상이고 수량이 3개 이상인 행', 'all', [(15, 4)]),
+    ('비용이 10원보다 적거나 수량이 3개보다 적은 행', 'any', [(15, 1), (5, 4)]),
+])
+def test_partial_model_output_does_not_complete_compound_filter(request_text, mode, expected):
+    from agent_builder.conditions.condition_readiness import literal_compound_filter
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+    from tests.conditions.test_condition_readiness import workflow_draft
+    from workflow_engine.executors.legacy_tools.filter_sort import filter_sort_node
+
+    s = state(request_text + '을 JSON으로 저장해줘.')
+    s['resources'] = [{**TABLE, 'columns': [*TABLE['columns'], '수량']}]
+    result = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''),
+                       'filter.value': (None, ''), 'output.format': ('json', 'JSON')})
+    assert result['decision'] != 'ready'
+
+    match, rules = literal_compound_filter(s)
+    assert match == mode and len(rules) == 2
+    draft = workflow_draft(s)
+    plan = draft['workflow']['nodes'][1]['settings']['execution_plan']
+    plan.update(filters=rules[:1], match=match)
+    assert numeric_filter_issues(s, draft)
+    plan.update(filters=rules, match='all' if match == 'any' else 'any')
+    assert numeric_filter_issues(s, draft)
+    plan.update(match=match)
+    assert not numeric_filter_issues(s, draft)
+    ctx = {'rows': [{'비용': cost, '수량': count} for cost, count in [(15, 1), (15, 4), (5, 4)]],
+           'columns': ['비용', '수량'], 'file_id': 'table', 'trace': []}
+    filter_sort_node(ctx, rules, [], match=match)
+    rows = ctx['rows']
+    assert [(row['비용'], row['수량']) for row in rows] == expected
+
+
+@pytest.mark.parametrize('text', [
+    '비용이 10원보다 적은 경우가 아니라 큰 경우만 남겨줘',
+    '비용이 10원보다 높은지 낮은지는 아직 정하지 않았어',
+])
+def test_uncertain_natural_comparison_keeps_amount_and_asks_direction(text):
+    s = state(text)
+    s['resources'] = [TABLE]
+    result = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')})
+    assert result['slots']['filter.value']['value'] == 10
+    assert result['slots']['filter.operator']['status'] == 'missing'
+    assert [q['key'] for q in result['questions'] if q['key'].startswith('filter.')] == ['filter.operator']
+
+
+def test_prefix_column_does_not_narrow_operator_choices():
+    s = state('총비용이 큰 건 중 비용 기준은 5원이야')
+    s['resources'] = [{**TABLE, 'columns': [*TABLE['columns'], '총비용']}]
+    result = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': ('5', '5원')})
+    question = next(q for q in result['questions'] if q['key'] == 'filter.operator')
+    assert question['options'] == ['초과', '이상', '미만', '이하']
+
+
+def test_followup_amount_does_not_inherit_another_columns_operator():
+    s = state('비용이 낮고 수량이 10개보다 많은 행을 남겨줘')
+    s['resources'] = [{**TABLE, 'columns': [*TABLE['columns'], '수량']}]
+    ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')})
+    s.update(condition_ledger=ledger, pending_questions=ledger['questions'], condition_enforced=True)
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.value')
+    result = judge_conditions(click(s, question, '5'), Fake([]))['ledger']
+    assert result['slots']['filter.value']['value'] == 5
+    assert result['slots']['filter.operator']['status'] == 'missing'
     assert result['decision'] != 'ready'

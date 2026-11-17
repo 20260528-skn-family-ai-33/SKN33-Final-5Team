@@ -385,7 +385,63 @@ def _extract_amounts(text, field):
 
 _COMPARATOR_SPAN = re.compile(
     r'(?<![\d.,+-])(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?'
-    r'\s*(?:(?:을|를|이|가)?\s*(?:초과|이상|미만|이하)|보다\s*(?:작은|적은|낮은|큰|많은|높은))')
+    r'\s*(?:(?:을|를|이|가)?\s*(?:초과|이상|미만|이하)|보다\s*(?:작은|적은|낮은|큰|많은|높은|작거나|적거나|낮거나|크거나|많거나|높거나))')
+
+
+_NATURAL_COMPARISON = re.compile(r'보다\s*(작은|적은|낮은|큰|많은|높은)$')
+_NATURAL_OPERATORS = {'작은': 'lt', '적은': 'lt', '낮은': 'lt', '큰': 'gt', '많은': 'gt', '높은': 'gt'}
+
+
+def _comparison_subject(field, prefix):
+    return bool(field and re.search(
+        r'(?<![\w])' + re.escape(field) + r'\s*(?:열\s*)?(?:이|가|은|는)?\s*$', prefix))
+
+
+def _uncertain_comparison(tail):
+    return bool(re.match(r'\s*(?:경우|행|것|값)?\s*(?:이|가)?\s*(?:아니|않|말고)', tail)
+                or re.match(r'\s*(?:지|은지|는지|을지|인지)', tail))
+
+
+def literal_compound_filter(state):
+    """Recognize a directly named chain of numeric comparisons in the current request."""
+    messages = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
+    if not messages:
+        return None
+    text = messages[-1]
+    comparisons = list(_COMPARATOR_SPAN.finditer(text))
+    if len(comparisons) < 2 or _uncertain_comparison(text[comparisons[-1].end():]):
+        return None
+    fields = {f for resource in state.get('resources', []) if resource.get('kind') == 'table'
+              for f in resource.get('columns', [])}
+    rules, joins = [], []
+    end = 0
+    for index, match in enumerate(comparisons):
+        prefix = text[end:match.start()]
+        suffix = re.search(r'(초과|이상|미만|이하|작은|적은|낮은|큰|많은|높은|작거나|적거나|낮거나|크거나|많거나|높거나)$',
+                           match.group())
+        owners = [field for field in fields if _comparison_subject(field, prefix)]
+        if not suffix or len(owners) != 1 or _excludes_named_range(text, match.end()):
+            return None
+        field = owners[0]
+        values = _amounts(match.group(), field)
+        if len(values) != 1 or not executable_number(next(iter(values))):
+            return None
+        word = suffix[1]
+        if index:
+            if comparisons[index - 1].group().endswith('거나') or re.match(r'\s*(?:이거나|또는|혹은)\s*', prefix):
+                joins.append('any')
+            elif re.match(r'\s*(?:이고|이며|그리고|및)\s*', prefix):
+                joins.append('all')
+            else:
+                return None
+        operator = (_WRITTEN_OPERATOR | _NATURAL_OPERATORS |
+                    {'작거나':'lt','적거나':'lt','낮거나':'lt','크거나':'gt','많거나':'gt','높거나':'gt'})[word]
+        rules.append(dict(field=field, operator=operator, value=float(next(iter(values))),
+                          compare_field=None, value_type='number'))
+        end = match.end()
+    if len(set(joins)) != 1 or len({rule['field'] for rule in rules}) < 2:
+        return None
+    return joins[0], rules
 
 
 # Sort directions and selection words are closed sets checked around the proposed column only.
@@ -413,7 +469,7 @@ def _sort_key_only(slots, literals, user_text):
     return True
 
 
-def _literal_threshold(state, catalog, field, *, require_named_field=False):
+def _literal_threshold(state, catalog, field, *, require_named_field=False, allow_uncertain_direction=False):
     """The single amount written next to a comparator in the latest turn that states one."""
     messages = state.get('messages', [])
     turn = max((i for i, m in enumerate(messages) if m.get('role') == 'user'), default=-1)
@@ -423,11 +479,12 @@ def _literal_threshold(state, catalog, field, *, require_named_field=False):
         if require_named_field:
             if not field:
                 return None
-            subject = re.compile(r'(?<![\w])' + re.escape(field) + r'\s*(?:열\s*)?(?:이|가|은|는)?\s*$')
-            matches = [match for match in matches if subject.search(text[:match.start()])]
+            if len(matches) != 1:
+                return None
+            matches = [match for match in matches if _comparison_subject(field, text[:match.start()])]
         spans = [match.group(0) for match in matches
                  if not _excludes_named_range(text, match.end())
-                 and not re.match(r'\s*(?:이|가)?\s*(?:아니|않)', text[match.end():])]
+                 and (allow_uncertain_direction or not _uncertain_comparison(text[match.end():]))]
         if not spans:
             return None
         amounts = {a for span in spans for a in _amounts(span, field)}
@@ -585,7 +642,7 @@ def policy_clauses(text, columns):
     return out
 
 
-def explicit_policies(state, catalog, *, duplicate_candidate=None):
+def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=None):
     """Only literal, narrow policy phrases; ambiguity stays unresolved.
 
     This is not a general Korean semantic parser. Later user turns override
@@ -601,8 +658,6 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
          {'하지 말': 'none', '하지 마': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
         ('filter.operator', r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?\s*(초과|이상|미만|이하)',
          {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}),
-        ('filter.operator', r'(?<![\d.,+-])[+-]?\d[\d,]*(?:\.\d+)?\s*(?:원|점|개|명|건|kg)?\s*보다\s*(작은|적은|낮은|큰|많은|높은)',
-         {'작은': 'lt', '적은': 'lt', '낮은': 'lt', '큰': 'gt', '많은': 'gt', '높은': 'gt'}),
     ]
     for turn, message in enumerate(state.get('messages', [])):
         if message['role'] != 'user': continue
@@ -610,6 +665,21 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
         # Only a literally named attached column adjacent to "중복" is evidence.
         # Accept both "중복 거래ID" and "거래ID 중복"; never guess synonyms.
         text = message['content']
+        comparisons = list(_COMPARATOR_SPAN.finditer(text))
+        if len(comparisons) == 1:
+            comparison = comparisons[0]
+            natural = _NATURAL_COMPARISON.search(comparison.group())
+            if (natural and _comparison_subject(filter_field, text[:comparison.start()])
+                    and not _uncertain_comparison(text[comparison.end():])
+                    and not _excludes_named_range(text, comparison.end())):
+                refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
+                        and comparison.group() in e['quote']]
+                if refs:
+                    per_turn['filter.operator'] = {
+                        'key': 'filter.operator', 'status': 'specified', 'value': _NATURAL_OPERATORS[natural[1]],
+                        'evidence_ids': [refs[0]['id']], 'evidence': [refs[0]],
+                    }
+
         columns = {col for resource in state.get('resources', []) if resource.get('kind') == 'table'
                    for col in resource.get('columns', []) if isinstance(col, str) and col.strip()}
         def column_pattern(col):
@@ -736,7 +806,8 @@ def literal_condition_issues(state):
     if not (state.get('condition_required') or state.get('condition_enforced')) or ledger.get('decision')!='ready':
         return []
     catalog,_=source_catalog(state)
-    literals=explicit_policies(state,catalog,duplicate_candidate=ledger.get('slots', {}).get('duplicate.field'))
+    literals=explicit_policies(state,catalog,duplicate_candidate=ledger.get('slots', {}).get('duplicate.field'),
+                               filter_field=ledger.get('slots', {}).get('filter.field', {}).get('value'))
     issue = _threshold_evidence_issue(ledger.get('slots') or {}, state)
     issues=[issue] if issue else []
     for key,item in literals.items():
@@ -1326,7 +1397,8 @@ def validate_conditions(raw, state, catalog):
     for key, old in previous.get('slots', {}).items():
         if key not in slots:
             slots[key] = deepcopy(old)
-    literals = explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'))
+    literals = explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'),
+                                 filter_field=slots.get('filter.field', {}).get('value'))
     if not native_schedule:
         literals = {key:item for key,item in literals.items() if not key.startswith('schedule.')}
     def _turn(item):
@@ -1368,10 +1440,11 @@ def validate_conditions(raw, state, catalog):
     explicit_threshold = (field_slot.get('status') == 'specified'
                           and field_slot['value'] in latest_text
                           and numeric_column(state, field_slot['value'])
-                          and slots.get('filter.operator', {}).get('status') == 'specified'
                           and not previous.get('operations'))
     if (asked_value or explicit_threshold) and not proposed_value and slots.get('filter.value', {}).get('status') == 'missing':
-        literal = _literal_threshold(state, catalog, field_slot.get('value'), require_named_field=not asked_value)
+        literal = _literal_threshold(state, catalog, field_slot.get('value'),
+                                     require_named_field=not asked_value,
+                                     allow_uncertain_direction=explicit_threshold and not asked_value)
         if literal:
             slots['filter.value'] = literal
     # A number in a different new instruction is not a threshold revision.
@@ -1545,7 +1618,7 @@ def validate_conditions(raw, state, catalog):
             question_keys.remove('filter.operator')
         direction = None
         if numeric_filter:
-            field_prefix = re.escape(field['value']) + r'\s*(?:이|가|은|는)?\s*(?:\d[\d,.]*\s*(?:원|개|건|점)?\s*기준(?:으로)?\s*)?'
+            field_prefix = r'(?<![\w])' + re.escape(field['value']) + r'\s*(?:이|가|은|는)?\s*(?:\d[\d,.]*\s*(?:원|개|건|점)?\s*기준(?:으로)?\s*)?'
             lower = re.search(field_prefix + r'(?:작은|적은|낮은|부족한)(?![가-힣])', user_text)
             upper = re.search(field_prefix + r'(?:큰|많은|높은)(?![가-힣])', user_text)
             if bool(lower) != bool(upper):

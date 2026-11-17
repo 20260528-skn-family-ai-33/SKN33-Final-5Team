@@ -22,6 +22,22 @@ def numeric_filter_issues(state, draft):
     from .output_selection_request import literal_numeric_filters, literal_or_filters
     required = [(r, guarantees_filter) for r in literal_numeric_filters(state)]
     required += [(r, contains_alternative) for r in literal_or_filters(state)]
+    from agent_builder.conditions.condition_readiness import literal_compound_filter
+    compound = literal_compound_filter(state)
+    if compound:
+        match, rules = compound
+        if match == 'all':
+            required.extend((rule, guarantees_filter) for rule in rules)
+        else:
+            from .requirement_coverage import _condition
+
+            def matches_group(plan, group):
+                return (plan.get('match') == 'any'
+                        and {_condition(item) for item in plan.get('filters', [])}
+                        == {_condition(item) for item in group})
+
+            required.append((tuple(rules), matches_group))
+
     if not required:
         return []
     error = ['명시한 숫자 선별 조건이 최종 저장 경로의 모든 행에 적용되지 않습니다. AND/OR 조건과 데이터 연결을 확인하세요.']
@@ -49,7 +65,8 @@ def numeric_filter_issues(state, draft):
                 safe = output in ('table', 'records')
             if tool == 'calculate_columns':
                 safe = (settings.get('table_operation') == 'compute'
-                        and settings.get('output_column') != rule['field'])
+                        and settings.get('output_column') not in
+                        {item['field'] for item in (rule if isinstance(rule, tuple) else (rule,))})
         else:
             args = _arguments(n)
             safe = (tool == 'filter_sort' and operation == 'select_columns'

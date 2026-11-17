@@ -14,6 +14,7 @@ from infrastructure.persistence.diagnostics import diagnostic_metadata
 
 STAGES = {
     'resources': 'request_analysis', 'attachment_gate': 'request_analysis',
+    'node_edit': 'validation',
     'capability_check': 'request_analysis', 'condition_check': 'request_analysis',
     'requirements': 'request_analysis', 'generation_gate': 'design',
     'conversation': 'design', 'template_plan': 'design',
@@ -91,6 +92,9 @@ class GenerationHistory:
         audit = cls(storage, request_id, data.get('api_key', ''))
         stamp = now()
         request_identity=str(data.get('content',''))
+        if data['action']=='message' and data.get('node_edit') is not None:
+            request_identity=json.dumps({'content':request_identity,'node_edit':data['node_edit']},
+                                        ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)
         if data['action']=='confirm' and 'include_schedule' in data:
             if type(data['include_schedule']) is not bool:
                 raise ValueError('예약을 함께 저장할지 선택해주세요.')

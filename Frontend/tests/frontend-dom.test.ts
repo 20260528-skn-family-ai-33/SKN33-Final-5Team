@@ -3538,7 +3538,9 @@ for(const source of ['draft','saved'] as const)test(`${source} node edit reopens
   await click(button('대화 접기'));
   assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'true');
   await openNode(document.querySelector('.as-flow-node')!);
+  assert.equal(button('채팅에 변경 요청').disabled,true,'unchanged settings cannot submit a request');
   await input(document.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.channel_id"]')!,'C9876543210');
+  assert.equal(button('채팅에 변경 요청').disabled,false,'an actual change can be submitted');
   await click(button('채팅에 변경 요청'));
   assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'false');
   assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'conversation');

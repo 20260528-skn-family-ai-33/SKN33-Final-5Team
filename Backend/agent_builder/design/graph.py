@@ -96,6 +96,8 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
         incoming = {'user_timezone': zone} if zone is not None else {}
         clock = {**incoming, **ensure_temporal_context({**state, **incoming})}
         state = {**state, **clock}
+        if state.get('node_edit') is not None:
+            return {**clock, 'attachment_route': 'edit'}
         quick=quick_reply(state)
         if quick:
             return {**clock,'status':'needs_clarification','issues':[],'semantic_issues':[],'pending_questions':[],
@@ -106,13 +108,19 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
             if workbook:
                 return {**clock, **workbook, 'attachment_route':'validate'}
             return {**clock,'pending_questions':[],'attachment_route':'continue'}
-        return {**clock,'attachment_route':'continue'}
+        return {**clock,'attachment_route':'continue',
+                **({'node_edit_proof':None} if state.get('node_edit_proof') else {}),
+                **({'node_edit_failure':None} if state.get('node_edit_failure') else {})}
     add('attachment_gate',attachment_gate)
+    from agent_builder.design.node_edit import apply_node_edit
+    add('node_edit',_timed_node('node_edit',apply_node_edit))
     from agent_builder.design.request_meaning import make_meaning_node
     add('request_meaning',_timed_node('request_meaning',make_meaning_node(model,api_key,meaning_transport,
         enabled=conversation is None or meaning_transport is not None,
         capability_mode=capability_mode, requirement_mode=requirement_mode)))
-    graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],{'ask':'await_input','continue':'request_meaning','validate':'validate'})
+    graph.add_conditional_edges('attachment_gate',lambda s:s['attachment_route'],
+                                {'ask':'await_input','continue':'request_meaning','validate':'validate','edit':'node_edit'})
+    graph.add_conditional_edges('node_edit',lambda s:s['edit_route'],{'validate':'validate','stop':END})
     graph.add_edge('request_meaning','capability_check')
     from agent_builder.conditions.clarification_core import settled_stage
     add('capability_check',_timed_node('capability_check',settled_stage('capability_check',make_capability_check(model,capability_transport,capability_mode,error_observer=observed_error,api_key=api_key))))
@@ -191,7 +199,10 @@ def build_graph(storage,api_key='',model='gpt-4.1-mini',conversation=None,verifi
     graph.add_conditional_edges('condition_check',lambda s:s['condition_route'],{'conversation':'requirements','template_plan':'requirements','supervisor':'supervisor','stop':END})
     graph.add_conditional_edges('requirements',lambda s:s['requirement_route'],{'plan':'generation_gate','template':'template_plan','ask':'await_input','await_input':'await_input','stop':END})
     graph.add_conditional_edges('template_plan',lambda s:s['condition_route'],{'audit':'condition_audit','stop':END})
-    graph.add_edge('conversation','condition_audit');graph.add_edge('condition_audit','validate');graph.add_edge('validate','verification');graph.add_edge('verification','supervisor')
+    graph.add_edge('conversation','condition_audit');graph.add_edge('condition_audit','validate')
+    graph.add_conditional_edges('validate',lambda s:'direct' if s.get('node_edit_proof') else 'normal',
+                                {'direct':'supervisor','normal':'verification'})
+    graph.add_edge('verification','supervisor')
     graph.add_conditional_edges('supervisor',lambda s:s['route'],{'unsupported':'tool_gap','invalid':END,'repair':'generation_gate','await_input':'await_input','await_approval':'await_approval','save':'save'})
     graph.add_edge('tool_gap',END)
     graph.add_conditional_edges('await_input',lambda s:'help' if s.get('clarification_help') else 'answer',

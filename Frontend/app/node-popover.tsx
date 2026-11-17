@@ -103,6 +103,7 @@ export function NodePopover({node,workflow,tool,placement,onClose,onModify,retur
   const value=mode==='number'?values[prefix+'.value']??String(comparison.value??''):values[prefix+'.compare_field']??comparison.compareField??'';
   return mode==='number'?value.trim()===''||!Number.isFinite(Number(value)):value.trim()==='';
  });
+  const pendingEdit=changeRequest(node,fields,comparisons,values,modes);
  useEffect(()=>{
   let restoreFocus=true;
   root.current?.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});
@@ -146,7 +147,7 @@ export function NodePopover({node,workflow,tool,placement,onClose,onModify,retur
     })}
     {(invalidNumber||invalidComparison)&&<p role="alert">숫자 또는 비교할 열을 올바르게 입력하세요.</p>}
    </fieldset>}</div>
-  {onModify&&<div className="as-node-popover-actions"><button type="button" className="as-button as-primary" disabled={invalidNumber||invalidComparison}
-   onClick={()=>onModify(changeRequest(node,fields,comparisons,values,modes))}>채팅에 변경 요청</button></div>}
+  {onModify&&<div className="as-node-popover-actions"><button type="button" className="as-button as-primary" disabled={invalidNumber||invalidComparison||!pendingEdit.changes.length}
+   onClick={()=>onModify(pendingEdit)}>채팅에 변경 요청</button></div>}
  </div>;
 }

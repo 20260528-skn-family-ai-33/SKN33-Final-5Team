@@ -145,7 +145,9 @@ def _change_value(node, change):
     if arg:
         key = arg[1]
         if (key in {'__proto__', 'prototype', 'constructor'} or _SENSITIVE.search(key)
-                or type(old) is type(None) or type(new) is not type(old)
+                or type(old) is type(None)
+                or not (type(new) is type(old)
+                        or type(old) in (int, float) and type(new) in (int, float))
                 or type(old) is str and key not in _TEXT_ARGUMENTS):
             raise ValueError('이 인자는 노드 설정창에서 직접 변경할 수 없습니다: ' + path)
         try:

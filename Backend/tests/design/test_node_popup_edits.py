@@ -198,3 +198,44 @@ def test_numeric_comparison_popup_changes_only_target_filter():
     assert revised['draft']['workflow']['nodes'][2] == draft['workflow']['nodes'][2]
     assert proof_issue(revised) is None
     assert validate_node(revised)['status'] == 'ready'
+
+
+def test_numeric_argument_accepts_integer_decimal_edits_but_not_text():
+    request = '두 표의 금액 차이를 허용 오차로 비교해줘'
+    arguments = {'baseline': {'rows': [{'id': 'a', 'amount': 1}]},
+                 'candidate': {'rows': [{'id': 'a', 'amount': 1.1}]},
+                 'keys': ['id'], 'compare_columns': ['amount'],
+                 'absolute_tolerance': 0}
+    target = node('diff', 'compare_tables', operation='diff',
+                  arguments_json=json.dumps(arguments, ensure_ascii=False))
+    draft = AgentDraft.model_validate({
+        'name': '표 차이', 'purpose': request, 'instructions': request,
+        'tool_ids': ['compare_tables'], 'document_ids': [],
+        'requirements': [{'description': request, 'source_id': 'user', 'quote': request}],
+        'questions': [], 'unsupported': [], 'explanation': request,
+        'execution_plan': ExecutionPlan(filters=[], sort=[], match='all',
+                                        missing_policy='keep', duplicate_policy='keep',
+                                        duplicate_field=None, output_format='json').model_dump(),
+        'workflow': {'entry': 'diff', 'nodes': [target], 'edges': []}}).model_dump()
+    current = {'messages': [{'role': 'user', 'content': request}], 'draft': draft,
+               'status': 'ready', 'issues': [], 'resources': [], 'pending_questions': [],
+               'trace': [], 'node_library': [], 'required_node_refs': []}
+
+    for old, new in [(0, 0.1), (0.1, 1)]:
+        edit = _popup(target, 'absolute_tolerance', old, new, 'absolute_tolerance')
+        current = {**current, 'messages': current['messages'] +
+                   [{'role': 'user', 'content': edit['request']}], 'node_edit': edit}
+        result = apply_node_edit(current)
+        assert result['edit_route'] == 'validate', result.get('issues')
+        current = {**current, **result, 'status': 'ready'}
+        target = current['draft']['workflow']['nodes'][0]
+        assert json.loads(target['settings']['arguments_json'])['absolute_tolerance'] == new
+        assert proof_issue(current) is None
+        assert validate_node(current)['status'] == 'ready'
+
+    text_edit = _popup(target, 'absolute_tolerance', 1, '0.5', 'absolute_tolerance')
+    blocked = apply_node_edit({**current, 'messages': current['messages'] +
+                               [{'role': 'user', 'content': text_edit['request']}],
+                               'node_edit': text_edit})
+    assert blocked['edit_route'] == 'stop'
+    assert '직접 변경할 수 없습니다' in blocked['issues'][0]

@@ -229,4 +229,28 @@ test('disabled question cards cannot navigate or submit',async()=>{
  }finally{await h.close();}
 });
 
+for(const scenario of [
+ {type:'single_choice',key:'input.folder_path',options:['매출','영수증'],expected:'내 자료함 / 매출',custom:true},
+ {type:'multi_choice',key:'input.file_ids',options:['a.csv','b.csv'],expected:['asset-a','asset-b'],custom:true},
+ {type:'single_choice',key:'input.folder_path',options:['내 자료함 / 매출'],expected:'내 자료함 / 매출',custom:undefined},
+ {type:'multi_choice',key:'input.file_ids',options:['asset-a','asset-b'],expected:['asset-a','asset-b'],custom:undefined},
+ {type:'text',key:'input.file_ids',options:[],expected:'asset-a, asset-b',custom:undefined},
+])test(`library picker preserves the answer contract for ${scenario.type} with custom=${scenario.custom}`,async()=>{
+ const submitted:any[]=[];let picker:any;
+ const files=[{id:'asset-a',name:'a.csv'},{id:'asset-b',name:'b.csv'}];
+ const folder={id:'folder-sales',path:'내 자료함 / 매출'};
+ const h=await mount({questions:[{id:'source',key:scenario.key,text:'읽을 자료를 선택하세요.',options:scenario.options,response:{type:scenario.type}}],
+  onPickFiles:(request:any)=>{picker=request;},onSubmit:(answers:any)=>submitted.push(answers)});
+ try{
+  const button=Array.from(document.querySelectorAll('button')).find(item=>item.textContent==='폴더와 파일 선택');
+  assert.ok(button);await click(button);
+  await act(async()=>{picker.apply(files,folder);await tick();});
+  await submit();assert.equal(submitted.length,1);
+  const answer=submitted[0][0];
+  assert.equal(answer.questionId,'source');assert.deepEqual(answer.value,scenario.expected);
+  assert.equal(answer.custom,scenario.custom);assert.deepEqual(answer.files,files);
+  assert.equal(answer.folderPath,folder.path);
+ }finally{await h.close();}
+});
+
 test.after(()=>{dom.window.close();for(const [key,descriptor] of original)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);});

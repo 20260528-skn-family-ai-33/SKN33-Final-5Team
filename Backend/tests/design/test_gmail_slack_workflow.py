@@ -6,7 +6,7 @@ import pytest
 from langgraph.types import Command
 
 from agent_builder.conditions.input_requirements import execution_request_required
-from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT, gmail_slack_candidate, gmail_slack_reply, gmail_slack_request
+from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT, gmail_slack_candidate, gmail_slack_format_question, gmail_slack_reply, gmail_slack_request
 from agent_builder.design.gmail_summary import UNREAD_QUERY
 from agent_builder.design.graph import build_graph
 from agent_builder.design.nodes.validation import validate_node
@@ -40,6 +40,30 @@ def graph_for(store):
                        condition_mode='enforce', condition_transport=forbidden,
                        requirement_mode='enforce', requirement_transport=forbidden,
                        verifier_mode='off')
+
+
+def test_gmail_to_slack_content_request_asks_for_summary_before_design(tmp_path):
+    prompt = 'gmail에서 안읽은 내용 10건 읽어서 slack 에 내용 올려줘'
+    current = state(prompt)
+    assert gmail_slack_format_question(current)
+    assert not gmail_slack_candidate(current)
+    store = Storage(tmp_path)
+    graph, connection = graph_for(store)
+    config = {'configurable': {'thread_id': 'gmail-slack-format'}}
+    try:
+        first = graph.invoke(current, config)
+        assert first['status'] == 'needs_clarification'
+        assert '원문 전체인가요, 핵심 요약인가요' in first['messages'][-1]['content']
+        assert not (first.get('draft') or {}).get('workflow')
+        second = graph.invoke(Command(resume={'type': 'message', 'content': '요약'}), config)
+        assert second['status'] == 'needs_clarification'
+        assert 'Slack 채널 ID' in second['messages'][-1]['content']
+        reviewed = graph.invoke(Command(resume={'type': 'message', 'content': CHANNEL}), config)
+        assert reviewed['status'] == 'ready'
+        assert json.loads(reviewed['draft']['workflow']['nodes'][0]['settings']['arguments_json'])['max_results'] == 10
+    finally:
+        connection.close()
+        store.close()
 
 
 @pytest.mark.parametrize('prompt', [PROMPT, SCHEDULED, UNREAD])

@@ -237,8 +237,8 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
     setting=mode or os.getenv('A4B_CAPABILITY_MODE','off')
     if setting not in ('off','enforce'):raise ValueError('A4B_CAPABILITY_MODE는 off/enforce이어야 합니다.')
     def check(state):
-        from agent_builder.design.gmail_slack import gmail_slack_assessment, gmail_slack_candidate
-        if setting=='off' and not capability_enforced(state) and not gmail_slack_candidate(state):
+        from agent_builder.design.gmail_slack import gmail_slack_assessment, gmail_slack_candidate, gmail_slack_format_question
+        if setting=='off' and not capability_enforced(state) and not gmail_slack_candidate(state) and not gmail_slack_format_question(state):
             return {'capability_route':'conditions','capability_assessment':None,'capability_enforced':False,
                     'capability_fingerprint':None,'capability_questions':[],'capability_deferred':False}
         deferred=False;reuse_questions=False
@@ -254,6 +254,12 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                 validate_assessment_decision(previous)
             criterion, evidence = gmail_importance(state)
             if faults:result=assess_capability(state,None)
+            elif (format_question := gmail_slack_format_question(state)):
+                result = {'decision':'clarify','tool_ids':[],'missing_actions':[],
+                          'missing_conditions':[format_question],
+                          'user_quotes':[next(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')],
+                          'reason':'Slack으로 보낼 내용이 원문 전체인지 요약인지 정해지지 않았습니다.',
+                          'model_calls':0,'allows_execution':False,'allows_generation':False}
             elif (gmail_slack := gmail_slack_assessment(state)):
                 result = validate_assessment_result(gmail_slack, state)
             elif criterion == 'ambiguous':
@@ -366,9 +372,14 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
             update.update(capability_route='supervisor',status='unsupported',condition_enforced=False,
                 draft=_pending_draft(state,ledger),confirmed=False,saved_agent_id=None,pending_questions=[],
                 capability_questions=[],issues=[],semantic_issues=[],verification_enforced=False,
-                messages=state.get('messages',[])+[{'role':'assistant','content':'등록 도구에 부족한 기능이 있는지 확인했습니다. 제작·재설계·보류 중 선택할 수 있습니다.'}])
+                messages=state.get('messages',[])+[{'role':'assistant','content':
+                    '현재 요청을 바로 생성할 수 없습니다. 필요한 기능이 등록되어 있지 않습니다: '
+                    +', '.join(result['missing_actions'])+' 제작·재설계·보류 중 선택할 수 있습니다.'}])
         else:
-            issues=(result.get('issues') if decision=='system_error' else None) or ['지원 여부의 검토가 필요합니다. 요청을 보완한 뒤 다시 확인해주세요.']
+            reason=' '.join(str(result.get('reason') or '').split())[:300]
+            issues=(result.get('issues') if decision=='system_error' else None) or [
+                '워크플로우를 생성하지 않았습니다. 지원 여부를 확정하지 못한 이유: '+reason
+                if reason else '워크플로우를 생성하지 않았습니다. 지원 여부를 확정하지 못했습니다.']
             # A model/contract failure (error_type set) is retryable and is not a user decision.
             from agent_builder.conditions.clarification_core import system_failure, RETRY_NOTICE
             failure=system_failure('capability_check',result['error_type'],' '.join(issues),state=state) if decision=='system_error' and result.get('error_type') else None

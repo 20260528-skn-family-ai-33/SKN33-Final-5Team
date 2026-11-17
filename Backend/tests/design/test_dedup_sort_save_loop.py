@@ -9,7 +9,7 @@ import tempfile
 
 import pytest
 
-from agent_builder.conditions.condition_readiness import plan_issues, policy_clauses
+from agent_builder.conditions.condition_readiness import plan_issues, policy_clauses, sort_request
 from agent_builder.design.presentation import public_draft_explanation
 from agent_builder.design.save_intent import is_save_request
 from contracts.models import AgentDraft, ExecutionPlan
@@ -363,12 +363,18 @@ def test_negated_key_in_the_same_turn_is_not_requested():
         {'field': '금액', 'direction': 'descending', 'value_type': None}]
 
 
-def test_unreadable_sort_request_still_requires_a_named_sort():
-    text = '주문번호 중복은 첫 행만 남기고 날짜 순으로 정렬해서 주문일을 보고 싶어'
+LATEST = [{'field': '주문일', 'direction': 'descending', 'value_type': 'text'}]
+
+
+@pytest.mark.parametrize('text,sort', [
+    ('주문번호 중복은 첫 행만 남기고 날짜 순으로 정렬해서 주문일을 보고 싶어', SORT),
+    ('주문번호 중복은 첫 행만 남기고 최신순으로 정리해줘', LATEST),          # 주문일 is never written
+    ('주문번호 중복은 첫 행만 남기고 날짜순으로 정렬해줘', SORT),
+])
+def test_unreadable_sort_request_requires_a_sort_but_trusts_its_column(text, sort):
+    assert sort_request(table_state(text))['kind'] == 'unparsed'
     assert [p for p in plan_issues(ready_dedup_ledger(), dedup_draft([]), state=table_state(text)) if '정렬' in p]
-    assert not [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(SORT), state=table_state(text)) if '정렬' in p]
-    other = [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}]
-    assert [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(other), state=table_state(text)) if '정렬' in p]
+    assert not [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(sort), state=table_state(text)) if '정렬' in p]
 
 
 def withdrawn_sort(state):
@@ -418,3 +424,36 @@ def test_column_basis_wording_is_enforced_end_to_end(service, planner_sort, save
     else:
         assert first['status'] == 'validation_failed' and any('요청한 정렬' in issue for issue in first['issues'])
         assert done['status'] == 'validation_failed' and saved() == 0
+
+
+LATEST_REQUEST = REQUEST.replace('주문일 오름차순으로 정렬해서', '최신순으로 정렬해서')
+
+
+@pytest.mark.parametrize('planner_sort,saves,order', [
+    (LATEST, True, ['A1', 'B2']),   # 주문일 내림차순 for "최신순": saved although 주문일 is never written
+    ([], False, None),              # sort dropped: still blocked
+])
+def test_latest_first_wording_saves_a_sorted_draft_end_to_end(service, planner_sort, saves, order):
+    act, saved, fakes = service
+    CURRENT['request'] = LATEST_REQUEST
+    calls = []
+    planner = make_planner(calls, sort=planner_sort)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    first = act('message', planner, content=LATEST_REQUEST)
+    assert not first['pending_questions']
+    done = act('message', planner, content='확인완료. 저장')
+    if saves:
+        assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
+        result = fakes['run'](done['saved_agent_id'])
+        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == order
+    else:
+        assert first['status'] == 'validation_failed' and any('정렬이 없습니다' in issue for issue in first['issues'])
+        assert done['status'] == 'validation_failed' and saved() == 0
+
+
+def test_sort_direction_is_not_a_vague_duplicate_policy():
+    text = '주문번호가 같은 행은 첫 행만 남기고, 최신순으로 정렬해서 CSV로 저장해줘.'
+    assert policy_clauses(text, COLUMNS) == [('duplicate.policy', 'first', text[:-1])]
+    assert policy_clauses('중복은 첫 행만 남기고 금액 높은 순으로 정렬해줘.', COLUMNS)[0][1] == 'first'
+    # "keep the latest duplicate" is still vague and left to a question.
+    assert policy_clauses('중복은 최신 것만 남겨줘.', COLUMNS)[0][1] == 'conflict'

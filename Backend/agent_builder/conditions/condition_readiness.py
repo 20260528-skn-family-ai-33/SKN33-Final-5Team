@@ -537,16 +537,16 @@ def policy_clauses(text, columns):
         if i and subjects[i - 1][1] == key and start - subjects[i - 1][0] < 12:
             continue  # two subject words of one clause ("거래ID가 같은 중복")
         end = min([p for p, k in subjects[i + 1:] if k != key or p - start >= 12] + [e for e in ends if e > start])
-        segment = text[start:end]
+        segment = quote = text[start:end]
         if key == 'missing.policy':
             if re.search(_MISSING_VAGUE, segment):
-                out.append((key, 'conflict', segment.strip())); continue
+                out.append((key, 'conflict', quote.strip())); continue
             # A policy about the remaining rows is not a second policy for the
             # missing rows ("빈 값은 제외하고 나머지는 유지").
             action_segment = re.split(r'나머지|그\s*외', segment, maxsplit=1)[0]
             found, negated = _acts(action_segment, _MISSING_ACTS)
             if re.search(_INDIFFERENT, segment) and not (len(found) == 1 and not negated):
-                out.append((key, 'conflict', segment.strip())); continue
+                out.append((key, 'conflict', quote.strip())); continue
         else:
             cancelled = _CANCEL_DEDUP.match(segment)
             if cancelled:
@@ -554,8 +554,11 @@ def policy_clauses(text, columns):
                 # cannot reapply a previously requested first/last policy.
                 out.append((key, 'keep', cancelled.group().strip()))
                 continue
+            # "첫 행만 남기고, 최신순으로 정렬해서" sorts the result; "최신순"/"높은 순" there is
+            # a sort direction, not a vague "keep the latest/highest duplicate" policy.
+            segment = re.sub(r'(?:최신|최근|높은|낮은|큰|작은)\s*순', lambda m: ' ' * len(m.group()), segment)
             if re.search(_DUP_VAGUE, segment):
-                out.append((key, 'conflict', segment.strip())); continue
+                out.append((key, 'conflict', quote.strip())); continue
             indifferent = bool(re.search(_INDIFFERENT, segment))
             found, negated = _acts(segment, _DUP_ORDER)
             retention = re.search(r'남(?:겨|기|김)|유지|보존|행(?:만|을)?\s*(?:CSV|JSON)?\s*(?:으로|로)?\s*저장(?!\s*(?:하지|안|못))', segment, re.I)
@@ -571,11 +574,11 @@ def policy_clauses(text, columns):
             if not found and not negated:
                 found, negated = _acts(segment, _DUP_OTHER)
         if key == 'duplicate.policy' and indifferent and not (len(found) == 1 and not negated):
-            out.append((key, 'conflict', segment.strip())); continue
+            out.append((key, 'conflict', quote.strip())); continue
         if len(found) == 1:
-            out.append((key, found.pop(), segment.strip()))
+            out.append((key, found.pop(), quote.strip()))
         elif found or negated:
-            out.append((key, 'conflict', segment.strip()))
+            out.append((key, 'conflict', quote.strip()))
     return out
 
 
@@ -1731,17 +1734,12 @@ def _sort_request_issue(request, draft):
         if actual:
             return '사용자가 정렬을 빼 달라고 했지만 최종 결과에 정렬이 남아 있습니다. 최종 filter_sort의 sort=[]로 두세요.'
         return None
-    # Sorting was written but its column/direction could not be read: never accept a
-    # draft without one, and accept a sort only on a column and direction the turn names.
-    text = request['text']
+    # Sorting was written but its column/direction could not be read ("최신순으로",
+    # "날짜 순으로"): only a draft without any sort is wrong for sure. Which column the
+    # planner picked is its call; checking it against wording we could not read blocks
+    # correct drafts ("최신순" sorted by 주문일 never names 주문일) and stops saving.
     if not actual:
         return '사용자가 정렬을 요청했지만 최종 결과에 정렬이 없습니다. 요청한 열과 방향을 sort에 넣으세요.'
-    for item in actual:
-        field = item.get('field')
-        words = _DESC_WORDS if item.get('direction') == 'descending' else _ASC_WORDS
-        named = isinstance(field, str) and re.search(r'(?<![가-힣A-Za-z0-9_])' + re.escape(field) + r'(?![A-Za-z0-9_])', text)
-        if not named or (re.search(_ASC_WORDS + '|' + _DESC_WORDS, text) and not re.search(words, text)):
-            return '최종 결과의 정렬 열·방향이 사용자 요청에서 확인되지 않습니다. 요청에 적힌 열과 방향 그대로 sort에 넣으세요.'
     return None
 
 

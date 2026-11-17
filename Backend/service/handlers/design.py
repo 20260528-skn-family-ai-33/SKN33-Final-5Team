@@ -262,12 +262,19 @@ def _session_action(c):
             content=data['content'].strip()
             if not content or len(content)>4000:raise ValueError('업무 설명은 1~4,000자로 입력하세요.')
             if state.get('status')=='saved':raise ValueError('저장한 설정을 바꾸려면 설정 수정 대화를 시작하세요.')
+            node_edit=data.get('node_edit')
+            if node_edit is not None:
+                if (not isinstance(node_edit,dict) or node_edit.get('request')!=content
+                        or data.get('question_id') or data.get('question_answers')):
+                    raise ValueError('노드 변경 요청과 전송된 내용을 확인해 주세요.')
+                if state.get('pending_questions'):
+                    raise ValueError('진행 중인 확인 질문을 해결한 뒤 노드 설정을 수정해 주세요.')
             # Classify the turn before resuming: a greeting or one-off side question is not an
             # answer, task change or fingerprint input, and must not resume the pending checkpoint.
             from agent_builder.design.turn_intent import split_turn, side_reply
             # A structured answer from the question controls already names its question; it is
             # never re-read as a side remark or a question about the question.
-            structured=bool(data.get('question_answers'))
+            structured=bool(data.get('question_answers')) or node_edit is not None
             pending=state.get('pending_questions') or []
             draft=state.get('draft') or {}
             # Planner questions live only in the draft (with their declared answer controls).
@@ -319,7 +326,10 @@ def _session_action(c):
                 # An unqualified update here can restore the old node and its obsolete question IDs.
                 if not any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
                     graph.update_state(config,{'repair_count':0})
-                graph.invoke(Command(resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {}),**({'question_answers':answers} if answers else {})}),config)
+                graph.invoke(Command(resume={'type':'message','content':content,
+                    **({'node_edit':node_edit} if node_edit is not None else {}),
+                    **({'question_id':data['question_id']} if data.get('question_id') else {}),
+                    **({'question_answers':answers} if answers else {})}),config)
             elif (state.get('system_failure') or (state.get('requirement_failure') or {}).get('retryable')) and _last_user(state)==content:
                 # A retryable processing failure (clarification core system_failure or main's
                 # requirement_failure): rerun from the gates with the same request instead of
@@ -332,12 +342,28 @@ def _session_action(c):
                 if same and not blocking_issue(state):graph.invoke(None,config)
                 else:
                     graph.update_state(config,{'messages':state.get('messages',[]) if same else state.get('messages',[])+[{'role':'user','content':content}],
-                                               'confirmed':False,**({'repair_count':0} if not same else {})},as_node='resources')
+                                               'node_edit':node_edit,'confirmed':False,
+                                               **({'repair_count':0} if not same else {})},as_node='resources')
                     graph.invoke(None,config)
             else:
                 base=storage.agent(s['agent_id']) if s.get('agent_id') else None
-                base_messages=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}).get('messages',[]) if base else []
-                initial={**state,'session_id':s['id'],'messages':(state.get('messages',[]) or base_messages)+[{'role':'user','content':content}],'resources':[storage.asset(id) for id in s['file_ids']],'draft':state.get('draft') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'trace':state.get('trace',[]),'repair_count':0,'confirmed':False,'saved_agent_id':None,'verification_last_candidate':state.get('verification_last_candidate') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'base_agent_id':s.get('agent_id'),'base_version':s['base_version'],'model':s['model'],'credential_id':s['credential_id'],'node_library':s.get('node_library',[]),'required_node_refs':s.get('required_node_refs',[])}
+                base_state=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}) if base else {}
+                base_messages=base_state.get('messages',[])
+                saved_proof=None
+                if (node_edit is not None and base and not state and base['version']==s['base_version']
+                        and base_state.get('status')=='saved'
+                        and base_state.get('saved_agent_id')==base['id']):
+                    proof=base_state.get('node_edit_proof')
+                    source_turn=proof.get('source_turn') if isinstance(proof,dict) else None
+                    if type(source_turn) is int and 0 <= source_turn < len(base_messages):
+                        from agent_builder.design.node_edit import proof_issue
+                        saved_draft={k:v for k,v in base['config'].items() if k!='node_snapshots'}
+                        # Save choices may add later user turns; verify against the edit's own request.
+                        prior={**base_state,'messages':base_messages[:source_turn+1]}
+                        if proof_issue(prior,saved_draft) is None:
+                            saved_proof=proof
+                initial={**state,'session_id':s['id'],'messages':(state.get('messages',[]) or base_messages)+[{'role':'user','content':content}],'resources':[storage.asset(id) for id in s['file_ids']],'draft':state.get('draft') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'trace':state.get('trace',[]),'repair_count':0,'confirmed':False,'saved_agent_id':None,'verification_last_candidate':state.get('verification_last_candidate') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'base_agent_id':s.get('agent_id'),'base_version':s['base_version'],'model':s['model'],'credential_id':s['credential_id'],'node_library':s.get('node_library',[]),'required_node_refs':s.get('required_node_refs',[]),'node_edit':node_edit}
+                if saved_proof:initial['node_edit_proof']=saved_proof
                 initial['execution_mode']=s.get('execution_mode')
                 graph.invoke(initial,config)
         after=graph.get_state(config).values

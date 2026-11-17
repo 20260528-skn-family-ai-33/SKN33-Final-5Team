@@ -168,6 +168,7 @@ def missing_schedule_questions(state):
 def business_questions(unresolved,state):
     """Return questions plus a flag asking the extractor to replace unknown field IDs."""
     from agent_builder.conditions.condition_readiness import QUESTIONS, choice_options
+    from agent_builder.conditions.question_quality import strip_known_meta_instructions
     questions=[];unknown=False;skipped=_skipped_optional_keys(state)
     users='\n'.join(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')
     for raw in unresolved:
@@ -175,14 +176,24 @@ def business_questions(unresolved,state):
         if timezone_question(raw if isinstance(raw,dict) else {'key':raw,'text':raw}):continue
         if isinstance(raw,dict):
             if raw.get('required',True) is False and raw.get('key') in skipped:continue
+            cleaned=strip_known_meta_instructions(raw.get('text'))
+            if cleaned is None:
+                unknown=True
+                continue
             # New extractors declare the customer's control directly. Legacy
             # string compatibility below must not rewrite their business labels.
             question={key:deepcopy(raw[key]) for key in ('key','text','options','group','reason','required') if key in raw}
+            question['text']=cleaned
             question['response']=QuestionResponse.model_validate(raw['response']).model_dump(exclude_none=True)
             questions.append(question)
             continue
         text=raw.strip()
         if not text or _MANAGED.search(text):continue
+        cleaned=strip_known_meta_instructions(text)
+        if cleaned is None:
+            unknown=True
+            continue
+        text=cleaned
         if text.casefold() in _OPTIONAL_SUMMARY:
             if re.search(r'요약.{0,12}(?:형식|스타일)|(?:형식|스타일).{0,12}요약',users):
                 questions.append(dict(key='summary.format',text='요약을 어떤 방식으로 정리할까요?',

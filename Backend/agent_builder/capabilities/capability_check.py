@@ -137,6 +137,9 @@ def _generic_question(question,state):
     All three must hold, so real questions ("몇 시에 실행할까요?", "…조건을 알려주세요.") stay.
     """
     from agent_builder.design.turn_intent import _stems
+    from agent_builder.conditions.question_quality import strip_known_meta_instructions
+    if strip_known_meta_instructions(question) is None:
+        return True
     text=question.strip()
     users=' '.join(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')
     # The sentence tells the user to check something ("확인해 주세요"); asking for information
@@ -148,21 +151,28 @@ _CHECK_REQUEST = re.compile(r'확인(?:해|하여|하시어)?\s*(?:주세요|주
 
 
 def _without_generic_questions(state,transport,result,retried=False):
-    """Re-assess once when every clarify question is a generic check request; then keep the verdict.
+    """Re-assess once when only non-questions were proposed; never display them.
 
     2026-11-11 RunPod M08: two copies of "처리 단계와 조건을 확인해 주세요." were the only
     questions, while the real missing item was the new column name. Duplicates are merged.
     """
     if result.get('decision')!='clarify':return result
+    from agent_builder.conditions.question_quality import strip_known_meta_instructions
     questions=list(dict.fromkeys(q.strip() for q in result.get('missing_conditions',[]) if q.strip()))
-    generic=[q for q in questions if _generic_question(q,state)]
-    result={**result,'missing_conditions':questions}
+    generic=[];usable=[]
+    for question in questions:
+        cleaned=strip_known_meta_instructions(question)
+        if cleaned is None or _generic_question(cleaned,state):
+            generic.append(question)
+        elif cleaned not in usable:
+            usable.append(cleaned)
+    result={**result,'missing_conditions':usable}
     if not generic:return result
     record={'generic_questions':generic}
-    if len(generic)<len(questions):
-        return {**result,'missing_conditions':[q for q in questions if q not in generic],**record}
-    if retried or transport is None:
+    if usable:
         return {**result,**record}
+    if retried or transport is None:
+        raise ValueError('지원 판단 모델이 답할 수 없는 확인 문장만 반복했습니다.')
     calls=result.get('model_calls') or 0
     feedback=('다음 질문은 사용자가 답할 수 있는 구체적인 질문이 아니라 요청과 무관한 확인 문장입니다: '+' / '.join(generic)+
               '. 사용자 요청에서 실제로 정해지지 않은 값만 구체적인 질문으로 적거나, 모두 정해졌으면 질문 없이 판단하세요.')

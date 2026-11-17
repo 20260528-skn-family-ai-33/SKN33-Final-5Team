@@ -44,6 +44,39 @@ function libraryName(value:unknown){
 function libraryQuery(url:URL,keys:string[]){
  for(const key of url.searchParams.keys())if(!keys.includes(key)||url.searchParams.getAll(key).length!==1)throw new Error('자료함 조회 조건을 확인하세요.');
 }
+const nodeEditPath=/^(?:arguments_json\.([A-Za-z_][A-Za-z0-9_]*)|execution_plan\.filters\[[0-4]\]\.(?:field|value|compare_field))$/;
+function editValue(value:unknown){
+ return value===null||typeof value==='number'&&Number.isFinite(value)||typeof value==='string'&&value.length<=200;
+}
+export function parseNodeEdit(value:unknown,content:unknown){
+ if(!value||typeof value!=='object'||Array.isArray(value)||
+    Object.keys(value).some(key=>!['request','nodeId','label','changes'].includes(key)))
+  throw new Error('노드 설정 변경 형식을 확인하세요.');
+ const edit=value as Record<string,unknown>;
+ if(typeof edit.request!=='string'||edit.request!==content||edit.request.length>4000||
+    typeof edit.nodeId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/.test(edit.nodeId)||
+    typeof edit.label!=='string'||!edit.label.trim()||edit.label.length>200||/[\r\n`]/.test(edit.label)||
+    !Array.isArray(edit.changes)||edit.changes.length<1||edit.changes.length>20)
+  throw new Error('노드 설정 변경 대상과 내용을 확인하세요.');
+ const seen=new Set<string>();
+ const changes=edit.changes.map((item:unknown)=>{
+  if(!item||typeof item!=='object'||Array.isArray(item)||
+     Object.keys(item).some(key=>!['path','oldValue','newValue'].includes(key)))
+   throw new Error('노드 설정 변경 항목을 확인하세요.');
+  const change=item as Record<string,unknown>,path=change.path;
+  if(typeof path!=='string'||!nodeEditPath.test(path)||seen.has(path)||
+     /(?:secret|token|password|credential|api.?key|authorization)/i.test(path)||
+     (path.startsWith('arguments_json.')&&['__proto__','prototype','constructor'].includes(path.slice('arguments_json.'.length)))||
+     !Object.prototype.hasOwnProperty.call(change,'oldValue')||
+     !Object.prototype.hasOwnProperty.call(change,'newValue')||
+     !editValue(change.oldValue)||!editValue(change.newValue)||
+     (path.startsWith('arguments_json.')&&(change.oldValue===null||change.newValue===null)))
+   throw new Error('노드 설정 변경 경로와 값을 확인하세요.');
+  seen.add(path);
+  return {path,old_value:change.oldValue,new_value:change.newValue};
+ });
+ return {request:edit.request,node_id:edit.nodeId,label:edit.label,changes};
+}
 type StagedUpload={original?:string;bucket?:string;directory?:string};
 async function reconcileStagedUpload(staged:StagedUpload){
  // A worker can commit successfully before its response is lost. Never remove a registered original.
@@ -432,6 +465,10 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
     if(!(answer.skip===true&&value===null||typeof value==='string'&&!!value.trim()&&value.length<=4000||typeof value==='number'&&Number.isFinite(value)||Array.isArray(value)&&value.length>0&&value.length<=40&&value.every(part=>typeof part==='string'&&!!part.trim()&&part.length<=2000)))throw new Error('선택하거나 입력한 답변을 확인하세요.');
     return {question_id:answer.questionId,value,...(answer.custom!==undefined?{custom:answer.custom}:{}),...(answer.skip?{skip:true}:{})};
    });
+  }
+  if(workerAction==='message'&&data.nodeEdit!==undefined){
+   if(data.questionId!==undefined||data.answers!==undefined)throw new Error('노드 설정 변경과 확인 질문 답변을 함께 보낼 수 없습니다.');
+   payload.node_edit=parseNodeEdit(data.nodeEdit,data.content);
   }
   if(workerAction==='message'){
    const timezone=parseRequestTimezone(data.userTimezone);

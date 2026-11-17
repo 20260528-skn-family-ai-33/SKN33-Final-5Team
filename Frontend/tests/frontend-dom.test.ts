@@ -1431,9 +1431,10 @@ test('draft node popup keeps the design chat visible and prepares a scoped edit 
   await click(popup.querySelector('.as-node-popover-actions button')!);
   assert.equal(document.querySelector('.as-node-popover'),null);
   const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
-  assert.match(request,/금액 선별.*노드 ID: filter/);
-  assert.ok(request.includes('기준값 (arguments_json.threshold): 100 → 0'));
-  assert.ok(request.includes('검색 조건 (arguments_json.query): older_than:3d → newer_than:3d'));
+  assert.match(request,/"금액 선별" 작업의 설정/);
+  assert.ok(request.includes('기준값: 100 → 0'));
+  assert.ok(request.includes('검색 조건: "older_than:3d" → "newer_than:3d"'));
+  assert.doesNotMatch(request,/arguments_json|execution_plan|노드 ID|value_type/);
   assert.equal(workflow.nodes[0].settings.arguments_json,'{"threshold":100,"query":"older_than:3d"}');
   await input(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!,'x'.repeat(3999));
   await openNode(document.querySelector('.as-flow-node')!);
@@ -1472,12 +1473,10 @@ test('numeric filter popup switches between direct values and comparison columns
   assert.equal(action.disabled,false);
   await click(action);
   const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
-  assert.match(request,/재고 기준 선별.*노드 ID: filter/);
-  assert.ok(request.includes('execution_plan.filters[0].value: 30 → null'));
-  assert.ok(request.includes('execution_plan.filters[0].compare_field: null → "reorder_level"'));
-  assert.ok(request.includes('execution_plan.filters[1].value: null → 0'));
-  assert.ok(request.includes('execution_plan.filters[1].compare_field: "minimum" → null'));
-  assert.equal((request.match(/value_type은 number로 유지/g)||[]).length,2);
+  assert.match(request,/"재고 기준 선별" 작업의 설정/);
+  assert.ok(request.includes('조건 1 (stock) 비교 기준: 숫자 30 → 열 "reorder_level"'));
+  assert.ok(request.includes('조건 2 (price) 비교 기준: 열 "minimum" → 숫자 0'));
+  assert.doesNotMatch(request,/arguments_json|execution_plan|compare_field|value_type|노드 ID|\bnull\b/);
   assert.equal(plan.filters[0].value,30,'the original draft remains unchanged until the chat request is sent');
   assert.equal(plan.filters[1].compare_field,'minimum');
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0);
@@ -1489,6 +1488,79 @@ test('numeric filter popup switches between direct values and comparison columns
    {path:'execution_plan.filters[1].value',oldValue:null,newValue:0},
    {path:'execution_plan.filters[1].compare_field',oldValue:'minimum',newValue:null},
   ]);
+ }finally{await h.close();}
+});
+
+test('friendly node settings show current rules and translated labels without storage keys',async()=>{
+ const plan={filters:[
+  {field:'금액',operator:'gt',value:7,compare_field:null,value_type:'number'},
+  {field:'상태',operator:'eq',value:'대기',compare_field:null,value_type:'text'},
+  {field:'비고',operator:'is_empty',value:null,compare_field:null,value_type:'text'},
+ ],sort:[{field:'금액',direction:'descending',value_type:'number'}],match:'all',missing_policy:'exclude',duplicate_policy:'keep',duplicate_field:null,output_format:'csv'};
+ const oldPlan={...plan,filters:[{...plan.filters[0],value:100}]};
+ const workflow={entry:'internal-filter-id',nodes:[{id:'internal-filter-id',label:'금액 조건',tool:'filter_sort',bindings:[],
+  settings:{execution_plan:plan,instructions:JSON.stringify(oldPlan),arguments_json:JSON.stringify({absolute_tolerance:0.5,unmapped_contract_number:9,null_policy:'exclude',api_token:'never-show-this'})}}],edges:[]};
+ const session={...readySession(),draft:{...A.config,workflow}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  await openNode(document.querySelector('.as-flow-node')!);
+  const popup=document.querySelector('.as-node-popover')!,text=popup.textContent||'';
+  assert.match(text,/금액 · 7 · 초과/);assert.match(text,/상태 · 대기 · 같음/);assert.match(text,/비고 · 비어 있음/);
+  assert.match(text,/내림차순/);assert.match(text,/빈 값: 해당 행 제외/);assert.match(text,/중복: 모두 유지/);
+  assert.match(text,/허용 오차/);assert.match(text,/추가 설정/);
+  assert.equal(popup.querySelector('.as-instructions'),null,'a generated plan mirror is represented by the current rules');
+  assert.equal(popup.querySelector('.as-node-json'),null);
+  assert.doesNotMatch(text,/arguments_json|execution_plan|value_type|absolute_tolerance|unmapped_contract_number|internal-filter-id|never-show-this|api_token|\b(?:gt|eq|exclude|keep|descending)\b/);
+  assert.equal(popup.querySelector('label small'),null,'editing labels do not expose storage paths');
+ }finally{await h.close();}
+});
+
+for(const scenario of [
+ {name:'the second Gmail node',tool:'email.list',label:'두 번째 메일 읽기',arguments:{max_results:50,query:'is:unread'},edits:[['max_results','8'],['query','newer_than:3d']],expected:[
+  {path:'arguments_json.max_results',oldValue:50,newValue:8},{path:'arguments_json.query',oldValue:'is:unread',newValue:'newer_than:3d'}]},
+ {name:'ordinary numeric and text arguments',tool:'filter_sort',label:'숫자 설정',arguments:{absolute_tolerance:0.5,unmapped_contract_number:9,query:'기존 조건'},edits:[['absolute_tolerance','0'],['unmapped_contract_number','12'],['query','새 조건']],expected:[
+  {path:'arguments_json.absolute_tolerance',oldValue:0.5,newValue:0},{path:'arguments_json.unmapped_contract_number',oldValue:9,newValue:12},{path:'arguments_json.query',oldValue:'기존 조건',newValue:'새 조건'}]},
+])test(`friendly node edits retain typed payloads for ${scenario.name}`,async()=>{
+ const first={id:'first-mail-internal',label:'첫 번째 메일 읽기',tool:'email.list',bindings:[],settings:{arguments_json:'{"max_results":3}'}};
+ const target={id:'target-internal-id',label:scenario.label,tool:scenario.tool,bindings:[],settings:{arguments_json:JSON.stringify(scenario.arguments)}};
+ const workflow={entry:first.id,nodes:[first,target],edges:[{source:first.id,target:target.id,branch:'next'}]};
+ const before=JSON.stringify(workflow),session={...readySession(),draft:{...A.config,workflow}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},(path,body)=>
+  path.startsWith('/api/agent-builder/session?')?session:path.endsWith('/message')?
+   {...session,revision:session.revision+1,messages:[{role:'user',content:body.content},{role:'assistant',content:'설정을 수정했습니다.'}]}:undefined);
+ try{
+  await openNode(document.querySelectorAll('.as-flow-node')[1]);
+  const popup=document.querySelector('.as-node-popover')!;
+  assert.doesNotMatch(popup.textContent||'',/arguments_json|execution_plan|value_type|target-internal-id|unmapped_contract_number|absolute_tolerance/);
+  for(const [key,value] of scenario.edits)await input(popup.querySelector<HTMLInputElement>(`[data-setting-path="arguments_json.${key}"]`)!,value);
+  await click(popup.querySelector('.as-node-popover-actions button')!);
+  const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
+  assert.ok(request.startsWith(JSON.stringify(scenario.label)+' 작업의 설정을 다음과 같이 바꿔주세요.'));
+  assert.doesNotMatch(request,/arguments_json|execution_plan|value_type|target-internal-id|노드 ID|unmapped_contract_number|absolute_tolerance/);
+  await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
+  const sent=h.calls.findLast(call=>call.path.endsWith('/message'))!;
+  assert.deepEqual(sent.body.nodeEdit,{request,nodeId:target.id,label:target.label,changes:scenario.expected});
+  assert.equal(JSON.stringify(workflow),before,'preparing and sending an edit does not mutate the source draft');
+  assert.doesNotMatch(document.querySelector('.as-messages')?.textContent||'',/arguments_json|execution_plan|value_type|target-internal-id|노드 ID/);
+ }finally{await h.close();}
+});
+
+test('friendly settings preserve user-authored names and text that resemble storage paths',async()=>{
+ const userValue='arguments_json.max_results',userField='execution_plan.filters[0].value';
+ const plan={filters:[{field:userField,operator:'eq',value:userValue,compare_field:null,value_type:'text'}],sort:[],match:'all',missing_policy:'keep',duplicate_policy:'keep',duplicate_field:null,output_format:'csv'};
+ const workflow={entry:'filter',nodes:[{id:'filter',label:userValue,tool:'filter_sort',bindings:[],settings:{arguments_json:JSON.stringify({query:userValue}),execution_plan:plan,instructions:'사용자 원문 '+userField+'를 확인하세요.'}}],edges:[]};
+ const session={...readySession(),draft:{...A.config,workflow}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':'ready'},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  await openNode(document.querySelector('.as-flow-node')!);
+  const popup=document.querySelector('.as-node-popover')!;
+  assert.ok(popup.textContent?.includes(userField));assert.ok(popup.textContent?.includes(userValue));
+  assert.equal(popup.querySelector('.as-instructions')?.textContent,'사용자 원문 '+userField+'를 확인하세요.');
+  await input(popup.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.query"]')!,userValue+' 보존');
+  await click(popup.querySelector('.as-node-popover-actions button')!);
+  const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
+  assert.ok(request.startsWith(JSON.stringify(userValue)+' 작업의 설정'));
+  assert.ok(request.includes('검색 조건: '+JSON.stringify(userValue)+' → '+JSON.stringify(userValue+' 보존')));
  }finally{await h.close();}
 });
 
@@ -1530,8 +1602,9 @@ for(const source of ['draft','saved'] as const)for(const label of ['Slack 채널
   await input(document.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.channel_id"]')!,'C9876543210');
   await click(document.querySelector('.as-node-popover-actions button')!);
   const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
-  assert.match(request,/노드 ID: send/);
-  assert.match(request,/C0123456789 → C9876543210/);
+  assert.ok(request.startsWith(JSON.stringify(label)+' 작업의 설정'));
+  assert.match(request,/"C0123456789" → "C9876543210"/);
+  assert.doesNotMatch(request,/arguments_json|execution_plan|노드 ID|value_type/);
   assert.equal(h.calls.filter(call=>call.path.endsWith('/message')).length,0,'preparing an edit does not submit it');
   await submit(document.querySelector<HTMLFormElement>('form.as-composer')!);
   assert.equal(h.calls.filter(call=>call.path==='/api/workflows/from-request').length,0,'editing an existing workflow must not create an external workflow');
@@ -1747,8 +1820,9 @@ test('current saved node opens the existing design edit conversation',async()=>{
   assert.equal(document.querySelector('.as-node-popover'),null);
   assert.equal(new URL(location.href).searchParams.get('screen'),'workflow');
   const request=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value;
-  assert.match(request,/메일 읽기.*노드 ID: read/);
-  assert.ok(request.includes('조회 한도 (arguments_json.max_results): 25 → 0'));
+  assert.match(request,/"메일 읽기" 작업의 설정/);
+  assert.ok(request.includes('조회 한도: 25 → 0'));
+  assert.doesNotMatch(request,/arguments_json|execution_plan|노드 ID|value_type/);
   assert.equal(workflow.nodes[0].settings.arguments_json,'{"max_results":25}');
   assert.equal(h.calls.filter(call=>call.path.endsWith('/sessions')).length,1);
  }finally{await h.close();}
@@ -3659,7 +3733,7 @@ for(const source of ['draft','saved'] as const)test(`${source} node edit reopens
   assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'false');
   assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'conversation');
   assert.equal(document.querySelector('.as-node-popover'),null);
-  assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,/C0123456789 → C9876543210/);
+  assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,/"C0123456789" → "C9876543210"/);
   assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);
  }finally{await h.close();}
 });

@@ -277,3 +277,36 @@ def test_followup_amount_does_not_inherit_another_columns_operator():
     assert result['slots']['filter.value']['value'] == 5
     assert result['slots']['filter.operator']['status'] == 'missing'
     assert result['decision'] != 'ready'
+
+
+def test_compound_filter_survives_output_reply_and_explicit_edits():
+    from agent_builder.conditions.condition_readiness import literal_compound_filter
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+    from tests.conditions.test_condition_readiness import workflow_draft
+    from tests.workflow_engine.test_workflow import node, bind, edge
+
+    s = state('비용이 10원 이상이고 수량이 3개 이상인 행을 보여줘')
+    s['resources'] = [{**TABLE, 'columns': ['비용', '수량']}]
+
+    def reply(text):
+        s['messages'].append({'role': 'user', 'content': text})
+
+    reply('JSON으로 보여줘')
+    mode, rules = literal_compound_filter(s)
+    draft = workflow_draft(s)
+    flow = draft['workflow']
+    flow['nodes'][-1] = node('out', 'finish', [bind('table', 'filter', 'table')])
+    flow['edges'][-1] = edge('filter', 'out')
+    plan = flow['nodes'][1]['settings']['execution_plan']
+    plan.update(filters=rules[:1], match=mode)
+    assert numeric_filter_issues(s, draft)
+    plan.update(filters=rules)
+    assert not numeric_filter_issues(s, draft)
+
+    reply('비용이 20원 이상으로 바꿔줘')
+    assert [(r['field'], r['value']) for r in literal_compound_filter(s)[1]] == [('비용', 20), ('수량', 3)]
+    assert numeric_filter_issues(s, draft)
+    reply('수량 조건 취소해줘')
+    assert [(r['field'], r['value']) for r in literal_compound_filter(s)[1]] == [('비용', 20)]
+    reply('전체 필터 제거해줘')
+    assert literal_compound_filter(s) is None

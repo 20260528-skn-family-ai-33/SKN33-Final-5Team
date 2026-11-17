@@ -79,15 +79,22 @@ def numeric_filter_issues(state, draft):
                                              active, seen | {identifier})
 
     try:
-        writers = 0
+        checked_outputs = 0
         for path, _ in workflow_paths(draft['workflow']):
             active = {n['id'] for n in path}
-            for node in path:
-                if node['tool'] not in ('write_result', 'export_result'):
-                    continue
-                writers += 1
-                if any(not proven(node['id'], None, rule, check, active, set()) for rule, check in required):
+            endpoints = [(node, None) for node in path if node['tool'] in ('write_result', 'export_result')]
+            if compound and not endpoints and path:
+                last = path[-1]
+                if last['tool'] == 'filter_sort':
+                    endpoints = [(last, 'table')]
+                elif last['tool'] == 'finish':
+                    endpoints = [(last, port) for port in ('table', 'records') if content_bindings(last, port)]
+            for node, output in endpoints:
+                checked_outputs += 1
+                if any(not proven(node['id'], output, rule, check, active, set()) for rule, check in required):
                     return error
-        return [] if writers else error
+            if compound and not endpoints:
+                return error
+        return [] if checked_outputs else error
     except (ValueError, KeyError, TypeError):
         return error

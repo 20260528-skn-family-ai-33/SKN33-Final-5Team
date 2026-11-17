@@ -404,10 +404,48 @@ def _uncertain_comparison(tail):
 
 def literal_compound_filter(state):
     """Recognize a directly named chain of numeric comparisons in the current request."""
-    messages = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
-    if not messages:
-        return None
-    text = messages[-1]
+    fields = {field for resource in state.get('resources', []) if resource.get('kind') == 'table'
+              for field in resource.get('columns', [])}
+    active = None
+    for message in state.get('messages', []):
+        if message.get('role') != 'user':
+            continue
+        text = message['content'].strip().rstrip('.!?')
+        if re.fullmatch(r'(?:모든|전체|기존)\s*(?:숫자\s*)?(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text):
+            active = None
+            continue
+        replacement = _compound_filter_in_turn(state, text)
+        if replacement:
+            active = replacement
+            continue
+        if not active:
+            continue
+        mode, rules = active
+        for field in fields:
+            if re.fullmatch(re.escape(field) + r'\s*(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text):
+                rules = [rule for rule in rules if rule['field'] != field]
+                active = (mode if len(rules) > 1 else 'all', rules) if rules else None
+                break
+            matches = list(_COMPARATOR_SPAN.finditer(text))
+            if len(matches) != 1:
+                continue
+            match = matches[0]
+            if not _comparison_subject(field, text[:match.start()]) or not re.fullmatch(
+                r'\s*(?:으로|로)?\s*(?:바꿔|변경해)\s*(?:줘|주세요)?', text[match.end():]
+            ):
+                continue
+            word = re.search(r'(초과|이상|미만|이하|작은|적은|낮은|큰|많은|높은)$', match.group())
+            values = _amounts(match.group(), field)
+            if word and len(values) == 1 and executable_number(next(iter(values))):
+                op = (_WRITTEN_OPERATOR | _NATURAL_OPERATORS)[word[1]]
+                active = (mode, [{**rule, 'operator': op, 'value': float(next(iter(values)))}
+                                 if rule['field'] == field else rule for rule in rules])
+                break
+    return active
+
+
+def _compound_filter_in_turn(state, text):
+    text = _QUOTED_TEXT.sub(' ', text)
     comparisons = list(_COMPARATOR_SPAN.finditer(text))
     if len(comparisons) < 2 or _uncertain_comparison(text[comparisons[-1].end():]):
         return None
@@ -420,7 +458,8 @@ def literal_compound_filter(state):
         suffix = re.search(r'(초과|이상|미만|이하|작은|적은|낮은|큰|많은|높은|작거나|적거나|낮거나|크거나|많거나|높거나)$',
                            match.group())
         owners = [field for field in fields if _comparison_subject(field, prefix)]
-        if not suffix or len(owners) != 1 or _excludes_named_range(text, match.end()):
+        if (not suffix or len(owners) != 1 or _excludes_named_range(text, match.end())
+                or _uncertain_comparison(text[match.end():])):
             return None
         field = owners[0]
         values = _amounts(match.group(), field)

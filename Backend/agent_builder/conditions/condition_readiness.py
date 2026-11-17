@@ -1636,37 +1636,59 @@ def judge_conditions(state, transport, max_contract_repairs=0):
                 'metrics': response.get('metrics', {}), 'attempts': attempts}
 
 
+_ASC_WORDS = r'오름차순|작은\s*순|낮은\s*순|오래된\s*순|빠른\s*순'
+_DESC_WORDS = r'내림차순|큰\s*순|높은\s*순|최신\s*순|늦은\s*순'
+# Between the column and its direction: "열을 기준으로", "값 기준", "숫자 기준으로 해서", "로 정렬은".
 _WRITTEN_SORT = re.compile(
-    r'\s*(?:을|를|은|는|의)?\s*(?:값\s*)?(?P<type>숫자|문자|날짜)?\s*(?:기준\s*)?(?:으로\s*)?'
-    r'(?:(?P<asc>오름차순|작은\s*순|낮은\s*순|오래된\s*순)|(?P<desc>내림차순|큰\s*순|높은\s*순|최신\s*순))')
+    r'\s*(?:열|컬럼|칼럼|항목)?\s*(?:을|를|은|는|의|이|가|으로|로)?\s*(?:값\s*)?(?P<type>숫자|문자|날짜)?\s*'
+    r'(?:(?:을|를)?\s*기준\s*(?:으로)?\s*(?:해서|하여|삼아)?\s*)?(?:으로\s*|로\s*)?(?:정렬\s*(?:은|을|하되)?\s*)?'
+    r'(?:(?P<asc>' + _ASC_WORDS + r')|(?P<desc>' + _DESC_WORDS + r'))')
+_SORT_DROPPED_AFTER = re.compile(r'\s*(?:은|는|을|를)?\s*(?:말고|빼고|빼|아니라|대신|제외|취소|하지\s*(?:마|말))')
+# "정렬 빼고", "정렬은 하지 마", "정렬 없이", "입력 순서 그대로": the user withdrew sorting.
+_SORT_CANCELLED = re.compile(
+    r'정렬\s*(?:은|을|도|기준은|기준을)?\s*(?:모두\s*|전부\s*|다\s*)?(?:빼|제외|없이|취소|필요\s*없|안\s*(?:해|함|할)|하지\s*(?:마|말|않)|말고|지워|삭제)'
+    r'|(?:입력|원래|파일|원본)\s*순서\s*(?:를|는|대로)?\s*(?:그대로|유지)')
+_SORT_WORDS = re.compile(r'정렬|' + _ASC_WORDS + '|' + _DESC_WORDS)
 
 
-def requested_sorts(state):
-    """Sort keys the user wrote: an exact attached-table column right before a direction.
+def sort_request(state):
+    """The user's current sorting instruction, from the latest user turn that states one.
 
-    Columns are matched whole ("예정주문일" is never "주문일"), longest first, in the
-    latest user turn that names one. Returns [{'field', 'direction', 'value_type'|None}].
+    Returns {'kind': 'sorts'|'cancelled'|'unparsed'|'none', 'sorts': [...], 'text': turn}.
+    'sorts' lists exact attached-table columns (matched whole, longest first: "예정주문일"
+    is never "주문일") written before a direction. 'unparsed' means sorting was written
+    but no column/direction pair could be read; the draft must still carry a sort.
     """
     tables = [r for r in (state or {}).get('resources', []) if r.get('kind') == 'table']
     columns = sorted({c for r in tables for c in r.get('columns', []) if isinstance(c, str) and c.strip()},
                      key=len, reverse=True)
-    if not columns:
-        return []
-    pattern = re.compile(r'(?<![가-힣A-Za-z0-9_])(?P<field>' + '|'.join(map(re.escape, columns)) + r')(?![A-Za-z0-9_])')
+    pattern = (re.compile(r'(?<![가-힣A-Za-z0-9_])(?P<field>' + '|'.join(map(re.escape, columns)) + r')(?![A-Za-z0-9_])')
+               if columns else None)
     for message in reversed((state or {}).get('messages', [])):
-        if message.get('role') != 'user':
+        if message.get('role') != 'user' or not isinstance(message.get('content'), str):
             continue
+        text = message['content']
         found = []
-        for match in pattern.finditer(message['content']):
-            written = _WRITTEN_SORT.match(message['content'], match.end())
-            if not written or any(item['field'] == match['field'] for item in found):
+        for match in (pattern.finditer(text) if pattern else ()):
+            written = _WRITTEN_SORT.match(text, match.end())
+            if (not written or _SORT_DROPPED_AFTER.match(text, written.end())
+                    or any(item['field'] == match['field'] for item in found)):
                 continue
             kind = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
             found.append({'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
                           'value_type': kind})
         if found:
-            return found
-    return []
+            return {'kind': 'sorts', 'sorts': found, 'text': text}
+        if _SORT_CANCELLED.search(text):
+            return {'kind': 'cancelled', 'sorts': [], 'text': text}
+        if _SORT_WORDS.search(text):
+            return {'kind': 'unparsed', 'sorts': [], 'text': text}
+    return {'kind': 'none', 'sorts': [], 'text': ''}
+
+
+def requested_sorts(state):
+    """Sort keys the user currently asks for: [{'field', 'direction', 'value_type'|None}]."""
+    return sort_request(state)['sorts']
 
 
 def _final_sort(draft):
@@ -1696,6 +1718,31 @@ def _sort_issue(requested, draft):
         return None
     return (f'요청한 정렬({label})이 최종 결과를 만드는 filter_sort의 sort와 다릅니다. '
             '요청한 열·방향 그대로 sort에 넣고, 다른 정렬은 넣지 마세요.')
+
+
+def _sort_request_issue(request, draft):
+    if request['kind'] == 'sorts':
+        return _sort_issue(request['sorts'], draft)
+    try:
+        actual = _final_sort(draft)
+    except (KeyError, TypeError, ValueError):
+        return '요청한 정렬 여부가 최종 결과에 적용되는지 확인하지 못했습니다.'
+    if request['kind'] == 'cancelled':
+        if actual:
+            return '사용자가 정렬을 빼 달라고 했지만 최종 결과에 정렬이 남아 있습니다. 최종 filter_sort의 sort=[]로 두세요.'
+        return None
+    # Sorting was written but its column/direction could not be read: never accept a
+    # draft without one, and accept a sort only on a column and direction the turn names.
+    text = request['text']
+    if not actual:
+        return '사용자가 정렬을 요청했지만 최종 결과에 정렬이 없습니다. 요청한 열과 방향을 sort에 넣으세요.'
+    for item in actual:
+        field = item.get('field')
+        words = _DESC_WORDS if item.get('direction') == 'descending' else _ASC_WORDS
+        named = isinstance(field, str) and re.search(r'(?<![가-힣A-Za-z0-9_])' + re.escape(field) + r'(?![A-Za-z0-9_])', text)
+        if not named or (re.search(_ASC_WORDS + '|' + _DESC_WORDS, text) and not re.search(words, text)):
+            return '최종 결과의 정렬 열·방향이 사용자 요청에서 확인되지 않습니다. 요청에 적힌 열과 방향 그대로 sort에 넣으세요.'
+    return None
 
 
 def plan_issues(ledger, draft, *, state=None):
@@ -1732,10 +1779,12 @@ def plan_issues(ledger, draft, *, state=None):
         # filtering/sorting. Combined requests need an expanded condition contract.
         if any(plan.get('filters') for plan in plans):
             problems.append('단일 중복 제거 계약에 없는 선별 조건이 추가됐습니다. filters=[]로 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
-    sorts = [] if slots.get('sort.policy') == 'none' else requested_sorts(state)
-    if sorts and nodes and set(ledger['operations']) <= {'filter', 'deduplicate'}:
-        # A written sort is part of the request: the output must carry exactly it.
-        issue = _sort_issue(sorts, draft)
+    request = sort_request(state)
+    if slots.get('sort.policy') == 'none':
+        request = {**request, 'kind': 'cancelled', 'sorts': []}
+    if nodes and set(ledger['operations']) <= {'filter', 'deduplicate'} and request['kind'] != 'none':
+        # The written (or withdrawn) sort is part of the request: the output must carry exactly it.
+        issue = _sort_request_issue(request, draft)
         if issue:
             problems.append(issue)
     elif ledger['operations'] == ['deduplicate'] and any(plan.get('sort') for plan in plans):

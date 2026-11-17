@@ -169,7 +169,8 @@ def node(id, tool, bindings=(), **settings):
 def make_planner(calls, sort=SORT, schedule=None):
     def planner(state):
         calls.append(state['messages'][-1]['content'])
-        plan = ExecutionPlan(filters=[], sort=sort, match='all', missing_policy='keep', duplicate_policy='first',
+        chosen = sort(state) if callable(sort) else sort
+        plan = ExecutionPlan(filters=[], sort=chosen, match='all', missing_policy='keep', duplicate_policy='first',
                              duplicate_field='주문번호', output_format='csv').model_dump()
         file_id = state['resources'][0]['id']
         nodes = [node('read', 'read_table', file_ids=[file_id]),
@@ -318,3 +319,102 @@ def test_draft_without_the_requested_sort_cannot_be_saved(service, table, rows, 
     with pytest.raises(ValueError):
         act('confirm', planner)
     assert saved() == 0
+
+
+# --- PR #142 review 2: a later "정렬 빼고" withdraws the sort; "열을 기준으로" is a sort ---------
+
+BASIS_REQUEST = REQUEST.replace('주문일 오름차순', '주문일 열을 기준으로 오름차순')
+
+
+@pytest.mark.parametrize('phrase', ['주문일 열을 기준으로 오름차순', '주문일을 기준으로 오름차순', '주문일 기준 정렬은 오름차순',
+                                    '주문일로 오름차순', '주문일 컬럼 기준 오름차순', '주문일 값 기준 오름차순'])
+def test_sort_wording_between_column_and_direction(phrase):
+    from agent_builder.conditions.condition_readiness import requested_sorts
+    assert requested_sorts(table_state(REQUEST.replace('주문일 오름차순', phrase))) == [
+        {'field': '주문일', 'direction': 'ascending', 'value_type': None}]
+
+
+def conversation(*turns, columns=COLUMNS):
+    messages = []
+    for index, text in enumerate(turns):
+        if index:
+            messages.append({'role': 'assistant', 'content': '확인'})
+        messages.append({'role': 'user', 'content': text})
+    return {'messages': messages, 'resources': [{'id': 't', 'kind': 'table', 'columns': columns}]}
+
+
+@pytest.mark.parametrize('withdrawal', ['정렬 빼고 저장해줘', '정렬은 하지 마', '정렬 없이 해줘', '입력 순서 그대로 둬'])
+def test_later_withdrawal_cancels_the_earlier_sort(withdrawal):
+    from agent_builder.conditions.condition_readiness import sort_request
+    state = conversation(REQUEST, withdrawal)
+    assert sort_request(state)['kind'] == 'cancelled'
+    assert not [p for p in plan_issues(ready_dedup_ledger(), dedup_draft([]), state=state) if '정렬' in p]
+    assert [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(SORT), state=state) if '정렬' in p]
+    # An unrelated later answer does not bring the withdrawn sort back.
+    assert sort_request(conversation(REQUEST, withdrawal, '첫 행만 남김'))['kind'] == 'cancelled'
+    # A later explicit sort request replaces the withdrawal.
+    again = conversation(REQUEST, withdrawal, '역시 주문일 내림차순으로 정렬해줘')
+    assert sort_request(again)['sorts'] == [{'field': '주문일', 'direction': 'descending', 'value_type': None}]
+
+
+def test_negated_key_in_the_same_turn_is_not_requested():
+    from agent_builder.conditions.condition_readiness import requested_sorts
+    assert requested_sorts(table_state('주문일 오름차순 말고 금액 내림차순으로 정렬해줘')) == [
+        {'field': '금액', 'direction': 'descending', 'value_type': None}]
+
+
+def test_unreadable_sort_request_still_requires_a_named_sort():
+    text = '주문번호 중복은 첫 행만 남기고 날짜 순으로 정렬해서 주문일을 보고 싶어'
+    assert [p for p in plan_issues(ready_dedup_ledger(), dedup_draft([]), state=table_state(text)) if '정렬' in p]
+    assert not [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(SORT), state=table_state(text)) if '정렬' in p]
+    other = [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}]
+    assert [p for p in plan_issues(ready_dedup_ledger(), dedup_draft(other), state=table_state(text)) if '정렬' in p]
+
+
+def withdrawn_sort(state):
+    users = [m['content'] for m in state['messages'] if m['role'] == 'user']
+    return [] if any('정렬 빼고' in text for text in users) else SORT
+
+
+@pytest.mark.parametrize('planner_sort,saves,order', [
+    (withdrawn_sort, True, ['A1', 'B2']),   # follows the withdrawal: saved, input order kept
+    (SORT, False, None),                    # keeps the withdrawn sort: blocked
+])
+def test_withdrawing_the_sort_in_a_later_turn(service, planner_sort, saves, order):
+    act, saved, fakes = service
+    calls = []
+    planner = make_planner(calls, sort=planner_sort)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    assert act('message', planner, content=REQUEST)['status'] == 'ready'
+    changed = act('message', planner, content='정렬 빼고 저장해줘')
+    assert not changed['pending_questions']
+    done = act('message', planner, content='확인완료. 저장')
+    if saves:
+        assert changed['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
+        result = fakes['run'](done['saved_agent_id'])
+        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == order
+    else:
+        assert changed['status'] == 'validation_failed' and any('정렬' in issue for issue in changed['issues'])
+        assert done['status'] == 'validation_failed' and saved() == 0
+
+
+@pytest.mark.parametrize('planner_sort,saves,order', [
+    (SORT, True, ['B2', 'A1']),
+    ([], False, None),
+])
+def test_column_basis_wording_is_enforced_end_to_end(service, planner_sort, saves, order):
+    act, saved, fakes = service
+    CURRENT['request'] = BASIS_REQUEST
+    calls = []
+    planner = make_planner(calls, sort=planner_sort)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    first = act('message', planner, content=BASIS_REQUEST)
+    assert not first['pending_questions']
+    done = act('message', planner, content='확인완료. 저장')
+    if saves:
+        assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
+        result = fakes['run'](done['saved_agent_id'])
+        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == order
+    else:
+        assert first['status'] == 'validation_failed' and any('요청한 정렬' in issue for issue in first['issues'])
+        assert done['status'] == 'validation_failed' and saved() == 0

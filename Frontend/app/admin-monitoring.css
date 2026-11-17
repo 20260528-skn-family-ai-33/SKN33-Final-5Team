@@ -4,3 +4,5 @@
 
 .admin-monitor .entry-page-heading{gap:16px;align-items:flex-start}.admin-monitor .entry-page-heading>div{min-width:0}.admin-monitor .entry-page-heading>button{flex-shrink:0;white-space:nowrap;width:auto}@media(max-width:600px){.admin-monitor .entry-page-heading{flex-wrap:wrap}}
 .entry-app .admin-monitor .entry-page-heading>.as-button{width:auto}
+
+.admin-monitor .am-request-context{border-top:1px solid var(--border);margin-top:18px}.admin-monitor .am-prompt,.admin-monitor .am-conversation li{background:var(--muted);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;overflow-wrap:anywhere;white-space:pre-wrap}.admin-monitor .am-conversation summary{cursor:pointer;font-weight:550}.admin-monitor .am-conversation ol{list-style:none;padding:0;max-height:420px;overflow-y:auto}.admin-monitor .am-conversation li{margin:8px 0}.admin-monitor .am-conversation li p{margin:6px 0 0}

@@ -27,18 +27,25 @@ export class WorkerSlots {
 // Ownership calls (renewing or ending a run's lease) must never queue behind long runs.
 const CONTROL_ACTIONS=new Set(['heartbeat_run','interrupt_run','begin_generation','interrupt_generation','recover_generation']);
 // Model calls and runs last minutes. Anything else (schedule checks, screens) ends in seconds.
+const EXECUTION_ACTIONS=new Set(['test','scheduled_run','retry_run','resume_run']);
 const LONG_ACTIONS=new Set(['message','confirm','test','scheduled_run','retry_run','resume_run']);
 const BUSY='서버에서 처리 중인 작업이 많습니다. 잠시 후 다시 시도하세요.';
 
 export function createWorkerLanes(limits:{general:number;long:number;control:number;queueMs:number}){
  const general=new WorkerSlots(limits.general),long=new WorkerSlots(limits.long),control=new WorkerSlots(limits.control);
- return {general,long,control,async acquire(action:string):Promise<()=>void>{
+ // Runs cannot consume the last long slot needed by interactive design.
+ const execution=new WorkerSlots(Math.max(1,limits.long-1));
+ return {general,long,control,execution,async acquire(action:string):Promise<()=>void>{
   if(CONTROL_ACTIONS.has(action))return control.acquire(limits.queueMs,BUSY);
   if(!LONG_ACTIONS.has(action))return general.acquire(limits.queueMs,BUSY);
-  const started=Date.now(),releaseLong=await long.acquire(limits.queueMs,BUSY);
+  const started=Date.now();
+  const remaining=()=>Math.max(1,limits.queueMs-(Date.now()-started));
+  const releaseExecution=EXECUTION_ACTIONS.has(action)?await execution.acquire(remaining(),BUSY):()=>{};
+  let releaseLong:(()=>void)|undefined;
   try{
-   const releaseGeneral=await general.acquire(Math.max(1,limits.queueMs-(Date.now()-started)),BUSY);
-   return ()=>{releaseGeneral();releaseLong();};
-  }catch(error){releaseLong();throw error;}
+   releaseLong=await long.acquire(remaining(),BUSY);
+   const releaseGeneral=await general.acquire(remaining(),BUSY);
+   return ()=>{releaseGeneral();releaseLong?.();releaseExecution();};
+  }catch(error){releaseLong?.();releaseExecution();throw error;}
  }};
 }

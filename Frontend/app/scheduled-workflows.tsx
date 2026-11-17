@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {EditIconButton} from './edit-icon-button';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
@@ -101,11 +102,11 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
   if(schedule)setAdding(false);else resetManager();
  }
  return <section className="scheduled-workflows" aria-labelledby="schedules-heading"><PageTransition active={loading}/>
-  <div className="entry-page-heading"><WorkspacePageTitle icon={CalendarClock} id="schedules-heading">예약 관리</WorkspacePageTitle><button type="button" className="as-button" aria-label="예약 목록 새로고침" disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={15}/></button></div>
+  <div className="entry-page-heading"><WorkspacePageTitle icon={CalendarClock} id="schedules-heading">예약 관리</WorkspacePageTitle><WorkspaceIconButton size="standard" variant="outline" type="button"  aria-label="예약 목록 새로고침" disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={15}/></WorkspaceIconButton></div>
   <div className="schedule-page-actions workspace-page-actions"><button type="button" className="as-button" disabled={loading||busy} onClick={toggleAdding}><Plus size={15}/>기존 워크플로우에 예약 추가</button><button type="button" className="as-button as-primary" disabled={busy} onClick={()=>navigate(onCreate)}>새 예약 워크플로우</button></div>
   {notice&&<p className="schedule-page-notice" role="status">{notice}</p>}
   {loading?<p className="entry-loading" role="status">예약 목록을 불러오고 있습니다.</p>:error?<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button type="button" onClick={()=>void load()}>다시 시도</button></div>:<>
-   {(adding||managedAgent)&&<div className="schedule-manager"><div className="schedule-manager-heading"><h2>{adding?'기존 워크플로우에 예약 추가':managedAgent?.config.name+' · 일정 관리'}</h2><button type="button" className="as-button" aria-label="예약 설정 닫기" disabled={busy} onClick={closeManager}><X size={16}/></button></div>
+   {(adding||managedAgent)&&<div className="schedule-manager"><div className="schedule-manager-heading"><h2>{adding?'기존 워크플로우에 예약 추가':managedAgent?.config.name+' · 일정 관리'}</h2><WorkspaceIconButton type="button"  aria-label="예약 설정 닫기" disabled={busy} onClick={closeManager}><X size={16}/></WorkspaceIconButton></div>
     {adding&&<><label className="schedule-workflow-picker">예약할 워크플로우<select aria-label="예약할 워크플로우" value={manageId} disabled={busy} onChange={event=>selectWorkflow(event.target.value)}><option value="">워크플로우를 선택하세요</option>{available.length>0&&<optgroup label="내 워크플로우">{available.map(agent=><option key={agent.id} value={agent.id}>{agent.config.name}</option>)}</optgroup>}{availableExternal.length>0&&<optgroup label="외부 서비스 워크플로우">{availableExternal.map(flow=><option key={flow.id} value={'external:'+flow.id}>{flow.name}</option>)}</optgroup>}</select></label>{available.length+availableExternal.length===0&&<p className="schedule-manager-help">예약을 추가할 워크플로우가 없습니다. 새 워크플로우를 만들거나 아래에서 기존 예약을 수정하세요.</p>}</>}
     {managedAgent&&<><ScheduleSettings key={managedAgent.id} workflowId={managedAgent.id} workflowVersion={managedAgent.version} schedule={managedRow?.schedule??null} onChange={changed} onBusyChange={busyChanged} onDirtyChange={dirtyChanged}/><button type="button" className="as-button schedule-detail-link" disabled={busy} onClick={()=>navigate(()=>onOpen(managedAgent.id))}>예약 자료·실행 확인<ArrowRight size={14}/></button></>}
    </div>}

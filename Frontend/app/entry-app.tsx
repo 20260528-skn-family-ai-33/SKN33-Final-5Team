@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {EditIconButton} from './edit-icon-button';
 import {AdminMonitoring} from './admin-monitoring';
 import {WorkspacePageTitle} from './workspace-page-title';
@@ -122,7 +123,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   });
  }
  const externalMatches=activeFolder==='all'?externalFlows.filter(flow=>flow.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())):[];
- const refreshButton=<button className="as-button" disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></button>;
+ const refreshButton=<WorkspaceIconButton size="standard" variant="outline"  disabled={loading} onClick={()=>void load()} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={15}/></WorkspaceIconButton>;
  const initialLoad=useRef(true);
  if(!loading)initialLoad.current=false;
  if(loading&&initialLoad.current)return <PageTransition active/>;

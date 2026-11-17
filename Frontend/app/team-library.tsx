@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
 import {Bell, Plus, RefreshCw, Settings, Users} from 'lucide-react';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
@@ -124,7 +125,7 @@ export function TeamLibraryControls({selected, onSelect, disabled = false}: {sel
       <button type="button" className="as-button" disabled={disabled || busy || loading} onClick={() => open('create')}><Plus size={14}/>팀 만들기</button>
       <button type="button" className="as-button" disabled={disabled || busy || loading} onClick={() => open('invitations')}><Bell size={14}/>받은 초대 {invitations.length}</button>
       {selected?.role === 'admin' && <button type="button" className="as-button" disabled={disabled || busy || loading} onClick={() => open('manage')}><Settings size={14}/>팀 관리</button>}
-      <button type="button" className="as-button" aria-label="팀 공간 새로고침" disabled={disabled || busy || loading} onClick={() => void reload()}><RefreshCw size={14}/></button>
+      <WorkspaceIconButton size="standard" variant="outline" type="button"  aria-label="팀 공간 새로고침" disabled={disabled || busy || loading} onClick={() => void reload()}><RefreshCw size={14}/></WorkspaceIconButton>
     </div></div>
     {selected && <p className="team-library-role"><Users size={14} aria-hidden="true"/>{selected.name} · {teamRoleLabels[selected.role]}{selected.role === 'viewer' ? ' · 자료를 읽고 내려받을 수 있습니다.' : ' · 팀 자료를 올리고 정리할 수 있습니다.'}</p>}
     {loading && <p role="status">팀 공간을 불러오는 중입니다.</p>}{error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}

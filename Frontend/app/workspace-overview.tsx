@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {useRef,useState} from 'react';
 import {ArrowRight, ArrowUp, FileText, FileSpreadsheet, FileImage, File as FileIcon, Plus, X, Layers, Workflow} from 'lucide-react';
 import './workspace-overview.css';
@@ -56,7 +57,7 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
           <div className="overview-attachment">
             <span className="overview-attachment-icon"><AttachmentIcon size={21} aria-hidden="true"/></span>
             <div className="overview-attachment-info"><strong title={file.name}>{file.name}</strong><small>{extension.toUpperCase()||'파일'} · {fileSize}</small></div>
-            <button type="button" aria-label="첨부 자료 제거" title="첨부 자료 제거" onClick={()=>{setFile(null);setFileError('');}}><X size={16} aria-hidden="true"/></button>
+            <WorkspaceIconButton type="button" aria-label="첨부 자료 제거" title="첨부 자료 제거" onClick={()=>{setFile(null);setFileError('');}}><X size={16} aria-hidden="true"/></WorkspaceIconButton>
           </div>
         </div>}
         <textarea aria-label="자동화할 업무" placeholder="예: 매출표에서 지점별 합계를 구해 엑셀로 정리해 줘." value={prompt}
@@ -74,7 +75,7 @@ export function WorkspaceOverview({memberName,workflows,loading,error,onStart,on
           if(selected)attachFile(selected);
         }}/>
         <div className="overview-composer-actions">
-          <button type="button" className="overview-attach-button" aria-label="자료 추가" title="자료 추가" onClick={()=>fileInput.current?.click()}><Plus size={19} aria-hidden="true"/></button>
+          <WorkspaceIconButton type="button" className="overview-attach-button" aria-label="자료 추가" title="자료 추가" onClick={()=>fileInput.current?.click()}><Plus size={19} aria-hidden="true"/></WorkspaceIconButton>
           <button type="submit" className="as-button as-primary overview-submit" aria-label="업무 입력 확인" disabled={!canStart}>
             <ArrowUp size={17} aria-hidden="true"/>
           </button>

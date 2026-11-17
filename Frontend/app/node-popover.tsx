@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {useEffect,useRef,useState} from 'react';
 import {XIcon} from 'lucide-react';
 import type {Workflow} from './workflow-preview';
@@ -106,8 +107,8 @@ export function NodePopover({node,workflow,tool,placement,onClose,onModify,retur
  },[node.id,returnFocus]);
  return <div ref={root} className={'as-node-popover '+(placement==='run'?'is-run':'is-canvas')}
   role="dialog" aria-modal="false" aria-label={node.label+' 작업 설정'}>
-  <button type="button" data-slot="dialog-close" aria-label="닫기" onClick={onClose}
-   className="as-node-popover-close"><XIcon/></button>
+  <WorkspaceIconButton type="button" data-slot="dialog-close" aria-label="닫기" onClick={onClose}
+   className="as-node-popover-close"><XIcon/></WorkspaceIconButton>
   <div className="as-node-popover-heading"><strong>작업 설정</strong><span>{onModify?'변경은 채팅에서 적용':'읽기 전용'}</span></div>
   <div className="as-node-popover-content"><NodeInspector node={node} workflow={workflow} tool={tool}
    onClose={onClose} showBackButton={false} footerNote={onModify?'값을 입력해도 아직 저장되지 않습니다. 아래 버튼으로 설계 대화에 변경 요청을 준비하세요.':'이 실행 시점의 설정을 읽기 전용으로 보여줍니다.'}/>

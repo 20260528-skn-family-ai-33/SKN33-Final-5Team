@@ -1,3 +1,4 @@
+import {WorkspaceIconButton} from './workspace-icon-button';
 import {EditIconButton} from './edit-icon-button';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
@@ -358,7 +359,7 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
   const sameDestination = action?.kind === 'move-folder' ? destination === (action.folder.parent_id || '') : action?.kind === 'move-asset' ? destination === (action.asset.folder_id || '') : false;
 
   return <div className="asset-library"><PageTransition active={loading}/>
-    <div className="entry-page-heading"><WorkspacePageTitle icon={FolderOpen}>자료함</WorkspacePageTitle><button type="button" className="as-button" onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={16}/></button></div>
+    <div className="entry-page-heading"><WorkspacePageTitle icon={FolderOpen}>자료함</WorkspacePageTitle><WorkspaceIconButton size="standard" variant="outline" type="button"  onClick={() => {setNotice(''); void load();}} disabled={busy} aria-label="목록 새로고침" title="목록 새로고침"><RefreshCw size={16}/></WorkspaceIconButton></div>
       {canEdit && <div className="asset-library-actions workspace-page-actions">
         {canEdit && <><button type="button" className="as-button as-primary" disabled={busy} onClick={() => input.current?.click()}><UploadIcon size={15}/>파일 올리기</button>
         <button type="button" className="as-button as-secondary" disabled={busy} onClick={() => openAction({kind: 'create', parentId: folderId})}><FolderPlus size={15}/>새 폴더</button></>}
@@ -370,8 +371,8 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
       </nav>
       <form className="asset-library-search" role="search" onSubmit={event => {event.preventDefault(); if (!running.current && !writing.current) setQuery(search.trim());}}>
         <input aria-label="현재 폴더에서 검색" placeholder="현재 폴더에서 검색" value={search} disabled={mutating} onChange={event => setSearch(event.target.value)}/>
-        {search && <button type="button" disabled={mutating} aria-label="자료 검색 지우기" onClick={() => {setSearch(''); setQuery('');}}><X size={14}/></button>}
-        <button type="submit" disabled={mutating} aria-label="자료 검색" title="검색"><Search size={16} aria-hidden="true"/></button>
+        {search && <WorkspaceIconButton type="button" disabled={mutating} aria-label="자료 검색 지우기" onClick={() => {setSearch(''); setQuery('');}}><X size={14}/></WorkspaceIconButton>}
+        <WorkspaceIconButton type="submit" disabled={mutating} aria-label="자료 검색" title="검색"><Search size={16} aria-hidden="true"/></WorkspaceIconButton>
       </form>
     </div>
     {canEdit && <><div className="asset-dropzone" role="region" data-dragging={dragging} aria-label="파일 업로드" onDragOver={event => {event.preventDefault(); if (!busy) setDragging(true);}}
@@ -397,8 +398,8 @@ function LibraryContents({team, onBusyChange, onCanLeaveChange, spaceControls}: 
     {!!children.length && <section aria-label="폴더"><div className="asset-section-heading"><h2>폴더</h2><span>{children.length}개</span></div><div className="asset-folder-grid">{children.map(folder => <article key={folder.id}>
       <button type="button" className="asset-folder-open" disabled={busy} onClick={() => navigate(folder.id)} aria-label={folder.name + ' 폴더 열기'}><Folder size={20}/><strong>{folder.name}</strong></button>
       {canEdit && <div className="asset-folder-actions"><EditIconButton type="button" disabled={busy} aria-label={folder.name + ' 폴더 이름 변경'} onClick={() => openAction({kind: 'rename', folder})}/>
-        <button type="button" disabled={busy} aria-label={folder.name + ' 폴더 이동'} onClick={() => openAction({kind: 'move-folder', folder})}><FolderInput size={15}/></button>
-        <button type="button" disabled={busy} aria-label={folder.name + ' 폴더 삭제'} onClick={() => openAction({kind: 'delete', folder})}><Trash2 size={14}/></button></div>}
+        <WorkspaceIconButton type="button" disabled={busy} aria-label={folder.name + ' 폴더 이동'} onClick={() => openAction({kind: 'move-folder', folder})}><FolderInput size={15}/></WorkspaceIconButton>
+        <WorkspaceIconButton type="button" disabled={busy} aria-label={folder.name + ' 폴더 삭제'} onClick={() => openAction({kind: 'delete', folder})}><Trash2 size={14}/></WorkspaceIconButton></div>}
     </article>)}</div></section>}
     {!loading && !items.length && !children.length && !error && <section className="entry-empty"><FolderOpen size={26}/>
       <h2>{query ? '검색 결과가 없습니다.' : '이 폴더에 자료가 없습니다.'}</h2><p>{query ? '다른 이름으로 검색하거나 검색어를 지워보세요.' : canEdit ? '파일을 올리거나 새 폴더를 만들어 자료를 정리하세요.' : '팀원이 자료를 올리면 이곳에서 확인할 수 있습니다.'}</p></section>}

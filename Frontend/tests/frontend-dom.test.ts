@@ -2128,6 +2128,7 @@ test('folder source: failed workflow selection preserves the source draft and ex
   const otherLink=Array.from(document.querySelectorAll<HTMLButtonElement>('.as-agent-link')).find(item=>item.querySelector('strong')?.textContent==='다른 보고서')!;
   await click(otherLink);
   await sourceSettles(()=>!!document.querySelector('.as-global-error'));
+  assert.ok(document.querySelector('.as-main > .as-global-error'),'Errors must be inside the workspace, below the raised header surface');
   assert.equal(prompts,1);
   assert.equal(document.querySelector('h1')?.textContent,'팀 보고서');
   assert.equal(new URL(location.href).searchParams.get('service'),'manual-folder');

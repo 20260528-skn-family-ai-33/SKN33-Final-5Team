@@ -21,10 +21,13 @@ def judge(s, values):
     return validate_conditions({'operations': ['filter'], 'conditions': conditions, 'unsupported_actions': []}, s, catalog)
 
 
-def vague():
+def vague(*, legacy=False):
     s = state('비용 큰 것들만 골라서 파일로 만들어줘.'); s['resources'] = [TABLE]
     ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, ''),
                        'output.format': (None, '')})
+    if legacy:
+        ledger['questions'].insert(0, {'id': 'legacy-operator', 'key': 'filter.operator',
+                                       'text': '비교 방식', 'options': list(CHOICES['filter.operator'])})
     s.update(condition_ledger=ledger, pending_questions=ledger['questions'], condition_enforced=True)
     return s, ledger
 
@@ -41,13 +44,16 @@ def test_closed_vocabulary_questions_offer_exact_choices_and_no_invented_thresho
     assert all(set(CHOICES[k].values()) <= ENUMS[k] for k in CHOICES)
     _, ledger = vague()
     options = {q['key']: q['options'] for q in ledger['questions']}
-    assert options['filter.operator'] == ['초과', '이상', '미만', '이하']
+    assert 'filter.operator' not in options
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.value')
+    assert question['response'] == {'type': 'text'}
+    assert '초과인지 이상인지 함께' in question['text']
     assert options['filter.value'] == []  # a suggested threshold would invent the criterion
     assert all('권장' not in o for opts in options.values() for o in opts)
 
 
 def test_clicked_choice_is_confirmed_without_a_model_call_and_survives_revalidation():
-    s, ledger = vague()
+    s, ledger = vague(legacy=True)
     question = next(q for q in ledger['questions'] if q['key'] == 'filter.operator')
     s = click(s, question, '초과')
     transport = Fake([])
@@ -76,7 +82,7 @@ def test_each_choice_maps_to_one_value(key, label, value):
 
 
 def test_free_text_wrong_question_and_shared_labels_are_not_choices():
-    s, ledger = vague()
+    s, ledger = vague(legacy=True)
     operator = next(q for q in ledger['questions'] if q['key'] == 'filter.operator')
     value = next(q for q in ledger['questions'] if q['key'] == 'filter.value')
     assert option_answer(click(s, operator, '100만원 초과로 해줘')) is None  # free text keeps the model path
@@ -89,7 +95,7 @@ def test_free_text_wrong_question_and_shared_labels_are_not_choices():
 
 
 def test_unknown_answer_still_uses_the_existing_non_answer_path():
-    s, ledger = vague()
+    s, ledger = vague(legacy=True)
     operator = next(q for q in ledger['questions'] if q['key'] == 'filter.operator')
     s = click(s, operator, '모르겠어')
     assert option_answer(s) is None
@@ -98,7 +104,7 @@ def test_unknown_answer_still_uses_the_existing_non_answer_path():
 
 
 def test_capability_judgement_is_reused_for_a_clicked_choice_only_with_unchanged_input():
-    s, ledger = vague()
+    s, ledger = vague(legacy=True)
     previous = {'decision': 'existing_tools', 'tool_ids': ['read_table', 'filter_sort', 'write_result'],
                 'missing_conditions': [], 'missing_actions': [], 'reason': '지원',
                 'user_quotes': [s['messages'][0]['content']]}
@@ -158,3 +164,47 @@ def test_typed_amount_is_confirmed_without_a_model_call_and_reused_by_capability
     capability = Fake([])
     reused = make_capability_check('qwen3.5:4b', capability, 'enforce')(answer_value(s, ledger, '100만원'))
     assert capability.calls == 0 and reused['capability_assessment']['answer_resolution'] == 'condition_choice'
+
+
+def test_grouped_filter_answer_confirms_both_operator_and_value():
+    from agent_builder.design.question_answers import question_answers
+
+    s, ledger = vague()
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.value')
+    answer = '100만원 미만'
+    assert question_answers([{'question_id': question['id'], 'value': answer}], s)[0]['value'] == answer
+
+    message = f"{question['text']} → {answer}"
+    answered = click(s, question, message)
+    event = answered['condition_answers'][0]
+    event['answers'] = [{'question_id': question['id'], 'key': question['key'], 'value': answer, 'answer': answer}]
+    outcome = judge_conditions(answered, Fake([]))
+    assert outcome['model_calls'] == 0
+    result = outcome['ledger']
+    assert result['slots']['filter.operator']['value'] == 'lt'
+    assert result['slots']['filter.value']['value'] == 1000000
+    assert not any(q['key'].startswith('filter.') for q in result['questions'])
+    next_question = next(q for q in result['questions'] if q['key'] == 'output.format')
+    next_turn = {**answered, 'condition_ledger': result, 'pending_questions': result['questions']}
+    final = judge_conditions(click(next_turn, next_question, 'CSV'), Fake([]))['ledger']
+    assert final['slots']['filter.operator']['value'] == 'lt'
+    assert final['slots']['filter.value']['value'] == 1000000
+    assert final['slots']['output.format']['value'] == 'csv'
+    assert {q['key'] for q in final['questions']} == {'missing.policy'}
+
+
+def test_explicit_less_than_in_initial_request_does_not_ask_for_filter():
+    s = state('비용이 10원보다 적은 거래를 보여줘.')
+    s['resources'] = [TABLE]
+    result = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')})
+    assert result['slots']['filter.operator']['value'] == 'lt'
+    assert result['slots']['filter.value']['value'] == 10
+    assert not any(q['key'].startswith('filter.') for q in result['questions'])
+
+
+def test_threshold_of_another_column_does_not_fill_missing_filter_value():
+    s = state('비용이 낮고 수량이 10개보다 적은 거래를 보여줘.')
+    s['resources'] = [{**TABLE, 'columns': [*TABLE['columns'], '수량']}]
+    result = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')})
+    assert result['slots']['filter.value']['status'] == 'missing'
+    assert result['decision'] != 'ready'

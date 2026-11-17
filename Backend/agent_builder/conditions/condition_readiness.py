@@ -384,8 +384,8 @@ def _extract_amounts(text, field):
 
 
 _COMPARATOR_SPAN = re.compile(
-    r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?'
-    r'\s*(?:을|를|이|가)?\s*(?:초과|이상|미만|이하)')
+    r'(?<![\d.,+-])(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?'
+    r'\s*(?:(?:을|를|이|가)?\s*(?:초과|이상|미만|이하)|보다\s*(?:작은|적은|낮은|큰|많은|높은))')
 
 
 # Sort directions and selection words are closed sets checked around the proposed column only.
@@ -413,12 +413,21 @@ def _sort_key_only(slots, literals, user_text):
     return True
 
 
-def _literal_threshold(state, catalog, field):
+def _literal_threshold(state, catalog, field, *, require_named_field=False):
     """The single amount written next to a comparator in the latest turn that states one."""
     messages = state.get('messages', [])
     turn = max((i for i, m in enumerate(messages) if m.get('role') == 'user'), default=-1)
     if turn >= 0:  # the latest user turn only: it is the answer to the pending question
-        spans = [m.group(0) for m in _COMPARATOR_SPAN.finditer(messages[turn]['content'])]
+        text = messages[turn]['content']
+        matches = list(_COMPARATOR_SPAN.finditer(text))
+        if require_named_field:
+            if not field:
+                return None
+            subject = re.compile(r'(?<![\w])' + re.escape(field) + r'\s*(?:열\s*)?(?:이|가|은|는)?\s*$')
+            matches = [match for match in matches if subject.search(text[:match.start()])]
+        spans = [match.group(0) for match in matches
+                 if not _excludes_named_range(text, match.end())
+                 and not re.match(r'\s*(?:이|가)?\s*(?:아니|않)', text[match.end():])]
         if not spans:
             return None
         amounts = {a for span in spans for a in _amounts(span, field)}
@@ -592,6 +601,8 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None):
          {'하지 말': 'none', '하지 마': 'none', '하지 않': 'none', '안 해': 'none', '없이': 'none'}),
         ('filter.operator', r'(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십백천만억]+)\s*(?:천만|백만|십만|만|천|백)?\s*(?:원|점|개|명|건|kg)?\s*(초과|이상|미만|이하)',
          {'초과': 'gt', '이상': 'gte', '미만': 'lt', '이하': 'lte'}),
+        ('filter.operator', r'(?<![\d.,+-])[+-]?\d[\d,]*(?:\.\d+)?\s*(?:원|점|개|명|건|kg)?\s*보다\s*(작은|적은|낮은|큰|많은|높은)',
+         {'작은': 'lt', '적은': 'lt', '낮은': 'lt', '큰': 'gt', '많은': 'gt', '높은': 'gt'}),
     ]
     for turn, message in enumerate(state.get('messages', [])):
         if message['role'] != 'user': continue
@@ -1155,7 +1166,7 @@ def _grounded_enum(key, value, quote, state=None, evidence=()):
     if key == 'schedule.month_end':
         return any(key=='schedule.month_end' and written==value for key,written,_ in schedule_literals(quote, follow_up=True))
     if key == 'filter.operator':
-        aliases = {'gt': r'초과|보다\s*큰', 'gte': r'이상', 'lt': r'미만|보다\s*작은',
+        aliases = {'gt': r'초과|보다\s*(?:큰|많은|높은)', 'gte': r'이상', 'lt': r'미만|보다\s*(?:작은|적은|낮은)',
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
         matches = list(re.finditer(aliases[value], quote))
@@ -1348,12 +1359,19 @@ def validate_conditions(raw, state, catalog):
     # "금액이 50만원 초과인 행이야" states the threshold next to its comparator. When the model
     # leaves the value missing, the comparator's own span is the evidence (one amount only);
     # the threshold validator below still checks it against the quote and column unit.
-    # Only for the answer to a pending threshold question, and only when the model left the value
-    # empty: an invalid, invented or conflicting model value is still asked again, not overwritten.
+    # Accept a single explicit amount in an answer or a new request naming the column.
+    # A conflicting or unsupported proposal still goes through the usual validation.
     asked_value = any(q.get('key') == 'filter.value' for q in state.get('pending_questions', []) or [])
     proposed_value = any(c.get('key') == 'filter.value' and c.get('value') is not None for c in proposal.get('conditions', []))
-    if asked_value and not proposed_value and slots.get('filter.value', {}).get('status') == 'missing':
-        literal = _literal_threshold(state, catalog, slots.get('filter.field', {}).get('value'))
+    field_slot = slots.get('filter.field', {})
+    latest_text = state['messages'][latest]['content'] if latest >= 0 else ''
+    explicit_threshold = (field_slot.get('status') == 'specified'
+                          and field_slot['value'] in latest_text
+                          and numeric_column(state, field_slot['value'])
+                          and slots.get('filter.operator', {}).get('status') == 'specified'
+                          and not previous.get('operations'))
+    if (asked_value or explicit_threshold) and not proposed_value and slots.get('filter.value', {}).get('status') == 'missing':
+        literal = _literal_threshold(state, catalog, field_slot.get('value'), require_named_field=not asked_value)
         if literal:
             slots['filter.value'] = literal
     # A number in a different new instruction is not a threshold revision.
@@ -1516,17 +1534,47 @@ def validate_conditions(raw, state, catalog):
         grouped_time = {'schedule.hour', 'schedule.minute'} <= set(unresolved)
         question_keys = list(dict.fromkeys('schedule.hour' if grouped_time and key == 'schedule.minute' else key
                                           for key in unresolved))
+        field = slots.get('filter.field', {})
+        operator = slots.get('filter.operator', {})
+        threshold = slots.get('filter.value', {})
+        numeric_filter = field.get('status') == 'specified' and numeric_column(state, field['value'])
+        group_filter = (numeric_filter and not resolution
+                        and operator.get('status') == threshold.get('status') == 'missing'
+                        and {'filter.operator', 'filter.value'} <= set(unresolved))
+        if group_filter:
+            question_keys.remove('filter.operator')
+        direction = None
+        if numeric_filter:
+            field_prefix = re.escape(field['value']) + r'\s*(?:이|가|은|는)?\s*(?:\d[\d,.]*\s*(?:원|개|건|점)?\s*기준(?:으로)?\s*)?'
+            lower = re.search(field_prefix + r'(?:작은|적은|낮은|부족한)(?![가-힣])', user_text)
+            upper = re.search(field_prefix + r'(?:큰|많은|높은)(?![가-힣])', user_text)
+            if bool(lower) != bool(upper):
+                direction = 'lower' if lower else 'upper'
         for key in question_keys[:2]:
             text = ('예약에는 지금 관리 표 파일이 필요합니다. 자료 연결로 업로드해주세요.' if key == 'input.table' else
                     ('자료나 대화의 조건이 서로 다릅니다. 적용할 기준을 알려주세요. ' if slots[key]['status'] == 'conflict' else '') +
                     ('몇 시 몇 분에 실행할까요? 오전·오후도 함께 알려주세요.' if grouped_time and key == 'schedule.hour' else QUESTIONS[key]))
             if key == 'filter.value' and amount and amount.get('issue'):
                 text = amount['issue']
+            elif key == 'filter.value' and group_filter:
+                suffix = {'lower': '미만인지 이하인지', 'upper': '초과인지 이상인지'}.get(direction, '비교 방식도')
+                text = f"{field['value']} 열의 기준값은 얼마인가요? {suffix} 함께 적어 주세요."
+            elif key == 'filter.value' and numeric_filter and operator.get('status') == 'specified':
+                word = _OPERATOR_WORD.get(operator['value'])
+                if word:
+                    text = f"{field['value']} 열에서 어떤 기준값을 적용할까요? 비교 조건은 '{word}'입니다."
+            elif key == 'filter.operator' and numeric_filter and threshold.get('status') == 'specified' and not resolution:
+                text = f"{field['value']} 열의 기준값은 {threshold['value']}입니다. 어떤 범위의 값을 남길까요?"
             is_resolution = resolution and key in resolution['keys']
+            response = {'response': {'type': 'text'}} if key == 'filter.value' and group_filter else {}
+            options = ((resolution_options(state) if not resolution['deferred'] else []) if is_resolution
+                       else [] if key == 'input.table' else choice_options(key, state))
+            if key == 'filter.operator' and operator.get('status') == 'missing' and not is_resolution and direction:
+                options = [option for option in options if option in
+                           (('미만', '이하') if direction == 'lower' else ('초과', '이상'))]
             questions.append({'id': hashlib.sha256((identity + key).encode()).hexdigest()[:24], 'key': key,
-                              'text': resolution_question(key, resolution, text) if is_resolution else text,
-                              'options': (resolution_options(state) if not resolution['deferred'] else []) if is_resolution
-                                         else [] if key == 'input.table' else choice_options(key, state)})
+                              'text': resolution_question(key, resolution, text) if is_resolution else text, **response,
+                              'options': options})
     ledger = {'protocol': PROTOCOL, 'operations': operations, 'slots': slots, 'decision': decision,
             'outside_scope': outside_scope and decision == 'manual_review' and not cancelled and resolution is None,
             'unresolved': unresolved, 'questions': questions, 'issues': issues,

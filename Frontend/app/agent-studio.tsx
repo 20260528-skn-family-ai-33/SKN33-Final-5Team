@@ -621,7 +621,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const collecting=session?.status==='needs_clarification'&&!draft?.workflow&&!!draft?.questions.length&&!draft?.tool_ids.length;
  const lastAssistant = session?.messages.map(message => message.role).lastIndexOf('assistant');
  const receiptQuestion = !saved ? session?.pending_questions?.find(q => q.action?.type === 'attach_receipt' || q.action?.type === 'select_fields') : undefined;
- const clarificationQuestions:ClarificationQuestionData[]=saved||receiptQuestion?[]:session?.pending_questions?.length
+ const clarificationQuestions:ClarificationQuestionData[]=saved||receiptQuestion||session?.requirement_failure?.retryable||session?.system_failure?.retryable?[]:session?.pending_questions?.length
   ? session.pending_questions.map(question=>{const index=session.draft?.questions.indexOf(question.text)??-1;return {...question,response:question.response||session.draft?.question_responses?.[index]||undefined};})
   : (session?.draft?.questions||[]).map((question,index)=>({text:question,options:session?.draft?.question_options?.[index],response:session?.draft?.question_responses?.[index]||undefined}));
   const slackChannelQuestion=clarificationQuestions.find(question=>question.key==='slack.channel_id'||/(?:Slack|슬랙).{0,20}채널/i.test(question.text));
@@ -755,12 +755,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
         const full=asset.text?.trim() || (asset.kind==='table' && asset.row_count<=asset.preview.length);
         return {label:full?'읽은 내용 전체 보기':'자료 상세 보기',open:()=>setResource(asset)};
       }} factsFor={id=>{const asset=session.resources.find(resource=>resource.id===id);return asset?{row_count:asset.kind==='table'?asset.row_count:undefined,page_count:asset.page_count}:undefined;}}
-      initial={!session.messages.some(message=>message.role==='user')} fresh={freshFiles.session===session.id?freshFiles.ids:[]} readOnly={!!receiptQuestion} disabled={!!busy||!!recovery||libraryBusy||saved}
-      onUse={message=>{
-        const next=text.trim()?text.trimEnd()+'\n'+message:message;
-        if(next.length>4000){setError('업무 설명은 4,000자까지 입력할 수 있어요. 내용을 줄인 뒤 다시 추가해 주세요.');return;}
-        setText(next);input.current?.focus();
-      }}/> : null}
+      initial={!session.messages.some(message=>message.role==='user')} fresh={freshFiles.session===session.id?freshFiles.ids:[]} readOnly={!!receiptQuestion}/> : null}
     {receiptQuestion?.action ? <ReceiptQuestion key={receiptQuestion.id} text={receiptQuestion.text} action={receiptQuestion.action}
       disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&slackChannelQuestion ? <SlackChannelPicker key={session?.id+'-'+slackChannelQuestion.id} disabled={!!busy||!!recovery||libraryBusy} onSelect={channelId=>send(undefined,channelId,slackChannelQuestion.id)} onReconnect={()=>leave('connections')}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onSubmit={answerQuestions}/>}{generationFailure?.retryable&&<div className="as-requirement-retry"><p>{session?.draft?.workflow?'이전 워크플로우 초안은 유지했습니다. 이번 변경은 아직 적용되지 않았습니다.':'입력하신 조건은 보존되어 있습니다.'} 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,RETRY_PROMPT)}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}
     onDragOver={event=>{if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault();}}

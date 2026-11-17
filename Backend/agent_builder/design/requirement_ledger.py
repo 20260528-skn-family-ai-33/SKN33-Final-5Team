@@ -759,6 +759,8 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             failure_fingerprint=fingerprint
             attempt=next_attempt(state, 'requirements', failure_fingerprint)
             retained=state.get('draft')
+            if retained:
+                retained = {**retained, 'questions': [], 'question_options': [], 'question_responses': []}
             detail=requirement_failure_notice(failure_kind, error, retained_draft=bool(retained and retained.get('workflow')), attempt=attempt)
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,

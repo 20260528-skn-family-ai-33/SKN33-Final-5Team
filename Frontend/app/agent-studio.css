@@ -93,8 +93,6 @@
 .as-inspected-source{padding:8px 0;border-top:1px solid var(--as-border)}
 .as-inspected-source summary{cursor:pointer;overflow-wrap:anywhere}
 .as-inspected-source blockquote{margin:8px 0;padding:0 8px;border-left:2px solid var(--as-border);white-space:pre-wrap;overflow-wrap:anywhere}
-.as-file-fields{min-width:0;border:0;padding:4px 0}
-.as-file-fields legend{padding:0;font-weight:600;margin-bottom:6px}
 .as-file-preview caption{text-align:left;padding:6px;font-size:12px}
 .as-receipt-fields .as-field{margin:0 0 10px}
 

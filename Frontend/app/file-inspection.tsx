@@ -1,5 +1,3 @@
-import {useState} from 'react';
-
 type Cell = string | number | boolean | null;
 type InspectedTable = {name:string; columns:string[]; preview:Record<string,Cell>[]};
 export type InspectedFile = {
@@ -20,10 +18,9 @@ export function PreviewRows({label,columns,rows}:{label:string;columns:string[];
 }
 
 type FileDetails = {label:string;open:()=>void};
-function InspectedSource({file,open,readOnly,disabled,onUse,details}:{
-  file:InspectedFile;open:boolean;readOnly:boolean;disabled:boolean;onUse:(message:string)=>void;details?:FileDetails
+function InspectedSource({file,open,details}:{
+  file:InspectedFile;open:boolean;details?:FileDetails
 }) {
-  const [selected,setSelected]=useState<string[]>([]),[custom,setCustom]=useState('');
   const tables=file.tables || [];
   const primaryIsNamed=tables.some(table=>file.columns.length===table.columns.length &&
     file.columns.every((column,i)=>column===table.columns[i]) && file.preview.length===table.preview.length &&
@@ -31,12 +28,6 @@ function InspectedSource({file,open,readOnly,disabled,onUse,details}:{
       const a=row[column],b=table.preview[i][column];
       return a===b || (a!=null && b!=null && String(a)===String(b));
     })));
-  const choices=[...new Set([...(primaryIsNamed?[]:file.columns),...file.fields.map(field=>field.label)])];
-  const values=new Map(file.fields.map(field=>[field.label,field.value]));
-  const fields=[...new Set([...selected,...custom.split(',').map(value=>value.trim()).filter(Boolean)])];
-  function choose(value:string,checked:boolean) {
-    setSelected(prior=>checked?[...prior,value]:prior.filter(entry=>entry!==value));
-  }
   return <details open={open} className="as-inspected-source">
     <summary>{file.name} · {file.kind==='table'?'표':'문서'} 미리보기</summary>
     {file.partial&&<p>일부 내용은 확인이 필요합니다. 원본과 대조해 주세요.</p>}
@@ -45,27 +36,11 @@ function InspectedSource({file,open,readOnly,disabled,onUse,details}:{
     {!primaryIsNamed&&<PreviewRows label="원본에서 읽은 표" rows={file.preview} columns={file.columns}/>}
     {tables.map((table,index)=><div key={index}>
       <PreviewRows label={table.name} columns={table.columns} rows={table.preview}/>
-      {!readOnly&&<fieldset disabled={disabled} className="as-file-fields">
-        <legend>{table.name}의 열 선택</legend>
-        <div className="as-receipt-options">{table.columns.map(column=>{
-          const scoped='「'+table.name+'」의 '+column;
-          return <label key={column}><input type="checkbox" checked={selected.includes(scoped)}
-            onChange={event=>choose(scoped,event.target.checked)}/>{column}</label>;
-        })}</div>
-      </fieldset>}
     </div>)}
     {details&&<button type="button" className="as-text-button" onClick={details.open}>{details.label}</button>}
-    {readOnly ? <dl>{file.fields.map(field=><div key={field.label}><dt>{field.label}</dt><dd>{field.value == null?'여러 값이 확인됨':String(field.value)}</dd></div>)}</dl> :
-     <fieldset disabled={disabled} className="as-file-fields">
-       <legend>요청에 담을 항목</legend>
-       <div className="as-receipt-options">{choices.map(choice=><label key={choice}>
-         <input type="checkbox" checked={selected.includes(choice)} onChange={event=>choose(choice,event.target.checked)}/>
-         {choice}{values.has(choice) && ' · '+(values.get(choice)==null?'여러 값이 확인됨':String(values.get(choice)))}
-       </label>)}</div>
-       <label className="as-field">직접 지정할 항목<input value={custom} maxLength={500} onChange={event=>setCustom(event.target.value)}/></label>
-       <button type="button" className="as-button" disabled={!fields.length}
-         onClick={()=>onUse(file.name+'에서 '+fields.join(', ')+' 항목을 추출해 주세요.')}>요청에 추가</button>
-     </fieldset>}
+    {file.fields.length>0&&<dl>{file.fields.map(field=><div key={field.label}>
+      <dt>{field.label}</dt><dd>{field.value == null?'여러 값이 확인됨':String(field.value)}</dd>
+    </div>)}</dl>}
   </details>;
 }
 
@@ -99,8 +74,8 @@ export function describeFile(file:InspectedFile, facts:FileFacts={}):string {
   return parts.join(' ');
 }
 
-export function FileInspection({files,initial,fresh=[],readOnly,disabled,onUse,detailsFor,factsFor}:{
-  files:InspectedFile[];initial:boolean;readOnly:boolean;disabled:boolean;onUse:(message:string)=>void;detailsFor:(id:string)=>FileDetails|undefined;
+export function FileInspection({files,initial,fresh=[],readOnly,detailsFor,factsFor}:{
+  files:InspectedFile[];initial:boolean;readOnly:boolean;detailsFor:(id:string)=>FileDetails|undefined;
   factsFor?:(id:string)=>FileFacts|undefined;
   /** Files attached during the conversation and not yet used by a message. */
   fresh?:string[]
@@ -108,15 +83,11 @@ export function FileInspection({files,initial,fresh=[],readOnly,disabled,onUse,d
   if(!files.length)return null;
   // Before the first message every file is new; later only the files attached since the last message.
   const described=initial?files:files.filter(file=>fresh.includes(file.id));
-  const plural=described.length>1;
   return <section className="as-file-inspection" aria-label="연결 파일 확인">
     <h3>연결한 파일에서 확인한 내용</h3>
     {described.length>0&&!readOnly&&<div className="as-file-summary" role="status">
       {described.map(file=><p key={file.id}>{describeFile(file,factsFor?.(file.id))}</p>)}
-      <p>{initial
-        ? (plural?'이 파일들로':'이 파일로')+' 어떤 작업을 할까요? 미리보기에서 항목을 골라 요청을 만들거나, 아래 입력창에 원하는 작업을 적어 주세요.'
-        : '새로 연결한 '+(plural?'파일들을':'파일을')+' 지금 작업에 어떻게 쓸까요? 미리보기에서 항목을 골라 요청에 추가하거나, 아래 입력창에 적어 주세요.'}</p>
     </div>}
-    {files.map(file=><InspectedSource key={file.id} file={file} open={initial&&!readOnly} readOnly={readOnly} disabled={disabled} onUse={onUse} details={detailsFor(file.id)}/>)}
+    {files.map(file=><InspectedSource key={file.id} file={file} open={initial&&!readOnly} details={detailsFor(file.id)}/>)}
   </section>;
 }

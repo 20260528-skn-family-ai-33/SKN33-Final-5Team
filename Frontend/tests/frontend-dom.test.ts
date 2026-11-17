@@ -716,8 +716,9 @@ test('DOM: design attachment offers a new upload or an existing file by id',asyn
   assert.equal(card.open,false);await click(card.querySelector('summary')!);
   assert.equal(card.querySelector('td')?.textContent,'1300');
   const composer=document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement;
-  await input(composer,'지난달 자료만 사용해 주세요.');await click(field('가격'));await click(button('요청에 추가'));
-  assert.equal(composer.value,'지난달 자료만 사용해 주세요.\n기준표.csv에서 가격 항목을 추출해 주세요.');
+  await input(composer,'지난달 자료만 사용해 주세요.');
+  assert.equal(card.querySelector('fieldset'),null);
+  assert.equal(composer.value,'지난달 자료만 사용해 주세요.');
   assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
  }finally{await h.close();}
 });
@@ -762,11 +763,9 @@ for(const drop of [false,true])test('DOM: first attachment shows file values bef
   const deadline=Date.now()+3000;
   while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
   const card=document.querySelector('.as-inspected-source') as HTMLDetailsElement;assert.ok(card.open);
-  // The upload itself only describes what was read and asks what to do; no model call, no question.
-  assert.match(document.querySelector('.as-file-summary')?.textContent||'',/「접수.txt」 파일은 문서 자료예요\. 찾은 항목: 접수번호\..*이 파일로 어떤 작업을 할까요\?/);
-  assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
-  assert.match(card.textContent||'',/접수번호: A-120/);await click(field('접수번호'));await click(button('요청에 추가'));
-  assert.equal((document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement).value,'접수.txt에서 접수번호 항목을 추출해 주세요.');
+  assert.match(document.querySelector('.as-file-summary')?.textContent||'',/찾은 항목: 접수번호/);
+  assert.match(card.textContent||'',/접수번호.*A-120/);
+  assert.equal(card.querySelector('fieldset'),null);
   assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
  }finally{await h.close();}
 });
@@ -790,7 +789,7 @@ test('DOM: a file attached during the conversation gets its own summary until th
   while(!document.querySelector('.as-file-summary')){assert.ok(Date.now()<deadline);await h.flush();}
   const summary=document.querySelector('.as-file-summary')?.textContent||'';
   assert.match(summary,/「추가\.csv」 파일은 표 자료예요\. 열 2개\(지역, 금액\), 5행을 읽었어요\./);
-  assert.match(summary,/새로 연결한 파일을 지금 작업에 어떻게 쓸까요\?/);
+  assert.doesNotMatch(summary,/지금 작업에 어떻게 쓸까요/);
   assert.ok(!summary.includes('기존.csv'));
   assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
   const composer=document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement;
@@ -799,7 +798,7 @@ test('DOM: a file attached during the conversation gets its own summary until th
   while(document.querySelector('.as-file-summary')){assert.ok(Date.now()<sent);await h.flush();}
  }finally{await h.close();}
 });
-test('DOM: named sheet selections preserve their sheet names and the primary sheet is previewed once',async()=>{
+test('DOM: named sheets are previewed once without prompting for column selection',async()=>{
  const sheets=['서울','부산'].map((name,index)=>({name,columns:['주문번호','금액'],preview:[{주문번호:index+1,금액:index*100+100}]}));
  const file={id:'sheet',name:'지점.xlsx',kind:'table',has_readable_text:true,columns:sheets[0].columns,
   preview:[{'주문번호':'1','금액':'100'}],tables:sheets,fields:[],snippets:[]};
@@ -807,10 +806,8 @@ test('DOM: named sheet selections preserve their sheet names and the primary she
  const h=await setup('',{'a4b-builder-session':'ready'},path=>path.includes('/session?')?session:undefined);
  try{
   assert.deepEqual(Array.from(document.querySelectorAll('.as-file-preview caption'),el=>el.textContent),['서울','부산']);
-  const group=Array.from(document.querySelectorAll('fieldset')).find(el=>el.querySelector('legend')?.textContent==='부산의 열 선택')!;
-  await click(group.querySelectorAll('input')[1]);await click(button('요청에 추가'));
-  const composer=document.querySelector('textarea[aria-label="업무 설명"]') as HTMLTextAreaElement;
-  assert.equal(composer.value,'지점.xlsx에서 「부산」의 금액 항목을 추출해 주세요.');assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
+  assert.equal(document.querySelector('.as-inspected-source fieldset'),null);
+  assert.equal(h.calls.some(c=>c.path.endsWith('/message')),false);
  }finally{await h.close();}
 });
 test('DOM: equal sheet headers and equal first row do not hide a different set of source rows',async()=>{

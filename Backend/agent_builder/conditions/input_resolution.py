@@ -146,7 +146,17 @@ def value_answer(state, *, _allow_comparison=False):
     latest = max((i for i, m in enumerate(messages) if m['role'] == 'user'), default=-1)
     if latest < 0:
         return None
-    text=messages[latest]['content'].strip().rstrip('.!?。')
+    events = state.get('condition_answers', [])
+    event = next((e for e in reversed(events) if e.get('turn') == latest), None)
+    text = messages[latest]['content']
+    if event and event.get('answers'):
+        # The chat transcript includes the question label. Use the answer attached
+        # to the current question, and let the model handle batches of answers.
+        answers = event['answers']
+        if len(answers) != 1 or answers[0].get('key') != 'filter.value':
+            return None
+        text = answers[0].get('answer', '')
+    text = text.strip().rstrip('.!?。')
     if _allow_comparison:
         comparison=re.fullmatch(r'(.+?)\s*(초과|이상|미만|이하)(?:으로|로)?(?:요)?',text)
         if not comparison:return None
@@ -154,8 +164,6 @@ def value_answer(state, *, _allow_comparison=False):
     match = _PLAIN_AMOUNT.fullmatch(text)
     if not match:
         return None
-    events = state.get('condition_answers', [])
-    event = next((e for e in reversed(events) if e.get('turn') == latest), None)
     pending = [q for q in state.get('pending_questions', []) if q['key'] == 'filter.value'
                and (not event or q['id'] in event.get('question_ids', []))]
     field = (state.get('condition_ledger') or {}).get('slots', {}).get('filter.field', {})

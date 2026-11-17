@@ -128,6 +128,8 @@ def infer_question_control(question,state):
         repaired=_stated_options(question.get('text',''))
         if repaired:question['options']=repaired
     response=_response(question,state)
+    if question.get('key') == 'filter.value' and question.get('response') == {'type':'text'}:
+        return question
     from .question_time import clock_question
     if response['type'] in ('text','number','time') and clock_question(question):
         question['response']={'type':'time'}

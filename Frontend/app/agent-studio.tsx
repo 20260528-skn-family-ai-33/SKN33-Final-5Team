@@ -30,6 +30,8 @@ import './agent-studio.css';
 import './run-workflow-diagram.css';
 import {TaskLibraryHeader,WorkspaceSidebar} from './workspace-nav';
 import {AttachUploadDialog} from './upload-library';
+import {DesignFolderPicker, resolveDesignFolder, type DesignFile, type FilePickerRequest} from './design-folder-picker';
+import {folderInputMode} from '../lib/design-folder-intent';
 import {WorkspaceHeader,WorkspaceHelp} from './workspace-header';
 import {ReplyReviewPanel,type ReplyReview} from './reply-review-panel';
 import {GmailConnection} from './gmail-connection';
@@ -184,6 +186,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const fileInput=useRef<HTMLInputElement>(null),end=useRef<HTMLDivElement>(null),input=useRef<HTMLTextAreaElement>(null),inFlight=useRef(false),generation=useRef(0);
  useEffect(()=>()=>{generation.current++;},[]);
  const [attachMode,setAttachMode]=useState<'choose'|'library'|null>(null);
+ const [filePicker,setFilePicker]=useState<FilePickerRequest|null>(null);
  const [saveReviewOpen,setSaveReviewOpen]=useState(false),[includeSchedule,setIncludeSchedule]=useState(true);
  async function refresh(signal?:AbortSignal,current=()=>true){
   const [data,connection]=await Promise.all([request('/api/agent-builder/studio',undefined,undefined,signal),request('/api/agent-builder/connection?profile=1',undefined,undefined,signal)]);
@@ -339,10 +342,27 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  function reset(){if(inFlight.current||recovery?.running)return;setConversationCollapsed(false);setRecovery(null);externalPromptContext.current='';setExternalMessages([]);go('workflow');window.scrollTo({top:0,behavior:'instant'});setChosenRefs([]);setChosenSnapshots([]);setSelectedNodeId(null);setEditorPanel('conversation');generation.current++;setSelected(null);setSession(null);setHistory([]);pinnedRun.current=false;setRunFiles([]);setSchedule(null);setSource(null);setJobs([]);setQueuedSourceRuns([]);setSaveReviewOpen(false);setScheduleSourceDirty(false);setScheduleSettingsDirty(false);setClarificationDirty(false);setScheduleNotice('');setText('');setTestText('');setTestRun(null);setAgentResources([]);setError('');localStorage.removeItem('a4b-builder-session');localStorage.removeItem('a4b-selected-agent');const url=new URL(location.href);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('executionMode');window.history.replaceState(window.history.state,'',url);setReplyDraft('');requestAnimationFrame(()=>input.current?.focus({preventScroll:true}));}
 
  async function ensureSession(){generation.current++;if(session)return session;if(!credentialId)throw new Error('설계 서비스를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.');const s=await request('/api/agent-builder/sessions',{credentialId,model,nodeRefs:chosenRefs});return {...s,messages:[],draft:null,status:'empty',issues:[],trace:[],resources:[]} as Session;}
- async function send(event?:FormEvent,choice?:string,questionId?:string,answers?:ClarificationAnswer[]){
+  async function connectDesignFiles(start:Session,files:DesignFile[]):Promise<Session>{
+   let current=start;
+   for(const file of files){
+    if(current.resources.some(resource=>resource.id===file.id))continue;
+    let next:Session;
+    try{next=await request<Session>('/api/agent-builder/attach_asset',{id:current.id,revision:current.revision,assetId:file.id});}
+    catch(error){
+     const latest=await request<Session>('/api/agent-builder/session?id='+encodeURIComponent(current.id)).catch(()=>null);
+     if(latest)remember(latest);
+     throw error;
+    }
+    if(!next.resources.some(resource=>resource.id===file.id))throw new Error('선택한 파일의 연결을 확인하지 못했습니다.');
+    current=next;
+    remember(current);
+   }
+   return current;
+  }
+  async function send(event?:FormEvent,choice?:string,questionId?:string,answers?:ClarificationAnswer[],selectedFiles?:DesignFile[]){
   event?.preventDefault();
   const draftText=text;
-  const content=(choice??draftText).trim();
+   let content=(choice??draftText).trim();
   if(inFlight.current||recovery||!content)return;
   const requestId=crypto.randomUUID();
   inFlight.current=true;
@@ -354,6 +374,18 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   setError('');
   let sentSession:Session|null=null;
   try{
+    let files=selectedFiles;
+    const folderMode=fromComposer&&!files?folderInputMode(content):undefined;
+    if(folderMode){
+     setBusy('자료함 폴더와 파일을 확인하고 있습니다.');
+     const match=await resolveDesignFolder(content,session?.resources||[],folderMode);
+     if(!match.files){
+      setText(draftText);
+      setFilePicker({hint:content,initialFolder:match.folder?.id,notice:match.notice,apply:picked=>{void send(undefined,undefined,undefined,undefined,picked);}});
+      return;
+     }
+     files=match.files;
+    }
    const editingWorkflow=!!session?.draft?.workflow;
    const gmailSlackRequest=/(?:Gmail|지메일)/i.test(content)&&/(?:Slack|슬랙)/i.test(content);
    if(!editingWorkflow&&!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
@@ -366,9 +398,17 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     return;
    }
    if((editingWorkflow||gmailSlackRequest)&&externalPromptContext.current){externalPromptContext.current='';setExternalMessages([]);}
-   const s=await ensureSession();
-   sentSession=s;
+    let s=await ensureSession();
    remember(s);
+    if(files?.length){
+     setBusy('자료함 파일을 설계에 연결하고 있습니다.');
+     s=await connectDesignFiles(s,files);
+     content+='\n이번에 읽을 파일: '+files.map(file=>file.name).join(', ');
+     if(content.length>4000)throw new Error('파일명을 포함해 업무 설명을 4,000자 이내로 줄여주세요.');
+     setPendingMessage(content);
+    }
+    sentSession=s;
+    setBusy('업무를 이해하고 설정을 구성하고 있습니다.');
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
    const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
    const lastReply=(result.messages as Session['messages']|undefined)?.findLastIndex(message=>message.role==='assistant')??-1;
@@ -406,6 +446,13 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  }
  // Files attached since the last message, per session: only these get a summary mid-conversation.
  const [freshFiles,setFreshFiles]=useState<{session:string;ids:string[]}>({session:'',ids:[]});
+  async function attachSelectedDesignFiles(files:DesignFile[]){
+   if(inFlight.current||recovery)return;
+   inFlight.current=true;setBusy('자료함 파일을 설계에 연결하고 있습니다.');setError('');
+   try{const s=await ensureSession();remember(s);await connectDesignFiles(s,files);}
+   catch(e){setError((e as Error).message);}
+   finally{inFlight.current=false;setBusy('');}
+  }
  async function attachResource(source:File|string){return attachResources([source]);}
  async function attachResources(sources:(File|string)[]) {
   if(inFlight.current||recovery||!sources.length)return;
@@ -677,8 +724,10 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const errorNotice=error&&<div className="as-error as-global-error" role="alert"><AlertCircle size={17}/><span>{error}</span>{recovery&&<button type="button" className="as-button" disabled={!!busy} onClick={()=>void reloadConversation()}>대화 다시 불러오기</button>}{recovery&&!recovery.running&&<button type="button" className="as-button as-secondary" disabled={!!busy} onClick={()=>void resumeConversation()}>이 대화 이어가기</button>}<WorkspaceIconButton disabled={!!recovery} onClick={()=>setError('')} aria-label="오류 안내 닫기"><X size={16}/></WorkspaceIconButton></div>;
 
  return <div className={"as-app screen-"+screen+(selected?" has-service":"")}>
+  {filePicker && !saved && screen==='workflow' && <DesignFolderPicker picker={{...filePicker,apply:(files,folder)=>{setFilePicker(null);filePicker.apply(files,folder);}}} connected={resources} close={()=>setFilePicker(null)}/>}
   {attachMode && !saved && screen==='workflow' && <AttachUploadDialog mode={attachMode} onClose={()=>setAttachMode(null)}
     connected={resources.map(r=>r.id)} formats={receiptQuestion ? receiptFileTypes : undefined}
+     onFolder={receiptQuestion?undefined:()=>{setAttachMode(null);setFilePicker({hint:'',apply:files=>{void attachSelectedDesignFiles(files);}});}}
     onLibrary={()=>setAttachMode('library')} onNew={()=>{setAttachMode(null);fileInput.current?.click();}}
     onSelect={id=>{setAttachMode(null);void attachResource(id);}}/>}
   <WorkspaceHeader onHome={()=>leave('home')} disabled={loading||!!busy||!!recovery||libraryBusy}/>

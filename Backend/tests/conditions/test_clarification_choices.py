@@ -272,11 +272,17 @@ def test_followup_amount_does_not_inherit_another_columns_operator():
     s['resources'] = [{**TABLE, 'columns': [*TABLE['columns'], '수량']}]
     ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 'filter.value': (None, '')})
     s.update(condition_ledger=ledger, pending_questions=ledger['questions'], condition_enforced=True)
-    question = next(q for q in ledger['questions'] if q['key'] == 'filter.value')
-    result = judge_conditions(click(s, question, '5'), Fake([]))['ledger']
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.match')
+    assert '수량 10 초과' in question['text'] and '비용' in question['text']
+    answered = click(s, question, '5원 미만')
+    result = judge(answered, {'filter.field': ('비용', '비용'), 'filter.operator': ('lt', '미만'),
+                              'filter.value': ('5', '5원')})
     assert result['slots']['filter.value']['value'] == 5
-    assert result['slots']['filter.operator']['status'] == 'missing'
-    assert result['decision'] != 'ready'
+    assert result['slots']['filter.operator']['value'] == 'lt'
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    assert [(rule['field'], rule['operator'], rule['value']) for rule in compound_filter_state(answered)['rules']] == [
+        ('수량', 'gt', 10), ('비용', 'lt', 5)]
+
 
 
 def test_compound_filter_survives_output_reply_and_explicit_edits():
@@ -320,7 +326,7 @@ PARTIAL = {'filter.field': ('비용', '비용'), 'filter.operator': (None, ''), 
 
 
 def compound_state(*turns):
-    s = state(turns[0]); s['resources'] = [COMPOUND_TABLE]
+    s = state(turns[0]); s['resources'] = [deepcopy(COMPOUND_TABLE)]
     for turn in turns[1:]:
         s['messages'] += [{'role': 'assistant', 'content': '확인 질문'}, {'role': 'user', 'content': turn}]
     return s
@@ -525,7 +531,7 @@ def test_long_runs_of_spaces_are_read_once(head):
 
     draft = workflow_draft(state('비용이 10원 이상인 행'))
     text = (head + ' ' * MESSAGE_LIMIT)[:MESSAGE_LIMIT]
-    s = state(text); s['resources'] = [COMPOUND_TABLE]
+    s = state(text); s['resources'] = [deepcopy(COMPOUND_TABLE)]
     assert compound_filter_state(s)['rules'] == []
     assert judge(s, PARTIAL)['decision'] != 'ready'
     numeric_filter_issues(s, draft)
@@ -539,7 +545,7 @@ SAVE_TABLE = {**TABLE, 'columns': ['거래ID', '비용', '수량', '날짜'],
 def save_ready_state(request_text, first, rules, match):
     from tests.conditions.test_condition_readiness import workflow_draft
 
-    s = state(request_text + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'); s['resources'] = [SAVE_TABLE]
+    s = state(request_text + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'); s['resources'] = [deepcopy(SAVE_TABLE)]
     operator, word = first
     ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': (operator, word),
                        'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
@@ -569,7 +575,7 @@ def test_save_accepts_the_complete_compound_filter_and_nothing_less(request_text
 
 
 def confirmed_single(*follow_ups):
-    s = state('비용이 10원 이상인 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'); s['resources'] = [SAVE_TABLE]
+    s = state('비용이 10원 이상인 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'); s['resources'] = [deepcopy(SAVE_TABLE)]
     ledger = judge(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('gte', '이상'),
                        'filter.value': ('10', '10원'), 'output.format': ('json', 'JSON')})
     assert ledger['decision'] == 'ready'
@@ -602,7 +608,7 @@ def test_other_follow_ups_do_not_reopen_the_criterion(follow_up):
     from agent_builder.conditions.condition_readiness import compound_filter_state
 
     assert compound_filter_state(confirmed_single(follow_up))['pending'] is None
-    s = compound_state(BASE, follow_up); s['resources'] = [SAVE_TABLE]  # 날짜 is a column of this table
+    s = compound_state(BASE, follow_up); s['resources'] = [deepcopy(SAVE_TABLE)]  # 날짜 is a column of this table
     assert compound_filter_state(s)['pending'] is None
 
 

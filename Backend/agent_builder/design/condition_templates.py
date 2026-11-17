@@ -17,11 +17,16 @@ def compile_conditions(state):
         duplicate_policy=slots.get('duplicate.policy','keep'),duplicate_field=slots.get('duplicate.field'),
         output_format=slots.get('output.format','json')).model_dump()
     if operation=='filter':
-        from .condition_requirements import additional_row_predicates
+        from .condition_requirements import additional_row_predicates, confirmed_filter_groups
         value=slots['filter.value']
         plan['filters']=[{'field':slots['filter.field'],'operator':slots['filter.operator'],'value':value,
             'compare_field':None,'value_type':'boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'text'}]
         plan['filters'].extend(predicate for _, predicate in additional_row_predicates(state, slots['filter.field']))
+        groups = confirmed_filter_groups(state)
+        if groups:
+            plan.update(filters=groups[0]['filters'], match=groups[0]['match'])
+    else:
+        groups = []
     fields=[key for key in [slots.get('filter.field'),slots.get('duplicate.field')] if key]
     tables=[r for r in state.get('resources',[]) if r.get('kind')=='table']
     candidates=[r for r in tables if all(field in r.get('columns',[]) for field in fields)]
@@ -41,6 +46,11 @@ def compile_conditions(state):
     if operation in ('filter','deduplicate'):
         add('apply','filter_sort',[{'input':'table','node_id':last,'output':'table'}],execution_plan=plan)
         last='apply'
+        for index, group in enumerate(groups[1:], 2):
+            next_plan = dict(plan, filters=group['filters'], match=group['match'])
+            identifier = f'apply{index}'
+            add(identifier, 'filter_sort', [{'input':'table','node_id':last,'output':'table'}], execution_plan=next_plan)
+            last = identifier
     if 'output.format' in slots or operation=='schedule':
         add('output','write_result',[{'input':'table','node_id':last,'output':'table'}],format=plan['output_format'])
     requirements=[]
@@ -53,7 +63,7 @@ def compile_conditions(state):
         schedule=ScheduleSpec(**{key:slots.get('schedule.'+key) for key in ['frequency','timezone','hour','minute','weekday','monthday']},
                               month_end=slots.get('schedule.month_end', False)).model_dump()
     draft=AgentDraft(name='확정 조건의 표 업무',purpose='검증한 조건을 등록 도구에 적용',
-        instructions='확정된 조건과 정책을 적용합니다. '+str(slots),tool_ids=[n['tool'] for n in nodes],
+        instructions='확정된 조건과 정책을 적용합니다. '+str(slots),tool_ids=list(dict.fromkeys(n['tool'] for n in nodes)),
         document_ids=[r['id'] for r in state.get('resources',[])],requirements=requirements,
         questions=[],question_options=[],unsupported=[],explanation='대표 업무 템플릿으로 확정 조건을 실행 설정에 반영했습니다. 확인 후 저장하세요.',
         execution_plan=plan,workflow={'entry':'read','nodes':nodes,'edges':edges},schedule=schedule,

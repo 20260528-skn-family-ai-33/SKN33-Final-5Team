@@ -38,6 +38,12 @@ def _filter_issues(state, draft, compound):
     required += [(r, contains_alternative) for r in literal_or_filters(state)]
     if compound:
         match, rules = compound
+        from .condition_requirements import additional_row_predicates
+        try:
+            extra = [predicate for _, predicate in additional_row_predicates(state, None)]
+        except ValueError as error:
+            return [str(error)]
+        required.extend((rule, guarantees_filter) for rule in extra)
         if match == 'all' or len(rules) < 2:
             required.extend((rule, guarantees_filter) for rule in rules)
         else:
@@ -55,7 +61,7 @@ def _filter_issues(state, draft, compound):
     error = ['명시한 숫자 선별 조건이 최종 저장 경로의 모든 행에 적용되지 않습니다. AND/OR 조건과 데이터 연결을 확인하세요.']
     if compound:
         from .requirement_coverage import _condition
-        requested = {_condition(rule) for rule in compound[1]}
+        requested = {_condition(rule) for rule in [*compound[1], *extra]}
         plans = [n['settings'].get('execution_plan') or draft.get('execution_plan', {})
                  for n in (draft.get('workflow') or {}).get('nodes', [])
                  if n['tool'] == 'filter_sort' and not n['settings'].get('operation')]

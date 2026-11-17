@@ -465,6 +465,19 @@ def _compound_filter_in_turn(state, text):
     """
     text = _QUOTED_TEXT.sub(' ', text)
     comparisons = list(_COMPARATOR_SPAN.finditer(text))
+    if len(comparisons) == 1:
+        match = comparisons[0]
+        fields = _table_fields(state)
+        owners = [field for field in fields if _comparison_subject(field, text[:match.start()])]
+        vague = r'\s*+(?:이|가|은|는)?\s*+(?:(?:낮|적|작|높|많)(?:고|은|거나)|큰|크고|크거나|부족한|부족하고)(?![가-힣])'
+        missing = [field for field in fields if field not in owners
+                   and re.search(r'(?<![\w])' + re.escape(field) + '(?:' + vague + ')', text)]
+        if (len(owners) == 1 and missing and not _uncertain_comparison(text[match.end():])
+                and not _excludes_named_range(text, match.end())):
+            rule = _stated_rule(owners[0], match.group())
+            if rule:
+                return 'partial', dict(rules=[rule], missing=missing,
+                                      mode='any' if re.search(r'거나|또는|혹은', text) else 'all')
     if len(comparisons) < 2:
         return None
     fields = _table_fields(state)
@@ -511,6 +524,8 @@ def _compound_turn_text(state, index, message):
     event = next((e for e in reversed(state.get('condition_answers', []) or []) if e.get('turn') == index), None)
     if event and event.get('answers'):
         own = [a.get('answer', '') for a in event['answers'] if a.get('key') == 'filter.match']
+        if not own:
+            own = [a.get('answer', '') for a in event['answers'] if a.get('key') == 'filter.value']
         return own[0] if own else None
     content = message['content']
     return content.rsplit('→', 1)[1] if '→' in content else content
@@ -532,6 +547,7 @@ def compound_filter_state(state):
     """
     fields = _table_fields(state)
     mode, rules, pending, candidate = None, [], None, None
+    missing_fields = []
     seed, seed_turn, seeded = _confirmed_filter(state)
 
     def merged(rule):
@@ -545,24 +561,39 @@ def compound_filter_state(state):
         if text is None:
             continue
         text = text.strip().rstrip('.!?')
+        if pending == 'complete' and len(missing_fields) == 1 and not any(field in text for field in fields):
+            text = missing_fields[0] + ' ' + text
         if seed and not rules and not seeded and index > seed_turn:
             # A single filter confirmed earlier is followed like a chain of one.
             mode, rules, seeded = 'all', [seed], True
         if re.fullmatch(r'(?:모든|전체|기존)\s*(?:숫자\s*)?(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?', text):
             mode, rules, pending, candidate = None, [], None, None
             seed = None
+            missing_fields = []
             continue
         turn = _compound_filter_in_turn(state, text)
         if turn:
             seed = None  # An explicit chain supersedes the older single-filter ledger.
             kind, found = turn
             candidate = None
-            if kind == 'rewrite':
+            if kind == 'partial':
+                mode, rules, pending = found['mode'], found['rules'], 'complete'
+                missing_fields = found['missing']
+            elif kind == 'rewrite':
                 mode, rules, pending = None, [], 'rewrite'
+                missing_fields = []
             elif kind == 'ask':
                 mode, rules, pending = None, found, 'match'
             else:
+                if rules and re.search(r'추가', text):
+                    # Adding a group with a different connective needs explicit grouping.
+                    if mode != kind:
+                        pending = 'rewrite'
+                        continue
+                    found = list(dict((json.dumps(rule, sort_keys=True), rule)
+                                      for rule in [*rules, *found]).values())
                 mode, rules, pending = kind, found, None
+                missing_fields = []
             continue
         if not rules:
             continue
@@ -599,6 +630,11 @@ def compound_filter_state(state):
             match = matches[0]
             denied = _excludes_named_range(text, match.end()) or _uncertain_comparison(text[match.end():])
             rule = None if denied else _stated_rule(owners[0], match.group())
+            if rule and pending == 'complete' and owners[0] in missing_fields:
+                rules = merged(rule)
+                missing_fields.remove(owners[0])
+                pending = 'complete' if missing_fields else None
+                continue
             if rule in rules:
                 continue
             if rule is None:
@@ -615,16 +651,18 @@ def compound_filter_state(state):
                 pending, candidate = 'revise', rule
             continue
         other_columns = fields - {rule['field'] for rule in rules}
+        schedule_edit = bool(_schedule_evidence(text, follow_up=True))
         if named and _CRITERION_NOUN.search(text):
             pending, candidate = 'revise', None
         elif (not matches and _CRITERION_NOUN.search(text)
+              and not schedule_edit
               and not any(re.search(r'(?<![\w])' + re.escape(field), text) for field in other_columns)
               and not any(re.search(subject, text) for subject in _POLICY_SUBJECTS.values())):
             # "아까 기준을 좀 높여줘": the criterion is being changed but neither the column nor
             # the new value is written. Keeping the old filter silently would be a guess.
             pending, candidate = 'revise', None
     return {'mode': mode, 'rules': rules, 'pending': pending, 'candidate': candidate,
-            'seeded': seeded and len(rules) < 2}
+            'seeded': seeded and len(rules) < 2, 'missing_fields': missing_fields}
 
 
 def _confirmed_filter(state):
@@ -655,6 +693,8 @@ def compound_filter_question(found):
     """The question and its clickable answers for an undecided compound filter."""
     rules = found['rules']
     listed = ', '.join(describe_rule(rule) for rule in rules)
+    if found['pending'] == 'complete':
+        return (f"'{listed}' 조건은 유지합니다. {', '.join(found['missing_fields'])}의 비교 방식과 기준값을 함께 알려주세요.", [])
     if found['pending'] == 'match':
         return f'선별 조건({listed})을 모두 만족하는 행만 남길까요, 하나라도 만족하면 남길까요?', list(MATCH_CHOICES)
     if found['pending'] == 'revise' and found['candidate']:
@@ -704,9 +744,10 @@ def _literal_threshold(state, catalog, field, *, require_named_field=False, allo
         if require_named_field:
             if not field:
                 return None
-            if len(matches) != 1:
+            if len(matches) != 1 and not literal_compound_filter(state):
                 return None
-            matches = [match for match in matches if _comparison_subject(field, text[:match.start()])]
+            matches = [match for index, match in enumerate(matches)
+                       if _comparison_subject(field, text[matches[index - 1].end() if index else 0:match.start()])]
         spans = [match.group(0) for match in matches
                  if not _excludes_named_range(text, match.end())
                  and (allow_uncertain_direction or not _uncertain_comparison(text[match.end():]))]
@@ -891,17 +932,21 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=
         # Accept both "중복 거래ID" and "거래ID 중복"; never guess synonyms.
         text = message['content']
         comparisons = list(_COMPARATOR_SPAN.finditer(text))
-        if len(comparisons) == 1:
-            comparison = comparisons[0]
-            natural = _NATURAL_COMPARISON.search(comparison.group())
-            if (natural and _comparison_subject(filter_field, text[:comparison.start()])
+        for index, comparison in enumerate(comparisons):
+            word = _COMPARISON_WORD.search(comparison.group())
+            natural = word and (_NATURAL_OPERATORS | _JOINING_OPERATORS).get(word[1])
+            prefix = text[comparisons[index - 1].end() if index else 0:comparison.start()]
+            if (natural and _comparison_subject(filter_field, prefix)
                     and not _uncertain_comparison(text[comparison.end():])
                     and not _excludes_named_range(text, comparison.end())):
                 refs = [e for e in catalog if e.get('turn') == turn and e.get('source_id') == 'user'
                         and comparison.group() in e['quote']]
                 if refs:
+                    old = per_turn.get('filter.operator')
+                    conflict = bool(old and (old['status'] == 'conflict' or old['value'] != natural))
                     per_turn['filter.operator'] = {
-                        'key': 'filter.operator', 'status': 'specified', 'value': _NATURAL_OPERATORS[natural[1]],
+                        'key': 'filter.operator', 'status': 'conflict' if conflict else 'specified',
+                        'value': None if conflict else natural,
                         'evidence_ids': [refs[0]['id']], 'evidence': [refs[0]],
                     }
 
@@ -949,6 +994,14 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=
                 }
         for key, pattern, mapping in patterns:
             for match in re.finditer(pattern, message['content'], re.IGNORECASE):
+                if key == 'filter.operator' and filter_field:
+                    span = next((i for i, part in enumerate(comparisons)
+                                 if part.start() <= match.start() and match.end() <= part.end()), None)
+                    if span is not None:
+                        prefix = text[comparisons[span - 1].end() if span else 0:comparisons[span].start()]
+                        owners = [col for col in columns if _comparison_subject(col, prefix)]
+                        if owners and owners != [filter_field]:
+                            continue
                 if key == 'filter.operator' and _excludes_named_range(message['content'], match.end()):
                     continue  # the named range is dropped; leave the operator to a question
                 tail = message['content'][match.end():match.end() + 16]
@@ -1666,7 +1719,7 @@ def validate_conditions(raw, state, catalog):
     latest_text = state['messages'][latest]['content'] if latest >= 0 else ''
     explicit_threshold = (field_slot.get('status') == 'specified'
                           and field_slot['value'] in latest_text
-                          and numeric_column(state, field_slot['value'])
+                          and (numeric_column(state, field_slot['value']) or literal_compound_filter(state))
                           and not previous.get('operations'))
     if (asked_value or explicit_threshold) and not proposed_value and slots.get('filter.value', {}).get('status') == 'missing':
         literal = _literal_threshold(state, catalog, field_slot.get('value'),
@@ -1845,6 +1898,8 @@ def validate_conditions(raw, state, catalog):
                         and {'filter.operator', 'filter.value'} <= set(unresolved))
         if group_filter:
             question_keys.remove('filter.operator')
+        if compound['pending'] == 'complete':
+            question_keys = [key for key in question_keys if key not in ('filter.operator', 'filter.value')]
         direction = None
         if numeric_filter:
             field_prefix = r'(?<![\w])' + re.escape(field['value']) + r'\s*+(?:이|가|은|는)?\s*+(?:\d[\d,.]*\s*+(?:원|개|건|점)?\s*+기준(?:으로)?\s*+)?'
@@ -2037,8 +2092,15 @@ def plan_issues(ledger, draft, *, state=None):
         from agent_builder.design.requirement_coverage import _condition
         value = slots.get('filter.value')
         expected = dict(field=slots.get('filter.field'), operator=slots.get('filter.operator'),
-                        value=value, compare_field=None, value_type='number')
-        if 'filter' in ledger['operations'] and _condition(expected) not in {_condition(rule) for rule in compound['rules']}:
+                        value=value, compare_field=None,
+                        value_type='boolean' if isinstance(value, bool) else 'number' if isinstance(value, (int, float)) else 'text')
+        from agent_builder.design.condition_requirements import confirmed_filter_groups
+        try:
+            requested = [rule for group in confirmed_filter_groups(state) for rule in group['filters']]
+        except ValueError as error:
+            problems.append(str(error))
+            requested = compound['rules']
+        if 'filter' in ledger['operations'] and _condition(expected) not in {_condition(rule) for rule in requested}:
             problems.append('확정된 선별 조건이 원문의 복합 조건에 없습니다.')
     if 'filter' in ledger['operations'] and not compound_filter:
         value=slots.get('filter.value')

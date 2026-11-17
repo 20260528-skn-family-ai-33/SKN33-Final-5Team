@@ -16,24 +16,41 @@ def additional_row_predicates(state, primary):
     if not fields:
         return []
     assertion = re.compile(
-        r"(?:또한\s+|그리고\s+)?(?P<field>" + '|'.join(fields)
+        r"(?<![\w])(?:또한\s+|그리고\s+)?(?P<field>" + '|'.join(fields)
         + r")\s*(?:열[의은는이가]?\s*)?(?:이|가|은|는)\s*"
           r"""(?P<quote>['"]?)(?P<value>[^\s,'".!?]+?)(?P=quote)인\s+행"""
-          r"(?:이어야\s*(?:해|합니다)|만\s*(?:남겨|골라|선별해)(?:줘|주세요)?)")
+          r"(?:이어야\s*(?:해|합니다)|만(?:\s*(?:남겨|골라|선별해)(?:줘|주세요)?)?)")
     additions = []
     for source, message in enumerate(users):
         for clause in re.split(r'[.!?\n;]', message):
-            match = assertion.fullmatch(clause.strip())
-            if not match:
-                continue
-            if (multiple_outputs(state) or re.search(r'또는|혹은|이거나|이든|아니면', message)
-                    or any(match['field'] in m for m in users[source + 1:])):
-                raise ValueError('별도 선별 조건을 적용할 출력·수정 범위를 확인하지 못했습니다.')
-            predicate = dict(field=match['field'], operator='eq', value=match['value'],
-                             compare_field=None, value_type='text')
-            if not any(other == predicate for _, other in additions):
-                additions.append((source, predicate))
+            clause = clause.strip()
+            for match in assertion.finditer(clause):
+                if (multiple_outputs(state) or (re.search(r'또는|혹은|이거나|이든|아니면', clause)
+                        and not re.search(r'(?:이고|그리고|또한)\s*$', clause[:match.start()])
+                        and not match.group().startswith(('그리고', '또한')))
+                        or any(match['field'] in m for m in users[source + 1:])):
+                    raise ValueError('별도 선별 조건을 적용할 출력·수정 범위를 확인하지 못했습니다.')
+                predicate = dict(field=match['field'], operator='eq', value=match['value'],
+                                 compare_field=None, value_type='text')
+                if not any(other == predicate for _, other in additions):
+                    additions.append((source, predicate))
     return additions
+
+
+def confirmed_filter_groups(state):
+    """The same explicit predicates used by requirement ownership and row-lineage proof."""
+    from agent_builder.conditions.condition_readiness import literal_compound_filter
+    compound = literal_compound_filter(state)
+    if not compound:
+        return []
+    mode, rules = compound
+    extra = [predicate for _, predicate in additional_row_predicates(state, None)]
+    if mode == 'all':
+        return [dict(kind='filter', match=mode, filters=[*rules, *extra])]
+    groups = [dict(kind='filter', match=mode, filters=rules)]
+    if extra:
+        groups.append(dict(kind='filter', match='all', filters=extra))
+    return groups
 
 
 def owned_specs(confirmed, state):
@@ -60,9 +77,16 @@ def owned_specs(confirmed, state):
         add('filter', '확정한 비교 조건으로 행 선별', filter_keys, match='all', filters=[{
             'field': values['filter.field'], 'operator': values['filter.operator'],
             'value': value, 'compare_field': None, 'value_type': data_type}])
-        for source, predicate in additional_row_predicates(state, values['filter.field']):
-            specs['filter']['spec']['filters'].append(predicate)
-            specs['filter']['source_message'] = max(specs['filter']['source_message'], source)
+        groups = confirmed_filter_groups(state)
+        if groups:
+            specs['filter']['spec'] = groups[0]
+            if len(groups) > 1:
+                specs['filter']['following'] = [dict(spec=group, source_message=specs['filter']['source_message'],
+                    description='추가로 명시한 행 조건 적용') for group in groups[1:]]
+        else:
+            for source, predicate in additional_row_predicates(state, values['filter.field']):
+                specs['filter']['spec']['filters'].append(predicate)
+                specs['filter']['source_message'] = max(specs['filter']['source_message'], source)
     policy_keys = ['missing.policy', 'duplicate.policy', 'duplicate.field']
     if any(key in slots for key in policy_keys[:2]):
         add('policy', '확정한 빈값·중복 정책 적용', policy_keys, missing_policy=values.get('missing.policy'),
@@ -261,6 +285,16 @@ def project_owned(candidates, expected, state):
     multi = multiple_outputs(state)
     resources = state.get('resources', [])
     single_table = len(resources) == 1 and resources[0].get('kind') == 'table'
+    following = expected.get('filter', {}).get('following', [])
+    if following:
+        # A numeric OR followed by a text AND is two successive filter tasks.
+        from .requirement_coverage import _condition
+        allowed = {_condition(rule) for group in [expected['filter'], *following]
+                   for rule in group['spec']['filters']}
+        if any(_condition(rule) not in allowed for candidate in candidates
+               if candidate['spec'].get('kind') == 'filter' for rule in candidate['spec'].get('filters', [])):
+            raise ValueError('추가 선별 조건의 원문·대상을 먼저 확인해야 합니다.')
+        candidates = [candidate for candidate in candidates if candidate['spec'].get('kind') != 'filter']
     for kind in ('schedule', 'filter', 'policy'):
         related = [c['spec'] for c in candidates if c['spec'].get('kind') == kind]
         if kind in expected and any(spec != related[0] for spec in related[1:]):
@@ -290,7 +324,8 @@ def project_owned(candidates, expected, state):
         if kind not in seen:
             insert = len(result) if kind == 'export' else next(
                 (i for i, task in enumerate(result) if task['spec']['kind'] == 'export'), len(result))
-            result.insert(insert, candidate)
+            result[insert:insert] = [{k: v for k, v in candidate.items() if k != 'following'},
+                                     *candidate.get('following', [])]
     return result
 
 
@@ -298,6 +333,11 @@ def validate_owned(plan, expected, state):
     multi = multiple_outputs(state)
     for kind, candidate in expected.items():
         matching = [t['spec'] for t in plan['tasks'] if t['spec']['kind'] == kind]
+        if candidate.get('following'):
+            required = [candidate['spec'], *(item['spec'] for item in candidate['following'])]
+            if len(matching) != len(required) or any(spec not in matching for spec in required):
+                raise ValueError('검증된 업무 조건과 요구사항 설정이 다릅니다: ' + kind)
+            continue
         if candidate['spec'] not in matching or (not (multi and kind == 'export')
                 and any(spec != candidate['spec'] for spec in matching)):
             raise ValueError('검증된 업무 조건과 요구사항 설정이 다릅니다: ' + kind)

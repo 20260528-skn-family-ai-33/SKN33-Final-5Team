@@ -75,12 +75,13 @@ export function memberEmail(value:unknown):string|null {
 export function safeRequestContext(raw:any){
  const input=raw&&typeof raw==='object'?raw:{};
  const valid=Array.isArray(input.conversation)?input.conversation.filter((m:any)=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string'):[];
+ const prompt=typeof input.prompt==='string'&&input.prompt.trim()?diagnosticText(input.prompt,Infinity):null;
  return {
-  prompt:typeof input.prompt==='string'&&input.prompt.trim()?diagnosticText(input.prompt,8000):null,
+  prompt:prompt===null?null:prompt.slice(0,8000),
   prompt_storage_limit:input.prompt_storage_limit===4000?4000:null,
   prompt_storage_truncated:typeof input.prompt_storage_truncated==='boolean'?input.prompt_storage_truncated:null,
-  prompt_truncated:input.prompt_truncated===true||(typeof input.prompt==='string'&&input.prompt.length>8000),
-  conversation:valid.slice(-40).map((m:any)=>({role:m.role as 'user'|'assistant',content:diagnosticText(m.content,4000),truncated:m.content.length>4000})),
+  prompt_truncated:input.prompt_truncated===true||(prompt!==null&&prompt.length>8000),
+  conversation:valid.slice(-40).map((m:any)=>{const content=diagnosticText(m.content,Infinity);return {role:m.role as 'user'|'assistant',content:content.slice(0,4000),truncated:content.length>4000};}),
   conversation_source:input.conversation_source==='session_latest'?'session_latest':'unavailable',
   conversation_truncated:input.conversation_truncated===true||valid.length>40,
  };

@@ -52,6 +52,7 @@ BEGIN
     AND (workflow_key IS NULL OR ds.workflow_id::text=workflow_key);
   IF FOUND THEN source := 'session_latest'; END IF;
  END IF;
+ -- Keep selected text intact until API masking; cutting first can expose partial secrets.
  -- Project only user/assistant text, never tool/system messages, attachments or metadata.
  WITH valid AS (
   SELECT e.value,e.ordinality FROM jsonb_array_elements(
@@ -60,9 +61,9 @@ BEGIN
     AND jsonb_typeof(e.value->'content')='string'
  ), recent AS (SELECT * FROM valid ORDER BY ordinality DESC LIMIT 40)
  SELECT (SELECT count(*)::integer FROM valid),coalesce(jsonb_agg(jsonb_build_object(
-  'role',value->>'role','content',left(value->>'content',8001)) ORDER BY ordinality),'[]'::jsonb)
+  'role',value->>'role','content',value->>'content') ORDER BY ordinality),'[]'::jsonb)
  INTO turn_count,turns FROM recent;
- RETURN jsonb_build_object('prompt',left(request_text,8001),'prompt_truncated',coalesce(storage_truncated,false) OR coalesce(length(request_text)>8000,false),
+ RETURN jsonb_build_object('prompt',request_text,'prompt_truncated',coalesce(storage_truncated,false),
   'prompt_storage_limit',storage_limit,'prompt_storage_truncated',storage_truncated,
   'conversation',turns,'conversation_source',source,'conversation_truncated',turn_count>40);
 END $$;

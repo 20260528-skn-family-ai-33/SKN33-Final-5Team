@@ -81,6 +81,24 @@ test('012: admin-only identity/context, exact owner/version linkage and safe API
    for(const fragment of ['dXNlcjpwYXNz','alpha','beta','gamma'])assert.ok(!JSON.stringify(safe).includes(fragment),value);
    assert.equal(safe.conversation.length,2);
   }
+  // Stored text must reach masking intact, even when a known secret spans the old SQL cut.
+  const secretKey='A4B_BOUNDARY_TEST_SECRET',previousSecret=process.env[secretKey];
+  try{
+   for(const [offset,size,suffix] of [[7990,60,''],[7990,60,'z'.repeat(100)],[3990,5000,'']] as const){
+    const secret='FAKEBOUNDARY'+ 'q'.repeat(size)+'END';process.env[secretKey]=secret;
+    const raw='x'.repeat(offset)+secret+suffix;
+    await c.query('RESET ROLE');
+    await c.query('UPDATE a4b.workflow_runs SET input_json=$1 WHERE id=$2',[JSON.stringify({request:raw}),run]);
+    await c.query('UPDATE a4b.design_sessions SET messages_json=$1 WHERE id=$2',[JSON.stringify([{role:'user',content:raw},{role:'assistant',content:raw}]),session]);
+    await c.query('SET LOCAL ROLE a4b_app');
+    const safe=(await get('/execution/'+run+'?days=7')).item.context;
+    const masked='x'.repeat(offset)+'[보호된 값]'+suffix;
+    assert.equal(safe.prompt,masked.slice(0,8000),'mask before SQL/API display limits');
+    assert.equal(safe.prompt_truncated,masked.length>8000);
+    for(const turn of safe.conversation){assert.equal(turn.content,masked.slice(0,4000));assert.equal(turn.truncated,masked.length>4000);}
+    assert.ok(!JSON.stringify(safe).includes('FAKEBOUNDA'),'no partial credential in response');
+   }
+  }finally{if(previousSecret===undefined)delete process.env[secretKey];else process.env[secretKey]=previousSecret;}
   assert.equal(detail.item.context.prompt_storage_limit,4000);
   assert.equal(detail.item.context.prompt_storage_truncated,null,'old records have unknown truncation');
   for(const truncated of [null,false,true]){

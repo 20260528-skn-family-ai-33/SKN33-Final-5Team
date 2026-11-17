@@ -3440,3 +3440,40 @@ test('all saved-design entry paths preserve left selection and right-click setti
   assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);
  }finally{await h.close();}
 });
+
+for(const source of ['draft','saved'] as const)test(`${source} node edit reopens a collapsed conversation before preparing the request`,async()=>{
+ const workflow={entry:'send',nodes:[{id:'send',label:'Slack 알림',tool:'slack.post_message',settings:{arguments_json:'{"channel_id":"C0123456789"}'},bindings:[]}],edges:[]};
+ const saved={...A,config:{...A.config,workflow}},session={...readySession(),draft:{...readySession().draft,workflow}};
+ const h=await setup(source==='saved'?'?screen=workflow&service=A':'?screen=workflow',source==='saved'?{}:{'a4b-builder-session':'ready'},path=>{
+  if(path.includes('/agent?'))return snapshot(saved);
+  if(path.includes('/session?'))return session;
+  if(path.endsWith('/sessions'))return {id:'edit-session',revision:0};
+ });
+ try{
+  await click(button('대화 접기'));
+  assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'true');
+  await openNode(document.querySelector('.as-flow-node')!);
+  await input(document.querySelector<HTMLInputElement>('[data-setting-path="arguments_json.channel_id"]')!,'C9876543210');
+  await click(button('채팅에 변경 요청'));
+  assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'false');
+  assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-panel'),'conversation');
+  assert.equal(document.querySelector('.as-node-popover'),null);
+  assert.match(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,/C0123456789 → C9876543210/);
+  assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);
+ }finally{await h.close();}
+});
+
+test('editing a saved workflow and starting a new design reset conversation collapse',async()=>{
+ const workflow={entry:'read',nodes:[{id:'read',label:'자료 읽기',tool:'read_table',settings:{},bindings:[]}],edges:[]};
+ const saved={...A,config:{...A.config,workflow}};
+ const h=await setup('?screen=workflow&service=A',{},path=>path.includes('/agent?')?snapshot(saved):path.endsWith('/sessions')?{id:'edit-session',revision:0}:undefined);
+ try{
+  await click(button('대화 접기'));
+  await click(button('설정 수정'));
+  assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'false');
+  await click(button('대화 접기'));
+  await click(button('새 워크플로우'));
+  assert.equal(document.querySelector('.as-editor-grid')?.getAttribute('data-chat-collapsed'),'false');
+  assert.equal(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!.value,'');
+ }finally{await h.close();}
+});

@@ -52,7 +52,10 @@ export function ClarificationForm({questions,disabled=false,onSubmit,onDirtyChan
    const selected=source==='folder'&&folder
     ? [/[._]id$/i.test(question.key||'')&&folder.id?folder.id:folder.path]
     : value.files.map(file=>file.id);
-   return {...base,files:value.files,folderPath:folder?.path,value:type==='multi_choice'?selected:selected.join(', ')};
+   const answer=type==='multi_choice'?selected:selected.join(', ');
+   const custom=(type==='single_choice'||type==='multi_choice')&&
+    (Array.isArray(answer)?answer:[answer]).some(item=>!question.options?.includes(item));
+   return {...base,files:value.files,folderPath:folder?.path,value:answer,...(custom?{custom:true}:{})};
   }
   if((type==='single_choice'||type==='multi_choice')&&question.options?.length){
    const custom=value.customSelected?value.custom.trim():'';

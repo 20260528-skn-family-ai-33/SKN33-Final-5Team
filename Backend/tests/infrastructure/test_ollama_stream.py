@@ -4,6 +4,7 @@ import json
 import pytest
 
 from agent_builder.design.nodes.direct_conversation import OllamaPlanner, _ollama_body
+from infrastructure.llm.failure_classification import ModelTransportError
 
 
 def ndjson(*chunks):
@@ -43,8 +44,9 @@ def test_streamed_error_chunk_is_reported(monkeypatch):
         def __exit__(self, *a): pass
         def read(self): return ndjson({'message': {'content': '{'}}, {'error': 'model unloaded'})
     monkeypatch.setattr('urllib.request.urlopen', lambda request, timeout: Response())
-    with pytest.raises(ValueError, match='model unloaded'):
+    with pytest.raises(ModelTransportError, match='모델 서버 요청') as caught:
         OllamaPlanner('m').invoke([{'role': 'user', 'content': 'x'}])
+    assert 'model unloaded' not in str(caught.value)
 
 
 @pytest.mark.parametrize('codes,retries,ok', [([524], '2', True), ([524, 524], '2', True), ([524, 524, 524], '2', False),
@@ -68,7 +70,7 @@ def test_gateway_errors_are_retried_a_bounded_number_of_times(monkeypatch, codes
         assert OllamaPlanner('m').invoke([{'role': 'user', 'content': 'x'}])['content'] == '{}'
         assert len(calls) == len(codes) + 1
     else:
-        with pytest.raises(ValueError, match='로컬 모델 호출에 실패'):
+        with pytest.raises(ModelTransportError, match='모델 서버 요청'):
             OllamaPlanner('m').invoke([{'role': 'user', 'content': 'x'}])
 
 

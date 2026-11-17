@@ -8,33 +8,11 @@ def additional_row_predicates(state, primary):
     A single Condition filter cannot establish how predicates on distinct
     inputs/outputs combine. Leave those cases to requirements validation.
     """
-    tables = [resource for resource in state.get('resources', []) if resource.get('kind') == 'table']
-    if len(tables) != 1:
-        return []
-    users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
-    fields = [re.escape(name) for name in tables[0].get('columns', []) if name != primary and name]
-    if not fields:
-        return []
-    assertion = re.compile(
-        r"(?<![\w])(?:또한\s+|그리고\s+)?(?P<field>" + '|'.join(fields)
-        + r")\s*(?:열[의은는이가]?\s*)?(?:이|가|은|는)\s*"
-          r"""(?P<quote>['"]?)(?P<value>[^\s,'".!?]+?)(?P=quote)인\s+행"""
-          r"(?:이어야\s*(?:해|합니다)|만(?:\s*(?:남겨|골라|선별해)(?:줘|주세요)?)?)")
-    additions = []
-    for source, message in enumerate(users):
-        for clause in re.split(r'[.!?\n;]', message):
-            clause = clause.strip()
-            for match in assertion.finditer(clause):
-                if (multiple_outputs(state) or (re.search(r'또는|혹은|이거나|이든|아니면', clause)
-                        and not re.search(r'(?:이고|그리고|또한)\s*$', clause[:match.start()])
-                        and not match.group().startswith(('그리고', '또한')))
-                        or any(match['field'] in m for m in users[source + 1:])):
-                    raise ValueError('별도 선별 조건을 적용할 출력·수정 범위를 확인하지 못했습니다.')
-                predicate = dict(field=match['field'], operator='eq', value=match['value'],
-                                 compare_field=None, value_type='text')
-                if not any(other == predicate for _, other in additions):
-                    additions.append((source, predicate))
-    return additions
+    from .text_filter_contract import text_filter_state
+    contract = text_filter_state(state)
+    if contract['issues']:
+        raise ValueError(' / '.join(contract['issues']))
+    return [(source, rule) for source, rule in contract['predicates'] if rule['field'] != primary]
 
 
 def confirmed_filter_groups(state):
@@ -98,6 +76,13 @@ def owned_specs(confirmed, state):
 
 def multiple_outputs(state):
     text = ' '.join(m['content'] for m in state.get('messages', []) if m['role'] == 'user')
+    # Keeping every row/column is a data policy, not a request for several artifacts.
+    # Mask only that scoped use of "all"; retain independent output clauses and
+    # the existing separate-file/format signals in the same request.
+    text = re.sub(
+        r'(?:중복(?:\s*행)?|행|열|레코드|데이터|값|항목)(?:들)?(?:은|는|을|를|도)?\s*'
+        r'(?:(?:그대로|빠짐없이)\s*)?모두\s*(?:(?:다|그대로)\s*)?(?:유지|보존)',
+        lambda match: match.group().replace('모두', '', 1), text)
     return bool(re.search(r'각각|각자|별도|따로|두\s*(?:개|파일)|둘\s*다|모두|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
 
 

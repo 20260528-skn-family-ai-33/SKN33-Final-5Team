@@ -297,7 +297,12 @@ def validate_plan(raw, state):
                     number=number_value(f['value'])
                     if number not in numbers:raise ValueError('선별 기준 숫자가 사용자 원문에서 확인되지 않습니다.')
                     from .grounded_values import _numeric_grounded
-                    if f['field'] in text and not _numeric_grounded(float(number), {**state,'resources':[]}, f['field']):
+                    from .text_filter_contract import text_filter_state
+                    from .requirement_coverage import _condition
+                    text_contract = text_filter_state(state)
+                    literal_equality = (not text_contract['issues'] and
+                                        any(_condition(f) == _condition(rule) for _, rule in text_contract['predicates']))
+                    if f['field'] in text and not literal_equality and not _numeric_grounded(float(number), {**state,'resources':[]}, f['field']):
                         clauses=[part.strip() for message in users for part in re.split(r',\s+|[\n;]',message)
                                  if any(number_value(n.replace(',',''))==number for n in re.findall(r'(?<![\w.])\d[\d,]*(?:\.\d+)?',part))]
                         raise ValueError(f"{f['field']!r} 열과 선별 기준 {number}의 연결이 사용자 원문과 다릅니다. filter.field를 다음 원문에 명시된 열로 바꾸세요: " + ' / '.join(clauses)[:220])
@@ -740,7 +745,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                 from .requirement_clarification import business_questions, clarification_reply
                 questions,unknown=business_questions(plan['unresolved'],state)
                 if unknown and not attempt:
-                    messages=messages+[dict(role='user',content='업무 조건에 내부 필드 이름이 포함됐습니다. 인증값은 서버가 준비하므로 제거하고, 실제 미정인 업무 조건만 자연스러운 확인 질문으로 unresolved에 적어 다시 추출하세요. 사용자가 요구하지 않은 형식 선호를 필수로 만들지 마세요.')]
+                    messages=messages+[dict(role='user',content='앞선 unresolved에는 내부 필드 이름이나 사용자가 답할 수 없는 작업 지시가 포함됐습니다. 인증값은 서버가 준비하므로 제거하고, 실제 미정인 업무 조건만 자연스러운 확인 질문으로 unresolved에 적어 다시 추출하세요. 사용자가 요구하지 않은 형식 선호를 필수로 만들지 마세요.')]
                     continue
                 if unknown:raise ValueError('고객에게 표시할 구체적인 질문을 구성하지 못했습니다.')
                 from .requirement_contracts import RequirementQuestion
@@ -756,19 +761,21 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
         except Exception as error:
             if error_observer:error_observer(error)
             # Provider exceptions may contain headers, prompts or customer data.
-            from .failure_notice import requirement_failure_notice
+            from .failure_notice import requirement_failure_details, requirement_failure_notice
             from agent_builder.conditions.clarification_core import next_attempt
             failure_fingerprint=fingerprint
             attempt=next_attempt(state, 'requirements', failure_fingerprint)
             retained=state.get('draft')
-            if retained:
-                retained = {**retained, 'questions': [], 'question_options': [], 'question_responses': []}
+            if isinstance(retained,dict):
+                # These controls belong to the answered turn. Keep the prior
+                # workflow while a processing error is diagnosed, not its stale questions.
+                retained={**retained,'questions':[],'question_options':[],'question_responses':[]}
+            failure=requirement_failure_details(failure_kind, error, attempt=attempt)
             detail=requirement_failure_notice(failure_kind, error, retained_draft=bool(retained and retained.get('workflow')), attempt=attempt)
             return dict(requirement_route='stop',requirement_required=True,requirement_ledger=None,
                         requirement_fingerprint=None,requirement_digest=None,
                         status='validation_failed',confirmed=False,saved_agent_id=None,issues=[detail],
-                        pending_questions=[], draft=retained,requirement_failure={'kind':'processing_error','retryable':True,
-                            'stage':'requirements',
+                        pending_questions=[], draft=retained,requirement_failure={'kind':'processing_error',**failure,
                             'attempt':attempt,'request_fingerprint':failure_fingerprint},
                         messages=state.get('messages',[])+[dict(role='assistant',content=detail)],
                         trace=state.get('trace',[])+[dict(node='requirements',label='요청 업무 목록',status='failed',detail=detail,

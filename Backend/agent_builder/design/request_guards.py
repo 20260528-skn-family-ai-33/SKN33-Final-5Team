@@ -209,6 +209,8 @@ def unary_filter_issue(rule, text):
 
 def request_guard_issues(state, draft):
     issues = review_workflow_issues(state, draft)
+    from .text_filter_contract import text_filter_issues
+    issues.extend(text_filter_issues(state, draft))
     if draft.get('questions') or draft.get('unsupported'):
         return issues
     from .output_selection_request import output_selection_issues

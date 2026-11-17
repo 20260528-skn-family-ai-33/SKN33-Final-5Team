@@ -143,7 +143,10 @@ def test_condition_contract_failure_can_retry_without_changing_source_request(tm
     result = send(text)
     assert result['status'] == 'validation_failed'
     assert result['condition_ledger']['error_type'] == 'ConditionContractError'
-    assert '같은 조건으로 다시 시도' in result['messages'][-1]['content']
+    assert result['system_failure']['retryable'] is False
+    assert '처리 조건' in result['system_failure']['reason']
+    assert '관리자' in result['system_failure']['action']
+    assert '다시 시도' not in result['messages'][-1]['content']
     assert 'private-model-body' not in str(result)
     result = send('다시 시도')
     assert result['status'] == 'ready', result.get('issues')

@@ -77,6 +77,11 @@ def blocking_issue(state):
 
 
 def require_ready(state):
+    if state.get('node_edit_proof'):
+        from agent_builder.design.node_edit import proof_issue
+        issue = proof_issue(state)
+        if issue:raise ValueError(issue)
+        return
     issue=blocking_issue(state)
     if issue:raise ValueError(issue)
     if state.get('requirement_required'):
@@ -91,6 +96,10 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    from agent_builder.design.text_filter_contract import text_filter_issues
+    issues = text_filter_issues(state, state.get('draft') or {})
+    if issues:
+        raise ValueError(' / '.join(issues))
     from agent_builder.conditions.clarification_core import open_required
     if open_required(state):
         raise ValueError('답하지 않은 확인 질문이 남아 있어 저장할 수 없습니다.')

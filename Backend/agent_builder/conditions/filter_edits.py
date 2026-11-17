@@ -1,0 +1,73 @@
+"""Closed edit intents shared by numeric and textual filter replay."""
+import re
+
+_QUOTED = re.compile(r'''"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’''')
+
+
+def in_quoted_text(text, position):
+    return any(match.start() <= position < match.end() for match in _QUOTED.finditer(text))
+
+
+def in_metadata_text(text, position):
+    prefix = re.split(r'[.!?;,\n]|그리고|바꾸고|정하고|설정하고', text[:position])[-1]
+    return bool(re.search(r'(?:파일\s*+(?:이름|명)|설명|제목|출력\s*+이름).{0,40}$', prefix))
+
+ALL_FILTERS_CANCELLED = re.compile(
+    r'(?:모든|전체|기존)\s*+(?:숫자\s*+)?(?:선별\s*+)?(?:조건|필터)(?:을|를|은|는)?\s*+'
+    r'(?:취소|삭제|제거|해제)(?:해\s*+(?:줘|주세요))?[.!?\s]*')
+
+
+def addition_intent(text):
+    """An explicit addition never means replacement; denied/uncertain edits are distinct."""
+    text = _QUOTED.sub(' ', text)
+    edits = [match for match in re.finditer('추가', text) if not in_metadata_text(text, match.start())]
+    tail = text[edits[-1].start():] if edits else ''
+    if re.search(r'대신|교체|새\s*+조건만', tail):
+        return None
+    if re.search(r'추가\s*+(?:하지|하진|하시는|는)?\s*+(?:말|마|않|안)', tail):
+        return 'denied'
+    if re.search(r'추가\s*+(?:할지|하는지|인지)', tail):
+        return 'uncertain'
+    if edits or re.match(r'\s*+(?:그리고|또한|여기에)\s+', text):
+        return 'add'
+    return None
+
+
+def filter_clear_events(text, fields):
+    events = []
+    denied_tail = re.compile(r'\s*+(?:하지|하진|는)?\s*+(?:말|마|않|안)')
+    for field in fields:
+        name = r'(?<![\w])' + re.escape(field)
+        patterns = [name + r'\s*+(?:와|과|에)?\s*+(?:상관없이|관계없이|무관하게)',
+                    name + r'\s*+(?:선별\s*+)?(?:조건|필터)(?:은|는|을|를)?\s*+(?:취소|삭제|제거|해제)']
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                if not in_quoted_text(text, match.start()) and not in_metadata_text(text, match.start()) and not denied_tail.match(text[match.end():]):
+                    events.append((match.start(), match.end(), field))
+    return sorted(events)
+
+
+def cleared_filter_fields(text, fields):
+    return {field for _, _, field in filter_clear_events(text, fields)}
+
+
+def user_filter_text(state, index, message):
+    """Read answer values, never echoed question labels, as new filter instructions."""
+    event = next((item for item in reversed(state.get('condition_answers', [])) if item.get('turn') == index), None)
+    if event and event.get('answers'):
+        for key in ('filter.match', 'filter.value'):
+            answers = [item.get('answer', '') for item in event['answers'] if item.get('key') == key]
+            if answers:
+                return answers[0]
+        return None
+    content = message['content']
+    return content.rsplit('→', 1)[1] if event and '→' in content else content
+
+
+def filter_clauses(text):
+    masked = _QUOTED.sub(lambda match: ' ' * len(match.group()), text)
+    start = 0
+    for match in re.finditer(r'(?<!\d)[.!?;\n]|[.!?;\n](?!\d)', masked):
+        yield start, text[start:match.start()]
+        start = match.end()
+    yield start, text[start:]

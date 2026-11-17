@@ -66,6 +66,22 @@ def test_both_planners_and_runtime_question_settings_use_the_same_guard():
         {'tool':'ask_user','settings':{'question':'이 内容을 승인할까요?'}}]}},{})
 
 
+def test_model_meta_instructions_cannot_be_saved_as_design_clarifications():
+    text='처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.'
+    with pytest.raises(ValueError,match='답할 수 없는 확인 문장'):
+        validate_draft_question_language({'questions':[text]}, {})
+    cleaned=validate_draft_question_language({'questions':[text+' 조회 한도를 몇 건으로 할까요?']}, {})
+    assert cleaned['questions']==['조회 한도를 몇 건으로 할까요?']
+
+
+def test_execution_time_review_prompt_is_not_screened_as_a_design_clarification():
+    text='기존 설정을 검토해 주세요.'
+    draft={'questions':[], 'workflow':{'nodes':[{'tool':'ask_user','settings':{'question':text}}]}}
+    result=validate_draft_question_language(draft,{'messages':[{'role':'user','content':'실행 결과를 사람이 검토하게 해줘.'}]})
+    assert result['workflow']['nodes'][0]['settings']['question']==text
+    assert draft['workflow']['nodes'][0]['settings']['question']==text
+
+
 def test_old_non_time_questions_are_blocked_without_showing_untranslated_text():
     question={'id':'same-id','key':'format','text':'어떤 文件로 만들까요?','options':[]}
     state={'draft':{'questions':[question['text']],'question_options':[[]]},'pending_questions':[question],
@@ -73,7 +89,9 @@ def test_old_non_time_questions_are_blocked_without_showing_untranslated_text():
     shown=normalize_question_language(state)
     assert shown['draft']['questions']==[] and shown['pending_questions']==[]
     assert '文件' not in shown['messages'][-1]['content']
-    assert shown['requirement_failure']=={'kind':'question_language_error','retryable':True}
+    failure=shown['requirement_failure']
+    assert failure['kind']=='question_language_error' and failure['retryable'] is True
+    assert failure['reason'].strip() and failure['action'].strip()
 
 
 def test_direct_planner_rewrites_a_non_time_question_within_its_existing_retry_budget(monkeypatch):
@@ -83,6 +101,16 @@ def test_direct_planner_rewrites_a_non_time_question_within_its_existing_retry_b
     fake=Fake(bad,good)
     # The request must leave the format open: a format the user already wrote is never asked again.
     result=planner(monkeypatch,fake)({**state(),'messages':[{'role':'user','content':'입력 표를 파일로 저장해줘'}]})
+    assert result['draft']['questions']==good['questions']
+    assert len(fake.calls)==2
+
+
+def test_direct_planner_retries_a_non_answerable_work_instruction(monkeypatch):
+    from tests.design.test_direct_conversation import Fake,draft,planner,state
+    bad={**draft(),'questions':['처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.']}
+    good={**draft(),'questions':['조회 한도를 몇 건으로 할까요?']}
+    fake=Fake(bad,good)
+    result=planner(monkeypatch,fake)({**state(),'messages':[{'role':'user','content':'메일 조회 조건을 정해줘.'}]})
     assert result['draft']['questions']==good['questions']
     assert len(fake.calls)==2
 

@@ -69,8 +69,28 @@ def test_unknown_internal_name_is_retried_then_presented_as_a_normal_question():
     assert len(model.calls)==2
     assert result['status']=='validation_failed'
     assert not result.get('pending_questions')
-    assert result['requirement_failure']['kind']=='processing_error' and result['requirement_failure']['retryable']
+    assert result['requirement_failure']['kind']=='processing_error' and not result['requirement_failure']['retryable']
+    assert result['requirement_failure']['reason_code']=='invalid_model_response'
     assert 'invented_customer_internal_field' not in json.dumps(result)
+
+
+def test_repeated_model_work_instructions_do_not_become_required_questions():
+    text=('처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.\n'
+          '처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.')
+    model=Extractor(raw([text]))
+    result=make_requirement_check('fixture',model,'enforce')(current('고객 보고서를 만들어줘.','manual'))
+    assert len(model.calls)==2
+    assert result['status']=='validation_failed'
+    assert result['pending_questions']==[]
+    assert result['requirement_failure']['retryable'] is False
+
+
+def test_real_question_survives_when_model_appends_a_work_instruction():
+    questions,unknown=business_questions(
+        ['어떤 고객을 대상으로 보고서를 만들까요? 원문 업무와 변경한 조건을 모두 수행해 주세요.'],
+        current('고객 보고서를 만들어줘.','manual'))
+    assert not unknown
+    assert [q['text'] for q in questions]==['어떤 고객을 대상으로 보고서를 만들까요?']
 
 
 def test_real_natural_language_business_question_is_preserved():
@@ -116,7 +136,7 @@ def test_bad_extraction_keeps_technical_error_out_of_customer_message():
     notice=result['messages'][-1]['content']
     assert '입력하신 조건은 보존' in notice and '저장을 중단' in notice
     assert '작업 목록' in notice and '잘못된 형식' in notice
-    assert result['requirement_failure']['kind']=='processing_error' and result['requirement_failure']['retryable']
+    assert result['requirement_failure']['kind']=='processing_error' and not result['requirement_failure']['retryable']
 
 
 @pytest.mark.parametrize('hour',[0,9])

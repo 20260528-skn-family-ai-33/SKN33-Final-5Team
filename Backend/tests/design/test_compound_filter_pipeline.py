@@ -137,7 +137,8 @@ def test_adding_a_different_boolean_group_requires_grouping_instead_of_dropping_
     s['resources'][0]['columns'].append('적립금')
     found = compound_filter_state(s)
     assert found['pending'] == 'rewrite'
-    assert {rule['field'] for rule in found['rules']} == {'비용', '수량'}
+    assert {rule['field'] for rule in found['rules']} == {'비용', '수량', '할인', '적립금'}
+    assert {rule['field'] for rule in found['addition']['rules']} == {'비용', '수량'}
 
 
 def test_natural_comparators_on_the_same_column_are_not_reduced_to_the_last_one():

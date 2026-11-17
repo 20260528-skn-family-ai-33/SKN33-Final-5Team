@@ -28,7 +28,8 @@ def await_input_node(state):
             break
         if not answer.get('question_id') or answer['question_id'] in [q['id'] for q in pending]:break
         payload={**payload,'error':'현재 대화의 확인 질문에 답변해주세요.'}
-    result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False,'clarification_help':False,'system_failure':None}
+    result={'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False,'clarification_help':False,'system_failure':None,
+            'node_edit':answer.get('node_edit')}
     if not answer.get('question_answers') and not answer.get('question_id'):
         from agent_builder.design.question_help import question_help
         explanation = question_help(state, answer['content'])
@@ -86,6 +87,7 @@ def await_approval_node(state):
                 continue
             return {'confirmed':True,**({'include_schedule':answer['include_schedule']} if 'include_schedule' in answer else {})}
         if answer.get('type')=='message' and str(answer.get('content','')).strip():
-            return {'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False}
+            return {'messages':state['messages']+[{'role':'user','content':answer['content']}],'confirmed':False,
+                    'node_edit':answer.get('node_edit')}
         payload={**payload,'error':'설정을 확인하거나 변경할 내용을 입력해주세요.'}
 

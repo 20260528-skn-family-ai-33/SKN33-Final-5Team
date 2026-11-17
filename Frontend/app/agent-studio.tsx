@@ -6,8 +6,9 @@ import {PageTransition} from './page-transition';
 import {WorkflowRenameDialog,renameWorkflow} from './workflow-rename-dialog';
 import {WorkflowPreview,type Workflow} from './workflow-preview';
 import {RuleSummary} from './node-inspector';
-import {NodePopover} from './node-popover';
+import {NodePopover,type NodeEditRequest} from './node-popover';
 import {StudioMessage} from './studio-message';
+import {DesignFailureNotice,type DesignFailure} from './design-failure-notice';
 import {GmailSummaryResult,isGmailSlackSummaryWorkflow} from './gmail-summary-result';
 import {RunAnswer} from './run-answer';
 import {RunWorkflowDiagram} from './run-workflow-diagram';
@@ -51,7 +52,7 @@ type Resource={original_path?:string;capabilities?:string[];parser_metadata?:{do
 type InputRequirement={node_id?:string;kind:string;timing:string;fields:string[];ready:boolean;description?:string};
 type RunFileRequirement = InputRequirement & {required_before_start:boolean; issues?:string[]; file_ids?:string[]};
 type RunInputs = {schedule_request_required?:boolean;request_required?:boolean; input_requirements?:RunFileRequirement[]; source_required?:boolean; required_connections?:string[]; library_source?:ScheduleLibrarySource|null};
-type Session={system_failure?:{stage?:string;retryable:boolean}|null;last_generation_request_id?:string;requirement_failure?:{kind:string;retryable:boolean}|null;execution_mode?:'manual'|'scheduled'|null;file_inspection?:InspectedFile[];tool_gap?:{gap_id:string;revision:number}|null;input_requirements?:InputRequirement[];pending_questions?:{id:string;key:string;text:string;options?:string[];response?:QuestionResponse;group?:string;reason?:string;required?:boolean;action?:ReceiptAction;supersedes_texts?:string[]}[];id:string;revision:number;model:string;credential_id:string;agent_id:string|null;base_version:number;messages:{role:string;content:string}[];draft:Draft|null;status:string;issues:string[];trace:{node:string;label:string;status:string;detail:string}[];resources:Resource[];saved_agent_id?:string};
+type Session={system_failure?:DesignFailure|null;last_generation_request_id?:string;requirement_failure?:DesignFailure|null;execution_mode?:'manual'|'scheduled'|null;file_inspection?:InspectedFile[];tool_gap?:{gap_id:string;revision:number}|null;input_requirements?:InputRequirement[];pending_questions?:{id:string;key:string;text:string;options?:string[];response?:QuestionResponse;group?:string;reason?:string;required?:boolean;action?:ReceiptAction;supersedes_texts?:string[]}[];id:string;revision:number;model:string;credential_id:string;agent_id:string|null;base_version:number;messages:{role:string;content:string}[];draft:Draft|null;status:string;issues:string[];trace:{node:string;label:string;status:string;detail:string}[];resources:Resource[];saved_agent_id?:string};
 type ConversationRecovery={before:Session;requestId:string;action:'message'|'confirm';includeSchedule?:boolean;content?:string;draftText?:string;fromComposer?:boolean;error:string;running:boolean;pollCount?:number};
 type GenerationRequest={request_id:string;result_revision?:number;workflow_id?:string;action:string;session_revision:number;request_text:string;status:string;reason?:string|null};
 type IncompleteWorkflow={summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{description:string;status:string}[]};
@@ -96,6 +97,7 @@ type TestRun={library_source_files?:{space:string;team_id?:string|null;asset_id:
 const toolDetails:Record<string,{label:string;description:string;Icon:typeof Database}>={read_table:{label:'표 파일 읽기',description:'연결 자료의 실제 행을 읽습니다.',Icon:Database},filter_sort:{label:'조건에 따라 정리',description:'조건·정렬·예외 정책을 적용합니다.',Icon:SlidersHorizontal},write_result:{label:'결과 파일 만들기',description:'CSV·JSON 결과를 만듭니다.',Icon:FileOutput}};
 const samples:{label:string;text:string}[]=[];
 const RETRY_PROMPT='앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.'; // must match backend is_generation_retry
+const PROJECTED_FAILURES=new Set(['execution_mode_questions','question_language_error']); // set by execution_mode.py / question_language.py
 async function asBase64(file:File){return new Promise<string>((accept,reject)=>{const reader=new FileReader();reader.onload=()=>accept(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});}
 function download(artifact:{name:string;content:string;mime:string;encoding?:'base64'}){const url=URL.createObjectURL(new Blob([artifact.encoding==='base64'?Uint8Array.from(atob(artifact.content),c=>c.charCodeAt(0)):artifact.content],{type:artifact.mime}));const a=document.createElement('a');a.href=url;a.download=artifact.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 async function downloadToolGap(session:Session){
@@ -158,6 +160,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const [initialFileReady,setInitialFileReady]=useState(!initialFiles?.length);
  const initialPromptPending=useRef(!!initialPrompt?.trim());
  const [pendingMessage,setPendingMessage]=useState('');
+  const pendingNodeEdit=useRef<NodeEditRequest|null>(null);
  const [recovery,setRecovery]=useState<ConversationRecovery|null>(null);
  const [initialLoadFailed,setInitialLoadFailed]=useState(false);
  const [libraryBusy,setLibraryBusy]=useState(false),[libraryDirty,setLibraryDirty]=useState(false);
@@ -367,9 +370,11 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   const requestId=crypto.randomUUID();
   inFlight.current=true;
   const fromComposer=choice===undefined;
+  const preparedNodeEdit=fromComposer&&!answers?.length&&!selectedFiles?.length&&
+   pendingNodeEdit.current?.request===content&&!!pendingNodeEdit.current.changes.length;
   if(fromComposer)setText('');
   setPendingMessage(content);
-  setBusy(choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
+  setBusy(preparedNodeEdit?'설정 변경을 검증하고 있습니다.':choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
   setSelectedNodeId(null);
   setError('');
   let sentSession:Session|null=null;
@@ -408,9 +413,12 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
      setPendingMessage(content);
     }
     sentSession=s;
-    setBusy(choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
+    const nodeEdit=fromComposer&&!files?.length&&pendingNodeEdit.current?.request===content&&pendingNodeEdit.current.changes.length
+     ?pendingNodeEdit.current:undefined;
+    setBusy(nodeEdit?'설정 변경을 검증하고 있습니다.':choice===RETRY_PROMPT?'입력한 조건을 유지하고 다시 구성하고 있습니다.':'업무를 이해하고 설정을 구성하고 있습니다.');
    const userTimezone=Intl.DateTimeFormat().resolvedOptions().timeZone;
-   const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
+    const result=await request('/api/agent-builder/message',{id:s.id,revision:s.revision,content,userTimezone,generationRequestId:requestId,...(nodeEdit?{nodeEdit}:{}),...(answers?.some(answer=>answer.questionId)?{answers:answers.filter(answer=>answer.questionId).map(({questionId,value,custom,skip})=>({questionId,value,...(custom?{custom:true}:{}),...(skip?{skip:true}:{})}))}:{}),...(questionId?{questionId}:{})});
+    if(nodeEdit)pendingNodeEdit.current=null;
    const lastReply=(result.messages as Session['messages']|undefined)?.findLastIndex(message=>message.role==='assistant')??-1;
    setAnimatedMessage(result.id+':'+lastReply);
    remember(result);
@@ -663,12 +671,17 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   window.addEventListener('beforeunload',beforeUnload);return()=>window.removeEventListener('beforeunload',beforeUnload);
  },[text,testText,replyDraft,runFiles.length,chosenRefs.length,libraryDirty,scheduleSourceDirty,scheduleSettingsDirty,clarificationDirty]);
 
- const generationFailure=session?.requirement_failure||session?.system_failure;
+ // Stored failures can outlive a later clarification; attachment recovery needs an explicit marker and no open questions.
+ // Read-time projections are recomputed on every snapshot and are current in any status.
+ const attachmentRecovery=session?.status==='needs_clarification'&&!session.pending_questions?.length&&!session.draft?.questions.length
+  ?[session.requirement_failure,session.system_failure].find(failure=>failure?.recovery_pending===true&&failure.retryable):undefined;
+ const generationFailure=session?.status==='validation_failed'?(session.requirement_failure||session.system_failure)
+  :session?.requirement_failure&&PROJECTED_FAILURES.has(session.requirement_failure.kind||'')?session.requirement_failure:attachmentRecovery;
  const draft=selected?.config||session?.draft,resources=selected?(source?[source.asset,...agentResources.filter(r=>r.kind==='document')]:agentResources):session?.resources||[],ready=session?.status==='ready',saved=!!selected||session?.status==='saved';
  const collecting=session?.status==='needs_clarification'&&!draft?.workflow&&!!draft?.questions.length&&!draft?.tool_ids.length;
  const lastAssistant = session?.messages.map(message => message.role).lastIndexOf('assistant');
- const receiptQuestion = !saved ? session?.pending_questions?.find(q => q.action?.type === 'attach_receipt' || q.action?.type === 'select_fields') : undefined;
- const clarificationQuestions:ClarificationQuestionData[]=saved||receiptQuestion||session?.requirement_failure?.retryable||session?.system_failure?.retryable?[]:session?.pending_questions?.length
+ const receiptQuestion = !saved&&!generationFailure ? session?.pending_questions?.find(q => q.action?.type === 'attach_receipt' || q.action?.type === 'select_fields') : undefined;
+ const clarificationQuestions:ClarificationQuestionData[]=saved||receiptQuestion||generationFailure?[]:session?.pending_questions?.length
   ? session.pending_questions.map(question=>{const index=session.draft?.questions.indexOf(question.text)??-1;return {...question,response:question.response||session.draft?.question_responses?.[index]||undefined};})
   : (session?.draft?.questions||[]).map((question,index)=>({text:question,options:session?.draft?.question_options?.[index],response:session?.draft?.question_responses?.[index]||undefined}));
   const slackChannelQuestion=clarificationQuestions.find(question=>question.key==='slack.channel_id'||/(?:Slack|슬랙).{0,20}채널/i.test(question.text));
@@ -688,11 +701,13 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const inspectedNode=inspectedWorkflow?.nodes.find(node=>node.id===selectedNodeId)||null;
  const canModifyInspectedNode=!busy&&!recovery&&!libraryBusy&&(screen==='workflow'?!!selected||!!session&&!saved
   : !!selected&&(!testRun||testRun.agent_version===selected.version));
- function modifyInspectedNode(request:string){
+ function modifyInspectedNode(nodeEdit:NodeEditRequest){
+  const {request}=nodeEdit;
   if(request.length>4000){setError('변경 요청이 너무 깁니다. 값을 줄여 다시 시도해주세요.');return;}
-  if(selected){void edit(request);return;}
+  if(selected){pendingNodeEdit.current=nodeEdit.changes.length?nodeEdit:null;void edit(request);return;}
   const next=text.trim()?text.trimEnd()+'\n'+request:request;
   if(next.length>4000){setError('대화 입력은 4,000자까지 가능합니다. 기존 입력을 줄인 뒤 다시 시도해주세요.');return;}
+  pendingNodeEdit.current=next===request&&nodeEdit.changes.length?nodeEdit:null;
   setText(next);
   setConversationCollapsed(false);
   setSelectedNodeId(null);
@@ -806,7 +821,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
       }} factsFor={id=>{const asset=session.resources.find(resource=>resource.id===id);return asset?{row_count:asset.kind==='table'?asset.row_count:undefined,page_count:asset.page_count}:undefined;}}
       initial={!session.messages.some(message=>message.role==='user')} fresh={freshFiles.session===session.id?freshFiles.ids:[]} readOnly={!!receiptQuestion}/> : null}
     {receiptQuestion?.action ? <ReceiptQuestion key={receiptQuestion.id} text={receiptQuestion.text} action={receiptQuestion.action}
-      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&slackChannelQuestion ? <SlackChannelPicker key={session?.id+'-'+slackChannelQuestion.id} disabled={!!busy||!!recovery||libraryBusy} onSelect={channelId=>send(undefined,channelId,slackChannelQuestion.id)} onReconnect={()=>leave('connections')}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onPickFiles={picker=>setFilePicker(picker)} onSubmit={answerQuestions}/>}{generationFailure?.retryable&&<div className="as-requirement-retry"><p>{session?.draft?.workflow?'이전 워크플로우 초안은 유지했습니다. 이번 변경은 아직 적용되지 않았습니다.':'입력하신 조건은 보존되어 있습니다.'} 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,RETRY_PROMPT)}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}
+      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&slackChannelQuestion ? <SlackChannelPicker key={session?.id+'-'+slackChannelQuestion.id} disabled={!!busy||!!recovery||libraryBusy} onSelect={channelId=>send(undefined,channelId,slackChannelQuestion.id)} onReconnect={()=>leave('connections')}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onPickFiles={picker=>setFilePicker(picker)} onSubmit={answerQuestions}/>}<DesignFailureNotice failure={generationFailure} hasDraft={!!session?.draft?.workflow} disabled={!!busy||!!recovery||libraryBusy} onRetry={()=>void send(undefined,RETRY_PROMPT)}/>{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}
     onDragOver={event=>{if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault();}}
     onDrop={event=>{
      const files=event.dataTransfer.files;

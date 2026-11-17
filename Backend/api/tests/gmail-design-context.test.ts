@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {PassThrough,Writable} from 'node:stream';
 import test from 'node:test';
-import {handleAgentBuilder,resetWorkerSlots} from '../src/agent-builder';
+import {handleAgentBuilder,parseNodeEdit,resetWorkerSlots} from '../src/agent-builder';
 import {withDataDirectory} from '../src/paths';
 import type {Store} from '../src/store';
 
@@ -55,10 +55,26 @@ test('design gets current server Gmail metadata and ignores client claims or tok
    {questionId:'2'.repeat(24),value:['CSV','직접 정한 형식'],custom:true},{questionId:'3'.repeat(24),value:null,skip:true}]});
   assert.deepEqual(batch.question_answers,[{question_id:'1'.repeat(24),value:0},
    {question_id:'2'.repeat(24),value:['CSV','직접 정한 형식'],custom:true},{question_id:'3'.repeat(24),value:null,skip:true}]);
+  const editRequest='`안 읽은 Gmail 메일 최대 100건 읽기` 작업 (노드 ID: mail)의 설정을 다음과 같이 바꿔줘.\n- 조회 한도 (arguments_json.max_results): 100 → 10\n다른 작업의 설정은 유지해줘.';
+  const nodeEdit={request:editRequest,nodeId:'mail',label:'안 읽은 Gmail 메일 최대 100건 읽기',
+   changes:[{path:'arguments_json.max_results',oldValue:100,newValue:10}]};
+  const edited=await invoke('message',{content:editRequest,nodeEdit});
+  assert.deepEqual(edited.node_edit,{request:editRequest,node_id:'mail',label:nodeEdit.label,
+   changes:[{path:'arguments_json.max_results',old_value:100,new_value:10}]});
   assert.ok(payloads.filter(payload=>['message','confirm'].includes(payload.action)).every(payload=>!('gmail_access_token' in payload)&&!('slack_access_token' in payload)));
  }finally{
   t.mock.restoreAll();syncBuiltinESMExports();resetWorkerSlots();
   if(previousPython===undefined)delete process.env.A4B_AGENT_PYTHON;else process.env.A4B_AGENT_PYTHON=previousPython;
   if(previousLocal===undefined)delete process.env.A4B_REQUIRE_LOCAL_MODEL;else process.env.A4B_REQUIRE_LOCAL_MODEL=previousLocal;
  }
+});
+
+test('structured node edits reject mismatched text, duplicate paths and sensitive settings',()=>{
+ const request='`메일 읽기` 작업 (노드 ID: mail)의 설정을 다음과 같이 바꿔줘.';
+ const base={request,nodeId:'mail',label:'메일 읽기',changes:[{path:'arguments_json.max_results',oldValue:100,newValue:10}]};
+ assert.throws(()=>parseNodeEdit(base,request+' 추가 업무'),/변경 대상/);
+ assert.throws(()=>parseNodeEdit({...base,changes:[...base.changes,...base.changes]},request),/변경 경로/);
+ assert.throws(()=>parseNodeEdit({...base,changes:[{path:'arguments_json.api_key',oldValue:'old',newValue:'new'}]},request),/변경 경로/);
+ assert.throws(()=>parseNodeEdit({...base,changes:[{path:'arguments_json.__proto__',oldValue:'old',newValue:'new'}]},request),/변경 경로/);
+ assert.throws(()=>parseNodeEdit({...base,changes:[{path:'execution_plan.filters[5].value',oldValue:1,newValue:2}]},request),/변경 경로/);
 });

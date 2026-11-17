@@ -84,7 +84,8 @@ def option_answer(state):
         answers = [item.get('answer', '') for item in (event or {}).get('answers', [])
                    if item.get('key') == 'filter.match']
         reply = answers[0] if len(answers) == 1 else messages[latest]['content']
-        mode = match_answer(reply, len(compound_filter_state(state)['rules']))
+        found = compound_filter_state(state)
+        mode = match_answer(reply, found['relation_count'])
         matches = [{'key': q['key'], 'label': label, 'question_id': q['id'], 'turn': latest}
                    for q in state.get('pending_questions', []) if q.get('key') == 'filter.match'
                    and (not event or q['id'] in event.get('question_ids', []))
@@ -195,6 +196,7 @@ def value_answer(state, *, _allow_comparison=False):
 
 def resolution_question(key, resolution, base):
     label = {'filter.field': '선별할 열', 'filter.operator': '비교 방식', 'filter.value': '선별 기준값',
+             'filter.match': '선별 조건',
              'duplicate.field': '중복 판단 열', 'duplicate.policy': '중복 처리 방식',
              'input.table': '예약에 사용할 표 파일'}.get(key, base.rstrip('?'))
     if resolution['deferred']:

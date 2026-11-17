@@ -89,14 +89,13 @@ def public_state(storage,s,graph):
                  'issues':['연결 자료가 삭제됐습니다. 업무 설명을 보내 남은 자료로 설정을 다시 확인하세요.']}
     from workflow_engine.scheduling.policy import project_fixed_timezone
     state=project_fixed_timezone(state)
-    from agent_builder.design.execution_mode import project_execution_questions
-    state=project_execution_questions(state)
-    from agent_builder.design.question_language import normalize_question_language
-    state=normalize_question_language(state)
+    from agent_builder.design.failure_recovery import project_recovery_questions, normalize_active_failures
+    state=project_recovery_questions(state)
     legacy = legacy_receipt_intake(state)
     if legacy:
         # Keep the recorded transcript; only adapt the controls for the interrupted turn.
         state = {**state, 'draft':legacy['draft'], 'pending_questions':legacy['pending_questions']}
+    state=normalize_active_failures(state)
     from agent_builder.design.presentation import public_requirement_errors
     state=public_requirement_errors(state)
     from agent_builder.design.failed_design import retained_design
@@ -131,7 +130,8 @@ def new_session(c):
 
 
 def _install_receipt_question(graph, config, prompt, resources):
-    graph.update_state(config, {**prompt, 'resources':resources, 'attachment_route':'ask'}, as_node='attachment_gate')
+    graph.update_state(config, {**prompt, 'resources':resources, 'attachment_route':'ask',
+        'system_failure':None,'requirement_failure':None}, as_node='attachment_gate')
     graph.invoke(None, config)
 
 
@@ -238,6 +238,17 @@ def _session_action(c):
                 # requirement failure stays so the user can retry with the new file at once.
                 update={'resources':resources,'issues':[],'semantic_issues':[]}
                 if state.get('status') not in (None,'empty','needs_clarification'):update['status']='needs_clarification'
+                from agent_builder.design.failure_recovery import current_failure, normalize_active_failures
+                diagnosed=normalize_active_failures(state)
+                failure=current_failure(diagnosed)
+                if failure and failure.get('retryable') is True:
+                    # This recovery is explicit: an old failure carried into a
+                    # genuine later question must not activate the retry UI.
+                    for key in ('system_failure','requirement_failure'):
+                        update[key]={**failure,'recovery_pending':True} if diagnosed.get(key) is failure else None
+                    update['pending_questions']=[]
+                    if isinstance(state.get('draft'),dict):
+                        update['draft']={**state['draft'],'questions':[],'question_options':[],'question_responses':[]}
                 graph.update_state(config,update)
             return public_state(storage,s,graph)
         if action not in ['message','confirm']:raise ValueError('지원하지 않는 요청입니다.')
@@ -262,12 +273,19 @@ def _session_action(c):
             content=data['content'].strip()
             if not content or len(content)>4000:raise ValueError('업무 설명은 1~4,000자로 입력하세요.')
             if state.get('status')=='saved':raise ValueError('저장한 설정을 바꾸려면 설정 수정 대화를 시작하세요.')
+            node_edit=data.get('node_edit')
+            if node_edit is not None:
+                if (not isinstance(node_edit,dict) or node_edit.get('request')!=content
+                        or data.get('question_id') or data.get('question_answers')):
+                    raise ValueError('노드 변경 요청과 전송된 내용을 확인해 주세요.')
+                if state.get('pending_questions'):
+                    raise ValueError('진행 중인 확인 질문을 해결한 뒤 노드 설정을 수정해 주세요.')
             # Classify the turn before resuming: a greeting or one-off side question is not an
             # answer, task change or fingerprint input, and must not resume the pending checkpoint.
             from agent_builder.design.turn_intent import split_turn, side_reply
             # A structured answer from the question controls already names its question; it is
             # never re-read as a side remark or a question about the question.
-            structured=bool(data.get('question_answers'))
+            structured=bool(data.get('question_answers')) or node_edit is not None
             pending=state.get('pending_questions') or []
             draft=state.get('draft') or {}
             # Planner questions live only in the draft (with their declared answer controls).
@@ -276,7 +294,10 @@ def _session_action(c):
                      for i,text in enumerate(draft.get('questions') or [])] if has_interrupt else []
             waiting=pending or planner
             pending_texts=[q['text'] for q in waiting if q.get('text')]
-            failure=bool(state.get('system_failure') or (state.get('requirement_failure') or {}).get('retryable'))
+            # A current failure or explicit file-recovery marker is guidance;
+            # old metadata attached to a real later question is inactive.
+            from agent_builder.design.failure_recovery import current_failure
+            failure=current_failure(state)
             turn=split_turn(content,state,waiting) if not structured else {'work':content,'side':[],'kinds':[]}
             if turn['side']:
                 shown=len(state.get('messages') or _work_messages(storage,s,graph))
@@ -304,10 +325,15 @@ def _session_action(c):
             elif legacy and not any(q['id']==data['question_id'] for q in state.get('pending_questions',[])):
                 raise ValueError('현재 대화의 확인 질문에 답변해주세요.')
             from agent_builder.design.retry_request import is_generation_retry
+            from agent_builder.design.failure_recovery import projected_recovery_failure
             retrying = (not answers and not data.get('question_id')
                         and is_generation_retry(content)
-                        and (state.get('requirement_failure') or state.get('system_failure') or state.get('status') == 'validation_failed'
+                        and (failure or state.get('status') == 'validation_failed'
+                             or projected_recovery_failure(state)
                              or before.next and not has_interrupt))
+            cleared_failures={'system_failure':None,'requirement_failure':None,
+                'previous_system_failure':state.get('system_failure') or state.get('requirement_failure')
+                    or state.get('previous_system_failure')}
             if retrying:
                 # Retry is a control action, not a new business requirement or a
                 # response to a pending field. Keep exact source turns and IDs.
@@ -318,12 +344,15 @@ def _session_action(c):
                 # A migrated receipt checkpoint moved from await_capability to await_input.
                 # An unqualified update here can restore the old node and its obsolete question IDs.
                 if not any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
-                    graph.update_state(config,{'repair_count':0})
-                graph.invoke(Command(resume={'type':'message','content':content,**({'question_id':data['question_id']} if data.get('question_id') else {}),**({'question_answers':answers} if answers else {})}),config)
-            elif (state.get('system_failure') or (state.get('requirement_failure') or {}).get('retryable')) and _last_user(state)==content:
-                # A retryable processing failure (clarification core system_failure or main's
-                # requirement_failure): rerun from the gates with the same request instead of
-                # appending a duplicate message.
+                    graph.update_state(config,{'repair_count':0,**cleared_failures})
+                graph.invoke(Command(resume={'type':'message','content':content,
+                    **({'node_edit':node_edit} if node_edit is not None else {}),
+                    **({'question_id':data['question_id']} if data.get('question_id') else {}),
+                    **({'question_answers':answers} if answers else {})}),config)
+            elif failure and _last_user(state)==content:
+                # Resending the request of a current processing failure reruns it from the gates
+                # instead of appending a duplicate turn. This holds whether or not the failure was
+                # diagnosed as retryable, so the same fingerprint keeps counting attempts.
                 _rerun_from_gates(graph,config,state,restored)
             elif before.next:
                 # A provider failure can leave conversation pending. Retry its exact input.
@@ -332,12 +361,28 @@ def _session_action(c):
                 if same and not blocking_issue(state):graph.invoke(None,config)
                 else:
                     graph.update_state(config,{'messages':state.get('messages',[]) if same else state.get('messages',[])+[{'role':'user','content':content}],
-                                               'confirmed':False,**({'repair_count':0} if not same else {})},as_node='resources')
+                                               'node_edit':node_edit,'confirmed':False,**cleared_failures,
+                                               **({'repair_count':0} if not same else {})},as_node='resources')
                     graph.invoke(None,config)
             else:
                 base=storage.agent(s['agent_id']) if s.get('agent_id') else None
-                base_messages=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}).get('messages',[]) if base else []
-                initial={**state,'session_id':s['id'],'messages':(state.get('messages',[]) or base_messages)+[{'role':'user','content':content}],'resources':[storage.asset(id) for id in s['file_ids']],'draft':state.get('draft') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'trace':state.get('trace',[]),'repair_count':0,'confirmed':False,'saved_agent_id':None,'verification_last_candidate':state.get('verification_last_candidate') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'base_agent_id':s.get('agent_id'),'base_version':s['base_version'],'model':s['model'],'credential_id':s['credential_id'],'node_library':s.get('node_library',[]),'required_node_refs':s.get('required_node_refs',[])}
+                base_state=(graph.get_state({'configurable':{'thread_id':base['session_id']}}).values or {}) if base else {}
+                base_messages=base_state.get('messages',[])
+                saved_proof=None
+                if (node_edit is not None and base and not state and base['version']==s['base_version']
+                        and base_state.get('status')=='saved'
+                        and base_state.get('saved_agent_id')==base['id']):
+                    proof=base_state.get('node_edit_proof')
+                    source_turn=proof.get('source_turn') if isinstance(proof,dict) else None
+                    if type(source_turn) is int and 0 <= source_turn < len(base_messages):
+                        from agent_builder.design.node_edit import proof_issue
+                        saved_draft={k:v for k,v in base['config'].items() if k!='node_snapshots'}
+                        # Save choices may add later user turns; verify against the edit's own request.
+                        prior={**base_state,'messages':base_messages[:source_turn+1]}
+                        if proof_issue(prior,saved_draft) is None:
+                            saved_proof=proof
+                initial={**state,**cleared_failures,'session_id':s['id'],'messages':(state.get('messages',[]) or base_messages)+[{'role':'user','content':content}],'resources':[storage.asset(id) for id in s['file_ids']],'draft':state.get('draft') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'trace':state.get('trace',[]),'repair_count':0,'confirmed':False,'saved_agent_id':None,'verification_last_candidate':state.get('verification_last_candidate') or ({k:v for k,v in base['config'].items() if k!='node_snapshots'} if base else None),'base_agent_id':s.get('agent_id'),'base_version':s['base_version'],'model':s['model'],'credential_id':s['credential_id'],'node_library':s.get('node_library',[]),'required_node_refs':s.get('required_node_refs',[]),'node_edit':node_edit}
+                if saved_proof:initial['node_edit_proof']=saved_proof
                 initial['execution_mode']=s.get('execution_mode')
                 graph.invoke(initial,config)
         after=graph.get_state(config).values

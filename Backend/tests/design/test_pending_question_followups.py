@@ -60,7 +60,34 @@ def test_without_a_pending_question_side_questions_and_greetings_are_unchanged()
 def test_a_help_request_after_a_failure_gets_the_failure_guidance():
     turn = split_turn('그럼 어떻게 해야돼?', STATE, [])
     reply = side_reply(turn, [], [], failure=True)
-    assert '처리 오류로 멈춘 상태' in reply and '조건 그대로 다시 시도' in reply and '실시간 정보' not in reply
+    assert '처리 오류로 멈춘 상태' in reply and '구체적인 원인' in reply and '관리자' in reply
+    assert '조건 그대로 다시 시도' not in reply and '나눠' not in reply and '실시간 정보' not in reply
+
+
+@pytest.mark.parametrize('retryable', [False, True])
+def test_failure_help_uses_the_recorded_cause_and_action_instead_of_generic_retry(retryable):
+    failure={'reason':'AI가 이미 답변한 기준값을 반영하지 못했습니다.',
+             'action':'관리자가 조건을 작업 목록에 연결하는 처리를 확인해야 합니다.',
+             'retryable':retryable}
+    reply=side_reply(split_turn('그럼 어떻게 해야돼?',STATE,[]),[],[],failure=failure)
+    assert failure['reason'] in reply and failure['action'] in reply
+    assert '조건 그대로 다시 시도' not in reply and '나눠' not in reply
+
+
+@pytest.mark.parametrize('failure', [True, {'retryable':False}, {'reason':None,'action':[]}])
+def test_legacy_failure_help_does_not_invent_missing_conditions_or_a_recovery(failure):
+    reply=side_reply(split_turn('그럼 어떻게 해야돼?',STATE,[]),[],[],failure=failure)
+    assert '구체적인 원인이 남아 있지 않습니다' in reply and '관리자' in reply
+    assert '다시 시도' not in reply and '나눠' not in reply
+
+
+def test_failure_metadata_does_not_intercept_a_real_pending_answer_or_its_explanation():
+    failure={'reason':'기록된 오류','action':'관리자 확인','retryable':False}
+    answer=split_turn('100 이상으로 해줘',STATE,THRESHOLD)
+    assert answer['work']=='100 이상으로 해줘' and answer['side']==[]
+    explanation=side_reply(split_turn('기준값이 뭐야?',STATE,THRESHOLD),[],THRESHOLD,failure=failure)
+    assert THRESHOLD[0]['text'] in explanation and '진행 중인 질문은 그대로' in explanation
+    assert failure['reason'] not in explanation
 
 
 # Service path: the graph is not resumed, the question and its controls stay, and the request is recorded.
@@ -115,6 +142,61 @@ def test_a_structured_answer_from_the_question_controls_skips_the_router(monkeyp
                 'content': '선별할 기준 값은 얼마인가요? → 뭐야?', 'question_answers': [{'question_id': 'x' * 24, 'value': 1}],
                 'generation_request_id': '00000000-0000-4000-8000-000000000012'})
     assert 'router must not' not in str(error.value)
+
+
+def test_service_help_after_nonretryable_failure_keeps_the_diagnosis_without_resuming(monkeypatch):
+    from agent_builder.design.graph import build_graph
+    from service.handlers import design
+    act,calls,directory=_service(monkeypatch)
+
+    class BrokenRequirements:
+        calls=0
+        def invoke(self,messages):
+            self.calls+=1
+            return {'content':'{"tasks":"invalid","unresolved":[]}'}
+
+    broken=BrokenRequirements()
+    monkeypatch.setattr(design,'build_graph',lambda *args,**kwargs:build_graph(
+        *args,**kwargs,requirement_transport=broken,requirement_mode='enforce'))
+    failed=act('매출이 높은 주문만 저장해줘','00000000-0000-4000-8000-000000000021')
+    failure=failed['requirement_failure']
+    assert failed['status']=='validation_failed' and failure['retryable'] is False
+    before=broken.calls
+    helped=act('그럼 어떻게 해야돼?','00000000-0000-4000-8000-000000000022')
+    reply=helped['messages'][-1]
+    assert reply['scope']=='side'
+    assert failure['reason'] in reply['content'] and failure['action'] in reply['content']
+    assert '나눠' not in reply['content'] and '조건 그대로 다시 시도' not in reply['content']
+    assert helped['requirement_failure']==failure
+    assert broken.calls==before and calls==[]
+
+
+@pytest.mark.parametrize('failure_key', ['requirement_failure', 'system_failure'])
+def test_service_generic_help_explains_current_question_instead_of_stale_failure(monkeypatch, failure_key):
+    from agent_builder.design.graph import build_graph
+    from infrastructure.persistence.storage import Storage
+    act,calls,directory=_service(monkeypatch)
+    first=act('매출이 높은 주문만 저장해줘','00000000-0000-4000-8000-000000000031')
+    assert first['status']=='needs_clarification'
+    storage=Storage(directory)
+    graph,connection=build_graph(storage,conversation=lambda _: {})
+    try:
+        config={'configurable':{'thread_id':first['id']}}
+        # Represent a new condition-owned clarification that still carries the
+        # old failure; unlike planner questions its record is independent of an interrupt.
+        graph.update_state(config,{'pending_questions':[{**THRESHOLD[0],'source':'condition','options':[]}],
+            failure_key:{'reason':'이전 오류의 원인',
+            'action':'이전 오류는 관리자 확인', 'retryable':False}})
+    finally:
+        connection.close()
+        storage.close()
+    helped=act('그럼 어떻게 해야돼?','00000000-0000-4000-8000-000000000032')
+    reply=helped['messages'][-1]
+    assert helped['status']=='needs_clarification' and reply['scope']=='side'
+    assert '선별할 기준 값은 얼마인가요?' in reply['content']
+    assert '진행 중인 질문은 그대로' in reply['content']
+    assert '이전 오류' not in reply['content'] and '관리자' not in reply['content']
+    assert calls==['매출이 높은 주문만 저장해줘']
 
 
 @pytest.mark.parametrize('answer', ['위약금 조항이 위험한 거 아니야?', '해지 조항이 위험하지 않을까?', '손해배상 한도가 없는 게 위험 기준이야?'])

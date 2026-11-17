@@ -41,35 +41,18 @@ def redact(text, api_key=''):
 
 
 def error_info(error, stage, api_key=''):
+    from agent_builder.design.failure_notice import requirement_failure_details
     name = type(error).__name__
-    causes = []
-    cause = error
-    for _ in range(6):
-        if cause is None or cause in causes:
-            break
-        causes.append(cause)
-        cause = cause.__cause__ or cause.__context__ or getattr(cause, 'reason', None)
-        if not isinstance(cause, BaseException):
-            break
-    names = [type(cause).__name__ for cause in causes]
+    details = requirement_failure_details('model_error', error, stage=stage)
+    code = details['reason_code']
     if stage == 'save':
         code, detail = 'save_failed', '워크플로우를 저장하지 못했습니다.'
-    elif any('Timeout' in item or item == 'timeout' for item in names):
-        code, detail = 'model_timeout', '모델 응답 시간이 초과됐습니다.'
-    elif any(item in ('ValidationError', 'DraftResponseError', 'JSONDecodeError', 'StructuredOutputError',
-                     'StructuredOutputValidationError', 'MultipleStructuredOutputsError') for item in names):
-        code, detail = 'invalid_model_response', '모델 응답이 필요한 JSON·설정 형식을 충족하지 못했습니다.'
-    elif any('Connection' in item or item == 'URLError' for item in names):
-        code, detail = 'model_connection_failed', '모델 서버에 연결하지 못했습니다.'
-    elif name in ('AuthenticationError', 'PermissionDeniedError'):
-        code, detail = 'model_auth_failed', '모델 연결 계정 또는 접근 권한을 확인하세요.'
-    elif name == 'RateLimitError':
-        code, detail = 'model_rate_limited', '모델 API 사용 한도 또는 동시 요청 제한에 도달했습니다.'
-    elif name == 'GraphRecursionError':
-        code, detail = 'generation_step_limit', '설계·검증 반복이 단계 수 제한 안에 완료되지 못했습니다.'
-    elif isinstance(error, (ValueError, TypeError, KeyError)) and stage in ('design', 'request_analysis'):
-        code = 'invalid_model_response' if stage == 'design' else 'invalid_request'
-        detail = '모델 응답 형식을 확인하세요.' if stage == 'design' else '요청 또는 대화 상태를 확인하세요.'
+    elif code == 'invalid_model_response':
+        if isinstance(error, (ValueError, TypeError, KeyError)) and stage == 'request_analysis':
+            code = 'invalid_request'
+        detail = '모델 응답이 필요한 JSON·설정 형식을 충족하지 못했습니다.'
+    elif code != 'processing_error':
+        detail = details['reason']
     else:
         code, detail = 'generation_failed', '워크플로우 생성 요청을 완료하지 못했습니다.'
     # Keep provider bodies, exception reprs and model-generated payloads out of history.
@@ -177,6 +160,11 @@ class GenerationHistory:
         self.failure = dict(stage=record['stage'], node=record['node'], **error_info(error, record['stage'], self.api_key))
         if self.failure['reason_code']=='invalid_request' and record['node'] in ('capability_check','condition_check','requirements'):
             self.failure.update(reason_code='invalid_model_response',reason='요청 분석 모델의 응답이 필요한 형식을 충족하지 못했습니다.')
+        if record['node']=='requirements' and self.failure['reason_code']=='invalid_model_response':
+            from agent_builder.design.failure_notice import requirement_failure_reason
+            # This mapper returns application-owned sentences, never exception
+            # text, model response bodies or customer values.
+            self.failure['reason']=requirement_failure_reason(error)
         self.change(event_status='error', diagnostics=diagnostic_metadata(error, trace_id=self.id,
                     model=(record.get('diagnostics') or {}).get('model')), **self.failure)
 

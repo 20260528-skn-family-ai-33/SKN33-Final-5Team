@@ -109,8 +109,9 @@ def test_requirement_model_failure_is_retryable_and_never_a_question(service):
     box['requirement'].replies = [{}, {}, extraction()]  # two contract failures, then a valid plan
     calls = []
     failed = act('message', analysis_planner(calls, REQUEST), content=REQUEST)
-    # main records the retryable failure as requirement_failure (2026-11-12).
-    assert failed['status'] == 'validation_failed' and failed['requirement_failure']['retryable'] is True
+    # An invalid model response is diagnosed, not promised to recover on retry (PR #145),
+    # yet resending the same request still reruns it rather than appending a duplicate turn.
+    assert failed['status'] == 'validation_failed' and failed['requirement_failure']['retryable'] is False
     assert not failed['pending_questions'] and calls == []
     retried = act('message', analysis_planner(calls, REQUEST), content=REQUEST)
     assert [m['content'] for m in retried['messages'] if m['role'] == 'user'] == [REQUEST]  # no duplicate request
@@ -131,7 +132,8 @@ def test_capability_contract_failure_is_retryable(service):
     box['requirement'].replies = [extraction()]
     calls = []
     failed = act('message', analysis_planner(calls, REQUEST), content=REQUEST)
-    assert failed['system_failure']['stage'] == 'capability_check' and '다시 보내면' in failed['messages'][-1]['content']
+    assert failed['system_failure']['stage'] == 'capability_check' and failed['system_failure']['retryable'] is False
+    assert '다시 보내면' not in failed['messages'][-1]['content']
     assert calls == [] and not failed['pending_questions']
     retried = act('message', analysis_planner(calls, REQUEST), content=REQUEST)
     assert retried['status'] == 'ready' and [m['content'] for m in retried['messages'] if m['role'] == 'user'] == [REQUEST]

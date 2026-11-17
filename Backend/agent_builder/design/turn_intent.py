@@ -209,8 +209,15 @@ def side_reply(turn, pending_texts, pending=None, failure=False):
         lines.append('진행 중인 질문은 그대로 남아 있어요.')
         return '\n'.join(lines)
     if failure and 'side_question' in turn['kinds'] and not turn['work']:
-        return ('앞의 요청은 업무 흐름을 만드는 중 처리 오류로 멈춘 상태예요. 입력하신 조건은 보존돼 있어요. '
-                '"조건 그대로 다시 시도"를 누르거나, 요청을 작업 단위로 나눠 다시 보내 주세요.')
+        details=failure if isinstance(failure,dict) else {}
+        reason=details.get('reason')
+        action=details.get('action')
+        if not isinstance(reason,str) or not reason.strip():
+            reason='현재 기록에는 오류의 구체적인 원인이 남아 있지 않습니다.'
+        if not isinstance(action,str) or not action.strip():
+            action='관리자가 실패 기록을 확인해야 합니다. 입력 조건을 추측해 바꿀 필요는 없습니다.'
+        return ('앞의 요청은 업무 흐름을 만드는 중 처리 오류로 멈춘 상태예요. '
+                +reason+' '+action+' 입력하신 조건은 보존돼 있어요.')
     items = _question_items(pending if pending is not None else pending_texts)
     if items and 'side_question' in turn['kinds'] and not turn['work']:
         # While a question waits, an unrelated-looking question still gets the question explained

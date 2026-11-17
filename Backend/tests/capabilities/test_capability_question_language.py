@@ -87,4 +87,6 @@ def test_a_bad_question_is_not_reported_as_a_capability_system_error():
     assert update['capability_route']=='await_capability' and update['status']=='needs_clarification'
     assert len(update['pending_questions'])==1
     public=normalize_question_language({**current,**update})
-    assert public['requirement_failure']=={'kind':'question_language_error','retryable':True}
+    failure=public['requirement_failure']
+    assert failure['kind']=='question_language_error' and failure['retryable'] is True
+    assert failure['reason'].strip() and failure['action'].strip()

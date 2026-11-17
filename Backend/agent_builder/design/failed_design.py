@@ -31,7 +31,7 @@ def _approved_snapshot(state, graph, config):
 
 
 def retained_design(state, graph, config, checkpoint_id=None):
-    if state.get('draft') or not (state.get('requirement_failure') or state.get('system_failure') or {}).get('retryable'):
+    if state.get('draft') or not (state.get('requirement_failure') or state.get('system_failure')):
         return state
     key = (config.get('configurable', {}).get('thread_id'), checkpoint_id) if checkpoint_id else None
     with _lock:

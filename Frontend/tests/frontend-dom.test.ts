@@ -1586,10 +1586,11 @@ test('a structured popup edit shows its validation state while the request is pe
 
 for(const succeeds of [true,false])test(`failed node edit retains its canvas while retrying and shows ${succeeds?'success':'the repeated failure'}`,async()=>{
  const workflow={entry:'mail',nodes:[{id:'mail',label:'메일 최대 100건 읽기',tool:'email.list',settings:{operation:'read_messages',arguments_json:'{"max_results":100}'},bindings:[]}],edges:[]};
- const failureText='요청을 작업 목록으로 정리하는 단계에서 AI가 작업 목록을 잘못된 형식으로 반환했습니다.';
+ const failureText='요청을 작업 목록으로 정리하는 단계에서 AI 응답 시간이 초과됐습니다.';
  const session={...readySession(),status:'validation_failed',draft:{...A.config,workflow},
   messages:[{role:'user',content:'조회 한도를 5건으로 바꿔줘.'},{role:'assistant',content:failureText}],
-  requirement_failure:{kind:'processing_error',retryable:true,attempt:1,stage:'requirements'},issues:[failureText]};
+  requirement_failure:{kind:'processing_error',failure_kind:'model_timeout',retryable:true,attempt:1,stage:'requirements',
+   reason:'AI 응답 시간이 초과돼 작업 목록을 받지 못했습니다.',action:'연결 상태가 회복된 뒤 다시 시도해주세요.'},issues:[failureText]};
  const pending=deferred();
  const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>
   path.startsWith('/api/agent-builder/session?')?session:path.endsWith('/message')?pending.promise:undefined);
@@ -1606,7 +1607,8 @@ for(const succeeds of [true,false])test(`failed node edit retains its canvas whi
   const newFlow={...workflow,nodes:[{...workflow.nodes[0],label:'메일 최대 5건 읽기',settings:{operation:'read_messages',arguments_json:'{"max_results":5}'}}]};
   const result=succeeds?{...session,revision:session.revision+1,status:'ready',issues:[],requirement_failure:null,
    draft:{...session.draft,workflow:newFlow},messages:[...session.messages,{role:'assistant',content:'조회 한도를 5건으로 수정했습니다.'}]}:
-   {...session,revision:session.revision+1,requirement_failure:{...session.requirement_failure,attempt:2},
+   {...session,revision:session.revision+1,requirement_failure:{...session.requirement_failure,attempt:2,
+     attempt_notice:'같은 조건의 2번째 시도도 실패했습니다.',action:'관리자에게 실패 단계와 이 안내를 전달해주세요.'},
     messages:[...session.messages,{role:'assistant',content:failureText+' 같은 조건의 2번째 시도도 실패했습니다.'}]};
   await act(async()=>{pending.resolve(result);await tick();});
   assert.equal(document.querySelector('.as-operation-progress'),null);
@@ -1614,9 +1616,121 @@ for(const succeeds of [true,false])test(`failed node edit retains its canvas whi
   if(succeeds)assert.equal(document.querySelector('.as-requirement-retry'),null);
   else{
    assert.match(document.querySelector('.as-messages')?.textContent||'',/2번째 시도도 실패/);
-   assert.equal((button('조건 그대로 다시 시도') as HTMLButtonElement).disabled,false);
+   assert.equal(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'),false);
+   assert.equal((document.querySelector('.as-requirement-retry')?.textContent?.match(/2번째 시도/g)||[]).length,1);
    assert.ok((button('저장') as HTMLButtonElement).disabled);
   }
+ }finally{await h.close();}
+});
+
+test('design processing failure explains the cause and action without repeating an answered question',async()=>{
+ const question={id:'threshold',key:'filter.value',text:'선별할 기준 값은 얼마인가요?',response:{type:'text'}};
+ const session={...readySession(),status:'validation_failed',draft:{...A.config,questions:[question.text]},
+  pending_questions:[question],messages:[{role:'user',content:'비용은 1000000 초과로 해줘.'}],
+  requirement_failure:{kind:'processing_error',failure_kind:'model_output_error',stage:'requirements',retryable:false,
+   reason:'AI가 작업 목록의 필수 항목을 누락했습니다.',action:'입력한 기준값을 다시 답할 필요는 없습니다. 관리자에게 오류 확인을 요청해주세요.'}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  const notice=document.querySelector<HTMLElement>('[aria-label="처리 중단 안내"]')!;assert.ok(notice);
+  assert.match(notice.textContent||'',/요청을 작업 목록으로 정리하는 단계/);
+  assert.match(notice.textContent||'',/중단 이유.*필수 항목을 누락/s);
+  assert.match(notice.textContent||'',/다음 확인.*기준값을 다시 답할 필요는 없습니다/s);
+  assert.equal(document.querySelector('.clarification-form'),null);
+  assert.equal(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'),false);
+  assert.ok((button('저장') as HTMLButtonElement).disabled);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/message')),false);
+ }finally{await h.close();}
+});
+
+for(const retryable of [true,false])test(`legacy design processing failure preserves explicit retry eligibility (${retryable}) without inventing diagnostics`,async()=>{
+ const session={...readySession(),status:'validation_failed',requirement_failure:{kind:'processing_error',retryable}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/상세 원인이 기록되지 않아/);
+  assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/관리자에게 이 안내와 요청 시각/);
+  assert.equal(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'),retryable);
+ }finally{await h.close();}
+});
+
+for(const details of [
+ {label:'structured diagnosis',attempt_notice:'같은 조건의 2번째 시도도 실패했습니다.',action:'관리자에게 실패 단계와 이 안내를 전달해주세요.'},
+ {label:'legacy action',action:'같은 조건의 2번째 시도도 실패했습니다. 관리자에게 실패 단계와 이 안내를 전달해주세요.'},
+ {label:'legacy without action'},
+])test(`repeated design failure reports its attempt only once with ${details.label}`,async()=>{
+ const {label:_,...diagnosis}=details;
+ const session={...readySession(),status:'validation_failed',requirement_failure:{kind:'processing_error',retryable:true,attempt:2,...diagnosis}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  const notice=document.querySelector('.as-requirement-retry')?.textContent||'';
+  assert.equal((notice.match(/2번째 시도/g)||[]).length,1);
+  assert.match(notice,/관리자에게/);
+  assert.equal(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'),false);
+ }finally{await h.close();}
+});
+
+test('read-time projected failure offers a retry outside the failed status',async()=>{
+ const session={...readySession(),status:'needs_clarification',draft:{...A.config,questions:[]},pending_questions:[],
+  requirement_failure:{kind:'execution_mode_questions',retryable:true,
+   reason:'이전 버전에서 만든 확인 질문이 현재 실행 방식과 맞지 않아 표시하지 않았습니다.',action:'조건 그대로 다시 시도하면 기존 요청으로 필요한 질문을 다시 구성합니다.'}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  assert.match(document.querySelector('.as-requirement-retry')?.textContent||'',/실행 방식과 맞지 않아/);
+  assert.ok(buttons().some(item=>item.textContent==='조건 그대로 다시 시도'));
+ }finally{await h.close();}
+});
+
+for(const source of ['upload','attach_asset'])for(const failureKey of ['requirement_failure','system_failure'])test(`${source} preserves a pending ${failureKey} recovery until the next real question`,async()=>{
+ const failure={kind:'processing_error',failure_kind:'model_error',stage:'requirements',retryable:true,attempt:1,
+  reason:'AI 응답 시간이 초과돼 처리 결과를 받지 못했습니다.',action:'AI 서버의 응답 상태가 회복된 뒤 다시 시도해주세요.'};
+ const session={...readySession(),status:'validation_failed',draft:null,[failureKey]:failure};
+ const asset={id:'policy',name:'계약서.txt',kind:'document',text:'계약 내용',columns:[],profile:{}};
+ const inspection={id:asset.id,name:asset.name,kind:'document',has_readable_text:true,columns:[],fields:[],snippets:[asset.text],preview:[]};
+ const attached={...session,revision:2,status:'needs_clarification',resources:[asset],file_inspection:[inspection],pending_questions:[],
+  [failureKey]:{...failure,recovery_pending:true}};
+ const question={id:'risk',key:'analysis.criteria',text:'어떤 위험 기준으로 검토할까요?',response:{type:'text'}};
+ const next={...attached,revision:3,draft:{...A.config,questions:[question.text]},pending_questions:[question]};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>{
+  if(path.startsWith('/api/agent-builder/session?'))return session;
+  if(path.endsWith('/assets'))return {assets:[asset],next:null};
+  if(path.endsWith('/'+source))return attached;
+  if(path.endsWith('/message'))return next;
+ });
+ try{
+  assert.ok(button('조건 그대로 다시 시도'));
+  await click(button('자료 연결'));
+  if(source==='upload'){
+   await click(button('새 파일 올리기'));
+   const picker=document.querySelector('input[type=file]') as HTMLInputElement;
+   Object.defineProperty(picker,'files',{value:[new dom.window.File([asset.text],asset.name)]});
+   await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  }else{
+   await click(button('자료함에서 선택'));
+   await click(document.querySelector('[role=dialog] .as-resource')!);
+  }
+  const deadline=Date.now()+3000;
+  while(!document.querySelector('.as-inspected-source')){assert.ok(Date.now()<deadline);await h.flush();}
+  assert.ok(h.calls.some(call=>call.path.endsWith('/'+source)));
+  assert.match(document.querySelector('[aria-label="처리 중단 안내"]')?.textContent||'',/AI 응답 시간이 초과/);
+  assert.equal(document.querySelector('.clarification-form'),null);
+  assert.equal(h.calls.some(call=>call.path.endsWith('/message')),false);
+  await click(button('조건 그대로 다시 시도'));
+  const message=h.calls.find(call=>call.path.endsWith('/message'))!;
+  assert.equal(message.body.revision,attached.revision);
+  assert.equal(message.body.content,'앞서 전달한 조건을 유지하고 업무 흐름 생성을 다시 시도해주세요.');
+  assert.equal(document.querySelector('[aria-label="처리 중단 안내"]'),null);
+  assert.match(document.querySelector('.clarification-form')?.textContent||'',/어떤 위험 기준/);
+ }finally{await h.close();}
+});
+
+for(const failureKey of ['requirement_failure','system_failure'])for(const retryable of [true,false])test(`genuine missing conditions remain answerable with a stale ${failureKey} (retryable=${retryable})`,async()=>{
+ const question={id:'threshold',key:'filter.value',text:'선별할 기준 값은 얼마인가요?',response:{type:'text'}};
+ const session={...readySession(),status:'needs_clarification',draft:{...A.config,questions:[question.text]},pending_questions:[question],
+  [failureKey]:{kind:'processing_error',retryable,recovery_pending:true,reason:'지난 처리 오류'}};
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>path.startsWith('/api/agent-builder/session?')?session:undefined);
+ try{
+  assert.ok(document.querySelector('.clarification-form'));
+  assert.match(document.querySelector('.clarification-form')?.textContent||'',/선별할 기준 값/);
+  assert.equal(document.querySelector('.as-requirement-retry'),null);
  }finally{await h.close();}
 });
 

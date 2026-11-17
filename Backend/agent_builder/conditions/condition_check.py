@@ -168,14 +168,16 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
         except Exception as error:
             if error_observer and setting=='enforce':error_observer(error)
             from agent_builder.conditions.condition_readiness import ConditionContractError
-            from agent_builder.design.failure_notice import requirement_failure_notice
+            from agent_builder.design.failure_notice import requirement_failure_details, requirement_failure_notice
+            failure_details = requirement_failure_details('model_error', error, stage='condition_check')
             notice = requirement_failure_notice(
                 'model_output_error' if isinstance(error, ConditionContractError) else 'model_error', error,
                 stage='condition_check',retained_draft=bool((state.get('draft') or {}).get('workflow')))
             # A model/contract error is not a business clarification or unsupported request.
             ledger = {**deepcopy(state.get('condition_ledger') or {}),
                       'decision': 'system_error', 'issues': [notice],
-                      'questions': [], 'slots': {}, 'operations': [], 'error_type': type(error).__name__}
+                      'questions': [], 'slots': {}, 'operations': [], 'error_type': type(error).__name__,
+                      'error_code': failure_details['reason_code']}
             if isinstance(error, ConditionContractError):
                 # Retain diagnostic codes, never provider bodies or evidence text.
                 ledger['diagnostics'] = [{'attempt':i+1,'code':
@@ -229,10 +231,14 @@ def make_condition_check(api_key='', model='gpt-4.1-mini', transport=None, mode=
             update.update(condition_route='stop', status='validation_failed',
                           issues=(ledger.get('issues') or ['대표 업무의 지원 범위를 벗어났거나 작업 변경·취소 확인이 필요합니다.'])+detail)
             if ledger['decision'] == 'system_error' and ledger.get('error_type'):
-                # Model/contract failure: retryable, not a user decision (clarification core).
+                # Keep processing failures separate from user questions; an
+                # invalid model response does not promise recovery by retrying.
                 from agent_builder.conditions.clarification_core import system_failure, RETRY_NOTICE
-                update['system_failure'] = system_failure('condition_check', ledger['error_type'], reply,state=state)
-                update['messages'] = state.get('messages', []) + [{'role': 'assistant', 'content': update['system_failure']['message'] + RETRY_NOTICE}]
+                update['system_failure'] = system_failure('condition_check', ledger['error_type'], reply,state=state,
+                    error_code=ledger.get('error_code'))
+                failure=update['system_failure']
+                update['messages'] = state.get('messages', []) + [{'role': 'assistant', 'content':
+                    failure['message'] + (RETRY_NOTICE if failure['retryable'] else '')}]
         return update
     return check
 

@@ -65,6 +65,7 @@ GENERIC = dict(decision='clarify', tool_ids=['read_table', 'calculate_columns', 
 
 
 @pytest.mark.parametrize('question,generic', [('처리 단계와 조건을 확인해 주세요.', True), ('자료 처리와 전송을 확인해 주세요', True),
+                                              ('기존 설정을 검토해 주세요.', True), ('현재 설정을 확인해 주세요.', True),
                                               ('새 열 이름을 알려주세요.', False), ('몇 시에 실행할까요?', False),
                                               ('qty 값을 확인해 주세요.', False)])
 def test_generic_check_requests_are_told_apart_from_questions(question, generic):
@@ -88,6 +89,8 @@ def test_generic_only_questions_are_reassessed_once_and_merged(monkeypatch):
     ('몇 건을 읽을까요? 몇 건을 읽을까요?', '몇 건을 읽을까요?'),
     ('qty 값을 확인해 주세요.', 'qty 값을 확인해 주세요.'),
     ('원문 업무와 변경한 조건을 모두 수행해 주세요. 조회 한도를 몇 건으로 할까요?', '조회 한도를 몇 건으로 할까요?'),
+    ('기존 설정을 검토해 주세요.', None),
+    ('기존 설정을 검토해 주세요. 어느 설정을 바꿀까요?', '어느 설정을 바꿀까요?'),
 ])
 def test_model_question_quality_preserves_only_answerable_clauses(text, expected):
     assert strip_known_meta_instructions(text) == expected

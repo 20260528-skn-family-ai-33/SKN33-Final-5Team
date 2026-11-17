@@ -66,15 +66,20 @@ def test_both_planners_and_runtime_question_settings_use_the_same_guard():
         {'tool':'ask_user','settings':{'question':'이 内容을 승인할까요?'}}]}},{})
 
 
-def test_model_meta_instructions_cannot_be_saved_as_planner_or_runtime_questions():
+def test_model_meta_instructions_cannot_be_saved_as_design_clarifications():
     text='처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.'
     with pytest.raises(ValueError,match='답할 수 없는 확인 문장'):
         validate_draft_question_language({'questions':[text]}, {})
-    with pytest.raises(ValueError,match='답할 수 없는 확인 문장'):
-        validate_draft_question_language({'questions':[], 'workflow':{'nodes':[
-            {'tool':'ask_user','settings':{'question':text}}]}}, {})
     cleaned=validate_draft_question_language({'questions':[text+' 조회 한도를 몇 건으로 할까요?']}, {})
     assert cleaned['questions']==['조회 한도를 몇 건으로 할까요?']
+
+
+def test_execution_time_review_prompt_is_not_screened_as_a_design_clarification():
+    text='기존 설정을 검토해 주세요.'
+    draft={'questions':[], 'workflow':{'nodes':[{'tool':'ask_user','settings':{'question':text}}]}}
+    result=validate_draft_question_language(draft,{'messages':[{'role':'user','content':'실행 결과를 사람이 검토하게 해줘.'}]})
+    assert result['workflow']['nodes'][0]['settings']['question']==text
+    assert draft['workflow']['nodes'][0]['settings']['question']==text
 
 
 def test_old_non_time_questions_are_blocked_without_showing_untranslated_text():

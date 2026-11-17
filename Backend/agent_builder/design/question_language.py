@@ -98,7 +98,11 @@ def validate_question_language(questions,state):
 
 
 def validate_draft_question_language(draft,state):
-    """Apply the same guard to both planners and execution-time question nodes."""
+    """Check language everywhere, and task-instruction leakage in design-time questions.
+
+    An ``ask_user`` node is an execution-time action. Its prompt may deliberately
+    ask someone to review a result, so it must not be treated as a missing input.
+    """
     from agent_builder.conditions.question_quality import strip_known_meta_instructions
     result=deepcopy(draft)
     options=result.get('question_options') or []
@@ -117,9 +121,5 @@ def validate_draft_question_language(draft,state):
         if node.get('tool')=='ask_user' and isinstance(node.get('settings'),dict):
             text=node['settings'].get('question')
             if text:
-                record={'text':text};validate_question_language([record],state)
-                cleaned=strip_known_meta_instructions(record['text'])
-                if cleaned is None:
-                    raise ValueError('설계 모델이 답할 수 없는 확인 문장만 반환했습니다.')
-                node['settings']['question']=cleaned
+                record={'text':text};validate_question_language([record],state);node['settings']['question']=record['text']
     return result

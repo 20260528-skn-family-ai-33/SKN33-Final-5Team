@@ -4,7 +4,7 @@ This is an alternative to asking the design model to re-create a workflow for a
 literal settings change. The proof is checked again at review and save time.
 """
 from copy import deepcopy
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 import hashlib
 import json
 import math
@@ -12,6 +12,8 @@ import re
 
 from contracts.models import AgentDraft
 from workflow_engine.workflow import workflow_errors
+from .node_edit_copy import validate_visible_changes, change_summary, public_error
+from .node_edit_descriptions import sync_node_text, sync_descriptions, descriptions_to_check
 
 
 _ARG = re.compile(r'arguments_json\.([A-Za-z_][A-Za-z0-9_]*)\Z')
@@ -31,6 +33,25 @@ _FIELD_LABELS = {'max_results': '조회 한도', 'limit': '한도', 'count': '�
                  'model': '모델', 'temperature': '모델 온도'}
 _TEXT_ARGUMENTS = {'query', 'channel_id', 'value_column', 'sum_field', 'field',
                    'compare_field', 'format', 'output_format', 'null_policy', 'model'}
+_PROSE_NUMBER = re.compile(
+    r'(?<![\d.,])([-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?)'
+    r'\s*([조억만천]?)')
+_NUMBER_UNIT_EXPONENTS = {'': 0, '천': 3, '만': 4, '억': 8, '조': 12}
+
+
+def _mentions_number(text, value, *, count=False):
+    """Recognize equivalent prose values, including commas, decimals and Korean units."""
+    for match in _PROSE_NUMBER.finditer(text):
+        if count and not re.match(r'\s*(?:건|개(?!월|년)|통)(?![A-Za-z_\d])', text[match.end():]):
+            continue
+        try:
+            parsed = Decimal(match[1].replace(',', '')).as_tuple()
+            number = Decimal((parsed.sign, parsed.digits, parsed.exponent + _NUMBER_UNIT_EXPONENTS[match[2]]))
+            if number == Decimal(str(value)):
+                return True
+        except DecimalException:
+            continue
+    return False
 
 
 def _field_label(path):
@@ -78,9 +99,12 @@ def _same_value(current, expected):
             and math.isfinite(current) and math.isfinite(expected) and current == expected)
 
 
-def _visible_changes(edit):
+def _visible_changes(edit, baseline_node=None):
     """Bind hidden typed values to the exact text the user reviewed and sent."""
     request = edit['request']
+    if not request.startswith('`'):
+        validate_visible_changes(edit, baseline_node)
+        return
     header = f"`{edit['label']}` 작업 (노드 ID: {edit['node_id']})의 설정을 다음과 같이 바꿔줘."
     lines = request.split('\n')
     if (len(lines) < 3 or lines[0] != header or lines[-1] != '다른 작업의 설정은 유지해줘.'
@@ -129,7 +153,9 @@ def _validated_edit(state):
         raise ValueError('먼저 워크플로우 초안을 검증한 뒤 노드 설정을 수정해 주세요.')
     if state.get('pending_questions') or (state.get('issues') and not (retry or correction)) or (state.get('draft') or {}).get('questions'):
         raise ValueError('진행 중인 확인 질문을 해결한 뒤 노드 설정을 수정해 주세요.')
-    _visible_changes(edit)
+    targets = [node for node in (state.get('draft') or {}).get('workflow', {}).get('nodes', [])
+               if node.get('id') == edit['node_id']]
+    _visible_changes(edit, targets[0] if len(targets) == 1 else None)
     return edit, users[-1][0]
 
 
@@ -180,29 +206,6 @@ def _change_value(node, change):
     return current != new
 
 
-def _sync_count_label(node, changes):
-    """Keep the edited node's count label honest without touching other nodes."""
-    if len(changes) != 1:
-        return
-    change = changes[0]
-    if (change['path'] not in ('arguments_json.max_results', 'arguments_json.limit', 'arguments_json.count')
-            or type(change['old_value']) is not int or type(change['new_value']) is not int):
-        return
-    old = str(change['old_value'])
-    pattern = re.compile(r'(?<!\d)' + re.escape(old) + r'(?=(?:건|개|통)(?!\w))')
-    if len(pattern.findall(node['label'])) == 1:
-        node['label'] = pattern.sub(str(change['new_value']), node['label'], count=1)
-
-
-def _dependent_text(draft):
-    top = [draft.get(key) or '' for key in ('name', 'purpose', 'instructions', 'explanation')]
-    nodes = (draft.get('workflow') or {}).get('nodes') or []
-    # The target may contain a second setting or label derived from the old value.
-    settings = [node['label'] + '\n' + json.dumps(node['settings'], ensure_ascii=False, allow_nan=False)
-                for node in nodes]
-    return '\n'.join([*top, *settings])
-
-
 def _recipe_base_turn(state, source_turn):
     """Reuse the original request only while each direct edit's draft is proven."""
     draft = state.get('draft') or {}
@@ -225,43 +228,9 @@ def _recipe_base_turn(state, source_turn):
     return source_turn
 
 
-def _sync_known_count_text(state, before, after, edit, source_turn, base_turn):
-    """Refresh generated Gmail→summary→Slack count prose only when its recipe is proven."""
-    changes = edit['changes']
-    if (len(changes) != 1 or changes[0]['path'] != 'arguments_json.max_results'
-            or type(changes[0]['old_value']) is not int or type(changes[0]['new_value']) is not int):
-        return False
-    nodes = (before.get('workflow') or {}).get('nodes') or []
-    if (len(nodes) != 3 or [node['tool'] for node in nodes] !=
-            ['email.list', 'compose_answer', 'slack.post_message'] or nodes[0]['id'] != edit['node_id']):
-        return False
-    from .gmail_slack import gmail_slack_request
-    prior = {**state, 'messages': state['messages'][:base_turn], 'base_agent_id': None,
-             'resources': [], 'required_node_refs': []}
-    recipe = gmail_slack_request(prior)
-    if not recipe:
-        return False
-    summary = nodes[1]['settings'].get('instructions')
-    old, new = changes[0]['old_value'], changes[0]['new_value']
-    old_phrase, new_phrase = f'최대 {old}건', f'최대 {new}건'
-    original_phrase = f"최대 {recipe['count']}건"
-    expected_summary = recipe['summary_instructions'].replace(original_phrase, old_phrase)
-    if ((base_turn == source_turn and recipe['count'] != old)
-            or summary != expected_summary
-            or before.get('instructions') != before.get('explanation')
-            or old_phrase not in before.get('instructions', '') or old_phrase not in summary):
-        return False
-    for key in ('name', 'purpose', 'instructions', 'explanation'):
-        value = after.get(key)
-        if isinstance(value, str):
-            after[key] = value.replace(old_phrase, new_phrase)
-    after['workflow']['nodes'][1]['settings']['instructions'] = summary.replace(old_phrase, new_phrase)
-    return True
-
-
 def _check_semantic_dependencies(before, after, edit, reconciled):
     """Do not approve a literal patch while a visible explanation still claims the old value."""
-    text = _dependent_text(after)
+    text = '\n'.join(descriptions_to_check(before, after, edit, reconciled))
     for change in edit['changes']:
         path, old = change['path'], change['old_value']
         if path == 'arguments_json.query':
@@ -269,14 +238,13 @@ def _check_semantic_dependencies(before, after, edit, reconciled):
         if type(old) is str and old and old in text:
             raise ValueError('다른 단계나 설명에 이전 설정값이 남아 있어 자동 변경하지 않았습니다: ' + path)
         if type(old) in (int, float):
-            phrase = str(old)
             if path in ('arguments_json.max_results', 'arguments_json.limit', 'arguments_json.count'):
-                if re.search(r'(?<!\d)' + re.escape(phrase) + r'\s*(?:건|개|통)(?!\w)', text):
+                if _mentions_number(text, old, count=True):
                     raise ValueError('다른 단계나 설명에 이전 수량이 남아 있어 자동 변경하지 않았습니다: ' + path)
-            elif re.search(r'(?<![\d.])' + re.escape(phrase) + r'(?![\d.])', text):
+            elif _mentions_number(text, old):
                 raise ValueError('다른 단계나 설명에 이전 숫자가 남아 있어 자동 변경하지 않았습니다: ' + path)
     if reconciled:
-        return '관련 설명과 요약 지시문의 수량 표기도 함께 맞췄습니다. '
+        return '관련 설명도 변경된 설정에 맞췄습니다. '
     return ''
 
 
@@ -289,15 +257,15 @@ def proof_issue(state, draft=None):
         return '노드 변경 후 요청이 바뀌었습니다. 다시 검증해 주세요.'
     try:
         edit = proof['edit']
-        _visible_changes(edit)
         baseline = deepcopy(proof['baseline_node'])
+        _visible_changes(edit, baseline)
         targets = [node for node in (draft or state.get('draft') or {})['workflow']['nodes']
                    if node['id'] == edit['node_id']]
         if len(targets) != 1 or baseline['label'] != edit['label']:
             raise ValueError('변경 대상 노드가 다릅니다.')
         for item in edit['changes']:
             _change_value(baseline, item)
-        _sync_count_label(baseline, edit['changes'])
+        sync_node_text(proof['baseline_node'], baseline, edit['changes'])
         if baseline != targets[0] or _digest(draft or state.get('draft') or {}) != proof['result_digest']:
             raise ValueError('노드 변경 후 설정이 바뀌었습니다.')
     except (ValueError, KeyError, TypeError):
@@ -336,17 +304,20 @@ def apply_node_edit(state):
             changed = _change_value(targets[0], item) or changed
         if not changed:
             raise ValueError('변경된 설정 값이 없습니다.')
-        _sync_count_label(targets[0], edit['changes'])
+        sync_node_text(baseline_node, targets[0], edit['changes'])
+        # Reject an invalid setting before checking prose derived from its old value.
+        issues = workflow_errors(draft['workflow'], draft['tool_ids'], state.get('resources', []), draft['execution_plan'])
+        if issues:
+            raise ValueError('변경한 설정을 실행할 수 없습니다: ' + ' / '.join(issues[:3]))
         base_turn = _recipe_base_turn(state, source_turn)
-        reconciled = _sync_known_count_text(state, state['draft'], draft, edit, source_turn, base_turn)
+        reconciled = sync_descriptions(state, state['draft'], draft, edit, source_turn, base_turn)
         note = _check_semantic_dependencies(state['draft'], draft, edit, reconciled)
         checked = AgentDraft.model_validate({k: v for k, v in draft.items() if k != 'node_snapshots'}).model_dump()
         issues = workflow_errors(checked['workflow'], checked['tool_ids'], state.get('resources', []), checked['execution_plan'])
         if issues:
             raise ValueError('변경한 설정을 실행할 수 없습니다: ' + ' / '.join(issues[:3]))
-        summary = ', '.join(f"{item['path']}: {item['old_value']} → {item['new_value']}"
-                            for item in edit['changes'] if item['old_value'] != item['new_value'])[:1200]
-        reply = f"{edit['node_id']} 설정을 변경했습니다: {summary}. {note}다른 작업의 실행 설정은 유지했습니다. 저장 전에 변경된 값을 확인해 주세요."
+        summary = change_summary(edit)
+        reply = f"{edit['label']} 작업의 설정을 변경했습니다: {summary}. {note}다른 작업의 실행 설정은 유지했습니다. 저장 전에 변경된 값을 확인해 주세요."
         proof = {'request': edit['request'], 'source_turn': source_turn, 'node_id': edit['node_id'],
                  'edit': deepcopy(edit), 'baseline_node': baseline_node,
                  'result_digest': _digest(draft), 'base_turn': base_turn}
@@ -361,9 +332,9 @@ def apply_node_edit(state):
                 'requirement_required': True, 'requirement_ledger': None,
                 'verification_enforced': False, 'verification_required': False,
                 'trace': [*state.get('trace', []), {'node': 'node_edit', 'label': '노드 설정 직접 변경',
-                    'status': 'completed', 'detail': edit['node_id'], 'model_calls': 0}]}
+                    'status': 'completed', 'detail': edit['label'], 'model_calls': 0}]}
     except (ValueError, TypeError, KeyError) as error:
-        message = str(error) or '노드 변경 요청을 확인할 수 없습니다.'
+        message = public_error(error)
         marker = None
         if state.get('draft') and (state.get('status') == 'ready' or state.get('base_agent_id')
                                    or state.get('node_edit_failure')):

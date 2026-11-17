@@ -184,7 +184,9 @@ jobs:
                       tests/design/test_failed_design_edits.py tests/design/test_beta_feedback.py \
                       tests/design/test_failure_recovery.py tests/design/test_model_failure_classification.py \
                       tests/design/test_manual_execution_questions.py tests/design/test_question_language.py \
-                      tests/design/test_pending_question_followups.py; do
+                      tests/design/test_pending_question_followups.py tests/design/test_node_popup_edits.py \
+                      tests/design/test_node_edit_copy.py tests/design/test_node_edit_descriptions.py \
+                      tests/design/test_node_edit_public_flow.py tests/design/test_node_edit_dependencies.py; do
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"

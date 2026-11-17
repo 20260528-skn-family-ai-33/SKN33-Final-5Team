@@ -12,6 +12,7 @@ from agent_builder.tool_gap.gap import describe_gap, export_gap
 from agent_builder.tool_gap.choice import present_choice, choose, redesign_context
 from agent_builder.tool_gap import jobs as tool_gap_jobs, redesign as tool_gap_redesign
 from langgraph.types import Command
+from agent_builder.design.node_edit_copy import public_request, public_error, is_node_edit_error
 
 # Actions that only read or update session state: the model conversation is never invoked.
 STATE_ONLY={'session','upload','attach_asset','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'}
@@ -64,6 +65,33 @@ def _with_side_messages(messages,s):
     return merged
 
 
+def _public_node_edit_messages(messages):
+    """Adapt saved popup transcripts for display without changing graph inputs."""
+    result=[]
+    legacy_request=None
+    for message in messages:
+        content=message.get('content')
+        projected=content
+        if message.get('role')=='user':
+            projected=public_request(content)
+            legacy_request=(content,projected) if projected!=content else None
+        elif message.get('role')=='assistant':
+            if is_node_edit_error(content):
+                projected=public_error(content)
+            elif (legacy_request and isinstance(content,str)
+                  and ' 설정을 변경했습니다: ' in content
+                  and content.endswith('다른 작업의 실행 설정은 유지했습니다. 저장 전에 변경된 값을 확인해 주세요.')):
+                raw,friendly=legacy_request
+                node_id=raw.split('\n',1)[0].rsplit(' (노드 ID: ',1)[1].split(')',1)[0]
+                if content.startswith(node_id+' 설정을 변경했습니다: '):
+                    lines=friendly.split('\n')
+                    projected=(lines[0].removesuffix('의 설정을 다음과 같이 바꿔주세요.')+
+                               '의 설정을 변경했습니다.\n'+'\n'.join(lines[1:-1])+
+                               '\n저장 전에 변경된 값을 확인해 주세요.')
+        result.append({**message,'content':projected} if projected!=content else message)
+    return result
+
+
 def _requirement_state(state):
     """The single requirement state, shown when orchestration is on (shadow/enforce).
 
@@ -106,7 +134,12 @@ def public_state(storage,s,graph):
     resources=[storage.asset(id) for id in s['file_ids']]
     inspections=[inspect_file(asset) for asset in resources]
     controls=project_question_controls(state,current_receipt_questions(state,resources,inspections))
-    return {**s,'messages':_with_side_messages(state.get('messages',[]),s),'draft':controls['draft'],'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(state.get('issues',[])+([issue] if issue else []))),'trace':state.get('trace',[])[-40:],'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
+    visible_issues=[public_error(value) if is_node_edit_error(value) else value
+                    for value in state.get('issues',[])+([issue] if issue else [])]
+    visible_trace=[{**entry,'detail':public_error(entry.get('detail')) if is_node_edit_error(entry.get('detail'))
+                    else '작업 설정을 변경했습니다.' if entry.get('status')=='completed' else entry.get('detail')}
+                   if entry.get('node')=='node_edit' else entry for entry in state.get('trace',[])[-40:]]
+    return {**s,'messages':_public_node_edit_messages(_with_side_messages(state.get('messages',[]),s)),'draft':controls['draft'],'status':'validation_failed' if issue else state.get('status','empty'),'issues':list(dict.fromkeys(visible_issues)),'trace':visible_trace,'verification':state.get('verification'),'saved_agent_id':state.get('saved_agent_id'),'resources':resources,
             'file_inspection':inspections,
             'condition_ledger':state.get('condition_ledger'),'pending_questions':controls['pending_questions'],
             'requirement_failure':state.get('requirement_failure'),

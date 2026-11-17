@@ -374,7 +374,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   setError('');
   let sentSession:Session|null=null;
   try{
-    let files=selectedFiles;
+    let files=selectedFiles||answers?.flatMap(answer=>answer.files||[]);
     const folderMode=fromComposer&&!files?folderInputMode(content):undefined;
     if(folderMode){
      setBusy('자료함 폴더와 파일을 확인하고 있습니다.');
@@ -388,7 +388,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     }
    const editingWorkflow=!!session?.draft?.workflow;
    const gmailSlackRequest=/(?:Gmail|지메일)/i.test(content)&&/(?:Slack|슬랙)/i.test(content);
-   if(!editingWorkflow&&!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
+   if(!files?.length&&!editingWorkflow&&!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
     const prompt=externalPromptContext.current?`${externalPromptContext.current}\n추가 답변: ${content}`:content;
     const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{id:string;description:string;status:string}[]}>('/api/workflows/from-request',{prompt});
     if(!result.workflow){externalPromptContext.current=prompt;setExternalMessages(prior=>[...prior,{role:'user',content},{role:'assistant',content:explainIncompleteWorkflow(result,prompt)}]);return;}
@@ -440,7 +440,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   void attachResources(files).then(()=>setInitialFileReady(true));
  },[loading,initialLoadFailed,credentialId,screen]);
  async function answerQuestions(answers:ClarificationAnswer[]){
-  const content=answers.map(answer=>answer.text+' → '+(answer.skip?'선택사항 건너뛰기':Array.isArray(answer.value)?answer.value.join(', '):String(answer.value))).join('\n');
+  const content=answers.map(answer=>answer.text+' → '+(answer.skip?'선택사항 건너뛰기':answer.files?.length?`${answer.folderPath||'자료함'}: ${answer.files.map(file=>file.name).join(', ')}`:Array.isArray(answer.value)?answer.value.join(', '):String(answer.value))).join('\n');
   if(content.length>4000)throw new Error('답변은 전체 4,000자까지 보낼 수 있습니다. 내용을 줄여주세요.');
   await send(undefined,content,undefined,answers);
  }
@@ -811,7 +811,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
         setText(next);input.current?.focus();
       }}/> : null}
     {receiptQuestion?.action ? <ReceiptQuestion key={receiptQuestion.id} text={receiptQuestion.text} action={receiptQuestion.action}
-      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&slackChannelQuestion ? <SlackChannelPicker key={session?.id+'-'+slackChannelQuestion.id} disabled={!!busy||!!recovery||libraryBusy} onSelect={channelId=>send(undefined,channelId,slackChannelQuestion.id)} onReconnect={()=>leave('connections')}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onSubmit={answerQuestions}/>}{generationFailure?.retryable&&<div className="as-requirement-retry"><p>{session?.draft?.workflow?'이전 워크플로우 초안은 유지했습니다. 이번 변경은 아직 적용되지 않았습니다.':'입력하신 조건은 보존되어 있습니다.'} 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,RETRY_PROMPT)}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}
+      disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&slackChannelQuestion ? <SlackChannelPicker key={session?.id+'-'+slackChannelQuestion.id} disabled={!!busy||!!recovery||libraryBusy} onSelect={channelId=>send(undefined,channelId,slackChannelQuestion.id)} onReconnect={()=>leave('connections')}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onPickFiles={picker=>setFilePicker(picker)} onSubmit={answerQuestions}/>}{generationFailure?.retryable&&<div className="as-requirement-retry"><p>{session?.draft?.workflow?'이전 워크플로우 초안은 유지했습니다. 이번 변경은 아직 적용되지 않았습니다.':'입력하신 조건은 보존되어 있습니다.'} 설명을 다시 작성할 필요 없이 재시도할 수 있습니다.</p><button type="button" className="as-button" disabled={!!busy||!!recovery||libraryBusy} onClick={()=>void send(undefined,RETRY_PROMPT)}>조건 그대로 다시 시도</button></div>}{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}
     onDragOver={event=>{if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault();}}
     onDrop={event=>{
      const files=event.dataTransfer.files;

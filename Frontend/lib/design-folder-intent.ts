@@ -1,4 +1,4 @@
-import type {ClarificationQuestionData} from '../app/clarification-question';
+import type {ClarificationQuestionData} from '../app/clarification-types';
 
 export const folderWord = /폴더|디렉터리|\b(?:folder|directory)\b/i;
 const otherSpace = /팀\s*(?:자료|폴더|디렉터리)|공유\s*드라이브|구글\s*드라이브|로컬|바탕\s*화면|(?:[a-z]:\\|\/(?:home|tmp)\/)/i;

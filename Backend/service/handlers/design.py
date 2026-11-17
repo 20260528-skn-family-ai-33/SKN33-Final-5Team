@@ -283,7 +283,9 @@ def _session_action(c):
                      for i,text in enumerate(draft.get('questions') or [])] if has_interrupt else []
             waiting=pending or planner
             pending_texts=[q['text'] for q in waiting if q.get('text')]
-            failure=bool(state.get('system_failure') or (state.get('requirement_failure') or {}).get('retryable'))
+            # Old failure metadata may survive a later clarification. As in the
+            # UI, only the current failed status makes it active guidance.
+            failure=(state.get('system_failure') or state.get('requirement_failure')) if state.get('status')=='validation_failed' else None
             turn=split_turn(content,state,waiting) if not structured else {'work':content,'side':[],'kinds':[]}
             if turn['side']:
                 shown=len(state.get('messages') or _work_messages(storage,s,graph))

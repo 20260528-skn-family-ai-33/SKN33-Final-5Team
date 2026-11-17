@@ -10,7 +10,8 @@ def test_legacy_requirement_diagnostics_are_not_displayed_as_user_questions():
     original=deepcopy(state)
     shown=public_requirement_errors(state)
     assert shown['messages'][0]==state['messages'][0]
-    assert '같은 조건으로 다시 시도' in shown['messages'][1]['content']
+    assert '관리자' in shown['messages'][1]['content']
+    assert '같은 조건으로 다시 시도' not in shown['messages'][1]['content']
     assert '추가 확인' not in shown['messages'][1]['content']
     assert all('gmail_access_token' not in str(shown[key]) for key in ('messages','issues','trace'))
     assert state==original

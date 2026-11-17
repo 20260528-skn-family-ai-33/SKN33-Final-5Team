@@ -176,7 +176,7 @@ def settled_stage(stage, node):
 
 
 def system_failure(stage, error, message, *, state=None):
-    """A retryable processing failure. It is not a user decision and never a question."""
+    """A diagnosed processing failure, separate from a missing user answer."""
     extra={}
     if state is not None:
         from agent_builder.capabilities.capability_gate import input_fingerprint
@@ -184,8 +184,15 @@ def system_failure(stage, error, message, *, state=None):
         attempt=next_attempt(state, stage, fingerprint)
         extra={'attempt':attempt,'request_fingerprint':fingerprint}
         message+=attempt_notice(attempt)
-    return {'stage': stage, 'error_type': type(error).__name__ if isinstance(error, BaseException) else str(error),
-            'message': message, 'retryable': True,**extra}
+    from agent_builder.design.failure_notice import requirement_failure_details, requirement_failure_notice
+    name=type(error).__name__ if isinstance(error, BaseException) else str(error)
+    kind='model_output_error' if name in ('ValueError','TypeError','KeyError','ValidationError',
+        'JSONDecodeError','ConditionContractError','AssessmentConflictError') else 'model_error'
+    details=requirement_failure_details(kind,error,stage=stage,attempt=extra.get('attempt',1))
+    if extra.get('attempt',1)>1:
+        message=requirement_failure_notice(kind,error,stage=stage,attempt=extra['attempt'],
+            retained_draft=bool((state.get('draft') or {}).get('workflow')))
+    return {**details, 'error_type':name, 'message':message, **extra}
 
 
 RETRY_NOTICE = ' 일시적인 처리 오류라 질문으로 바꾸지 않았습니다. 같은 메시지를 다시 보내면 이 단계부터 다시 시도합니다.'

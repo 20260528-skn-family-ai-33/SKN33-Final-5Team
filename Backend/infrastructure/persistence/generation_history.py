@@ -177,6 +177,11 @@ class GenerationHistory:
         self.failure = dict(stage=record['stage'], node=record['node'], **error_info(error, record['stage'], self.api_key))
         if self.failure['reason_code']=='invalid_request' and record['node'] in ('capability_check','condition_check','requirements'):
             self.failure.update(reason_code='invalid_model_response',reason='요청 분석 모델의 응답이 필요한 형식을 충족하지 못했습니다.')
+        if record['node']=='requirements' and self.failure['reason_code']=='invalid_model_response':
+            from agent_builder.design.failure_notice import requirement_failure_reason
+            # This mapper returns application-owned sentences, never exception
+            # text, model response bodies or customer values.
+            self.failure['reason']=requirement_failure_reason(error)
         self.change(event_status='error', diagnostics=diagnostic_metadata(error, trace_id=self.id,
                     model=(record.get('diagnostics') or {}).get('model')), **self.failure)
 

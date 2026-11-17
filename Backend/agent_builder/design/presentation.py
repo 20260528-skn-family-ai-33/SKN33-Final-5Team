@@ -145,20 +145,56 @@ def public_draft_explanation(draft):
 
 
 def public_requirement_errors(state):
-    """Keep legacy extraction diagnostics out of the customer conversation."""
+    """Sanitize old diagnostics and explain only the currently failed request."""
+    from .failure_notice import requirement_failure_details, requirement_failure_notice
     prefixes=('요청 업무 목록을 확정하지 못했습니다',
               '업무 조건을 확인하지 못했습니다. 처리할 내용과 필요한 기준을 조금 더 구체적으로')
-    notice='입력하신 조건은 보존했습니다. 업무 흐름을 구성하는 중 문제가 생겼습니다. 같은 조건으로 다시 시도해주세요.'
-    def public(text):
-        return notice if isinstance(text,str) and text.startswith(prefixes) else text
-    legacy=any(message.get('role')=='assistant' and isinstance(message.get('content'),str)
-               and message['content'].startswith(prefixes) for message in state.get('messages',[]))
+    generic_prefixes=('입력하신 조건은 보존했습니다. 현재 이 요청을 처리할 수 없습니다.',
+                      '입력하신 조건은 보존했습니다. 업무 흐름을 구성하는 중 문제가 생겼습니다.')
+    messages=state.get('messages',[])
+    last_user=max((i for i,message in enumerate(messages) if message.get('role')=='user'),default=-1)
+    def starts(text, choices):
+        return isinstance(text,str) and text.startswith(choices)
+    current=[message.get('content','') for message in messages[last_user+1:]
+             if message.get('role')=='assistant']
+    failure=state.get('requirement_failure') or {}
+    trace=state.get('trace',[])
+    latest=next((step for step in reversed(trace) if step.get('node')=='requirements'
+                 and step.get('label')!='단계 소요 시간'),{})
+    active=(state.get('status')=='validation_failed'
+            and failure.get('stage','requirements')=='requirements'
+            and (any(starts(text,prefixes) for text in current)
+                 or any(starts(text,generic_prefixes) for text in current)
+                 and (bool(failure) or latest.get('failure_kind')=='model_output_error')))
+    legacy_notice=requirement_failure_notice('system_error',None)
+    notice=legacy_notice
+    projected=None
+    if active:
+        if failure.get('reason') and failure.get('action'):
+            details=failure  # Current, already diagnosed metadata takes precedence.
+        else:
+            attempt=failure.get('attempt',1)
+            if type(attempt) is not int or attempt<1:attempt=1
+            kind=(failure.get('failure_kind') or latest.get('failure_kind')
+                  or ('model_output_error' if any(starts(text,generic_prefixes[:1]) for text in current)
+                      else 'system_error'))
+            details=requirement_failure_details(kind,latest.get('error_type'),attempt=attempt)
+            projected={**failure,'kind':failure.get('kind','processing_error'),**details}
+        notice=('요청을 작업 목록으로 정리하는 단계에서 중단됐습니다. '
+                +details['reason']+' '+details['action']
+                +' 입력하신 조건은 보존했습니다. 변경 사항을 적용하거나 저장하지 않았습니다.')
+        if (state.get('draft') or {}).get('workflow'):
+            notice+=' 이전 워크플로우 초안은 유지했으며, 이번 변경은 아직 적용되지 않았습니다.'
+    def public(text, current=False):
+        if starts(text,prefixes):
+            return notice if current and active else legacy_notice
+        return notice if current and active and starts(text,generic_prefixes) else text
     return {**state,
-            'messages':[{**message,'content':public(message.get('content',''))}
+            'messages':[{**message,'content':public(message.get('content',''),i>last_user)}
                         if message.get('role')=='assistant' else message
-                        for message in state.get('messages',[])],
-            'issues':list(dict.fromkeys(public(issue) for issue in state.get('issues',[]))),
-            **({'requirement_failure':{'kind':'processing_error','retryable':True}} if legacy else {}),
-            'trace':[{**step,'detail':public(step.get('detail',''))}
+                        for i,message in enumerate(messages)],
+            'issues':list(dict.fromkeys(public(issue,True) for issue in state.get('issues',[]))),
+            **({'requirement_failure':projected} if projected is not None else {}),
+            'trace':[{**step,'detail':public(step.get('detail',''),step is latest)}
                      if step.get('node')=='requirements' else step
-                     for step in state.get('trace',[])]}
+                     for step in trace]}

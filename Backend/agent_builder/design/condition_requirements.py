@@ -74,6 +74,13 @@ def owned_specs(confirmed, state):
 
 def multiple_outputs(state):
     text = ' '.join(m['content'] for m in state.get('messages', []) if m['role'] == 'user')
+    # Keeping every row/column is a data policy, not a request for several artifacts.
+    # Mask only that scoped use of "all"; retain independent output clauses and
+    # the existing separate-file/format signals in the same request.
+    text = re.sub(
+        r'(?:중복(?:\s*행)?|행|열|레코드|데이터|값|항목)(?:들)?(?:은|는|을|를|도)?\s*'
+        r'(?:(?:그대로|빠짐없이)\s*)?모두\s*(?:(?:다|그대로)\s*)?(?:유지|보존)',
+        lambda match: match.group().replace('모두', '', 1), text)
     return bool(re.search(r'각각|각자|별도|따로|두\s*(?:개|파일)|둘\s*다|모두|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
 
 

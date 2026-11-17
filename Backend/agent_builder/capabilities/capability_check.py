@@ -390,12 +390,14 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
             issues=(result.get('issues') if decision=='system_error' else None) or [
                 '워크플로우를 생성하지 않았습니다. 지원 여부를 확정하지 못한 이유: '+reason
                 if reason else '워크플로우를 생성하지 않았습니다. 지원 여부를 확정하지 못했습니다.']
-            # A model/contract failure (error_type set) is retryable and is not a user decision.
+            # A processing failure is not a missing user condition. Only a known
+            # transient transport error can suggest another identical attempt.
             from agent_builder.conditions.clarification_core import system_failure, RETRY_NOTICE
             failure=system_failure('capability_check',result['error_type'],' '.join(issues),state=state) if decision=='system_error' and result.get('error_type') else None
             update.update(capability_route='stop',status='validation_failed',confirmed=False,saved_agent_id=None,gap_condition_review=None,
                 pending_questions=[],capability_questions=[],issues=issues,semantic_issues=[],system_failure=failure,
-                messages=state.get('messages',[])+[{'role':'assistant','content':(failure['message']+RETRY_NOTICE) if failure else ' '.join(issues)}])
+                messages=state.get('messages',[])+[{'role':'assistant','content':
+                    (failure['message']+(RETRY_NOTICE if failure['retryable'] else '')) if failure else ' '.join(issues)}])
         return update
     return check
 

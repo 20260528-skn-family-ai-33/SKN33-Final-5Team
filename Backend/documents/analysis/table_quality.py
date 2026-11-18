@@ -117,6 +117,19 @@ def row_alignment_supported(peers, *, references=None):
                for cell, anchor in references)
 
 
+def candidate_set_issues(matches, candidates, row_references):
+    """Check all tentative confirmations/repairs against fixed references."""
+    issues = anchor_geometry_issues([*matches, *candidates])
+    candidate_rows = defaultdict(list)
+    for cell, piece in candidates:
+        candidate_rows[position(cell)[0]].append((cell, piece))
+    for row, peers in candidate_rows.items():
+        references = row_references[row]
+        if not row_alignment_supported([*references, *peers], references=references):
+            issues.append(dict(kind='candidate_row_alignment_conflict', row=row))
+    return issues
+
+
 def independent_anchor_issues(matches, cells, declared_cols=None):
     """Do not let a candidate's own box manufacture its position evidence.
 
@@ -290,14 +303,7 @@ def reconcile(data, prediction):
         pending.append((cell, p))
     # Validate the entire tentative set before granting it evidence status.
     # Individual agreement with a reference does not imply peer agreement.
-    candidate_issues = anchor_geometry_issues([*matches, *pending])
-    pending_rows = defaultdict(list)
-    for cell, piece in pending:
-        pending_rows[position(cell)[0]].append((cell, piece))
-    for row, candidates in pending_rows.items():
-        references = row_references[row]
-        if not row_alignment_supported([*references, *candidates], references=references):
-            candidate_issues.append(dict(kind='candidate_row_alignment_conflict', row=row))
+    candidate_issues = candidate_set_issues(matches, pending, row_references)
     report['issues'].extend(candidate_issues)
     candidates_rejected = duplicate_candidates or bool(candidate_issues)
     if not candidates_rejected:
@@ -336,18 +342,28 @@ def reconcile(data, prediction):
                 report['issues'].append({'kind': 'cell_text_conflict', 'ocr_index': p['index'], 'slot': list(slot)})
             continue
         proposals[slot].append(p)
+    repairs = []
     for (row, col), candidates in proposals.items():
         if len(candidates) != 1:
             report['issues'].append({'kind': 'ambiguous_missing_cell', 'slot': [row, col]})
             continue
         p = candidates[0]
+        repairs.append((dict(row=row, column=col, row_span=1, col_span=1, text=p['text']), p))
+    # Slot-wise eligibility is not sufficient: validate the final combined set
+    # before changing cells, repairs or covered slots. Repairs never become
+    # references for themselves or for one another.
+    final_issues = candidate_set_issues(matches, [*pending, *repairs], row_references)
+    if final_issues:
+        report['issues'].extend(final_issues)
+        return cells, report
+    for cell, p in repairs:
         evidence = dict(engine='paddleocr', ocr_index=p['index'], bbox=p['box'], score=p['score'],
                         coordinate_system='ocr_crop_pixels')
-        cells.append(dict(row=row, column=col, row_span=1, col_span=1, text=p['text'], recovery=evidence))
-        report['repairs'].append(dict(row=row, column=col, text=p['text'], evidence=evidence))
+        cells.append({**cell, 'recovery': evidence})
+        report['repairs'].append(dict(row=cell['row'], column=cell['column'], text=p['text'], evidence=evidence))
     # Missing objects are unknown, not verified blanks. Spans explicitly cover
     # their slots; no synthetic empty cells are introduced for sparse summaries.
-    covered = set(occupied) | {slot for slot, ps in proposals.items() if len(ps) == 1}
+    covered = set(occupied) | {position(cell) for cell, _ in repairs}
     row_count = data.get('num_rows', max((r for r, _ in covered), default=-1) + 1)
     col_count = data.get('num_cols', max((c for _, c in covered), default=-1) + 1)
     if (type(row_count) is not int or type(col_count) is not int or row_count <= 0 or col_count <= 0

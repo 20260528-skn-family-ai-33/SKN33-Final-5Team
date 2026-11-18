@@ -28,7 +28,7 @@ def export(data, prediction, path):
         return list(csv.DictReader(stream))
 
 
-@pytest.mark.parametrize('top,bottom',[(60,95.001),(60,100),(60,120),(60,123),(60,130),(54.999,80),(30,80)])
+@pytest.mark.parametrize('top,bottom',[(60,95.001),(60,100),(60,120),(60,123),(60,130),(54.999,80),(30,80),(55,95)])
 def test_cross_row_box_never_reaches_csv(tmp_path,top,bottom):
     data,prediction=sample(top,bottom)
     cells,quality=reconcile(data,prediction)
@@ -43,11 +43,14 @@ def test_cross_row_box_never_reaches_csv(tmp_path,top,bottom):
 def test_variable_row_gap_and_exact_boundary_contact(next_top,overflow):
     data,prediction=sample(bottom=(80+next_top)/2 + (.001 if overflow else 0),next_top=next_top)
     cells,quality=reconcile(data,prediction)
-    assert bool(quality['repairs']) is not overflow
-    assert bool(quality['issues']) is overflow
+    # With larger gaps the candidate is too tall for the independent row
+    # evidence, even though its end lies exactly on the corridor boundary.
+    supported = not overflow and next_top == 90
+    assert bool(quality['repairs']) is supported
+    assert bool(quality['issues']) is not supported
 
 
-@pytest.mark.parametrize('top,bottom,value',[(60,80,'2'),(55,95,'2 3'),(60,80,'two\nunits')])
+@pytest.mark.parametrize('top,bottom,value',[(60,80,'2'),(55,85,'2 3'),(60,80,'two\nunits')])
 def test_contained_text_is_exported_without_numeric_heuristics(tmp_path,top,bottom,value):
     data,prediction=sample(top,bottom,value=value)
     rows=export(data,prediction,tmp_path/'good.csv')

@@ -64,6 +64,37 @@ def row_corridors(rows, cells):
     return result
 
 
+def anchor_geometry_issues(matches):
+    """Exact text matches are candidates until their spatial order agrees.
+
+    For each axis, disjoint logical spans must have disjoint, ordered OCR
+    extents. A sweep compares against independent cells, never against the
+    candidate itself. Spanning headers/cells are compared only outside their
+    logical spans. Any contradiction invalidates the anchor set as a whole.
+    """
+    issues = []
+    for axis, span_key, label in ((1, 'row_span', 'row'), (0, 'col_span', 'column')):
+        intervals = []
+        for cell, piece in matches:
+            start = position(cell)[1-axis]
+            intervals.append((start, start + cell.get(span_key, 1), piece['box'][axis],
+                              piece['box'][axis+2], piece['index']))
+        ended = sorted(intervals, key=lambda v: v[1])
+        cursor = 0
+        furthest = None
+        for current in sorted(intervals):
+            while cursor < len(ended) and ended[cursor][1] <= current[0]:
+                previous = ended[cursor]
+                if furthest is None or previous[3] > furthest[3]:
+                    furthest = previous
+                cursor += 1
+            if furthest is not None and furthest[3] > current[2]:
+                issues.append(dict(kind='anchor_geometry_conflict', axis=label,
+                                   ocr_indices=[furthest[4], current[4]]))
+                break
+    return issues
+
+
 def reconcile(data, prediction):
     cells = deepcopy(data.get('cells') or [])
     report = {'repairs': [], 'issues': [], 'method': 'unique_text_ocr_geometry_v1'}
@@ -116,17 +147,20 @@ def reconcile(data, prediction):
     rows, columns = defaultdict(list), defaultdict(list)
     anchors = set()
     confirmed = set()
-    for p in pieces:
-        key = normalized(p['text'])
-        if pc[key] == cc[key] == 1 and p['score'] >= .98:
-            cell = by_text[key]
-            confirmed.add(position(cell))
-            anchors.add(p['index'])
-            if cell.get('row_span', 1) == cell.get('col_span', 1) == 1:
-                row, col = position(cell)
-                rows[row].append(p['box'])
-                columns[col].append((row, p['box']))
-                anchors.add(p['index'])
+    matches = [(by_text[normalized(p['text'])], p) for p in pieces
+               if pc[normalized(p['text'])] == cc[normalized(p['text'])] == 1 and p['score'] >= .98]
+    report['issues'].extend(anchor_geometry_issues(matches))
+    if report['issues']:
+        # Preserve original values; conflicting anchors must not confirm cells
+        # or support repairs elsewhere in the table.
+        return cells, report
+    for cell, p in matches:
+        confirmed.add(position(cell))
+        anchors.add(p['index'])
+        if cell.get('row_span', 1) == cell.get('col_span', 1) == 1:
+            row, col = position(cell)
+            rows[row].append(p['box'])
+            columns[col].append((row, p['box']))
     def overlap(a, b, axis):
         return max(0, min(a[axis+2], b[axis+2]) - max(a[axis], b[axis])) / min(a[axis+2]-a[axis], b[axis+2]-b[axis])
     vertical_corridors = row_corridors(rows, cells)

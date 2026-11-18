@@ -39,7 +39,10 @@
 .unified-workspace .editor-container>.studio-assistant{background:var(--a4b-surface);color:var(--a4b-ink)}
 .studio-assistant .as-composer-footer small{margin-left:auto}
 
-.unified-workspace .reservation-tab-bar{padding-inline:24px;margin-bottom:0}
+.unified-workspace .reservation-tab-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding-inline:24px;margin-bottom:0}
+.reservation-tab-bar .task-library-tabs{flex:1;border-bottom:0}
+.reservation-tab-bar{border-bottom:1px solid var(--a4b-border)}
+.reservation-tab-bar .toolbar-actions{margin-inline-start:auto}
 @media(max-width:760px){.unified-workspace .reservation-tab-bar{padding-inline:16px}}
 
 .unified-workspace .topbar.as-page-title:has(+.reservation-tab-bar){border-bottom:0}

@@ -1987,7 +1987,14 @@ test('external reservation guards unsaved settings and returns from conversation
  try{
   await click(document.querySelector('[aria-label="외부 예약 검증 일정 관리"]')!);
   assert.equal(new URL(location.href).searchParams.get('external'),externalScheduleFixture.id);
-  assert.deepEqual([...document.querySelectorAll('.reservation-tab-bar button')].map(button=>button.textContent),['예약 관리','실행']);
+  assert.deepEqual([...document.querySelectorAll('.reservation-tab-bar nav button')].map(button=>button.textContent),['예약 관리','실행']);
+  assert.ok(document.querySelector('.reservation-tab-bar .toolbar-actions'));
+  const nodes=()=>[...document.querySelectorAll<HTMLElement>('.as-flow-node')];
+  assert.equal(nodes()[0].style.top,nodes()[1].style.top);
+  assert.notEqual(nodes()[0].style.left,nodes()[1].style.left);
+  await click(button('세로로 보기'));
+  assert.equal(nodes()[0].style.left,nodes()[1].style.left);
+  assert.notEqual(nodes()[0].style.top,nodes()[1].style.top);
   assert.ok(document.querySelector('.reservation-settings-footer'));
   await input(document.querySelector<HTMLInputElement>('#workflow-timezone')!,'UTC');
   let confirmations=0;

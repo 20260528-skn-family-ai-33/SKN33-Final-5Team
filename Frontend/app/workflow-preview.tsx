@@ -11,7 +11,7 @@ export function WorkflowPreview({workflow,selectedId,onSelect,autoFit=false,onTo
  const {viewport,zoom,pan,dragging,changeZoom,reset,pointerDown,pointerMove,pointerUp}=useCanvasNavigation(!!workflow);
  const nodeWidth=168,nodeHeight=240,squareSize=112,squareX=(nodeWidth-squareSize)/2,squareY=30,margin=32;
  const columnGap=vertical?64:100,rowGap=vertical?64:40;
- const levels:Record<string,number>=workflow?{[workflow.entry]:0}:{};
+ const levels:Record<string,number>=workflow?(workflow.edges.length?{[workflow.entry]:0}:Object.fromEntries(workflow.nodes.map((node,index)=>[node.id,index]))):{};
  if(workflow)for(let pass=0;pass<workflow.nodes.length;pass++)for(const e of workflow.edges)if(levels[e.source]!==undefined)levels[e.target]=Math.min(workflow.nodes.length,Math.max(levels[e.target]||0,levels[e.source]+1));
  const counts:Record<number,number>={}, positions:Record<string,{x:number;y:number}>={};
  const ordered=[...(workflow?.nodes||[])].sort((a,b)=>(levels[a.id]||0)-(levels[b.id]||0));

@@ -135,12 +135,95 @@ def test_filter_values_and_sort_commands_in_the_same_sentence(
         store.close()
 
 
+@pytest.mark.parametrize(('request_text', 'filter_value', 'sort_field', 'direction'), [
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순 정렬', '오름차순', '금액', 'descending'),
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순으로 정렬해줘', '오름차순', '금액', 'descending'),
+    ('정렬방식이 오름차순인 데이터 만 남기고 금액 내림차순 정렬', '오름차순', '금액', 'descending'),
+    ('정렬방식이 오름차순과 같은 데이터만 남기고 금액 내림차순 정렬', '오름차순', '금액', 'descending'),
+    ('정렬방식이 내림차순인 자료만 골라서 주문일 오름차순으로 정렬해줘', '내림차순', '주문일', 'ascending'),
+    ('정렬방식이 내림차순인 자료 만 골라서 주문일 오름차순으로 정렬해줘', '내림차순', '주문일', 'ascending'),
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순 정렬해줘', '오름차순', '금액', 'descending'),
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순 정렬해 주세요', '오름차순', '금액', 'descending'),
+])
+def test_direction_filter_and_sort_export_only_matching_rows(tmp_path, request_text, filter_value, sort_field, direction):
+    from agent_builder.conditions.condition_readiness import literal_condition_issues
+
+    s = state(request_text + '. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    other_value = {'오름차순': '내림차순', '내림차순': '오름차순'}[filter_value]
+    rows = [{'정렬방식': filter_value, '주문번호': 'B', '금액': 20, '주문일': '2026-11-02'},
+            {'정렬방식': other_value, '주문번호': 'D', '금액': 100, '주문일': '2026-11-01'},
+            {'정렬방식': filter_value, '주문번호': 'A', '금액': 30, '주문일': '2026-11-01'}]
+    asset = {'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': list(rows[0]),
+             'profile': {'금액': {'types': ['number']}}, 'text': ''}
+    s.update(resources=[asset], condition_enforced=True)
+    values = {'filter.field': '정렬방식', 'filter.operator': 'eq', 'filter.value': filter_value,
+              'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'}
+    s['condition_ledger'] = checked(s, proposal(s, values))
+    assert s['condition_ledger']['decision'] == 'ready'
+    assert checked(s, proposal(s, {}))['decision'] == 'ready'
+    assert literal_condition_issues(s) == []
+    planned = workflow_draft(s)
+    sort = {'field': sort_field, 'direction': direction, 'value_type': {'금액': 'number', '주문일': 'text'}[sort_field]}
+    for plan in [planned['execution_plan'], planned['workflow']['nodes'][1]['settings']['execution_plan']]:
+        plan.update(filters=[{'field': '정렬방식', 'operator': 'eq', 'value': filter_value,
+                              'compare_field': None, 'value_type': 'text'}],
+                    sort=[sort])
+    s.update(draft=planned, confirmed=True)
+    planned_sorts = s['draft']['execution_plan']['sort']
+    assert [(item['field'], item['direction']) for item in planned_sorts] == [(sort_field, direction)]
+    assert plan_issues(s['condition_ledger'], s['draft'], state=s) == []
+
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, rows)
+        opposite = {'ascending': 'descending', 'descending': 'ascending'}[direction]
+        for wrong_sort in [[], [{**sort, 'direction': opposite}],
+                           [{'field': '정렬방식', 'direction': 'ascending', 'value_type': 'text'}, *planned_sorts]]:
+            bad = deepcopy(s)
+            for plan in [bad['draft']['execution_plan'],
+                         bad['draft']['workflow']['nodes'][1]['settings']['execution_plan']]:
+                plan['sort'] = wrong_sort
+            assert plan_issues(bad['condition_ledger'], bad['draft'], state=bad)
+            with pytest.raises(ValueError):
+                store.save_agent(bad)
+        run = run_workflow(store, store.save_agent(s), '실행', '', file_ids=['a'])
+        assert run['status'] == 'succeeded'
+        expected = [rows[2], rows[0]]
+        assert run['rows'] == expected
+        assert json.loads(run['artifact']['content'].lstrip('\ufeff')) == expected
+        assert json.loads((tmp_path / run['report_path']).read_text(encoding='utf-8-sig')) == expected
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('tail', [
+    '남기고 금액 내림차순 정렬 방법을 알려줘',
+    '남기고 금액 내림차순 정렬할까요?',
+    '남기고 금액 내림차순 정렬?',
+    '남기고 금액 내림차순 정렬해?',
+    '남기고 금액 내림차순 정렬하지 마',
+    '남기고 결과 제목은 "금액 내림차순 정렬"로 적어줘',
+    '남기고 "금액 내림차순" 정렬',
+    '남기고 싶지 않아 금액 내림차순 정렬',
+])
+def test_short_sort_continuation_keeps_uncertain_selection_unresolved(tail):
+    s = state('정렬방식이 오름차순인 데이터만 ' + tail + '. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    s['resources'] = [{'id': 'a', 'kind': 'table', 'columns': ['정렬방식', '금액'], 'text': ''}]
+    values = {'filter.field': '정렬방식', 'filter.operator': 'eq', 'filter.value': '오름차순',
+              'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'}
+    ledger = checked(s, proposal(s, values))
+    assert ledger['decision'] == 'clarify'
+    assert 'filter.match' in ledger['unresolved']
+
+
 @pytest.mark.parametrize(('request_text', 'proposed_value', 'expected_operator'), [
     ('정렬방식이 오름차순인 것만 삭제해줘.', '오름차순', 'ne'),
     ('정렬방식이 오름차순인 것만 남기지 마.', '오름차순', None),
     ('정렬방식이 오름차순인 것만 남기면 안 돼. 나머지도 유지해줘.', '오름차순', None),
     ('정렬방식이 오름차순인 것만 골라서는 안 됩니다.', '오름차순', None),
     ('정렬방식이 오름차순인 것만 남기고 결과 제목은 완료로 적어줘.', '완료', None),
+    ('정렬방식이 오름차순인 데이터만 남기지 마.', '오름차순', None),
+    ('정렬방식이 오름차순인 데이터만 남기면 안 돼. 나머지도 유지해줘.', '오름차순', None),
 ])
 def test_unquoted_equality_needs_the_literal_in_a_keep_clause(request_text, proposed_value, expected_operator):
     s = state(request_text + ' JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')

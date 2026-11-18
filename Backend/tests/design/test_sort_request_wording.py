@@ -72,6 +72,9 @@ def test_full_withdrawal_clears_multiple_sort_keys(withdrawal):
     '정렬방식이 내림차순과 같은 주문건만 남겨줘',
     '정렬이 오름차순과 같은 행만 골라',
     '정렬방식이 내림차순이 아닌 주문만 골라',
+    '정렬방식이 오름차순인 데이터만 남기고',
+    '정렬방식이 내림차순과 같은 데이터만 골라',
+    '정렬방식이 내림차순이 아닌 데이터만 골라',
 ])
 def test_filter_direction_value_does_not_change_sorting(filter_text):
     columns = ['주문일', '금액', '정렬방식', '정렬']
@@ -83,6 +86,35 @@ def test_filter_direction_value_does_not_change_sorting(filter_text):
 @pytest.mark.parametrize('text', ['주문일이 오름차순이 되게 정렬해줘', '주문일이 오름차순인 상태로 정렬해줘'])
 def test_subject_marked_column_with_a_sort_verb_is_still_a_sort(text):
     assert sort_request(table_request(text))['sorts'] == [ORDER_DATE]
+
+
+@pytest.mark.parametrize('filter_value', ['오름차순', '내림차순'])
+@pytest.mark.parametrize('selector', ['데이터만', '데이터 만', '자료만', '자료 만', '행만', '레코드만'])
+def test_filter_value_before_an_amount_sort_is_not_a_sort_key(filter_value, selector):
+    text = f'정렬방식이 {filter_value}인 {selector} 남기고 금액 내림차순 정렬'
+    assert sort_request(table_request(text))['sorts'] == [
+        {'field': '금액', 'direction': 'descending', 'value_type': None},
+    ]
+
+
+@pytest.mark.parametrize(('text', 'expected'), [
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순으로 정렬해줘',
+     {'field': '금액', 'direction': 'descending', 'value_type': None}),
+    ('정렬방식이 내림차순인 자료만 골라서 주문일 오름차순으로 정렬해줘', ORDER_DATE),
+])
+def test_review_filter_and_sort_requests_verbatim(text, expected):
+    assert sort_request(table_request(text))['sorts'] == [expected]
+
+
+@pytest.mark.parametrize('text', [
+    '자료.csv에서 주문일 오름차순으로 정렬해줘',
+    '내림차순인자료.csv에서 주문일 오름차순으로 정렬해줘',
+    '첨부 자료를 주문일 오름차순으로 정렬해줘',
+    '자료 열이 "내림차순인 자료만"인 행만 골라 주문일 오름차순으로 정렬해줘',
+    '주문일이 오름차순인 상태로 자료를 정렬해줘',
+])
+def test_resource_mentions_do_not_hide_an_actual_sort(text):
+    assert sort_request(table_request(text, columns=['주문일', '자료']))['sorts'] == [ORDER_DATE]
 
 
 def test_same_column_can_sort_differently_before_and_after_deduplication():

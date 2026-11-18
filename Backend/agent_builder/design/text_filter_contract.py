@@ -12,7 +12,8 @@ from .text_filter_parser import text_atoms, disjunctive_clause, uncovered_select
 _POSITIVE_ACTION = re.compile(
     r'\s*+(?:(?:남겨|골라|선별해|포함해)(?:\s*+(?:줘|주세요))?|(?:남긴|고른|선별한)\s+(?:뒤|후|다음)'
     r'|남기고(?=\s+(?:(?:CSV|JSON)(?:으로|로)|파일로)\s+저장)'
-    r'|(?:남기고|골라서)(?=\s+[^.!?;。！？\n]*?(?:으로|로)\s+정렬(?:해|하)))(?![가-힣])', re.I)
+    r'|(?:남기고|골라서)(?=\s+[^.!?;。！？\n]*?(?:(?:으로|로)\s+정렬(?:해|하)'
+    r'|(?:오름차순|내림차순)\s*(?:으로|로)?\s+정렬(?:해(?:\s*(?:줘|주세요))?|하세요)?\s*[.!;\n]?\s*$)))(?![가-힣])', re.I)
 _EXCLUDE_ACTION = re.compile(r'\s*+(?:제외해|삭제해|빼줘)(?:\s*+(?:줘|주세요))?(?![가-힣])')
 
 
@@ -82,6 +83,8 @@ def text_filter_state(state):
             events.extend((span.start(), 'numeric', field, None) for field in fields if _comparison_subject(field, prefix))
         for offset, clause in filter_clauses(text):
             matches = text_atoms(clause, fields)
+            # Preserve the terminator so a short "정렬?" stays a question.
+            ending = text[offset + len(clause):offset + len(clause) + 1]
             for index, match in enumerate(matches):
                 field = match.field
                 pending_kind = 'pending_operator' if match.operator == 'contains' else 'pending'
@@ -102,7 +105,7 @@ def text_filter_state(state):
                                    f'{field}에 특정 문구가 들어 있는 행을 제외하는 조건은 자동 확정할 수 없습니다. 적용할 조건을 다시 적어주세요.'))
                     continue
                 bare = match.only and bool(re.match(r'\s*+(?:$|,|(?:이고|이며|그리고|및)\s|(?:CSV|JSON|파일|결과)(?:으로|로|\s))', tail, re.I))
-                positive = bool(_POSITIVE_ACTION.match(action_tail)) or bare
+                positive = bool(_POSITIVE_ACTION.match(action_tail + ending)) or bare
                 if match.joined and matches[-1].only and re.match(
                         r'\s*+(?:$|(?:CSV|JSON|파일|결과)(?:으로|로|\s))', action_tail, re.I):
                     positive = True

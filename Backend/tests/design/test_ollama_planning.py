@@ -45,6 +45,15 @@ def test_unsupported_settings_are_not_exposed_as_raw_provider_errors():
 
 
 
+def test_model_output_length_error_explains_the_output_limit():
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+
+    completion = ChatCompletion.model_construct(choices=[], usage=None)
+    error = LengthFinishReasonError(completion=completion)
+    assert public_error(error) == '모델 응답이 출력 길이 제한에 도달해 중단됐습니다. 출력 분량을 줄여 다시 시도해주세요.'
+
+
 def test_ollama_wire_preserves_the_requested_output_budget_without_mutating_input():
     from infrastructure.llm.ollama_chat_model import compatible_schema_payload
     payload = {'model': 'qwen3.5:4b', 'max_completion_tokens': 9000}

@@ -43,25 +43,44 @@ def chunks_for_asset(asset):
     analysis = analysis_of(asset)
     if analysis:
         review=(asset.get('parser_metadata') or {}).get('document_review') or {}
-        for block in analysis['blocks']:
-            if not block.get('selected', True):
-                continue
+        blocks = [block for block in analysis['blocks'] if block.get('selected', True)]
+        structured_parents = {block['parent_object_id'] for block in blocks
+                              if block.get('parent_object_id') and 'table' in block.get('content_types', [])
+                              and (block.get('data') or {}).get('cells')}
+        coverage_only = []
+        has_text = False
+        for block in blocks:
             block_text = block.get('text', '')
-            if not block_text.strip() and 'table' in block.get('content_types', []):
-                block_text = '\n'.join(str(cell.get('text') or '') for cell in (block.get('data') or {}).get('cells', []))
-            if not block_text.strip():
+            is_table = 'table' in block.get('content_types', [])
+            cells = ((block.get('data') or {}).get('cells') or []) if is_table else None
+            if not block_text.strip() and cells:
+                block_text = '\n'.join(str(cell.get('text') or '') for cell in cells)
+            empty = not block_text.strip()
+            # A layout region handled by a selected child is the same table.
+            if empty and (not is_table or block['engine'] == 'layout' and block['id'] in structured_parents):
                 continue
             location = block['native_location']
+            source = f"{asset['id']}:{block['id']}:"
+            provenance = dict(file_id=asset['id'], file_name=asset['name'], page=location.get('page'),
+                              block_id=block['id'], native_location=location, bbox=block.get('bbox'),
+                              parser_engine=block['engine'], review_required=analysis['review_required'] and review.get('status')!='completed',
+                              document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0))
+            if empty:
+                coverage_only.append(dict(source_id=source + '0', offset=0, text='', table_cells=cells, **provenance))
+                continue
             for start in range(0, len(block_text), 1400):
                 text = block_text[start:start + 1800]
-                if text.strip():
-                    yield dict(source_id=f"{asset['id']}:{block['id']}:{start}", file_id=asset['id'],
-                               file_name=asset['name'], page=location.get('page'), offset=start, text=text,
-                               block_id=block['id'], native_location=location, bbox=block.get('bbox'),
-                               parser_engine=block['engine'], review_required=analysis['review_required'] and review.get('status')!='completed',
-                               document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0),
-                               **({'table_cells': block['data']['cells']} if start == 0 and 'table' in block.get('content_types', [])
-                                  and (block.get('data') or {}).get('cells') else {}))
+                if not text.strip():
+                    continue
+                part = dict(source_id=source + str(start), offset=start, text=text, **provenance)
+                if cells is not None:
+                    part['table_cells'] = cells
+                    cells = None
+                has_text = True
+                yield part
+        # Keep unresolved empty tables visible to extraction without making an empty document readable.
+        if has_text:
+            yield from coverage_only
         return
     for page, text in enumerate(asset.get('pages') or [asset.get('text', '')], 1):
         for start in range(0, len(text), 1400):

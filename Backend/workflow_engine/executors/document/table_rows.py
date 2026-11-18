@@ -7,6 +7,11 @@ import re
 import unicodedata
 
 COVERAGE_KEY = 'row_coverage'
+_SUMMARY_LABELS = frozenset({
+    '합계', '소계', '총계', '총합계', '부가세', '부가가치세', '세액',
+    'total', 'subtotal', 'grandtotal', 'vat', 'tax',
+})
+_SUMMARY_VALUE = re.compile(r'[−+-]?[₩$€£]?\d+(?:[,.]\d+)*(?:원|%)?')
 ROW_DESIGN_INSTRUCTION = ('문서의 반복 항목을 CSV/표로 정리하는 경우 extract_information.settings.extraction_mode=rows로 지정하고 '
                           'fields에는 사용자가 요청한 열을 넣습니다. 문서당 한 값인 메타데이터 추출만 fields 모드를 사용합니다. '
                           'CSV의 export_result.settings.fields에도 요청한 열만 지정합니다. 근거와 검증 정보는 내부 records에 유지하며 사용자 CSV 열에 넣지 않습니다. '
@@ -14,70 +19,160 @@ ROW_DESIGN_INSTRUCTION = ('문서의 반복 항목을 CSV/표로 정리하는 �
 
 
 def label(text):
-    return re.sub(r'\s+', '', unicodedata.normalize('NFC', str(text or ''))).casefold()
+    return re.sub(r'\s+', '', unicodedata.normalize('NFC', '' if text is None else str(text))).casefold()
 
 
-def native_records(parts, fields, evidence_keys, max_rows):
-    records, relevant, unmatched_tables = [], False, False
-    targets = {label(field): field for field in fields}
-    if len(targets) != len(fields):
-        raise ValueError('공백을 제외하면 같은 추출 항목이 있습니다. 열 이름을 구분해 주세요.')
+def _table_parts(parts):
     seen = set()
     for part in parts:
-        cells = part.get('table_cells')
-        if not cells:
+        if 'table_cells' not in part:
             continue
-        if part.get('review_required'):
-            raise ValueError('표 인식 결과에 검토가 필요합니다. 원본과 대조한 뒤 실행해 주세요.')
         identity = (part['file_id'], part.get('block_id', part['source_id']))
         if identity in seen:
             continue
         seen.add(identity)
-        grid = {}
-        for cell in cells:
-            row, col = cell.get('row', cell.get('start_row_offset_idx')), cell.get('column', cell.get('start_col_offset_idx'))
-            if type(row) is not int or type(col) is not int or row < 0 or col < 0:
-                raise ValueError('표 셀의 행·열 위치를 확인할 수 없습니다.')
-            if col in grid.setdefault(row, {}):
-                raise ValueError('동일한 행·열에 여러 셀이 있어 추출을 중단했습니다.')
-            grid[row][col] = cell
-        header, selected = None, {}
-        for number, row in sorted(grid.items()):
-            found = {}
-            for column, cell in row.items():
-                key = label(cell.get('text'))
-                if key in targets:
-                    if targets[key] in found:
-                        raise ValueError('표에 같은 추출 열 이름이 여러 개 있습니다.')
-                    found[targets[key]] = column
-            if found:
-                relevant = True
-            if len(found) == len(fields):
-                if any((row[column].get('row_span') or 1) != 1 or (row[column].get('col_span') or 1) != 1 for column in found.values()):
-                    raise ValueError('병합된 표 머리글의 열 대응을 확인할 수 없습니다.')
-                header, selected = number, found
-                break
+        yield part
+
+
+def _grid(cells):
+    grid = {}
+    for cell in cells:
+        if not isinstance(cell, dict):
+            raise ValueError('표 셀의 행·열 위치를 확인할 수 없습니다.')
+        row = cell.get('row', cell.get('start_row_offset_idx'))
+        column = cell.get('column', cell.get('start_col_offset_idx'))
+        if type(row) is not int or type(column) is not int or row < 0 or column < 0:
+            raise ValueError('표 셀의 행·열 위치를 확인할 수 없습니다.')
+        if column in grid.setdefault(row, {}):
+            raise ValueError('동일한 행·열에 여러 셀이 있어 추출을 중단했습니다.')
+        grid[row][column] = cell
+    return sorted(grid.items())
+
+
+def _unit_cell(cell):
+    return (cell.get('row_span') or 1) == 1 and (cell.get('col_span') or 1) == 1
+
+
+def _columns(grid, targets):
+    partial_header = False
+    for number, row in grid:
+        found = {}
+        for column, cell in row.items():
+            field = targets.get(label(cell.get('text')))
+            if field is None:
+                continue
+            if field in found:
+                raise ValueError('표에 같은 추출 열 이름이 여러 개 있습니다.')
+            found[field] = column
+        if len(found) == len(targets):
+            if any(not _unit_cell(row[column]) for column in found.values()):
+                raise ValueError('병합된 표 머리글의 열 대응을 확인할 수 없습니다.')
+            return number, found
+        partial_header = partial_header or bool(found)
+    if partial_header:
+        raise ValueError('표에서 요청한 열을 모두 찾지 못했습니다. 원본의 열 이름을 확인해 주세요.')
+    return None, {}
+
+
+def _text(cell):
+    value = cell.get('text')
+    return '' if value is None else str(value).strip()
+
+
+def _summary_labels(row):
+    return [column for column, cell in row.items() if label(cell.get('text')).rstrip(':：') in _SUMMARY_LABELS]
+
+
+def _detail_rows(grid, header, selected, *, strict):
+    rows = [(number, row) for number, row in grid if number > header
+            and not all(label(row.get(column, {}).get('text')) == label(field) for field, column in selected.items())
+            and any(_text(cell) for cell in row.values())]
+    ordinary = [row for _, row in rows if not _summary_labels(row)]
+    text_columns = [{column for column, cell in row.items() if _text(cell) and not _SUMMARY_VALUE.fullmatch(label(_text(cell)))}
+                    for row in ordinary]
+    identifier_columns = set.intersection(*text_columns) if text_columns else set()
+    for number, row in rows:
+        summary_columns = _summary_labels(row)
+        if not summary_columns:
+            yield number, row
+            continue
+        marker_column = summary_columns[0]
+        marker = row[marker_column]
+        values = {column: _text(cell) for column, cell in row.items() if column not in summary_columns and _text(cell)}
+        # A normal item identifier can accompany a name that happens to equal a summary label.
+        if len(summary_columns) == 1 and _unit_cell(marker) and any(
+            column in identifier_columns and not _SUMMARY_VALUE.fullmatch(label(value))
+            for column, value in values.items()
+        ):
+            yield number, row
+            continue
+        missing_identifier = any(column < marker_column and column not in values for column in identifier_columns)
+        marker_width = marker.get('col_span') or 1
+        if (len(summary_columns) == 1 and values and (marker.get('row_span') or 1) == 1
+                and type(marker_width) is int and marker_width > 0
+                and all(column >= marker_column + marker_width and _unit_cell(row[column]) and _SUMMARY_VALUE.fullmatch(label(value))
+                        for column, value in values.items())
+                and (marker_width > 1 or missing_identifier)):
+            continue
+        if strict:
+            raise ValueError('합계·세금 행과 일반 항목을 구분할 수 없습니다. 원본 표를 확인해 주세요.')
+
+
+def has_repeated_rows(parts, fields):
+    """Positive evidence of multiple value rows under one matching table header."""
+    targets = {label(field): field for field in fields}
+    if not targets or len(targets) != len(fields):
+        return False
+    for part in _table_parts(parts):
+        if not part.get('table_cells') or part.get('review_required'):
+            continue
+        try:
+            grid = _grid(part['table_cells'])
+            header, selected = _columns(grid, targets)
+        except ValueError:
+            continue
         if header is None:
-            if any(label(cell.get('text')) in targets for row in grid.values() for cell in row.values()):
-                raise ValueError('표에서 요청한 열을 모두 찾지 못했습니다. 원본의 열 이름을 확인해 주세요.')
+            continue
+        count = 0
+        for _, row in _detail_rows(grid, header, selected, strict=False):
+            cells = [row.get(column) for column in selected.values()]
+            if all(cell is not None and _unit_cell(cell) for cell in cells) and any(_text(cell) for cell in cells):
+                count += 1
+                if count == 2:
+                    return True
+    return False
+
+
+def native_records(parts, fields, evidence_keys, max_rows):
+    records, relevant, unmatched_tables, unstructured_tables = [], False, False, False
+    targets = {label(field): field for field in fields}
+    if len(targets) != len(fields):
+        raise ValueError('공백을 제외하면 같은 추출 항목이 있습니다. 열 이름을 구분해 주세요.')
+    if not targets:
+        return None
+    for part in _table_parts(parts):
+        cells = part.get('table_cells')
+        if not cells:
+            unstructured_tables = True
+            continue
+        if part.get('review_required'):
+            raise ValueError('표 인식 결과에 검토가 필요합니다. 원본과 대조한 뒤 실행해 주세요.')
+        grid = _grid(cells)
+        header, selected = _columns(grid, targets)
+        if header is None:
             unmatched_tables = True
             continue
-        for number, row in sorted(grid.items()):
-            if number <= header:
-                continue
-            if all(label(row.get(column, {}).get('text')) == label(field) for field, column in selected.items()):
-                continue  # Repeated headers within a continued table are not items.
-            if not any(str(cell.get('text') or '').strip() for cell in row.values()):
-                continue
+        relevant = True
+        for number, row in _detail_rows(grid, header, selected, strict=True):
             record = dict(file_name=part['file_name'], row=len(records) + 1)
             evidence = {}
             for field, column in selected.items():
                 cell = row.get(column)
                 if cell is None:
                     raise ValueError('표의 일부 셀 위치가 없어 모든 항목의 대응을 확인할 수 없습니다.')
-                if (cell.get('row_span') or 1) != 1 or (cell.get('col_span') or 1) != 1:
+                if not _unit_cell(cell):
                     raise ValueError('추출 열의 병합 셀을 행별로 대응할 수 없습니다. 표 구조를 확인해 주세요.')
-                value = str(cell.get('text') or '').strip()
+                value = _text(cell)
                 record[field] = value or None
                 evidence[field] = {**{key: part[key] for key in evidence_keys if key in part},
                                    'quote': value, 'table_row': number, 'table_column': column}
@@ -85,6 +180,8 @@ def native_records(parts, fields, evidence_keys, max_rows):
             records.append(record)
             if len(records) > max_rows:
                 raise ValueError('추출 행 제한을 넘었습니다. 파일을 나누어 주세요. 일부 행만 저장하지 않았습니다.')
+    if relevant and unstructured_tables:
+        raise ValueError('셀 위치를 확인할 수 없는 표가 함께 있어 전체 행의 추출 범위를 확인할 수 없습니다. 원본 표를 검토해 주세요.')
     if relevant and unmatched_tables:
         raise ValueError('요청한 열과 대응하지 않는 표가 함께 있습니다. 전체 행의 추출 범위를 확인해 주세요.')
     return records if relevant else None

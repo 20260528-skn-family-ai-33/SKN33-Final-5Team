@@ -68,8 +68,10 @@ def output_rows(artifact):
     return list(csv.DictReader(io.StringIO(artifact['content'].lstrip('\ufeff'))))
 
 
-def test_delivery_note_field_answer_save_and_run_export_all_four_rows(tmp_path):
-    asset = document(name=unicodedata.normalize('NFD', '납품서_한장_테스트.pdf'))
+@pytest.mark.parametrize('append_total', [False, True])
+def test_delivery_note_field_answer_save_and_run_export_all_four_rows(tmp_path, append_total):
+    grid = [*SOURCE, ['', '합계', '', '106', '']] if append_total else SOURCE
+    asset = document([block(grid)], name=unicodedata.normalize('NFD', '납품서_한장_테스트.pdf'))
     s = state(asset); store = Storage(tmp_path); store.add_asset(asset, [])
     def field_question_planner(current):
         # Stand-in for the normal planner's field question, not for OCR/execution.
@@ -219,18 +221,25 @@ def test_generation_and_save_reject_a_downgrade_to_single_values(tmp_path, chang
         store.close()
 
 
-def test_scalar_field_extraction_keeps_its_original_record_contract():
+@pytest.mark.parametrize('coordinate_table', [False, True])
+def test_scalar_field_extraction_keeps_its_original_record_contract(coordinate_table):
+    if coordinate_table:
+        asset = document([block([['문서번호', '발행일'], ['DLV-H-11011', '2026-11-17']])])
+        parts = list(chunks_for_asset(asset))
+    else:
+        parts = [dict(source_id='s1', file_id='delivery', file_name='납품서.pdf', text='문서번호 DLV-H-11011')]
+
     class ScalarModel:
         def with_structured_output(self, schema, **_kwargs):
             assert schema is Facts; return self
         def invoke(self, _messages):
-            return Facts.model_validate(dict(facts=[dict(field='문서번호', value='DLV-H-11011', source_id='s1', quote='문서번호 DLV-H-11011')]))
-    part = dict(source_id='s1', file_id='delivery', file_name='납품서.pdf', text='문서번호 DLV-H-11011')
+            return Facts.model_validate(dict(facts=[dict(field='문서번호', value='DLV-H-11011',
+                                                        source_id=parts[0]['source_id'], quote='DLV-H-11011')]))
     node = dict(tool='extract_information', bindings=[dict(input='documents', node_id='read', output='documents')],
                 settings=dict(fields=['문서번호'], extraction_mode='fields', instructions=None))
-    result = extract(node, dict(outputs=dict(read=dict(documents=[part])), request='문서번호를 뽑아줘'), None, {}, ScalarModel())
+    result = extract(node, dict(outputs=dict(read=dict(documents=parts)), request='문서번호를 뽑아줘'), None, {}, ScalarModel())
     assert result['table']['rows'] == [{'문서번호': 'DLV-H-11011'}]
-    assert result['records'][0]['field'] == '문서번호'
+    assert result['records'][0]['field'] == '문서번호' and result['records'][0]['status'] == 'verified'
 
 
 def test_schema_driven_projection_works_with_arbitrary_columns_and_row_counts():
@@ -252,6 +261,16 @@ def test_native_table_shape_also_protects_the_general_planner():
     draft = _draft(REQUEST, '품명, 실입고', ['품명', '실입고'], ['delivery'])
     draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
     assert document_row_contract_issues(s, draft)
+
+
+def test_general_planner_allows_scalar_extraction_from_one_matching_native_row():
+    from agent_builder.design.document_rows_template import _draft, document_row_contract_issues
+    asset = document([block([['문서번호', '발행일'], ['DLV-H-11011', '2026-11-17']])])
+    request = '이 문서의 문서번호 한 값을 CSV로 저장해줘.'
+    draft = _draft(request, request, ['문서번호'], [asset['id']])
+    draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
+    draft['workflow']['nodes'][2]['settings']['fields'] = []
+    assert not document_row_contract_issues(state(asset, request), draft)
 
 
 def test_selected_table_cells_survive_even_without_flattened_parser_text():
@@ -316,8 +335,8 @@ def test_preview_selection_resolves_actual_aliases_without_losing_original_expor
         store.close()
 
 
-def test_preview_scope_is_not_silently_dropped_for_multiple_tables():
+def test_preview_selection_cannot_combine_columns_from_multiple_tables():
     from agent_builder.design.document_rows_template import _preview_field_selection
     asset = document([block(SOURCE), block(SOURCE, 'second', 2)])
-    content = asset['name'] + '에서 「표 1」의 품명 항목을 추출해 주세요.'
+    content = asset['name'] + '에서 「표 1」의 품명, 「표 2」의 실입고 항목을 추출해 주세요.'
     assert _preview_field_selection(content, [asset]) is None

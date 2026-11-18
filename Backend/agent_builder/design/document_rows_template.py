@@ -8,7 +8,7 @@ import os
 import re
 from copy import deepcopy
 
-from contracts.models import AgentDraft, NodeSettings
+from contracts.models import AgentDraft, NodeSettings, WorkflowDefinition
 from workflow_engine.executors.document.extract_information import reserved_field_issue
 
 # The user wants a table-shaped result, not a summary.
@@ -182,10 +182,10 @@ def _settings(**values):
     return {**base, **values}
 
 
-def _draft(request, answer, fields, documents):
+def _draft(request, answer, fields, documents, *, document_table_id=None):
     nodes = [
         {'id': 'read', 'tool': 'read_document', 'label': '문서 읽기', 'bindings': [],
-         'settings': _settings(file_ids=documents)},
+         'settings': _settings(file_ids=documents, document_table_id=document_table_id)},
         {'id': 'extract', 'tool': 'extract_information', 'label': '항목 목록 추출',
          'bindings': [{'input': 'documents', 'node_id': 'read', 'output': 'documents'}],
          'settings': _settings(fields=fields, extraction_mode='rows')},
@@ -233,6 +233,7 @@ def _remaining_questions(state):
             if question.get('key') != QUESTION_KEY and question.get('text') not in labels]
 
 def _field_answer(content, state=None):
+    """Read free text or resolve a preview selection, returning None for an unsupported preview."""
     # Read a typed answer by question identity; the chat label is presentation only.
     text = content.strip()
     labels = {QUESTION, *re.split(r'(?<=[?？])\s+', QUESTION)}
@@ -253,7 +254,9 @@ def _field_answer(content, state=None):
             text = text[len(label + ' → '):].strip()
             break
     if state:
-        text = _preview_field_selection(text, state.get('resources', [])) or text
+        resources = state.get('resources') or []
+        if _is_preview_request(text, resources):
+            return _preview_field_selection(text, resources)
     # Normalize only a complete field-list command, never a general sentence.
     command = re.fullmatch(r'(.+?)(?:을|를|도)\s*(?:추출|추가|포함)(?:해\s*(?:줘|주세요)|해주세요)[.!\s]*', text)
     if command:
@@ -264,25 +267,41 @@ def _field_answer(content, state=None):
 
 
 
+_PREVIEW_SUFFIX = ' 항목을 추출해 주세요.'
+
+
+def _is_preview_request(content, resources):
+    return _PREVIEW_SUFFIX in content and '에서 ' in content and (
+        bool(re.search(r'「[^」]+」의 ', content))
+        or any(resource.get('name') and resource['name'] + '에서 ' in content for resource in resources)
+    )
+
+
 def _preview_field_selection(content, resources):
-    """Resolve the existing preview action against actual source aliases, never guessed labels."""
-    documents = [resource for resource in resources if resource.get('kind') == 'document']
-    if len(documents) != 1:
-        return None  # Do not discard a multi-file/table scope that the fixed recipe cannot express.
-    resource = documents[0]
-    prefix, suffix = resource.get('name', '') + '에서 ', ' 항목을 추출해 주세요.'
-    if not content.startswith(prefix) or not content.endswith(suffix):
+    """Resolve all displayed aliases to exact columns on one selected parser block."""
+    matches = [(resource, resource['name'] + '에서 ') for resource in resources
+               if resource.get('kind') == 'document' and resource.get('name')
+               and content.startswith(resource['name'] + '에서 ')]
+    if len(matches) != 1 or not content.endswith(_PREVIEW_SUFFIX):
         return None
+    resource, prefix = matches[0]
     from documents.resources.file_inspection import inspect_file
-    tables = inspect_file(resource)['tables']
-    if len(tables) != 1:
+    aliases = [(f"「{table['name']}」의 {field}", table.get('block_id'), field)
+               for table in inspect_file(resource)['tables'] for field in table['columns']]
+    selected = content[len(prefix):-len(_PREVIEW_SUFFIX)]
+    block_ids, fields = set(), []
+    # A comma may be part of a column label. A new selection starts with a displayed table alias.
+    while selected:
+        matches = [choice for choice in aliases if selected == choice[0] or selected.startswith(choice[0] + ', 「')]
+        if len(matches) != 1:
+            return None
+        alias, block_id, field = matches[0]
+        block_ids.add(block_id)
+        fields.append(field)
+        selected = selected[len(alias) + 2:]
+    if len(block_ids) != 1 or None in block_ids:
         return None
-    table = tables[0]
-    aliases = {'「' + table['name'] + '」의 ' + field: field for field in table['columns']}
-    chosen = content[len(prefix):-len(suffix)].split(', ')
-    if not chosen or any(alias not in aliases for alias in chosen):
-        return None
-    return ', '.join(dict.fromkeys(aliases[alias] for alias in chosen))
+    return resource['id'], block_ids.pop(), list(dict.fromkeys(fields))
 
 def _simple_extraction(state):
     from .request_guards import review_request
@@ -293,6 +312,16 @@ def _simple_extraction(state):
     users = [m['content'] for m in active_request_messages(state) if m.get('role') == 'user']
     return not any(re.search(r'최종\s*(?:메모|보고서)|중요\s*조항|위험|노드.{0,30}(?:순서|연결)|Markdown', text, re.I)
                    for text in users)
+
+
+def _supports_csv_recipe(state, *, preview=False):
+    # Source-backed column labels can contain format names or words used in instructions.
+    if preview:
+        state = {**state, 'messages': state['messages'][:-1]}
+    return _simple_extraction(state) and not any(
+        re.search(r'(?<![A-Za-z])xlsx(?![A-Za-z])', message.get('content', ''), re.I)
+        for message in state.get('messages', []) if message.get('role') == 'user'
+    )
 
 
 def _inline_fields(request):
@@ -328,8 +357,19 @@ def _field_addition(state):
     if not current or not extra:
         return None
     documents = [r['id'] for r in state.get('resources', []) if r.get('kind') == 'document']
-    expected = _draft(draft['purpose'], '', current, documents)
-    if (draft['workflow'] != expected['workflow'] or draft['instructions'] != expected['instructions']
+    reader = nodes[0].get('settings') or {}
+    table_id = reader.get('document_table_id')
+    if table_id:
+        scoped_documents = reader.get('file_ids') or []
+        if len(scoped_documents) != 1 or scoped_documents[0] not in documents:
+            return None
+        documents = scoped_documents
+    expected = _draft(draft['purpose'], '', current, documents, document_table_id=table_id)
+    try:
+        workflow = WorkflowDefinition.model_validate(draft['workflow']).model_dump()
+    except ValueError:
+        return None
+    if (workflow != expected['workflow'] or draft['instructions'] != expected['instructions']
             or draft['document_ids'] != documents or draft['tool_ids'] != expected['tool_ids']):
         return None  # A customized graph belongs to the full planner.
     fields = list(dict.fromkeys([*current, *extra]))
@@ -353,24 +393,22 @@ def document_rows_applies(state):
     """
     if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
         return False
-    if not _simple_extraction(state):
-        return False
-    # The fixed flow writes CSV. Explicit XLSX requests belong to the full planner,
-    # which can now connect create_spreadsheet instead of changing the requested format.
-    if any(re.search(r'(?<![A-Za-z])xlsx(?![A-Za-z])',m.get('content',''),re.I)
-           for m in state.get('messages',[]) if m.get('role')=='user'):
-        return False
     resources = state.get('resources') or []
     if not any(r.get('kind') == 'document' for r in resources) or any(r.get('kind') == 'table' for r in resources):
         return False
     messages = state.get('messages', [])
     if not messages or messages[-1]['role'] != 'user':
         return False
+    answer = _field_answer(messages[-1]['content'], state)
+    preview = isinstance(answer, tuple)
+    if answer is None or not _supports_csv_recipe(state, preview=preview):
+        return False
+    if preview:
+        return _awaiting_fields(state)
     if _field_addition(state):
         return True
     if _awaiting_fields(state):
         # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
-        answer = _field_answer(messages[-1]['content'], state)
         if _processing_in_fields(_SPLIT.split(answer)):
             return False
         return wants_all_fields(answer) or not is_request_change(answer)
@@ -382,13 +420,6 @@ def document_rows_reply(state):
     """Return the fixed-flow result, or None to continue with the model planner."""
     if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
         return None
-    if not _simple_extraction(state):
-        return None
-    # The fixed flow writes CSV. Explicit XLSX requests belong to the full planner,
-    # which can now connect create_spreadsheet instead of changing the requested format.
-    if any(re.search(r'(?<![A-Za-z])xlsx(?![A-Za-z])',m.get('content',''),re.I)
-           for m in state.get('messages',[]) if m.get('role')=='user'):
-        return None
     resources = state.get('resources') or []
     documents = [r['id'] for r in resources if r.get('kind') == 'document']
     if not documents or any(r.get('kind') == 'table' for r in resources):
@@ -397,21 +428,28 @@ def document_rows_reply(state):
     users = [m for m in messages if m['role'] == 'user']
     if not users:
         return None
+    answer = _field_answer(users[-1]['content'], state)
+    preview = isinstance(answer, tuple)
+    asked = _awaiting_fields(state)
+    if answer is None or (preview and not asked) or not _supports_csv_recipe(state, preview=preview):
+        return None
     addition = _field_addition(state)
     if addition:
         return {'draft':addition, 'messages':messages+[{'role':'assistant','content':addition['explanation']}],
                 'confirmed':False,'saved_agent_id':None,'semantic_issues':[],
                 'trace':state.get('trace',[])+[dict(node='conversation',label='추출 항목 추가',status='completed',
                     detail='기존 문서 표 정리 흐름의 항목 목록만 확장했습니다.',model_calls=0)]}
-    asked = _awaiting_fields(state)
     if asked:
-        answer = _field_answer(users[-1]['content'], state)
-        if _processing_in_fields(_SPLIT.split(answer)):
-            return None
         request = next((m['content'] for m in users[:-1][::-1] if _TABLE_INTENT.search(m['content'])), users[0]['content'])
         explanation = EXPLANATION
+        table_id = None
+        if preview:
+            file_id, table_id, fields = answer
+            documents = [file_id]
+        elif _processing_in_fields(_SPLIT.split(answer)):
+            return None
         # Checked before is_request_change: "다 뽑아줘" ends like a command but still answers the question.
-        if wants_all_fields(answer):
+        elif wants_all_fields(answer):
             names = ' '.join([request] + [r.get('name') or '' for r in resources if r.get('kind') == 'document'])
             if not _RECEIPT.search(names):
                 return _ask(state, request, note=ALL_FIELDS_NOTE)
@@ -422,9 +460,9 @@ def document_rows_reply(state):
             fields = requested_fields(answer)
             if not fields:
                 return _ask(state, request, note=FIELD_NAMES_NOTE)
-            if reserved_field_issue(fields):
-                return _ask(state, request, note=reserved_field_issue(fields))
-        draft = _draft(request, users[-1]['content'], fields, documents)
+        if issue := reserved_field_issue(fields):
+            return _ask(state, request, note=issue)
+        draft = _draft(request, users[-1]['content'], fields, documents, document_table_id=table_id)
         return {'messages': messages + [{'role': 'assistant', 'content': explanation}], 'draft': draft,
                 'pending_questions': _remaining_questions(state), 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                 'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
@@ -462,29 +500,32 @@ def document_row_contract_issues(state, draft):
         return []
     expected = document_rows_reply({**state, 'messages': messages[:latest + 1], 'draft': None})
     expected_nodes = ((expected or {}).get('draft', {}).get('workflow') or {}).get('nodes', [])
+    nodes = (draft.get('workflow') or {}).get('nodes', [])
+    readers = {node['id']: node['settings'] for node in nodes if node['tool'] == 'read_document'}
     if not expected_nodes:
         # The full planner handles arbitrary document names/extra processing.
-        # Native source shape still forbids reducing repeated table cells to one value.
+        # Only evidence of multiple item rows forbids a scalar extraction.
         if not any(_TABLE_INTENT.search(message['content']) for message in messages if message.get('role') == 'user'):
             return []
         from documents.resources.document_resources import chunks_for_asset
-        from workflow_engine.executors.document.table_rows import native_records
-        from workflow_engine.executors.document.extract_information import EVIDENCE_KEYS, MAX_ROWS
-        for node in (draft.get('workflow') or {}).get('nodes', []):
-            if node['tool'] != 'extract_information' or not node['settings'].get('fields'):
+        from workflow_engine.executors.document.table_rows import has_repeated_rows
+        for node in nodes:
+            settings = node['settings']
+            if (node['tool'] != 'extract_information' or not settings.get('fields')
+                    or settings.get('extraction_mode') in ('rows', 'receipt_items')):
                 continue
+            reader = next((readers[b['node_id']] for b in node.get('bindings', [])
+                           if b.get('input') == 'documents' and b['node_id'] in readers), {})
+            file_ids = reader.get('file_ids') or []
+            table_id = reader.get('document_table_id')
             for asset in state.get('resources', []):
-                if asset.get('kind') != 'document':
+                if asset.get('kind') != 'document' or (file_ids and asset['id'] not in file_ids):
                     continue
-                try:
-                    records = native_records(list(chunks_for_asset(asset)), node['settings']['fields'], EVIDENCE_KEYS, MAX_ROWS)
-                except ValueError:
-                    continue  # The executor reports unsupported layouts before exporting.
-                if records is not None and node['settings'].get('extraction_mode') != 'rows':
+                parts = (part for part in chunks_for_asset(asset) if table_id is None or part.get('block_id') == table_id)
+                if has_repeated_rows(parts, settings['fields']):
                     return ['원본 표의 반복 행을 단일 값으로 축소할 수 없습니다. 행 단위 추출로 설계해 주세요.']
         return []
     fields = expected_nodes[1]['settings']['fields']
-    nodes = (draft.get('workflow') or {}).get('nodes', [])
     extractors = [node for node in nodes if node['tool'] == 'extract_information']
     exporters = [node for node in nodes if node['tool'] == 'export_result']
     if (len(extractors) != 1 or extractors[0]['settings'].get('extraction_mode') != 'rows'
@@ -494,4 +535,12 @@ def document_row_contract_issues(state, draft):
             or not any(binding.get('node_id') == extractors[0]['id'] and binding.get('output') == 'records'
                        and binding.get('input') == 'records' for binding in exporters[0].get('bindings', []))):
         return ['문서 표 정리는 항목마다 한 행을 추출하고 요청한 열을 CSV에 저장해야 합니다. 단일 값 추출로 변경할 수 없습니다.']
+    expected_reader = expected_nodes[0]['settings']
+    table_id = expected_reader.get('document_table_id')
+    if table_id is not None and not any(
+            binding.get('input') == binding.get('output') == 'documents'
+            and readers.get(binding['node_id'], {}).get('document_table_id') == table_id
+            and readers[binding['node_id']].get('file_ids') == expected_reader['file_ids']
+            for binding in extractors[0].get('bindings', [])):
+        return ['미리보기에서 선택한 원본 문서와 표만 읽도록 연결해 주세요.']
     return []

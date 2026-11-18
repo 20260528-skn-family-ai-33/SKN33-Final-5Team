@@ -29,7 +29,9 @@ def numeric_filter_issues(state, draft):
         return _filter_issues(state, draft, (found['mode'], rules))
     # AND or OR is still being asked: a draft must at least apply every condition one way.
     strict = _filter_issues(state, draft, ('all', rules))
-    return strict and _filter_issues(state, draft, ('any', rules)) and strict
+    if not strict:
+        return []
+    return strict if _filter_issues(state, draft, ('any', rules)) else []
 
 
 def _filter_issues(state, draft, compound):
@@ -37,38 +39,21 @@ def _filter_issues(state, draft, compound):
     required = [(r, guarantees_filter) for r in literal_numeric_filters(state)]
     required += [(r, contains_alternative) for r in literal_or_filters(state)]
     if compound:
-        match, rules = compound
         from .condition_requirements import additional_row_predicates
+        from .filter_path_proof import filter_path_issues
         try:
             extra = [predicate for _, predicate in additional_row_predicates(state, None)]
         except ValueError as error:
             return [str(error)]
-        required.extend((rule, guarantees_filter) for rule in extra)
-        if match == 'all' or len(rules) < 2:
-            required.extend((rule, guarantees_filter) for rule in rules)
-        else:
-            from .requirement_coverage import _condition
-
-            def matches_group(plan, group):
-                return (plan.get('match') == 'any'
-                        and {_condition(item) for item in plan.get('filters', [])}
-                        == {_condition(item) for item in group})
-
-            required.append((tuple(rules), matches_group))
+        mode, rules = compound
+        groups = [dict(match=mode, filters=rules)]
+        if extra:
+            groups.append(dict(match='all', filters=extra))
+        return filter_path_issues(state, draft, groups)
 
     if not required:
         return []
     error = ['명시한 숫자 선별 조건이 최종 저장 경로의 모든 행에 적용되지 않습니다. AND/OR 조건과 데이터 연결을 확인하세요.']
-    if compound:
-        from .requirement_coverage import _condition
-        requested = {_condition(rule) for rule in [*compound[1], *extra]}
-        plans = [n['settings'].get('execution_plan') or draft.get('execution_plan', {})
-                 for n in (draft.get('workflow') or {}).get('nodes', [])
-                 if n['tool'] == 'filter_sort' and not n['settings'].get('operation')]
-        if not draft.get('workflow'):
-            plans = [draft.get('execution_plan') or {}]
-        if any(_condition(rule) not in requested for plan in plans for rule in plan.get('filters', [])):
-            return error
     if not draft.get('workflow'):
         return [] if all(check(draft.get('execution_plan') or {}, r) for r, check in required) else error
     from .workflow_paths import workflow_paths
@@ -111,12 +96,6 @@ def _filter_issues(state, draft, compound):
         for path, _ in workflow_paths(draft['workflow']):
             active = {n['id'] for n in path}
             endpoints = [(node, None) for node in path if node['tool'] in ('write_result', 'export_result')]
-            if compound and not endpoints and path:
-                last = path[-1]
-                if last['tool'] == 'filter_sort':
-                    endpoints = [(last, 'table')]
-                elif last['tool'] == 'finish':
-                    endpoints = [(last, port) for port in ('table', 'records') if content_bindings(last, port)]
             for node, output in endpoints:
                 checked_outputs += 1
                 if any(not proven(node['id'], output, rule, check, active, set()) for rule, check in required):

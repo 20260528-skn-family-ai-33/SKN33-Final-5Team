@@ -404,3 +404,116 @@ def test_two_both_does_not_mean_all_three_conditions():
 def test_boolean_keyword_does_not_change_an_already_confirmed_relation(answer):
     from tests.conditions.test_clarification_choices import BASE
     assert compound_filter_state(compound_state(BASE, answer))['mode'] == 'all'
+
+
+def path_state(match='any'):
+    s=compound_state(('비용이 10원 미만이거나 수량이 3개 미만인 행' if match=='any' else
+                      '비용이 10원 이상이고 수량이 3개 이상인 행') + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    return generate(seal(s))
+
+
+def with_filter_chain(s, plans):
+    result=deepcopy(s)
+    workflow=result['draft']['workflow'];original=workflow['nodes']
+    template=next(node for node in original if node['tool']=='filter_sort')
+    nodes=[deepcopy(original[0])]
+    for index, plan in enumerate(plans):
+        node=deepcopy(template);node['id']='select'+str(index)
+        node['settings']['execution_plan']={**node['settings']['execution_plan'], **deepcopy(plan)}
+        node['bindings']=[dict(input='table',node_id=nodes[-1]['id'],output='table')]
+        nodes.append(node)
+    output=deepcopy(original[-1]);output['bindings']=[dict(input='table',node_id=nodes[-1]['id'],output='table')]
+    nodes.append(output);workflow['nodes']=nodes
+    workflow['edges']=[dict(source=a['id'],target=b['id'],branch='next') for a,b in zip(nodes,nodes[1:])]
+    return result
+
+
+@pytest.mark.parametrize('position',['before','after'])
+@pytest.mark.parametrize('operand',[0,1])
+def test_or_cannot_lose_an_alternative_in_another_filter_stage(tmp_path, position, operand):
+    s=path_state();plan=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+    narrower=dict(filters=[plan['filters'][operand]],match='all')
+    bad=with_filter_chain(s,[narrower,plan] if position=='before' else [plan,narrower])
+    assert validate_node(bad)['status']!='ready'
+    store=Storage(tmp_path)
+    try:
+        with pytest.raises(ValueError):store.save_agent(bad)
+    finally:store.close()
+
+
+@pytest.mark.parametrize('match',['all','any'])
+def test_filter_path_equivalence_matches_exhaustive_boolean_oracle(match):
+    from itertools import product
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+    s=path_state(match);rules=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']['filters']
+    # All nonempty subsets, both connectives, every chain of 1..3 stages.
+    variants=[dict(filters=[rules[i] for i in subset],match=mode) for subset in [(0,),(1,),(0,1)] for mode in ('all','any')]
+    def accepts(plan, truth):
+        values=[truth[0 if rule==rules[0] else 1] for rule in plan['filters']]
+        return all(values) if plan['match']=='all' else any(values)
+    count=0
+    for length in (1,2,3):
+        for chain in product(variants,repeat=length):
+            same=all(all(accepts(plan,truth) for plan in chain)==(all(truth) if match=='all' else any(truth))
+                     for truth in product((False,True),repeat=2))
+            candidate=with_filter_chain(s,chain)
+            assert bool(numeric_filter_issues(candidate,candidate['draft'])) != same, (match,chain)
+            count+=1
+    assert count==258
+
+
+@pytest.mark.parametrize(('match','shape'),[('all','repeat'),('any','repeat'),('all','redundant-or')])
+def test_equivalent_sequential_graphs_store_and_export_exact_rows(tmp_path, match, shape):
+    s=path_state(match);plan=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+    if shape=='split':plans=[dict(filters=[r],match='all') for r in plan['filters']]
+    elif shape=='repeat':plans=[plan,plan]
+    else:plans=[dict(filters=plan['filters'],match='any'),plan]
+    equivalent=with_filter_chain(s,plans)
+    result=validate_node(equivalent)
+    assert result['status']=='ready',result['issues']
+    rows=[dict(비용=15,수량=1),dict(비용=15,수량=4),dict(비용=5,수량=4)]
+    store=Storage(tmp_path)
+    try:
+        store.add_asset(s['resources'][0],rows)
+        saved=store.save_agent(equivalent)
+        actual=run_workflow(store,saved,'실행','',file_ids=[s['resources'][0]['id']])
+        expected=[rows[1]] if match=='all' else [rows[0],rows[2]]
+        assert actual['status']=='succeeded' and actual['rows']==expected
+    finally:store.close()
+
+
+@pytest.mark.parametrize('mutation',['dedup','source','raw-branch','mutate-field','aggregate'])
+def test_other_row_loss_and_source_changes_cannot_hide_before_a_complete_filter(tmp_path, mutation):
+    s=path_state();nodes=s['draft']['workflow']['nodes'];plan=nodes[1]['settings']['execution_plan']
+    bad=with_filter_chain(s,[dict(filters=[],match='all'),plan]);nodes=bad['draft']['workflow']['nodes']
+    if mutation=='dedup':nodes[1]['settings']['execution_plan'].update(duplicate_policy='first',duplicate_field='비용')
+    elif mutation=='source':nodes[0]['settings']['file_ids']=['different-source']
+    elif mutation=='raw-branch':
+        raw=deepcopy(nodes[-1]);raw['id']='raw';raw['bindings']=[dict(input='table',node_id=nodes[0]['id'],output='table')]
+        nodes.append(raw);bad['draft']['workflow']['edges'].append(dict(source=nodes[0]['id'],target='raw',branch='next'))
+    elif mutation=='mutate-field':
+        nodes[1]['tool']='calculate_columns';nodes[1]['settings'].update(execution_plan=None,table_operation='compute',output_column='비용',calculation_formula='비용 * 0')
+    else:
+        nodes[1]['tool']='aggregate_table';nodes[1]['settings'].update(execution_plan=None,fields=['수량'],aggregation='sum',sum_field='비용')
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+    assert numeric_filter_issues(bad,bad['draft'])
+    store=Storage(tmp_path)
+    try:
+        with pytest.raises(ValueError):store.save_agent(bad)
+    finally:store.close()
+
+
+def test_requested_dedup_cannot_select_representatives_before_the_full_or():
+    from agent_builder.design.filter_path_proof import filter_path_issues
+    s=path_state();plan=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+    # The policy is authorized, but performing it before selection can retain a
+    # nonmatching representative and discard the matching row of the same key.
+    for key,value in [('duplicate.policy','first'),('duplicate.field','비용')]:
+        s['condition_ledger']['slots'][key]=dict(status='specified',value=value)
+    plans=[dict(filters=[],match='all',duplicate_policy='first',duplicate_field='비용'),
+           dict(plan,duplicate_policy='first',duplicate_field='비용')]
+    wrong=with_filter_chain(s,plans)
+    assert filter_path_issues(wrong,wrong['draft'],[plan])
+    right=with_filter_chain(s,[dict(plan,duplicate_policy='keep',duplicate_field=None),
+                              dict(filters=[],match='all',duplicate_policy='first',duplicate_field='비용')])
+    assert not filter_path_issues(right,right['draft'],[plan])

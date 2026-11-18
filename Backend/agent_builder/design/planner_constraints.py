@@ -95,11 +95,11 @@ def constrain_sort(defs, plan, request):
     item = deepcopy(defs['SortCondition'])
     props = item['properties']
     if kind == 'sorts':
-        sorts = request['sorts']
+        sorts = request['sorts'] + (request.get('pre_sorts') or [])
         props['field'] = {'type': 'string', 'enum': list(dict.fromkeys(s['field'] for s in sorts))}
         props['direction'] = {'type': 'string', 'enum': list(dict.fromkeys(s['direction'] for s in sorts))}
         plan['sort'].pop('minItems', None)
-        plan['sort']['maxItems'] = len(sorts)
+        plan['sort']['maxItems'] = max(len(request['sorts']), len(request.get('pre_sorts') or []))
     else:
         if request.get('fields'):
             props['field'] = {'type': 'string', 'enum': list(request['fields'])}
@@ -112,8 +112,12 @@ def constrain_sort(defs, plan, request):
     plan['sort']['items'] = {'$ref': '#/$defs/RequestedSortCondition'}
 
 
-def split_sort_dedup_plans(defs):
-    """Give the sort and duplicate-removal steps independent execution plans."""
+def split_sort_dedup_plans(defs, request=None):
+    """Give the sort and duplicate-removal steps independent execution plans.
+
+    With a separate result sort (request['pre_sorts']) the dedup step may carry that
+    sort: filter_sort removes duplicates before it sorts.
+    """
     sort_plan = deepcopy(defs['ExecutionPlan'])
     sort_props = sort_plan['properties']
     sort_props['sort']['minItems'] = 1
@@ -123,7 +127,7 @@ def split_sort_dedup_plans(defs):
     dedup_plan = deepcopy(defs['ExecutionPlan'])
     dedup_props = dedup_plan['properties']
     dedup_props['sort'].pop('minItems', None)
-    dedup_props['sort']['maxItems'] = 0
+    dedup_props['sort']['maxItems'] = len((request or {}).get('sorts') or []) if (request or {}).get('pre_sorts') else 0
     # A confirmed filter, if any, belongs to one step. Validation checks its placement.
     for props in (sort_props, dedup_props):
         props['filters'].pop('minItems', None)
@@ -237,7 +241,7 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
             condition_def['required']=list(condition_def['properties'])
         if sort_before_dedup and 'NativeNode_filter_sort' in defs:
             settings = defs['NativeNode_filter_sort']['properties']['settings']['properties']
-            settings['execution_plan'] = split_sort_dedup_plans(defs)
+            settings['execution_plan'] = split_sort_dedup_plans(defs, sort_request)
         result['required']=list(dict.fromkeys([*result.get('required',[]),'execution_plan']))
         if require_ready_draft:
             # The preceding condition node owns clarification/unsupported routing.

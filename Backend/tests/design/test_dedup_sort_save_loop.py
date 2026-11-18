@@ -167,7 +167,7 @@ def node(id, tool, bindings=(), **settings):
     return {'id': id, 'tool': tool, 'label': id, 'bindings': list(bindings), 'settings': {**base, **settings}}
 
 
-def make_planner(calls, sort=SORT, schedule=None, bypass=False, sort_first=False):
+def make_planner(calls, sort=SORT, schedule=None, bypass=False, sort_first=False, final_sort=None):
     def planner(state):
         calls.append(state['messages'][-1]['content'])
         chosen = sort(state) if callable(sort) else sort
@@ -192,7 +192,7 @@ def make_planner(calls, sort=SORT, schedule=None, bypass=False, sort_first=False
         if sort_first:
             # read -> sort only -> dedup only (consumes the sorted table) -> out (PR #142 review 6).
             sorting = {**plan, 'duplicate_policy': 'keep', 'duplicate_field': None}
-            dedup = {**plan, 'sort': []}
+            dedup = {**plan, 'sort': list(final_sort or [])}
             nodes = [nodes[0],
                      node('sort', 'filter_sort', [{'input': 'table', 'node_id': 'read', 'output': 'table'}],
                           execution_plan=sorting, instructions=json.dumps(sorting, ensure_ascii=False)),
@@ -929,3 +929,44 @@ def test_sort_before_dedup_checks_the_artifact_returned_by_finish(service, forwa
         assert any('중복 제거 단계의 표' in issue for issue in result['issues'])
         press_save(act, planner)
         assert saved() == 0
+
+
+# --- PR #142 review 7: a pre-dedup sort and a different result sort ----------------------------
+
+AMOUNT_ASC = [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}]
+PRE_FINAL_ROWS = [{'주문번호': 'A1', '고객명': '김', '주문일': '2026-11-01', '금액': 100},
+                  {'주문번호': 'A1', '고객명': '김', '주문일': '2026-11-07', '금액': 300},
+                  {'주문번호': 'B2', '고객명': '이', '주문일': '2026-11-04', '금액': 200}]
+PRE_FINAL_REQUEST = ('중복주문.csv를 주문일 내림차순으로 먼저 정렬한 뒤 주문번호가 같은 행은 첫 행만 남기고, '
+                     '결과는 금액 오름차순으로 정렬해서 CSV로 저장해줘. 빈 값은 그대로 유지해.')
+
+
+def test_pre_dedup_sort_and_result_sort_are_read_apart():
+    request = sort_request(table_state(PRE_FINAL_REQUEST))
+    assert [(s['field'], s['direction']) for s in request['pre_sorts']] == [('주문일', 'descending')]
+    assert [(s['field'], s['direction']) for s in request['sorts']] == [('금액', 'ascending')]
+    only_pre = sort_request(table_state(SORT_FIRST_REQUEST))
+    assert 'pre_sorts' not in only_pre and only_pre['sorts'][0]['field'] == '주문일'
+
+
+@pytest.mark.parametrize('pre,final,saves', [
+    (LATEST, AMOUNT_ASC, True),       # 주문일 내림차순 -> 중복 제거(결과는 금액 오름차순)
+    (SORT, AMOUNT_ASC, False),        # wrong pre-dedup direction
+    (LATEST, [], False),              # result sort missing
+    (LATEST, LATEST, False),          # result sorted by the pre-dedup key
+])
+def test_pre_dedup_sort_with_a_result_sort_end_to_end(service, pre, final, saves):
+    act, saved, fakes = service
+    CURRENT['request'] = PRE_FINAL_REQUEST
+    planner = make_planner([], sort=pre, sort_first=True, final_sort=final)
+    act('upload', planner, asset=dict(TABLE), rows=PRE_FINAL_ROWS)
+    first = act('message', planner, content=PRE_FINAL_REQUEST)
+    done = press_save(act, planner)
+    if saves:
+        assert first['status'] == 'ready' and done['status'] == 'saved', first['issues']
+        import csv as _csv
+        result = fakes['run'](done['saved_agent_id'])
+        rows = list(_csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('﻿'))))
+        assert [(r['주문번호'], r['주문일']) for r in rows] == [('B2', '2026-11-04'), ('A1', '2026-11-07')]
+    else:
+        assert first['status'] == 'validation_failed' and saved() == 0

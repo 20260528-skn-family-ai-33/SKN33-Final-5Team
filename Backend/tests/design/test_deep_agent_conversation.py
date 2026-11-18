@@ -569,15 +569,17 @@ def test_ready_table_contract_fixes_node_ids_and_single_typed_bindings(monkeypat
         assert tool + '_1' not in item['node_id']['enum']  # no self-binding
 
 
+@pytest.mark.parametrize('result_sort', [False, True])
 @pytest.mark.parametrize('provider', ['ollama', 'openai'])
-def test_ready_schema_represents_sort_before_dedup(monkeypatch, provider):
+def test_ready_schema_represents_sort_before_dedup(monkeypatch, provider, result_sort):
     from jsonschema import Draft202012Validator
     from agent_builder.conditions.condition_readiness import plan_issues
-    from tests.design.test_dedup_sort_save_loop import LATEST, SORT_FIRST_REQUEST, TABLE
+    from tests.design.test_dedup_sort_save_loop import AMOUNT_ASC, LATEST, PRE_FINAL_REQUEST, SORT_FIRST_REQUEST, TABLE
 
     monkeypatch.setenv('A4B_PLANNER_MODE', 'deepagent')
     monkeypatch.setenv('A4B_MAIN_PROVIDER', provider)
-    s = state([{'role': 'user', 'content': SORT_FIRST_REQUEST}])
+    # result_sort: "... 먼저 정렬한 뒤 첫 행만 남기고, 결과는 금액 오름차순으로" (PR #142 review 7).
+    s = state([{'role': 'user', 'content': PRE_FINAL_REQUEST if result_sort else SORT_FIRST_REQUEST}])
     s['resources'] = [{**TABLE, 'id': 'orders'}]
     s['condition_enforced'] = True
     values = {'duplicate.field': '주문번호', 'duplicate.policy': 'first',
@@ -587,7 +589,8 @@ def test_ready_schema_represents_sort_before_dedup(monkeypatch, provider):
     s['condition_ledger'] = ledger
 
     response = draft()
-    dedup = {**response['execution_plan'], 'duplicate_policy': 'first', 'duplicate_field': '주문번호'}
+    dedup = {**response['execution_plan'], 'duplicate_policy': 'first', 'duplicate_field': '주문번호',
+             'sort': AMOUNT_ASC if result_sort else []}
     sorting = {**response['execution_plan'], 'sort': LATEST}
     reader, sort_node, dedup_node, writer = 'read_table_1', 'filter_sort_1', 'filter_sort_2', 'write_result_1'
     nodes = [
@@ -602,7 +605,7 @@ def test_ready_schema_represents_sort_before_dedup(monkeypatch, provider):
     ]
     response['workflow'] = {'entry': reader, 'nodes': nodes,
                             'edges': [edge(reader, sort_node), edge(sort_node, dedup_node), edge(dedup_node, writer)]}
-    response['execution_plan'] = {**dedup, 'sort': LATEST}
+    response['execution_plan'] = {**dedup, 'sort': AMOUNT_ASC if result_sort else LATEST}
     captured = run_capturing(monkeypatch, s, response)
     schema = captured['schema']
     if provider == 'ollama':

@@ -475,7 +475,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
             if version == 'v5' and sort_first:
                 defs = context['schema']['$defs']
                 constrain_sort(defs, defs['ExecutionPlan']['properties'], requested_sort)
-                plans = split_sort_dedup_plans(defs)
+                plans = split_sort_dedup_plans(defs, requested_sort)
                 defs['NodeSettings']['properties']['execution_plan'] = {'anyOf': [*plans['anyOf'], {'type': 'null'}]}
             context['citation_scope'] = '최근 사용자 발언 12개(발언별 앞 4000자)부터 제공 자료 발췌·열 이름 순으로 최대 64구간·총 6000자. 전체 문서 검색 결과가 아닙니다.'
             if version in ('v6','v7','v8'):
@@ -538,7 +538,9 @@ def make_direct_conversation(api_key, model, model_factory=None):
         if sort_first:
             system_prompt += ('\n중복 제거보다 정렬을 먼저 실행합니다. filter_sort를 서로 다른 ID로 두 단계 만드세요. '
                               '첫 단계에 요청한 sort와 duplicate_policy=keep, duplicate_field=null을 지정합니다. '
-                              '두 번째 단계의 table 입력은 첫 단계의 table 출력에 연결하고 sort=[]와 확정된 중복 정책을 지정하세요.')
+                              '두 번째 단계의 table 입력은 첫 단계의 table 출력에 연결하고 확정된 중복 정책을 지정하세요. '
+                              + ('중복 제거 뒤 결과 정렬은 두 번째 단계의 sort에 지정하세요.'
+                                 if (requested_sort or {}).get('pre_sorts') else '두 번째 단계는 sort=[]입니다.'))
         if runtime_file:system_prompt+='\n'+runtime_file['instruction']
         from agent_builder.design.question_controls import QUESTION_RESPONSE_INSTRUCTION
         system_prompt+='\n'+QUESTION_RESPONSE_INSTRUCTION

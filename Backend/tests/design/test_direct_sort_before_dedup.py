@@ -59,3 +59,32 @@ def test_direct_sort_before_dedup_is_generated_saved_and_executed(monkeypatch, s
     assert result['status'] == 'succeeded'
     rows = csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff')))
     assert [(row['주문번호'], row['주문일']) for row in rows] == [('A1', '2026-11-07'), ('B2', '2026-11-04')]
+
+
+@pytest.mark.parametrize('version', [f'v{number}' for number in range(1, 9)])
+def test_direct_pre_dedup_sort_with_a_result_sort(monkeypatch, service, version):
+    """PR #142 review 7: sort, keep the first row, then order the result by another key."""
+    from tests.design.test_dedup_sort_save_loop import AMOUNT_ASC, PRE_FINAL_REQUEST, PRE_FINAL_ROWS
+    monkeypatch.setenv('A4B_PLANNER_PROMPT', version)
+    monkeypatch.setitem(CURRENT, 'request', PRE_FINAL_REQUEST)
+    act, saved, fakes = service
+    uploaded = act('upload', lambda state: {}, asset=TABLE, rows=PRE_FINAL_ROWS)
+    candidate = make_planner([], sort=LATEST, sort_first=True, final_sort=AMOUNT_ASC)({
+        'messages': [{'role': 'user', 'content': PRE_FINAL_REQUEST}],
+        'resources': uploaded['resources'],
+    })['draft']
+    candidate['purpose'] = '정렬한 뒤 중복 제거하고 금액순 정렬'
+    if version in ('v6', 'v7', 'v8'):
+        for node in candidate['workflow']['nodes']:
+            node['settings'] = {key: node['settings'][key] for key in (*NATIVE_SETTINGS[node['tool']], 'node_ref')}
+
+    transport = ValidatingTransport(candidate, candidate)
+    transport.schema = decoder_schema(version)
+    generate = planner(monkeypatch, transport)
+    first = act('message', generate, content=PRE_FINAL_REQUEST)
+    assert first['status'] == 'ready' and not first['issues']
+    done = act('confirm', generate)
+    assert done['status'] == 'saved' and saved() == 1
+    result = fakes['run'](done['saved_agent_id'])
+    rows = csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff')))
+    assert [(row['주문번호'], row['주문일']) for row in rows] == [('B2', '2026-11-04'), ('A1', '2026-11-07')]

@@ -60,9 +60,15 @@ def test_full_withdrawal_clears_multiple_sort_keys(withdrawal):
     '정렬방식이 오름차순인 건만 남겨줘',
     '정렬방식이 오름차순인 주문만 남겨줘',
     '정렬이 오름차순과 같은 행만 골라',
+    '정렬방식이 내림차순이 아닌 주문만 골라',
 ])
 def test_filter_direction_value_does_not_change_sorting(filter_text):
     columns = ['주문일', '금액', '정렬방식', '정렬']
     assert sort_request(table_request(f'{filter_text} JSON으로 저장해줘', columns=columns))['kind'] == 'none'
     state = table_request(f'{filter_text}, "주문일" 오름차순으로 정렬해줘', columns=columns)
     assert sort_request(state)['sorts'] == [ORDER_DATE]
+
+
+@pytest.mark.parametrize('text', ['주문일이 오름차순이 되게 정렬해줘', '주문일이 오름차순인 상태로 정렬해줘'])
+def test_subject_marked_column_with_a_sort_verb_is_still_a_sort(text):
+    assert sort_request(table_request(text))['sorts'] == [ORDER_DATE]

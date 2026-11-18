@@ -1669,7 +1669,10 @@ _SORT_WORDS = re.compile(_SORT_VERB + '|' + _ASC_WORDS + '|' + _DESC_WORDS)
 _SORT_VALUE = re.compile(
     r'(?:(?<![가-힣A-Za-z0-9_])정렬\s*(?:이|가|은|는)\s*)?'
     r'(?:' + _ASC_WORDS + '|' + _DESC_WORDS + r')'
-    r'(?=\s*(?:(?:과|와)\s*(?:같은|동일한|일치하는)|인)\s*(?:행|레코드|항목|셀|(?:것|건|주문)\s*만))')
+    r'(?=\s*(?:(?:과|와)\s*(?:같은|동일한|일치하는)|인)\s*(?:행|레코드|항목|셀|(?:것|건|주문)\s*만))'
+    # "정렬방식이 내림차순이 아닌 주문만": after a subject particle the direction is the compared value.
+    r'|(?:(?<=[이가])|(?<=[이가]\s))(?:' + _ASC_WORDS + '|' + _DESC_WORDS + r')'
+    r'(?=\s*(?:인|이\s*아닌|(?:과|와)\s*(?:같은|동일한|일치하는|다른))(?![^.,!?\n]{0,10}정렬))')
 _QUOTE_GOVERNED_BY_SORT = re.compile(r'\s*(?:으로|로)?\s*(?:정렬(?:된|한)|' + _SORT_VERB + r')')
 _SORT_KEY_DECLARATION = r'정렬\s*(?:기준\s*(?:은|는|이|을)?|은|는|할\s*때는?)\s*'
 _QUOTED_SORT_KEY_PREFIX = re.compile(_SORT_KEY_DECLARATION + r'$')
@@ -1721,7 +1724,7 @@ _SORT_KEPT = re.compile(r'\s*(?:하|해)?\s*(?:지|진)\s*(?:마|말|않)|\s*하
 def _sort_turn(text, columns, pattern):
     """Read explicit sorts, withdrawal (all or named keys), or partial sort hints from one turn."""
     text = _SORT_VALUE.sub(lambda match: ' ' * len(match.group()), text)
-    found = []
+    found, positions = [], []
     withdrawal_keys = {}
     for match in (pattern.finditer(text) if pattern else ()):
         written = _WRITTEN_SORT.match(text, match.end())
@@ -1733,8 +1736,9 @@ def _sort_turn(text, columns, pattern):
         kind = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
         found.append({'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
                       'value_type': kind})
+        positions.append(match.start())
     if found:
-        return ('sorts', found)
+        return ('sorts', found, positions)
     removed_keys = set()
     for m in list(_SORT_CANCELLED.finditer(text)):
         kept = _SORT_KEPT.match(text, m.end())
@@ -1756,7 +1760,8 @@ def sort_request(state):
     """The user's current sorting instruction, built up over the user turns in order.
 
     Returns {'kind': 'sorts'|'cancelled'|'unparsed'|'none', 'sorts': [...], 'text': turn,
-    'fields': [...], 'direction': str|None}.
+    'fields': [...], 'direction': str|None}, plus 'pre_sorts' when one turn sorts before
+    duplicate removal and then orders the result by other keys ('sorts' is the result order).
     'sorts' lists exact attached-table columns (matched whole, longest first: "예정주문일"
     is never "주문일") with their direction. A later turn that names column+direction
     replaces it; "정렬 빼고" withdraws it ("취소하지 마" does not), and a withdrawal
@@ -1783,6 +1788,11 @@ def sort_request(state):
             continue
         if said[0] == 'sorts':
             current = {'kind': 'sorts', 'sorts': said[1], 'text': text}
+            # "주문일 내림차순으로 먼저 정렬한 뒤 첫 행만 남기고, 결과는 금액 오름차순으로":
+            # keys before the duplicate removal pick the kept row; keys after it order the result.
+            pre, result = _pre_dedup_split(text, said[1], said[2])
+            if pre:
+                current = {'kind': 'sorts', 'sorts': result, 'pre_sorts': pre, 'text': text}
             continue
         if said[0] == 'cancelled':
             current = {'kind': 'cancelled', 'sorts': [], 'text': text}
@@ -1910,6 +1920,31 @@ _ROW_ORDER_FIRST_AFTER = re.compile(r'\s*(?:은|는|을|를)?\s*(?:먼저|우선
 _ROW_ORDER_FIRST_BEFORE = re.compile(r'(?<!\w)(?:먼저|우선)(?!\w)[^,.!?。！？;\n]*$')
 
 
+def _pre_dedup_split(text, sorts, positions):
+    """(pre_sorts, result_sorts) when the turn sorts first and sorts again after deduplicating."""
+    if _row_order_in_turn(text) != 'sort':
+        return [], sorts
+    cut = next((m.start() for m in _ROW_ORDER_ACTION.finditer(text) if m.lastgroup == 'deduplicate'), None)
+    if cut is None:
+        return [], sorts
+    before = [s for s, at in zip(sorts, positions) if at < cut]
+    after = [s for s, at in zip(sorts, positions) if at > cut]
+    return (before, after) if before and after else ([], sorts)
+
+
+def _pre_sorted(pre, draft, path, active, final_sort_matches):
+    """The table reaching a dedup step is ordered by exactly the requested pre-dedup keys."""
+    sort = None
+    for node in path:
+        if node['id'] in active and node['tool'] == 'filter_sort' and not node['settings'].get('operation'):
+            sort = (node['settings'].get('execution_plan') or draft.get('execution_plan') or {}).get('sort') or sort
+    same = bool(sort) and len(sort) == len(pre) and all(
+        a.get('field') == r['field'] and a.get('direction') == r['direction']
+        and (r['value_type'] is None or a.get('value_type') == r['value_type'])
+        for a, r in zip(sort, pre))
+    return same and final_sort_matches(sort, draft, path, active)
+
+
 def _row_order_in_turn(text):
     actions = list(_ROW_ORDER_ACTION.finditer(text))
     order = None
@@ -1973,7 +2008,16 @@ def _sort_dedup_order_issue(state, request, draft, native, plans):
         if any(node_id not in positions or node_id not in result_lineage for node_id, _ in dedup):
             return '최종 결과에 중복 제거 단계의 표가 연결되지 않았습니다. 결과 저장의 입력을 확인하세요.'
         dedup_inputs = {node_id: content_ancestors(nodes_by_id, node_id) for node_id, _ in dedup}
-        if order == 'sort':
+        pre = request.get('pre_sorts')
+        if order == 'sort' and pre:
+            ordered = all(_pre_sorted(pre, draft, path[:positions[node_id]], dedup_inputs[node_id], final_sort_matches)
+                          for node_id, _ in dedup)
+            if not ordered:
+                label = ', '.join(s['field'] + (' 내림차순' if s['direction'] == 'descending' else ' 오름차순') for s in pre)
+                return (f'원문은 {label}으로 정렬한 뒤 중복을 제거하라고 했습니다. filter_sort는 중복을 먼저 제거하므로, '
+                        f'{label}으로 정렬하는 filter_sort 뒤에 그 표를 받는 중복 제거 filter_sort를 연결하세요. '
+                        '결과 정렬은 중복 제거 단계의 sort에 지정할 수 있습니다.')
+        elif order == 'sort':
             # Use the output sort's concrete keys and types even for direction-only requests.
             ordered = all(not plan.get('sort') and final_sort_matches(
                 expected, draft, path[:positions[node_id]], dedup_inputs[node_id]) for node_id, plan in dedup)

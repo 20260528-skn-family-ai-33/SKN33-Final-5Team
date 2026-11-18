@@ -100,6 +100,9 @@ def test_unused_earlier_read_cannot_hide_wrong_operation_source():
 @pytest.mark.parametrize('use_processed',[True,False])
 def test_xlsx_export_requires_the_requested_processed_table(use_processed,tmp_path):
     state=seed();state['requirement_ledger']['tasks'][3]['spec']['format']='xlsx'
+    reply = '같은 결과를 XLSX로 저장해줘.'
+    state['messages'].append(dict(role='user', content=reply))
+    state['requirement_ledger']['tasks'][3].update(source_message=1, quote=reply)
     state['draft']['workflow']['nodes'][-1]=node('out','create_spreadsheet',
         [bind('sheets','filter' if use_processed else 'read','table')],operation='create',
         arguments_json=json.dumps({'sheets':[{'name':'Result','table':{'$binding':'sheets'}}]}))

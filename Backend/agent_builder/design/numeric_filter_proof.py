@@ -1,4 +1,4 @@
-"""Prove mandatory literal predicates on each exported row-data path."""
+"""Prove literal predicates on exported rows or explicitly retained unsaved rows."""
 
 
 def guarantees_filter(plan, rule):
@@ -63,7 +63,8 @@ def numeric_filter_issues(state, draft):
 
     try:
         writers = 0
-        for path, _ in workflow_paths(draft['workflow']):
+        paths = workflow_paths(draft['workflow'])
+        for path, _ in paths:
             active = {n['id'] for n in path}
             for node in path:
                 if node['tool'] not in ('write_result', 'export_result'):
@@ -71,6 +72,24 @@ def numeric_filter_issues(state, draft):
                 writers += 1
                 if any(not proven(node['id'], None, rule, check, active, set()) for rule, check in required):
                     return error
-        return [] if writers else error
+        if writers:
+            return []
+        from .export_intent import explicit_export_intent
+        if not explicit_export_intent(state)['cancelled']:
+            return error
+        # Cancelling the file retains the requested row processing. Prove its
+        # actual terminal data on every path, not an unused earlier filter.
+        from workflow_engine.catalog.registry import node_ports
+        for path, _ in paths:
+            terminal = path[-1]
+            outputs = {port for port, kind in node_ports(terminal)[1].items()
+                       if kind in ('table', 'records')}
+            if terminal['tool'] in ('condition', 'ask_user', 'finish'):
+                outputs &= {binding['input'] for binding in terminal['bindings']}
+            active = {node['id'] for node in path}
+            if not outputs or any(not proven(terminal['id'], output, rule, check, active, set())
+                                  for output in outputs for rule, check in required):
+                return error
+        return []
     except (ValueError, KeyError, TypeError):
         return error

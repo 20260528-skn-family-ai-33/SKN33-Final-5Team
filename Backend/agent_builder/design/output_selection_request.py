@@ -139,6 +139,14 @@ def literal_output_format(state):
     if output_selection(state) is None or multiple_outputs(state):
         return None
     source, text = _selection_request(state)
+    # A format-only change is validated through intent, but the named-export
+    # projector still owns only explicit save instructions.
+    if any(index >= source and re.search(
+            r'(?:csv|json|xlsx).{0,16}(?:바꿔|변경)', turn, re.I)
+           for index, turn in _request_turns(state)):
+        return None
+    if len(intent['formats']) == 1:
+        return next(iter(intent['formats']))
     # A later format-only revision preserves columns but supersedes this
     # filename. Leave it to extraction rather than restoring the old format.
     if any(index > source and re.search(r'csv|json|xlsx|저장\s*형식|파일\s*형식|저장하지|내보내지', turn, re.I)
@@ -165,8 +173,13 @@ def validate_output_selection(plan, state):
     exports = {s['format'] for s in specs if s['kind']=='export'}
     if intent['cancelled'] and exports:
         raise ValueError('취소한 파일 저장 작업이 업무 목록에 남아 있습니다.')
+    if exports & intent['forbidden_formats']:
+        raise ValueError('취소한 파일 저장 형식이 업무 목록에 남아 있습니다.')
     if intent['additional'] and exports != intent['formats']:
         raise ValueError('같은 결과를 추가로 저장하라는 파일 형식이 누락되거나 변경됐습니다.')
+    from .condition_requirements import multiple_outputs
+    if intent['formats'] and not multiple_outputs(state) and exports != intent['formats']:
+        raise ValueError('명시한 결과 파일 저장 작업이 누락되거나 형식이 변경됐습니다.')
     # Output revisions do not cancel row criteria. Check these even when a
     # later turn switches to all columns or a different output column list.
     from .numeric_filter_proof import guarantees_filter, contains_alternative
@@ -203,8 +216,38 @@ def validate_output_selection(plan, state):
         raise ValueError('명시한 결과 파일 저장 작업이 누락되거나 형식이 변경됐습니다.')
 
 
+def export_intent_issues(state, draft):
+    """An extra writer must not bypass a correct cancellation/revision ledger."""
+    from .condition_requirements import multiple_outputs
+    from .export_intent import explicit_export_intent
+    from .requirement_coverage import _matches
+
+    intent = explicit_export_intent(state)
+    if not (intent['cancelled'] or intent['forbidden_formats'] or intent['formats']):
+        return []
+    single = bool(intent['formats']) and not multiple_outputs(state)
+    for node in (draft.get('workflow') or {}).get('nodes', []):
+        if node['tool'] not in ('write_result', 'export_result', 'create_spreadsheet'):
+            continue
+        if intent['cancelled']:
+            return ['취소한 파일 저장 작업이 실제 실행 단계에 남아 있습니다: ' + node['id']]
+        try:
+            formats = {fmt for fmt in ('csv', 'json', 'xlsx', 'pdf', 'md')
+                       if _matches(dict(kind='export', format=fmt), node, draft, lambda _: set())}
+        except (ValueError, KeyError, TypeError):
+            return ['요청한 파일 저장 형식의 실제 실행 설정을 확인하지 못했습니다: ' + node['id']]
+        if formats & intent['forbidden_formats']:
+            return ['취소한 파일 저장 형식이 실제 실행 단계에 남아 있습니다: ' + node['id']]
+        if single and formats - intent['formats']:
+            return ['명시한 결과 파일 저장 형식과 실제 실행 단계가 다릅니다: ' + node['id']]
+    return []
+
+
 def output_selection_issues(state, draft):
     """Check the actual output even if extraction omitted a selection task."""
+    export_issues = export_intent_issues(state, draft)
+    if export_issues:
+        return export_issues
     all_columns = _all_columns_requested(state)
     fields = output_selection(state)
     if (not all_columns and fields is None) or not draft.get('workflow'):

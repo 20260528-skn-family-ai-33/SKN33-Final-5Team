@@ -35,8 +35,13 @@ def test_cancelled_export_is_never_projected_into_extraction(ending):
     assert output_selection(current) is None
     # Keep the other source criteria valid for the complete extraction test.
     current['messages'][-1]['content'] = state()['messages'][-1]['content'].split('주문번호·')[0] + current['messages'][-1]['content']
+    if ending == '저장하지 마.':
+        # This cancels the file itself as well as its projected column list.
+        raw['tasks'] = [t for t in raw['tasks'] if t['spec']['kind'] != 'export']
     result = extract_plan(raw, current)
     assert not any(t['spec']['kind'] == 'select_fields' for t in result['tasks'])
+    if ending == '저장하지 마.':
+        assert not any(t['spec']['kind'] == 'export' for t in result['tasks'])
 
 
 def test_full_output_request_rejects_a_model_selected_subset():

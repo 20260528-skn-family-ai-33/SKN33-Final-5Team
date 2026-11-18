@@ -2,7 +2,7 @@
 from copy import deepcopy
 
 from contracts.models import ExecutionPlan
-from .grouped_totals_request import grouped_totals_packet, grouped_totals_filename, validate_grouped_totals
+from .grouped_totals_request import validate_grouped_totals
 from .requirement_generation import _literal, generation_requirements
 
 # An execution safety ceiling, never a row selection or a silently truncated result.
@@ -10,34 +10,53 @@ MAX_GROUPED_ROWS = 100000
 
 
 def grouped_totals_steps(state):
+    from .grouped_totals_contract import grouped_contract, checked_specs, contract_filename
     specs, _ = generation_requirements(state)
-    if not specs or grouped_totals_packet(state) is None:
+    contract = grouped_contract(state)
+    if not specs or contract is None:
         return []
     validate_grouped_totals(state['requirement_ledger'], state)
+    if len(contract['formats']) > 1:
+        raise ValueError('복수 집계 결과 파일의 저장 경로는 아직 검증하지 못했습니다.')
+    roles = [role for role, _ in checked_specs(contract, state['requirement_ledger']['tasks'])]
+    named = dict(zip(roles, specs))
     steps = []
     def bind(index, port='table', name='table'):
         return [dict(input=name, step=index, output=port)]
     def add(tool, settings, bindings, operation=None):
         steps.append(dict(tool=tool, operation=operation, settings=settings, bindings=bindings))
+        return len(steps)
     def plan(**kw):
         return ExecutionPlan.model_validate({**dict(missing_policy='keep', duplicate_policy='keep',
             duplicate_field=None, output_format='json', filters=[], sort=[], match='all'), **kw}).model_dump(mode='json')
-    add('read_table', dict(file_ids=specs[0]['file_ids']), [])
-    add('filter_sort', dict(execution_plan=plan(filters=specs[1]['filters'], match='all', missing_policy='exclude')), bind(1))
-    add('calculate_columns', dict(table_operation='compute', calculation_formula=specs[2]['formula'],
-                                 output_column=specs[2]['output_column']), bind(2))
-    for spec, rename in ((specs[3], specs[4]), (specs[5], specs[6])):
-        add('aggregate_table', {**{k:spec[k] for k in ('fields','aggregation','sum_field')},
-                                'execution_plan':plan()}, bind(3))
-        add('calculate_columns', dict(table_operation='rename', rename_from=rename['source'],
-                                     rename_to=rename['target']), bind(len(steps)))
-    add('join_tables', dict(arguments_json=dict(left={'$binding':'left'}, right={'$binding':'right'},
-        keys=specs[3]['fields'], how='inner', cardinality='one_to_one', null_keys='error', max_rows=MAX_GROUPED_ROWS)),
-        bind(5, name='left') + bind(7, name='right'), 'join')
-    add('filter_sort', dict(execution_plan=plan(sort=specs[7]['sort'])), bind(8))
-    add('json_transform', dict(arguments_json={'path':['rows']}, output_port='records'), bind(9, name='value'), 'lookup')
-    add('filter_sort', dict(arguments_json={'columns':specs[8]['fields']}), bind(10, 'records', 'rows'), 'select_columns')
-    add('export_result', dict(arguments_json={'path':grouped_totals_filename(state), 'columns':specs[8]['fields']}), bind(11, 'records', 'rows'), 'write_csv')
+    read = add('read_table', dict(file_ids=named['read']['file_ids']), [])
+    filtered = add('filter_sort', dict(execution_plan=plan(filters=named['filter']['filters'], missing_policy='exclude')), bind(read))
+    computed = add('calculate_columns', dict(table_operation='compute', calculation_formula=named['compute']['formula'],
+        output_column=named['compute']['output_column']), bind(filtered))
+    ends = []
+    for role, rename_role in [('sum', 'total_name'), ('count', 'count_name')]:
+        spec = named[role]
+        end = add('aggregate_table', {**{k:spec[k] for k in ('fields','aggregation','sum_field')},
+                                    'execution_plan':plan()}, bind(computed))
+        if rename_role in named:
+            rename = named[rename_role]
+            end = add('calculate_columns', dict(table_operation='rename', rename_from=rename['source'],
+                rename_to=rename['target']), bind(end))
+        ends.append(end)
+    output = add('join_tables', dict(arguments_json=dict(left={'$binding':'left'}, right={'$binding':'right'},
+        keys=named['sum']['fields'], how='inner', cardinality='one_to_one', null_keys='error', max_rows=MAX_GROUPED_ROWS)),
+        bind(ends[0], name='left') + bind(ends[1], name='right'), 'join')
+    if 'sort' in named:
+        output = add('filter_sort', dict(execution_plan=plan(sort=named['sort']['sort'])), bind(output))
+    output = add('json_transform', dict(arguments_json={'path':['rows']}, output_port='records'), bind(output, name='value'), 'lookup')
+    output = add('filter_sort', dict(arguments_json={'columns':named['select']['fields']}), bind(output, 'records', 'rows'), 'select_columns')
+    for fmt in contract['formats']:
+        if fmt not in ('csv', 'json'):
+            raise ValueError('이 집계 계약의 출력 형식을 지원하지 않습니다.')
+        arguments = {'path':contract_filename(contract, fmt)}
+        if fmt == 'csv':
+            arguments['columns'] = named['select']['fields']
+        add('export_result', dict(arguments_json=arguments), bind(output, 'records', 'rows' if fmt == 'csv' else 'value'), 'write_' + fmt)
     return steps
 
 

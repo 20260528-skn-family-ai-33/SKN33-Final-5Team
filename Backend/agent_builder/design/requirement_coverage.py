@@ -268,6 +268,8 @@ def coverage_report(state,draft):
     except (ValueError,TypeError,KeyError) as error:
         return dict(enabled=True,tasks=[],issues=['요구사항 검증: 원문·자료에 맞는 업무 목록을 다시 확인해야 합니다. '+str(error)])
     workflow=draft.get('workflow') or {};nodes={n['id']:n for n in workflow.get('nodes',[])}
+    from .output_selection_request import export_intent_issues
+    problems.extend(export_intent_issues(state, draft))
     from .grouped_totals_decoder import grouped_totals_issues
     try:
         problems.extend(grouped_totals_issues(state, draft))

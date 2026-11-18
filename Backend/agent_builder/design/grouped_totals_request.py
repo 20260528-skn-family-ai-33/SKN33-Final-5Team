@@ -4,7 +4,6 @@ Consume the whole request, not a keyword subset. Anything outside this grammar
 stays on the general extractor; no file contents or expected answers are used.
 """
 import re
-from copy import deepcopy
 
 
 _NAME = r'[\w-]+?'
@@ -81,67 +80,32 @@ def grouped_totals_packet(state):
 
 
 def validate_grouped_totals_intent(plan, state):
-    """A complete sum/count instruction remains binding outside auto projection.
-
-    A saved base, unknown sort profile, an acknowledgement, or an unrelated
-    attachment can disable automatic generation without cancelling its work.
-    Corrections and other unmatched instructions stay with the general path.
-    """
-    if plan['unresolved']:
-        return
-    from .output_selection_request import _request_turns
-    requests = [text for _, text in _request_turns(state)
-                if not re.fullmatch(r'\s*(?:네|예|응|알겠어|알겠습니다|확인했어|확인했습니다)[.!]?\s*', text)]
-    if len(requests) != 1 or len(requests[0]) > 2000:
-        return
-    match = _REQUEST.fullmatch(requests[0])
-    if not match:
-        return
-    v = match.groupdict()
-    sources = [a for a in state.get('resources', []) if a.get('kind') == 'table' and a.get('name') == v['file']]
-    if len(sources) != 1 or not {v['left'], v['right'], v['group'], v['subject'] + '상태'} <= set(sources[0].get('columns', [])):
-        return
-    specs = [t['spec'] for t in plan['tasks']]
-    for aggregation, measure in [('sum', v['measure']), ('count', None)]:
-        if not any(s['kind'] == 'aggregate' and s['fields'] == [v['group']]
-                   and s['aggregation'] == aggregation and s['sum_field'] == measure for s in specs):
-            raise ValueError(f'원문에서 요청한 {v["group"]}별 {aggregation} 집계가 업무 목록에서 누락되거나 변경됐습니다.')
-    for source, target in [('sum', v['total']), ('count', v['count'])]:
-        if source == target:
-            continue
-        if not any(s['kind'] == 'rename' and s['source'] == source and s['target'] == target for s in specs):
-            raise ValueError(f'요청한 집계 결과 열 이름 {target}이 업무 목록에서 누락되거나 변경됐습니다.')
-    if not any(s['kind'] == 'select_fields' and s['fields'] == [v['group'], v['total'], v['count']] for s in specs):
-        raise ValueError('요청한 그룹·합계·행 개수의 최종 출력 열을 모두 보존해야 합니다.')
+    from .grouped_totals_contract import grouped_contract, checked_specs
+    contract = grouped_contract(state)
+    if contract is not None and not plan['unresolved']:
+        checked_specs(contract, plan['tasks'])
 
 
 def connect_grouped_totals(tasks, state):
-    """Both measures consume the same rows; final consumers need both branches."""
-    packet = grouped_totals_packet(state)
-    if packet is None:
-        return tasks
-    expected = [t['spec'] for t in packet['tasks']]
-    if [t['spec'] for t in tasks] != expected:
-        raise ValueError('합계·행 개수 요청의 계산, 선별, 집계, 열 이름, 정렬·출력 조건이 원문과 다릅니다.')
-    result = deepcopy(tasks)
-    parents = [[], [0], [1], [2], [3], [2], [5], [4, 6], [7], [8]]
-    for item, indices in zip(result, parents):
-        item['depends_on'] = [result[i]['id'] for i in indices]
-    return result
+    from .grouped_totals_contract import grouped_contract, connected_tasks
+    contract = grouped_contract(state)
+    return connected_tasks(contract, tasks) if contract is not None else tasks
 
 
 def grouped_totals_filename(state):
-    if grouped_totals_packet(state) is None:
+    from .grouped_totals_contract import grouped_contract, contract_filename
+    contract = grouped_contract(state)
+    if contract is None or len(contract['formats']) != 1:
         return None
-    text = next(m['content'] for m in state['messages'] if m['role'] == 'user')
-    return _REQUEST.fullmatch(text)['output']
+    return contract_filename(contract, next(iter(contract['formats'])))
 
 
 def validate_grouped_totals(plan, state):
-    if grouped_totals_packet(state) is None:
+    from .grouped_totals_contract import grouped_contract, connected_tasks
+    contract = grouped_contract(state)
+    if contract is None:
         return
     if plan['unresolved']:
-        raise ValueError('원문에 명시된 합계·행 개수 조건을 다시 질문할 수 없습니다.')
-    connected = connect_grouped_totals(plan['tasks'], state)
-    if connected != plan['tasks']:
+        raise ValueError('명시한 합계·행 개수 조건과 후속 변경을 확인한 뒤 설계해야 합니다.')
+    if connected_tasks(contract, plan['tasks']) != plan['tasks']:
         raise ValueError('합계와 행 개수는 같은 선별 원본에서 계산하고 최종 결과에 함께 연결해야 합니다.')

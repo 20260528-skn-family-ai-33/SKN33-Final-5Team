@@ -63,6 +63,30 @@ test('multiple explicit title/sender sections become separate cards with explici
  assert.match(cards[1].querySelector('ul')!.textContent!,/결제 예정/);
 });
 
+test('sent time is optional card metadata and stays out of summary content',async()=>{
+ const answer=[
+  '제목: 시간 확인\n\n보낸 사람: a@example.com\n보낸 시간: 2026-11-18 15:30 (KST)\n핵심: 회의 시간이 확정됐습니다.',
+  '제목: 시간 미확인\n보낸 사람: b@example.com\n보낸 시간: 확인할 수 없음\n핵심: 회의 안건을 확인하세요.',
+  '제목: 이전 실행\n보낸 사람: c@example.com\n핵심: 예전 메일입니다.',
+  '메일 처리 결과: 읽음 3건 · 요약 3건 · 누락 0건',
+ ].join('\n\n');
+ await render(answer);
+ const cards=Array.from(host.querySelectorAll('.gmr-card'));
+ assert.equal(cards.length,3);
+ const details=cards.map(card=>Array.from(card.querySelectorAll('.gmr-card-heading p'),item=>item.textContent));
+ assert.deepEqual(details,[
+  ['a@example.com','보낸 시간: 2026-11-18 15:30 (KST)'],
+  ['b@example.com','보낸 시간: 확인할 수 없음'],
+  ['c@example.com'],
+ ]);
+ for(const card of cards){
+  assert.doesNotMatch(card.querySelector('.gmr-card-content')!.textContent!,/보낸 시간/);
+  assert.equal(card.querySelector('.gmr-original'),null);
+ }
+ assert.equal(host.querySelector('.gmr-count')?.textContent,'읽음 3건 · 요약 3건 · 누락 0건');
+ assert.equal(host.querySelector('.gmr-full p')?.textContent,answer);
+});
+
 test('processing counts distinguish five reads from three summaries without changing legacy reports',async()=>{
  const flow={...workflow,nodes:[{...workflow.nodes[0],settings:{operation:'read_messages',arguments_json:'{"max_results":5,"query":"is:unread"}'}},...workflow.nodes.slice(1)]};
  const cards=['일정 확인','결제 예정','업데이트 안내'].map(title=>`제목: ${title}\n보낸 사람: mail@example.com\n핵심: 내용을 확인하세요.`);

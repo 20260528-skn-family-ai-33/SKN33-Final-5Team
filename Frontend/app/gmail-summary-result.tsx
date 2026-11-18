@@ -2,11 +2,12 @@ import type {Workflow} from './workflow-preview';
 import {RunAnswer} from './run-answer';
 import './gmail-summary-result.css';
 
-type MailSummary={title:string;sender:string;points:string[];body:string};
+type MailSummary={title:string;sender:string;sentAt?:string;points:string[];body:string};
 type SummaryResult={mails:MailSummary[];maxResults?:number;unread:boolean;notices:string[];batched:boolean;counts?:string};
 
 const titleLine=/^\s*(?:(?:[-•*]|\d+[.)])\s*)?(?:\*\*)?(?:제목|subject)(?:\*\*)?\s*[:：](?:\*\*)?\s*(.+?)\s*$/i;
 const senderLine=/^\s*(?:[-•*]\s*)?(?:\*\*)?(?:보낸 사람|발신자|from)(?:\*\*)?\s*[:：](?:\*\*)?\s*(.+?)\s*$/i;
+const sentAtLine=/^\s*(?:\*\*)?보낸 시간(?:\*\*)?\s*[:：](?:\*\*)?\s*(.+?)\s*$/;
 const pointLine=/^\s*(?:[-•*]\s*)?(?:\*\*)?(?:핵심(?: 내용)?|요약)(?:\*\*)?\s*[:：](?:\*\*)?\s*(.*?)\s*$/i;
 const bulletLine=/^\s*[-•]\s+(.+)$/;
 const countsBlock=/^메일 처리 결과: (읽음 \d+건 · 요약 \d+건 · 누락 \d+건)$/;
@@ -53,7 +54,7 @@ export function parseGmailSummary(answer:string,workflow?:Workflow|null):Summary
  const {text,notices,counts}=plainSummary(answer);
  const lines=text.split('\n');
  const batched=lines.some(line=>/^\s*#{1,3}\s*메일 요약 \d+\/\d+\s*$/.test(line));
- const mails:{title:string;sender:string;points:string[];body:string[];inPoints:boolean}[]=[];
+ const mails:(Omit<MailSummary,'body'>&{body:string[];inPoints:boolean})[]=[];
  let current:typeof mails[number]|null=null;
  for(const line of lines){
   if(/^\s*#{1,3}\s*메일 요약 \d+\/\d+\s*$/.test(line))continue;
@@ -62,6 +63,8 @@ export function parseGmailSummary(answer:string,workflow?:Workflow|null):Summary
   if(!current)continue;
   const sender=line.match(senderLine);
   if(sender&&!current.sender){current.sender=sender[1].trim();continue;}
+  const sentAt=line.match(sentAtLine);
+  if(sentAt&&current.sender&&!current.sentAt&&!current.inPoints&&!current.body.some(line=>line.trim())){current.sentAt=sentAt[1].trim();continue;}
   const point=line.match(pointLine);
   if(point){if(point[1].trim())current.points.push(point[1].trim());current.inPoints=true;continue;}
   const bullet=current.inPoints&&line.match(bulletLine);
@@ -69,7 +72,7 @@ export function parseGmailSummary(answer:string,workflow?:Workflow|null):Summary
   if(line.trim())current.inPoints=false;
   current.body.push(line);
  }
- const ready=mails.filter(mail=>mail.title&&mail.sender).map(mail=>({title:mail.title,sender:mail.sender,points:mail.points,body:mail.body.join('\n').trim()}));
+ const ready=mails.filter(mail=>mail.title&&mail.sender).map(mail=>({title:mail.title,sender:mail.sender,sentAt:mail.sentAt,points:mail.points,body:mail.body.join('\n').trim()}));
  if(!ready.length||ready.length!==mails.length)return null;
  const reader=workflow!.nodes[0];
  let maxResults:number|undefined,unread=false;
@@ -98,7 +101,7 @@ export function GmailSummaryResult({answer,workflow}:{answer:string;workflow?:Wo
  return <section className="gmr" aria-label="Gmail 메일 요약 결과">
   <header className="gmr-heading"><div><p className="gmr-kicker">Gmail 요약</p><h2>{parsed.unread?'안 읽은 Gmail 메일 요약':'Gmail 메일 요약'}</h2><p className="gmr-count">{countLabel}</p></div></header>
   <div className="gmr-list">{parsed.mails.map((mail,index)=><article className="gmr-card" key={index}>
-   <div className="gmr-card-heading"><span>{parsed.batched?'요약 항목':'메일'} {index+1}</span><h3>{mail.title}</h3><p>{mail.sender}</p></div>
+   <div className="gmr-card-heading"><span>{parsed.batched?'요약 항목':'메일'} {index+1}</span><h3>{mail.title}</h3><p>{mail.sender}</p>{mail.sentAt&&<p>보낸 시간: {mail.sentAt}</p>}</div>
    <div className="gmr-card-content"><strong>{mail.points.length?'핵심 내용':'요약 미리보기'}</strong>{mail.points.length?<ul>{mail.points.slice(0,3).map((point,i)=><li key={i}>{point}</li>)}</ul>:mail.body?<p>{preview(mail.body)}</p>:<p>요약 내용은 전체 결과 텍스트에서 확인하세요.</p>}
     {mail.body&&<details className="gmr-original"><summary>요약 내용 전체 보기</summary><p>{mail.body}</p></details>}
    </div>

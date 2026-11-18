@@ -192,21 +192,30 @@ def test_gmail_verification_expands_budget_without_replaying_reads_or_sending_pa
         assert slack_calls == [('slack.post_message', {'channel_id': CHANNEL, 'text': final_summary})]
 
 
-@pytest.mark.parametrize('read_count,summary_count', [(5, 3), (2, 2), (0, 0)])
-def test_gmail_slack_reports_actual_counts_and_preserves_partial_summary(tmp_path, monkeypatch, read_count, summary_count):
-    from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT
+@pytest.mark.parametrize('read_count,summary_count,legacy_format', [
+    (5, 3, False), (5, 3, True), (2, 2, False), (0, 0, False),
+])
+def test_gmail_slack_reports_actual_counts_and_preserves_partial_summary(
+    tmp_path, monkeypatch, read_count, summary_count, legacy_format,
+):
+    from agent_builder.design.gmail_slack import LEGACY_SUMMARY_CARD_FORMAT, SUMMARY_CARD_FORMAT
     from workflow_engine.executors import agent_factory
 
     workflow = gmail_to_slack_workflow()
     workflow['nodes'][0]['settings']['arguments_json'] = '{"max_results":5,"query":"is:unread"}'
-    workflow['nodes'][1]['settings']['instructions'] += SUMMARY_CARD_FORMAT
+    card_format = LEGACY_SUMMARY_CARD_FORMAT if legacy_format else SUMMARY_CARD_FORMAT
+    workflow['nodes'][1]['settings']['instructions'] += card_format
     ids = [f'm{index}' for index in range(read_count, 0, -1)]
     shown = ids[::2] if read_count == 5 else ids[:summary_count]
     gmail_calls, slack_calls, drafts, verification_requests = [], [], [], []
+    draft_prompts, verification_prompts, inspected_evidence = [], [], []
 
-    def cards(identifiers):
+    def cards(identifiers, sent_times=None):
+        sent_times = sent_times or {}
         return '\n\n'.join(
-            f'제목: 제목 {identifier}\n보낸 사람: sender@example.com\n핵심: 확인할 업무 {identifier}'
+            f'제목: 제목 {identifier}\n보낸 사람: sender@example.com\n'
+            + (f'보낸 시간: {sent_times[identifier]}\n' if identifier in sent_times else '')
+            + f'핵심: 업무 {identifier}를 확인하세요. 회신은 필요하지 않습니다.'
             for identifier in identifiers
         )
 
@@ -218,7 +227,10 @@ def test_gmail_slack_reports_actual_counts_and_preserves_partial_summary(tmp_pat
                 listing['nextPageToken'] = 'next'
             return listing
         identifier = args['message_id']
-        return message(identifier, f'확인할 업무 {identifier}' if identifier in shown else '행사 홍보 안내')
+        original = message(identifier, f'확인할 업무 {identifier}. 회신 불필요.' if identifier in shown else '행사 홍보 안내')
+        if identifier == ids[0]:
+            original['payload']['headers'].append({'name': 'Date', 'value': 'Wed, 18 Nov 2026 06:30:00 +0000'})
+        return original
 
     def slack(operation, args):
         slack_calls.append((operation, args))
@@ -226,13 +238,18 @@ def test_gmail_slack_reports_actual_counts_and_preserves_partial_summary(tmp_pat
 
     def grounded_agent(**options):
         evidence = options['tools'][0].invoke({})
-        draft = {'text': cards(ids), 'citations': [{'evidence_id': item['evidence_id']} for item in evidence]}
+        inspected_evidence.extend(evidence)
+        draft_prompts.append(options['system_prompt'])
+        draft = {'text': cards(ids), 'citations': [{'evidence_id': evidence[0]['evidence_id']}]}
         drafts.append(draft)
         return SimpleNamespace(invoke=lambda *args: {'structured_response': draft})
 
     def verify(messages):
+        verification_prompts.append(messages[0]['content'])
         verification_requests.append(json.loads(messages[-1]['content']))
-        return {'text': cards(shown), 'citations': []}
+        unsupported_times = dict.fromkeys(shown, '2099-01-01 00:00 (KST)')
+        text = cards(shown, unsupported_times).replace('보낸 시간: 2099-', '1. 보낸 시간: 2099-', 1)
+        return {'text': text, 'citations': [{'evidence_id': inspected_evidence[-1]['evidence_id']}]}
 
     def with_structured_output(schema, *, method, strict):
         assert method == 'json_schema' and strict
@@ -262,19 +279,39 @@ def test_gmail_slack_reports_actual_counts_and_preserves_partial_summary(tmp_pat
     if ids:
         assert len(drafts) == len(verification_requests) == 1
         assert verification_requests[0]['draft'] == drafts[0]
-        assert cards(shown) in text
+        assert '최대 두 문장' in draft_prompts[0] and '최대 두 문장' in verification_requests[0]['task']
+        assert '1~2문장' not in draft_prompts[0] and '1~2문장' not in verification_requests[0]['task']
+        for prompt in draft_prompts + verification_prompts:
+            assert '최대 두 문장' in prompt and '대표 근거' in prompt and '1개' in prompt
+        available_evidence = verification_requests[0]['available_evidence']
+        assert available_evidence == {
+            item['evidence_id']: item['quote'] for item in inspected_evidence
+        }
+        for identifier in ids:
+            assert any(f'제목: 제목 {identifier}\n' in quote for quote in available_evidence.values())
+        selected = run['outputs']['summary']['evidence']
+        assert [(item['source_id'], item['quote']) for item in selected] == [
+            (f'gmail:{ids[-1]}', inspected_evidence[-1]['quote'])
+        ]
+        expected_times = dict.fromkeys(shown, '확인할 수 없음')
+        expected_times[ids[0]] = '2026-11-18 15:30 (KST)'
+        assert cards(shown, expected_times) in text
+        assert '2099-01-01' not in text
         assert all(f'제목: 제목 {identifier}' not in text for identifier in ids if identifier not in shown)
     else:
         assert not drafts and not verification_requests
+        assert '보낸 시간:' not in text
 
 
 def test_gmail_slack_counts_distinct_matches_and_ignores_cards_without_a_summary():
-    from workflow_engine.executors.document.gmail_slack_summary import summarized_mail_ids
+    from workflow_engine.executors.document.gmail_slack_summary import annotate_mail_summaries
 
     header = '제목: 같은 제목\n보낸 사람: 보낸 이 <sender@example.com>'
     documents = [
-        {'source_id': 'gmail:first', 'file_name': '같은 제목', 'text': header + '\n\n첫 번째 업무'},
-        {'source_id': 'gmail:second', 'file_name': '같은 제목', 'text': header + '\n\n두 번째 업무'},
+        {'source_id': 'gmail:first', 'file_name': '같은 제목', 'text': header + '\n\n첫 번째 업무',
+         'sent_at': '2026-11-18T06:30:00+00:00'},
+        {'source_id': 'gmail:second', 'file_name': '같은 제목', 'text': header + '\n\n두 번째 업무',
+         'sent_at': '2026-11-18T07:45:00+00:00'},
     ]
     first_card = header + '\n핵심: 첫 번째 업무'
     duplicate_card = header + '\n핵심: 첫 번째 업무\ncitations=["e1"]'
@@ -282,9 +319,14 @@ def test_gmail_slack_counts_distinct_matches_and_ignores_cards_without_a_summary
     unmatched = header.replace('같은 제목', '다른 제목') + '\n핵심: 확인하지 않은 업무'
 
     text = '\n\n'.join([first_card, duplicate_card, empty_card, unmatched])
-    assert summarized_mail_ids(text, documents) == {'gmail:first'}
+    annotated, ids = annotate_mail_summaries(text, documents)
+    assert ids == {'gmail:first'}
+    assert '보낸 시간: 확인할 수 없음\n핵심: 첫 번째 업무' in annotated
+    assert all(timestamp not in annotated for timestamp in ('15:30 (KST)', '16:45 (KST)'))
     text += '\n\n**제목:** 같은 제목\n**보낸 사람:** sender@example.com\n**핵심:** 두 번째 업무'
-    assert summarized_mail_ids(text, documents) == {'gmail:first', 'gmail:second'}
+    annotated, ids = annotate_mail_summaries(text, documents)
+    assert ids == {'gmail:first', 'gmail:second'}
+    assert '보낸 시간: 확인할 수 없음\n**핵심:** 두 번째 업무' in annotated
 
 
 @pytest.mark.parametrize("change", [

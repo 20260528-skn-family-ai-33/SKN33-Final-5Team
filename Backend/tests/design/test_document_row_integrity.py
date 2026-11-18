@@ -33,6 +33,29 @@ SOURCE = [HEADERS,
 EXPECTED = [{'품명': row[1], '실입고': row[3]} for row in SOURCE[1:]]
 
 
+@pytest.mark.parametrize(('total', 'expected_check'), [('3000', '일치'), ('4000', '불일치')])
+def test_saved_native_receipt_preserves_arithmetic_in_history_and_only_requested_csv_columns(tmp_path, total, expected_check):
+    asset = document([block([['코드', '상품명', '금액'], ['A1', '사과', '1000'], ['A2', '배', '2000']]),
+                      dict(id='total', selected=True, content_types=['text'], text='합계 ' + total,
+                           native_location={'page': 1}, engine='mineru')], name='영수증.pdf')
+    current = state(asset, '이 영수증을 CSV로 정리해줘.')
+    current['messages'] += [dict(role='assistant', content=QUESTION), dict(role='user', content='상품명, 금액')]
+    current.update(document_rows_reply(current), status='ready', confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        saved_id = store.save_agent(current)
+        run = run_workflow(store, saved_id, '실행', '', file_ids=[asset['id']], llm=NoModel())
+        assert run['status'] == 'succeeded', run.get('error')
+        assert output_rows(run['artifact']) == [{'상품명': '사과', '금액': '1000'}, {'상품명': '배', '금액': '2000'}]
+        persisted = store.test(run['id'])
+        records = persisted['outputs']['extract']['records']
+        assert all(record['합계_검산'].startswith(expected_check) for record in records)
+        assert all(record['row_coverage'] == 'complete' and record['evidence'] for record in records)
+    finally:
+        store.close()
+
+
 def block(grid, identifier='table-1', page=1):
     return dict(id=identifier, selected=True, content_types=['table'],
                 text='\n'.join(str(value) for row in grid for value in row),

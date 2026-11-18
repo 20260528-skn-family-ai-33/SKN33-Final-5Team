@@ -102,6 +102,32 @@ def _text(cell):
     return '' if value is None else str(value).strip()
 
 
+def row_check_text(parts):
+    """Use each native table's cell rows once, preserving separate prose totals.
+
+    Flattened table text can put a total label and its amount on different lines.
+    Overlapping text chunks of one table must not repeat discounts in arithmetic.
+    """
+    tables = {}
+    for part in _table_parts(parts):
+        if part.get('table_cells'):
+            identity = (part['file_id'], part.get('block_id', part['source_id']))
+            tables[identity] = '\n'.join(
+                ' '.join(_text(row[column]).replace('\n', ' ') for column in sorted(row))
+                for _, row in _grid(part['table_cells'])
+            )
+    text, seen = [], set()
+    for part in parts:
+        identity = (part['file_id'], part.get('block_id', part['source_id']))
+        if identity in tables:
+            if identity not in seen:
+                text.append(tables[identity])
+                seen.add(identity)
+        else:
+            text.append(part['text'])
+    return '\n'.join(text)
+
+
 def _summary_labels(row):
     return [column for column, cell in row.items() if label(cell.get('text')).rstrip(':：') in _SUMMARY_LABELS]
 

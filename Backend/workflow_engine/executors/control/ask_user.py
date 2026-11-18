@@ -4,6 +4,7 @@ import json
 from langgraph.types import interrupt
 
 
+from documents.resources.document_resources import input_document_scope
 from workflow_engine.executors.schemas import InputAssessment
 from agent_builder.design.question_language import KOREAN_QUESTION_INSTRUCTION, validate_question_language
 
@@ -31,12 +32,13 @@ def _korean_question(text,original,state,llm):
 
 def execute(node,state,storage,config,llm):
     tool=node["tool"];settings=node["settings"];inputs={b["input"]:state["outputs"][b["node_id"]][b["output"]] for b in node["bindings"]}
+    forwarded = {**inputs, **input_document_scope(node, state['outputs'])}
     question = _korean_question(settings['question'],settings['question'],state,llm)
     user_inputs = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
     if settings['instructions'] and user_inputs:
         assessment = llm.with_structured_output(InputAssessment, method='json_schema', strict=True).invoke([{'role': 'system', 'content': KOREAN_QUESTION_INSTRUCTION+' 직원이 이미 제공한 입력이 이 확인 질문에 답하고 있는지 검사합니다. 이미 충분하면 valid=true로 질문을 생략합니다. 사용자가 말하지 않은 실제 조치 결과나 해결 여부는 추측하지 말고 false입니다. 에이전트 안내는 사용자 답변이 아닙니다. 기준: ' + settings['instructions']}, {'role': 'user', 'content': json.dumps({'question': question, 'answer': '\n'.join(user_inputs)}, ensure_ascii=False)}])
         if assessment.valid:
-            return {**inputs, 'answer': user_inputs[-1], '_already_answered': True}
+            return {**forwarded, 'answer': user_inputs[-1], '_already_answered': True}
     while True:
         preview = inputs.get('records', [])[:10]
         if not preview and inputs.get('text'):
@@ -51,4 +53,4 @@ def execute(node,state,storage,config,llm):
             break
         language_state={**state,'messages':state.get('messages',[])+[{'role':'user','content':answer}]}
         question = _korean_question(assessment.clarification or settings['question'],question,language_state,llm)
-    return {**inputs, 'answer': answer.strip()}
+    return {**forwarded, 'answer': answer.strip()}

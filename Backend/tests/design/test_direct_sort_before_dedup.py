@@ -21,8 +21,9 @@ class ValidatingTransport(Fake):
         return super().invoke(messages)
 
 
-@pytest.mark.parametrize('version', ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8'])
-def test_direct_sort_before_dedup_is_generated_saved_and_executed(monkeypatch, service, version):
+@pytest.mark.parametrize('version,bypasses_dedup',
+                         [(f'v{number}', False) for number in range(1, 9)] + [('v8', True)])
+def test_direct_sort_before_dedup_is_generated_saved_and_executed(monkeypatch, service, version, bypasses_dedup):
     monkeypatch.setenv('A4B_PLANNER_PROMPT', version)
     monkeypatch.setitem(CURRENT, 'request', SORT_FIRST_REQUEST)
     act, saved, fakes = service
@@ -32,14 +33,23 @@ def test_direct_sort_before_dedup_is_generated_saved_and_executed(monkeypatch, s
         'resources': uploaded['resources'],
     })['draft']
     candidate['purpose'] = '정렬한 뒤 중복 제거'
+    if bypasses_dedup:
+        candidate['workflow']['nodes'][-1]['bindings'][0]['node_id'] = 'sort'
     if version in ('v6', 'v7', 'v8'):
         for node in candidate['workflow']['nodes']:
             node['settings'] = {key: node['settings'][key] for key in (*NATIVE_SETTINGS[node['tool']], 'node_ref')}
 
-    transport = ValidatingTransport(candidate)
+    transport = ValidatingTransport(candidate, candidate)
     transport.schema = decoder_schema(version)
     generate = planner(monkeypatch, transport)
     first = act('message', generate, content=SORT_FIRST_REQUEST)
+    if bypasses_dedup:
+        assert first['status'] == 'validation_failed'
+        assert any('중복 제거 단계의 표' in issue for issue in first['issues'])
+        with pytest.raises(ValueError, match='필수 조건과 근거 검증'):
+            act('confirm', generate)
+        assert saved() == 0
+        return
     assert first['status'] == 'ready' and not first['issues']
     assert len(transport.calls) == 1
     done = act('confirm', generate)

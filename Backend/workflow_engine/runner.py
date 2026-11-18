@@ -206,6 +206,9 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         evidence=[e for v in outputs.values() for e in v.get('evidence',[])]+[r['evidence'] for r in (records[-1] if records else []) if r.get('evidence')]
         run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=artifacts[-1] if artifacts else None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
         run['answer'] = public_run_answer(run['answer'], outputs)
+        export_warnings = list(dict.fromkeys(warning for artifact in artifacts for warning in artifact.get('warnings', [])))
+        if export_warnings:
+            run['answer'] += '\n\n' + '\n'.join(export_warnings)
         if run['status'] == 'succeeded' and run.get('artifact'):
             from workflow_engine.run_answer import empty_table_notice
             notice = empty_table_notice(config['workflow'], outputs)

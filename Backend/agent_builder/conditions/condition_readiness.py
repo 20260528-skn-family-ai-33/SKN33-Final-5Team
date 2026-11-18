@@ -1653,33 +1653,33 @@ _WRITTEN_SORT = re.compile(
     r'\s*(?:열|컬럼|칼럼|항목)?\s*(?:을|를|은|는|의|이|가|으로|로)?\s*(?:값\s*)?(?P<type>숫자|문자|날짜)?\s*'
     r'(?:(?:을|를)?\s*기준\s*(?:으로)?\s*(?:해서|하여|삼아)?\s*)?(?:으로\s*|로\s*)?(?:정렬\s*(?:은|을|하되)?\s*)?'
     r'(?:(?P<asc>' + _ASC_WORDS + r')|(?P<desc>' + _DESC_WORDS + r'))')
-_SORT_WITHDRAWAL = (
-    r'(?:모두\s*|전부\s*|다\s*)?(?:빼|제외|없이|취소|필요\s*없|안\s*(?:해|함|할)|하지\s*(?:마|말|않)|말고|지워|지우|삭제)')
+_SORT_ALL = r'(?:모두|전부|다)\s*'
+_SORT_WITHDRAWAL = r'빼|제외|없이|취소|필요\s*없|안\s*(?:해|함|할)|하지\s*(?:마|말|않)|말고|지워|지우|삭제'
 _SORT_DROPPED_AFTER = re.compile(
-    r'\s*(?:으로|로)?\s*(?:정렬\s*)?(?:은|는|을|를|이|가|도|기준은|기준을)?\s*'
-    r'(?:아니라|아니고|아닌|대신|' + _SORT_WITHDRAWAL + r')')
+    r'\s*(?:으로|로)?\s*(?:(?P<sort_verb>정렬)\s*)?(?:은|는|을|를|이|가|도|기준은|기준을)?\s*'
+    r'(?:아니라|아니고|아닌|대신|(?:' + _SORT_ALL + r')?(?:' + _SORT_WITHDRAWAL + r'))')
 # "정렬 빼고", "정렬은 하지 마", "정렬 없이", "입력 순서 그대로": the user withdrew sorting.
 _SORT_CANCELLED = re.compile(
-    r'정렬\s*(?:은|을|도|기준은|기준을)?\s*' + _SORT_WITHDRAWAL +
+    r'정렬\s*(?:은|을|도|기준은|기준을)?\s*(?P<all_keys>' + _SORT_ALL + r')?(?:' + _SORT_WITHDRAWAL + r')'
     r'|(?:입력|원래|파일|원본)\s*순서\s*(?:를|는|대로)?\s*(?:그대로|유지)')
 _SORT_VERB = (r'정렬(?:(?=해|하|을|은|는|도|이|기준|순|없이|빼|제외|취소|안|말)|(?![가-힣]))'
               r'(?!\s*(?:완료|대기|상태|여부|중(?![가-힣])))')
 _SORT_WORDS = re.compile(_SORT_VERB + '|' + _ASC_WORDS + '|' + _DESC_WORDS)
 # A direction followed by a row-value comparison describes a cell, as in "오름차순과 같은 행".
 _SORT_VALUE = re.compile(
+    r'(?:(?<![가-힣A-Za-z0-9_])정렬\s*(?:이|가|은|는)\s*)?'
     r'(?:' + _ASC_WORDS + '|' + _DESC_WORDS + r')'
-    r'(?=\s*(?:(?:과|와)\s*(?:같은|동일한|일치하는)|인)\s*(?:행|레코드|항목|셀))')
-_QUOTE_GOVERNED_BY_SORT = re.compile(r'\s*(?:으로|로)?\s*' + _SORT_VERB)
-# "주문일 내림차순으로 먼저 정렬한 뒤 주문번호별 첫 행만 남겨": sorting decides which row stays.
-_SORT_BEFORE_DEDUP = re.compile(
-    r'(?:먼저\s*[^.!?\n]{0,24}정렬|정렬[^.!?\n]{0,8}(?:뒤|후|다음|나서))[^.!?\n]*(?:중복|첫\s*행|마지막\s*행|하나만)')
-
+    r'(?=\s*(?:(?:과|와)\s*(?:같은|동일한|일치하는)|인)\s*(?:행|레코드|항목|셀|(?:것|건|주문)\s*만))')
+_QUOTE_GOVERNED_BY_SORT = re.compile(r'\s*(?:으로|로)?\s*(?:정렬(?:된|한)|' + _SORT_VERB + r')')
+_SORT_KEY_DECLARATION = r'정렬\s*(?:기준\s*(?:은|는|이|을)?|은|는|할\s*때는?)\s*'
+_QUOTED_SORT_KEY_PREFIX = re.compile(_SORT_KEY_DECLARATION + r'$')
 
 def _mask_quotes(text, columns=()):
     def mask(match):
         body = match.group()[1:-1]
         if (_QUOTE_GOVERNED_BY_SORT.match(text, match.end())
-                or (body in columns and _WRITTEN_SORT.match(text, match.end()))):
+                or (body in columns and (_WRITTEN_SORT.match(text, match.end())
+                                         or _QUOTED_SORT_KEY_PREFIX.search(text, 0, match.start())))):
             return ' ' + body + ' '
         return ' ' * len(match.group())
     return _QUOTED_TEXT.sub(mask, text)
@@ -1689,10 +1689,10 @@ _SORT_NOT = re.compile(r'\s*(?:이|가)?\s*아니')
 # A column named as the sort key without a direction: "정렬 기준은 주문일이야",
 # "주문일 기준으로", "주문일 순으로 정렬", "주문일로 정렬", "정렬은 주문일로".
 _SORT_KEY_FORMS = (
-    r'(?:정렬\s*)?기준\s*(?:은|는|이|을)?\s*(?:{col})',
+    r'기준\s*(?:은|는|이|을)?\s*(?:{col})',
     r'(?:{col})\s*(?:열|컬럼|칼럼|항목)?\s*(?:을|를)?\s*기준',
     r'(?:{col})\s*(?:열|컬럼|칼럼|항목)?\s*(?:순서?\s*)?(?:대로|으로|로|을|를)\s*(?:다시\s*)?정렬',
-    r'정렬\s*(?:은|는|할\s*때는?)\s*(?:{col})',
+    _SORT_KEY_DECLARATION + r'(?:{col})',
 )
 
 
@@ -1719,29 +1719,34 @@ _SORT_KEPT = re.compile(r'\s*(?:하|해)?\s*(?:지|진)\s*(?:마|말|않)|\s*하
 
 
 def _sort_turn(text, columns, pattern):
-    """What one user turn says about sorting: ('sorts', [...]) | ('cancelled',) |
-    ('hint', fields, direction) | None when it says nothing about sorting."""
+    """Read explicit sorts, withdrawal (all or named keys), or partial sort hints from one turn."""
     text = _SORT_VALUE.sub(lambda match: ' ' * len(match.group()), text)
     found = []
+    withdrawal_keys = {}
     for match in (pattern.finditer(text) if pattern else ()):
         written = _WRITTEN_SORT.match(text, match.end())
-        if (not written or _SORT_DROPPED_AFTER.match(text, written.end())
-                or any(item['field'] == match['field'] for item in found)):
+        dropped = _SORT_DROPPED_AFTER.match(text, written.end() if written else match.end())
+        if dropped and dropped['sort_verb']:
+            withdrawal_keys[dropped.start('sort_verb')] = match['field']
+        if not written or dropped or any(item['field'] == match['field'] for item in found):
             continue
         kind = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
         found.append({'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
                       'value_type': kind})
     if found:
         return ('sorts', found)
-    cancelled = False
+    removed_keys = set()
     for m in list(_SORT_CANCELLED.finditer(text)):
         kept = _SORT_KEPT.match(text, m.end())
         if kept:  # blank the kept phrase so its "정렬" is not read as a new sort request
             text = text[:m.start()] + ' ' * (kept.end() - m.start()) + text[kept.end():]
         else:
-            cancelled = True
-    if cancelled:
-        return ('cancelled',)
+            field = withdrawal_keys.get(m.start())
+            if m['all_keys'] or field is None:
+                return ('cancelled',)
+            removed_keys.add(field)
+    if removed_keys:
+        return ('removed', removed_keys)
     if _SORT_WORDS.search(text):
         return ('hint',) + _sort_hint(text, columns)
     return None
@@ -1754,7 +1759,8 @@ def sort_request(state):
     'fields': [...], 'direction': str|None}.
     'sorts' lists exact attached-table columns (matched whole, longest first: "예정주문일"
     is never "주문일") with their direction. A later turn that names column+direction
-    replaces it; "정렬 빼고" withdraws it ("취소하지 마" does not); a later turn that
+    replaces it; "정렬 빼고" withdraws it ("취소하지 마" does not), and a withdrawal
+    limited to a named column keeps the other known keys. A later turn that
     names only the column ("정렬 기준은 주문일이야") or only the direction ("최신순으로")
     changes only that part and keeps what it did not say. 'unparsed' means sorting was
     written but no column/direction pair is known: the draft must still carry a sort,
@@ -1780,6 +1786,10 @@ def sort_request(state):
             continue
         if said[0] == 'cancelled':
             current = {'kind': 'cancelled', 'sorts': [], 'text': text}
+            continue
+        if said[0] == 'removed':
+            remaining = [item for item in current['sorts'] if item['field'] not in said[1]]
+            current = {'kind': 'sorts' if remaining else 'cancelled', 'sorts': remaining, 'text': text}
             continue
         fields, direction = said[1], said[2]
         if current['kind'] == 'sorts':
@@ -1808,37 +1818,40 @@ def requested_sorts(state):
     return sort_request(state)['sorts']
 
 
-def _final_sort(draft):
-    """The order of the table the result file actually receives.
-
-    Follows the data bindings back from the output node on the executable path, not
-    just the path order: a sort node that runs but whose table the writer does not
-    consume does not order the file. The nearest executed native sort upstream wins;
-    non-sorting filter/dedup steps in between keep its order.
-    """
-    from agent_builder.design.content_lineage import content_bindings
-    from workflow_engine.execution_path import execution_path
-    workflow = draft.get('workflow') or {}
-    path = execution_path(workflow)
+def _result_content_node(workflow, path):
+    """Use the same final artifact as the runner, including a finish binding."""
+    from workflow_engine.execution_path import artifact_origin, artifact_output_ids
     if not path:
-        return []
-    executed = {node['id'] for node in path}
-    nodes = {node['id']: node for node in workflow.get('nodes', [])}
-    outputs = [node for node in path if node['tool'] in ('write_result', 'export_result')]
-    pending, seen = [(outputs[-1] if outputs else path[-1], None)], set()
+        return None
+    outputs = artifact_output_ids(workflow)
+    return artifact_origin(workflow, outputs[-1]) if outputs else path[-1]['id']
+
+
+def _result_sort(draft, path, source):
+    """Find the nearest executed native sort that supplies the result's contents."""
+    from agent_builder.design.content_lineage import content_bindings
+    nodes = {node['id']: node for node in path}
+    pending, seen = [(source, None)], set()
     while pending:
-        node, output = pending.pop(0)
-        if (node['id'], output) in seen or node['id'] not in executed:
+        node_id, output = pending.pop(0)
+        if (node_id, output) in seen or node_id not in nodes:
             continue
-        seen.add((node['id'], output))
+        seen.add((node_id, output))
+        node = nodes[node_id]
         if node['tool'] == 'filter_sort' and not node['settings'].get('operation'):
             sort = (node['settings'].get('execution_plan') or draft.get('execution_plan') or {}).get('sort') or []
             if sort:
-                return sort
-        for binding in content_bindings(node, output):
-            if binding['node_id'] in nodes:
-                pending.append((nodes[binding['node_id']], binding['output']))
-    return []
+                return node_id, sort
+        pending.extend((binding['node_id'], binding['output']) for binding in content_bindings(node, output))
+    return None, []
+
+
+def _final_sort(draft):
+    """The order of the table the result actually receives."""
+    from workflow_engine.execution_path import execution_path
+    workflow = draft.get('workflow') or {}
+    path = execution_path(workflow)
+    return _result_sort(draft, path, _result_content_node(workflow, path))[1]
 
 
 def _sort_issue(requested, draft):
@@ -1885,47 +1898,94 @@ def _sort_request_issue(request, draft):
     return None
 
 
-def sort_before_dedup_requested(state, request=None):
-    """Whether the current request puts sorting before duplicate removal."""
+_ROW_ORDER_ACTION = re.compile(
+    r'(?P<sort>' + _SORT_VERB + r'|정렬(?=\s*(?:한|된|할)\s*(?:뒤|후|다음|전)))|'
+    r'(?P<deduplicate>중복\s*(?:(?:된|되는)\s*)?(?:행\s*)?(?:은|는|을|를)?\s*(?:제거|삭제|정리|없애)|'
+    r'중복(?=\s*(?:은|는|을|를)?\s*(?:먼저|우선)\s*(?:제거|삭제|정리|없애))|'
+    r'(?:(?:첫|마지막)\s*행\s*(?:만|을|은)?|하나\s*만)\s*(?:남(?:기|긴|길|겨)|유지|보존))')
+_ROW_ORDER_BEFORE = re.compile(r'\s*(?:하기|하는|할|기|는)?\s*전(?:에|에는)?(?=[\s,.!?]|$)')
+_ROW_ORDER_AFTER = re.compile(r'\s*(?:한|된|하고|하여|고)?\s*(?:난\s*)?(?:뒤|후|다음|나서)(?:에|에는)?(?=[\s,.!?]|$)')
+_ROW_ORDER_NEXT = re.compile(r'[,.;!?。！？\n]\s*(?:그리고\s*)?(?:그\s*)?(?:다음(?:으로|에는|에)?|이어서|뒤이어|후에)\s*')
+_ROW_ORDER_FIRST_AFTER = re.compile(r'\s*(?:은|는|을|를)?\s*(?:먼저|우선)(?=[\s,.!?]|$)')
+_ROW_ORDER_FIRST_BEFORE = re.compile(r'(?<!\w)(?:먼저|우선)(?!\w)[^,.!?。！？;\n]*$')
+
+
+def _row_order_in_turn(text):
+    actions = list(_ROW_ORDER_ACTION.finditer(text))
+    order = None
+    for index, (first, following) in enumerate(zip(actions, actions[1:])):
+        if first.lastgroup == following.lastgroup:
+            continue
+        between = text[first.end():following.start()]
+        prefix = text[actions[index - 1].end() if index else 0:first.start()]
+        if _ROW_ORDER_BEFORE.match(between):
+            order = following.lastgroup
+        elif (_ROW_ORDER_AFTER.match(between) or _ROW_ORDER_NEXT.search(between)
+              or _ROW_ORDER_FIRST_AFTER.match(between) or _ROW_ORDER_FIRST_BEFORE.search(prefix)):
+            order = first.lastgroup
+    return order
+
+
+def sort_dedup_order(state, request=None):
+    """Return the first operation named by the latest explicit order instruction."""
     if request is None:
         request = sort_request(state)
     if request['kind'] not in ('sorts', 'unparsed'):
-        return False
+        return None
     from agent_builder.capabilities.capability_judgement import active_request_messages
-    text = ' '.join(_mask_quotes(mask_file_names(m['content'])) for m in active_request_messages(state or {})
-                    if m.get('role') == 'user' and isinstance(m.get('content'), str))
-    return bool(_SORT_BEFORE_DEDUP.search(text))
+    for message in reversed(active_request_messages(state or {})):
+        if message.get('role') == 'user' and isinstance(message.get('content'), str):
+            order = _row_order_in_turn(_mask_quotes(mask_file_names(message['content'])))
+            if order:
+                return order
+    return None
 
 
-def _sort_before_dedup_issue(state, request, draft, native, plans):
-    """Check the order of the actual input to each first/last duplicate removal."""
-    if not sort_before_dedup_requested(state, request):
+def sort_before_dedup_requested(state, request=None):
+    return sort_dedup_order(state, request) == 'sort'
+
+
+def _sort_dedup_order_issue(state, request, draft, native, plans):
+    """Verify the requested order on the data that reaches the final result."""
+    order = sort_dedup_order(state, request)
+    if order is None:
         return None
     from agent_builder.design.content_lineage import content_ancestors
     from agent_builder.design.final_table_criteria import final_sort_matches
     from workflow_engine.execution_path import execution_path
 
+    problem = ('원문은 정렬한 뒤 중복을 제거하라고 했습니다. filter_sort는 중복을 먼저 제거하므로, '
+               '요청한 열·방향으로 정렬하는 filter_sort 뒤에 그 표를 받는 중복 제거 filter_sort(sort=[])를 연결하세요.'
+               if order == 'sort' else
+               '원문은 중복을 제거한 뒤 정렬하라고 했습니다. 정렬 전에 중복을 제거하고 그 표에 정렬을 적용하세요.')
     workflow = draft.get('workflow') or {}
-    nodes_by_id = {node['id']: node for node in workflow.get('nodes', [])}
     dedup = [(node['id'], plan) for node, plan in zip(native, plans)
              if plan.get('duplicate_policy') in ('first', 'last')]
     try:
         path = execution_path(workflow)
+        nodes_by_id = {node['id']: node for node in path}
         positions = {node['id']: index for index, node in enumerate(path)}
-        # The final sort is also checked against the request. Use its concrete
-        # keys and types here even when the user only named a direction.
-        expected = _final_sort(draft)
-        ordered = bool(expected and dedup) and all(
-            not plan.get('sort') and node_id in positions
-            and final_sort_matches(expected, draft, path[:positions[node_id]],
-                                   content_ancestors(nodes_by_id, node_id))
-            for node_id, plan in dedup)
+        source = _result_content_node(workflow, path)
+        sort_node, expected = _result_sort(draft, path, source)
+        if not expected or not dedup:
+            return problem
+        result_lineage = content_ancestors(nodes_by_id, source) | {source}
+        if any(node_id not in positions or node_id not in result_lineage for node_id, _ in dedup):
+            return '최종 결과에 중복 제거 단계의 표가 연결되지 않았습니다. 결과 저장의 입력을 확인하세요.'
+        dedup_inputs = {node_id: content_ancestors(nodes_by_id, node_id) for node_id, _ in dedup}
+        if order == 'sort':
+            # Use the output sort's concrete keys and types even for direction-only requests.
+            ordered = all(not plan.get('sort') and final_sort_matches(
+                expected, draft, path[:positions[node_id]], dedup_inputs[node_id]) for node_id, plan in dedup)
+        else:
+            sort_inputs = content_ancestors(nodes_by_id, sort_node) | {sort_node}
+            sorting = {node['id'] for node, plan in zip(native, plans) if plan.get('sort')}
+            sorting.update(node['id'] for node in path
+                           if node['tool'] == 'filter_sort' and node['settings'].get('operation') == 'sort')
+            ordered = all(node_id in sort_inputs and not (sorting & dedup_inputs[node_id]) for node_id, _ in dedup)
     except (KeyError, TypeError, ValueError):
-        ordered = False
-    if ordered:
-        return None
-    return ('원문은 정렬한 뒤 중복을 제거하라고 했습니다. filter_sort는 중복을 먼저 제거하므로, '
-            '요청한 열·방향으로 정렬하는 filter_sort 뒤에 그 표를 받는 중복 제거 filter_sort(sort=[])를 연결하세요.')
+        return problem
+    return None if ordered else problem
 
 
 def plan_issues(ledger, draft, *, state=None):
@@ -1972,7 +2032,7 @@ def plan_issues(ledger, draft, *, state=None):
         issue = _sort_request_issue(request, draft)
         if issue:
             problems.append(issue)
-        order_issue = _sort_before_dedup_issue(state, request, draft, native, plans)
+        order_issue = _sort_dedup_order_issue(state, request, draft, native, plans)
         if order_issue:
             problems.append(order_issue)
     elif ledger['operations'] == ['deduplicate'] and any(plan.get('sort') for plan in plans):

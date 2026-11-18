@@ -891,3 +891,41 @@ def test_final_resort_cannot_fix_a_wrong_sort_before_dedup(service):
     assert any('정렬한 뒤 중복' in issue for issue in result['issues'])
     press_save(act, planner)
     assert saved() == 0
+
+
+@pytest.mark.parametrize('forwarded_file', ['deduplicated', 'duplicate_rows', None])
+def test_sort_before_dedup_checks_the_artifact_returned_by_finish(service, forwarded_file):
+    act, saved, fakes = service
+    CURRENT['request'] = SORT_FIRST_REQUEST
+    make_split_draft = make_planner([], sort=LATEST, sort_first=True)
+
+    def planner(state):
+        result = make_split_draft(state)
+        workflow = result['draft']['workflow']
+        _, sorting, _, writer = workflow['nodes']
+        duplicate_rows = node('duplicate_rows', 'write_result',
+                              [{'input': 'table', 'node_id': sorting['id'], 'output': 'table'}], format='csv')
+        workflow['nodes'].append(duplicate_rows)
+        workflow['edges'].append({'source': writer['id'], 'target': duplicate_rows['id'], 'branch': 'next'})
+        if forwarded_file:
+            source = writer['id'] if forwarded_file == 'deduplicated' else duplicate_rows['id']
+            workflow['nodes'].append(node('finish', 'finish', [{'input': 'artifact', 'node_id': source, 'output': 'artifact'}]))
+            workflow['edges'].append({'source': duplicate_rows['id'], 'target': 'finish', 'branch': 'next'})
+            result['draft']['tool_ids'].append('finish')
+        return result
+
+    act('upload', planner, asset=dict(TABLE), rows=SORT_FIRST_ROWS)
+    result = act('message', planner, content=SORT_FIRST_REQUEST)
+    if forwarded_file == 'deduplicated':
+        assert result['status'] == 'ready', result['issues']
+        done = act('confirm', planner)
+        assert done['status'] == 'saved'
+        run = fakes['run'](done['saved_agent_id'])
+        import csv
+        rows = csv.DictReader(io.StringIO(run['artifact']['content'].lstrip('\ufeff')))
+        assert [(row['주문번호'], row['주문일']) for row in rows] == [('A1', '2026-11-07'), ('B2', '2026-11-04')]
+    else:
+        assert result['status'] == 'validation_failed'
+        assert any('중복 제거 단계의 표' in issue for issue in result['issues'])
+        press_save(act, planner)
+        assert saved() == 0

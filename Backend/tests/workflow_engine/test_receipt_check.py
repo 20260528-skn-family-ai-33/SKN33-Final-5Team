@@ -84,10 +84,13 @@ def test_rows_extraction_adds_the_check_column_before_status_and_keeps_values():
     records = extract_information.execute(node, {'outputs': {'read': {'documents': [part]}}, 'request': '영수증 정리'}, None, {}, llm)['records']
     assert [r['금액'] for r in records] == ['2,100', '3,380', '2,100']
     assert all(r['합계_검산'].startswith('불일치') and r['status'] == 'verified' for r in records)
-    saved = export_result.execute({'tool': 'export_result', 'bindings': [{'input': 'records', 'node_id': 'extract', 'output': 'records'}],
-                                   'settings': {'format': 'csv'}}, {'outputs': {'extract': {'records': records}}}, None, {}, None)['artifact']
-    header = next(csv.reader(io.StringIO(saved['content'].lstrip('﻿'))))
-    assert header == ['file_name', 'row', '상품명', '금액', '합계_검산', 'status', 'evidence']
+    # Check results and provenance remain internal. A totals discrepancy or
+    # value citation does not certify that every source row was extracted.
+    assert list(records[0]).index('합계_검산') < list(records[0]).index('status')
+    assert all(record['row_coverage'] == 'unverified' for record in records)
+    with pytest.raises(ValueError, match='전체 행'):
+        export_result.execute({'tool': 'export_result', 'bindings': [{'input': 'records', 'node_id': 'extract', 'output': 'records'}],
+                              'settings': {'format': 'csv'}}, {'outputs': {'extract': {'records': records}}}, None, {}, None)
 
 
 def test_check_column_name_is_reserved():
@@ -112,3 +115,100 @@ def test_cash_tendered_and_change_are_not_payment_totals():
 
 def test_unlabelled_item_amount_does_not_prove_total():
     assert receipt_check.check(rows('1,000'), ['금액'], '사과 1,000\n배 2,000').startswith('확인 필요')
+
+
+def native_receipt(file_id, amounts, summary, amount_field='금액'):
+    grid = [['코드', '상품명', amount_field],
+            *[[f'A{i}', f'상품{i}', value] for i, value in enumerate(amounts, 1)]]
+    table = {'file_id': file_id, 'file_name': file_id + '.pdf', 'source_id': file_id + ':table',
+            'text': '\n'.join(' '.join(row) for row in grid),
+            'table_cells': [dict(row=r, column=c, text=value)
+                            for r, row in enumerate(grid) for c, value in enumerate(row)]}
+    return [table, {'file_id': file_id, 'file_name': file_id + '.pdf', 'source_id': file_id + ':summary', 'text': summary}]
+
+
+def extract_rows(parts, fields, llm=None):
+    node = {'tool': 'extract_information',
+            'bindings': [{'input': 'documents', 'node_id': 'read', 'output': 'documents'}],
+            'settings': {'fields': fields, 'instructions': None, 'extraction_mode': 'rows'}}
+    return extract_information.execute(node, {'outputs': {'read': {'documents': parts}},
+                                             'request': '영수증 CSV 정리'}, None, {}, llm)['records']
+
+
+@pytest.mark.parametrize(('amounts', 'summary', 'expected'), [
+    (['1000', '2000'], '합계 4000', '불일치'),
+    (['1000', '2000'], '합계 3000', '일치'),
+    (['1000', '2000'], '소계 3000\n할인 -500\n사용금액 2500', '일치'),
+    (['1000', '2000'], '소계 3000\n할인 -500\n사용금액 3000', '불일치'),
+    (['1000', ''], '합계 3000', '확인 불가'),
+])
+def test_native_rows_apply_the_same_arithmetic_check_without_changing_values(amounts, summary, expected):
+    records = extract_rows(native_receipt('native', amounts, summary), ['상품명', '금액'])
+    assert [record['금액'] for record in records] == [value or None for value in amounts]
+    assert all(record['합계_검산'].startswith(expected) for record in records)
+    assert all(record['status'] == 'verified' and record['row_coverage'] == 'complete' for record in records)
+    assert all('table_row' in record['evidence']['금액'] for record in records)
+
+
+@pytest.mark.parametrize('fields', [['상품명'], ['상품명', '단가']])
+def test_native_rows_without_line_amount_do_not_add_arithmetic_findings(fields):
+    records = extract_rows(native_receipt('native', ['1000', '2000'], '합계 4000', amount_field='단가'), fields)
+    assert all('합계_검산' not in record for record in records)
+
+
+def test_native_and_model_rows_keep_arithmetic_and_coverage_scoped_to_each_file():
+    first = native_receipt('first', ['1000', '2000'], '합계 4000')
+    second = native_receipt('second', ['500', '600'], '합계 1100')
+    legacy = {'file_id': 'legacy', 'file_name': 'legacy.pdf', 'source_id': 's1', 'text': '상품 700\n합계 700'}
+    model = RowsLLM([{'cells': [cell('상품명', '상품', '상품 700'), cell('금액', '700', '상품 700')]}])
+    # Interleaved source chunks must still be grouped by document, not checked as a combined receipt.
+    records = extract_rows([*first, legacy, *second], ['상품명', '금액'], model)
+    assert [record['합계_검산'].split(':')[0] for record in records] == ['불일치', '불일치', '일치', '일치', '일치']
+    assert [record['row_coverage'] for record in records] == ['complete', 'complete', 'unverified', 'complete', 'complete']
+
+
+@pytest.mark.parametrize(('paid', 'expected'), [('2500', '일치'), ('2600', '불일치')])
+def test_native_summary_cells_are_checked_once_despite_flattened_overlapping_text(paid, expected):
+    grid = [['코드', '상품명', '금액'], ['A1', '사과', '1000'], ['A2', '배', '2000'],
+            ['', '소계', '3000'], ['', '할인', '-500'], ['', '합계', paid]]
+    # The pipeline emits one cell payload and overlapping text chunks for this block.
+    part = {'file_id': 'native', 'file_name': 'native.pdf', 'source_id': 'native:table:0', 'block_id': 'table',
+            'text': '\n'.join(value for row in grid for value in row),
+            'table_cells': [dict(row=r, column=c, text=value) for r, row in enumerate(grid) for c, value in enumerate(row)]}
+    from workflow_engine.executors.document.table_rows import row_check_text
+    overlap = {key: value for key, value in part.items() if key != 'table_cells'}
+    overlap.update(source_id='native:table:1400', text='할인\n-500\n합계\n' + paid)
+    text = row_check_text([part, overlap])
+    assert receipt_check.totals(text) == (3000, -500, [int(paid)])
+    assert receipt_check.check(rows('1000', '2000'), ['상품명', '금액'], text).startswith(expected)
+
+
+@pytest.mark.parametrize('marker', ['합계', '합\n계'])
+def test_native_total_inside_flattened_table_reaches_extraction_findings(marker):
+    part = native_receipt('native', ['1000', '2000'], '')[0]
+    part['table_cells'] += [dict(row=3, column=c, text=value) for c, value in enumerate(['', marker, '4000'])]
+    part['text'] = '\n'.join(cell['text'] for cell in part['table_cells'])
+    records = extract_rows([part], ['상품명', '금액'])
+    assert [record['금액'] for record in records] == ['1000', '2000']
+    assert all(record['합계_검산'].startswith('불일치') for record in records)
+
+
+@pytest.mark.parametrize('block_id', [None, 'summary'])
+def test_overlapping_prose_chunks_count_each_printed_discount_once(block_id):
+    source = 'x' * 1450 + '\n소계 3000\n할인 -500\n결제금액 2500'
+    table, summary = native_receipt('native', ['1000', '2000'], source)
+    summary.update(source_id='native:1:0', offset=0)
+    if block_id is not None:
+        summary['block_id'] = block_id
+    overlap = {**summary, 'source_id': 'native:1:1400', 'offset': 1400, 'text': source[1400:]}
+    records = extract_rows([table, summary, overlap], ['상품명', '금액'])
+    assert [record['합계_검산'] for record in records] == ['일치', '일치']
+
+
+def test_offset_deduplication_keeps_equal_discounts_at_different_source_positions():
+    source = 'x' * 1450 + '\n소계 3000\n할인 -500\n할인 -500\n결제금액 2000'
+    table, summary = native_receipt('native', ['1000', '2000'], source)
+    summary.update(block_id='summary', offset=0)
+    overlap = {**summary, 'source_id': 'native:summary:1400', 'offset': 1400, 'text': source[1400:]}
+    records = extract_rows([table, summary, overlap], ['상품명', '금액'])
+    assert [record['합계_검산'] for record in records] == ['일치', '일치']

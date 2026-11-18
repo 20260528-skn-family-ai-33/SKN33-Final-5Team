@@ -4,12 +4,13 @@ from agent_builder.conditions.condition_readiness import sort_request
 
 
 ORDER_DATE = {'field': '주문일', 'direction': 'ascending', 'value_type': None}
+AMOUNT_DESCENDING = {'field': '금액', 'direction': 'descending', 'value_type': 'number'}
 
 
-def table_request(*turns):
+def table_request(*turns, columns=('주문일', '금액', '정렬방식')):
     return {
         'messages': [{'role': 'user', 'content': text} for text in turns],
-        'resources': [{'kind': 'table', 'columns': ['주문일', '금액', '정렬방식']}],
+        'resources': [{'kind': 'table', 'columns': columns}],
     }
 
 
@@ -19,6 +20,18 @@ def test_quoted_column_is_a_sort_key(column):
     assert request['sorts'] == [ORDER_DATE]
 
 
+def test_quoted_sort_condition_before_a_sorted_result():
+    state = table_request('"주문일 오름차순"으로 정렬된 결과를 CSV로 저장해줘')
+    assert sort_request(state)['sorts'] == [ORDER_DATE]
+
+
+def test_quoted_sort_key_edit_keeps_the_previous_direction():
+    state = table_request('주문일 내림차순으로 정렬해줘', '정렬 기준은 "금액"이야')
+    assert sort_request(state)['sorts'] == [
+        {'field': '금액', 'direction': 'descending', 'value_type': None},
+    ]
+
+
 @pytest.mark.parametrize('withdrawal', ['정렬 없이', '정렬하지 않고', '정렬을 지우고'])
 def test_withdrawal_applies_to_a_named_sort(withdrawal):
     state = table_request('주문일 오름차순으로 정렬해줘',
@@ -26,12 +39,30 @@ def test_withdrawal_applies_to_a_named_sort(withdrawal):
     assert sort_request(state)['kind'] == 'cancelled'
 
 
+@pytest.mark.parametrize('key', ['주문일 오름차순', '주문일'])
+def test_withdrawing_one_sort_preserves_other_keys(key):
+    state = table_request('주문일 오름차순, 금액 숫자 내림차순으로 정렬해줘',
+                          f'{key} 정렬을 빼고 금액 정렬은 그대로 둬')
+    assert sort_request(state)['sorts'] == [AMOUNT_DESCENDING]
+
+
+@pytest.mark.parametrize('withdrawal', ['정렬을 빼줘', '주문일 오름차순 정렬을 전부 빼줘'])
+def test_full_withdrawal_clears_multiple_sort_keys(withdrawal):
+    state = table_request('주문일 오름차순, 금액 숫자 내림차순으로 정렬해줘', withdrawal)
+    assert sort_request(state)['kind'] == 'cancelled'
+
+
 @pytest.mark.parametrize('filter_text', [
     '정렬방식이 오름차순과 같은 행만 골라',
     '정렬방식이 내림차순인 레코드만 골라',
     '정렬방식이 "주문일 오름차순"인 행만 골라',
+    '정렬방식이 오름차순인 것만 남겨줘',
+    '정렬방식이 오름차순인 건만 남겨줘',
+    '정렬방식이 오름차순인 주문만 남겨줘',
+    '정렬이 오름차순과 같은 행만 골라',
 ])
 def test_filter_direction_value_does_not_change_sorting(filter_text):
-    assert sort_request(table_request(f'{filter_text} JSON으로 저장해줘'))['kind'] == 'none'
-    state = table_request(f'{filter_text}, "주문일" 오름차순으로 정렬해줘')
+    columns = ['주문일', '금액', '정렬방식', '정렬']
+    assert sort_request(table_request(f'{filter_text} JSON으로 저장해줘', columns=columns))['kind'] == 'none'
+    state = table_request(f'{filter_text}, "주문일" 오름차순으로 정렬해줘', columns=columns)
     assert sort_request(state)['sorts'] == [ORDER_DATE]

@@ -2,6 +2,8 @@
 from documents.resources.document_resources import document_chunks
 from documents.resources.document_resources import saved_input, supports
 
+DOCUMENT_TABLE_ERROR = '선택한 표를 원본 문서에서 확인할 수 없습니다. 문서 미리보기에서 표를 다시 선택해 주세요.'
+
 
 def replacement_files(readers, provided, storage):
     """Match all source slots before executing any reader, without merging inputs."""
@@ -30,11 +32,15 @@ def source_file_ids(node,file_ids,storage,config,outputs=None):
     tool=node['tool'];settings=node['settings']
     expected='document' if tool=='read_document' else 'table'
     provided=[id for id in file_ids if supports(storage.asset(id),expected)]
+    selected=settings.get('file_ids') or []
+    if tool == 'read_document' and settings.get('document_table_id') is not None:
+        if len(selected) != 1 or (file_ids and selected[0] not in provided):
+            raise ValueError(DOCUMENT_TABLE_ERROR)
+        return selected
     other_readers=[n for n in (config.get('workflow') or {}).get('nodes',[])
                    if n['tool'] in ('read_table','read_document') and n['tool']!=tool]
     if file_ids and not provided and not other_readers:
         raise ValueError('새 실행 자료의 종류가 읽기 노드와 맞지 않습니다. 사용할 파일을 다시 선택하세요.')
-    selected=settings.get('file_ids') or []
     readers=[n for n in (config.get('workflow') or {}).get('nodes',[])
              if n['tool']==tool and not n['settings'].get('operation')]
     if provided and len(readers)<=1:
@@ -67,9 +73,18 @@ def source_file_ids(node,file_ids,storage,config,outputs=None):
 def read_source(node,state,storage,config,external_port):
     # Preserve binding lookup order/errors for direct executor callers.
     _inputs={b['input']:state['outputs'][b['node_id']][b['output']] for b in node['bindings']}
+    table_id = node['settings'].get('document_table_id') if node['tool'] == 'read_document' else None
     if external_port in state.get('external_inputs',{}):
+        if table_id is not None:
+            raise ValueError(DOCUMENT_TABLE_ERROR)
         return {external_port:state['external_inputs'][external_port]}
     ids=source_file_ids(node,state['file_ids'],storage,config,state.get('outputs'))
-    if node['tool']=='read_document':return {'documents':document_chunks(storage,ids)}
+    if node['tool'] == 'read_document':
+        parts = document_chunks(storage, ids)
+        if table_id is not None:
+            parts = [part for part in parts if part.get('block_id') == table_id]
+            if not any(part.get('table_cells') for part in parts):
+                raise ValueError(DOCUMENT_TABLE_ERROR)
+        return {'documents': parts}
     asset=storage.asset(ids[0])
     return {'table':{'rows':storage.rows(ids[0]),'columns':asset['columns'],'file_id':ids[0]}}

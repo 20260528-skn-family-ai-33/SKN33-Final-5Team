@@ -592,29 +592,31 @@ def compound_filter_state(state):
     missing_fields = []
     addition = None
     relation_count = None
+    explicit_operand = None
     seed, seed_turn, seeded = _confirmed_filter(state)
 
     def unique(items):
         return list({json.dumps(rule, sort_keys=True): rule for rule in items}.values())
 
-    def merged(rule):
+    def merged(rule, *, whole_field=False):
         matching = [old for old in rules if old['field'] == rule['field']]
-        if len(matching) > 1:
+        if len(matching) > 1 and not whole_field:
             direction = _BOUND_DIRECTION[rule['operator']]
             matching = [old for old in matching if _BOUND_DIRECTION.get(old['operator']) == direction]
             if len(matching) != 1:
                 return None
-        target = matching[0] if matching else None
 
         def replace(items):
-            if target in items:
-                return [rule if old == target else old for old in items]
-            return [*items, rule]
+            revised = [rule if old in matching else old for old in items]
+            return unique(revised) if rule in revised else [*items, rule]
 
         if addition:
-            group = 'rules' if target in addition['rules'] else 'added'
-            addition[group] = unique(replace(addition[group]))
-        return unique(replace(rules))
+            group = 'rules' if any(old in matching for old in addition['rules']) else 'added'
+            addition[group] = replace(addition[group])
+            if whole_field:
+                other = 'added' if group == 'rules' else 'rules'
+                addition[other] = [old for old in addition[other] if old not in matching]
+        return replace(rules)
 
     for index, message in enumerate(state.get('messages', [])):
         if message.get('role') != 'user':
@@ -623,7 +625,8 @@ def compound_filter_state(state):
         if text is None:
             continue
         text = text.strip().rstrip('.!?')
-        if pending == 'complete' and len(missing_fields) == 1 and not any(field in text for field in fields):
+        short_answer = pending == 'complete' and len(missing_fields) == 1 and not any(field in text for field in fields)
+        if short_answer:
             text = missing_fields[0] + ' ' + text
         if seed and not rules and not seeded and index > seed_turn:
             # A single filter confirmed earlier is followed like a chain of one.
@@ -715,19 +718,20 @@ def compound_filter_state(state):
                 continue
         named = [field for field in {rule['field'] for rule in rules}
                  if re.search(r'(?<![\w])' + re.escape(field), text)]
-        rule_fields = {rule['field'] for rule in rules}
+        matches = _comparison_spans(text)
+        owners = {field: subject for field in fields if len(matches) == 1
+                  and (subject := _comparison_subject(field, text[:matches[0].start()]))}
+        numeric_fields = {rule['field'] for rule in rules} | set(missing_fields) | owners.keys()
         # Interpret the whole schema so a known text-column keep is not mistaken
         # for an unresolved numeric edit. Apply only this consumer's predicates.
-        clears = [event for event in filter_clear_events(text, fields, numeric_fields=rule_fields)
-                  if event[2] in rule_fields]
-        reasserted = {field for field in fields for span in _comparison_spans(text)
-                      if _comparison_subject(field, text[:span.start()])
-                      and any(owner == field for _, _, owner in clears)
-                      and max(end for _, end, owner in clears if owner == field) < span.start()}
-        cancelled = {field for _, _, field in clears} - reasserted
+        last_clear = {field: end for _, end, field in filter_clear_events(text, fields, numeric_fields=numeric_fields)
+                      if field in numeric_fields}
+        reasserted = {field for field in owners.keys() & last_clear.keys() if last_clear[field] <= owners[field].start()}
+        cancelled = last_clear.keys() - reasserted
         if cancelled:
             rules = [rule for rule in rules if rule['field'] not in cancelled]
             missing_fields = [field for field in missing_fields if field not in cancelled]
+            relation_count = None
             if addition:
                 for group in ('rules', 'added'):
                     addition[group] = [rule for rule in addition[group] if rule['field'] not in cancelled]
@@ -741,28 +745,34 @@ def compound_filter_state(state):
                     mode, pending = ('all', None) if addition['mode'] == 'all' else (None, 'rewrite')
                     if pending is None:
                         addition = None
-            if len(rules) < 2:
-                mode = 'all' if rules else None
+            if len(rules) + len(missing_fields) < 2:
+                mode = 'all' if rules or missing_fields else None
                 pending = 'complete' if missing_fields else None
+            elif pending == 'complete' and not missing_fields:
+                pending = 'match' if mode is None else None
             candidate = None
-            continue
-        matches = _comparison_spans(text)
-        owners = {field: subject for field in fields if len(matches) == 1
-                  and (subject := _comparison_subject(field, text[:matches[0].start()]))}
+            if not owners:
+                continue
         if len(owners) == 1:
             match = matches[0]
             field, subject = next(iter(owners.items()))
+            if field in cancelled:
+                continue
             denied = _excludes_named_range(text, match.end()) or _uncertain_comparison(text[match.end():])
             rule = None if denied else _stated_rule(field, match.group())
             bound = subject.group('bound')
             if rule and bound and _BOUND_DIRECTION[rule['operator']] != bound:
                 rule = None
             if rule and pending == 'complete' and field in missing_fields:
-                revised = merged(rule)
+                revised = merged(rule, whole_field=field in reasserted)
                 if revised is None:
                     pending, candidate = 'rewrite', None
                     continue
                 rules = revised
+                if short_answer or field in reasserted:
+                    explicit_operand = (index, rule, short_answer)
+                if field in reasserted:
+                    seed, seeded = None, False
                 missing_fields.remove(field)
                 pending = 'complete' if missing_fields else None
                 if not missing_fields:
@@ -775,20 +785,25 @@ def compound_filter_state(state):
                     elif addition:
                         pending = 'rewrite'
                 continue
-            if rule in rules:
+            if rule in rules and field not in reasserted:
                 continue
             if rule is None:
                 if field in named:
                     pending, candidate = 'revise' if mode else 'rewrite', None
                 continue
-            edits = field in reasserted or re.fullmatch(r'\s*(?:으로|로)?\s*(?:바꿔|변경해)\s*(?:줘|주세요)?', text[match.end():])
-            if field in named and (edits or pending == 'revise' and candidate is None):
+            edits = re.fullmatch(r'\s*(?:으로|로)?\s*(?:바꿔|변경해)\s*(?:줘|주세요)?', text[match.end():])
+            if field in reasserted or field in named and (edits or pending == 'revise' and candidate is None):
                 # A stated edit, or the condition we asked the user to write out: the rest stays.
-                revised = merged(rule)
+                revised = merged(rule, whole_field=field in reasserted)
                 if revised is None:
                     pending, candidate = 'rewrite', None
                     continue
                 rules = revised
+                if field in reasserted:
+                    explicit_operand = (index, rule, False)
+                    seed, seeded = None, False
+                if len(rules) == 1 and not missing_fields:
+                    mode = 'all'
                 if pending == 'revise':
                     pending, candidate = None, None
             else:
@@ -796,10 +811,10 @@ def compound_filter_state(state):
             continue
         other_columns = fields - {rule['field'] for rule in rules}
         schedule_edit = bool(_schedule_evidence(text, follow_up=True))
-        cancellation_events = filter_clear_events(text, fields, intent='keep', numeric_fields=rule_fields)
+        cancellation_events = filter_clear_events(text, fields, intent='keep', numeric_fields=numeric_fields)
         if single_table:
             # The text filter contract owns pending cancellations, including cancellations of numeric predicates.
-            cancellation_events.extend(filter_clear_events(text, fields, intent='uncertain', numeric_fields=rule_fields))
+            cancellation_events.extend(filter_clear_events(text, fields, intent='uncertain', numeric_fields=numeric_fields))
 
         def is_criterion_edit(match):
             return _numeric_instruction_at(text, match.start()) and not any(
@@ -839,7 +854,8 @@ def compound_filter_state(state):
                 pending = None
     return {'mode': mode, 'rules': rules, 'pending': pending, 'candidate': candidate,
             'seeded': seeded and len(rules) < 2, 'missing_fields': missing_fields,
-            'addition': addition, 'relation_count': relation_count or (len(addition['added']) if addition else len(rules))}
+            'addition': addition, 'relation_count': relation_count or (len(addition['added']) if addition else len(rules)),
+            'explicit_operand': explicit_operand if explicit_operand and explicit_operand[1] in rules else None}
 
 
 def literal_compound_filter(state):
@@ -939,7 +955,7 @@ def _literal_threshold(state, catalog, field, *, require_named_field=False, allo
     return None
 
 
-def _retained_operand_threshold(state, catalog, field):
+def _retained_operand_threshold(state, catalog, field, *, answer_turn=None):
     """Restore an unchanged operand from its original, column-bound user evidence."""
     rules = [rule for rule in explicit_filter_operands(state) if rule['field'] == field]
     if len(rules) != 1:
@@ -950,10 +966,13 @@ def _retained_operand_threshold(state, catalog, field):
         if message.get('role') != 'user':
             continue
         text = message['content']
+        if turn == answer_turn:
+            from .filter_edits import user_filter_text
+            text = user_filter_text(state, turn, message) or ''
         spans = _comparison_spans(text)
         for index, span in enumerate(spans):
             prefix = text[spans[index - 1].end() if index else 0:span.start()]
-            if (not _comparison_subject(field, prefix)
+            if (turn != answer_turn and not _comparison_subject(field, prefix)
                     or _stated_rule(field, span.group()) != expected
                     or _uncertain_comparison(text[span.end():]) or _excludes_named_range(text, span.end())):
                 continue
@@ -2040,11 +2059,30 @@ def validate_conditions(raw, state, catalog):
         operations.remove('filter')
         invalid.append('filter: 정렬 기준 열을 선별 조건으로 제안')
     from agent_builder.design.text_filter_contract import text_filter_state
-    edit_contract = text_filter_state(state)
-    if (slots.get('filter.field', {}).get('value') in edit_contract['cleared_fields']
-            and not edit_contract['issues'] and not edit_contract['predicates']):
-        numeric_contract = compound_filter_state(state)
-        if not numeric_contract['rules'] and not numeric_contract['pending']:
+    text_contract = text_filter_state(state)
+    compound = compound_filter_state(state)
+    primary = slots.get('filter.field', {}).get('value')
+    primary_cancelled = primary in text_contract['cleared_fields']
+    explicit_operand = compound['explicit_operand']
+    if not text_contract['issues']:
+        if explicit_operand and explicit_operand[0] == latest:
+            _, rule, short_answer = explicit_operand
+            if (compound['pending'] in ((None, 'match') if short_answer else (None,))
+                    and (short_answer or primary_cancelled or primary in (None, rule['field']))):
+                threshold = _retained_operand_threshold(state, catalog, rule['field'],
+                                                        answer_turn=latest if short_answer else None)
+                if threshold:
+                    # An explicit reassertion or scoped answer replaces the representative as one unit.
+                    field_slot = {**threshold, 'key': 'filter.field', 'value': rule['field']}
+                    if short_answer:
+                        named = [entry for entry in catalog if entry.get('source_id') == 'user'
+                                 and entry.get('turn', latest) < latest and rule['field'] in entry['quote']]
+                        if named:
+                            field_slot.update(evidence=[named[-1]], evidence_ids=[named[-1]['id']])
+                    slots['filter.field'] = field_slot
+                    slots['filter.operator'] = {**threshold, 'key': 'filter.operator', 'value': rule['operator']}
+                    slots['filter.value'] = threshold
+        if primary_cancelled and not text_contract['predicates'] and not compound['rules'] and not compound['pending']:
             # A completed cancellation removes the operation, not just its threshold.
             slots = {key: value for key, value in slots.items() if not key.startswith('filter.')}
             operations = [operation for operation in operations if operation != 'filter']
@@ -2098,9 +2136,6 @@ def validate_conditions(raw, state, catalog):
     needs_table = 'schedule' in operations and not any(r.get('kind') == 'table' for r in state.get('resources', []))
     if needs_table:
         unresolved.append('input.table')
-    compound = compound_filter_state(state)
-    from agent_builder.design.text_filter_contract import text_filter_state
-    text_contract = text_filter_state(state)
     if compound['pending']:
         # Several columns are compared but the filter is not settled; never finish on a part of it.
         unresolved.append('filter.match')

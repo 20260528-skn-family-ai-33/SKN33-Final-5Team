@@ -487,6 +487,9 @@ def test_shared_cancel_transaction_preserves_text_and_exports_all_matching_rows(
     '그 조건 취소하고 상태 조건 유지해줘',
     '비용 조건 취소하고 비용 조건 유지해줘',
     '없는열 조건 취소하고 상태 조건 유지해줘',
+    '없는열, 비용 조건 취소해줘.',
+    '비용, 없는열 조건 취소해줘.',
+    '없는열과 비용 조건 취소해줘.',
 ])
 def test_unresolved_cancel_transaction_cannot_reuse_old_conditions(instruction):
     s = current('상태가 완료인 행만 남겨줘')
@@ -494,6 +497,33 @@ def test_unresolved_cancel_transaction_cannot_reuse_old_conditions(instruction):
     contract = text_filter_state(s)
     assert contract['issues'] and not contract['cleared_fields']
     assert judge(s, VALUES)['decision'] == 'clarify'
+
+
+@pytest.mark.parametrize('instruction', [
+    '출력에서 비용과 수량 삭제하고 나머지 열만 내보내줘',
+    '결과에서 지역을 삭제해줘',
+    '비용과 수량 필터를 삭제하는 건 하지 마.',
+    '비용과 수량 조건의 취소는 하지 마.',
+    '비용이 10원 이상이고 수량이 3개 이상인 행을 필터링하고 중복은 유지해줘.',
+])
+def test_non_cancelling_instructions_preserve_the_filters_and_exported_rows(tmp_path, instruction):
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+
+    s = current('상태가 완료인 행만 남겨줘.')
+    s['messages'].append(dict(role='user', content=instruction))
+    contract = text_filter_state(s)
+    assert not contract['cleared_fields'] and not contract['issues']
+    assert {rule['field'] for rule in compound_filter_state(s)['rules']} == {'비용', '수량'}
+    assert execute(prepare(s), tmp_path) == ROWS[:2]
+
+
+def test_bare_named_keep_resolves_a_pending_cancellation(tmp_path):
+    s = current('지역이 서울인 행만 남겨줘.')
+    s['messages'].append(dict(role='user', content='지역 조건 삭제해도 될까?'))
+    assert judge(s, VALUES)['decision'] == 'clarify'
+    s['messages'].append(dict(role='user', content='지역 유지해줘.'))
+    assert not text_filter_state(s)['issues']
+    assert execute(prepare(s), tmp_path) == [ROWS[0], ROWS[2]]
 
 
 @pytest.mark.parametrize('instruction', [

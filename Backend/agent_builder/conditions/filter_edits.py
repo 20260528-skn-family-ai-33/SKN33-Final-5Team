@@ -19,7 +19,8 @@ def in_metadata_text(text, position):
 _CLEAR_DENIED = re.compile(
     r'\s*+(?:(?:하지|하진|는)?\s*+(?:말|마|않|안)'
     r'|(?:하(?:시)?면|해서는|해선)\s*+안\s*+(?:돼|되|됩)'
-    r'|할\s*+필요(?:가|는)?\s*+없)')
+    r'|할\s*+필요(?:가|는)?\s*+없'
+    r'|(?:하는\s*+(?:건|것(?:은|을|도)?|걸)|하기는|는)\s*+(?:하지\s*+)?(?:말|마|않|안))')
 _CLEAR_UNCERTAIN = re.compile(r'\s*+(?:할지|하는지|해도|할까|인지|여부)')
 
 
@@ -48,8 +49,23 @@ class FilterEdit:
     scope: str
 
 
-_EDIT_ACTION = re.compile(r'취소|삭제|제거|해제|유지|보존|상관없이|관계없이|무관하게')
-_EDIT_SCOPE = re.compile(r'(?:(?:모든|전체|기존)\s*)?(?P<kind>숫자|텍스트)?\s*(?:선별\s*)?(?:조건|필터)(?:을|를|은|는)?\s*(?:모두|전부)?\s*$')
+_INDEPENDENT_OF = ('상관없이', '관계없이', '무관하게')
+_KEEP_ACTIONS = ('유지', '보존')
+_EDIT_ACTION = re.compile('|'.join(('취소', '삭제', '제거', '해제', *_KEEP_ACTIONS, *_INDEPENDENT_OF)))
+_FILTER_OBJECT = r'(?:선별\s*+)?(?:조건|필터)(?:을|를|은|는|의|만)?\s*+'
+_FILTER_OBJECT_END = re.compile(_FILTER_OBJECT + r'$')
+_EDIT_SCOPE = re.compile(r'(?P<all>모든|전체|기존)?\s*+(?P<kind>숫자|텍스트)?\s*+'
+                         + _FILTER_OBJECT + r'(?P<rest>모두|전부)?\s*+')
+_OTHER_EDIT_SUBJECT = re.compile(
+    r'(?:(?:기존|현재|앞서\s*정한)\s*)?'
+    r'(?:문서\s*(?:추출|처리)|(?:행|열|항목)\s*추출|출력(?:\s*(?:형식|포맷|열|컬럼))?'
+    r'|(?:파일|저장)\s*(?:형식|포맷)|예약|실행\s*시간|중복(?:\s*(?:제거|처리))?|빈\s*값|결측값?)\s*'
+    + _FILTER_OBJECT)
+_SUBJECT_INTRO = re.compile(r'^\s*(?:(?:그럼|그러면|대신|이제|우선|먼저|이번에는|이어서|그리고|또한|추가로)\s+|[,，]\s*)*')
+_EDIT_CONTINUATION = re.compile(r'^\s*(?:하(?:고|며|면서)|해\s*(?:줘|주세요|주고|주시고)|(?:하지|하진)\s*말고)(?=\s|[,，]|$)')
+_SUBJECT_BOUNDARY = re.compile(
+    r'[.!?;\n]|(?:남기|뽑|내보내|(?:필터링|선별|정렬|추출|저장|정리|제외)하)'
+    r'(?:고|며|면서|지\s*+(?:는\s*+)?말고)\s+')
 
 
 def filter_edit_events(text, fields, *, numeric_fields=()):
@@ -62,30 +78,39 @@ def filter_edit_events(text, fields, *, numeric_fields=()):
     fields, numeric_fields = set(fields), set(numeric_fields)
     names = '|'.join(re.escape(field) for field in sorted(fields, key=len, reverse=True))
     name = r'(?<![\w])(?:' + names + ')' if names else r'(?!)'
-    atom = name + r'\s*(?:(?:선별\s*)?(?:조건|필터))?'
-    listed = re.compile(atom + r'(?:\s*(?:,|와|과|및|하고|이랑|랑|그리고)\s*' + atom + r')*'
-                        + r'\s*(?:은|는|을|를|만|에|와|과)?\s*$')
+    column_marker = r'\s*+(?:(?:열|컬럼)\s*+)?'
+    column = name + column_marker
+    separator = r'\s*+(?:[,，]|와|과|및|하고|이랑|랑|그리고)\s*+'
+    particle = r'\s*+(?:은|는|을|를|만|에|와|과)?\s*+'
+    # Classify the final operand before recovering all fields from the full list.
+    bare_names = re.compile(column + r'(?:' + separator + column + r')*' + particle)
+    listed_filters = re.compile(r'(?:' + column + r'(?:' + _FILTER_OBJECT + r')?' + separator + r')*'
+                                + column + _FILTER_OBJECT)
+    listed_operand = re.compile(r'(?P<field>' + name + ')' + column_marker + r'(?:' + _FILTER_OBJECT + r')?')
     events = []
     previous = 0
     actions = list(_EDIT_ACTION.finditer(text))
     for index, action in enumerate(actions):
         if in_quoted_text(text, action.start()) or in_metadata_text(text, action.start()):
             continue
-        # A comma can enumerate columns; sentence punctuation ends the subject.
-        prefix = re.split(r'[.!?;\n]', text[previous:action.start()])[-1]
+        between = text[previous:action.start()]
+        # A comma can enumerate columns. A completed operation opens a new subject.
+        prefix = _SUBJECT_BOUNDARY.split(between)[-1]
+        if previous and prefix == between:
+            prefix = _EDIT_CONTINUATION.sub('', prefix)
+        prefix = _SUBJECT_INTRO.sub('', prefix)
         start = action.start() - len(prefix)
         previous = action.end()
-        named = listed.search(prefix)
-        scoped = _EDIT_SCOPE.search(prefix)
-        if named:
-            targets = {match.group() for match in re.finditer(name, named.group())}
+        scoped = _EDIT_SCOPE.fullmatch(prefix)
+        bare = bare_names.fullmatch(prefix)
+        verb = action.group()
+        if (bare and verb in (*_INDEPENDENT_OF, *_KEEP_ACTIONS)) or (not bare and listed_filters.fullmatch(prefix)):
+            targets = {match['field'] for match in listed_operand.finditer(prefix)}
             scope = 'named'
-            start += named.start()
-        elif scoped and (scoped['kind'] or re.search(r'모든|전체|기존|모두|전부', scoped.group())):
+        elif scoped and (scoped['all'] or scoped['kind'] or scoped['rest']):
             scope = scoped['kind'] or 'all'
             targets = fields & numeric_fields if scope == '숫자' else fields - numeric_fields if scope == '텍스트' else fields
-            start += scoped.start()
-        elif re.search(r'조건|필터|선별', prefix):
+        elif not bare and _FILTER_OBJECT_END.search(prefix) and not _OTHER_EDIT_SUBJECT.fullmatch(prefix):
             targets, scope = fields, 'unresolved'
         else:
             continue  # File/column deletion is owned by another operation.
@@ -94,7 +119,7 @@ def filter_edit_events(text, fields, *, numeric_fields=()):
         denied = _CLEAR_DENIED.match(tail)
         uncertain = (_CLEAR_UNCERTAIN.match(tail)
                      or re.search(r'모르겠|미정|아직\s*(?:안|못)|결정하지', tail))
-        kind = 'keep' if action.group() in ('유지', '보존') else 'clear'
+        kind = 'keep' if verb in _KEEP_ACTIONS else 'clear'
         if scope == 'unresolved' or uncertain or denied and kind == 'keep':
             kind = 'uncertain'
         elif denied:

@@ -322,6 +322,27 @@ def test_direct_storage_save_cannot_bypass_gate(tmp_path,decision):
     assert not store.agents();store.close()
 
 
+def test_direct_storage_save_keeps_document_and_text_filter_checks(tmp_path, monkeypatch):
+    from agent_builder.design import document_rows_template, text_filter_contract
+
+    s = state()
+    s.update(draft=workflow_draft(s), confirmed=True, status='ready')
+    monkeypatch.setattr(document_rows_template, 'document_row_contract_issues',
+                        lambda state, draft: ['문서 표의 행 범위가 다릅니다.'])
+    monkeypatch.setattr(text_filter_contract, 'text_filter_issues',
+                        lambda state, draft: ['텍스트 필터가 확정되지 않았습니다.'])
+
+    store = Storage(tmp_path)
+    try:
+        with pytest.raises(ValueError) as rejection:
+            store.save_agent(s)
+        assert '문서 표의 행 범위가 다릅니다.' in str(rejection.value)
+        assert '텍스트 필터가 확정되지 않았습니다.' in str(rejection.value)
+        assert not store.agents()
+    finally:
+        store.close()
+
+
 def test_existing_tools_without_fingerprint_and_contradictory_payload_cannot_save(tmp_path):
     store=Storage(tmp_path);s=state();s.update(draft=workflow_draft(s),confirmed=True,status='ready',capability_assessment=assessment(s))
     with pytest.raises(ValueError):store.save_agent(s)

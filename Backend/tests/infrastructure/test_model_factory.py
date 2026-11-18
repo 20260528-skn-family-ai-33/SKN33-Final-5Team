@@ -142,3 +142,62 @@ def test_local_client_retries_transient_http_once_without_retrying_auth(monkeypa
         else:
             assert model.invoke('요약해줘').content == '요약 완료'
     assert len(calls) == attempts
+
+
+@pytest.mark.parametrize('ceiling, finish_reasons, expected_limits, typed_schema', [
+    pytest.param(8192, ['length', 'stop'], [5000, 8192], True, id='recover-with-larger-budget'),
+    pytest.param(8192, ['length', 'stop'], [5000, 8192], False, id='recover-dict-schema'),
+    pytest.param(6000, ['length', 'stop'], [5000, 6000], True, id='respect-deployment-ceiling'),
+    pytest.param(4096, ['length'], [4096], True, id='no-room-to-increase'),
+    pytest.param(8192, ['unauthorized'], [5000], True, id='unrelated-error'),
+    pytest.param(8192, ['length', 'length'], [5000, 8192], True, id='two-truncated-responses'),
+])
+def test_ollama_schema_response_recovers_length_once(monkeypatch, ceiling, finish_reasons, expected_limits, typed_schema):
+    import json
+    import httpx
+    from openai import AuthenticationError, LengthFinishReasonError
+    from pydantic import BaseModel
+
+    class Summary(BaseModel):
+        text: str
+
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL', 'https://fixture.test/v1')
+    monkeypatch.setenv('A4B_OLLAMA_NUM_PREDICT', str(ceiling))
+    monkeypatch.delenv('A4B_MAIN_API_KEY', raising=False)
+    monkeypatch.delenv('A4B_OLLAMA_MODEL_ALIASES', raising=False)
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        finish_reason = finish_reasons[len(requests) - 1]
+        if finish_reason == 'unauthorized':
+            return httpx.Response(401, json={'error': {'message': 'fixture authentication failure'}})
+        content = '{"text":"완성된 요약"}' if finish_reason == 'stop' else '{"text":"잘린 요약'
+        chunk = {'id': f'fixture-{len(requests)}', 'object': 'chat.completion.chunk', 'created': 1, 'model': 'fixture'}
+        chunks = [
+            {**chunk, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': content}}]},
+            {**chunk, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]},
+        ]
+        payload = ''.join('data: ' + json.dumps(item) + '\n\n' for item in chunks) + 'data: [DONE]\n\n'
+        return httpx.Response(200, text=payload, headers={'Content-Type': 'text/event-stream'})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        model = model_factory.create_chat_model('', 'fixture', max_tokens=5000, max_retries=0, http_client=client)
+        schema = Summary if typed_schema else Summary.model_json_schema()
+        summarize = model.with_structured_output(schema, method='json_schema', strict=True)
+        last = finish_reasons[-1]
+        if last == 'stop':
+            expected = Summary(text='완성된 요약')
+            assert summarize.invoke('요약해줘') == (expected if typed_schema else expected.model_dump())
+        else:
+            error_type = AuthenticationError if last == 'unauthorized' else LengthFinishReasonError
+            with pytest.raises(error_type):
+                summarize.invoke('요약해줘')
+
+    assert [request['max_tokens'] for request in requests] == expected_limits
+    for request in requests:
+        assert request['stream'] is True
+        assert request['response_format']['json_schema']['strict'] is True
+        assert request['messages'] == requests[0]['messages']
+        assert request['response_format'] == requests[0]['response_format']

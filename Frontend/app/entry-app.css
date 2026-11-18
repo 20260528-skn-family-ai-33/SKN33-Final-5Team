@@ -50,3 +50,7 @@
 .entry-external-workflow-main .embedded-workflow{width:100%;height:100%;min-height:0}
 
 .entry-history-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin:20px 0}
+.entry-workflow-card .entry-card-tools{display:flex;align-items:center;gap:12px}
+.entry-monitoring-main{max-width:none}
+.entry-app .as-danger,.as-main .as-danger{color:var(--a4b-danger)}
+.entry-app .as-danger:hover:not(:disabled),.as-main .as-danger:hover:not(:disabled){background:var(--a4b-neutral-soft);border-color:var(--a4b-danger)}

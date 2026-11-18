@@ -302,7 +302,8 @@ def validate_plan(raw, state):
                     text_contract = text_filter_state(state)
                     literal_equality = (not text_contract['issues'] and
                                         any(_condition(f) == _condition(rule) for _, rule in text_contract['predicates']))
-                    if f['field'] in text and not literal_equality and not _numeric_grounded(float(number), {**state,'resources':[]}, f['field']):
+                    if f['field'] in text and not literal_equality and not _numeric_grounded(
+                            float(number), state, f['field'], include_documents=False):
                         clauses=[part.strip() for message in users for part in re.split(r',\s+|[\n;]',message)
                                  if any(number_value(n.replace(',',''))==number for n in re.findall(r'(?<![\w.])\d[\d,]*(?:\.\d+)?',part))]
                         raise ValueError(f"{f['field']!r} 열과 선별 기준 {number}의 연결이 사용자 원문과 다릅니다. filter.field를 다음 원문에 명시된 열로 바꾸세요: " + ' / '.join(clauses)[:220])

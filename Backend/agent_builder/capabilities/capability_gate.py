@@ -96,8 +96,10 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    from agent_builder.design.document_rows_template import document_row_contract_issues
     from agent_builder.design.text_filter_contract import text_filter_issues
-    issues = text_filter_issues(state, state.get('draft') or {})
+    draft = state.get('draft') or {}
+    issues = document_row_contract_issues(state, draft) + text_filter_issues(state, draft)
     if issues:
         raise ValueError(' / '.join(issues))
     from agent_builder.conditions.clarification_core import open_required

@@ -94,6 +94,10 @@
 .as-inspected-source summary{cursor:pointer;overflow-wrap:anywhere}
 .as-inspected-source blockquote{margin:8px 0;padding:0 8px;border-left:2px solid var(--as-border);white-space:pre-wrap;overflow-wrap:anywhere}
 .as-file-preview caption{text-align:left;padding:6px;font-size:12px}
+.as-document-columns{min-width:0;border:0;padding:6px 0}
+.as-document-columns legend{padding:0;font-weight:600}
+.as-document-column-options{display:flex;flex-wrap:wrap;gap:8px 14px;margin:6px 0}
+.as-document-column-options label{display:inline-flex;align-items:center;gap:4px}
 .as-receipt-fields .as-field{margin:0 0 10px}
 
 /* The design canvas starts at reading size; fitting the whole graph is an explicit choice. */

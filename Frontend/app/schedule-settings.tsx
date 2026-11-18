@@ -66,7 +66,7 @@ export function ScheduleSettings({workflowId,workflowVersion,schedule,onChange,d
    <p>{scheduleDescription(schedule.spec)} · 서울 표준시</p>
    {scheduleDateNote(schedule.spec)&&<small>{scheduleDateNote(schedule.spec)}</small>}
    {nextRun&&<small>다음 실행: {nextRun}</small>}
-   <div className="schedule-settings-actions"><button type="button" className="as-button as-primary" disabled={locked||!schedule.active&&(activationDisabled||stale)} onClick={()=>void act('toggle')}>{schedule.active?'예약 중지':'예약 켜기'}</button><button type="button" className="as-button" disabled={locked} onClick={()=>{if(editing)closeEditor();else{setSpec(baseline);setEditing(true);setError('');}}}>일정 {editing?'수정 닫기':'수정'}</button><button type="button" className="as-button schedule-remove" disabled={locked} onClick={()=>void act('remove')}>예약 해제</button></div>
+   <div className="schedule-settings-actions"><button type="button" className="as-button as-primary" disabled={locked||!schedule.active&&(activationDisabled||stale)} onClick={()=>void act('toggle')}>{schedule.active?'예약 중지':'예약 켜기'}</button><button type="button" className="as-button as-secondary" disabled={locked} onClick={()=>{if(editing)closeEditor();else{setSpec(baseline);setEditing(true);setError('');}}}>일정 {editing?'수정 닫기':'수정'}</button><button type="button" className="as-button as-danger schedule-remove" disabled={locked} onClick={()=>void act('remove')}>예약 해제</button></div>
    {stale&&<p className="schedule-settings-help">워크플로우가 수정되었습니다. 일정을 수정·저장하여 현재 버전 적용을 확인한 뒤 예약을 켜세요.</p>}
    {!schedule.active&&activationDisabled&&<p className="schedule-settings-help">자동 실행에 필요한 자료·요청 설정과 서비스 연결을 준비하면 예약을 켤 수 있습니다.</p>}
   </>}

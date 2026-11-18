@@ -139,7 +139,7 @@ class Storage:
         if not row: raise ValueError('표 파일을 찾을 수 없습니다.')
         return json.loads(row[0])
     def agents(self):
-        return [json.loads(r[0]) for r in self.db.execute('SELECT json FROM agent_versions v WHERE {ws:v} AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id) ORDER BY {seq} DESC')]
+        return [value for r in self.db.execute('SELECT json FROM agent_versions v WHERE {ws:v} AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id) ORDER BY {seq} DESC') if not (value:=json.loads(r[0])).get('deleted_at')]
     def agent_summaries(self):
         """Menu cards do not need prompts, snapshots, dependencies or saved node settings."""
         config=self.json_text('v.json','config')
@@ -148,16 +148,18 @@ class Storage:
         nodes=self.json_text(self.json_text(config,'workflow'),'nodes')
         count=f'json_array_length(({nodes})::json)' if self.dialect=='postgres' else f'json_array_length({nodes})'
         rows=self.db.execute('SELECT '+','.join(fields)+','+count+' FROM agent_versions v WHERE {ws:v} '
-            'AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id) ORDER BY {seq} DESC')
+            'AND '+self.json_text('v.json','deleted_at')+' IS NULL AND version=(SELECT MAX(version) FROM agent_versions WHERE {ws} AND agent_id=v.agent_id) ORDER BY {seq} DESC')
         return [{'id':id,'version':int(version),'model':model,'credential_id':credential,'updated_at':updated,
                  'node_count':int(size) if size is not None else len(json.loads(tools or '[]')),
                  'config':{'name':name,'purpose':purpose or '', 'tool_ids':json.loads(tools or '[]')}}
                 for id,version,model,credential,updated,name,purpose,tools,size in rows]
 
-    def agent(self,id):
+    def agent(self,id,*,include_deleted=False):
         row=self.db.execute('SELECT json FROM agent_versions WHERE {ws} AND agent_id=? ORDER BY version DESC LIMIT 1',(id,)).fetchone()
         if not row: raise ValueError('저장한 에이전트를 찾을 수 없습니다.')
-        return json.loads(row[0])
+        agent=json.loads(row[0])
+        if agent.get('deleted_at') and not include_deleted:raise ValueError('삭제된 워크플로우는 실행하거나 수정할 수 없습니다.')
+        return agent
     def agent_version(self,id,version):
         row=self.db.execute('SELECT json FROM agent_versions WHERE {ws} AND agent_id=? AND version=?',(id,version)).fetchone()
         if not row:raise ValueError('저장된 워크플로우 버전을 찾을 수 없습니다.')
@@ -210,6 +212,8 @@ class Storage:
         self.begin_write()
         try:
             session_id=state['session_id']
+            if self.db.execute('SELECT 1 FROM agent_versions WHERE {ws} AND '+self.json_text('json','session_id')+'=? AND '+self.json_text('json','deleted_at')+' IS NOT NULL LIMIT 1',(session_id,)).fetchone():
+                raise ValueError('삭제된 워크플로우의 저장 요청입니다. 새 설계에서 다시 시작하세요.')
             self.require_assets(draft.get('document_ids',[]))
             for old in self.agents():
                 if old['session_id']==session_id and {k:v for k,v in old['config'].items() if k!='node_snapshots'}==draft:

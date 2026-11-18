@@ -152,6 +152,84 @@ def test_amending_one_bound_preserves_other_bounds_and_columns(tmp_path):
     with_store(s, rows, [(15, 3), (20, 3)], tmp_path)
 
 
+@pytest.mark.parametrize('clear', ['모든 숫자 조건은 취소하고', '비용과 수량 조건 취소하고'])
+@pytest.mark.parametrize('stale_model_result', [False, True])
+def test_numeric_cancel_then_reassert_applies_only_the_new_filter(tmp_path, clear, stale_model_result):
+    s = compound_state('수량이 3개 이상이고 비용이 10원 초과이며 비용이 20원 이하인 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    initial = {'filter.field': ('수량', '수량'), 'filter.operator': ('gte', '이상'), 'filter.value': ('3', '3개'),
+               'output.format': ('json', 'JSON'), 'missing.policy': ('error', '오류'), 'duplicate.policy': ('keep', '유지')}
+    s = generate(seal(s, initial))
+    s['messages'].append(dict(role='user', content=f'{clear} 비용은 20원보다 큰 행만 남겨줘'))
+    amended = {**initial, 'filter.field': ('비용', '비용은 20원'), 'filter.operator': ('gt', '보다 큰'),
+               'filter.value': ('20', '20원보다')}
+    s = generate(seal(s, initial if stale_model_result else amended))
+    rows = [dict(비용=cost, 수량=quantity) for cost, quantity in [(9, 3), (15, 3), (20, 3), (21, 3), (25, 2)]]
+    with_store(s, rows, [(21, 3), (25, 2)], tmp_path)
+
+
+@pytest.mark.parametrize(('join', 'expected'), [('이고', [(15, 2)]), ('이거나', [(15, 4), (15, 2), (25, 2)])])
+def test_cancelled_incomplete_operand_leaves_a_single_short_answer_to_apply(tmp_path, join, expected):
+    connective = '고' if join == '이고' else '거나'
+    s = compound_state(f'할인이 5원 이상{join} 비용이 낮{connective} 수량이 적은 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    waiting = compound_filter_state(s)
+    assert waiting['pending'] == 'complete' and waiting['missing_fields'] == ['비용', '수량']
+    s['messages'].append(dict(role='user', content='비용 조건 취소해줘'))
+    waiting = compound_filter_state(s)
+    assert waiting['pending'] == 'complete' and waiting['missing_fields'] == ['수량']
+    s['messages'].append(dict(role='user', content='3개 미만'))
+    s = generate(seal(s, {'filter.field': ('할인', '할인'), 'filter.operator': ('gte', '이상'),
+        'filter.value': ('5', '5원'), 'output.format': ('json', 'JSON'),
+        'missing.policy': ('error', '오류'), 'duplicate.policy': ('keep', '유지')}))
+    rows = [dict(비용=cost, 수량=quantity, 할인=discount) for cost, quantity, discount in
+            [(15, 4, 5), (15, 2, 5), (25, 2, 1), (25, 4, 1)]]
+    with_store(s, rows, expected, tmp_path)
+
+
+@pytest.mark.parametrize('structured', [False, True])
+@pytest.mark.parametrize('join', ['이고', ','])
+def test_short_answer_after_operand_cancellation_resumes_real_graph(tmp_path, structured, join):
+    from langgraph.types import Command
+    from agent_builder.design.graph import build_graph
+    from tests.conditions.test_condition_readiness import Fake, proposal
+
+    s = compound_state(f'할인이 5원 이상{join} 비용이 낮고 수량이 적은 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = s['resources'][0]
+    asset.update(format='csv', profile={field: {'types': ['number']} for field in asset['columns']})
+    raw = proposal(s, {'filter.field': '할인', 'filter.operator': None, 'filter.value': None,
+                       'output.format': 'json', 'missing.policy': 'error', 'duplicate.policy': 'keep'})
+    rows = [dict(비용=15, 수량=2, 할인=5), dict(비용=15, 수량=4, 할인=5), dict(비용=20, 수량=2, 할인=1)]
+    store = Storage(tmp_path)
+    store.add_asset(asset, rows)
+    graph, conn = build_graph(store, conversation=compile_conditions, condition_transport=Fake([raw, raw, raw]),
+                              condition_mode='enforce')
+    config = {'configurable': {'thread_id': s['session_id']}, 'recursion_limit': 40}
+    try:
+        assert graph.invoke(s, config)['status'] == 'needs_clarification'
+        waiting = graph.invoke(Command(resume=dict(type='message', content='비용 조건 취소해줘')), config)
+        assert waiting['status'] == 'needs_clarification'
+        question, = waiting['pending_questions']
+        assert question['key'] == 'filter.match' and '수량' in question['text'] and '비용' not in question['text']
+        answer = '3개 미만'
+        reply = dict(type='message', question_id=question['id'], content=answer)
+        if structured:
+            reply.update(content=f"{question['text']} → {answer}",
+                         question_answers=[dict(question_id=question['id'], value=answer)])
+        ready = graph.invoke(Command(resume=reply), config)
+        if join == ',':
+            assert ready['status'] == 'needs_clarification'
+            relation, = ready['pending_questions']
+            assert relation['options'] == ['모두 만족', '하나라도 만족']
+            ready = graph.invoke(Command(resume=dict(type='message', question_id=relation['id'], content='모두 만족')), config)
+        assert ready['status'] == 'ready', ready.get('issues') or ready.get('pending_questions')
+        saved = graph.invoke(Command(resume=dict(type='confirm')), config)
+        assert saved['status'] == 'saved'
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[asset['id']])
+        assert result['status'] == 'succeeded' and result['rows'] == rows[:1]
+    finally:
+        conn.close()
+        store.close()
+
+
 @pytest.mark.parametrize('column', ['파일명길이', '상품설명길이'])
 def test_numeric_column_containing_metadata_label_is_still_a_filter(column):
     s = compound_state(f'수량이 3개 이상이고 {column}가 10 이상인 행을 JSON으로 저장해줘.')

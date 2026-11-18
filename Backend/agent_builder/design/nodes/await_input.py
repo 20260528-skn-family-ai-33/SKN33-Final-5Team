@@ -4,10 +4,14 @@ from langgraph.types import interrupt
 _REQUIREMENT_SOURCES = ('requirement', 'requirements')
 
 
-def await_input_node(state):
+def input_question_records(state):
     from agent_builder.design.question_controls import project_question_controls
-    pending=[q for q in project_question_controls(state)['pending_questions']
-             if state.get('condition_enforced') or q.get('source') in ('receipt', 'orchestration', *_REQUIREMENT_SOURCES)]
+    return [q for q in project_question_controls(state)['pending_questions']
+            if state.get('condition_enforced') or q.get('source') in ('receipt', 'orchestration', *_REQUIREMENT_SOURCES)]
+
+
+def await_input_node(state):
+    pending=input_question_records(state)
     payload={'kind':'clarification','questions':state['draft']['questions']+state['issues']}
     if pending:payload['question_records']=pending
     while True:

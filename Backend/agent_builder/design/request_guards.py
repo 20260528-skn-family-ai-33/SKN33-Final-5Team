@@ -213,6 +213,8 @@ def request_guard_issues(state, draft):
     issues.extend(text_filter_issues(state, draft))
     if draft.get('questions') or draft.get('unsupported'):
         return issues
+    from .document_rows_template import document_row_contract_issues
+    issues.extend(document_row_contract_issues(state, draft))
     from .output_selection_request import output_selection_issues
     issues.extend(output_selection_issues(state, draft))
     from .numeric_filter_proof import numeric_filter_issues

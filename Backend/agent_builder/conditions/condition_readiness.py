@@ -527,7 +527,10 @@ def _compound_turn_text(state, index, message):
     event = next((entry for entry in state.get('condition_answers', []) if entry.get('turn') == index), {})
     if 'filter.match' in event.get('candidate_keys', []):
         from agent_builder.design.text_filter_contract import text_filter_state
-        if text_filter_state({**state, 'messages': state['messages'][:index]})['issues']:
+        prior = text_filter_state({**state, 'messages': state['messages'][:index]})
+        reply = (user_filter_text(state, index, message) or '').strip().rstrip('.!?')
+        numeric_owner = any(field in prior.get('numeric_fields', set()) for field in prior.get('pending_decisions', {}))
+        if prior['issues'] and not (reply == KEEP_ALL and numeric_owner):
             return None  # This answer owns the pending text predicate, not the numeric group.
     return user_filter_text(state, index, message)
 
@@ -630,6 +633,8 @@ def compound_filter_state(state):
             continue
         if not rules:
             continue
+        if text == KEEP_ALL and pending is None:
+            continue  # A keep reply cannot introduce a new amendment.
         if pending == 'match' and text == KEEP_ALL:
             if addition:
                 mode, rules, pending = addition['mode'], addition['rules'], None

@@ -26,8 +26,8 @@ def text_filter_state(state):
     active, pending, cleared_fields = {}, {}, set()
     numeric_fields, replaced_numeric_fields = set(), set()
 
-    def ask(field, message, reason='predicate'):
-        pending[field] = PendingFilterDecision(reason, message, reason == 'cancel' or field in active)
+    def ask(field, message, reason='predicate', proposed=()):
+        pending[field] = PendingFilterDecision(reason, message, reason == 'cancel' or field in active, proposed)
 
     users = [(index, message) for index, message in enumerate(state.get('messages', [])) if message.get('role') == 'user']
     from agent_builder.conditions.condition_readiness import _COMPARATOR_SPAN, _comparison_subject, _uncertain_comparison, _excludes_named_range, _POLICY_SUBJECTS, _schedule_evidence
@@ -57,6 +57,7 @@ def text_filter_state(state):
             numeric_fields.clear()
             replaced_numeric_fields.clear()
             continue
+        conflicting_proposals = {}
         events = [(start, 'clear', field, None) for start, _, field in filter_clear_events(text, fields)]
         events += [(start, 'pending_cancel', field, f'{field} 조건을 취소할지 확인해주세요. 유지하거나 취소할 조건을 알려주세요.')
                    for start, _, field in filter_clear_events(text, fields, uncertain=True)]
@@ -108,7 +109,8 @@ def text_filter_state(state):
             # silently replayed as a replacement. Ask how they combine.
             for field in {atom.field for atom in matches}:
                 if len({atom.value for atom in matches if atom.field == field}) > 1:
-                    events.append((offset + len(clause), 'pending', field, f'{field}의 여러 값을 어떻게 결합할지 확인해주세요.'))
+                    conflicting_proposals[field] = tuple(atom.value for atom in matches if atom.field == field)
+                    events.append((offset + len(clause), 'pending_conflict', field, f'{field}의 여러 값을 어떻게 결합할지 확인해주세요.'))
             for field in sorted(fields):
                 subject = re.search(r'(?<![\w])' + re.escape(field) + r'\s*+(?:선별\s*+)?(?:조건|필터|기준)', clause)
                 if not subject or in_quoted_text(text, offset + subject.start()):
@@ -135,9 +137,12 @@ def text_filter_state(state):
             elif kind == 'negative':
                 if field not in cleared_fields:
                     ask(field, f'{field} 조건을 적용할지 확인해주세요. 적용할 조건을 적거나 {field} 조건 취소라고 알려주세요.')
-            elif kind in ('pending', 'pending_cancel'):
-                ask(field, value, 'cancel' if kind == 'pending_cancel' else 'predicate')
+            elif kind in ('pending', 'pending_cancel', 'pending_conflict'):
+                reason = {'pending_cancel': 'cancel', 'pending_conflict': 'conflict'}.get(kind, 'predicate')
+                ask(field, value, reason, conflicting_proposals.get(field, ()))
             elif kind == 'predicate':
+                if field in conflicting_proposals:
+                    continue  # A proposed replacement cannot mutate the confirmed value before resolution.
                 intent = addition_intent(text)
                 if intent == 'denied':
                     continue
@@ -152,6 +157,8 @@ def text_filter_state(state):
                 cleared_fields.discard(field)
     return {'predicates': list(active.values()), 'issues': [decision.message for decision in pending.values()], 'cleared_fields': cleared_fields,
             'replaced_numeric_fields': replaced_numeric_fields,
+            'numeric_fields': numeric_fields,
+            'pending_decisions': pending,
             'can_keep': bool(pending) and all(decision.can_keep for decision in pending.values())}
 
 

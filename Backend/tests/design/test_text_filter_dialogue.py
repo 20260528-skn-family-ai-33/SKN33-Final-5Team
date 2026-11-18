@@ -230,3 +230,49 @@ def test_quoted_literals_do_not_become_connectives(instruction):
         assert contract['predicates'][0][1]['value'] == '서울 또는 부산'
     else:
         assert {r['field'] for _, r in contract['predicates']} == {'지역', '등급'}
+
+
+@pytest.mark.parametrize('followup', [
+    '지역이 부산이고 지역이 대구인 행만 남겨줘',
+    '비용 조건 삭제해도 될까?',
+    '지역 조건 삭제해도 될까?',
+])
+@pytest.mark.parametrize('structured', [False, True])
+def test_followup_proposals_do_not_replace_confirmed_values_until_resolved(tmp_path, followup, structured):
+    s = current('지역이 서울인 행만 남겨줘.')
+    raw = proposal(s, {'filter.field': '비용', 'filter.operator': None, 'filter.value': None,
+                      'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'})
+    fake = Fake([raw, raw]); store = Storage(tmp_path)
+    store.add_asset(s['resources'][0], ROWS)
+    graph, connection = build_graph(store, conversation=compile_conditions, condition_transport=fake, condition_mode='enforce')
+    config = {'configurable': {'thread_id': s['session_id']}}
+    try:
+        first = graph.invoke(s, config)
+        assert first['status'] == 'ready'
+        original = text_filter_state(first)['predicates']
+        asked = graph.invoke(Command(resume=dict(type='message', content=followup)), config)
+        assert asked['status'] == 'needs_clarification'
+        assert text_filter_state(asked)['predicates'] == original
+        if '대구' in followup:
+            assert text_filter_state(asked)['pending_decisions']['지역'].proposed == ('부산', '대구')
+        q = next(q for q in asked['pending_questions'] if q['key'] == 'filter.match')
+        before = fake.calls
+        answer = dict(type='message', content='기존 조건 모두 유지', question_id=q['id'])
+        if structured:
+            answer.update(content=q['text'] + ' → 기존 조건 모두 유지',
+                          question_answers=[dict(question_id=q['id'], value='기존 조건 모두 유지')])
+        ready = graph.invoke(Command(resume=answer), config)
+        assert ready['status'] == 'ready', ready.get('issues')
+        assert not ready['pending_questions'] and fake.calls == before
+        assert text_filter_state(ready)['predicates'] == original
+        saved = graph.invoke(Command(resume=dict(type='confirm')), config)
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[s['resources'][0]['id']])
+        assert result['status'] == 'succeeded' and result['rows'] == [ROWS[0], ROWS[2]]
+    finally:
+        connection.close(); store.close()
+
+
+def test_unconfirmed_conflicting_proposal_is_not_a_keepable_original():
+    s = current('지역이 부산이고 지역이 대구인 행만 남겨줘')
+    contract = text_filter_state(s)
+    assert contract['issues'] and not contract['predicates'] and not contract['can_keep']

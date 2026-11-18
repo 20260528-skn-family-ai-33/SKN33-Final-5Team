@@ -31,3 +31,4 @@ class PendingFilterDecision:
     reason: str
     message: str
     can_keep: bool
+    proposed: tuple = ()

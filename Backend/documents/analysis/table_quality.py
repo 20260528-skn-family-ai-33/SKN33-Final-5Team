@@ -95,6 +95,28 @@ def anchor_geometry_issues(matches):
     return issues
 
 
+def row_alignment_supported(peers, *, references=None):
+    """Shared alignment policy for unique anchors and repeated cell confirmation.
+
+    Multiline support must come from an independent prevalidated reference;
+    a candidate cannot supply the spanning box that certifies itself.
+    """
+    def agreement(a, b, *, spanning=False):
+        intersection = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+        heights = a[3]-a[1], b[3]-b[1]
+        return intersection >= .65 * (min(heights) if spanning else max(heights))
+    aligned = all(agreement(a['box'], b['box'])
+                  for i, (_, a) in enumerate(peers) for _, b in peers[i+1:])
+    if aligned:
+        return True
+    references = peers if references is None else references
+    return any(('\n' in str(cell.get('text', '')).strip() or '\n' in anchor['text'].strip())
+               and all(anchor['box'][1] <= other['box'][1] < other['box'][3] <= anchor['box'][3]
+                       and agreement(anchor['box'], other['box'], spanning=True)
+                       for _, other in peers if other is not anchor)
+               for cell, anchor in references)
+
+
 def independent_anchor_issues(matches, cells, declared_cols=None):
     """Do not let a candidate's own box manufacture its position evidence.
 
@@ -110,24 +132,9 @@ def independent_anchor_issues(matches, cells, declared_cols=None):
             rows[row].append((cell, piece))
         starts.add(col)
         ends.add(col + cell.get('col_span', 1))
-    def agreement(a, b, *, spanning=False):
-        intersection = max(0, min(a[3], b[3]) - max(a[1], b[1]))
-        heights = a[3]-a[1], b[3]-b[1]
-        return intersection >= .65 * (min(heights) if spanning else max(heights))
     issues = []
     for row, peers in rows.items():
-        # Ordinary boxes must agree substantially in both directions. A tiny
-        # intersection or a tall single-line candidate cannot certify a row.
-        aligned = all(agreement(a['box'], b['box'])
-                      for i, (_, a) in enumerate(peers) for _, b in peers[i+1:])
-        # An explicitly multiline cell can independently span differently
-        # aligned peers. Do not build a union from the candidates themselves.
-        multiline = any(('\n' in str(cell.get('text', '')).strip() or '\n' in anchor['text'].strip())
-                        and all(anchor['box'][1] <= other['box'][1] < other['box'][3] <= anchor['box'][3]
-                                and agreement(anchor['box'], other['box'], spanning=True)
-                                for _, other in peers if other is not anchor)
-                        for cell, anchor in peers)
-        if not aligned and not multiline:
+        if not row_alignment_supported(peers):
             issues.append(dict(kind='anchor_row_alignment_conflict', row=row))
     logical_cols = max((position(c)[1] + c.get('col_span', 1) for c in cells), default=0)
     if type(declared_cols) is int:
@@ -207,16 +214,22 @@ def reconcile(data, prediction):
     for cell, p in matches:
         confirmed.add(position(cell))
         anchors.add(p['index'])
-        if cell.get('row_span', 1) == cell.get('col_span', 1) == 1:
+        if cell.get('row_span', 1) == 1:
             row, col = position(cell)
             rows[row].append(p['box'])
-            columns[col].append((row, p['box']))
+            if cell.get('col_span', 1) == 1:
+                columns[col].append((row, p['box']))
     def overlap(a, b, axis):
         return max(0, min(a[axis+2], b[axis+2]) - max(a[axis], b[axis])) / min(a[axis+2]-a[axis], b[axis+2]-b[axis])
     vertical_corridors = row_corridors(rows, cells)
     # Freeze row anchors: a repeated-value candidate cannot widen its own row.
     row_evidence = {r: list(boxes) for r, boxes in rows.items()}
-    def safe_rows(box, *, repair=True):
+    row_references = defaultdict(list)
+    for cell, piece in matches:
+        if cell.get('row_span', 1) == 1:
+            row_references[position(cell)[0]].append((cell, piece))
+    def safe_rows(piece, *, repair=True):
+        box = piece['box']
         touched = [r for r, boxes in row_evidence.items() if any(overlap(box, b, 1) > 0 for b in boxes)]
         if len(touched) != 1:
             return []
@@ -224,7 +237,13 @@ def reconcile(data, prediction):
         lo, hi = vertical_corridors.get(row, (math.inf, -math.inf))
         if repair and not lo <= box[1] < box[3] <= hi:
             return []
-        return [row] if all(overlap(box, b, 1) >= .65 for b in row_evidence[row]) else []
+        # Repair already requires full containment in the independently fixed
+        # row corridor; retain its existing bounded overlap policy.
+        if repair and all(overlap(box, b, 1) >= .65 for b in row_evidence[row]):
+            return [row]
+        references = row_references[row]
+        peers = [*references, ({'text': piece['text']}, piece)]
+        return [row] if row_alignment_supported(peers, references=references) else []
 
     # Column corridors allow header/body alignment differences. Boundaries
     # come from gaps between existing column evidence, never the candidate.
@@ -245,7 +264,7 @@ def reconcile(data, prediction):
     for p in pieces:
         if p['index'] in anchors or p['score'] < .98:
             continue
-        rr = safe_rows(p['box'], repair=False)
+        rr = safe_rows(p, repair=False)
         if len(rr) != 1:
             continue
         candidates = [c for c in cells if position(c)[0] == rr[0]
@@ -275,7 +294,7 @@ def reconcile(data, prediction):
     for p in pieces:
         if p['index'] in anchors:
             continue
-        rr = safe_rows(p['box'])
+        rr = safe_rows(p)
         cols = [c for c, bs in columns.items() if any(overlap(p['box'], b, 0) > 0 for _, b in bs)]
         if len(rr) != 1 or len(cols) != 1 or p['score'] < .98:
             report['issues'].append({'kind': 'unmapped_ocr', 'ocr_index': p['index']})

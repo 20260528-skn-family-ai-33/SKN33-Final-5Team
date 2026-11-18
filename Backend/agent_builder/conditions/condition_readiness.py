@@ -737,20 +737,22 @@ def literal_condition_issues(state):
     ledger=state.get('condition_ledger') or {}
     if not (state.get('condition_required') or state.get('condition_enforced')) or ledger.get('decision')!='ready':
         return []
+    slots = ledger.get('slots') or {}
     catalog,_=source_catalog(state)
-    literals=explicit_policies(state,catalog,duplicate_candidate=ledger.get('slots', {}).get('duplicate.field'))
-    issue = _threshold_evidence_issue(ledger.get('slots') or {}, state)
+    literals=explicit_policies(state,catalog,duplicate_candidate=slots.get('duplicate.field'))
+    issue = _threshold_evidence_issue(slots, state)
     issues=[issue] if issue else []
     for key,item in literals.items():
-        stored=(ledger.get('slots') or {}).get(key)
+        stored=slots.get(key)
         if stored and (item['status']!='specified' or stored.get('status')!='specified' or stored.get('value')!=item.get('value')):
             issues.append(f'{key}: 저장된 조건이 사용자 원문과 달라 재판정이 필요합니다.')
-    for key, stored in (ledger.get('slots') or {}).items():
+    for key, stored in slots.items():
         literal = literals.get(key, {})
         if (stored.get('status') == 'specified'
                 and not (literal.get('status') == 'specified' and literal.get('value') == stored.get('value'))
                 and not _grounded_enum(key, stored.get('value'),
-                    '\n'.join(e['quote'] for e in stored.get('evidence', [])), state, stored.get('evidence', []))):
+                    '\n'.join(e['quote'] for e in stored.get('evidence', [])), state, stored.get('evidence', []),
+                    condition_slots=slots)):
             issues.append(f'{key}: 저장된 확정 값의 명시적 근거를 다시 확인해야 합니다.')
     return issues
 
@@ -1139,7 +1141,24 @@ def _scoped_answer(key, value, state, evidence):
     return False
 
 
-def _grounded_enum(key, value, quote, state=None, evidence=()):
+_ROW_FILTER_SELECTOR = r'(?:행|레코드|항목|셀)(?:\s*만)?|(?:것|건|주문(?:\s*건)?)\s*만'
+
+
+def _written_text_equality(condition_slots, evidence):
+    """Recognize a named field and literal value in an unquoted selection clause."""
+    field = condition_slots.get('filter.field', {})
+    criterion = condition_slots.get('filter.value', {})
+    if any(slot.get('status') != 'specified' or not isinstance(slot.get('value'), str) or not slot['value'].strip()
+           for slot in (field, criterion)):
+        return False
+    selection = re.compile(
+        r'(?<!\w)' + re.escape(field['value']) + r'\s*(?:열\s*)?(?:이|가|은|는)\s*'
+        + re.escape(criterion['value']) + r'\s*인\s*(?:' + _ROW_FILTER_SELECTOR + r')\s*'
+        r'(?:남겨|남기|골라|선별|추려|유지|보존)(?!\s*(?:하)?지(?:는|도)?\s*(?:마|말|않))')
+    return any(ref.get('source_id') == 'user' and selection.search(ref['quote']) for ref in evidence)
+
+
+def _grounded_enum(key, value, quote, state=None, evidence=(), *, condition_slots=None):
     """Check narrow literal meanings, not just the existence of an evidence ID.
 
     Unknown paraphrases remain unresolved. The model may ask rather than turn
@@ -1168,6 +1187,8 @@ def _grounded_enum(key, value, quote, state=None, evidence=()):
     if key == 'schedule.month_end':
         return any(key=='schedule.month_end' and written==value for key,written,_ in schedule_literals(quote, follow_up=True))
     if key == 'filter.operator':
+        if value == 'eq' and _written_text_equality(condition_slots or {}, evidence):
+            return True
         aliases = {'gt': r'초과|보다\s*큰', 'gte': r'이상', 'lt': r'미만|보다\s*작은',
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
@@ -1271,10 +1292,15 @@ def validate_conditions(raw, state, catalog):
         previous['operations'] = [op for op in previous.get('operations', []) if op != 'schedule']
         previous['slots'] = {key:item for key,item in previous.get('slots', {}).items()
                              if not key.startswith('schedule.')}
-    for key, old in previous.get('slots', {}).items():
-        if old.get('status') == 'specified' and not _grounded_enum(key, old['value'], '\n'.join(e['quote'] for e in old.get('evidence', [])), state, old.get('evidence', [])):
+    previous_slots = previous.get('slots', {})
+    for key, old in previous_slots.items():
+        evidence = old.get('evidence', [])
+        if old.get('status') == 'specified' and not _grounded_enum(
+                key, old['value'], '\n'.join(e['quote'] for e in evidence), state, evidence,
+                condition_slots=previous_slots):
             old.update(status='missing', value=None, evidence_ids=[], evidence=[])
             invalid.append(f'{key}: 이전 확정 값의 원문 근거를 재검증')
+    proposed_slots = {**previous_slots, **{item['key']: item for item in proposal['conditions']}}
     latest = max((i for i, m in enumerate(state.get('messages', [])) if m['role'] == 'user'), default=-1)
     accepted_turn = previous.get('validated_user_turn', latest - 1)
     for condition in proposal['conditions']:
@@ -1291,7 +1317,7 @@ def validate_conditions(raw, state, catalog):
             try:
                 value = _value(key, condition['value'])
                 quote = '\n'.join(e['quote'] for e in evidence)
-                if not _grounded_enum(key, value, quote, state, evidence):
+                if not _grounded_enum(key, value, quote, state, evidence, condition_slots=proposed_slots):
                     raise ValueError('조건 값에 대응하는 명시적 원문 근거가 없습니다.')
                 if key.endswith('.field') and value not in quote:
                     raise ValueError('원문에 없는 열 이름입니다.')
@@ -1656,11 +1682,11 @@ _WRITTEN_SORT = re.compile(
 _SORT_ALL = r'(?:모두|전부|다)\s*'
 _SORT_WITHDRAWAL = r'빼|제외|없이|취소|필요\s*없|안\s*(?:해|함|할)|하지\s*(?:마|말|않)|말고|지워|지우|삭제'
 _SORT_DROPPED_AFTER = re.compile(
-    r'\s*(?:으로|로)?\s*(?:(?P<sort_verb>정렬)\s*)?(?:은|는|을|를|이|가|도|기준은|기준을)?\s*'
+    r'\s*(?:으로|로)?\s*(?:(?P<sort_verb>정렬)\s*)?(?:은|는|을|를|이|가|도|만|기준은|기준을)?\s*'
     r'(?:아니라|아니고|아닌|대신|(?:' + _SORT_ALL + r')?(?:' + _SORT_WITHDRAWAL + r'))')
 # "정렬 빼고", "정렬은 하지 마", "정렬 없이", "입력 순서 그대로": the user withdrew sorting.
 _SORT_CANCELLED = re.compile(
-    r'정렬\s*(?:은|을|도|기준은|기준을)?\s*(?P<all_keys>' + _SORT_ALL + r')?(?:' + _SORT_WITHDRAWAL + r')'
+    r'정렬\s*(?:은|을|도|만|기준은|기준을)?\s*(?P<all_keys>' + _SORT_ALL + r')?(?:' + _SORT_WITHDRAWAL + r')'
     r'|(?:입력|원래|파일|원본)\s*순서\s*(?:를|는|대로)?\s*(?:그대로|유지)')
 _SORT_VERB = (r'정렬(?:(?=해|하|을|은|는|도|이|기준|순|없이|빼|제외|취소|안|말)|(?![가-힣]))'
               r'(?!\s*(?:완료|대기|상태|여부|중(?![가-힣])))')
@@ -1669,7 +1695,7 @@ _SORT_WORDS = re.compile(_SORT_VERB + '|' + _ASC_WORDS + '|' + _DESC_WORDS)
 _SORT_VALUE = re.compile(
     r'(?:(?<![가-힣A-Za-z0-9_])정렬\s*(?:이|가|은|는)\s*)?'
     r'(?:' + _ASC_WORDS + '|' + _DESC_WORDS + r')'
-    r'(?=\s*(?:(?:과|와)\s*(?:같은|동일한|일치하는)|인)\s*(?:행|레코드|항목|셀|(?:것|건|주문)\s*만))'
+    r'(?=\s*(?:(?:과|와)\s*(?:같은|동일한|일치하는)|인)\s*(?:' + _ROW_FILTER_SELECTOR + r'))'
     # "정렬방식이 내림차순이 아닌 주문만": after a subject particle the direction is the compared value.
     r'|(?:(?<=[이가])|(?<=[이가]\s))(?:' + _ASC_WORDS + '|' + _DESC_WORDS + r')'
     r'(?=\s*(?:인|이\s*아닌|(?:과|와)\s*(?:같은|동일한|일치하는|다른))(?![^.,!?\n]{0,10}정렬))')
@@ -1909,20 +1935,26 @@ def _sort_request_issue(request, draft):
 
 
 _ROW_ORDER_ACTION = re.compile(
-    r'(?P<sort>' + _SORT_VERB + r'|정렬(?=\s*(?:한|된|할)\s*(?:뒤|후|다음|전)))|'
+    r'(?P<sort>' + _SORT_VERB + r'|정렬(?=\s*(?:부터|(?:한|된|할)\s*(?:뒤|후|다음|전))))|'
     r'(?P<deduplicate>중복\s*(?:(?:된|되는)\s*)?(?:행\s*)?(?:은|는|을|를)?\s*(?:제거|삭제|정리|없애)|'
     r'중복(?=\s*(?:은|는|을|를)?\s*(?:먼저|우선)\s*(?:제거|삭제|정리|없애))|'
     r'(?:(?:첫|마지막)\s*행\s*(?:만|을|은)?|하나\s*만)\s*(?:남(?:기|긴|길|겨)|유지|보존))')
 _ROW_ORDER_BEFORE = re.compile(r'\s*(?:하기|하는|할|기|는)?\s*전(?:에|에는)?(?=[\s,.!?]|$)')
 _ROW_ORDER_AFTER = re.compile(r'\s*(?:한|된|하고|하여|고)?\s*(?:난\s*)?(?:뒤|후|다음|나서)(?:에|에는)?(?=[\s,.!?]|$)')
 _ROW_ORDER_NEXT = re.compile(r'[,.;!?。！？\n]\s*(?:그리고\s*)?(?:그\s*)?(?:다음(?:으로|에는|에)?|이어서|뒤이어|후에)\s*')
-_ROW_ORDER_FIRST_AFTER = re.compile(r'\s*(?:은|는|을|를)?\s*(?:먼저|우선)(?=[\s,.!?]|$)')
+_ROW_ORDER_FIRST_AFTER = re.compile(
+    r'\s*(?:(?:은|는|을|를)?\s*(?:먼저|우선)|부터)(?=[\s,.!?]|하|해|$)')
 _ROW_ORDER_FIRST_BEFORE = re.compile(r'(?<!\w)(?:먼저|우선)(?!\w)[^,.!?。！？;\n]*$')
+_ROW_ORDER_SHORT_FIRST_BEFORE = re.compile(r'(?<!\w)(?:먼저|우선)\s*$')
+_ROW_ORDER_SHORT_COMMAND = re.compile(
+    r'\s*(?:을|를)?\s*(?:(?:시작|진행|실행|적용)\s*)?'
+    r'(?:해(?:\s*(?:줘|주세요|요))?|하(?:자|세요))?\s*[.!?。！？]*\s*$')
 
 
 def _pre_dedup_split(text, sorts, positions):
     """(pre_sorts, result_sorts) when the turn sorts first and sorts again after deduplicating."""
-    if _row_order_in_turn(text) != 'sort':
+    order, _ = _row_order_in_turn(text, allow_abbreviated=False)
+    if order != 'sort':
         return [], sorts
     cut = next((m.start() for m in _ROW_ORDER_ACTION.finditer(text) if m.lastgroup == 'deduplicate'), None)
     if cut is None:
@@ -1945,8 +1977,19 @@ def _pre_sorted(pre, draft, path, active, final_sort_matches):
     return same and final_sort_matches(sort, draft, path, active)
 
 
-def _row_order_in_turn(text):
+def _row_order_in_turn(text, allow_abbreviated):
     actions = list(_ROW_ORDER_ACTION.finditer(text))
+    operations = {action.lastgroup for action in actions}
+    if allow_abbreviated and len(actions) == 1:
+        action = actions[0]
+        suffix = text[action.end():]
+        priority = _ROW_ORDER_FIRST_AFTER.match(suffix)
+        if priority:
+            suffix = suffix[priority.end():]
+        if ((priority or _ROW_ORDER_SHORT_FIRST_BEFORE.search(text[:action.start()]))
+                and _ROW_ORDER_SHORT_COMMAND.fullmatch(suffix)):
+            return action.lastgroup, operations
+
     order = None
     for index, (first, following) in enumerate(zip(actions, actions[1:])):
         if first.lastgroup == following.lastgroup:
@@ -1958,7 +2001,7 @@ def _row_order_in_turn(text):
         elif (_ROW_ORDER_AFTER.match(between) or _ROW_ORDER_NEXT.search(between)
               or _ROW_ORDER_FIRST_AFTER.match(between) or _ROW_ORDER_FIRST_BEFORE.search(prefix)):
             order = first.lastgroup
-    return order
+    return order, operations
 
 
 def sort_dedup_order(state, request=None):
@@ -1968,20 +2011,44 @@ def sort_dedup_order(state, request=None):
     if request['kind'] not in ('sorts', 'unparsed'):
         return None
     from agent_builder.capabilities.capability_judgement import active_request_messages
-    for message in reversed(active_request_messages(state or {})):
+    ledger = (state or {}).get('condition_ledger') or {}
+    dedup_active = ledger.get('decision') != 'ready' or 'deduplicate' in ledger.get('operations', [])
+    seen = set()
+    order = None
+    for message in active_request_messages(state or {}):
         if message.get('role') == 'user' and isinstance(message.get('content'), str):
-            order = _row_order_in_turn(_mask_quotes(mask_file_names(message['content'])))
-            if order:
-                return order
-    return None
+            text = _mask_quotes(mask_file_names(message['content']))
+            # A one-operation follow-up refers to an existing pair of actions in this task.
+            current, operations = _row_order_in_turn(text, dedup_active and seen == {'sort', 'deduplicate'})
+            seen.update(operations)
+            if current:
+                order = current
+    return order
 
 
 def sort_before_dedup_requested(state, request=None):
     return sort_dedup_order(state, request) == 'sort'
 
 
-def _sort_dedup_order_issue(state, request, draft, native, plans):
-    """Verify the requested order on the data that reaches the final result."""
+def _dedup_result_issue(draft, dedup_ids):
+    """The returned result has to consume the executed duplicate-removal steps."""
+    from agent_builder.design.content_lineage import content_ancestors
+    from workflow_engine.execution_path import execution_path
+
+    problem = '최종 결과에 중복 제거 단계의 표가 연결되지 않았습니다. 결과 저장의 입력을 확인하세요.'
+    workflow = draft.get('workflow') or {}
+    try:
+        path = execution_path(workflow)
+        nodes_by_id = {node['id']: node for node in path}
+        source = _result_content_node(workflow, path)
+        lineage = content_ancestors(nodes_by_id, source) | {source}
+    except (KeyError, TypeError, ValueError):
+        return problem
+    return None if dedup_ids and dedup_ids <= lineage & nodes_by_id.keys() else problem
+
+
+def _sort_dedup_order_issue(state, request, draft, native_plans, dedup_ids):
+    """Verify the explicitly requested order of sorting and duplicate removal."""
     order = sort_dedup_order(state, request)
     if order is None:
         return None
@@ -1994,24 +2061,19 @@ def _sort_dedup_order_issue(state, request, draft, native, plans):
                if order == 'sort' else
                '원문은 중복을 제거한 뒤 정렬하라고 했습니다. 정렬 전에 중복을 제거하고 그 표에 정렬을 적용하세요.')
     workflow = draft.get('workflow') or {}
-    dedup = [(node['id'], plan) for node, plan in zip(native, plans)
-             if plan.get('duplicate_policy') in ('first', 'last')]
     try:
         path = execution_path(workflow)
         nodes_by_id = {node['id']: node for node in path}
         positions = {node['id']: index for index, node in enumerate(path)}
         source = _result_content_node(workflow, path)
         sort_node, expected = _result_sort(draft, path, source)
-        if not expected or not dedup:
+        if not expected or not dedup_ids or not dedup_ids <= positions.keys():
             return problem
-        result_lineage = content_ancestors(nodes_by_id, source) | {source}
-        if any(node_id not in positions or node_id not in result_lineage for node_id, _ in dedup):
-            return '최종 결과에 중복 제거 단계의 표가 연결되지 않았습니다. 결과 저장의 입력을 확인하세요.'
-        dedup_inputs = {node_id: content_ancestors(nodes_by_id, node_id) for node_id, _ in dedup}
+        dedup_inputs = {node_id: content_ancestors(nodes_by_id, node_id) for node_id in dedup_ids}
         pre = request.get('pre_sorts')
         if order == 'sort' and pre:
             ordered = all(_pre_sorted(pre, draft, path[:positions[node_id]], dedup_inputs[node_id], final_sort_matches)
-                          for node_id, _ in dedup)
+                          for node_id in dedup_ids)
             if not ordered:
                 label = ', '.join(s['field'] + (' 내림차순' if s['direction'] == 'descending' else ' 오름차순') for s in pre)
                 return (f'원문은 {label}으로 정렬한 뒤 중복을 제거하라고 했습니다. filter_sort는 중복을 먼저 제거하므로, '
@@ -2019,14 +2081,14 @@ def _sort_dedup_order_issue(state, request, draft, native, plans):
                         '결과 정렬은 중복 제거 단계의 sort에 지정할 수 있습니다.')
         elif order == 'sort':
             # Use the output sort's concrete keys and types even for direction-only requests.
-            ordered = all(not plan.get('sort') and final_sort_matches(
-                expected, draft, path[:positions[node_id]], dedup_inputs[node_id]) for node_id, plan in dedup)
+            ordered = all(not native_plans[node_id].get('sort') and final_sort_matches(
+                expected, draft, path[:positions[node_id]], dedup_inputs[node_id]) for node_id in dedup_ids)
         else:
             sort_inputs = content_ancestors(nodes_by_id, sort_node) | {sort_node}
-            sorting = {node['id'] for node, plan in zip(native, plans) if plan.get('sort')}
+            sorting = {node_id for node_id, plan in native_plans.items() if plan.get('sort')}
             sorting.update(node['id'] for node in path
                            if node['tool'] == 'filter_sort' and node['settings'].get('operation') == 'sort')
-            ordered = all(node_id in sort_inputs and not (sorting & dedup_inputs[node_id]) for node_id, _ in dedup)
+            ordered = all(node_id in sort_inputs and not (sorting & dedup_inputs[node_id]) for node_id in dedup_ids)
     except (KeyError, TypeError, ValueError):
         return problem
     return None if ordered else problem
@@ -2043,6 +2105,8 @@ def plan_issues(ledger, draft, *, state=None):
     nodes = (draft.get('workflow') or {}).get('nodes', [])
     native = [n for n in nodes if n['tool'] == 'filter_sort' and not n['settings'].get('operation')]
     plans = [n['settings'].get('execution_plan') or draft.get('execution_plan', {}) for n in native]
+    native_plans = {node['id']: plan for node, plan in zip(native, plans)}
+    dedup_ids = {node_id for node_id, plan in native_plans.items() if plan.get('duplicate_policy') in ('first', 'last')}
     from agent_builder.design.condition_requirements import ordered_row_steps
     order = ordered_row_steps(state)
     dedup_plans = plans
@@ -2063,6 +2127,10 @@ def plan_issues(ledger, draft, *, state=None):
             problems.append('원문에 지정된 선별과 중복 제거 순서대로 앞 단계의 행을 다음 단계에 연결해야 합니다.')
     if not nodes:
         problems.append('확정 조건을 적용할 워크플로우가 없습니다.')
+    if nodes and slots.get('duplicate.policy') in ('first', 'last'):
+        lineage_issue = _dedup_result_issue(draft, dedup_ids)
+        if lineage_issue:
+            problems.append(lineage_issue)
     if ledger['operations'] == ['deduplicate']:
         # This contract covers one deduplication operation, not implicit extra
         # filtering/sorting. Combined requests need an expanded condition contract.
@@ -2076,7 +2144,7 @@ def plan_issues(ledger, draft, *, state=None):
         issue = _sort_request_issue(request, draft)
         if issue:
             problems.append(issue)
-        order_issue = _sort_dedup_order_issue(state, request, draft, native, plans)
+        order_issue = _sort_dedup_order_issue(state, request, draft, native_plans, dedup_ids)
         if order_issue:
             problems.append(order_issue)
     elif ledger['operations'] == ['deduplicate'] and any(plan.get('sort') for plan in plans):

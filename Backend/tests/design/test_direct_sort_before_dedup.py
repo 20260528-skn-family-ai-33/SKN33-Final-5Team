@@ -8,7 +8,7 @@ import pytest
 from agent_builder.design.native_settings import NATIVE_SETTINGS
 from agent_builder.design.nodes.direct_conversation import decoder_schema
 from tests.design.test_dedup_sort_save_loop import (
-    CURRENT, LATEST, SORT_FIRST_REQUEST, SORT_FIRST_ROWS, TABLE, make_planner, service,
+    CURRENT, LATEST, REQUEST, SORT, SORT_FIRST_REQUEST, SORT_FIRST_ROWS, TABLE, make_planner, service,
 )
 from tests.design.test_direct_conversation import Fake, planner
 
@@ -88,3 +88,41 @@ def test_direct_pre_dedup_sort_with_a_result_sort(monkeypatch, service, version)
     result = fakes['run'](done['saved_agent_id'])
     rows = csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff')))
     assert [(row['주문번호'], row['주문일']) for row in rows] == [('B2', '2026-11-04'), ('A1', '2026-11-07')]
+
+
+@pytest.mark.parametrize('request_text,sort', [
+    (REQUEST, SORT),
+    ('중복주문.csv에서 주문번호가 같은 행은 첫 행만 남기고 CSV로 저장해줘. 빈 값은 그대로 유지해.', []),
+], ids=['unordered-sort', 'dedup-only'])
+@pytest.mark.parametrize('bypasses_dedup', [True, False], ids=['bypass', 'connected'])
+def test_direct_v1_output_uses_deduplicated_rows(monkeypatch, service, request_text, sort, bypasses_dedup):
+    monkeypatch.setenv('A4B_PLANNER_PROMPT', 'v1')
+    monkeypatch.setitem(CURRENT, 'request', request_text)
+    act, saved, fakes = service
+    uploaded = act('upload', lambda state: {}, asset=TABLE, rows=SORT_FIRST_ROWS)
+    candidate = make_planner([], sort=sort, sort_first=bool(sort))({
+        'messages': [{'role': 'user', 'content': request_text}],
+        'resources': uploaded['resources'],
+    })['draft']
+    if bypasses_dedup:
+        candidate['workflow']['nodes'][-1]['bindings'][0]['node_id'] = 'sort' if sort else 'read'
+
+    transport = ValidatingTransport(candidate, candidate)
+    transport.schema = decoder_schema('v1')
+    generate = planner(monkeypatch, transport)
+    first = act('message', generate, content=request_text)
+    if bypasses_dedup:
+        assert first['status'] == 'validation_failed'
+        assert any('중복 제거 단계의 표' in issue for issue in first['issues'])
+        with pytest.raises(ValueError, match='필수 조건과 근거 검증'):
+            act('confirm', generate)
+        assert saved() == 0
+        return
+
+    assert first['status'] == 'ready' and not first['issues']
+    done = act('confirm', generate)
+    assert done['status'] == 'saved' and saved() == 1
+    result = fakes['run'](done['saved_agent_id'])
+    assert result['status'] == 'succeeded'
+    rows = csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff')))
+    assert [(row['주문번호'], row['주문일']) for row in rows] == [('A1', '2026-11-01'), ('B2', '2026-11-04')]

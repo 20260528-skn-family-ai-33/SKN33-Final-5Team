@@ -40,13 +40,19 @@ def test_withdrawal_applies_to_a_named_sort(withdrawal):
 
 
 @pytest.mark.parametrize('key', ['주문일 오름차순', '주문일'])
-def test_withdrawing_one_sort_preserves_other_keys(key):
+@pytest.mark.parametrize('particle', ['을', '만'])
+def test_withdrawing_one_sort_preserves_other_keys(key, particle):
     state = table_request('주문일 오름차순, 금액 숫자 내림차순으로 정렬해줘',
-                          f'{key} 정렬을 빼고 금액 정렬은 그대로 둬')
+                          f'{key} 정렬{particle} 빼고 금액 정렬은 그대로 둬')
     assert sort_request(state)['sorts'] == [AMOUNT_DESCENDING]
 
 
-@pytest.mark.parametrize('withdrawal', ['정렬을 빼줘', '주문일 오름차순 정렬을 전부 빼줘'])
+def test_keeping_only_sorting_does_not_withdraw_it():
+    state = table_request('주문일 오름차순 정렬만 해줘')
+    assert sort_request(state)['sorts'] == [ORDER_DATE]
+
+
+@pytest.mark.parametrize('withdrawal', ['정렬을 빼줘', '정렬만 빼줘', '주문일 오름차순 정렬을 전부 빼줘'])
 def test_full_withdrawal_clears_multiple_sort_keys(withdrawal):
     state = table_request('주문일 오름차순, 금액 숫자 내림차순으로 정렬해줘', withdrawal)
     assert sort_request(state)['kind'] == 'cancelled'
@@ -59,6 +65,8 @@ def test_full_withdrawal_clears_multiple_sort_keys(withdrawal):
     '정렬방식이 오름차순인 것만 남겨줘',
     '정렬방식이 오름차순인 건만 남겨줘',
     '정렬방식이 오름차순인 주문만 남겨줘',
+    '정렬방식이 오름차순과 같은 주문 건만 남겨줘',
+    '정렬방식이 내림차순과 같은 주문건만 남겨줘',
     '정렬이 오름차순과 같은 행만 골라',
     '정렬방식이 내림차순이 아닌 주문만 골라',
 ])

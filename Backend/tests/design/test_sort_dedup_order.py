@@ -5,7 +5,8 @@ import pytest
 
 from agent_builder.conditions.condition_readiness import sort_dedup_order
 from tests.design.test_dedup_sort_save_loop import (
-    CURRENT, LATEST, SORT_FIRST_REQUEST, SORT_FIRST_ROWS, TABLE, conversation, make_planner, press_save, service,
+    CURRENT, LATEST, REQUEST, SORT_FIRST_REQUEST, SORT_FIRST_ROWS, TABLE, conversation, make_planner, press_save,
+    service,
 )
 
 
@@ -17,9 +18,14 @@ SORT_FIRST_AFTER_VERB = (
     '주문일 내림차순 정렬을 먼저 하고, 주문번호가 같은 행은 첫 행만 남기고 '
     'CSV로 저장해줘. 빈 값은 그대로 유지해.'
 )
+SORT_FIRST_FROM = (
+    '주문일 내림차순으로 정렬부터 하고, 주문번호가 같은 행은 첫 행만 남기고 '
+    'CSV로 저장해줘. 빈 값은 그대로 유지해.'
+)
 DEDUP_FIRST_REVISION = (
     '순서를 바꿔줘. 이번에는 주문번호가 같은 행은 첫 행만 남긴 뒤 주문일 내림차순으로 정렬하고 CSV로 저장해줘.'
 )
+DEDUP_FIRST_SHORT_REVISION = '아니, 순서를 바꿔서 중복 제거를 먼저 해줘.'
 
 
 @pytest.mark.parametrize(('request_text', 'expected'), [
@@ -36,10 +42,41 @@ def test_latest_explicit_step_order_replaces_previous_order():
     assert sort_dedup_order(conversation(SORT_FIRST_REQUEST, DEDUP_FIRST_REVISION, SORT_FIRST_SENTENCES)) == 'sort'
 
 
+def test_priority_particle_works_for_an_explicit_order():
+    text = '주문일 내림차순으로 정렬부터 하고, 주문번호별 첫 행만 남겨줘.'
+    assert sort_dedup_order(conversation(text)) == 'sort'
+
+
+def test_short_priority_changes_only_an_existing_pair_in_the_same_task():
+    assert sort_dedup_order(conversation(SORT_FIRST_REQUEST, DEDUP_FIRST_SHORT_REVISION)) == 'deduplicate'
+    assert sort_dedup_order(conversation(
+        SORT_FIRST_REQUEST, DEDUP_FIRST_SHORT_REVISION, '정렬부터 해줘.')) == 'sort'
+    assert sort_dedup_order(conversation(
+        '주문일 오름차순으로 정렬해줘.', DEDUP_FIRST_SHORT_REVISION)) is None
+    assert sort_dedup_order(conversation(
+        SORT_FIRST_REQUEST, '새로운 작업: 주문일 오름차순으로 정렬부터 해줘.')) is None
+
+
+def test_short_priority_does_not_revive_deduplication_in_a_filter_only_contract():
+    state = conversation(REQUEST, '정렬부터 해줘.')
+    state['condition_ledger'] = {'decision': 'ready', 'operations': ['filter']}
+    assert sort_dedup_order(state) is None
+
+
+@pytest.mark.parametrize('followup', [
+    '먼저 금액을 확인하고 중복 제거 설정은 설명해줘.',
+    '중복 제거를 먼저 설명해줘.',
+])
+def test_short_priority_requires_an_action_request(followup):
+    assert sort_dedup_order(conversation(SORT_FIRST_REQUEST, followup)) == 'sort'
+
+
 @pytest.mark.parametrize(('request_text', 'prior_sort_first', 'expected_sort_first'), [
     (SORT_FIRST_SENTENCES, False, True),
     (SORT_FIRST_AFTER_VERB, False, True),
+    (SORT_FIRST_FROM, False, True),
     (DEDUP_FIRST_REVISION, True, False),
+    (DEDUP_FIRST_SHORT_REVISION, True, False),
 ])
 @pytest.mark.parametrize('correct', [True, False])
 def test_service_saves_only_currently_requested_row_step_order(

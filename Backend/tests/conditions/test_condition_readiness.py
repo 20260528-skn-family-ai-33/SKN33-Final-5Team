@@ -56,6 +56,51 @@ def workflow_draft(s, threshold=1000000, operator='gt'):
     return AgentDraft.model_validate(result).model_dump()
 
 
+def test_unquoted_sort_direction_can_be_used_as_an_equality_filter(tmp_path):
+    from agent_builder.conditions.condition_readiness import literal_condition_issues
+    from agent_builder.design.condition_templates import compile_conditions
+
+    s = state('정렬방식이 오름차순인 것만 남겨줘. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = {'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': ['정렬방식', '주문번호'],
+             'profile': {}, 'text': ''}
+    s.update(resources=[asset], condition_enforced=True)
+    values = {'filter.field': '정렬방식', 'filter.operator': 'eq', 'filter.value': '오름차순',
+              'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'}
+    s['condition_ledger'] = checked(s, proposal(s, values))
+    assert s['condition_ledger']['decision'] == 'ready'
+    assert checked(s, proposal(s, {}))['decision'] == 'ready'
+    assert literal_condition_issues(s) == []
+
+    s.update(compile_conditions(s), confirmed=True)
+    assert s['draft']['execution_plan']['sort'] == []
+    assert plan_issues(s['condition_ledger'], s['draft'], state=s) == []
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [{'정렬방식': '오름차순', '주문번호': 'B'},
+                                {'정렬방식': '내림차순', '주문번호': 'D'},
+                                {'정렬방식': '오름차순', '주문번호': 'A'}])
+        run = run_workflow(store, store.save_agent(s), '실행', '', file_ids=['a'])
+        assert run['status'] == 'succeeded'
+        assert [row['주문번호'] for row in run['rows']] == ['B', 'A']
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(('request_text', 'proposed_value'), [
+    ('정렬방식이 오름차순인 것만 삭제해줘.', '오름차순'),
+    ('정렬방식이 오름차순인 것만 남기지 마.', '오름차순'),
+    ('정렬방식이 오름차순인 것만 남기고 결과 제목은 완료로 적어줘.', '완료'),
+])
+def test_unquoted_equality_needs_the_literal_in_a_keep_clause(request_text, proposed_value):
+    s = state(request_text + ' JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    s['resources'] = [{'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': ['정렬방식'], 'text': ''}]
+    ledger = checked(s, proposal(s, {'filter.field': '정렬방식', 'filter.operator': 'eq',
+                                     'filter.value': proposed_value, 'missing.policy': 'error',
+                                     'duplicate.policy': 'keep', 'output.format': 'json'}))
+    assert ledger['decision'] == 'clarify'
+    assert 'filter.operator' in ledger['unresolved']
+
+
 def test_required_condition_omitted_by_model_is_derived_by_code():
     s = state('비용이 큰 행만 골라줘.')
     result = checked(s, proposal(s, {'filter.field': '비용', 'filter.operator': 'gt'}))

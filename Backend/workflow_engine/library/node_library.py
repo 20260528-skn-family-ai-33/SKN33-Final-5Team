@@ -83,8 +83,9 @@ def save(storage, raw, id=None, base_version=0):
     id=id or uid()
     storage.begin_write()
     try:
-        version=storage.db.execute('SELECT MAX(version) FROM reusable_nodes WHERE {ws} AND id=?',(id,)).fetchone()[0] or 0
-        if version and get(storage, f'{id}:{version}').get('deleted_at'):raise ValueError('삭제된 작업은 수정할 수 없습니다.')
+        latest=storage.db.execute('SELECT version,json FROM reusable_nodes WHERE {ws} AND id=? ORDER BY version DESC LIMIT 1',(id,)).fetchone()
+        version=latest[0] if latest else 0
+        if latest and json.loads(latest[1]).get('deleted_at'):raise ValueError('삭제된 작업은 수정할 수 없습니다.')
         if version!=base_version: raise ValueError('노드가 다른 요청에서 변경됐습니다. 최신 버전을 다시 열어주세요.')
         snapshot={'id':id,'version':version+1,'ref':f'{id}:{version+1}','spec':spec,'saved_at':now()}
         storage.db.execute('INSERT INTO reusable_nodes({wsc}id,version,json) VALUES({wsv}?,?,?)',(id,version+1,json.dumps(snapshot,ensure_ascii=False)))

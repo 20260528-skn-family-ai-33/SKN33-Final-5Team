@@ -13,10 +13,66 @@ type Listing={items:RecordItem[];total:number;page:number;page_size:number;check
 const types:Record<string,string>={generation:'생성',execution:'실행',document:'문서 처리'};
 const states:Record<string,string>={unreviewed:'미확인',investigating:'확인 중',resolved:'수정 완료'};
 const stages:Record<string,string>={request_analysis:'요청 분석',design:'설계',validation:'검증',save:'저장',execution:'실행',document_processing:'문서 처리'};
-const nodeLabels:Record<string,string>={requirements:'요구사항 정리',capability_check:'지원 기능 확인',condition_check:'업무 조건 확인',draft:'워크플로우 생성',validate:'설계 검증',validation:'설계 검증',save:'워크플로우 저장'};
-const reasonLabels:Record<string,string>={condition_incomplete:'업무 조건 미완성',invalid_model_response:'모델 응답 형식 오류',worker_timeout:'응답 시간 초과',worker_start_failed:'처리 작업 시작 실패',worker_response_invalid:'처리 응답 형식 오류',model_unavailable:'모델 연결 불가',unsupported:'지원하지 않는 작업'};
-const nodeLabel=(value?:string|null)=>value?nodeLabels[value]||value:'단계 미기록';
-const reasonLabel=(value?:string|null)=>value?reasonLabels[value]||value:'원인 미기록';
+// Keep the persisted code beside its display name so administrators can search diagnostics by code.
+const nodeLabels:Record<string,string>={
+ resources:'자료 준비',
+ attachment_gate:'첨부 자료 확인',
+ node_edit:'작업 설정 수정',
+ requirements:'요구사항 정리',
+ capability_check:'지원 기능 확인',
+ condition_check:'업무 조건 확인',
+ generation_gate:'생성 준비',
+ conversation:'워크플로우 설계',
+ template_plan:'템플릿 계획',
+ condition_audit:'업무 조건 대조',
+ draft:'워크플로우 생성',
+ validate:'설계 검증',
+ verification:'최종 검증',
+ supervisor:'설계 검토',
+ validation:'설계 검증',
+ save:'워크플로우 저장',
+};
+const reasonLabels:Record<string,string>={
+ condition_incomplete:'업무 조건 미완성',
+ invalid_model_response:'모델 응답 형식 오류',
+ invalid_request:'잘못된 생성 요청',
+ context_budget_exceeded:'AI 입력 길이 초과',
+ model_timeout:'AI 응답 시간 초과',
+ model_auth_failed:'AI 연결 권한 오류',
+ model_rate_limited:'AI 사용 한도 초과',
+ model_server_error:'AI 서버 오류',
+ model_request_rejected:'AI 요청 거부',
+ model_connection_failed:'AI 서버 연결 실패',
+ generation_step_limit:'설계 단계 수 초과',
+ condition_state_invalid:'업무 조건 상태 오류',
+ processing_error:'처리 오류',
+ worker_timeout:'생성 작업 시간 초과',
+ worker_busy:'생성 작업 시작 지연',
+ worker_start_failed:'처리 작업 시작 실패',
+ worker_response_invalid:'처리 응답 형식 오류',
+ worker_failed:'생성 작업 실패',
+ request_rejected:'생성 요청 거부',
+ generation_abandoned:'이전 생성 작업 종료',
+ generation_failed:'워크플로우 생성 실패',
+ generation_incomplete:'생성 미완료',
+ analysis_failed:'요청 분석 실패',
+ analysis_review_required:'요청 분석 검토 필요',
+ unsupported_tools:'지원하지 않는 도구',
+ verification_failed:'설계 검증 실패',
+ integration_contract_error:'검증 입력 형식 오류',
+ save_failed:'워크플로우 저장 실패',
+ clarification_required:'추가 입력 필요',
+ confirmation_required:'저장 확인 대기',
+ workflow_saved:'워크플로우 저장 완료',
+ model_unavailable:'모델 연결 불가',
+ unsupported:'지원하지 않는 작업',
+};
+const displayCode=(value:string|null|undefined,labels:Record<string,string>,missing:string)=>{
+ if(!value)return missing;
+ return Object.hasOwn(labels,value)?`${labels[value]} (${value})`:value;
+};
+const nodeLabel=(value?:string|null)=>displayCode(value,nodeLabels,'단계 미기록');
+const reasonLabel=(value?:string|null)=>displayCode(value,reasonLabels,'원인 미기록');
 const statuses:Record<string,string>={failed:'실패',blocked:'차단',running:'진행 중',succeeded:'완료',waiting_input:'추가 입력 대기',waiting_confirmation:'확인 대기',ready:'처리 완료',queued:'대기',canceled:'취소'};
 const date=(value?:string|null)=>value?new Date(value).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
 export function AdminMonitoring(){
@@ -48,13 +104,13 @@ export function AdminMonitoring(){
  {data&&<><div className="am-metrics" aria-label="선택 기간·유형 기준 집계">{[['요청·처리 기록',data.summary.requests],['실패',data.summary.failed],['영향받은 회원',data.summary.affected_users],['차단',data.summary.blocked]].map(([l,n])=><article key={l}><span>{l}</span><strong>{Number(n).toLocaleString()}</strong></article>)}</div>
  <div className="am-layout"><div><section className="am-panel"><div className="am-panel-heading"><h2>요청 목록</h2><span>{data.total.toLocaleString()}건</span></div><div className="am-table-wrap" role="region" aria-label="요청 목록 스크롤" tabIndex={0}><table><thead><tr><th>발생 시각 · 회원</th><th>실패 위치 · 원인</th><th>처리 상태</th><th><span className="sr-only">상세</span></th></tr></thead><tbody>{data.items.map(item=><tr key={item.kind+item.id} data-selected={selection?.id===item.id&&selection?.kind===item.kind}><td>{date(item.occurred_at||item.started_at)}<small>{types[item.kind]} · {item.member_email||'회원 '+item.member_id.slice(0,8)}</small></td><td><strong>{stages[item.stage]||item.stage} / {nodeLabel(item.node)}</strong><small>{reasonLabel(item.reason_code||item.error_type||statuses[item.status]||item.status)}</small><span className={'am-status '+item.status}>{statuses[item.status]||item.status}</span></td><td>{states[item.triage.status]}</td><td><button className="as-button as-secondary" aria-label={item.id+' 상세 보기'} onClick={event=>{detailTrigger.current=event.currentTarget;setSelection({kind:item.kind,id:item.id});}}>상세</button></td></tr>)}</tbody></table></div>{!data.items.length&&<p className="am-empty">조건에 맞는 기록이 없습니다.</p>}<div className="am-pagination"><WorkspaceIconButton size="standard" variant="outline"  disabled={page<=1||busy} onClick={()=>setPage(v=>v-1)} aria-label="이전 페이지"><ChevronLeft size={16}/></WorkspaceIconButton><span>{page} / {Math.max(1,Math.ceil(data.total/data.page_size))}</span><WorkspaceIconButton size="standard" variant="outline"  disabled={page*data.page_size>=data.total||busy} onClick={()=>setPage(v=>v+1)} aria-label="다음 페이지"><ChevronRight size={16}/></WorkspaceIconButton></div></section>
  <section className="am-panel am-groups"><div className="am-panel-heading"><h2>자주 발생하는 실패</h2></div><div className="am-group-list" role="region" aria-label="실패 집계 스크롤" tabIndex={0}>{data.groups.length?data.groups.map((g,i)=><div key={i}><span>{stages[g.stage]||g.stage} · {nodeLabel(g.node)}<small>{reasonLabel(g.reason_code)}</small></span><strong>{g.count}건</strong></div>):<p className="am-caption">선택 기간에 실패 기록이 없습니다.</p>}</div></section></div>
- <Dialog open={!!selection} onOpenChange={open=>{if(!open)closeDetail();}}><DialogContent className="as-dialog admin-monitor am-detail-modal" showCloseButton={false} aria-describedby={undefined} onCloseAutoFocus={event=>{event.preventDefault();if(detailTrigger.current?.isConnected)detailTrigger.current.focus();}}><section className="am-panel am-detail" aria-label="요청 상세"><div className="am-panel-heading"><DialogTitle>요청 상세</DialogTitle><WorkspaceIconButton aria-label="요청 상세 닫기" title="닫기" onClick={closeDetail}><X size={16}/></WorkspaceIconButton></div><div className="am-detail-scroll" role="region" aria-label="요청 상세 스크롤" tabIndex={0}>{detailBusy&&<p role="status">상세 기록을 불러오고 있습니다.</p>}{detailError&&<div role="alert" className="as-error">{detailError}<button className="as-button" onClick={()=>selection&&setSelection({...selection})}>다시 열기</button></div>}{!selection&&<p className="am-empty">목록에서 요청을 선택하면<br/>단계별 기록과 오류 원인이 표시됩니다.</p>}{detail&&<><span className={'am-status '+detail.status}>{statuses[detail.status]||detail.status}</span><h3>{stages[detail.stage]||detail.stage} · {nodeLabel(detail.node)}</h3><dl><dt>요청 ID</dt><dd>{detail.request_id||detail.id}</dd><dt>로그인 이메일</dt><dd>{detail.member_email||'미기록'}</dd><dt>회원 ID</dt><dd>{detail.member_id}</dd><dt>시작 / 종료</dt><dd>{date(detail.started_at)}<br/>{date(detail.finished_at)}</dd>{detail.workflow_id&&<><dt>워크플로우 ID</dt><dd>{detail.workflow_id}</dd></>}</dl><div className="am-error-detail"><strong>{detail.error_type||detail.reason_code||'사유 미기록'}</strong><p>{detail.reason||'상세 사유가 기록되지 않았습니다.'}</p></div>
+ <Dialog open={!!selection} onOpenChange={open=>{if(!open)closeDetail();}}><DialogContent className="as-dialog admin-monitor am-detail-modal" showCloseButton={false} aria-describedby={undefined} onCloseAutoFocus={event=>{event.preventDefault();if(detailTrigger.current?.isConnected)detailTrigger.current.focus();}}><section className="am-panel am-detail" aria-label="요청 상세"><div className="am-panel-heading"><DialogTitle>요청 상세</DialogTitle><WorkspaceIconButton aria-label="요청 상세 닫기" title="닫기" onClick={closeDetail}><X size={16}/></WorkspaceIconButton></div><div className="am-detail-scroll" role="region" aria-label="요청 상세 스크롤" tabIndex={0}>{detailBusy&&<p role="status">상세 기록을 불러오고 있습니다.</p>}{detailError&&<div role="alert" className="as-error">{detailError}<button className="as-button" onClick={()=>selection&&setSelection({...selection})}>다시 열기</button></div>}{!selection&&<p className="am-empty">목록에서 요청을 선택하면<br/>단계별 기록과 오류 원인이 표시됩니다.</p>}{detail&&<><span className={'am-status '+detail.status}>{statuses[detail.status]||detail.status}</span><h3>{stages[detail.stage]||detail.stage} · {nodeLabel(detail.node)}</h3><dl><dt>요청 ID</dt><dd>{detail.request_id||detail.id}</dd><dt>로그인 이메일</dt><dd>{detail.member_email||'미기록'}</dd><dt>회원 ID</dt><dd>{detail.member_id}</dd><dt>시작 / 종료</dt><dd>{date(detail.started_at)}<br/>{date(detail.finished_at)}</dd>{detail.workflow_id&&<><dt>워크플로우 ID</dt><dd>{detail.workflow_id}</dd></>}</dl><div className="am-error-detail"><strong>{reasonLabel(detail.reason_code||detail.error_type)}</strong>{detail.reason_code&&detail.error_type&&<small>예외 유형: {detail.error_type}</small>}<p>{detail.reason||'상세 사유가 기록되지 않았습니다.'}</p></div>
  <div className="am-request-context"><h3>요청 입력</h3><p className="am-prompt">{detail.context?.prompt||'미기록'}</p>{detail.context?.prompt_storage_limit===4000&&<p className="am-caption am-storage-limit">{detail.context.prompt_storage_truncated===true?'저장된 입력: 앞부분 4,000자 (나머지 생략)':detail.context.prompt_storage_truncated===false?'저장된 입력: 전체':'저장된 입력: 최대 4,000자 · 생략 여부 미기록'}</p>}{detail.context?.prompt_truncated&&detail.context.prompt_storage_truncated!==true&&<p className="am-caption">입력이 길어 앞부분 8,000자까지 표시합니다.</p>}
  <details key={detail.kind+detail.id} className="am-conversation"><summary>현재 저장된 대화</summary>
 
  {detail.context?.conversation.length?<ol>{detail.context.conversation.map((turn,i)=><li key={i}><strong>{turn.role==='user'?'사용자':'AI'}</strong><p>{turn.content}</p>{turn.truncated&&<small>내용이 길어 4,000자까지 표시합니다.</small>}</li>)}</ol>:<p className="am-caption">미기록 — 연결된 사용자·AI 대화가 없습니다.</p>}
  {detail.context?.conversation_truncated&&<p className="am-caption">대화가 길어 최근 40개 메시지만 표시합니다.</p>}</details></div>
- <h3>진행 기록</h3>{detail.events.length?<ol className="am-timeline">{detail.events.map((e,i)=><li key={i}><strong>{e.node?nodeLabel(e.node):stages[e.stage||'']||e.stage||'단계'} · {statuses[e.status]||e.status}</strong><small>{date(e.at)}{e.reason_code&&' · '+e.reason_code}</small></li>)}</ol>:<p className="am-caption">단계별 기록이 없습니다.</p>}
+ <h3>진행 기록</h3>{detail.events.length?<ol className="am-timeline">{detail.events.map((e,i)=><li key={i}><strong>{e.node?nodeLabel(e.node):stages[e.stage||'']||e.stage||'단계'} · {statuses[e.status]||e.status}</strong><small>{date(e.at)}{e.reason_code&&' · '+reasonLabel(e.reason_code)}</small></li>)}</ol>:<p className="am-caption">단계별 기록이 없습니다.</p>}
  <h3>진단 정보</h3><dl><dt>추적 ID</dt><dd>{detail.diagnostics.trace_id||'미기록'}</dd><dt>요청 모델</dt><dd>{detail.diagnostics.model||'미기록'}</dd><dt>배포 버전</dt><dd>{detail.diagnostics.release||'미기록'}</dd>{detail.diagnostics.http_status&&<><dt>외부 HTTP 상태</dt><dd>{detail.diagnostics.http_status}</dd></>}</dl>{detail.diagnostics.validation.map((v,i)=><p className="am-caption" key={i}>{v.field}: {v.type}</p>)}
  <label className="am-field">처리 상태<select value={resolution} onChange={e=>setResolution(e.target.value)}>{Object.entries(states).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label className="am-field">운영 메모<textarea maxLength={2000} value={note} onChange={e=>setNote(e.target.value)} placeholder="원인과 조치 내용"/></label><button className="as-button as-primary am-save" disabled={saving} onClick={()=>void save()}>{saving?'저장 중…':'처리 내용 저장'}</button>{notice&&<p role="status">{notice}</p>}
  {!!history.length&&<details><summary>처리 변경 이력 ({history.length})</summary>{history.map((h,i)=><div className="am-history" key={i}><strong>{states[h.status]} · {date(h.created_at)}</strong><p>{h.note||'메모 없음'}</p><small>관리자 {h.actor_id.slice(0,8)} · 변경 {h.revision}</small></div>)}</details>}</>}</div></section></DialogContent></Dialog></div><p className="am-updated">마지막 조회 {date(data.checked_at)}</p></>}

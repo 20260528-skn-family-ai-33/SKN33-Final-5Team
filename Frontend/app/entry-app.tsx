@@ -87,21 +87,21 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
  const [runRows,setRunRows]=useState<{agent:AgentSummary;run:RunSummary}[]>([]);
  const [renaming,setRenaming]=useState<AgentSummary|null>(null);
  const [renameNotice,setRenameNotice]=useState('');
- const [deleting,setDeleting]=useState(false);const deletingRef=useRef(false);
+ const [deleting,setDeleting]=useState(false),[deleteError,setDeleteError]=useState('');const deletingRef=useRef(false);
  async function removeWorkflows(items:{id:string;name:string;version?:number;external?:boolean}[]){
   if(deletingRef.current||!items.length)return;
   if(!window.confirm(items.map(item=>'「'+item.name+'」').join(', ')+'을 삭제할까요? 예약 실행은 해제됩니다. 기존 실행 기록과 연결 자료는 보관됩니다.'))return;
-  deletingRef.current=true;setDeleting(true);setError('');setRenameNotice('');let count=0;const failures:string[]=[];
+  deletingRef.current=true;setDeleting(true);setDeleteError('');setRenameNotice('');let count=0;const failures:string[]=[];
   try{for(const item of items){try{const result=await request(item.external?'/api/workflows?id='+encodeURIComponent(item.id):'/api/agent-builder/agents?id='+encodeURIComponent(item.id)+'&version='+item.version,undefined,'DELETE');
    if(result?.organization)setOrganization(result.organization);
    if(item.external)setExternalFlows(prior=>prior.filter(flow=>flow.id!==item.id));else{setAgents(prior=>prior.filter(agent=>agent.id!==item.id));setSelectedWorkflows(prior=>prior.filter(id=>id!==item.id));}count++;
-  }catch(error){failures.push(item.name+': '+(error as Error).message);}}setRenameNotice(count+'개 워크플로우를 삭제했습니다.');if(failures.length)setError(failures.join('\n'));
+  }catch(error){failures.push(item.name+': '+(error as Error).message);}}setRenameNotice(count+'개 워크플로우를 삭제했습니다.');if(failures.length)setDeleteError(failures.join('\n'));
   }finally{deletingRef.current=false;setDeleting(false);}
  }
 
  const [organization,setOrganization]=useState<WorkflowOrganization>(emptyOrganization),[activeFolder,setActiveFolder]=useState('all'),[selectedWorkflows,setSelectedWorkflows]=useState<string[]>([]);
  const generation=useRef(0),loadRequest=useRef<AbortController|null>(null);
- async function load(){loadRequest.current?.abort();const controller=new AbortController();loadRequest.current=controller;const token=++generation.current;setLoading(true);setError('');setRunRows([]);try{
+ async function load(){loadRequest.current?.abort();const controller=new AbortController();loadRequest.current=controller;const token=++generation.current;setLoading(true);setError('');setDeleteError('');setRunRows([]);try{
 
   if(route==='history'){
    const params=new URLSearchParams({page:String(historyPage)});if(historyService)params.set('id',historyService);
@@ -145,7 +145,7 @@ function WorkspaceHome({route,historyService,navigate,newFlow,startExample,membe
   onRetry={()=>void load()} onStart={startExample} onNavigate={navigate}/>;
  return <>{route==='workflows'
   ? <TaskLibraryHeader active="workflows" onNavigate={next=>{if(next==='nodes')navigate(next);}} actions={refreshButton}/>
-  : <div className="entry-page-heading"><div><WorkspacePageTitle icon={History}>실행 기록</WorkspacePageTitle>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div>{refreshButton}</div>}{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}
+  : <div className="entry-page-heading"><div><WorkspacePageTitle icon={History}>실행 기록</WorkspacePageTitle>{historyService&&<button className="as-text-button" onClick={()=>navigate('history')}>전체 실행 기록</button>}</div>{refreshButton}</div>}{error&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button onClick={()=>void load()}>다시 시도</button></div>}{deleteError&&<div className="as-error" role="alert"><AlertCircle size={16}/><span>{deleteError}</span></div>}{loading&&<p className="entry-loading" role="status">{route==='history'?'실행 기록을 불러오고 있습니다.':'작업 공간을 불러오고 있습니다.'}</p>}
  {route==='workflows'&&<>
   {renameNotice&&<p className="entry-rename-notice" role="status">{renameNotice}</p>}
   <div className="entry-list-tools" aria-label="워크플로우 목록 도구"><label><Search size={18}/><input aria-label="워크플로우 검색" value={query} onChange={e=>{setQuery(e.target.value);setSelectedWorkflows([]);}} placeholder="워크플로우 검색"/></label><span>{loading?'불러오는 중…':(matches.length+externalMatches.length)+'개'}</span></div>

@@ -3777,6 +3777,9 @@ test('library deletion: confirmation, versioned deletion and partial failures pr
   assert.match(document.querySelector('[role=alert]')!.textContent!,/실행 중/);
   assert.deepEqual(removed,['/api/agent-builder/agents?id=A&version=1','/api/agent-builder/agents?id=B&version=1']);
   assert.match(document.body.textContent!,/1개 워크플로우를 삭제했습니다/);
+  assert.equal(button('폴더로 이동 (1)').disabled,false,'삭제 실패는 폴더 작업을 막지 않는다');
+  await click(button('폴더로 이동 (1)'));
+  assert.ok(document.querySelector('.workflow-folder-form'));
  }finally{await h.close();}
 });
 

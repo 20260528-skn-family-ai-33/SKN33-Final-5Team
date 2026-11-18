@@ -13,10 +13,11 @@ test('admin UI gates data, opens details, uses PATCH and handles denied/revoked 
  const mod={exports:{} as any};new Function('require','module','exports',code)(require,mod,mod.exports);
  const {createElement,act}=require('react'),{createRoot}=require('react-dom/client'),{AuthProvider,AdminMonitoring,WorkspaceNav}=mod.exports;
  const ui=createRoot(document.getElementById('root'));const calls:{url:string;init?:RequestInit}[]=[];
- let role='member',delayDetail=false,delaySave=false;let detailResolve:((value:Response)=>void)|undefined,saveResolve:((value:Response)=>void)|undefined;const item={id:'request-1',member_id:'member-1',member_email:'member@example.test',context:{prompt:'지난주 문의를 요약해줘',prompt_truncated:false,prompt_storage_limit:4000,prompt_storage_truncated:null as boolean|null,conversation:[{role:'user',content:'<img src=x onerror=alert(1)> 문의 요약',truncated:false},{role:'assistant',content:'어떤 기간인가요?',truncated:false}],conversation_source:'session_latest',conversation_truncated:false},kind:'generation',status:'failed',stage:'request_analysis',node:'requirements',reason_code:'invalid_model_response',reason:'필수 필드 누락',started_at:new Date().toISOString(),triage:{status:'unreviewed',note:'',revision:0},events:[{node:'requirements',status:'failed',at:new Date().toISOString()}],diagnostics:{validation:[{field:'draft.name',type:'missing'}]}};
+ let role='member',delayDetail=false,delaySave=false;let detailResolve:((value:Response)=>void)|undefined,saveResolve:((value:Response)=>void)|undefined;const item={id:'request-1',member_id:'member-1',member_email:'member@example.test',context:{prompt:'지난주 문의를 요약해줘',prompt_truncated:false,prompt_storage_limit:4000,prompt_storage_truncated:null as boolean|null,conversation:[{role:'user',content:'<img src=x onerror=alert(1)> 문의 요약',truncated:false},{role:'assistant',content:'어떤 기간인가요?',truncated:false}],conversation_source:'session_latest',conversation_truncated:false},kind:'generation',status:'failed',stage:'request_analysis',node:'requirements',reason_code:'invalid_model_response',error_type:'ValueError',reason:'필수 필드 누락',started_at:new Date().toISOString(),triage:{status:'unreviewed',note:'',revision:0},events:[{node:'requirements',status:'failed',reason_code:'invalid_model_response',at:new Date().toISOString()}],diagnostics:{validation:[{field:'draft.name',type:'missing'}]}};
+ const timeoutItem={...item,id:'request-2',stage:'design',node:'conversation',reason_code:'model_timeout',error_type:'TimeoutError'};
  globalThis.fetch=async(path:any,init?:RequestInit)=>{const url=String(path);calls.push({url,init});if(url==='/api/auth/me')return Response.json({enabled:true,authenticated:true,user:{id:'admin-1',name:'Admin',email:'admin@example.test',role}});
  if(url.includes('/generation/')){if(init?.method==='PATCH'&&delaySave)return new Promise<Response>(resolve=>{saveResolve=resolve;});if(init?.method!=='PATCH'&&delayDetail)return new Promise<Response>(resolve=>{detailResolve=resolve;});if(init?.method==='PATCH')return Response.json({triage:{status:'investigating',revision:1}});return Response.json({item,history:[]});}
- return Response.json({items:[item],total:1,page:1,page_size:25,checked_at:new Date().toISOString(),summary:{requests:1,failed:1,blocked:0,affected_users:1},groups:[]});};
+ return Response.json({items:[item,timeoutItem],total:2,page:1,page_size:25,checked_at:new Date().toISOString(),summary:{requests:2,failed:2,blocked:0,affected_users:1},groups:[{stage:'design',node:'conversation',reason_code:'model_timeout',count:1}]});};
  const tick=()=>new Promise(r=>setImmediate(r));
  try{
  await act(async()=>{ui.render(createElement(AuthProvider,null,createElement(WorkspaceNav,{active:'monitoring',onNavigate:()=>{}}),createElement(AdminMonitoring)));await tick();});
@@ -25,7 +26,11 @@ test('admin UI gates data, opens details, uses PATCH and handles denied/revoked 
  assert.equal(document.querySelector('[role=dialog]'),null);
  for(const name of ['요청 목록 스크롤','실패 집계 스크롤'])assert.ok(document.querySelector('[role=region][aria-label="'+name+'"][tabindex="0"]'));
  assert.equal(document.querySelector('.am-subtitle'),null);
- assert.ok(document.querySelector('button[aria-label="모니터링"]'));assert.ok(document.body.textContent?.includes('요구사항 정리'));assert.ok(document.body.textContent?.includes('member@example.test'));
+ assert.ok(document.querySelector('button[aria-label="모니터링"]'));assert.ok(document.body.textContent?.includes('요구사항 정리 (requirements)'));assert.ok(document.body.textContent?.includes('member@example.test'));
+ for(const selector of ['.am-table-wrap','.am-group-list']){
+  assert.match(document.querySelector(selector)!.textContent!,/워크플로우 설계 \(conversation\)/);
+  assert.match(document.querySelector(selector)!.textContent!,/AI 응답 시간 초과 \(model_timeout\)/);
+ }
  for(const label of ['검색','이전 페이지','다음 페이지']){
   const button=document.querySelector('button[aria-label="'+label+'"]') as HTMLButtonElement;
   assert.ok(button.classList.contains('workspace-icon-button'));
@@ -35,6 +40,8 @@ test('admin UI gates data, opens details, uses PATCH and handles denied/revoked 
  await act(async()=>{(document.querySelector('button[aria-label="request-1 상세 보기"]') as HTMLButtonElement).click();await tick();});
  assert.ok(document.querySelector('[role=dialog]'));assert.ok(document.querySelector('[aria-label="요청 상세 스크롤"]'));
  assert.ok(document.body.textContent?.includes('필수 필드 누락'));assert.ok(document.body.textContent?.includes('draft.name: missing'));
+ assert.match(document.querySelector('.am-error-detail')!.textContent!,/모델 응답 형식 오류 \(invalid_model_response\).*예외 유형: ValueError/);
+ assert.match(document.querySelector('.am-timeline')!.textContent!,/모델 응답 형식 오류 \(invalid_model_response\)/);
  assert.ok(document.body.textContent?.includes('지난주 문의를 요약해줘'));
  assert.match(document.querySelector('.am-storage-limit')!.textContent!,/4,000.*생략 여부 미기록/);
  for(const truncated of [true,false]){

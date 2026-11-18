@@ -2,13 +2,15 @@ import type {Workflow} from './workflow-preview';
 import {RunAnswer} from './run-answer';
 import './gmail-summary-result.css';
 
-type MailSummary={title:string;sender:string;points:string[];body:string};
-type SummaryResult={mails:MailSummary[];maxResults?:number;unread:boolean;notices:string[];batched:boolean};
+type MailSummary={title:string;sender:string;sentAt?:string;points:string[];body:string};
+type SummaryResult={mails:MailSummary[];maxResults?:number;unread:boolean;notices:string[];batched:boolean;counts?:string};
 
-const titleLine=/^\s*(?:(?:[-•*]|\d+[.)])\s*)?(?:\*\*)?(?:제목|subject)(?:\*\*)?\s*[:：]\s*(.+?)\s*$/i;
-const senderLine=/^\s*(?:[-•*]\s*)?(?:\*\*)?(?:보낸 사람|발신자|from)(?:\*\*)?\s*[:：]\s*(.+?)\s*$/i;
-const pointLine=/^\s*(?:[-•*]\s*)?(?:\*\*)?(?:핵심(?: 내용)?|요약)(?:\*\*)?\s*[:：]\s*(.*?)\s*$/i;
+const titleLine=/^\s*(?:(?:[-•*]|\d+[.)])\s*)?(?:\*\*)?(?:제목|subject)(?:\*\*)?\s*[:：](?:\*\*)?\s*(.+?)\s*$/i;
+const senderLine=/^\s*(?:[-•*]\s*)?(?:\*\*)?(?:보낸 사람|발신자|from)(?:\*\*)?\s*[:：](?:\*\*)?\s*(.+?)\s*$/i;
+const sentAtLine=/^\s*(?:\*\*)?보낸 시간(?:\*\*)?\s*[:：](?:\*\*)?\s*(.+?)\s*$/;
+const pointLine=/^\s*(?:[-•*]\s*)?(?:\*\*)?(?:핵심(?: 내용)?|요약)(?:\*\*)?\s*[:：](?:\*\*)?\s*(.*?)\s*$/i;
 const bulletLine=/^\s*[-•]\s+(.+)$/;
+const countsBlock=/^메일 처리 결과: (읽음 \d+건 · 요약 \d+건 · 누락 \d+건)$/;
 
 export function isGmailSlackSummaryWorkflow(workflow?:Workflow|null):boolean {
  if(!workflow||workflow.nodes.length!==3)return false;
@@ -32,24 +34,27 @@ function withoutSlackReceipts(answer:string):string {
  return answer.replace(/\r\n?/g,'\n').split(/\n\s*\n/).filter(block=>!slackReceipt(block.trim())).join('\n\n').trim();
 }
 
-function plainSummary(answer:string):{text:string;notices:string[]} {
+function plainSummary(answer:string):{text:string;notices:string[];counts?:string} {
  const notices:string[]=[];
+ let counts:string|undefined;
  const blocks=withoutSlackReceipts(answer).split(/\n\s*\n/).filter(block=>{
   const trimmed=block.trim();
+  const countsMatch=trimmed.match(countsBlock);
+  if(countsMatch){counts=countsMatch[1];return false;}
   if(/^(?:조회 범위:|조회된 메일 \d+건을 \d+개 묶음으로|검색 결과가 더 있어|긴 메일 \d+건은|메일 \d+건은 읽을 수 있는)/.test(trimmed)){
    notices.push(trimmed);return false;
   }
   return true;
  });
- return {text:blocks.join('\n\n'),notices};
+ return {text:blocks.join('\n\n'),notices,counts};
 }
 
 export function parseGmailSummary(answer:string,workflow?:Workflow|null):SummaryResult|null {
  if(!isGmailSlackSummaryWorkflow(workflow))return null;
- const {text,notices}=plainSummary(answer);
+ const {text,notices,counts}=plainSummary(answer);
  const lines=text.split('\n');
  const batched=lines.some(line=>/^\s*#{1,3}\s*메일 요약 \d+\/\d+\s*$/.test(line));
- const mails:{title:string;sender:string;points:string[];body:string[];inPoints:boolean}[]=[];
+ const mails:(Omit<MailSummary,'body'>&{body:string[];inPoints:boolean})[]=[];
  let current:typeof mails[number]|null=null;
  for(const line of lines){
   if(/^\s*#{1,3}\s*메일 요약 \d+\/\d+\s*$/.test(line))continue;
@@ -58,6 +63,8 @@ export function parseGmailSummary(answer:string,workflow?:Workflow|null):Summary
   if(!current)continue;
   const sender=line.match(senderLine);
   if(sender&&!current.sender){current.sender=sender[1].trim();continue;}
+  const sentAt=line.match(sentAtLine);
+  if(sentAt&&current.sender&&!current.sentAt&&!current.inPoints&&!current.body.some(line=>line.trim())){current.sentAt=sentAt[1].trim();continue;}
   const point=line.match(pointLine);
   if(point){if(point[1].trim())current.points.push(point[1].trim());current.inPoints=true;continue;}
   const bullet=current.inPoints&&line.match(bulletLine);
@@ -65,7 +72,7 @@ export function parseGmailSummary(answer:string,workflow?:Workflow|null):Summary
   if(line.trim())current.inPoints=false;
   current.body.push(line);
  }
- const ready=mails.filter(mail=>mail.title&&mail.sender).map(mail=>({title:mail.title,sender:mail.sender,points:mail.points,body:mail.body.join('\n').trim()}));
+ const ready=mails.filter(mail=>mail.title&&mail.sender).map(mail=>({title:mail.title,sender:mail.sender,sentAt:mail.sentAt,points:mail.points,body:mail.body.join('\n').trim()}));
  if(!ready.length||ready.length!==mails.length)return null;
  const reader=workflow!.nodes[0];
  let maxResults:number|undefined,unread=false;
@@ -74,7 +81,7 @@ export function parseGmailSummary(answer:string,workflow?:Workflow|null):Summary
   if(Number.isInteger(args.max_results)&&args.max_results>0)maxResults=args.max_results;
   unread=typeof args.query==='string'&&/(?:^|\s)is:unread(?:\s|$)/i.test(args.query);
  }catch{/* The cards can still show verified mail headings. */}
- return {mails:ready,maxResults,unread,notices,batched};
+ return {mails:ready,maxResults,unread,notices,batched,counts};
 }
 
 function preview(body:string):string {
@@ -89,10 +96,12 @@ export function GmailSummaryResult({answer,workflow}:{answer:string;workflow?:Wo
  const displayAnswer=withoutSlackReceipts(answer);
  const parsed=parseGmailSummary(answer,workflow);
  if(!parsed)return <RunAnswer text={displayAnswer}/>;
+ const cardCount=parsed.batched?'요약 카드 '+parsed.mails.length+'개':'표시된 메일 '+parsed.mails.length+'건';
+ const countLabel=parsed.counts??(cardCount+(parsed.maxResults?' · 최대 '+parsed.maxResults+'건 조회':''));
  return <section className="gmr" aria-label="Gmail 메일 요약 결과">
-  <header className="gmr-heading"><div><p className="gmr-kicker">Gmail 요약</p><h2>{parsed.unread?'안 읽은 Gmail 메일 요약':'Gmail 메일 요약'}</h2><p className="gmr-count">{parsed.batched?'요약 카드 '+parsed.mails.length+'개':'표시된 메일 '+parsed.mails.length+'건'}{parsed.maxResults?' · 최대 '+parsed.maxResults+'건 조회':''}</p></div></header>
+  <header className="gmr-heading"><div><p className="gmr-kicker">Gmail 요약</p><h2>{parsed.unread?'안 읽은 Gmail 메일 요약':'Gmail 메일 요약'}</h2><p className="gmr-count">{countLabel}</p></div></header>
   <div className="gmr-list">{parsed.mails.map((mail,index)=><article className="gmr-card" key={index}>
-   <div className="gmr-card-heading"><span>{parsed.batched?'요약 항목':'메일'} {index+1}</span><h3>{mail.title}</h3><p>{mail.sender}</p></div>
+   <div className="gmr-card-heading"><span>{parsed.batched?'요약 항목':'메일'} {index+1}</span><h3>{mail.title}</h3><p>{mail.sender}</p>{mail.sentAt&&<p>보낸 시간: {mail.sentAt}</p>}</div>
    <div className="gmr-card-content"><strong>{mail.points.length?'핵심 내용':'요약 미리보기'}</strong>{mail.points.length?<ul>{mail.points.slice(0,3).map((point,i)=><li key={i}>{point}</li>)}</ul>:mail.body?<p>{preview(mail.body)}</p>:<p>요약 내용은 전체 결과 텍스트에서 확인하세요.</p>}
     {mail.body&&<details className="gmr-original"><summary>요약 내용 전체 보기</summary><p>{mail.body}</p></details>}
    </div>

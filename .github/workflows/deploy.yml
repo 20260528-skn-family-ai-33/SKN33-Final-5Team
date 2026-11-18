@@ -189,6 +189,11 @@ jobs:
                       tests/design/test_node_edit_public_flow.py tests/design/test_node_edit_dependencies.py; do
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done
+          for path in tests/design/test_review151_*.py tests/design/test_grouped_totals_request.py \
+                      tests/design/test_manual_kit_requirement_regressions.py \
+                      tests/design/test_feedback_service_scenarios.py tests/design/test_feedback_requirement_extraction.py; do
+            if [[ -f "$path" ]]; then tests+=("$path"); fi
+          done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"
       - name: Test recurring schedules, Gmail summaries and library sources
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/workflow_engine/test_library_schedule_sources.py') != ''
@@ -224,7 +229,14 @@ jobs:
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
         working-directory: Backend
         run: |
-          tests=(tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py)
+          tests=(tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py
+                 tests/conditions/test_clarification_choices.py tests/design/test_compound_filter_pipeline.py
+                 tests/design/test_filter_edit_sequences.py tests/design/test_text_filter_dialogue.py)
+          for suite in test_document_rows_template test_document_row_integrity test_document_row_coverage_review \
+                       test_document_native_table_review test_document_preview_review; do
+            path="tests/design/${suite}.py"
+            if [[ -f "$path" ]]; then tests+=("$path"); fi
+          done
           if [[ -f tests/design/test_generation_history.py ]]; then tests+=(tests/design/test_generation_history.py); fi
           if [[ -f tests/documents/test_file_inspection.py ]]; then tests+=(tests/documents/test_file_inspection.py); fi
           for suite in test_receipt_fields test_receipt_items test_manual_run_inputs test_run_answer; do
@@ -235,7 +247,11 @@ jobs:
       - name: Test document parser routing and OCR coverage
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/documents/analysis/test_pipeline.py') != ''
         working-directory: Backend
-        run: .venv-document-analysis/bin/python -m unittest discover -s tests/documents/analysis -p test_pipeline.py
+        run: |
+          .venv-document-analysis/bin/python -m unittest discover -s tests/documents/analysis -p test_pipeline.py
+          if [[ -f tests/documents/analysis/test_remote_docling.py ]]; then
+            .venv-agent/bin/python -m pytest -q tests/documents/analysis/test_remote_pdf.py tests/documents/analysis/test_remote_docling.py
+          fi
       - name: Test business-data storage on PostgreSQL
         if: needs.resolve-image.outputs.target != 'frontend'
         env:

@@ -54,6 +54,9 @@ def question_answers(value,state):
             answer=answer.strip()
             if kind=='single_choice' and not custom and answer not in question.get('options',[]):
                 raise ValueError('표시된 선택지에서 답변을 선택하거나 직접 입력해주세요.')
+        if question.get('key') == 'document.fields' and isinstance(answer, str) and answer.startswith('{'):
+            from .document_selection import document_selection
+            document_selection(answer, state.get('resources', []))
         result.append({'question_id':identifier,'value':answer,'custom':custom})
     if len(json.dumps(result,ensure_ascii=False))>12000:raise ValueError('답변이 너무 깁니다. 내용을 줄여주세요.')
     return result

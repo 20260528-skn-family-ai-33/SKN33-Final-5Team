@@ -38,7 +38,8 @@ def test_attached_document_asks_fields_then_builds_the_fixed_flow_without_the_mo
     assert [n['tool'] for n in nodes]==['read_document','extract_information','export_result']
     assert nodes[1]['settings']['fields']==['상품명','단가','수량','금액'] and nodes[1]['settings']['extraction_mode']=='rows'
     assert nodes[2]['settings']['format']=='csv' and nodes[0]['settings']['file_ids']==['receipt']
-    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='review'
+    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='clarification'
+    assert '표 셀 좌표가 없습니다' in done['draft']['questions'][0]
     assert not store.agents()
     connection.close();store.close()
 
@@ -53,7 +54,8 @@ def test_enforced_condition_check_delegates_the_fixed_flow_without_a_model_call(
     assert first['draft']['questions']==[QUESTION]
     done=graph.invoke(Command(resume={'type':'message','content':'상품명, 수량, 단가, 금액'}),cfg)
     assert done['draft']['workflow']['nodes'][1]['settings']['fields']==['상품명','수량','단가','금액']
-    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='review'
+    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='clarification'
+    assert '표 셀 좌표가 없습니다' in done['draft']['questions'][0]
     checks=[t for t in done['trace'] if t['node']=='condition_check' and t.get('model_calls')==0 and 'outside_scope' in t['detail']]
     assert len(checks)==2 and done['condition_enforced'] is False
     connection.close();store.close()
@@ -165,11 +167,11 @@ def test_rows_mode_returns_one_verified_record_per_item_and_drops_invented_value
     assert [(r['row'],r['상품명'],r['금액'],r['status']) for r in records]==[(1,'굿모닝우유900ML','1.350','verified'),(2,'양파',None,'partial')]
     assert records[0]['evidence']['금액']['quote']=='*8801104210645 1.350'
 
-    saved=export_result.execute({'tool':'export_result','bindings':[{'input':'records','node_id':'extract','output':'records'}],'settings':{'format':'csv'}},
-                                {'outputs':{'extract':{'records':records}}},None,{},None)['artifact']
-    table=list(csv.reader(io.StringIO(saved['content'].lstrip('﻿'))))
-    assert table[0]==['file_name','row','상품명','금액','status','evidence']
-    assert table[1][:5]==['receipt.jpg','1','굿모닝우유900ML','1.350','verified'] and table[2][:5]==['receipt.jpg','2','양파','','partial']
+    # Value grounding alone cannot certify that every document row was extracted.
+    assert all(record['row_coverage'] == 'unverified' for record in records)
+    with pytest.raises(ValueError, match='전체 행'):
+        export_result.execute({'tool':'export_result','bindings':[{'input':'records','node_id':'extract','output':'records'}],'settings':{'format':'csv'}},
+                              {'outputs':{'extract':{'records':records}}},None,{},None)
 
 
 def test_explicit_xlsx_request_delegates_to_registered_spreadsheet_planner():

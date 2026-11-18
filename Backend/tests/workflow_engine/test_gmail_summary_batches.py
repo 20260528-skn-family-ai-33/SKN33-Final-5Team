@@ -83,7 +83,7 @@ def test_reused_summary_text_keeps_period_and_all_omission_notices_once():
     assert len(notices) == 4
     text = append_collection_notices('전날 메일 요약입니다.', [collection])
     assert all(notice in text for notice in notices)
-    assert '2026-11-09' in text and '최대 100건' in text and '8,000자' in text
+    assert '2026-11-09' in text and '조회 한도 밖의 메일' in text and '8,000자' in text
     assert append_collection_notices(text, [collection]) == text
 
 

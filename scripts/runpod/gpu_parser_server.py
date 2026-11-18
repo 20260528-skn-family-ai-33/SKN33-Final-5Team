@@ -113,7 +113,12 @@ def make_handler(key, models, device, version):
             if self.path == '/health':
                 readiness = pdf_readiness(pdf_python)
                 return self.reply(200, {'ok': True, 'device': device, 'engines': list(ENGINES),
-                                       'pdf_jobs': readiness['ready'], 'pdf_readiness': readiness})
+                                       'pdf_jobs': readiness['ready'], 'pdf_readiness': readiness,
+                                       'docling_image_jobs': readiness['ready']})
+            if self.path.startswith('/v1/docling-image/'):
+                if not self.authenticated():
+                    return self.reply(401, {'error': 'unauthorized'})
+                return self.reply(*jobs.result(self.path[len('/v1/docling-image/'):], kind='docling-image'))
             if self.path.startswith('/v1/pdf/'):
                 if not self.authenticated():
                     return self.reply(401, {'error': 'unauthorized'})
@@ -129,6 +134,8 @@ def make_handler(key, models, device, version):
         def do_DELETE(self):
             if not self.authenticated():
                 return self.reply(401, {'error': 'unauthorized'})
+            if self.path.startswith('/v1/docling-image/'):
+                return self.reply(*jobs.cancel(self.path[len('/v1/docling-image/'):], kind='docling-image'))
             if self.path.startswith('/v1/pdf/'):
                 return self.reply(*jobs.cancel(self.path[len('/v1/pdf/'):]))
             self.reply(404, {'error': 'not_found'})
@@ -142,6 +149,20 @@ def make_handler(key, models, device, version):
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
                 length = -1
+            if self.path == '/v1/docling-image':
+                if self.headers.get_content_type() != 'image/png':
+                    return self.reply(415, {'error': 'expected_png'})
+                if not 0 < length <= MAX_PDF:
+                    return self.reply(413, {'error': 'image_size_limit'})
+                raw_timeout = self.headers.get('X-A4B-Docling-Timeout', str(DEFAULT_TIMEOUT))
+                if not raw_timeout.isdigit() or not 1 <= int(raw_timeout) <= 1800:
+                    return self.reply(400, {'error': 'invalid_docling_timeout'})
+                if not pdf_readiness(pdf_python)['ready']:
+                    return self.reply(503, {'error': 'docling_router_not_ready'})
+                data = self.rfile.read(length)
+                if not data.startswith(b'\x89PNG\r\n\x1a\n'):
+                    return self.reply(400, {'error': 'invalid_png'})
+                return self.reply(*jobs.submit(data, timeout=int(raw_timeout), image=True))
             if self.path == '/v1/pdf':
                 if self.headers.get_content_type() != 'application/pdf':
                     return self.reply(415, {'error': 'expected_pdf'})

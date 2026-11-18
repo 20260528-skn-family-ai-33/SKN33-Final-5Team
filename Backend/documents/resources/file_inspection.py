@@ -61,6 +61,8 @@ def _native_tables(blocks):
                 grid.setdefault(row, {})[col] = cell.get('text')
         table = _preview_table(f'표 {len(tables) + 1}', grid)
         if table:
+            if block.get('id'):
+                table['block_id'] = block['id']
             tables.append(table)
     for sheet, rows in sheets.items():
         table = _preview_table(sheet, rows, cell_order=lambda col: (len(col), col))

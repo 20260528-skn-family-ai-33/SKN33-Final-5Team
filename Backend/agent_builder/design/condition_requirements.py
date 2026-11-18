@@ -8,32 +8,32 @@ def additional_row_predicates(state, primary):
     A single Condition filter cannot establish how predicates on distinct
     inputs/outputs combine. Leave those cases to requirements validation.
     """
-    tables = [resource for resource in state.get('resources', []) if resource.get('kind') == 'table']
-    if len(tables) != 1:
-        return []
-    users = [m['content'] for m in state.get('messages', []) if m['role'] == 'user']
-    fields = [re.escape(name) for name in tables[0].get('columns', []) if name != primary and name]
-    if not fields:
-        return []
-    assertion = re.compile(
-        r"(?:또한\s+|그리고\s+)?(?P<field>" + '|'.join(fields)
-        + r")\s*(?:열[의은는이가]?\s*)?(?:이|가|은|는)\s*"
-          r"""(?P<quote>['"]?)(?P<value>[^\s,'".!?]+?)(?P=quote)인\s+행"""
-          r"(?:이어야\s*(?:해|합니다)|만\s*(?:남겨|골라|선별해)(?:줘|주세요)?)")
-    additions = []
-    for source, message in enumerate(users):
-        for clause in re.split(r'[.!?\n;]', message):
-            match = assertion.fullmatch(clause.strip())
-            if not match:
-                continue
-            if (multiple_outputs(state) or re.search(r'또는|혹은|이거나|이든|아니면', message)
-                    or any(match['field'] in m for m in users[source + 1:])):
-                raise ValueError('별도 선별 조건을 적용할 출력·수정 범위를 확인하지 못했습니다.')
-            predicate = dict(field=match['field'], operator='eq', value=match['value'],
-                             compare_field=None, value_type='text')
-            if not any(other == predicate for _, other in additions):
-                additions.append((source, predicate))
-    return additions
+    from .text_filter_contract import text_filter_state
+    contract = text_filter_state(state)
+    if contract['issues']:
+        raise ValueError(' / '.join(contract['issues']))
+    if contract['predicates'] and multiple_outputs(state):
+        raise ValueError('여러 출력 중 선별 조건을 어느 결과에 적용할지 확인해주세요.')
+    return [(source, rule) for source, rule in contract['predicates'] if rule['field'] != primary]
+
+
+def confirmed_filter_groups(state):
+    """The same explicit predicates used by requirement ownership and row-lineage proof."""
+    from agent_builder.conditions.condition_readiness import literal_compound_filter
+    compound = literal_compound_filter(state)
+    return filter_groups(state, compound) if compound else []
+
+
+def filter_groups(state, compound):
+    """Build the ordered selection stages for a given compound relation."""
+    mode, rules = compound
+    extra = [predicate for _, predicate in additional_row_predicates(state, None)]
+    if mode == 'all':
+        return [dict(kind='filter', match=mode, filters=[*rules, *extra])]
+    groups = [dict(kind='filter', match=mode, filters=rules)]
+    if extra:
+        groups.append(dict(kind='filter', match='all', filters=extra))
+    return groups
 
 
 def owned_specs(confirmed, state):
@@ -60,9 +60,16 @@ def owned_specs(confirmed, state):
         add('filter', '확정한 비교 조건으로 행 선별', filter_keys, match='all', filters=[{
             'field': values['filter.field'], 'operator': values['filter.operator'],
             'value': value, 'compare_field': None, 'value_type': data_type}])
-        for source, predicate in additional_row_predicates(state, values['filter.field']):
-            specs['filter']['spec']['filters'].append(predicate)
-            specs['filter']['source_message'] = max(specs['filter']['source_message'], source)
+        groups = confirmed_filter_groups(state)
+        if groups:
+            specs['filter']['spec'] = groups[0]
+            if len(groups) > 1:
+                specs['filter']['following'] = [dict(spec=group, source_message=specs['filter']['source_message'],
+                    description='추가로 명시한 행 조건 적용') for group in groups[1:]]
+        else:
+            for source, predicate in additional_row_predicates(state, values['filter.field']):
+                specs['filter']['spec']['filters'].append(predicate)
+                specs['filter']['source_message'] = max(specs['filter']['source_message'], source)
     policy_keys = ['missing.policy', 'duplicate.policy', 'duplicate.field']
     if any(key in slots for key in policy_keys[:2]):
         add('policy', '확정한 빈값·중복 정책 적용', policy_keys, missing_policy=values.get('missing.policy'),
@@ -75,13 +82,33 @@ def owned_specs(confirmed, state):
 def multiple_outputs(state):
     from .export_intent import explicit_export_intent
     from .output_selection_request import _request_turns
+    from agent_builder.conditions.filter_dialogue import control_reply
+    from agent_builder.conditions.filter_edits import user_filter_text
     intent = explicit_export_intent(state)
     if intent['cancelled']:
         return False
     if intent['additional']:
         return True
-    text = ' '.join(text for source, text in _request_turns(state)
-                    if source >= intent['active_from'])
+    # Replay only the surviving portion of a turn: a cancellation may be
+    # followed by a new separate-output request in the very same message.
+    active = [(source, text[intent['reset_offset']:] if source == intent['reset_from'] else text)
+              for source, text in _request_turns(state) if source >= intent['reset_from']]
+    # A format answer for a separately requested artifact does not replace the
+    # original artifact. Keep that scope unless the user explicitly replaces it.
+    prior = ' '.join(text for source, text in active
+                     if source < intent['active_from'])
+    separate = bool(re.search(r'별도|따로|원본.{0,12}결과', prior))
+    start = intent['reset_from'] if separate else intent['active_from']
+    user_turns = [(i, message) for i, message in enumerate(state.get('messages', []))
+                  if message['role'] == 'user']
+    turns = []
+    for source, text in active:
+        if source < start:
+            continue
+        index, message = user_turns[source]
+        reply = user_filter_text(state, index, message)
+        turns.append(reply if reply and reply != message['content'] else text)
+    text = ' '.join(text for text in turns if not control_reply(text))
     # Keeping every row/column is a data policy, not a request for several artifacts.
     # Mask only that scoped use of "all"; retain independent output clauses and
     # the existing separate-file/format signals in the same request.
@@ -89,7 +116,9 @@ def multiple_outputs(state):
         r'(?:중복(?:\s*행)?|행|열|레코드|데이터|값|항목)(?:들)?(?:은|는|을|를|도)?\s*'
         r'(?:(?:그대로|빠짐없이)\s*)?모두\s*(?:(?:다|그대로)\s*)?(?:유지|보존)',
         lambda match: match.group().replace('모두', '', 1), text)
-    return bool(re.search(r'각각|각자|별도|따로|두\s*(?:개|파일)|둘\s*다|모두|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
+    text = re.sub(r'(?:빈\s*(?:값|칸|셀)|결측값?)(?:은|는|을|를)?\s*모두\s*(?:오류|에러|실패)(?:로)?\s*처리', '', text)
+    text = re.sub(r'(?:조건|기준)(?:을|은|는)?\s*(?:둘\s*다|모두)', '', text)
+    return bool(re.search(r'둘\s*다|모두|각각|각자|별도|따로|두\s*(?:개|파일)|(?:파일|결과|출력)(?:들)?(?:을|를|은|는)?\s*(?:둘\s*다|모두)|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
 
 
 def ordered_row_steps(state):
@@ -276,6 +305,16 @@ def project_owned(candidates, expected, state):
     multi = multiple_outputs(state)
     resources = state.get('resources', [])
     single_table = len(resources) == 1 and resources[0].get('kind') == 'table'
+    following = expected.get('filter', {}).get('following', [])
+    if following:
+        # A numeric OR followed by a text AND is two successive filter tasks.
+        from .requirement_coverage import _condition
+        allowed = {_condition(rule) for group in [expected['filter'], *following]
+                   for rule in group['spec']['filters']}
+        if any(_condition(rule) not in allowed for candidate in candidates
+               if candidate['spec'].get('kind') == 'filter' for rule in candidate['spec'].get('filters', [])):
+            raise ValueError('추가 선별 조건의 원문·대상을 먼저 확인해야 합니다.')
+        candidates = [candidate for candidate in candidates if candidate['spec'].get('kind') != 'filter']
     for kind in ('schedule', 'filter', 'policy'):
         related = [c['spec'] for c in candidates if c['spec'].get('kind') == kind]
         if kind in expected and any(spec != related[0] for spec in related[1:]):
@@ -305,7 +344,8 @@ def project_owned(candidates, expected, state):
         if kind not in seen:
             insert = len(result) if kind == 'export' else next(
                 (i for i, task in enumerate(result) if task['spec']['kind'] == 'export'), len(result))
-            result.insert(insert, candidate)
+            result[insert:insert] = [{k: v for k, v in candidate.items() if k != 'following'},
+                                     *candidate.get('following', [])]
     return result
 
 
@@ -313,6 +353,11 @@ def validate_owned(plan, expected, state):
     multi = multiple_outputs(state)
     for kind, candidate in expected.items():
         matching = [t['spec'] for t in plan['tasks'] if t['spec']['kind'] == kind]
+        if candidate.get('following'):
+            required = [candidate['spec'], *(item['spec'] for item in candidate['following'])]
+            if len(matching) != len(required) or any(spec not in matching for spec in required):
+                raise ValueError('검증된 업무 조건과 요구사항 설정이 다릅니다: ' + kind)
+            continue
         if candidate['spec'] not in matching or (not (multi and kind == 'export')
                 and any(spec != candidate['spec'] for spec in matching)):
             raise ValueError('검증된 업무 조건과 요구사항 설정이 다릅니다: ' + kind)

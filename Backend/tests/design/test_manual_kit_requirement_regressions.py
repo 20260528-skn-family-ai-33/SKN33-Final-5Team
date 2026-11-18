@@ -178,18 +178,31 @@ def test_manual_kit_t14_save_execute_and_csv(batch_reply, captured, tmp_path, mo
     result = handle({**base, 'action':'upload', 'id':session_id, 'revision':0,
                      'asset':dict(name='주문내역.csv', kind='table', format='csv', columns=columns), 'rows':rows})
     identifier = result['resources'][0]['id']
+    repair_issues = []
     def action(kind, **extra):
         candidate = (json.loads(json.dumps(captured_response['draft']).replace('table-source', identifier))
                      if captured else order_draft(identifier))
         if batch_reply:
             candidate['requirements'][-1]['quote'] = repeated_answer_state()['messages'][-1]['content']
+        def conversation(current):
+            selected = candidate
+            if captured and current.get('issues'):
+                # Preserve the captured response verbatim on the first pass.
+                # Its keep policy skips empty numeric operands, so the strict
+                # guard must reject it. The retry is a controlled correction,
+                # not a claim that a fresh live model produced this repair.
+                repair_issues.extend(current['issues'])
+                selected = order_draft(identifier)
+            return dict(draft=selected, repair_count=current.get('repair_count', 0) + 1)
         return handle({**base, 'action':kind, 'id':session_id, 'revision':result['revision'], **extra},
-                      conversation=lambda _: dict(draft=candidate))
+                      conversation=conversation)
     result = action('message', content=ORDER_REQUEST)
     assert result['status'] == 'needs_clarification'
     answer = repeated_answer_state()['messages'][-1]['content'] if batch_reply else ORDER_ANSWER
     result = action('message', content=answer, question_id=result['pending_questions'][0]['id'])
     assert result['status'] == 'ready', result.get('issues')
+    if captured:
+        assert any('숫자 선별 조건' in issue for issue in repair_issues), repair_issues
     result = action('confirm')
     assert result['status'] == 'saved', result.get('issues')
     run = handle({**base, 'action':'test', 'id':result['saved_agent_id'], 'content':''})

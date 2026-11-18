@@ -133,7 +133,10 @@ def record_answer(state, answer, question_id=None, question_answers=None):
     return {'turn': len(state.get('messages', [])), 'answer': answer,
             'kind': 'answer' if question_answers is not None else answer_kind(answer),
             'questions': selected, 'question_ids': [q['id'] for q in selected],
-            'explicit': bool(question_id) or question_answers is not None}
+            'explicit': bool(question_id) or question_answers is not None,
+            **({'answers': [dict(question_id=item['question_id'], value=item['value'])
+                            for item in question_answers if item['question_id'] in {q['id'] for q in selected}
+                            and not item.get('skip')]} if question_answers is not None else {})}
 
 
 def open_required(state):

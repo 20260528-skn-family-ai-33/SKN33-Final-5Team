@@ -4,7 +4,7 @@ import re
 
 _FORMAT = r'(?:csv|json|xlsx|pdf|md)'
 _FORMATS = _FORMAT + r'(?:\s*(?:와|과|및|,|/|\+)\s*' + _FORMAT + r')*'
-_END = r'(?:해\s*(?:주세요|줘)|하(?:고|며|도록)|해|합니다)?(?=[.!?,;\s]|$)'
+_END = r'(?:해\s*(?:주세요|줘)|하(?:고|며|세요|도록)|해|합니다)?(?=[.!?,;\s]|$)'
 _SAVE = re.compile(
     r'(?:(?P<replacement>' + _FORMATS + r')\s*말고\s*)?'
     r'(?P<formats>' + _FORMATS + r')\s*(?:파일)?(?:으로|로)(?P<also>도)?\s*'
@@ -21,6 +21,9 @@ _CANCEL_FORMAT = re.compile(
 _CHANGE = re.compile(
     r'(?P<formats>' + _FORMATS + r')\s*(?:형식)?(?:으로|로)\s*'
     r'(?:변경해|바꿔)(?:\s*(?:주세요|줘))?(?=[.!?,;\s]|$)', re.I)
+_SINGLE_SAVE = re.compile(
+    r'(?P<formats>' + _FORMAT + r')\s*(?:파일\s*)?(?:하나|한\s*개)만\s*'
+    r'(?:저장|내보내)' + _END, re.I)
 _CONTEXT = re.compile(r'\s*(?:라는|라고|란|라는\s*문구|이런|같은\s*예)')
 
 
@@ -32,9 +35,11 @@ def explicit_export_intent(state):
     cancelled = False
     additional = False
     active_from = -1
+    reset_from = -1
+    reset_offset = 0
     for source, text in _request_turns(state):
         events = sorted(
-            [(m.start(), 'save', m) for pattern in (_SAVE, _CHANGE) for m in pattern.finditer(text)] +
+            [(m.start(), 'save', m) for pattern in (_SAVE, _CHANGE, _SINGLE_SAVE) for m in pattern.finditer(text)] +
             [(m.start(), 'cancel', m) for pattern in (_CANCEL, _DONT_SAVE, _CANCEL_FORMAT)
              for m in pattern.finditer(text)],
             key=lambda event: event[0])
@@ -50,6 +55,7 @@ def explicit_export_intent(state):
                     forbidden_formats.update(selected)
                     formats.difference_update(selected)
                     if removed:
+                        reset_from, reset_offset = source, match.end()
                         cancelled = not formats
                         active_from = source
                     additional = len(formats) > 1
@@ -60,6 +66,7 @@ def explicit_export_intent(state):
                 if prefix and not re.fullmatch(r'(?:이제|그럼|그리고|또한)', prefix):
                     continue
                 forbidden_formats.update(formats)
+                reset_from, reset_offset = source, match.end()
                 formats.clear()
                 cancelled = True
                 additional = False
@@ -68,7 +75,9 @@ def explicit_export_intent(state):
             else:
                 replacement = match.groupdict().get('replacement')
                 also = match.groupdict().get('also')
-                if replacement or (not also and not started) or match.re is _CHANGE:
+                if replacement or match.re in (_CHANGE, _SINGLE_SAVE):
+                    reset_from, reset_offset = source, match.end()
+                if replacement or (not also and not started) or match.re in (_CHANGE, _SINGLE_SAVE):
                     formats.clear()
                     additional = False
                     active_from = source
@@ -79,4 +88,4 @@ def explicit_export_intent(state):
                 started = True
     return dict(formats=formats, cancelled=cancelled,
                 additional=additional and len(formats) > 1, active_from=active_from,
-                forbidden_formats=forbidden_formats)
+                forbidden_formats=forbidden_formats, reset_from=reset_from, reset_offset=reset_offset)

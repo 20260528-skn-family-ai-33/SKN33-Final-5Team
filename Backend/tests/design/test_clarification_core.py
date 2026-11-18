@@ -226,7 +226,10 @@ def test_fixed_document_flow_delegates_any_extra_processing_to_the_planner(text)
     ('문서에서 품목, 금액을 뽑아서 CSV로 정리해줘', ['품목', '금액']),
     ('영수증에서 날짜와 금액을 한 줄씩 엑셀로 정리해줘', ['날짜', '금액'])])
 def test_fixed_document_flow_does_not_ask_for_fields_already_listed(text, fields):
-    reply = document_rows_reply(doc_state(text))
+    from tests.design.test_document_row_integrity import block, document
+    current = doc_state(text)
+    current['resources'] = [document([block([fields, ['원문 값', '1000']])])]
+    reply = document_rows_reply(current)
     assert reply['draft']['questions'] == []
     extract = next(n for n in reply['draft']['workflow']['nodes'] if n['tool'] == 'extract_information')
     assert extract['settings']['fields'] == fields

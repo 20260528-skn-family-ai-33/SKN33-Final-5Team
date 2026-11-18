@@ -123,11 +123,16 @@ def _numeric_control(text):
 def infer_question_control(question,state):
     """Complete one control without changing its identity, wording or meaning."""
     question=deepcopy(question)
+    if question.get('key') == 'document.fields':
+        question.update(options=[], response={'type':'text'})
+        return question
     if question.get('options'):question['options']=list(dict.fromkeys(question['options']))
     if question.get('options') and any(re.search(r'[()（）]|알려주세요',option) for option in question['options']):
         repaired=_stated_options(question.get('text',''))
         if repaired:question['options']=repaired
     response=_response(question,state)
+    if question.get('key') in ('filter.value','filter.match') and question.get('response') == {'type':'text'}:
+        return question
     from .question_time import clock_question
     if response['type'] in ('text','number','time') and clock_question(question):
         question['response']={'type':'time'}

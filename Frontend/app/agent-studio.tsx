@@ -393,7 +393,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     }
    const editingWorkflow=!!session?.draft?.workflow;
    const gmailSlackRequest=/(?:Gmail|지메일)/i.test(content)&&/(?:Slack|슬랙)/i.test(content);
-   if(!files?.length&&!editingWorkflow&&!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
+   if(!questionId&&!answers?.some(answer=>answer.questionId)&&!files?.length&&!editingWorkflow&&!gmailSlackRequest&&(externalPromptContext.current||/Google Sheets|구글 ?시트|스프레드시트|Slack|슬랙|외부 ?API|Webhook|웹훅|REST API|API ?연동|API에서/i.test(content))){
     const prompt=externalPromptContext.current?`${externalPromptContext.current}\n추가 답변: ${content}`:content;
     const result=await request<{workflow?:{id:string};summary?:string;questions?:{question:string}[];checklist?:string[];requirements?:{id:string;description:string;status:string}[]}>('/api/workflows/from-request',{prompt});
     if(!result.workflow){externalPromptContext.current=prompt;setExternalMessages(prior=>[...prior,{role:'user',content},{role:'assistant',content:explainIncompleteWorkflow(result,prompt)}]);return;}
@@ -685,6 +685,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   ? session.pending_questions.map(question=>{const index=session.draft?.questions.indexOf(question.text)??-1;return {...question,response:question.response||session.draft?.question_responses?.[index]||undefined};})
   : (session?.draft?.questions||[]).map((question,index)=>({text:question,options:session?.draft?.question_options?.[index],response:session?.draft?.question_responses?.[index]||undefined}));
   const slackChannelQuestion=clarificationQuestions.find(question=>question.key==='slack.channel_id'||/(?:Slack|슬랙).{0,20}채널/i.test(question.text));
+  const documentTableQuestionId=slackChannelQuestion?undefined:clarificationQuestions.find(question=>question.key==='document.fields')?.id;
  // Only draw the version that actually ran when browsing history.
  const runWorkflow = testRun?.config_snapshot && 'workflow' in testRun.config_snapshot
   ? testRun.config_snapshot.workflow
@@ -820,12 +821,11 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
         const full=asset.text?.trim() || (asset.kind==='table' && asset.row_count<=asset.preview.length);
         return {label:full?'읽은 내용 전체 보기':'자료 상세 보기',open:()=>setResource(asset)};
       }} factsFor={id=>{const asset=session.resources.find(resource=>resource.id===id);return asset?{row_count:asset.kind==='table'?asset.row_count:undefined,page_count:asset.page_count}:undefined;}}
-      initial={!session.messages.some(message=>message.role==='user')} fresh={freshFiles.session===session.id?freshFiles.ids:[]} readOnly={!!receiptQuestion} disabled={!!busy||!!recovery||libraryBusy||saved}
-      onUse={message=>{
-        const next=text.trim()?text.trimEnd()+'\n'+message:message;
-        if(next.length>4000){setError('업무 설명은 4,000자까지 입력할 수 있어요. 내용을 줄인 뒤 다시 추가해 주세요.');return;}
-        setText(next);input.current?.focus();
-      }}/> : null}
+      initial={!session.messages.some(message=>message.role==='user')} fresh={freshFiles.session===session.id?freshFiles.ids:[]} readOnly={!!receiptQuestion}
+      selection={documentTableQuestionId?{
+        disabled:!!busy||!!recovery||libraryBusy,
+        onAnswer:(message,selection)=>selection?void send(undefined,message,undefined,[{questionId:documentTableQuestionId,text:message,value:JSON.stringify({document_selection:selection})}]):void send(undefined,message,documentTableQuestionId),
+      }:undefined}/> : null}
     {receiptQuestion?.action ? <ReceiptQuestion key={receiptQuestion.id} text={receiptQuestion.text} action={receiptQuestion.action}
       disabled={!!busy||!!recovery||libraryBusy} onAttach={()=>fileInput.current?.click()} onLibrary={()=>setAttachMode('library')} onAnswer={answer=>void send(undefined,answer,receiptQuestion.id)}/> : !selected&&slackChannelQuestion ? <SlackChannelPicker key={session?.id+'-'+slackChannelQuestion.id} disabled={!!busy||!!recovery||libraryBusy} onSelect={channelId=>send(undefined,channelId,slackChannelQuestion.id)} onReconnect={()=>leave('connections')}/> : !selected&&clarificationQuestions.length>0&&<ClarificationForm key={session?.id} questions={clarificationQuestions} disabled={!!busy||!!recovery||libraryBusy} onDirtyChange={setClarificationDirty} onPickFiles={picker=>setFilePicker(picker)} onSubmit={answerQuestions}/>}<DesignFailureNotice failure={generationFailure} hasDraft={!!session?.draft?.workflow} disabled={!!busy||!!recovery||libraryBusy} onRetry={()=>void send(undefined,RETRY_PROMPT)}/>{pendingMessage&&<div className="as-message user"><span className="as-message-label">나</span><p>{pendingMessage}</p></div>}{busy&&<div className="as-busy as-operation-progress" role="status"><Loader2 size={17} className="as-spin" aria-hidden="true"/><span>{busy}</span></div>}<div ref={end}/></div><form className="as-composer" onSubmit={send}
     onDragOver={event=>{if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault();}}

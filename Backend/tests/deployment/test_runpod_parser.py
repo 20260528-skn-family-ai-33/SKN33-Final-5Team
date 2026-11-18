@@ -87,6 +87,40 @@ def test_explicit_existing_pod_auth_setting_is_preserved(server, monkeypatch):
     assert request(server, 'GET', '/v1/pdf/missing', key='wrong')[0] == 404
 
 
+def test_docling_image_http_validation(server):
+    path = '/v1/docling-image'
+    assert request(server, 'POST', path, b'png', key='wrong')[0] == 401
+    assert request(server, 'GET', path + '/missing', key='wrong')[0] == 401
+    assert request(server, 'DELETE', path + '/missing', key='wrong')[0] == 401
+    assert request(server, 'POST', path, b'png')[0] == 415
+    assert request(server, 'POST', path, b'png', content_type='image/png')[0] == 400
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='GPU process groups require POSIX')
+def test_image_job_shares_pdf_slot_and_returns_json(server, monkeypatch, tmp_path):
+    running, release = tmp_path / 'running', tmp_path / 'release'
+    script = install_worker(monkeypatch, tmp_path, '')
+    script.with_name('pod_docling_image_worker.py').write_text(
+        'import time,sys\nfrom pathlib import Path\n'
+        f'Path({str(running)!r}).touch()\n'
+        f'while not Path({str(release)!r}).exists(): time.sleep(.02)\n'
+        '(Path(sys.argv[1])/"result.json").write_text(\'{"engine":"docling","blocks":[]}\')\n')
+    status, _, body = request(server, 'POST', '/v1/docling-image', b'\x89PNG\r\n\x1a\nfixture', content_type='image/png')
+    assert status == 202
+    wait_for(running.exists)
+    assert request(server, 'POST', '/v1/pdf', b'%PDF-next')[0] == 429
+    path = '/v1/docling-image/' + json.loads(body)['job_id']
+    other = '/v1/pdf/' + json.loads(body)['job_id']
+    assert request(server, 'GET', other)[0] == 404
+    assert request(server, 'DELETE', other)[0] == 404
+    assert request(server, 'GET', path)[0] == 202
+    release.touch()
+    wait_for(lambda: request(server, 'GET', path)[0] != 202)
+    status, content_type, body = request(server, 'GET', path)
+    assert status == 200 and content_type.startswith('application/json')
+    assert json.loads(body)['engine'] == 'docling'
+
+
 def wait_for(check, timeout=4):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -120,6 +154,8 @@ while not Path({str(release)!r}).exists(): time.sleep(.02)
     assert status == 202
     wait_for(running.exists)
     job = json.loads(body)['job_id']
+    assert request(server, 'GET', '/v1/docling-image/' + job)[0] == 404
+    assert request(server, 'DELETE', '/v1/docling-image/' + job)[0] == 404
     assert request(server, 'GET', '/v1/pdf/' + job)[0] == 202
     assert request(server, 'POST', '/v1/pdf', b'%PDF-next')[0] == 429
     release.touch()

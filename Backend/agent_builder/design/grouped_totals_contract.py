@@ -146,4 +146,7 @@ def connected_tasks(contract, tasks):
 
 
 def contract_filename(contract, fmt):
-    return str(PurePosixPath(contract['output']).with_suffix('.' + fmt))
+    path = PurePosixPath(contract['output'])
+    if path.suffix.casefold() == '.' + fmt.casefold():
+        return contract['output']
+    return str(path.with_suffix('.' + fmt))

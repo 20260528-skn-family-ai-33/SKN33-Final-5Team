@@ -20,6 +20,8 @@ def formula_columns(formula):
             if isinstance(node.value, float) and not math.isfinite(node.value):
                 raise ValueError('유한한 숫자만 사용할 수 있습니다.')
         elif isinstance(node, ast.Name):
+            if ast.get_source_segment(formula, node) != node.id:
+                raise ValueError('수식의 열 이름이 정규화되어 다른 열을 참조합니다. 열 이름을 확인하세요.')
             columns.add(node.id)
         elif isinstance(node, ast.BinOp) and isinstance(node.op, _BINARY):
             visit(node.left); visit(node.right)

@@ -6,7 +6,10 @@ import pytest
 from langgraph.types import Command
 
 from agent_builder.conditions.input_requirements import execution_request_required
-from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT, gmail_slack_candidate, gmail_slack_format_question, gmail_slack_reply, gmail_slack_request
+from agent_builder.design.gmail_slack import (
+    LEGACY_SUMMARY_CARD_FORMAT, SUMMARY_CARD_FORMAT, gmail_slack_candidate,
+    gmail_slack_format_question, gmail_slack_reply, gmail_slack_request,
+)
 from agent_builder.design.gmail_summary import UNREAD_QUERY
 from agent_builder.design.graph import build_graph
 from agent_builder.design.nodes.validation import validate_node
@@ -95,7 +98,7 @@ def test_channel_clarification_then_real_saved_workflow(tmp_path, prompt):
         reader, summary, sender = draft['workflow']['nodes']
         assert summary['settings']['instructions'].endswith(SUMMARY_CARD_FORMAT)
         assert all(label in summary['settings']['instructions'] for label in ('제목:', '보낸 사람:', '핵심:'))
-        assert '1~2문장' in summary['settings']['instructions']
+        assert '최대 두 문장' in summary['settings']['instructions']
         assert '긴 URL을 복사하지 마세요' in summary['settings']['instructions']
         assert summary['bindings'] == [dict(input='documents', node_id='mail', output='documents')]
         assert sender['bindings'] == [dict(input='text', node_id='summary', output='text')]
@@ -173,6 +176,10 @@ def test_older_saved_gmail_slack_recipe_accepts_empty_execution_request(prompt):
     legacy['request_input_mode'] = None
     legacy['workflow']['nodes'][1]['settings']['instructions'] = legacy['workflow']['nodes'][1]['settings']['instructions'].removesuffix(SUMMARY_CARD_FORMAT)
     assert not execution_request_required(legacy)
+
+    legacy_with_card_format = deepcopy(legacy)
+    legacy_with_card_format['workflow']['nodes'][1]['settings']['instructions'] += LEGACY_SUMMARY_CARD_FORMAT
+    assert not execution_request_required(legacy_with_card_format)
 
     upgraded_without_input_mode = deepcopy(result['draft'])
     upgraded_without_input_mode['request_input_mode'] = None

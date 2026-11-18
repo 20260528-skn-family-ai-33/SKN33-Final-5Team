@@ -59,3 +59,30 @@ def test_confirmed_single_export_stays_owned_after_keep_all_rows_request():
     assert specs.count({'kind': 'export', 'format': 'json'}) == 1
     assert next(spec for spec in specs if spec['kind'] == 'policy')['duplicate_policy'] == 'keep'
     assert next(spec for spec in specs if spec['kind'] == 'filter')['filters'][0]['value'] == 1000000
+
+
+@pytest.mark.parametrize('separate', ['별도 파일도 만들어줘.', '결과를 따로 CSV로도 저장해줘.'])
+def test_later_text_filter_cannot_be_injected_into_an_existing_output(separate):
+    from agent_builder.design.condition_requirements import owned_specs, additional_row_predicates
+    from tests.design.test_filter_edit_sequences import current, seal
+    from agent_builder.conditions.condition_readiness import confirmed_condition_view
+    s = current(); seal(s)
+    s['messages'] += [dict(role='user', content=separate),
+                      dict(role='user', content='상태가 완료인 행만 남겨줘.')]
+    assert multiple_outputs(s)
+    from tests.design.test_filter_edit_sequences import judge, VALUES
+    s['condition_ledger'] = judge(s, VALUES)
+    assert s['condition_ledger']['decision'] == 'ready'
+    with pytest.raises(ValueError, match='어느 결과'):
+        owned_specs(confirmed_condition_view(s), s)
+    with pytest.raises(ValueError, match='어느 결과'):
+        additional_row_predicates(s, '비용')
+
+
+def test_text_filter_still_combines_with_numeric_filter_for_one_output():
+    from agent_builder.design.condition_requirements import owned_specs
+    from tests.design.test_filter_edit_sequences import current, seal
+    from agent_builder.conditions.condition_readiness import confirmed_condition_view
+    s = current('상태가 완료인 행만 남겨줘.'); seal(s)
+    specs = owned_specs(confirmed_condition_view(s), s)
+    assert {rule['field'] for rule in specs['filter']['spec']['filters']} == {'비용', '수량', '상태'}

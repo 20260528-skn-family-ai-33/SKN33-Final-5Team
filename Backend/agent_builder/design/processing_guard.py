@@ -27,7 +27,7 @@ _ACTIONS = re.compile(
     r'|(?P<join>결합|병합)|(?P<extract>추출)|(?P<compare>비교|대조)')
 _INFLECTED_ACTIONS = re.compile(r'(?P<compute>곱한|곱해|곱하|더한|더해|나눈|나누어)|(?P<filter>행만\s*(?:남겨|남기|골라|추려))')
 _VERB = re.compile(r'\s*(?:해|하|합니|을\s*해|를\s*해|을\s*하|를\s*하)')
-_NEGATED = re.compile(r'\s*(?:은|는|을|를|만)?\s*(?:(?:하)?지(?:는)?\s*(?:마|말|않)|없이|말고|취소|안\s*해|빼고|제외해|제외하고|생략해|생략하고)')
+_NEGATED = re.compile(r'\s*(?:은|는|을|를|만)?\s*(?:(?:하)?지(?:는)?\s*(?:마|말|않)|없이|말고|취소|안\s*해|빼고|제외해|제외하고|생략해|생략하고|건너뛰|(?:할\s*)?필요(?:가|는)?\s*없(?:어|어요|습니다|다)?(?=[.!?,;\s]|$))')
 _LITERALS = re.compile(r'''"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’|@?[\w.-]+\.(?:csv|json|xlsx|pdf|txt)\b''', re.I)
 
 
@@ -41,7 +41,9 @@ def _legacy_actions(state):
         for match in mentions:
             kind = match.lastgroup
             tail = text[match.end():]
-            if _NEGATED.match(tail):
+            clause = re.match(r'([^.!?;\n]*)([.!?;\n]|$)', tail)
+            question = clause[2] == '?' or bool(re.search(r'나요|까요|어도\s*되|는지|다면|으면', clause[1]))
+            if _NEGATED.match(tail) and not question:
                 actions.discard(kind)
             elif match.re is _INFLECTED_ACTIONS or _VERB.match(tail):
                 actions.add(kind)

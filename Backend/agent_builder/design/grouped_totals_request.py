@@ -5,6 +5,8 @@ stays on the general extractor; no file contents or expected answers are used.
 """
 import re
 
+from workflow_engine.table_formula import formula_columns
+
 
 _NAME = r'[\w-]+?'
 _END = r'(?:해\s*(?:줘|주세요)|하세요)[.!]?'
@@ -63,11 +65,17 @@ def grouped_totals_packet(state):
             or len({v['group'], v['measure'], v['total'], v['count'], 'sum', 'count'}) != 6
             or v['measure'] in columns or v['group'] in (v['left'], v['right']) or sort_type is None):
         return None
+    formula = f"{v['left']} * {v['right']}"
+    try:
+        if formula_columns(formula) != {v['left'], v['right']}:
+            return None
+    except ValueError:
+        return None
     specs = [
         dict(kind='read', file_ids=[asset['id']]),
         dict(kind='filter', match='all', filters=[dict(field=status, operator='eq', value=v['value'],
                                                     compare_field=None, value_type='text')]),
-        dict(kind='compute', formula=f"{v['left']} * {v['right']}", output_column=v['measure']),
+        dict(kind='compute', formula=formula, output_column=v['measure']),
         dict(kind='aggregate', fields=[v['group']], aggregation='sum', sum_field=v['measure']),
         dict(kind='rename', source='sum', target=v['total']),
         dict(kind='aggregate', fields=[v['group']], aggregation='count', sum_field=None),

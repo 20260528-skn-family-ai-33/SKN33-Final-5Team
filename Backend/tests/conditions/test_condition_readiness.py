@@ -636,3 +636,45 @@ def test_registered_tool_ids_are_not_condition_unsupported_actions():
     s=state('변수 x=7로 x*3+2를 계산해줘.')
     result=checked(s,{'operation':'other','conditions':[], 'unsupported_actions':['scalar_calculate','finish']})
     assert result['outside_scope'] and not result['unsupported_actions']
+
+
+def test_multiple_clarification_turns_reach_approval_and_execute_confirmed_filter(tmp_path):
+    s = state('비용이 큰 행을 파일로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    s['resources'] = [{'id': 'table', 'kind': 'table', 'name': '비용.csv', 'columns': ['항목', '비용'],
+                       'profile': {'비용': {'types': ['number']}}}]
+    raw = proposal(s, {'filter.field': '비용', 'filter.operator': None, 'filter.value': None,
+                       'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': None})
+    store = Storage(tmp_path)
+    store.add_asset(s['resources'][0], [{'항목': '경계', '비용': 1000000}, {'항목': '포함', '비용': 1500000}])
+    cfg = {'configurable': {'thread_id': s['session_id']}}
+    planner_calls = []
+
+    def conversation(state):
+        planner_calls.append(state['condition_ledger'])
+        return {'draft': workflow_draft(state), 'confirmed': False, 'semantic_issues': []}
+
+    graph, conn = build_graph(store, conversation=conversation, condition_transport=Fake([raw]), condition_mode='enforce')
+    try:
+        first = graph.invoke(s, cfg)
+        assert first['status'] == 'needs_clarification'
+        threshold = next(q for q in first['pending_questions'] if q['key'] == 'filter.value')
+        assert not any(q['key'] == 'filter.operator' for q in first['pending_questions'])
+        second = graph.invoke(Command(resume={'type': 'message', 'content': '100만원 초과',
+                                              'question_id': threshold['id']}), cfg)
+        assert second['status'] == 'needs_clarification'
+        assert [q['key'] for q in second['pending_questions']] == ['output.format']
+        assert not planner_calls and not store.agents()
+
+        output = second['pending_questions'][0]
+        ready = graph.invoke(Command(resume={'type': 'message', 'content': 'JSON', 'question_id': output['id']}), cfg)
+        assert ready['status'] == 'ready'
+        assert not ready['pending_questions'] and len(planner_calls) == 1
+        assert not store.agents()
+        saved = graph.invoke(Command(resume={'type': 'confirm'}), cfg)
+        assert saved['status'] == 'saved'
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=['table'])
+        assert result['status'] == 'succeeded'
+        assert result['rows'] == [{'항목': '포함', '비용': 1500000}]
+    finally:
+        conn.close()
+        store.close()

@@ -334,7 +334,8 @@ def coverage_report(state,draft):
     except (ValueError,KeyError,TypeError) as error:
         final_output=None
         problems.append('요구사항 검증: 최종 다운로드 경로를 확인할 수 없습니다. '+str(error))
-    if len(exports)>1:
+    from .condition_requirements import multiple_outputs
+    if len(exports)>1 or multiple_outputs(state):
         problems.append('요구사항 검증: 복수 결과 파일의 저장 위치·개별 출력은 추가 검토가 필요합니다.')
     def assign(index):
         nonlocal attempts

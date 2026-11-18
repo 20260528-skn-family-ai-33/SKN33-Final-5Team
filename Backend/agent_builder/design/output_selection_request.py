@@ -7,6 +7,7 @@ import re
 from copy import deepcopy
 
 from contracts.numeric_criteria import number_value
+from .text_filter_parser import column_projection_requests
 
 
 _NAMED_EXPORT = re.compile(
@@ -14,7 +15,7 @@ _NAMED_EXPORT = re.compile(
     r'(?:만)?(?:을|를)\s+[\w.-]+\.(?P<format>csv|json|xlsx)'
     r'(?:으로|로)\s*(?:저장|내보내)', re.I)
 
-_EXPORT_END = re.compile(r'\s*(?:해\s*(?:줘|주세요)|하(?:고|며|도록)|[.!;,\n]|$)')
+_EXPORT_END = re.compile(r'\s*(?:해\s*(?:줘|주세요)|하(?:고|며|세요|도록)|[.!;,\n]|$)')
 _ALL_COLUMNS = re.compile(r'(?:전체|모든)\s*열(?:들)?(?:만)?(?:을|로)?\s*(?:저장|내보내)')
 _SINGLE_EXPORT = re.compile(
     r'(?<![\w·])(?P<column>\w+?)(?:\s+(?P<marker>열|컬럼))?만(?:을|를)?\s*'
@@ -74,7 +75,7 @@ def _selection_request(state):
     # be projected by this narrow grammar. Unrelated replies do not replace it.
     columns = _known_columns(state)
     for index, text in reversed(list(_request_turns(state))):
-        if (_NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
+        if (any(item.affirmed for item in column_projection_requests(text, columns)) or _NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
                 or re.search(r'\w+(?:\s*[·,]\s*\w+)+(?:을|를)\s*(?:내보내|저장)', text)
                 or re.search(r'(?:출력|저장할|내보낼)\s*(?:열|컬럼)|(?:열|컬럼).{0,20}(?:추가|제외|변경|바꿔)', text)):
             return index, text
@@ -105,6 +106,9 @@ def output_selection(state):
 
 
 def _selection_fields(text, columns):
+    projections = column_projection_requests(text, columns)
+    if projections:
+        return list(projections[0].fields) if len(projections) == 1 and projections[0].affirmed else None
     matches = [m for m in _NAMED_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
     singles = [m for m in _single_requests(text, columns) if _EXPORT_END.match(text[m.end():])]
     # A batch clarification reply can repeat the same answer after each question.
@@ -221,6 +225,7 @@ def export_intent_issues(state, draft):
     from .condition_requirements import multiple_outputs
     from .export_intent import explicit_export_intent
     from .requirement_coverage import _matches
+    from workflow_engine.runner import execution_parameters
 
     intent = explicit_export_intent(state)
     if not (intent['cancelled'] or intent['forbidden_formats'] or intent['formats']):
@@ -232,8 +237,11 @@ def export_intent_issues(state, draft):
         if intent['cancelled']:
             return ['취소한 파일 저장 작업이 실제 실행 단계에 남아 있습니다: ' + node['id']]
         try:
+            # Match the format the executor will use, including a native
+            # write_result node's fallback to the workflow output format.
+            effective = {**node, 'settings': {**node['settings'], **execution_parameters(node, draft)}}
             formats = {fmt for fmt in ('csv', 'json', 'xlsx', 'pdf', 'md')
-                       if _matches(dict(kind='export', format=fmt), node, draft, lambda _: set())}
+                       if _matches(dict(kind='export', format=fmt), effective, draft, lambda _: set())}
         except (ValueError, KeyError, TypeError):
             return ['요청한 파일 저장 형식의 실제 실행 설정을 확인하지 못했습니다: ' + node['id']]
         if formats & intent['forbidden_formats']:

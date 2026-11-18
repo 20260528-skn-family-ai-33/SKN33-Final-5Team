@@ -3,13 +3,11 @@ import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from '../src/test-p
 import test from 'node:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { createServer as createHttpServer, type ServerResponse } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
 import type { Flow, FlowNode, Execution, Json } from '../../../shared/workflow';
 
 const project = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -112,26 +110,6 @@ test('standalone server persists and executes workflows, credentials, schedules 
       const denied=await server.request('/api/oauth/begin','POST',input,{Origin:'https://unrelated.example'});assert.equal(denied.status,403);
       const callback=await fetch(server.base+'/api/oauth/callback?state='+encodeURIComponent(begin.data.stateId)+'&error=access_denied');assert.equal(callback.status,400);assert.match(callback.headers.get('content-type')||'',/text\/html/);const html=await callback.text();assert.ok(!html.includes(privateValue));assert.match(html,/easyflow-oauth/);
       const replay=await fetch(server.base+'/api/oauth/callback?state='+encodeURIComponent(begin.data.stateId)+'&code=not-a-real-code');assert.equal(replay.status,400);assert.ok(!(await replay.text()).includes('not-a-real-code'));
-    });
-    await t.test('reservation workspace saves reject stale versions without overwriting a changed schedule',async()=>{
-      const flow=workflow('예약 동시 수정 검증',[stage('scheduleTrigger','예약 시작',{rule:{interval:[{field:'days',triggerAtHour:9}]}}),rawSet('결과')]);
-      const created=(await server.request('/api/workflows','POST',flow)).data.workflow as Flow;
-      const edited=await server.request('/api/workflows/schedule','POST',{workflowId:created.id,updatedAt:created.updatedAt,action:'configure',rule:{interval:[{field:'days',triggerAtHour:11}]}});
-      assert.equal(edited.status,200);
-      const newest=edited.data.workflow as Flow;
-      assert.notEqual(newest.updatedAt,created.updatedAt);
-      const staleActivation=await server.request('/api/activation','POST',{workflowId:created.id,active:true,expectedUpdatedAt:created.updatedAt});
-      assert.equal(staleActivation.status,409);
-      const listed=(await server.request('/api/workflows')).data.workflows.find((item:Flow)=>item.id===created.id);
-      assert.equal(listed.active,false);
-      assert.equal(listed.updatedAt,newest.updatedAt);
-      const stale=await server.request('/api/workflows','POST',{...created,expectedUpdatedAt:created.updatedAt});
-      assert.equal(stale.status,409);
-      const saved=await server.request('/api/workflows','POST',{...newest,settings:{...newest.settings,timezone:'UTC'},expectedUpdatedAt:newest.updatedAt});
-      assert.equal(saved.status,200);
-      assert.equal(saved.data.workflow.settings.timezone,'UTC');
-      assert.deepEqual(saved.data.workflow.nodes,newest.nodes);
-      assert.equal(Object.hasOwn(saved.data.workflow,'expectedUpdatedAt'),false);
     });
     await t.test('file upload, CSV extraction and download return actual bytes with safe metadata',async()=>{
       const csv='name,score\r\n"예시 고객, A",92\r\n예시 고객 B,68\r\n';const uploaded=await server.request('/api/files','POST',{data:Buffer.from(csv).toString('base64'),fileName:'../입력.csv',mimeType:'text/csv'});assert.equal(uploaded.status,200);assert.equal(uploaded.data.input[0].__easyflowBinary.data.fileName,'입력.csv');
@@ -289,14 +267,6 @@ test('standalone server persists and executes workflows, credentials, schedules 
         assert.equal(result.runs.at(-1)?.output[0][0].timezone,'Asia/Seoul');
         const stored = (await server.request('/api/workflows')).data.workflows.find((flow:Flow) => flow.id === scheduled.id) as Flow;
         assert.ok(stored.schedule.nextRunAt > due,'the timer must advance the persisted next execution time');
-        assert.equal(stored.updatedAt,activation.data.workflow.updatedAt,'a timer tick preserves the configuration version');
-        const removed=await server.request('/api/workflows/schedule','POST',{workflowId:scheduled.id,updatedAt:activation.data.workflow.updatedAt,action:'remove'});
-        assert.equal(removed.status,200);
-        assert.match(removed.data.workflow.nodes[0].type,/manualTrigger$/);
-        const staleDesign=await server.request('/api/workflows','POST',{...activation.data.workflow,name:'오래된 설계'});
-        assert.equal(staleDesign.status,409);
-        const unversioned=await server.request('/api/workflows','POST',{...activation.data.workflow,updatedAt:undefined});
-        assert.equal(unversioned.status,409);
         const executions = (await server.request('/api/executions')).data.executions as Execution[];
         assert.equal(executions.filter(matchesFirstDue).length,1);
       } finally {
@@ -305,85 +275,6 @@ test('standalone server persists and executes workflows, credentials, schedules 
         assert.equal(stopped.data.workflow.active,false);
         assert.equal(stopped.data.workflow.schedule,undefined);
       }
-    });
-
-    await t.test('pausing a schedule cancels queued automatic runs but leaves running and manual work alone',async()=>{
-      const responses:ServerResponse[]=[];
-      const blocker=createHttpServer((_req,res)=>{responses.push(res);});
-      await new Promise<void>((resolve,reject)=>{blocker.once('error',reject);blocker.listen(0,'127.0.0.1',resolve);});
-      try{
-        const address=blocker.address();
-        assert.ok(address&&typeof address!=='string');
-        const held=workflow('실행 슬롯 점유',[stage('manualTrigger','직접 시작'),stage('httpRequest','응답 대기',{url:'http://127.0.0.1:'+address.port,method:'GET',options:{timeout:10_000}})]);
-        assert.equal((await server.request('/api/workflows','POST',held)).status,200);
-        const started=await Promise.all([1,2].map(()=>server.request('/api/runs','POST',{workflowId:held.id,mode:'live',input:[{}]})));
-        assert.ok(started.every(run=>run.status===202));
-        const deadline=Date.now()+scaled(4000);
-        while(responses.length<2&&Date.now()<deadline)await delay(25);
-        assert.equal(responses.length,2,'both execution slots must remain occupied');
-        const scheduled=workflow('중지할 자동 예약',[stage('scheduleTrigger','예약 시작',{rule:{interval:[{field:'seconds',secondsInterval:1}]}}),rawSet('출력')]);
-        assert.equal((await server.request('/api/workflows','POST',scheduled)).status,200);
-        const active=await server.request('/api/activation','POST',{workflowId:scheduled.id,active:true});
-        assert.equal(active.status,200);
-        const manual=await server.request('/api/runs','POST',{workflowId:scheduled.id,mode:'learning',input:[{}]});
-        assert.equal(manual.status,202);
-        const queueDeadline=Date.now()+scaled(4000);
-        let automatic:Execution|undefined;
-        while(!automatic&&Date.now()<queueDeadline){
-          const listed=await server.request('/api/executions?workflowId='+scheduled.id);
-          automatic=(listed.data.executions as Execution[]).find(item=>item.trigger==='schedule'&&item.status==='queued');
-          if(!automatic)await delay(25);
-        }
-        assert.ok(automatic,'scheduler must enqueue an automatic run before pause');
-        const pauseRequest={workflowId:scheduled.id,active:false,expectedUpdatedAt:active.data.workflow.updatedAt};
-        const db=new DatabaseSync(join(directory,'easyflow.sqlite'));
-        try{
-          db.exec(`CREATE TRIGGER reject_schedule_cancellation BEFORE UPDATE ON executions
-            WHEN json_extract(OLD.json,'$.status')='queued' AND json_extract(NEW.json,'$.status')='canceled'
-            BEGIN SELECT RAISE(ABORT,'injected cancellation failure'); END`);
-          const failed=await server.request('/api/activation','POST',pauseRequest);
-          assert.equal(failed.status,400);
-          const persisted=JSON.parse(String(db.prepare('SELECT json FROM flows WHERE id=?').get(scheduled.id)?.json)) as Flow;
-          assert.equal(persisted.active,true,'cancel failure must roll back the pause');
-          assert.equal(persisted.updatedAt,active.data.workflow.updatedAt,'the same version must still be retryable');
-          const untouched=await server.request('/api/executions?id='+automatic.id);
-          assert.equal(untouched.data.execution.status,'queued');
-        }finally{
-          db.exec('DROP TRIGGER IF EXISTS reject_schedule_cancellation');
-          db.close();
-        }
-        const paused=await server.request('/api/activation','POST',pauseRequest);
-        assert.equal(paused.status,200);
-        assert.equal(paused.data.workflow.active,false);
-        const canceled=await server.execution(automatic.id,item=>item.status==='canceled');
-        assert.equal(canceled.runs.length,0);
-        const manualQueued=await server.request('/api/executions?id='+manual.data.executionId);
-        assert.equal(manualQueued.data.execution.status,'queued');
-        for(const running of started){
-          const stillRunning=await server.request('/api/executions?id='+running.data.executionId);
-          assert.equal(stillRunning.data.execution.status,'running');
-        }
-        for(const response of responses)response.end('done');
-        await server.execution(manual.data.executionId,item=>item.status==='success');
-        const final=await server.request('/api/executions?id='+automatic.id);
-        assert.equal(final.data.execution.status,'canceled');
-        assert.equal(final.data.execution.runs.length,0);
-      }finally{
-        for(const response of responses)if(!response.writableEnded)response.end('done');
-        blocker.closeAllConnections();
-        await new Promise<void>(resolve=>blocker.close(()=>resolve()));
-      }
-    });
-
-    await t.test('reservation configuration rejects a mixed start graph before mutating it',async()=>{
-      const mixed=workflow('예약으로 바꿀 수 없는 시작 구성',[stage('manualTrigger','수동 시작'),stage('webhook','Webhook 시작')]);
-      const saved=await server.request('/api/workflows','POST',mixed);
-      assert.equal(saved.status,200);
-      const rejected=await server.request('/api/workflows/schedule','POST',{workflowId:mixed.id,updatedAt:saved.data.workflow.updatedAt,action:'configure',rule:{interval:[{field:'days',triggerAtHour:9}]}});
-      assert.equal(rejected.status,400);
-      assert.match(rejected.data.error,/활성 시작 단계가 하나/);
-      const current=(await server.request('/api/workflows')).data.workflows.find((item:Flow)=>item.id===mixed.id);
-      assert.deepEqual(current,saved.data.workflow);
     });
 
     await t.test('activation rejects workflows with both manual and scheduled starts', async () => {

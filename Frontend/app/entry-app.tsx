@@ -42,7 +42,7 @@ export default function EntryApp(){
  const historyIndex=useRef(Number(window.history.state?.a4bIndex||0));
  const updateContext=()=>{context.current=location.search;historyIndex.current=Number(window.history.state?.a4bIndex||0);};
  useEffect(()=>{if(new URLSearchParams(location.search).get('screen')==='models'){const legacy=new URL(location.href);legacy.searchParams.set('screen','workflows');window.history.replaceState(window.history.state,'',legacy);context.current=location.search;}window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',location.href);const pop=()=>{const next=routeFromLocation(),internal=(r:string)=>['nodes','workflow','run','schedule'].includes(r),before=new URLSearchParams(context.current),after=new URLSearchParams(location.search);
-  const remount=!internal(routeRef.current)||!internal(next)||before.get('external')!==after.get('external')||Boolean(before.get('external')&&routeRef.current!==next)||before.get('service')!==after.get('service')||before.get('run')!==after.get('run');
+  const remount=!internal(routeRef.current)||!internal(next)||before.get('service')!==after.get('service')||before.get('run')!==after.get('run');
   const targetIndex=Number(window.history.state?.a4bIndex||0);
   if(remount&&(internal(routeRef.current)||routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current()){
    const delta=historyIndex.current-targetIndex;
@@ -54,7 +54,7 @@ export default function EntryApp(){
   context.current=location.search;setRoute(next);
  };window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
  function navigate(next:EntryRoute,service?:string,fresh=false,runId?:string,previewNode=false,initialPrompt?:string,initialFiles?:File[],externalId?:string){
-  if((routeRef.current==='assets'||routeRef.current==='schedules'||new URLSearchParams(location.search).has('external'))&&!guard.current())return false;
+  if((routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current())return false;
   guard.current=()=>true;
   if(fresh||next==='workflow'&&!service||['workflow','nodes','run','schedule'].includes(routeRef.current))clearDesign();
   const url=new URL(location.href);url.searchParams.set('screen',next);url.searchParams.delete('service');url.searchParams.delete('run');url.searchParams.delete('external');url.searchParams.delete('previewNode');url.searchParams.delete('executionMode');if(previewNode)url.searchParams.set('previewNode','ai');if(runId)url.searchParams.set('run',runId);if(service)url.searchParams.set('service',service);if(externalId)url.searchParams.set('external',externalId);
@@ -67,13 +67,13 @@ export default function EntryApp(){
  if(route==='preview')return <IntroDemo node={new URLSearchParams(location.search).has('previewNode')} onView={preview} onLibrary={()=>navigate('nodes')} onStart={()=>navigate('home')}/>;
  const newFlow=()=>navigate('workflow',undefined,true);
  const startExample=(prompt:string,files?:File[])=>navigate('workflow',undefined,true,undefined,false,prompt,files);
- const externalId=(route==='workflow'||route==='schedule')?new URLSearchParams(location.search).get('external'):null;
- if(externalId)return <div className="entry-app"><WorkspaceHeader onHome={()=>navigate('home')}/><div className="entry-workspace-shell"><WorkspaceSidebar active={route==='schedule'?'schedules':'workflow'} onNavigate={next=>navigate(next)} help={<WorkspaceHelp onStart={newFlow}/>}/><main className="entry-workspace-main entry-external-workflow-main"><VisualAutomation key={externalId+route} embedded initialTab={route==='schedule'?'schedule':'editor'} initialWorkflowId={externalId} onCanLeaveChange={fn=>{guard.current=fn;}} onServiceConnect={()=>navigate('connections')}/></main></div></div>;
+ const externalId=route==='workflow'?new URLSearchParams(location.search).get('external'):null;
+ if(externalId)return <div className="entry-app"><WorkspaceHeader onHome={()=>navigate('home')}/><div className="entry-workspace-shell"><WorkspaceSidebar active="workflow" onNavigate={next=>navigate(next)} help={<WorkspaceHelp onStart={newFlow}/>}/><main className="entry-workspace-main entry-external-workflow-main"><VisualAutomation key={externalId} embedded initialWorkflowId={externalId} onServiceConnect={()=>navigate('connections')}/></main></div></div>;
  if(['nodes','workflow','run','schedule'].includes(route))return <AgentStudio key={navigationKey} onNewWorkflow={newFlow} initialPrompt={window.history.state?.initialPrompt} initialFiles={window.history.state?.initialFiles} onCanLeaveChange={fn=>{guard.current=fn;}} onLocationChange={updateContext} onNavigate={next=>navigate(next)} onExternalFlow={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)}/>;
  if(route==='intro')return <LandingPage onStart={()=>navigate('home')}/>;
  return <div className="entry-app"><WorkspaceHeader onHome={()=>{if(route!=='home')navigate('home');}}/>
   <div className="entry-workspace-shell"><WorkspaceSidebar active={route} onNavigate={next=>{if(next!==route)navigate(next);}} help={<WorkspaceHelp onStart={newFlow} deferAutoStart={route==='home'||route==='monitoring'}/>}/>
-   <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':route==='monitoring'?' entry-monitoring-main':'')}>{route==='monitoring'?<AdminMonitoring/>:route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onCanLeaveChange={fn=>{guard.current=fn;}} onOpen={id=>navigate('schedule',id)} onOpenExternal={id=>navigate('schedule',undefined,false,undefined,false,undefined,undefined,id)} onCreate={newFlow}/>:
+   <main className={'entry-workspace-main'+(route==='workflows'?' task-library-main':route==='monitoring'?' entry-monitoring-main':'')}>{route==='monitoring'?<AdminMonitoring/>:route==='connections'?<ServiceConnections/>:route==='assets'?<UploadLibrary onCanLeaveChange={fn=>{guard.current=fn;}}/>:route==='schedules'?<ScheduledWorkflows onCanLeaveChange={fn=>{guard.current=fn;}} onOpen={id=>navigate('schedule',id)} onOpenExternal={id=>navigate('workflow',undefined,false,undefined,false,undefined,undefined,id)} onCreate={newFlow}/>:
     <WorkspaceHome key={route+':'+(new URLSearchParams(location.search).get('service')||'')} route={route as 'home'|'workflows'|'history'} startExample={startExample} memberName={auth.user?.name?.trim()} historyService={route==='history'?new URLSearchParams(location.search).get('service'):null} navigate={(next,service,runId,external)=>navigate(next,service,false,runId,false,undefined,undefined,external)} newFlow={newFlow}/>}
 
    </main>

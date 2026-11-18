@@ -74,7 +74,8 @@ def generation_requirements(state):
     for s in specs:
         if s['kind'] in ('read','policy'):continue
         tool=TOOLS[s['kind']]
-        if s['kind'] in ('filter','sort') and order[-1:]==['filter_sort'] and previous_kind in ('filter','sort'):continue
+        if (s['kind'] in ('filter','sort') and s['kind'] != previous_kind
+                and order[-1:]==['filter_sort'] and previous_kind in ('filter','sort')):continue
         order.append(tool)
         previous_kind=s['kind']
     if any(s['kind']=='policy' for s in specs) and 'filter_sort' not in order:

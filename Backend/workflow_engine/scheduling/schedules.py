@@ -1,27 +1,11 @@
 """Durable local-server schedules, managed sources and leased jobs."""
 import json
-from hashlib import sha256
 from copy import deepcopy
 from datetime import datetime,timedelta,timezone
 from infrastructure.persistence.ids import uid, now
 from documents.resources.document_resources import available_inputs
 from workflow_engine.scheduling.recurrence import next_occurrence,schedule_errors
 from workflow_engine.scheduling.library_sources import LibrarySources
-
-
-_UNCHECKED_REVISION=object()
-
-_RESERVATION_ROWS = """
-    SELECT s.agent_id,s.json,s.next_at,s.active,d.id,d.asset_id,d.version,d.updated_at,l.revision
-    FROM builder_schedules s
-    LEFT JOIN builder_data_sources d ON d.agent_id=s.agent_id AND {ws:d}
-    LEFT JOIN builder_library_sources l ON l.agent_id=s.agent_id AND {ws:l}
-    WHERE {ws:s}
-"""
-
-
-class ScheduleConflict(ValueError):
-    pass
 
 
 def required_connections(config,dependencies=None):
@@ -115,14 +99,6 @@ class Schedules:
         # documents or several independent inputs of the same type.
         return source if len(slots)==1 and len(slots[0].get('file_ids',[]))<=1 else None
     def replace_source(self,agent_id,asset_id,commit=True):
-        if not commit:return self._replace_source(agent_id,asset_id)
-        self.storage.begin_write()
-        try:
-            source=self._replace_source(agent_id,asset_id)
-            self.db.commit()
-            return source
-        except Exception:self.db.rollback();raise
-    def _replace_source(self,agent_id,asset_id):
         agent=self.storage.agent(agent_id);asset=self.storage.asset(asset_id)
         if asset['kind'] not in ('table','document'):raise ValueError('관리 데이터 소스는 표 파일이나 문서를 연결하세요.')
         from contracts.models import AgentDraft
@@ -143,9 +119,9 @@ class Schedules:
         if relevant:raise ValueError('새 데이터 소스의 구조를 확인하세요: '+' / '.join(relevant))
         old=self.source(agent_id);id=old['id'] if old else uid();version=(old['version'] if old else 0)+1
         self.db.execute('INSERT INTO builder_data_sources({wsc}agent_id,id,asset_id,version,updated_at) VALUES({wsv}?,?,?,?,?) ON CONFLICT({wsc}agent_id) DO UPDATE SET asset_id=excluded.asset_id,version=excluded.version,updated_at=excluded.updated_at',(agent_id,id,asset_id,version,now()));
+        if commit:self.db.commit()
         return self.source(agent_id)
-    def configure(self,agent_id,commit=True,previous_config=None,spec=None,expected_revision=_UNCHECKED_REVISION):
-        self.check_revision(agent_id,expected_revision)
+    def configure(self,agent_id,commit=True,previous_config=None,spec=None):
         agent=self.storage.agent(agent_id);spec=spec if spec is not None else agent['config'].get('schedule')
         if not spec:return None
         from contracts.models import ScheduleSpec
@@ -190,12 +166,11 @@ class Schedules:
         if old_source and (not source or changed_slot):
             self.db.execute('DELETE FROM builder_data_sources WHERE {ws} AND agent_id=?',(agent_id,))
         self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(agent_id,))
-    def remove(self,agent_id,expected_revision=_UNCHECKED_REVISION):
+    def remove(self,agent_id):
         """Remove the reservation and queued automatic jobs, preserving workflow versions."""
         self.storage.agent(agent_id)
         self.storage.begin_write()
         try:
-            self.check_revision(agent_id,expected_revision)
             marker={'agent_id':agent_id,'removed':True,'removed_at':now()}
             self.db.execute('INSERT INTO builder_schedules({wsc}agent_id,json,next_at,active) VALUES({wsv}?,?,NULL,0) ON CONFLICT({wsc}agent_id) DO UPDATE SET json=excluded.json,next_at=NULL,active=0',
                             (agent_id,json.dumps(marker,ensure_ascii=False)))
@@ -214,21 +189,13 @@ class Schedules:
         if not row:return None
         data=json.loads(row[0])
         if data.get('removed'):return None
-        active=bool(row[2])
-        # The mutation version covers the reservation and its attached inputs, but excludes next_at.
-        revision=sha256(json.dumps([row[0],active,*row[3:]],default=str).encode()).hexdigest()
-        return {**data,'next_run_at':row[1],'active':active,'revision':revision}
+        return {**data,'next_run_at':row[1],'active':bool(row[2])}
     def listing(self):
-        rows=self.db.execute(_RESERVATION_ROWS)
+        rows=self.db.execute('SELECT agent_id,json,next_at,active FROM builder_schedules WHERE {ws}')
         return {row[0]:reservation for row in rows if (reservation:=self._reservation(row[1:])) is not None}
     def get(self,agent_id):
-        row=self.db.execute(_RESERVATION_ROWS+' AND s.agent_id=?',(agent_id,)).fetchone()
-        return self._reservation(row[1:] if row else None)
-    def check_revision(self,agent_id,expected_revision):
-        if expected_revision is _UNCHECKED_REVISION:return
-        current=self.get(agent_id)
-        if expected_revision!=(current['revision'] if current else None):
-            raise ScheduleConflict('다른 화면에서 예약이 변경됐습니다. 새로고침 후 최신 일정을 확인하세요.')
+        row=self.db.execute('SELECT json,next_at,active FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
+        return self._reservation(row)
     def was_removed(self,agent_id):
         row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
         return bool(row and json.loads(row[0]).get('removed'))
@@ -242,11 +209,9 @@ class Schedules:
                 data['agent_version']=version
                 self.db.execute('UPDATE builder_schedules SET json=? WHERE {ws} AND agent_id=?',
                                 (json.dumps(data,ensure_ascii=False),agent_id))
-    def activate(self,agent_id,active,expected_revision=_UNCHECKED_REVISION):
+    def activate(self,agent_id,active):
         self.storage.begin_write()
-        try:
-            self.check_revision(agent_id,expected_revision)
-            return self._activate(agent_id,active)
+        try:return self._activate(agent_id,active)
         except Exception:self.db.rollback();raise
     def _activate(self,agent_id,active):
         schedule=self.get(agent_id)
@@ -256,11 +221,7 @@ class Schedules:
             if agent['version']!=schedule['agent_version']:raise ValueError('워크플로우가 변경됐습니다. 예약 설정을 저장해 적용할 버전을 확인하세요.')
             agent=scheduled_agent(agent,schedule['spec']);source=self.execution_source(agent)
             preflight_schedule(self.storage,agent,[source['asset_id']] if source else [])
-        row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
-        data=json.loads(row[0]);data['updated_at']=now()
-        self.db.execute('UPDATE builder_schedules SET json=?,active=?,next_at=? WHERE {ws} AND agent_id=?',(json.dumps(data,ensure_ascii=False),int(active),next_occurrence(schedule['spec']),agent_id))
-        self.db.commit()
-        return self.get(agent_id)
+        self.db.execute('UPDATE builder_schedules SET active=?,next_at=? WHERE {ws} AND agent_id=?',(int(active),next_occurrence(schedule['spec']),agent_id));self.db.commit();return self.get(agent_id)
     def enqueue_test(self,agent_id,delay_seconds=15):
         self.storage.begin_write()
         try:return self._enqueue_test(agent_id,delay_seconds)

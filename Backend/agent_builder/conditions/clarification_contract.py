@@ -103,7 +103,7 @@ class Question(BoundaryModel):
 
     @model_validator(mode='after')
     def known_condition(self):
-        if self.key not in QUESTIONS and self.key!='input.table':
+        if self.key not in QUESTIONS and self.key not in ('input.table','filter.match'):
             raise ValueError('현재 계약에 없는 질문 항목입니다.')
         return self
 
@@ -252,7 +252,7 @@ class ClarificationOutput(BoundaryModel):
             raise ValueError('현재 조건 계약에 없는 확정 조건입니다.')
         if set(self.unresolved_keys)!=set(self.unresolved_conditions) or set(self.unresolved_keys)&set(self.confirmed_conditions):
             raise ValueError('확정·미정 조건 목록이 일치하지 않습니다.')
-        if any(key not in {*QUESTIONS,'input.table'} or key!=slot.key for key,slot in self.unresolved_conditions.items()):
+        if any(key not in {*QUESTIONS,'input.table','filter.match'} or key!=slot.key for key,slot in self.unresolved_conditions.items()):
             raise ValueError('현재 계약에 없는 미정 조건입니다.')
         if self.next_action!=ACTIONS[self.decision]:
             raise ValueError('판정과 다음 처리가 다릅니다.')
@@ -265,6 +265,12 @@ class ClarificationOutput(BoundaryModel):
         if self.decision in ('CLARIFY','DEFERRED') and not self.questions:
             raise ValueError('추가 질문·보류에는 질문 기록이 필요합니다.')
         return self
+
+
+def _contract_questions(ledger):
+    """Questions in the published shape; how the studio renders an answer field is not part of it."""
+    return [{name:question[name] for name in ('id','key','text','options') if name in question}
+            for question in ledger.get('questions',[])]
 
 
 def to_handoff(payload, state):
@@ -315,6 +321,6 @@ def to_handoff(payload, state):
                          [q['text'] for q in ledger.get('questions',[])]) or '자동 확정 범위를 벗어나 검토가 필요합니다.')
     return ClarificationOutput(contract_version=CONTRACT,request_id=request.request_id,session_id=request.session_id,
         revision=request.revision,condition_protocol=ledger['protocol'],decision=decision,next_action=ACTIONS[decision],reason=reason,
-        confirmed_conditions=confirmed,unresolved_conditions=unresolved,unresolved_keys=ledger.get('unresolved',[]),questions=ledger.get('questions',[]),
+        confirmed_conditions=confirmed,unresolved_conditions=unresolved,unresolved_keys=ledger.get('unresolved',[]),questions=_contract_questions(ledger),
         issues=ledger.get('issues',[]),unsupported_actions=ledger.get('unsupported_actions',[]),resource_versions=versions,
         input_requirements=design_requirements(state),generator_context=generator)

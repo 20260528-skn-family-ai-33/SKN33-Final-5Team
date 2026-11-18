@@ -1,31 +1,20 @@
 """Schedule jobs and managed data sources."""
 from infrastructure.persistence.ids import uid, now
-from workflow_engine.scheduling.schedules import ScheduleConflict, Schedules, preflight_schedule, scheduled_agent
+from workflow_engine.scheduling.schedules import Schedules, preflight_schedule, scheduled_agent
 from workflow_engine.scheduling.library_sources import source_tags
 
 
 def claim_due(c):return {'jobs':Schedules(c.storage).claim_due()}
 
-def _schedule_write(c,operation):
-    revision={'expected_revision':c.data['expected_revision']} if 'expected_revision' in c.data else {}
-    try:return {'schedule':operation(**revision)}
-    except ScheduleConflict as error:return {'code':'schedule_conflict','error':str(error)}
-
-def schedule(c):
-    manager=Schedules(c.storage)
-    return _schedule_write(c,lambda **revision:manager.activate(c.data['id'],c.data['active'],**revision))
+def schedule(c):return {'schedule':Schedules(c.storage).activate(c.data['id'],c.data['active'])}
 
 def schedule_configure(c):
     manager=Schedules(c.storage)
-    def configure(**revision):
-        c.storage.begin_write()
-        try:return manager.configure(c.data['id'],spec=c.data['spec'],**revision)
-        except Exception:c.storage.db.rollback();raise
-    return _schedule_write(c,configure)
+    c.storage.begin_write()
+    try:return {'schedule':manager.configure(c.data['id'],spec=c.data['spec'])}
+    except Exception:c.storage.db.rollback();raise
 
-def schedule_remove(c):
-    manager=Schedules(c.storage)
-    return _schedule_write(c,lambda **revision:manager.remove(c.data['id'],**revision))
+def schedule_remove(c):return {'schedule':Schedules(c.storage).remove(c.data['id'])}
 
 def schedule_test(c):return {'job':Schedules(c.storage).enqueue_test(c.data['id'])}
 
@@ -70,9 +59,5 @@ def source_upload(c):
     if a['kind'] not in ('table','document'):raise ValueError('관리 데이터 소스는 표 파일이나 문서를 연결하세요.')
     schedules=Schedules(storage)
     storage.begin_write()
-    try:
-        storage.add_asset(a,data['rows'],commit=False)
-        source=schedules.replace_source(data['id'],a['id'],commit=False)
-        storage.db.commit()
-        return {'source':source}
-    except Exception:storage.db.rollback();raise
+    storage.add_asset(a,data['rows'],commit=False)
+    return {'source':schedules.replace_source(data['id'],a['id'])}

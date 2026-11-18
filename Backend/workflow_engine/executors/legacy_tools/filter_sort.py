@@ -1,6 +1,7 @@
 from functools import cmp_to_key
 import math
 from contracts.numeric_criteria import number_value
+from contracts.table_selection import comparison_operand_fields, missing_check_fields
 
 def empty(v):return v is None or isinstance(v,str) and not v.strip()
 def numeric(v):
@@ -46,9 +47,7 @@ def filter_sort_node(context,filters,sort,match='all',missing_policy='ask',dupli
                 key=str(r.get(duplicate_field))
                 if duplicate_policy=='last' or key not in selected:selected[key]=i
             rows=[r for i,r in enumerate(rows) if i in set(selected.values())]
-    # is_empty / not_empty explicitly define a missing-value condition themselves.
-    normal_fields=set(f['field'] for f in filters if f['operator'] not in ['is_empty','not_empty'])|set(f['compare_field'] for f in filters if f.get('compare_field'))|set(s['field'] for s in sort)
-    if missing_policy=='exclude' and not normal_fields and not filters and not sort:normal_fields=set(columns)
+    normal_fields = missing_check_fields(filters, sort, missing_policy, columns=columns)
     missing=lambda row:any(empty(row.get(k)) for k in normal_fields)
     if any(missing(r) for r in rows) and missing_policy in ['ask','error']:raise ValueError('조건에 사용하는 열에 빈 값이 있습니다. 제외 또는 유지 정책을 확인하세요.')
     if missing_policy=='exclude':rows=[r for r in rows if not missing(r)]
@@ -67,8 +66,8 @@ def filter_sort_node(context,filters,sort,match='all',missing_policy='ask',dupli
     def keep(row):
         values=[]
         for f in comparisons:
-            unknown=f['operator'] not in ['is_empty','not_empty'] and (empty(row.get(f['field'])) or (f.get('compare_field') and empty(row.get(f['compare_field']))))
-            if missing_policy=='keep' and unknown:continue
+            if missing_policy == 'keep' and any(empty(row.get(field)) for field in comparison_operand_fields(f)):
+                continue
             values.append(test(row,f))
         return not values or (all(values) if match=='all' else any(values))
     rows=[r for r in rows if keep(r)]

@@ -535,20 +535,13 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    Object.assign(payload,{review_id:data.reviewId,decision:data.decision,edited_reply:data.editedReply});
   }
   if(workerAction==='schedule_cancel'){if(!idPattern.test(data.jobId||''))throw new Error('시험 예약 ID를 확인하세요.');payload.job_id=data.jobId;}
-  const scheduleWrite=['schedule','schedule_configure','schedule_remove'].includes(workerAction);
-  if(scheduleWrite){
-   if(!Object.hasOwn(data,'expectedRevision')){json(res,409,{error:'예약 화면을 새로고침한 뒤 다시 시도하세요.'});return true;}
-   if(data.expectedRevision!==null&&(typeof data.expectedRevision!=='string'||!/^[a-f0-9]{64}$/.test(data.expectedRevision)))throw new Error('예약 버전을 확인하세요.');
-   payload.expected_revision=data.expectedRevision;
-  }
   if(workerAction==='schedule'){if(typeof data.active!=='boolean')throw new Error('예약 활성 상태를 확인하세요.');payload.active=data.active;}
   if(workerAction==='schedule_configure'){
    if(!data.spec||typeof data.spec!=='object'||Array.isArray(data.spec))throw new Error('예약 일정을 확인하세요.');
    payload.spec=data.spec;
   }
   if(workerAction==='test'&&data.fileIds!==undefined){if(!Array.isArray(data.fileIds)||data.fileIds.length>10||data.fileIds.some((id:unknown)=>typeof id!=='string'||!idPattern.test(id)))throw new Error('실행 자료 ID를 확인하세요.');payload.file_ids=data.fileIds;}
-  const result=await builderWorker(payload);
-  json(res,scheduleWrite&&result.code==='schedule_conflict'?409:200,result);return true;
+  json(res,200,await builderWorker(payload));return true;
  }catch(error){
   if(generationRequestId){
    try{await builderWorker({action:'interrupt_generation',id:data.id,generation_request_id:generationRequestId,reason_code:generationFailureCode(error)});}

@@ -7,6 +7,7 @@ import re
 from copy import deepcopy
 
 from contracts.numeric_criteria import number_value
+from .text_filter_parser import column_projection_requests
 
 
 _NAMED_EXPORT = re.compile(
@@ -59,7 +60,7 @@ def _selection_request(state):
     # be projected by this narrow grammar. Unrelated replies do not replace it.
     columns = _known_columns(state)
     for index, text in reversed(list(_request_turns(state))):
-        if (_NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
+        if (any(item.affirmed for item in column_projection_requests(text, columns)) or _NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
                 or re.search(r'\w+(?:\s*[·,]\s*\w+)+(?:을|를)\s*(?:내보내|저장)', text)
                 or re.search(r'(?:출력|저장할|내보낼)\s*(?:열|컬럼)|(?:열|컬럼).{0,20}(?:추가|제외|변경|바꿔)', text)):
             return index, text
@@ -87,6 +88,9 @@ def output_selection(state):
 
 
 def _selection_fields(text, columns):
+    projections = column_projection_requests(text, columns)
+    if projections:
+        return list(projections[0].fields) if len(projections) == 1 and projections[0].affirmed else None
     matches = [m for m in _NAMED_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
     singles = [m for m in _single_requests(text, columns) if _EXPORT_END.match(text[m.end():])]
     if singles:

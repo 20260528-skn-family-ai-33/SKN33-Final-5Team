@@ -56,6 +56,34 @@ class PipelineTests(unittest.TestCase):
         Image.new('RGB', (100, 90), 'white').save(path)
         return path
 
+    def test_busy_image_tables_preserve_ocr_and_serializable_partial_result(self):
+        class MixedEngines(LocalEngines):
+            def run(self, engine, **kwargs):
+                if engine == 'docling':
+                    return super().run(engine, **kwargs)
+                fake = Engines(table=True)
+                result = fake.run(engine, **kwargs)
+                self.attempts.extend(fake.attempts)
+                self.attempts[-1]['id'] = 'fixture-' + str(len(self.attempts))
+                if engine == 'layout':
+                    for output in result['outputs']:
+                        output['result']['boxes'] = [
+                            dict(label='text', score=.98, coordinate=[2, 3, 95, 20]),
+                            dict(label='table', score=.98, coordinate=[2, 23, 95, 50]),
+                            dict(label='table', score=.98, coordinate=[2, 55, 95, 80])]
+                return result
+        engines = MixedEngines(self.work)
+        with patch.dict('os.environ', {'A4B_PARSER_URL': 'https://parser.example', 'A4B_DOCLING_LOCAL_ONLY': '0'}), \
+                patch('documents.analysis.remote_docling.parse_remote_image', side_effect=AnalysisError('busy', 'busy')) as remote:
+            result = run(self.picture(), self.work, engines=engines)
+        analysis = result['document_analysis']
+        self.assertEqual(analysis['status'], 'partial')
+        self.assertIn('image_table:busy', analysis['warnings'])
+        self.assertTrue(any(b['engine'] == 'paddleocr' and b['text'] for b in analysis['blocks']))
+        self.assertEqual(remote.call_count, 1)
+        self.assertEqual(len([r for r in analysis['routes'] if r['processor'] == 'docling']), 2)
+        json.dumps(result, allow_nan=False)
+
     def test_unscored_ocr_in_a_gap_is_displayed_but_requires_review(self):
         from documents.analysis.pipeline import ocr_in_bands
         raw = {'rec_boxes': [[0, 1, 8, 4], [0, 20, 8, 24]], 'rec_texts': ['known', 'new']}

@@ -146,7 +146,7 @@ def _gmail_count_recipe(state, before, edit, source_turn, base_turn):
     if not isinstance(arguments, dict) or type(arguments.get('max_results')) is not int or arguments['max_results'] != old:
         return None
     from .gmail_summary import _count_summary_instructions, gmail_summary_request, gmail_summary_reply
-    from .gmail_slack import gmail_slack_request, gmail_slack_reply
+    from .gmail_slack import LEGACY_SUMMARY_CARD_FORMAT, SUMMARY_CARD_FORMAT, gmail_slack_request, gmail_slack_reply
     generated = None
     candidates = {_count_summary_instructions(old)}
     for request, reply in ((gmail_summary_request, gmail_summary_reply),
@@ -160,6 +160,8 @@ def _gmail_count_recipe(state, before, edit, source_turn, base_turn):
         pattern = _count_pattern(recipe['count'])
         expected = pattern.sub(lambda match: str(old) + match[1], recipe['summary_instructions'])
         candidates.add(expected)
+        if expected.endswith(SUMMARY_CARD_FORMAT):
+            candidates.add(expected.removesuffix(SUMMARY_CARD_FORMAT) + LEGACY_SUMMARY_CARD_FORMAT)
         result = reply(prior)
         if result:
             generated = {key: pattern.sub(lambda match: str(old) + match[1], result['draft'][key])

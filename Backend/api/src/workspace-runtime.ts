@@ -24,8 +24,6 @@ import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWit
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
-import {enabledAutomationStarts} from '../../../shared/schedule-rule';
-import {updateWorkflowSchedule} from './workflow-schedule';
 import {withScheduleSourceContext,type ScheduleSourceContext} from './schedule-source';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
@@ -227,17 +225,14 @@ async function run(e:Execution){
  finally{controllers.delete(e.id);inFlight.delete(e.id);void pump();}
 }
 async function pump(){if(closing)return;for(const e of store.listPendingExecutions()){if(inFlight.size>=2)break;if(inFlight.has(e.id))continue;if(e.status==='queued'||e.status==='waiting'&&Date.parse(e.resumeAt||'')<=Date.now()){inFlight.add(e.id);void run(e);}}}
-function saveScheduleChange(flow:Flow,reason='예약 설정이 변경되어 대기 중인 자동 실행을 취소했습니다.'){
- return store.saveFlowAndCancelQueuedSchedules(flow,inFlight,reason);
-}
 function activate(flow:Flow,active:boolean){
- if(active){checkLive(flow);const triggers=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(triggers.length!==1)throw new Error('자동 실행에는 예약 시작 또는 Webhook 시작 단계 하나가 필요해요.');const allStarts=enabledAutomationStarts(flow.nodes);if(allStarts.length!==1)throw new Error('시작 단계는 하나만 사용해주세요. 기존 시작 단계에서 시작 방식을 바꿀 수 있어요.');const n=triggers[0];if(n.type.endsWith('.scheduleTrigger')){validateSchedule(n,flow.settings.timezone||'Asia/Seoul');const activatedAt=Date.now();flow.schedule={triggerId:n.id,activatedAt,nextRunAt:nextRunAt({...n,scheduleAnchorAt:activatedAt},activatedAt,flow.settings.timezone||'Asia/Seoul')};}if(n.type.endsWith('.webhook')){validateWebhookConfiguration(flow,n);flow.hookToken??=randomBytes(24).toString('hex');}}
+ if(active){checkLive(flow);const triggers=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(triggers.length!==1)throw new Error('자동 실행에는 예약 시작 또는 Webhook 시작 단계 하나가 필요해요.');const allStarts=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.manualTrigger')||n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(allStarts.length!==1)throw new Error('시작 단계는 하나만 사용해주세요. 기존 시작 단계에서 시작 방식을 바꿀 수 있어요.');const n=triggers[0];if(n.type.endsWith('.scheduleTrigger')){validateSchedule(n,flow.settings.timezone||'Asia/Seoul');const activatedAt=Date.now();flow.schedule={triggerId:n.id,activatedAt,nextRunAt:nextRunAt({...n,scheduleAnchorAt:activatedAt},activatedAt,flow.settings.timezone||'Asia/Seoul')};}if(n.type.endsWith('.webhook')){validateWebhookConfiguration(flow,n);flow.hookToken??=randomBytes(24).toString('hex');}}
  else delete flow.schedule;
- return active?store.saveFlow({...flow,active}):saveScheduleChange({...flow,active},'예약이 중지되어 대기 중인 자동 실행을 취소했습니다.');
+ return store.saveFlow({...flow,active});
 }
 const timer=setInterval(()=>{
  if(!visualSchedulerEnabled)return;
- for(const f of store.listFlows()){if(!f.active||!f.schedule||f.schedule.nextRunAt>Date.now())continue;const n=f.nodes.find(n=>n.id===f.schedule.triggerId);if(!n)continue;const due=f.schedule.nextRunAt;try{enqueue(f,[{timestamp:new Date(due).toISOString(),timezone:f.settings.timezone||'Asia/Seoul'}],'live',{trigger:'schedule',dedupeKey:`${f.id}/${n.id}/${due}`});store.advanceSchedule(f.id,f.updatedAt,nextRunAt({...n,scheduleAnchorAt:f.schedule.activatedAt},Math.max(due,Date.now()),f.settings.timezone||'Asia/Seoul'));}catch(err){try{saveScheduleChange({...f,active:false,activationError:(err as Error).message},'예약 실행 오류로 대기 중인 자동 실행을 취소했습니다.');}catch(error){console.error('예약 오류 상태를 저장하지 못했습니다.',error);}}}
+ for(const f of store.listFlows()){if(!f.active||!f.schedule||f.schedule.nextRunAt>Date.now())continue;const n=f.nodes.find(n=>n.id===f.schedule.triggerId);if(!n)continue;const due=f.schedule.nextRunAt;try{enqueue(f,[{timestamp:new Date(due).toISOString(),timezone:f.settings.timezone||'Asia/Seoul'}],'live',{trigger:'schedule',dedupeKey:`${f.id}/${n.id}/${due}`});f.schedule.nextRunAt=nextRunAt({...n,scheduleAnchorAt:f.schedule.activatedAt},Math.max(due,Date.now()),f.settings.timezone||'Asia/Seoul');store.saveFlow(f);}catch(err){store.saveFlow({...f,active:false,activationError:(err as Error).message});}}
  void pump();
 },500);
 
@@ -291,7 +286,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    }
    if(path==='/api/workflows'){
     if(method==='GET')return json(res,200,{workflows:store.listFlows()});
-    if(method==='POST'){const {expectedUpdatedAt,...data}=await body(req);const value=validateFlow(data);if(value.intentReview){if(!value.intentReview.reviewed||!Array.isArray(value.intentReview.requirements)||value.intentReview.requirements.some((r:any)=>r.status!=='mapped'||!Array.isArray(r.nodeIds)||!r.nodeIds.length||r.nodeIds.some((id:string)=>!value.nodes.some(n=>n.id===id))))throw new Error('초안 설계 근거에서 요구사항과 실제 단계를 확인해주세요.');}const prior=store.getFlow(value.id);const suppliedVersion=expectedUpdatedAt??value.updatedAt;if(prior?(!suppliedVersion||prior.updatedAt!==suppliedVersion):expectedUpdatedAt!==undefined)return json(res,409,{error:'워크플로우가 다른 화면에서 변경됐습니다. 최신 내용을 확인한 뒤 다시 시도해주세요.'});const same=prior&&JSON.stringify([prior.nodes,prior.connections,prior.settings])===JSON.stringify([value.nodes,value.connections,value.settings]);value.active=!!(same&&prior.active);if(value.active&&prior?.schedule)value.schedule=prior.schedule;else delete value.schedule;if(prior?.hookToken)value.hookToken=prior.hookToken;else delete value.hookToken;delete value.n8nId;const workflow=prior?.active&&!value.active?saveScheduleChange(value):store.saveFlow(value);return json(res,200,{workflow});}
+    if(method==='POST'){const value=validateFlow(await body(req));if(value.intentReview){if(!value.intentReview.reviewed||!Array.isArray(value.intentReview.requirements)||value.intentReview.requirements.some((r:any)=>r.status!=='mapped'||!Array.isArray(r.nodeIds)||!r.nodeIds.length||r.nodeIds.some((id:string)=>!value.nodes.some(n=>n.id===id))))throw new Error('초안 설계 근거에서 요구사항과 실제 단계를 확인해주세요.');}const prior=store.getFlow(value.id);const same=prior&&JSON.stringify([prior.nodes,prior.connections,prior.settings])===JSON.stringify([value.nodes,value.connections,value.settings]);value.active=!!(same&&prior.active);if(value.active&&prior?.schedule)value.schedule=prior.schedule;else delete value.schedule;if(prior?.hookToken)value.hookToken=prior.hookToken;else delete value.hookToken;delete value.n8nId;return json(res,200,{workflow:store.saveFlow(value)});}
     if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'');return json(res,200,{ok:true});}
    }
    if(path==='/api/workflows/from-request'&&method==='POST'){
@@ -314,14 +309,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    if(path==='/api/files/download'&&method==='GET'){
     const execution=store.getExecution(url.searchParams.get('executionId')||'');if(!execution)return json(res,404,{error:'파일이 저장된 실행 기록을 찾을 수 없어요.'});const integer=(key:string)=>{const raw=url.searchParams.get(key)||'0';if(!/^\d{1,6}$/.test(raw))throw new Error('파일 위치를 확인해주세요.');return Number(raw);};const record=execution.runs[integer('runIndex')];if(!record)throw new Error('파일 단계의 실행 기록을 찾을 수 없어요.');const side=url.searchParams.get('side')||'output';if(!['input','output'].includes(side))throw new Error('파일 위치를 확인해주세요.');const items=side==='input'?record.input:record.output[integer('output')];const item=items?.[integer('item')];if(!item)throw new Error('선택한 파일 결과를 찾을 수 없어요.');const file=getBinary(item,url.searchParams.get('property')||'data');const local=decodeBinaryFile(file);const bytes=await readWorkspaceFile(binaryObjectPath(side==='input'?'uploads':'results',local),()=>local);res.writeHead(200,{'Content-Type':file.mimeType,'Content-Length':bytes.length,'Content-Disposition':`attachment; filename="download.${file.fileExtension?.replace(/[^a-z0-9]/gi,'')||'bin'}"; filename*=UTF-8''${encodeURIComponent(file.fileName).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(bytes);return;
    }
-   if(path==='/api/workflows/schedule'&&method==='POST'){
-    const data=await body(req),prior=getFlow(data.workflowId);
-    if(!data.updatedAt||data.updatedAt!==prior.updatedAt)return json(res,409,{error:'일정이 다른 화면에서 변경됐습니다. 새로고침 후 다시 시도해주세요.'});
-    const changed=updateWorkflowSchedule(prior,data.action,data.rule);
-    const workflow=saveScheduleChange(changed);
-    return json(res,200,{workflow});
-   }
-   if(path==='/api/activation'&&method==='POST'){const data=await body(req),flow=getFlow(data.workflowId);if(data.expectedUpdatedAt!==undefined&&data.expectedUpdatedAt!==flow.updatedAt)return json(res,409,{error:'일정이 다른 화면에서 변경됐습니다. 최신 일정을 확인한 뒤 다시 시도해주세요.'});return json(res,200,{workflow:activate(flow,!!data.active)});}
+   if(path==='/api/activation'&&method==='POST'){const data=await body(req);return json(res,200,{workflow:activate(getFlow(data.workflowId),!!data.active)});}
    if(path==='/api/credentials'){
     if(method==='GET')return json(res,200,{credentials:store.listCredentials()});
     if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});

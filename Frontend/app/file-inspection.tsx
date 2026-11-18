@@ -1,7 +1,7 @@
 import {useState} from 'react';
 
 type Cell = string | number | boolean | null;
-type InspectedTable = {name:string; columns:string[]; preview:Record<string,Cell>[]};
+type InspectedTable = {name:string; columns:string[]; preview:Record<string,Cell>[]; block_id?:string};
 export type InspectedFile = {
   id:string; name:string; kind:string; has_readable_text:boolean; partial?:boolean;
   columns:string[]; fields:{label:string; value?:Cell}[]; snippets:string[]; preview:Record<string,Cell>[];
@@ -20,52 +20,54 @@ export function PreviewRows({label,columns,rows}:{label:string;columns:string[];
 }
 
 type FileDetails = {label:string;open:()=>void};
-function InspectedSource({file,open,readOnly,disabled,onUse,details}:{
-  file:InspectedFile;open:boolean;readOnly:boolean;disabled:boolean;onUse:(message:string)=>void;details?:FileDetails
+type DocumentTableSelection = {disabled:boolean;onAnswer:(message:string,selection?:{file_id:string;block_id:string;fields:string[]})=>void};
+
+function DocumentTableColumns({fileId,fileName,table,selection}:{
+  fileId:string;fileName:string;table:InspectedTable;selection:DocumentTableSelection
 }) {
-  const [selected,setSelected]=useState<string[]>([]),[custom,setCustom]=useState('');
+  const [selected,setSelected]=useState<string[]>([]);
+  const fields=table.columns.filter(column=>selected.includes(column));
+  return <fieldset className="as-document-columns" disabled={selection.disabled}>
+    <legend>{table.name}에서 추출할 열</legend>
+    <div className="as-document-column-options">{table.columns.map(column=><label key={column}>
+      <input type="checkbox" checked={fields.includes(column)} onChange={event=>{
+        const checked=event.target.checked;
+        setSelected(prior=>checked?[...prior,column]:prior.filter(value=>value!==column));
+      }}/>{column}
+    </label>)}</div>
+    <button type="button" className="as-button" disabled={!fields.length} onClick={()=>{
+      const aliases=fields.map(column=>'「'+table.name+'」의 '+column);
+      selection.onAnswer(fileName+'에서 '+aliases.join(', ')+' 항목을 추출해 주세요.',table.block_id?{file_id:fileId,block_id:table.block_id,fields}:undefined);
+    }}>선택한 열로 답변</button>
+  </fieldset>;
+}
+
+function InspectedSource({file,open,details,selection}:{
+  file:InspectedFile;open:boolean;details?:FileDetails;selection?:DocumentTableSelection
+}) {
   const tables=file.tables || [];
+  const tableSelection=file.kind==='document'?selection:undefined;
   const primaryIsNamed=tables.some(table=>file.columns.length===table.columns.length &&
     file.columns.every((column,i)=>column===table.columns[i]) && file.preview.length===table.preview.length &&
     file.preview.every((row,i)=>file.columns.every(column=>{
       const a=row[column],b=table.preview[i][column];
       return a===b || (a!=null && b!=null && String(a)===String(b));
     })));
-  const choices=[...new Set([...(primaryIsNamed?[]:file.columns),...file.fields.map(field=>field.label)])];
-  const values=new Map(file.fields.map(field=>[field.label,field.value]));
-  const fields=[...new Set([...selected,...custom.split(',').map(value=>value.trim()).filter(Boolean)])];
-  function choose(value:string,checked:boolean) {
-    setSelected(prior=>checked?[...prior,value]:prior.filter(entry=>entry!==value));
-  }
-  return <details open={open} className="as-inspected-source">
+  return <details open={open || (tableSelection && tables.some(table=>table.block_id && table.preview.length))} className="as-inspected-source">
     <summary>{file.name} · {file.kind==='table'?'표':'문서'} 미리보기</summary>
     {file.partial&&<p>일부 내용은 확인이 필요합니다. 원본과 대조해 주세요.</p>}
     {!file.has_readable_text && !file.columns.length&&!tables.length&&<p>읽어 낸 글자가 없습니다. 원본을 확인하거나 더 선명한 파일을 연결해 주세요.</p>}
     {file.snippets.length>0&&<blockquote>{file.snippets.slice(0,3).map((text,i)=><p key={i}>{text}</p>)}</blockquote>}
     {!primaryIsNamed&&<PreviewRows label="원본에서 읽은 표" rows={file.preview} columns={file.columns}/>}
-    {tables.map((table,index)=><div key={index}>
+    {tables.map((table,index)=><div key={table.block_id || index}>
       <PreviewRows label={table.name} columns={table.columns} rows={table.preview}/>
-      {!readOnly&&<fieldset disabled={disabled} className="as-file-fields">
-        <legend>{table.name}의 열 선택</legend>
-        <div className="as-receipt-options">{table.columns.map(column=>{
-          const scoped='「'+table.name+'」의 '+column;
-          return <label key={column}><input type="checkbox" checked={selected.includes(scoped)}
-            onChange={event=>choose(scoped,event.target.checked)}/>{column}</label>;
-        })}</div>
-      </fieldset>}
+      {tableSelection&&table.block_id&&table.preview.length>0&&
+        <DocumentTableColumns fileId={file.id} fileName={file.name} table={table} selection={tableSelection}/>}
     </div>)}
     {details&&<button type="button" className="as-text-button" onClick={details.open}>{details.label}</button>}
-    {readOnly ? <dl>{file.fields.map(field=><div key={field.label}><dt>{field.label}</dt><dd>{field.value == null?'여러 값이 확인됨':String(field.value)}</dd></div>)}</dl> :
-     <fieldset disabled={disabled} className="as-file-fields">
-       <legend>요청에 담을 항목</legend>
-       <div className="as-receipt-options">{choices.map(choice=><label key={choice}>
-         <input type="checkbox" checked={selected.includes(choice)} onChange={event=>choose(choice,event.target.checked)}/>
-         {choice}{values.has(choice) && ' · '+(values.get(choice)==null?'여러 값이 확인됨':String(values.get(choice)))}
-       </label>)}</div>
-       <label className="as-field">직접 지정할 항목<input value={custom} maxLength={500} onChange={event=>setCustom(event.target.value)}/></label>
-       <button type="button" className="as-button" disabled={!fields.length}
-         onClick={()=>onUse(file.name+'에서 '+fields.join(', ')+' 항목을 추출해 주세요.')}>요청에 추가</button>
-     </fieldset>}
+    {file.fields.length>0&&<dl>{file.fields.map(field=><div key={field.label}>
+      <dt>{field.label}</dt><dd>{field.value == null?'여러 값이 확인됨':String(field.value)}</dd>
+    </div>)}</dl>}
   </details>;
 }
 
@@ -99,8 +101,9 @@ export function describeFile(file:InspectedFile, facts:FileFacts={}):string {
   return parts.join(' ');
 }
 
-export function FileInspection({files,initial,fresh=[],readOnly,disabled,onUse,detailsFor,factsFor}:{
-  files:InspectedFile[];initial:boolean;readOnly:boolean;disabled:boolean;onUse:(message:string)=>void;detailsFor:(id:string)=>FileDetails|undefined;
+export function FileInspection({files,initial,fresh=[],readOnly,detailsFor,factsFor,selection}:{
+  files:InspectedFile[];initial:boolean;readOnly:boolean;detailsFor:(id:string)=>FileDetails|undefined;
+  selection?:DocumentTableSelection;
   factsFor?:(id:string)=>FileFacts|undefined;
   /** Files attached during the conversation and not yet used by a message. */
   fresh?:string[]
@@ -108,15 +111,12 @@ export function FileInspection({files,initial,fresh=[],readOnly,disabled,onUse,d
   if(!files.length)return null;
   // Before the first message every file is new; later only the files attached since the last message.
   const described=initial?files:files.filter(file=>fresh.includes(file.id));
-  const plural=described.length>1;
   return <section className="as-file-inspection" aria-label="연결 파일 확인">
     <h3>연결한 파일에서 확인한 내용</h3>
     {described.length>0&&!readOnly&&<div className="as-file-summary" role="status">
       {described.map(file=><p key={file.id}>{describeFile(file,factsFor?.(file.id))}</p>)}
-      <p>{initial
-        ? (plural?'이 파일들로':'이 파일로')+' 어떤 작업을 할까요? 미리보기에서 항목을 골라 요청을 만들거나, 아래 입력창에 원하는 작업을 적어 주세요.'
-        : '새로 연결한 '+(plural?'파일들을':'파일을')+' 지금 작업에 어떻게 쓸까요? 미리보기에서 항목을 골라 요청에 추가하거나, 아래 입력창에 적어 주세요.'}</p>
     </div>}
-    {files.map(file=><InspectedSource key={file.id} file={file} open={initial&&!readOnly} readOnly={readOnly} disabled={disabled} onUse={onUse} details={detailsFor(file.id)}/>)}
+    {files.map(file=><InspectedSource key={file.id} file={file} open={initial&&!readOnly}
+      details={detailsFor(file.id)} selection={readOnly?undefined:selection}/>)}
   </section>;
 }

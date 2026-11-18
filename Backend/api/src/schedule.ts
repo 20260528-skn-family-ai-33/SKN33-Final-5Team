@@ -1,5 +1,4 @@
 import type { FlowNode } from '../../../shared/workflow';
-import {scheduleCronExpression} from '../../../shared/schedule-rule';
 
 type Local = { year: number; month: number; day: number; hour: number; minute: number; second: number };
 type Rule = Record<string, unknown>;
@@ -68,6 +67,7 @@ function rules(node: FlowNode): Rule[] {
   return intervals;
 }
 
+function cronExpression(rule: Rule, node: FlowNode): unknown { return rule.customExpression ?? rule.expression ?? node.parameters.customExpression; }
 function cronField(text: string, min: number, max: number, names: string[] = [], namesStart = 0, sunday = false): number[] {
   const values = new Set<number>();
   const parse = (token: string): number => {
@@ -130,7 +130,7 @@ function validateRule(rule: Rule, node: FlowNode): void {
     case 'days': integer(rule.daysInterval, 1, 1, 366, '날짜 간격'); break;
     case 'weeks': integer(rule.weeksInterval, 1, 1, 104, '주 간격'); selectedWeekdays(rule); break;
     case 'months': integer(rule.monthsInterval, 1, 1, 120, '월 간격'); integer(rule.triggerAtDayOfMonth, 1, 1, 31, '날짜'); break;
-    case 'cronExpression': parseCron(scheduleCronExpression(rule, node.parameters)); break;
+    case 'cronExpression': parseCron(cronExpression(rule, node)); break;
     default: throw new Error('지원하지 않는 예약 간격이에요.');
   }
   if (['days','weeks','months'].includes(String(field))) {
@@ -163,14 +163,14 @@ function nextRule(rule: Rule, node: FlowNode, after: number, timezone: string): 
   const startDate = localAt(after, timezone);
   const anchorDate = localAt(anchor, timezone);
   const start = dateStamp(startDate); const anchorDay = dateStamp(anchorDate);
-  const cron = field === 'cronExpression' ? parseCron(scheduleCronExpression(rule, node.parameters)) : undefined;
-  const daysInterval = field === 'days' ? integer(rule.daysInterval, 1, 1, 366, '날짜 간격') : 1;
-  const weeksInterval = field === 'weeks' ? integer(rule.weeksInterval, 1, 1, 104, '주 간격') : 1;
-  const monthsInterval = field === 'months' ? integer(rule.monthsInterval, 1, 1, 120, '월 간격') : 1;
+  const cron = field === 'cronExpression' ? parseCron(cronExpression(rule, node)) : undefined;
+  const daysInterval = integer(rule.daysInterval, 1, 1, 366, '날짜 간격');
+  const weeksInterval = integer(rule.weeksInterval, 1, 1, 104, '주 간격');
+  const monthsInterval = integer(rule.monthsInterval, 1, 1, 120, '월 간격');
   const weekdays = field === 'weeks' ? selectedWeekdays(rule) : [];
   const mondayAnchor = anchorDay - modulo(weekday(anchorDate) - 1, 7) * DAY;
   const anchorMonth = anchorDate.year * 12 + anchorDate.month - 1;
-  const monthDay = field === 'months' ? integer(rule.triggerAtDayOfMonth, 1, 1, 31, '날짜') : 1;
+  const monthDay = integer(rule.triggerAtDayOfMonth, 1, 1, 31, '날짜');
   const hours = cron?.hours ?? [integer(rule.triggerAtHour, 0, 0, 23, '시')];
   const minutes = cron?.minutes ?? [integer(rule.triggerAtMinute, 0, 0, 59, '분')];
   const horizon = field === 'months' ? Math.max(monthsInterval * 31 * 9,366 * 9) : 366 * 9;

@@ -29,8 +29,12 @@ def execution_path(workflow, outputs=None, start=None):
 
 def artifact_output_ids(workflow, outputs=None):
     """Select in execution order, not node-list or output-dictionary order."""
+    return artifact_ids_on_path(execution_path(workflow, outputs), outputs)
+
+
+def artifact_ids_on_path(path, outputs=None):
     result=[]
-    for node in execution_path(workflow,outputs):
+    for node in path:
         identifier=node['id']
         if outputs is not None:
             if identifier not in outputs:break  # Suspended/unfinished execution.
@@ -41,6 +45,19 @@ def artifact_output_ids(workflow, outputs=None):
                 emits=any(b['input']=='artifact' for b in node.get('bindings',[]))
         if emits:result.append(identifier)
     return result
+
+
+def result_rows_endpoint(path):
+    """Identify the rows the runner displays after completing this path."""
+    for node in reversed(path):
+        ports = node_ports(node)[1]
+        if not uses_operation(node) and node['tool'] in ('condition', 'ask_user', 'finish'):
+            # These control nodes forward only the inputs actually connected.
+            ports = {binding['input'] for binding in node.get('bindings', []) if binding['input'] in ports}
+        for port in ('records', 'table'):
+            if port in ports:
+                return node, port
+    return None
 
 
 def artifact_origin(workflow, identifier):

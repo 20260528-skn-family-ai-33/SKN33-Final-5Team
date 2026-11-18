@@ -14,7 +14,6 @@ const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(glo
 let dom:JSDOM;
 function installDOM(){
  dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'http://localhost/',pretendToBeVisual:true});
- dom.window.confirm=()=>true;
  for(const key of globals)if(key==='IS_REACT_ACT_ENVIRONMENT')Object.defineProperty(globalThis,key,{value:true,writable:true,configurable:true});else if(key in dom.window)Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],writable:true,configurable:true});
 }
 installDOM();
@@ -51,7 +50,7 @@ test('schedule can be added to a manual workflow, paused, activated and removed 
   assert.equal(h.calls[0].body.id,'manual');assert.match(document.body.textContent!,/중지/);
   await click(button('예약 켜기'));assert.deepEqual(h.calls[1],{path:'/api/agent-builder/schedule',body:{id:'manual',active:true}});
   await click(button('예약 중지'));assert.equal(h.calls[2].body.active,false);
-  await click(button('예약 삭제'));assert.deepEqual(h.calls[3],{path:'/api/agent-builder/schedule_remove',body:{id:'manual'}});
+  await click(button('예약 해제'));assert.deepEqual(h.calls[3],{path:'/api/agent-builder/schedule_remove',body:{id:'manual'}});
   assert.match(document.body.textContent!,/워크플로우는 계속 직접 실행/);assert.ok(button('예약 추가'));
  }finally{await h.close();}
 });
@@ -62,7 +61,7 @@ test('incomplete automatic inputs block activation while an active reservation r
  try{
   assert.equal(button('예약 켜기').disabled,true);assert.match(document.body.textContent!,/자료·요청 설정/);
   await h.render(createElement(ScheduleSettings,{...props,schedule:{...saved,active:true}}));
-  assert.equal(button('예약 중지').disabled,false);assert.equal(button('예약 삭제').disabled,false);
+  assert.equal(button('예약 중지').disabled,false);assert.equal(button('예약 해제').disabled,false);
  }finally{await h.close();}
 });
 
@@ -112,15 +111,16 @@ test('reservation management protects dirty forms when closing, refreshing, swit
  });
  let confirmations=0,allowDiscard=false;dom.window.confirm=()=>{confirmations++;return allowDiscard;};
  try{
-  await click(button('기존 워크플로우에 예약 추가'));
-  const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;
-  await change(picker,'C');await change(labelled('실행 시간'),'10:00');
+  await click(document.querySelector<HTMLElement>('[aria-label="A 일정 관리"]')!);await click(button('일정 수정'));await change(labelled('실행 시간'),'10:00');
   const unload=new dom.window.Event('beforeunload',{cancelable:true});dom.window.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
-  assert.equal(guard(),false);
-  await click(document.querySelector<HTMLElement>('[aria-label="예약 설정 닫기"]')!);assert.equal(labelled('실행 시간').value,'10:00');
-  const reads=h.calls.length;await click(document.querySelector<HTMLElement>('[aria-label="예약 목록 새로고침"]')!);assert.equal(h.calls.length,reads);
-  await change(picker,'D');assert.equal(picker.value,'C');
-  allowDiscard=true;await change(picker,'D');assert.equal(picker.value,'D');assert.equal(labelled('실행 시간').value,'09:00');assert.equal(guard(),true);
+  assert.equal(guard(),false);assert.equal(confirmations,1);
+  await click(document.querySelector<HTMLElement>('[aria-label="예약 설정 닫기"]')!);assert.equal(confirmations,2);assert.equal(labelled('실행 시간').value,'10:00');
+  await click(document.querySelector<HTMLElement>('[aria-label="B 일정 관리"]')!);assert.equal(confirmations,3);assert.match(document.querySelector('.schedule-manager-heading')!.textContent!,/A/);
+  const reads=h.calls.length;await click(document.querySelector<HTMLElement>('[aria-label="예약 목록 새로고침"]')!);assert.equal(confirmations,4);assert.equal(h.calls.length,reads);
+  allowDiscard=true;await click(button('기존 워크플로우에 예약 추가'));assert.equal(confirmations,5);
+  const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;await change(picker,'C');assert.equal(guard(),true);assert.equal(confirmations,5);
+  await change(labelled('반복 주기'),'hourly');allowDiscard=false;await change(picker,'D');assert.equal(confirmations,6);assert.equal(picker.value,'C');assert.equal(labelled('반복 주기').value,'hourly');
+  allowDiscard=true;await change(picker,'D');assert.equal(confirmations,7);assert.equal(picker.value,'D');assert.equal(labelled('반복 주기').value,'daily');assert.equal(guard(),true);assert.equal(confirmations,7);
   const cleanUnload=new dom.window.Event('beforeunload',{cancelable:true});dom.window.dispatchEvent(cleanUnload);assert.equal(cleanUnload.defaultPrevented,false);
  }finally{await h.close();}
 });
@@ -137,8 +137,8 @@ test('reservation management uses saved schedule and keeps an unscheduled workfl
  });
  try{
   assert.equal(document.querySelector('h1')?.textContent,'예약 관리');assert.match(document.querySelector('table')!.textContent!,/매일 09:00/);
-  await click(button('일정 관리'));assert.deepEqual(opened,['A']);assert.equal(document.querySelector('.schedule-manager'),null);
-  await click(document.querySelector<HTMLInputElement>('[aria-label="보고서 선택"]')!);await click(button('선택 삭제 (1)'));assert.equal(document.querySelector('[data-schedule-id="A"]'),null);
+  await click(button('일정 관리'));await click(button('예약 자료·실행 확인'));assert.deepEqual(opened,['A']);
+  await click(button('예약 해제'));assert.equal(document.querySelector('[data-schedule-id="A"]'),null);
   await click(button('기존 워크플로우에 예약 추가'));
   const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;assert.deepEqual(Array.from(picker.options).map(option=>option.value),['','A','B']);
   await change(picker,'B');await click(button('예약 추가'));assert.ok(document.querySelector('[data-schedule-id="B"]'));

@@ -261,6 +261,9 @@ def reconcile(data, prediction):
         lo = (max(b[2] for _, b in before) + left) / 2 if before else (-math.inf if col == 0 else left)
         hi = (right + min(b[0] for _, b in after)) / 2 if after else (math.inf if col == logical_cols-1 else right)
         corridors[col] = lo, hi
+    pending = []
+    reserved = set(confirmed)
+    duplicate_candidates = False
     for p in pieces:
         if p['index'] in anchors or p['score'] < .98:
             continue
@@ -279,17 +282,35 @@ def reconcile(data, prediction):
         lo, hi = corridors.get(col, (math.inf, -math.inf))
         if not lo <= p['box'][0] < p['box'][2] <= hi:
             continue
-        if (row, col) in confirmed:
+        if (row, col) in reserved:
             report['issues'].append({'kind': 'duplicate_ocr_for_cell', 'ocr_index': p['index']})
-            anchors.add(p['index'])
+            duplicate_candidates = True
             continue
-        confirmed.add((row, col))
-        rows[row].append(p['box'])
-        columns[col].append((row, p['box']))
-        anchors.add(p['index'])
+        reserved.add((row, col))
+        pending.append((cell, p))
+    # Validate the entire tentative set before granting it evidence status.
+    # Individual agreement with a reference does not imply peer agreement.
+    candidate_issues = anchor_geometry_issues([*matches, *pending])
+    pending_rows = defaultdict(list)
+    for cell, piece in pending:
+        pending_rows[position(cell)[0]].append((cell, piece))
+    for row, candidates in pending_rows.items():
+        references = row_references[row]
+        if not row_alignment_supported([*references, *candidates], references=references):
+            candidate_issues.append(dict(kind='candidate_row_alignment_conflict', row=row))
+    report['issues'].extend(candidate_issues)
+    candidates_rejected = duplicate_candidates or bool(candidate_issues)
+    if not candidates_rejected:
+        for cell, p in pending:
+            row, col = position(cell)
+            confirmed.add((row, col))
+            columns[col].append((row, p['box']))
+            anchors.add(p['index'])
     for cell in cells:
         if normalized(cell.get('text')) and position(cell) not in confirmed:
             report['issues'].append({'kind': 'cell_not_confirmed_by_ocr', 'slot': list(position(cell))})
+    if candidates_rejected:
+        return cells, report
     proposals = defaultdict(list)
     for p in pieces:
         if p['index'] in anchors:

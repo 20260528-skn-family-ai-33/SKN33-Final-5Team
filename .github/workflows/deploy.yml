@@ -188,7 +188,8 @@ jobs:
                       tests/design/test_node_edit_copy.py tests/design/test_node_edit_descriptions.py \
                       tests/design/test_node_edit_public_flow.py tests/design/test_node_edit_dependencies.py \
                       tests/design/test_dedup_sort_save_loop.py tests/design/test_direct_sort_before_dedup.py \
-                      tests/design/test_sort_request_wording.py tests/design/test_sort_dedup_order.py; do
+                      tests/design/test_sort_request_wording.py tests/design/test_sort_dedup_order.py \
+                      tests/design/test_pr142_table_execution.py; do
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"

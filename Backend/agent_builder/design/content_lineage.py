@@ -68,10 +68,10 @@ def content_bindings(node, output=None):
     return [b for b in bindings if b['input'] in inputs]
 
 
-def content_ancestors(nodes, identifier):
+def content_ancestors(nodes, identifier, output=None):
     """Keep the source port while following pass-through nodes such as ask_user."""
     visited = set()
-    pending = [(identifier, None)]
+    pending = [(identifier, output)]
     ancestors = set()
     while pending:
         current, output = pending.pop()

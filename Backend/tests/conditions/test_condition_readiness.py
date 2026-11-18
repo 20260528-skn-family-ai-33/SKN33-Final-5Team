@@ -1,6 +1,9 @@
 """Contract/fault tests with explicit extraction fixtures, NOT LLM accuracy."""
+import csv
+import io
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 from langgraph.types import Command
@@ -246,6 +249,143 @@ def test_unquoted_equality_needs_the_literal_in_a_keep_clause(request_text, prop
     else:
         assert ledger['decision'] == 'ready'
         assert ledger['slots']['filter.value']['value'] == '오름차순'
+
+
+def csv_rows(store, state):
+    result = run_workflow(store, store.save_agent(state), '실행', '', file_ids=['a'])
+    assert result['status'] == 'succeeded'
+    assert result['artifact']['name'].endswith('.csv')
+    artifact = list(csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff'))))
+    with (Path(store.path).parent / result['report_path']).open(encoding='utf-8-sig', newline='') as file:
+        persisted = list(csv.DictReader(file))
+    assert persisted == artifact
+    return persisted
+
+
+@pytest.mark.parametrize('connector', [' ', ', ', '， '])
+def test_filter_sort_clause_uses_the_same_operand_and_csv_rows(tmp_path, connector):
+    s = state('정렬방식이 오름차순인 데이터만 남기고' + connector +
+              '금액 내림차순으로 정렬해서 CSV로 저장해줘. 빈 값은 오류로 처리하고 중복은 유지해.')
+    asset = {'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': ['주문번호', '정렬방식', '금액'],
+             'profile': {'금액': {'types': ['number']}}, 'text': ''}
+    s.update(resources=[asset], condition_enforced=True)
+    ledger = checked(s, proposal(s, {'output.format': 'csv'}))
+    assert ledger['decision'] == 'ready', ledger['questions']
+    assert ledger['slots']['filter.value']['value'] == '오름차순'
+    candidate = workflow_draft(s)
+    plan = {**candidate['execution_plan'], 'output_format': 'csv',
+            'filters': [dict(field='정렬방식', operator='eq', value='오름차순', compare_field=None, value_type='text')],
+            'sort': [dict(field='금액', direction='descending', value_type='number')]}
+    candidate['execution_plan'] = plan
+    candidate['workflow']['nodes'][1]['settings']['execution_plan'] = plan
+    candidate['workflow']['nodes'][2]['settings']['format'] = 'csv'
+    s.update(draft=candidate, condition_ledger=ledger, confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [{'주문번호': 'A', '정렬방식': '오름차순', '금액': 10},
+                                {'주문번호': 'B', '정렬방식': '내림차순', '금액': 30},
+                                {'주문번호': 'C', '정렬방식': '오름차순', '금액': 20}])
+        assert [row['주문번호'] for row in csv_rows(store, s)] == ['C', 'A']
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('answer', ['네', '맞아요.', '예！'])
+def test_affirmative_filter_reply_accepts_only_the_offered_operand(tmp_path, answer):
+    from agent_builder.design.condition_templates import compile_conditions
+
+    s = state('정렬방식이 오름차순인 행만 남길까요? CSV로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = {'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': ['주문번호', '정렬방식'], 'text': ''}
+    s.update(resources=[asset], condition_enforced=True)
+    raw = proposal(s, {'filter.field': '정렬방식', 'filter.operator': 'eq', 'filter.value': '오름차순',
+                       'output.format': 'csv'})
+    s['condition_ledger'] = checked(s, raw)
+    assert s['condition_ledger']['decision'] == 'clarify'
+    question = next(q for q in s['condition_ledger']['questions'] if q['key'] == 'filter.match')
+    s['messages'].append({'role': 'user', 'content': answer})
+    s['condition_answers'] = [dict(turn=1, question_ids=[question['id']], candidate_keys=['filter.match'])]
+    s['condition_ledger'] = checked(s, proposal(s, {}, operations=[]))
+    assert s['condition_ledger']['decision'] == 'ready'
+    assert s['condition_ledger']['slots']['filter.value']['value'] == '오름차순'
+    s.update(compile_conditions(s), confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [{'주문번호': 'C', '정렬방식': '오름차순'},
+                                {'주문번호': 'B', '정렬방식': answer},
+                                {'주문번호': 'A', '정렬방식': '오름차순'}])
+        assert [row['주문번호'] for row in csv_rows(store, s)] == ['C', 'A']
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('relative_column', ['주문상태', '주문 상태 열'])
+def test_column_operand_cannot_be_confirmed_as_a_literal_value(relative_column):
+    column = relative_column.removesuffix(' 열')
+    s = state(f'배송상태가 {relative_column}와 같은 행만 남겨줘. CSV로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    s['resources'] = [{'id': 'a', 'kind': 'table', 'columns': ['배송상태', column], 'text': ''}]
+    raw = proposal(s, {'filter.field': '배송상태', 'filter.operator': 'eq', 'filter.value': column,
+                       'output.format': 'csv'})
+    s['condition_ledger'] = checked(s, raw)
+    assert s['condition_ledger']['decision'] == 'clarify'
+    question = next(q for q in s['condition_ledger']['questions'] if q['key'] == 'filter.match')
+    assert column + ' 열' in question['text']
+    s['messages'].append({'role': 'user', 'content': '네'})
+    s['condition_answers'] = [dict(turn=1, question_ids=[question['id']], candidate_keys=['filter.match'])]
+    assert checked(s, proposal(s, {}, operations=[]))['decision'] == 'clarify'
+
+
+def test_quoted_column_name_is_still_a_valid_cell_value(tmp_path):
+    from agent_builder.design.condition_templates import compile_conditions
+
+    s = state('배송상태가 "주문상태"와 같은 행만 남겨줘. CSV로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = {'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': ['배송상태', '주문상태'], 'text': ''}
+    s.update(resources=[asset], condition_enforced=True)
+    s['condition_ledger'] = checked(s, proposal(s, {'output.format': 'csv'}))
+    assert s['condition_ledger']['decision'] == 'ready'
+    s.update(compile_conditions(s), confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        literal = {'배송상태': '주문상태', '주문상태': '대기'}
+        store.add_asset(asset, [{'배송상태': '완료', '주문상태': '완료'}, literal])
+        assert csv_rows(store, s) == [literal]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('example', [
+    pytest.param("예시 문구는 '배송상태가 완료인 행만 남겨줘'야.", id='quoted-example'),
+    pytest.param('결과 파일 이름은 배송상태가 완료인 행만 남겨줘로 지정해줘.', id='unquoted-filename'),
+    pytest.param("설명은 '" + '가' * 1500 + ' 배송상태가 완료인 행만 남겨줘' + "'로 넣어줘.", id='quoted-evidence-chunk'),
+    pytest.param('예시 문구는 “\n배송상태가 완료인 행만 남겨줘\n”야.', id='multiline-example'),
+])
+def test_non_instruction_filter_evidence_cannot_shrink_a_full_export(tmp_path, example):
+    s = state(example + ' 실제로는 표 전체를 CSV로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = {'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': ['배송상태'], 'text': ''}
+    s.update(resources=[asset], condition_enforced=True)
+    malicious = proposal(s, {'filter.field': '배송상태', 'filter.operator': 'eq', 'filter.value': '완료',
+                             'output.format': 'csv'})
+    assert checked(s, malicious)['decision'] == 'clarify'
+
+    ledger = checked(s, proposal(s, {'output.format': 'csv'}, operations=[]))
+    assert ledger['decision'] == 'ready'
+    candidate = workflow_draft(s)
+    candidate['execution_plan'].update(filters=[], output_format='csv')
+    candidate['workflow']['nodes'][1]['settings']['execution_plan'] = candidate['execution_plan']
+    candidate['workflow']['nodes'][2]['settings']['format'] = 'csv'
+    s.update(draft=candidate, condition_ledger=ledger, confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        rows = [{'배송상태': '완료'}, {'배송상태': '대기'}]
+        store.add_asset(asset, rows)
+        extra = deepcopy(s)
+        extra['draft']['workflow']['nodes'][1]['settings']['execution_plan']['filters'] = [
+            dict(field='배송상태', operator='eq', value='완료', compare_field=None, value_type='text'),
+        ]
+        with pytest.raises(ValueError, match='확정 업무 조건'):
+            store.save_agent(extra)
+        assert csv_rows(store, s) == rows
+    finally:
+        store.close()
 
 
 def test_required_condition_omitted_by_model_is_derived_by_code():

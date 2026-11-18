@@ -3,6 +3,7 @@
 Real service entry + LangGraph + SQLite; capability, condition and planner replies are
 fixtures, so these check routing/state contracts, not the production model.
 """
+import csv
 import io
 import json
 import re
@@ -167,12 +168,13 @@ def node(id, tool, bindings=(), **settings):
     return {'id': id, 'tool': tool, 'label': id, 'bindings': list(bindings), 'settings': {**base, **settings}}
 
 
-def make_planner(calls, sort=SORT, schedule=None, bypass=False, sort_first=False, final_sort=None):
+def make_planner(calls, sort=SORT, schedule=None, bypass=False, sort_first=False, final_sort=None,
+                 duplicate_policy='first', duplicate_field='주문번호'):
     def planner(state):
         calls.append(state['messages'][-1]['content'])
         chosen = sort(state) if callable(sort) else sort
-        plan = ExecutionPlan(filters=[], sort=chosen, match='all', missing_policy='keep', duplicate_policy='first',
-                             duplicate_field='주문번호', output_format='csv').model_dump()
+        plan = ExecutionPlan(filters=[], sort=chosen, match='all', missing_policy='keep', duplicate_policy=duplicate_policy,
+                             duplicate_field=duplicate_field, output_format='csv').model_dump()
         file_id = state['resources'][0]['id']
         nodes = [node('read', 'read_table', file_ids=[file_id]),
                  node('sort', 'filter_sort', [{'input': 'table', 'node_id': 'read', 'output': 'table'}],
@@ -247,6 +249,7 @@ def service(monkeypatch):
         try:return run_workflow(store, agent_id, '저장한 조건으로 실행', api_key='')
         finally:store.close()
     fakes['run'] = run
+    fakes['directory'] = directory
     CURRENT['request'] = REQUEST
     return act, saved, fakes
 
@@ -259,7 +262,10 @@ def press_save(act, planner):
         return act('session', planner)
 
 
-@pytest.mark.parametrize('typed', ['확인완료. 저장', '저장 버튼', '저장해도 돼요'])
+@pytest.mark.parametrize('typed', [
+    '확인완료. 저장', '저장 버튼', '저장해도 돼요', '저장해도 돼요?', '저장해도 돼요？',
+    '워크플로우 저장해 주세요', '저장할 수 있나요?', '이 초안은 어떻게 저장하나요?',
+])
 def test_typed_save_points_to_the_button_and_never_saves(service, typed):
     act, saved, fakes = service
     calls = []
@@ -275,6 +281,142 @@ def test_typed_save_points_to_the_button_and_never_saves(service, typed):
     assert '저장 버튼' in reply['messages'][-1]['content']
     done = press_save(act, planner)  # the approval wait is intact
     assert done['status'] == 'saved' and done['saved_agent_id'] and saved() == 1
+
+
+def test_save_guidance_preserves_the_open_choice(service):
+    act, saved, fakes = service
+    request = '주문번호가 같은 행은 중복을 제거하고 CSV로 저장해줘. 빈 값은 그대로 유지해.'
+    CURRENT['request'] = request
+
+    def ask_policy(messages):
+        extraction = condition(messages)
+        policy = next(item for item in extraction['conditions'] if item['key'] == 'duplicate.policy')
+        policy.update(status='missing', value=None, evidence_ids=[])
+        return extraction
+
+    fakes['cond'].make = ask_policy
+    calls = []
+    planner = make_planner(calls, sort=[])
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    pending = act('message', planner, content=request)
+    assert pending['status'] == 'needs_clarification'
+    assert any(q['key'] == 'duplicate.policy' for q in pending['pending_questions'])
+    prior_calls = (fakes['cap'].calls, fakes['cond'].calls, len(calls))
+    reply = act('message', planner, content='확인완료. 저장')
+    assert reply['status'] == 'needs_clarification' and saved() == 0
+    assert reply['pending_questions'] == pending['pending_questions']
+    assert (fakes['cap'].calls, fakes['cond'].calls, len(calls)) == prior_calls
+    assert '질문에 먼저 답해 주세요' in reply['messages'][-1]['content']
+
+
+def test_the_save_word_can_answer_a_deduplication_column_question(service):
+    act, saved, fakes = service
+    request = '기준 열의 값이 같은 행은 첫 행만 남기고 CSV로 저장해줘. 빈 값은 그대로 유지해.'
+    CURRENT['request'] = request
+
+    def ask_column(messages):
+        extraction = condition(messages)
+        slot = next(item for item in extraction['conditions'] if item['key'] == 'duplicate.field')
+        if fakes['cond'].calls == 1:
+            slot.update(status='missing', value=None, evidence_ids=[])
+        else:
+            slot['value'] = '저장'
+        return extraction
+
+    fakes['cond'].make = ask_column
+    table = {**TABLE, 'columns': [*COLUMNS, '저장']}
+    rows = [{**row, '저장': label} for row, label in zip(REVIEW_ROWS, ['X', 'Y', 'X', 'Z', 'Z'])]
+    planner = make_planner([], sort=[], duplicate_field='저장')
+    act('upload', planner, asset=table, rows=rows)
+    pending = act('message', planner, content=request)
+    assert pending['status'] == 'needs_clarification'
+    assert any(q['key'] == 'duplicate.field' for q in pending['pending_questions'])
+    ready = act('message', planner, content='저장')
+    assert ready['status'] == 'ready', ready['issues']
+    assert saved() == 0
+    accepted = act('confirm', planner)
+    run = fakes['run'](accepted['saved_agent_id'])
+    assert run['status'] == 'succeeded'
+    rows = list(csv.DictReader(io.StringIO(run['artifact']['content'].lstrip('\ufeff'))))
+    assert [(row['주문번호'], row['주문일'], row['저장']) for row in rows] == [
+        ('A1', '2026-11-02', 'X'), ('A1', '2026-11-07', 'Y'), ('C3', '2026-11-02', 'Z'),
+    ]
+
+
+def _reviewable_table():
+    analysis = {'contract_version': 'a4b.document_analysis.v1', 'source_format': 'csv',
+                'source_sha256': 'a' * 64, 'blocks': [], 'units': [], 'primary_processor': 'native',
+                'status': 'succeeded', 'warnings': [], 'review_reasons': []}
+    return {**TABLE, 'parser_metadata': {'document_analysis': analysis}}
+
+
+def _document_review(directory, asset_id, action):
+    request = {'directory': str(directory), 'action': 'document_review', 'id': asset_id}
+    current = handle(request)['review']
+    from infrastructure.persistence.ids import uid
+    command = {'action': action, 'expected_revision': current['revision'], 'request_id': uid(),
+               'source_sha256': current['source_sha256'], 'analysis_sha256': current['analysis_sha256'],
+               'acknowledge': True}
+    return handle({**request, 'command': command})
+
+
+def test_typed_save_and_button_keep_the_review_when_the_linked_document_is_reopened(service):
+    act, saved, fakes = service
+    calls = []
+    planner = make_planner(calls)
+    asset, = act('upload', planner, asset=_reviewable_table(), rows=ROWS)['resources']
+    _document_review(fakes['directory'], asset['id'], 'complete')
+    ready = act('message', planner, content=REQUEST)
+    assert ready['status'] == 'ready'
+    _document_review(fakes['directory'], asset['id'], 'reopen')
+    for action, fields in [('message', {'content': '저장해도 돼요？'}), ('confirm', {})]:
+        with pytest.raises(ValueError, match='자료 검토 결과가 변경'):
+            act(action, planner, **fields)
+    latest = act('session', planner)
+    assert latest['status'] == 'ready' and latest['revision'] == ready['revision']
+    assert latest['draft'] == ready['draft'] and len(calls) == 1 and saved() == 0
+    refreshed = act('message', planner, content=REQUEST)
+    assert refreshed['status'] == 'ready', refreshed['issues']
+    accepted = act('confirm', planner)
+    assert csv_order(fakes['run'](accepted['saved_agent_id'])) == ['B2', 'A1']
+
+
+@pytest.mark.parametrize('field_question', [False, True])
+def test_a_literal_save_answer_survives_reopening_document_review(tmp_path, monkeypatch, field_question):
+    from tests.design.test_builder import PROMPT, draft
+
+    for name in ('CAPABILITY', 'CONDITION', 'REQUIREMENT', 'VERIFIER'):
+        monkeypatch.setenv(f'A4B_{name}_MODE', 'off')
+    request = {'directory': str(tmp_path)}
+    state = handle({**request, 'action': 'new_session', 'model': 'm', 'credential_id': 'local'})
+    question = '어느 열이 기준인가요?' if field_question else '이 워크플로우의 이름은 무엇으로 할까요?'
+    calls = []
+
+    def planner(at):
+        calls.append(at['messages'][-1]['content'])
+        if len(calls) == 1:
+            candidate = draft([question])
+            if field_question:
+                candidate['question_options'] = [['주문번호', '저장']]
+        else:
+            candidate = {**draft(), 'name': calls[-1]}
+        return {'draft': candidate, 'confirmed': False}
+
+    def act(action, **fields):
+        nonlocal state
+        state = handle({**request, 'action': action, 'id': state['id'], 'revision': state['revision'], **fields},
+                       conversation=planner)
+        return state
+
+    table = _reviewable_table()
+    table['columns'] = [*COLUMNS, '저장']
+    asset, = act('upload', asset=table, rows=ROWS)['resources']
+    _document_review(tmp_path, asset['id'], 'complete')
+    assert act('message', content=PROMPT)['status'] == 'needs_clarification'
+    _document_review(tmp_path, asset['id'], 'reopen')
+    reply = act('message', content='저장')
+    assert reply['status'] == 'ready'
+    assert reply['draft']['name'] == '저장' and calls == [PROMPT, '저장']
 
 
 def test_typed_save_on_a_blocked_draft_explains_instead_of_replanning(service):
@@ -578,9 +720,8 @@ def test_sort_key_named_in_a_later_turn_end_to_end(service, planner_sort, saves,
 
 def csv_order(result):
     """주문번호 order in the CSV file the run produced, not the run's response rows."""
-    import csv as _csv
     content = result['artifact']['content'].lstrip('\ufeff')
-    return [row['주문번호'] for row in _csv.DictReader(io.StringIO(content))]
+    return [row['주문번호'] for row in csv.DictReader(io.StringIO(content))]
 
 
 def test_negated_withdrawal_keeps_the_sort():
@@ -837,6 +978,100 @@ def test_an_old_no_sort_policy_does_not_override_a_new_sort_request():
 
 def test_question_marked_save_request_is_a_save_request():
     assert is_save_request('저장해도 돼요?') and is_save_request('확인완료. 저장?')
+
+
+REVIEW_ROWS = [
+    {'주문번호': order, '고객명': order, '주문일': '2026-11-' + day, '금액': amount}
+    for order, day, amount in [
+        ('A1', '02', 100), ('A1', '07', 300), ('B2', '01', 210), ('C3', '02', 190), ('D4', '09', 150),
+    ]
+]
+REVIEW_AMOUNT_ASC = [{'field': '금액', 'direction': 'ascending', 'value_type': 'number'}]
+REVIEW_AMOUNT_DESC = [{'field': '금액', 'direction': 'descending', 'value_type': 'number'}]
+REVIEW_REQUEST = '주문번호가 같은 행은 첫 행만 남겨줘. 빈 값은 그대로 유지해. '
+
+
+@pytest.mark.parametrize('clause', [
+    '"주문일 오름차순"으로 정렬해줘. CSV로 저장해줘.',
+    '"주문일" 오름차순으로 정렬해서 CSV로 저장해줘.',
+    '"주문일 오름차순"으로 정렬된 결과를 CSV로 저장해줘.',
+])
+@pytest.mark.parametrize('correct', [True, False])
+def test_the_quoted_sort_is_enforced_in_the_exported_csv(service, clause, correct):
+    act, saved, fakes = service
+    request = REVIEW_REQUEST + clause
+    CURRENT['request'] = request
+    planner = make_planner([], sort=SORT if correct else REVIEW_AMOUNT_ASC)
+    act('upload', planner, asset=dict(TABLE), rows=REVIEW_ROWS)
+    result = act('message', planner, content=request)
+    if not correct:
+        assert result['status'] == 'validation_failed'
+        assert press_save(act, planner)['status'] == 'validation_failed' and saved() == 0
+        return
+    assert result['status'] == 'ready'
+    persisted = press_save(act, planner)
+    run = fakes['run'](persisted['saved_agent_id'])
+    assert run['status'] == 'succeeded' and csv_order(run) == ['B2', 'A1', 'C3', 'D4']
+
+
+@pytest.mark.parametrize(('initial_clause', 'follow_up', 'before', 'after', 'expected'), [
+    ('주문일 오름차순으로 정렬해서 CSV로 저장해줘.', '주문일 오름차순 정렬 빼줘',
+     SORT, [], ['A1', 'B2', 'C3', 'D4']),
+    ('주문일 오름차순으로 정렬해서 CSV로 저장해줘.', '주문일 오름차순 정렬 없이 저장해줘.',
+     SORT, [], ['A1', 'B2', 'C3', 'D4']),
+    ('주문일 오름차순으로 정렬해서 CSV로 저장해줘.', '정렬 기준은 "금액"이야',
+     SORT, REVIEW_AMOUNT_ASC, ['A1', 'D4', 'C3', 'B2']),
+    ('주문일 오름차순, 금액 내림차순으로 정렬해서 CSV로 저장해줘.',
+     '주문일 오름차순 정렬을 빼고 금액 정렬은 그대로 둬',
+     SORT + REVIEW_AMOUNT_DESC, REVIEW_AMOUNT_DESC, ['B2', 'C3', 'D4', 'A1']),
+    ('정렬은 하지 말고 CSV로 저장해줘.',
+     '새로운 작업: 주문번호가 같은 행은 첫 행만 남기고 주문일 오름차순으로 정렬해서 CSV로 저장해줘. 빈 값은 그대로 유지해.',
+     [], SORT, ['B2', 'A1', 'C3', 'D4']),
+    ('주문일 오름차순으로 정렬해서 CSV로 저장해줘.',
+     '새로운 작업: 주문번호가 같은 행은 첫 행만 남기고 CSV로 저장해줘. 빈 값은 그대로 유지해.',
+     SORT, [], ['A1', 'B2', 'C3', 'D4']),
+])
+def test_existing_review_sort_revisions_preserve_csv_order(service, initial_clause, follow_up, before, after, expected):
+    act, _, fakes = service
+    initial = REVIEW_REQUEST + initial_clause
+    CURRENT['request'] = initial
+    planner = make_planner([], sort=before)
+    act('upload', planner, asset=dict(TABLE), rows=REVIEW_ROWS)
+    assert act('message', planner, content=initial)['status'] == 'ready'
+
+    CURRENT['request'] = follow_up
+    planner = make_planner([], sort=after)
+    updated = act('message', planner, content=follow_up)
+    assert updated['status'] == 'ready', updated['issues']
+    persisted = press_save(act, planner)
+    assert persisted['status'] == 'saved'
+    run = fakes['run'](persisted['saved_agent_id'])
+    assert run['status'] == 'succeeded' and csv_order(run) == expected
+
+
+@pytest.mark.parametrize('follow_up', [
+    '중복은 첫 행만 남기고 결과.csv로 저장해줘',
+    '중복은 첫 행만 남겨줘.결과.csv도 첨부했어.',
+])
+def test_filename_does_not_keep_the_superseded_duplicate_policy_in_csv(service, follow_up):
+    act, _, fakes = service
+    initial = '주문번호가 같은 행은 마지막 행만 남겨줘. 빈 값은 그대로 유지해. CSV로 저장해줘.'
+    CURRENT['request'] = initial
+    planner = make_planner([], sort=[], duplicate_policy='last')
+    act('upload', planner, asset=dict(TABLE), rows=REVIEW_ROWS)
+    initial_state = act('message', planner, content=initial)
+    assert initial_state['status'] == 'ready', initial_state['issues']
+    CURRENT['request'] = follow_up
+    planner = make_planner([], sort=[])
+    updated = act('message', planner, content=follow_up)
+    assert updated['status'] == 'ready', updated['issues']
+    persisted = press_save(act, planner)
+    run = fakes['run'](persisted['saved_agent_id'])
+    assert run['status'] == 'succeeded'
+    rows = list(csv.DictReader(io.StringIO(run['artifact']['content'].lstrip('\ufeff'))))
+    assert [(row['주문번호'], row['주문일']) for row in rows] == [
+        ('A1', '2026-11-02'), ('B2', '2026-11-01'), ('C3', '2026-11-02'), ('D4', '2026-11-09'),
+    ]
 
 
 SORT_FIRST_ROWS = [{'주문번호': 'A1', '고객명': '김', '주문일': '2026-11-01', '금액': 100},

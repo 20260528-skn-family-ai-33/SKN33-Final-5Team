@@ -2,9 +2,9 @@
 import re
 from dataclasses import dataclass
 
-_QUOTED = re.compile(r'''"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’''')
+_QUOTED = re.compile(r'''"[^"]*"|(?<![A-Za-z0-9_])'[^']*'|“[^”]*”|‘[^’]*’|`[^`]*`''')
 _METADATA_LABEL = re.compile(
-    r'(?<![\w])(?:파일\s*+(?:이름|명)|설명|제목|출력\s*+이름)'
+    r'(?<![\w])(?:파일\s*+(?:이름|명)|설명|제목|출력\s*+이름|예시(?:\s*문구)?|참고\s*문구)'
     r'''(?:으로|로|은|는|을|를|에(?:는)?)?(?=[\s:"'“‘=]|$).{0,40}$''')
 
 
@@ -13,7 +13,7 @@ def in_quoted_text(text, position):
 
 
 def in_metadata_text(text, position):
-    prefix = re.split(r'[.!?;,\n]|그리고|바꾸고|정하고|설정하고', text[:position])[-1]
+    prefix = re.split(r'[.!?。！？;,，\n]|그리고|바꾸고|정하고|설정하고', text[:position])[-1]
     return bool(_METADATA_LABEL.search(prefix))
 
 _CLEAR_DENIED = re.compile(
@@ -171,7 +171,7 @@ def user_filter_text(state, index, message):
 def filter_clauses(text):
     masked = _QUOTED.sub(lambda match: ' ' * len(match.group()), text)
     start = 0
-    for match in re.finditer(r'(?<!\d)[.!?;\n]|[.!?;\n](?!\d)', masked):
+    for match in re.finditer(r'[!?。！？;\n]|(?<!\d)\.|\.(?!\d)', masked):
         yield start, text[start:match.start()]
         start = match.end()
     yield start, text[start:]

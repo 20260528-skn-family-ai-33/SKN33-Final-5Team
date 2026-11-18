@@ -82,8 +82,25 @@ def table_tool_issues(state):
             if tools-set(TABLE_PLAN_TOOLS) else [])
 
 
+def presort_request(request):
+    """Return a separately confirmed presort, when the result has its own sort contract."""
+    if keys := request.get('pre_sorts'):
+        return {'kind': 'sorts', 'sorts': keys}
+    if hint := request.get('pre_sort_hint'):
+        return {'kind': 'unparsed', **hint}
+    return None
+
+
+def _sort_schema_bounds(request):
+    if request['kind'] == 'sorts':
+        keys = request['sorts']
+        return [key['field'] for key in keys], [key['direction'] for key in keys], len(keys)
+    direction = [request['direction']] if request.get('direction') else []
+    return request.get('fields') or [], direction, 5
+
+
 def constrain_sort(defs, plan, request, *, condition_name='RequestedSortCondition'):
-    """The sort the validator requires is the sort the decoder may emit (PR #142 review 5).
+    """Constrain a decoder's possible sorts to the confirmed table request.
 
     No written sort (or a withdrawn one) keeps sort empty. Otherwise the schema only
     limits which columns/directions may appear (exact request: those and at most that
@@ -92,52 +109,45 @@ def constrain_sort(defs, plan, request, *, condition_name='RequestedSortConditio
     the validator checks that the output is actually sorted.
     """
     kind = (request or {}).get('kind', 'none')
+    plan['sort'].pop('minItems', None)
     if kind in ('none', 'cancelled'):
         plan['sort']['maxItems'] = 0
         return
     item = deepcopy(defs['SortCondition'])
     props = item['properties']
-    if kind == 'sorts':
-        sorts = request['sorts'] + (request.get('pre_sorts') or [])
-        props['field'] = {'type': 'string', 'enum': list(dict.fromkeys(s['field'] for s in sorts))}
-        props['direction'] = {'type': 'string', 'enum': list(dict.fromkeys(s['direction'] for s in sorts))}
-        plan['sort'].pop('minItems', None)
-        plan['sort']['maxItems'] = max(len(request['sorts']), len(request.get('pre_sorts') or []))
-    else:
-        if request.get('fields'):
-            props['field'] = {'type': 'string', 'enum': list(request['fields'])}
-        if request.get('direction'):
-            props['direction'] = {'type': 'string', 'enum': [request['direction']]}
-        plan['sort'].pop('minItems', None)
-        plan['sort']['maxItems'] = 5  # lift any earlier "no sort" bound
+    separate_presort = presort_request(request)
+    stages = (request, separate_presort) if separate_presort else (request,)
+    fields, directions, lengths = zip(*(_sort_schema_bounds(stage) for stage in stages))
+    for name, choices in (('field', fields), ('direction', directions)):
+        if all(choices):
+            props[name] = {'type': 'string', 'enum': list(dict.fromkeys(value for group in choices for value in group))}
+    plan['sort']['maxItems'] = max(lengths)
     item['required'] = list(props)
     defs[condition_name] = item
     plan['sort']['items'] = {'$ref': '#/$defs/' + condition_name}
 
 
-def split_sort_dedup_plans(defs, request=None):
+def split_sort_dedup_plans(defs, request):
     """Give the sort and duplicate-removal steps independent execution plans.
 
     The dedup step may carry a requested result sort because filter_sort removes
     duplicates before sorting.
     """
-    request = request or {}
-    pre_sorts = request.get('pre_sorts')
+    separate_presort = presort_request(request)
     result_request = None
-    if pre_sorts and not request.get('result_sort_cancelled'):
-        result_request = {key: value for key, value in request.items() if key != 'pre_sorts'}
+    if separate_presort and not request.get('result_sort_cancelled'):
+        result_request = {key: value for key, value in request.items() if key not in ('pre_sorts', 'pre_sort_hint')}
 
     sort_plan = deepcopy(defs['ExecutionPlan'])
     sort_props = sort_plan['properties']
-    if pre_sorts:
-        constrain_sort(defs, sort_props, {'kind': 'sorts', 'sorts': pre_sorts}, condition_name='PreDedupSortCondition')
+    presort = separate_presort or request
+    constrain_sort(defs, sort_props, presort, condition_name='PreDedupSortCondition')
     sort_props['sort']['minItems'] = 1
     sort_props['duplicate_policy'] = literal_schema('keep')
     sort_props['duplicate_field'] = literal_schema(None)
 
     dedup_plan = deepcopy(defs['ExecutionPlan'])
     dedup_props = dedup_plan['properties']
-    dedup_props['sort'].pop('minItems', None)
     constrain_sort(defs, dedup_props, result_request, condition_name='ResultSortCondition')
     # A confirmed filter, if any, belongs to one step. Validation checks its placement.
     for props in (sort_props, dedup_props):
@@ -146,6 +156,20 @@ def split_sort_dedup_plans(defs, request=None):
     defs['SortBeforeDedupPlan'] = sort_plan
     defs['DedupAfterSortPlan'] = dedup_plan
     return {'anyOf': [{'$ref': '#/$defs/SortBeforeDedupPlan'}, {'$ref': '#/$defs/DedupAfterSortPlan'}]}
+
+
+def table_sort_instruction(request, *, before_dedup=False):
+    """Give all planners the stage ordering checked by the table contract."""
+    if before_dedup:
+        output_sort = presort_request(request) and not request.get('result_sort_cancelled')
+        return ('중복 제거보다 정렬을 먼저 실행합니다. filter_sort를 서로 다른 ID로 두 단계 만드세요. '
+                '첫 단계에 중복 제거 전 정렬과 duplicate_policy=keep, duplicate_field=null을 지정하세요. '
+                '두 번째 단계의 table 입력을 첫 단계의 table 출력에 연결하고 확정 중복 정책을 적용하세요. '
+                + ('결과 정렬은 두 번째 단계의 sort에 지정하세요.' if output_sort else '두 번째 단계의 sort는 비워 주세요.'))
+    if request['kind'] in ('none', 'cancelled'):
+        return '확정된 정렬 요청이 없으므로 sort=[]로 두고 표에서 행 순서를 유지하세요.'
+    return ('확정 정렬의 열과 방향을 실제 결과에 적용하세요. 중복 제거도 요청된 경우에는 '
+            '정렬을 적용하기 전에 원본의 첫 행 또는 마지막 행 기준으로 중복을 제거하세요.')
 
 
 def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft=False, allowed_tools=None,
@@ -214,11 +238,12 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
     defs['WorkflowNode']={'anyOf':variants}
     if allowed_tools is not None:
         result['properties']['tool_ids']['items']['enum']=list(allowed_tools)
-        # Scoped single-table chain: one node per allowed tool at most, linked
-        # in one path. Bounds repetition only; validation still checks topology.
+        # A preceding sort needs its own filter_sort stage before deduplication.
+        # Bounds limit repetitions; validation still checks data bindings.
         graph=defs['WorkflowDefinition']
-        graph['properties']['nodes']['maxItems']=len(allowed_tools)
-        graph['properties']['edges']['maxItems']=len(allowed_tools)-1
+        node_limit = len(allowed_tools) + sort_before_dedup
+        graph['properties']['nodes']['maxItems'] = node_limit
+        graph['properties']['edges']['maxItems'] = node_limit - 1
     # Enum values come from the already validated condition ledger, never from
     # expected test outputs. Incomplete or out-of-scope contracts stay untouched.
     ledger=ledger or {}

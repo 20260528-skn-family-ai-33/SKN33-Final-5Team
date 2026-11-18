@@ -25,6 +25,11 @@ def control_reply(text):
     return text.strip().rstrip('.!?。') in (KEEP_ALL, KEEP_OTHERS, ONLY_NEW) or bool(match_answer(text, 2))
 
 
+def affirmative_reply(text):
+    answer = re.sub(r'\s+', '', text.strip().rstrip('.!?。！？')).casefold()
+    return answer in {'네', '예', '응', '맞아', '맞아요', '맞습니다', '그래', '그래요', 'yes', 'ok'}
+
+
 @dataclass(frozen=True)
 class PendingFilterDecision:
     """A question's reason and permitted resolution, independent of the value's type."""
@@ -32,6 +37,7 @@ class PendingFilterDecision:
     message: str
     can_keep: bool
     proposed: tuple = ()
+    predicate: tuple[int, dict] | None = None
 
 
 def confirmed_numeric_filter(state):

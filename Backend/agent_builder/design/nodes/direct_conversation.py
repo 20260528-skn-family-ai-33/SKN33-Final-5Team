@@ -21,6 +21,7 @@ from workflow_engine.catalog.registry import TOOLS, PORTS
 from workflow_engine.catalog.registry import node_ports
 from agent_builder.design.planner_constraints import (
     binding_repair_options, constrain_sort, native_decoder_schema, ready_table_slots, split_sort_dedup_plans,
+    table_sort_instruction,
 )
 from agent_builder.design import linear_plan
 from workflow_engine.workflow import normalize_connections
@@ -407,8 +408,7 @@ def planning_decoder_schema(schema, ledger, sort_request=None):
         return result
     props = result['$defs']['ExecutionPlan']['properties']
     props['filters']['maxItems'] = 0
-    if (sort_request or {}).get('kind', 'none') in ('none', 'cancelled'):
-        props['sort']['maxItems'] = 0  # a written sort belongs to the request (PR #142)
+    constrain_sort(result['$defs'], props, sort_request)
     for key, field in [('duplicate.field','duplicate_field'), ('duplicate.policy','duplicate_policy'),
                        ('missing.policy','missing_policy'), ('output.format','output_format')]:
         slot = ledger.get('slots', {}).get(key, {})
@@ -455,6 +455,8 @@ def make_direct_conversation(api_key, model, model_factory=None):
             context['confirmed_conditions']=(business_condition_context(state.get('condition_ledger') or {})
                 if version in ('v5','v6','v7','v8') else state.get('condition_ledger'))
             context['condition_instruction']='확정 조건을 실제 노드·예약·출력 설정에 적용하고 이미 해결한 조건은 재질문하지 않습니다.'
+        if slots and requested_sort is not None:
+            context['requested_sort'] = requested_sort
         if version in ('v2','v3','v4','v5','v6','v7','v8'):
             context['supported_tools'] = planner_catalog(TOOLS,details=True)
             context.pop('ports')
@@ -474,7 +476,6 @@ def make_direct_conversation(api_key, model, model_factory=None):
                 context['schema'] = planning_decoder_schema(context['schema'], ledger or {}, requested_sort)
             if version == 'v5' and sort_first:
                 defs = context['schema']['$defs']
-                constrain_sort(defs, defs['ExecutionPlan']['properties'], requested_sort)
                 plans = split_sort_dedup_plans(defs, requested_sort)
                 defs['NodeSettings']['properties']['execution_plan'] = {'anyOf': [*plans['anyOf'], {'type': 'null'}]}
             context['citation_scope'] = '최근 사용자 발언 12개(발언별 앞 4000자)부터 제공 자료 발췌·열 이름 순으로 최대 64구간·총 6000자. 전체 문서 검색 결과가 아닙니다.'
@@ -535,13 +536,8 @@ def make_direct_conversation(api_key, model, model_factory=None):
         if runtime_file:context['runtime_file_input']=runtime_file
         system_prompt=linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]+PLANNER_INSTRUCTIONS
         system_prompt += '\n' + ROW_DESIGN_INSTRUCTION
-        if sort_first:
-            sort_result = requested_sort.get('pre_sorts') and not requested_sort.get('result_sort_cancelled')
-            system_prompt += ('\n중복 제거보다 정렬을 먼저 실행합니다. filter_sort를 서로 다른 ID로 두 단계 만드세요. '
-                              '첫 단계에 요청한 sort와 duplicate_policy=keep, duplicate_field=null을 지정합니다. '
-                              '두 번째 단계의 table 입력은 첫 단계의 table 출력에 연결하고 확정된 중복 정책을 지정하세요. '
-                              + ('중복 제거 뒤 결과 정렬은 두 번째 단계의 sort에 지정하세요.'
-                                 if sort_result else '두 번째 단계는 sort=[]입니다.'))
+        if slots and requested_sort is not None:
+            system_prompt += '\n' + table_sort_instruction(requested_sort, before_dedup=sort_first)
         if runtime_file:system_prompt+='\n'+runtime_file['instruction']
         from agent_builder.design.question_controls import QUESTION_RESPONSE_INSTRUCTION
         system_prompt+='\n'+QUESTION_RESPONSE_INSTRUCTION

@@ -90,6 +90,33 @@ def _waiting_for_answers(state,before):
     return not reviewing and bool(state.get('pending_questions') or (state.get('draft') or {}).get('questions'))
 
 
+def _chat_save_message(data, snapshot):
+    """Route save guidance with the same rules before and after a resource refresh."""
+    from agent_builder.design.save_intent import is_save_request
+
+    if any(data.get(key) is not None for key in ('question_id', 'question_answers', 'node_edit')):
+        return False
+    content = data.get('content')
+    if not is_save_request(content):
+        return False
+    state = snapshot.values or {}
+    if not _waiting_for_answers(state, snapshot):
+        return True
+    projected = project_question_controls(state)
+    questions = projected['pending_questions']
+    if not questions and projected['draft']:
+        draft = projected['draft']
+        questions = [{'options': options, 'response': response}
+                     for options, response in zip(draft['question_options'], draft['question_responses'])]
+    literal = content.strip()
+    for question in questions:
+        if literal in (question.get('options') or []):
+            return False
+        if literal == '저장' and (question.get('response') or {}).get('type', 'text') == 'text':
+            return False
+    return True
+
+
 def _chat_save_reply(state,before):
     """What a typed save request gets: where to save, or why not yet. It never saves.
 
@@ -107,8 +134,8 @@ def _chat_save_reply(state,before):
     except ValueError as error:return '아직 저장할 수 없습니다. '+str(error)
     if open_required(state):return blocked_save_reply({**state,'pending_questions':[True]})
     if (state.get('draft') or {}).get('schedule'):
-        return '채팅으로는 저장하지 않습니다. 오른쪽 위 저장 버튼을 눌러 예약을 함께 저장할지 선택해 주세요.'
-    return '채팅으로는 저장하지 않습니다. 초안을 확인했다면 오른쪽 위 저장 버튼을 눌러 주세요.'
+        return '오른쪽 위 저장 버튼을 눌러 예약을 함께 저장할지 선택해 주세요.'
+    return '초안을 확인했다면 오른쪽 위 저장 버튼을 눌러 주세요.'
 
 
 def _with_side_messages(messages,s):
@@ -266,20 +293,19 @@ def _session_action(c):
         storage.request_timezone = None
     try:
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in STATE_ONLY else None)
+        chat_save = False
+        resource_update = None
         if action in {'message','confirm'}:
+            if s['revision']!=data['revision']:raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
             config={'configurable':{'thread_id':s['id']}}
             snapshot=graph.get_state(config)
+            chat_save = action == 'message' and _chat_save_message(data, snapshot)
             fresh=[storage.asset(id) for id in s['file_ids']]
             versions=lambda resources:[(r['id'],str(r.get('version') or r.get('hash') or '1')) for r in resources]
             if snapshot.values and versions(snapshot.values.get('resources',[]))!=versions(fresh):
-                from agent_builder.design.save_intent import is_save_request
-                # A typed save request gets the button's answer; an answer to an open
-                # question (e.g. a name "저장") still goes through the normal path below.
-                typed_save=(action=='message' and not data.get('question_id') and not data.get('question_answers')
-                            and is_save_request(data.get('content')) and not _waiting_for_answers(snapshot.values,snapshot))
-                if action=='confirm' or typed_save:raise ValueError('자료 검토 결과가 변경됐습니다. 업무 설명을 다시 보내 설정과 근거를 확인하세요.')
-                _update_session_checkpoint(graph,config,{'resources':fresh,'confirmed':False,
-                    'verification':None,'verification_last_candidate':None},snapshot.next)
+                if action=='confirm' or chat_save:raise ValueError('자료 검토 결과가 변경됐습니다. 업무 설명을 다시 보내 설정과 근거를 확인하세요.')
+                resource_update = {'resources': fresh, 'confirmed': False, 'verification': None,
+                                   'verification_last_candidate': None}
         if action=='session':return public_state(storage,s,graph)
         if action in ('tool_gap_replan_propose','tool_gap_replan_decide'):
             state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
@@ -350,7 +376,6 @@ def _session_action(c):
                 _update_session_checkpoint(graph,config,update,snapshot.next)
             return public_state(storage,s,graph)
         if action not in ['message','confirm']:raise ValueError('지원하지 않는 요청입니다.')
-        if s['revision']!=data['revision']:raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
         config={'configurable':{'thread_id':s['id']},'recursion_limit':30}
         before=graph.get_state(config);state=before.values or {};has_interrupt=any(task.interrupts for task in before.tasks)
         question_wait = before.next if before.next in _QUESTION_WAIT_ROUTES else ()
@@ -358,12 +383,7 @@ def _session_action(c):
         state=retained_design(state,graph,config,(before.config or {}).get('configurable',{}).get('checkpoint_id'))
         restored={key:state.get(key) for key in ('draft', *MEANING_FIELDS)
                   if state.get(key) != (before.values or {}).get(key)}
-        from agent_builder.design.save_intent import is_save_request
-        if (action=='message' and not data.get('question_id') and not data.get('question_answers')
-                and is_save_request(data.get('content')) and not _waiting_for_answers(state,before)):
-            # "확인완료. 저장" is not a change request: never re-run the checks and planner
-            # for it (that returned the same draft forever). It is not the save button
-            # either; the reply says where to save or what is still missing.
+        if chat_save:
             reply=_chat_save_reply(state,before)
             shown=len(state.get('messages') or _work_messages(storage,s,graph))
             s={**s,'side_messages':s.get('side_messages',[])+[
@@ -424,6 +444,16 @@ def _session_action(c):
                     s=storage.update_session(s,data['revision'])
                     return public_state(storage,s,graph)
                 content=turn['work']
+            if resource_update:
+                # A work turn can revalidate against the new version. Guidance
+                # leaves the checkpoint untouched, and open answers keep their context.
+                if not _waiting_for_answers(state, before):
+                    resource_update['condition_ledger'] = None
+                _update_session_checkpoint(graph, config, resource_update, before.next)
+                before = graph.get_state(config)
+                has_interrupt = any(task.interrupts for task in before.tasks)
+                question_wait = before.next if before.next in _QUESTION_WAIT_ROUTES else ()
+                state = {**state, **resource_update}
             from agent_builder.design.question_answers import question_answers
             answers=question_answers(data.get('question_answers'),state)
             if answers and not (has_interrupt or question_wait):

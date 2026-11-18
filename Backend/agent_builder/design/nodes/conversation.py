@@ -12,7 +12,7 @@ from workflow_engine.catalog.canonical import PLANNER_INSTRUCTIONS, planner_cata
 from agent_builder.design.presentation import canonical_table_draft
 from workflow_engine.workflow import normalize_connections, workflow_errors
 from agent_builder.design.planner_constraints import (
-    constrain_sort, ready_table_slots, split_sort_dedup_plans, table_plan_scope, TABLE_PLAN_TOOLS,
+    constrain_sort, ready_table_slots, split_sort_dedup_plans, table_plan_scope, table_sort_instruction, TABLE_PLAN_TOOLS,
     typed_filter_conditions,
 )
 from agent_builder.design.native_settings import SCOPED_SETTINGS, NATIVE_SETTINGS, decoded_resource_tools
@@ -301,19 +301,16 @@ def make_conversation(api_key,model,model_factory=None):
         for key,field in [('missing.policy','missing_policy'),('duplicate.policy','duplicate_policy'),('duplicate.field','duplicate_field'),('output.format','output_format')]:
             if key in confirmed:plan_properties[field]={'enum':[confirmed[key]]}
         from agent_builder.conditions.condition_readiness import sort_before_dedup_requested, sort_request
-        sort_before_dedup = False
-        if confirmed.get('sort.policy') == 'none' or confirmed.get('duplicate.policy') in ('first', 'last'):
-            request = sort_request(state)
-            sort_before_dedup = (confirmed.get('duplicate.policy') in ('first', 'last')
-                                 and 'deduplicate' in ledger.get('operations', [])
-                                 and sort_before_dedup_requested(state, request))
-            if confirmed.get('sort.policy') == 'none' and request['kind'] in ('none', 'cancelled'):
-                plan_properties['sort']['maxItems'] = 0
+        request = sort_request(state) if scoped or confirmed else {'kind': 'none', 'sorts': []}
+        sort_before_dedup = (confirmed.get('duplicate.policy') in ('first', 'last')
+                             and 'deduplicate' in ledger.get('operations', [])
+                             and sort_before_dedup_requested(state, request))
+        if scoped or sort_before_dedup or confirmed.get('sort.policy') == 'none':
+            constrain_sort(schema['$defs'], plan_properties, request)
         if not scoped:
             typed_filter_conditions(schema)
         filter_sort_plan = {'$ref': '#/$defs/ExecutionPlan'}
         if sort_before_dedup:
-            constrain_sort(schema['$defs'], plan_properties, request)
             if 'filter' not in ledger['operations']:
                 plan_properties['filters']['maxItems'] = 0
             filter_sort_plan = split_sort_dedup_plans(schema['$defs'], request)
@@ -346,13 +343,15 @@ def make_conversation(api_key,model,model_factory=None):
             if tool_name in ['read_table','read_document']:variant['properties']['bindings']['maxItems']=0
             if tool_name in ['filter_sort','aggregate_table','calculate_columns','text_transform','base64_codec','text_hash','date_transform','text_statistics','write_result','search_document','extract_information','compose_answer','review_summary']:variant['properties']['bindings']['minItems']=1
             if scoped and tool_name!='read_table':
-                # In the table scope every later node takes exactly one upstream output of its
-                # own type; finish can only receive write_result's artifact (no other tool here
-                # outputs text or artifact). Only 7 of 24 live finish nodes had this shape.
+                # Finish forwards the writer's artifact when a file was requested.
+                # A screen-only workflow can end with an unbound finish message.
                 ports=['artifact'] if tool_name=='finish' else inputs
                 binding_schema['properties']['input']={'type':'string','enum':ports}
                 binding_schema['properties']['output']={'type':'string','enum':ports}
-                variant['properties']['bindings'].update(minItems=1,maxItems=1)
+                if tool_name == 'finish':
+                    binding_schema['properties']['node_id']['enum'] = [SCOPED_NODE_IDS['write_result']]
+                screen_finish = tool_name == 'finish' and 'output.format' not in confirmed
+                variant['properties']['bindings'].update(minItems=int(not screen_finish),maxItems=1)
             variant['properties']['settings']=deepcopy(settings_schema)
             variant['properties']['settings']['properties']['operation']={'type':'null'}
             variant['properties']['settings']['properties']['arguments_json']={'type':'null'}
@@ -587,15 +586,9 @@ def make_conversation(api_key,model,model_factory=None):
         if state.get('condition_enforced'):
             context['confirmed_conditions']=state.get('condition_ledger')
             context['repair_instruction']+=' confirmed_conditions의 확정 값을 실제 노드·예약·출력 설정에 반영하고 이미 해결한 조건은 다시 묻지 마세요.'
-        if sort_before_dedup:
-            from agent_builder.conditions.condition_readiness import sort_request
-            request = sort_request(state)
-            sort_result = request.get('pre_sorts') and not request.get('result_sort_cancelled')
-            result_sort = ('중복 제거 뒤 결과 정렬을 그 filter_sort의 sort에 지정하세요. '
-                           if sort_result else 'sort=[]로 두세요. ')
-            context['repair_instruction'] += (' 정렬을 먼저 적용하는 filter_sort는 duplicate_policy=keep으로 두세요. '
-                '그 table 출력을 받는 다음 filter_sort에 확정 중복 정책을 적용하고 ' + result_sort +
-                '결과 저장에는 두 번째 filter_sort의 table을 연결하세요.')
+        if scoped or sort_before_dedup:
+            context['requested_sort'] = request
+            context['repair_instruction'] += ' ' + table_sort_instruction(request, before_dedup=sort_before_dedup)
         from ml.advice.tool_recommendation import recommend_for_state
         advice=None if compact_table_prompt else recommend_for_state(state)
         if advice is not None:context['tool_selection_advice']=advice

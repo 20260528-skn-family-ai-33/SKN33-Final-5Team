@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 from copy import deepcopy
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, localcontext
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -15,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from .filter_dialogue import MATCH_CHOICES, match_answer, KEEP_ALL, KEEP_OTHERS, ONLY_NEW, confirmed_numeric_filter as _confirmed_filter
-from .filter_edits import DATA_ROW_NOUN, in_metadata_text, selection_action_uncertain, denied_filter_change
+from .filter_edits import DATA_ROW_NOUN, filter_clauses, in_metadata_text, selection_action_uncertain, denied_filter_change
 
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.conditions.input_resolution import (
@@ -1742,19 +1743,37 @@ _ROW_FILTER_SELECTOR = (
     r'(?:행|레코드|항목|셀)(?:\s*만)?|(?:것|건|주문(?:\s*건)?)\s*만|' + DATA_ROW_NOUN + r'만')
 
 
-def _written_text_equality(condition_slots, evidence):
-    """Recognize a named field and literal value in an unquoted selection clause."""
-    field = condition_slots.get('filter.field', {})
-    criterion = condition_slots.get('filter.value', {})
-    if any(slot.get('status') != 'specified' or not isinstance(slot.get('value'), str) or not slot['value'].strip()
-           for slot in (field, criterion)):
-        return False
-    selection = re.compile(
-        r'(?<!\w)' + re.escape(field['value']) + r'\s*(?:열\s*)?(?:이|가|은|는)\s*'
-        + re.escape(criterion['value']) + r'\s*인\s*(?:' + _ROW_FILTER_SELECTOR + r')\s*'
-        r'(?:남겨|남기|골라|선별|추려|유지|보존)'
-        r'(?!\s*(?:(?:하)?지(?:는|도)?\s*(?:마|말|않)|(?:하|해|여)?(?:면|선|서는)\s*안\s*[돼되됩된될됨]))')
-    return any(ref.get('source_id') == 'user' and selection.search(ref['quote']) for ref in evidence)
+def _written_text_filter(field, operator, criterion, state, evidence):
+    """Use the same parsed operand and action that become an executable predicate."""
+    from agent_builder.design.text_filter_parser import disjunctive_clause, selection_action, text_atoms
+
+    messages = (state or {}).get('messages', [])
+    fields = {field} | {column for table in (state or {}).get('resources', []) if table.get('kind') == 'table'
+                        for column in table.get('columns', []) if isinstance(column, str) and column}
+    for ref in evidence:
+        turn = ref.get('turn')
+        if ref.get('source_id') != 'user' or not isinstance(turn, int) or not 0 <= turn < len(messages):
+            continue
+        quote, message = ref['quote'], messages[turn]
+        if message['role'] != 'user' or quote not in message['content']:
+            continue
+        # Evidence chunks can start in the middle of a quoted example. Parse its full turn.
+        text = message['content']
+        for offset, clause in filter_clauses(text):
+            if disjunctive_clause(clause):
+                continue
+            atoms = text_atoms(clause, fields)
+            end = offset + len(clause)
+            for index, atom in enumerate(atoms):
+                if (atom.field != field or atom.value != criterion or atom.compare_field is not None
+                        or clause[atom.start:atom.end] not in quote):
+                    continue
+                action = selection_action(clause, atoms, index, text[end:end + 1])
+                if action == 'include' and atom.operator == operator:
+                    return True
+                if action == 'exclude' and atom.operator == 'eq' and operator == 'ne' and len(atoms) == 1:
+                    return True
+    return False
 
 
 def _grounded_enum(key, value, quote, state=None, evidence=(), *, condition_slots=None):
@@ -1786,8 +1805,13 @@ def _grounded_enum(key, value, quote, state=None, evidence=(), *, condition_slot
     if key == 'schedule.month_end':
         return any(key=='schedule.month_end' and written==value for key,written,_ in schedule_literals(quote, follow_up=True))
     if key == 'filter.operator':
-        if value == 'eq' and _written_text_equality(condition_slots or {}, evidence):
-            return True
+        if value in ('eq', 'ne', 'contains'):
+            field = (condition_slots or {}).get('filter.field', {}).get('value')
+            criterion = (condition_slots or {}).get('filter.value', {}).get('value')
+            if isinstance(field, str) and isinstance(criterion, str) and not numeric_column(state or {}, field):
+                if _written_text_filter(field, value, criterion, state, evidence):
+                    return True
+                quote = '\n'.join(ref['quote'] for ref in evidence if ref.get('source_id') != 'user')
         aliases = {'gt': r'초과|보다\s*(?:큰|많은|높은)', 'gte': r'이상', 'lt': r'미만|보다\s*(?:작은|적은|낮은)',
                    'lte': r'이하', 'eq': r'같|동일|일치|["\'][^"\']+["\']인|(?<![<>!])=(?!=)',
                    'ne': r'같지|다른|불일치|!=', 'contains': r'포함|들어\s*있'}
@@ -2433,13 +2457,15 @@ def _sort_hint(text, columns):
         col = r'(?<![가-힣A-Za-z0-9_])(?P<field>' + '|'.join(map(re.escape, columns)) + r')(?![A-Za-z0-9_])'
         for form in _SORT_KEY_FORMS:
             for m in re.finditer(form.format(col=col), text):
-                if _SORT_DROPPED_AFTER.match(text, m.end()) or _SORT_NOT.match(text, m.end()):
+                if (in_metadata_text(text, m.start('field')) or _SORT_DROPPED_AFTER.match(text, m.end())
+                        or _SORT_NOT.match(text, m.end())):
                     continue
                 if m['field'] not in fields:
                     fields.append(m['field'])
     directions = set()
     for name, words in (('ascending', _ASC_WORDS), ('descending', _DESC_WORDS)):
-        if any(not _SORT_DROPPED_AFTER.match(text, m.end()) for m in re.finditer(words, text)):
+        if any(not in_metadata_text(text, m.start()) and not _SORT_DROPPED_AFTER.match(text, m.end())
+               for m in re.finditer(words, text)):
             directions.add(name)
     return fields, (directions.pop() if len(directions) == 1 else None)
 
@@ -2449,51 +2475,134 @@ _SORT_KEPT = re.compile(r'\s*(?:하|해)?\s*(?:지|진)\s*(?:마|말|않)|\s*하
 _RESULT_SORT_PREFIX = re.compile(
     r'(?<!\w)(?:최종\s*)?결과(?:물|표)?\s*(?:의|를|은|는|에서(?:는)?|만)?\s*'
     r'(?:정렬(?:\s*기준)?\s*(?:을|은|는)?\s*)?$')
+_PRE_SORT_PREFIX = re.compile(
+    r'중복\s*(?:(?:된\s*)?행\s*)?(?:[을를]\s*)?(?:제거|삭제|정리)\s*'
+    r'(?:(?:하기|하는|할)\s*)?전(?:에(?:는)?|엔)?\s*(?:정렬(?:\s*기준)?\s*(?:을|은|는)?\s*)?$')
+_SORT_SENTENCE = re.compile(r'[^;.!?。！？\n]+[;.!?。！？\n]*')
+_SORT_INQUIRY = re.compile(
+    r'정렬\s*(?:을\s*)?(?:(?:하(?:기|는|려는|려면|기\s*위한)|할|하는지)\s*)?'
+    r'(?:방법|절차|원리|이유|하는\s*법)|정렬\s*(?:해도\s*(?:되|돼)|할\s*수\s*있|할까)')
 
 
-def _sort_turn(text, columns, pattern):
-    """Read explicit sorts, withdrawal (all or named keys), or partial sort hints from one turn."""
+def _sort_directives(text, columns):
+    """Keep the offsets of data and questions while removing them as sort evidence."""
+    from agent_builder.design.text_filter_parser import column_projection_requests, text_atoms
+
+    text = mask_file_names(text)
+    data_spans = [(item.start, item.end) for item in text_atoms(text, columns)]
+    data_spans.extend((item.start, item.end) for item in column_projection_requests(text, columns))
+    sortlike_columns = [field for field in columns if _SORT_WORDS.search(field)]
+    if sortlike_columns:
+        for comparison in _comparison_spans(text):
+            for field in sortlike_columns:
+                subject = _comparison_subject(field, text[:comparison.start()])
+                if subject:
+                    data_spans.append((subject.start(), comparison.end()))
+    for start, end in data_spans:
+        text = text[:start] + ' ' * (end - start) + text[end:]
+    text = _mask_quotes(text, columns)
     text = _SORT_VALUE.sub(lambda match: ' ' * len(match.group()), text)
-    found, positions = [], []
-    withdrawal_keys = {}
-    for match in (pattern.finditer(text) if pattern else ()):
-        written = _WRITTEN_SORT.match(text, match.end())
-        dropped = _SORT_DROPPED_AFTER.match(text, written.end() if written else match.end())
+
+    def directive(match):
+        sentence = match.group()
+        if re.search(r'[?？][.!?。！？;\s]*$', sentence) or _SORT_INQUIRY.search(sentence):
+            return re.sub(r'[^;.!?。！？\n]', ' ', sentence)
+        return sentence
+
+    return _SORT_SENTENCE.sub(directive, text)
+
+
+@dataclass(frozen=True)
+class _SortEdit:
+    position: int
+    scope: str | None
+    kind: str
+    sorts: tuple = ()
+    fields: tuple = ()
+    direction: str | None = None
+
+
+@dataclass(frozen=True)
+class _SortSelection:
+    sorts: tuple = ()
+    fields: tuple = ()
+    direction: str | None = None
+
+
+def _sort_scope(text, position, dedup_at):
+    if _PRE_SORT_PREFIX.search(text, 0, position):
+        return 'pre'
+    if _RESULT_SORT_PREFIX.search(text, 0, position):
+        return 'result'
+    if dedup_at is not None:
+        return 'pre' if position < dedup_at else 'result'
+    return None
+
+
+def _sort_clause_edits(clause, offset, columns, pattern, dedup_at):
+    """Read all edits in a clause, with data positions shared by the order parser."""
+    edits, exact, named_withdrawals = [], [], {}
+    for match in (pattern.finditer(clause) if pattern else ()):
+        if in_metadata_text(clause, match.start()):
+            continue
+        written = _WRITTEN_SORT.match(clause, match.end())
+        dropped = _SORT_DROPPED_AFTER.match(clause, written.end() if written else match.end())
         if dropped and dropped['sort_verb']:
-            withdrawal_keys[dropped.start('sort_verb')] = (match['field'], match.start())
+            named_withdrawals[dropped.start('sort_verb')] = (match['field'], match.start())
         if not written or dropped:
             continue
-        kind = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
-        found.append({'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
-                      'value_type': kind})
-        positions.append(match.start())
-    if found:
-        return ('sorts', found, positions)
-    removed_keys = set()
-    result_only = result_cancelled = False
-    for m in list(_SORT_CANCELLED.finditer(text)):
-        kept = _SORT_KEPT.match(text, m.end())
-        if kept:  # blank the kept phrase so its "정렬" is not read as a new sort request
-            text = text[:m.start()] + ' ' * (kept.end() - m.start()) + text[kept.end():]
+        value_type = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
+        criterion = {'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
+                     'value_type': value_type}
+        scope = _sort_scope(clause, match.start(), None if dedup_at is None else dedup_at - offset)
+        if scope is None and exact:
+            scope = exact[-1].scope
+        exact.append(_SortEdit(offset + match.start(), scope, 'set', sorts=(criterion,)))
+
+    for match in list(_SORT_CANCELLED.finditer(clause)):
+        if in_metadata_text(clause, match.start()):
+            continue
+        kept = _SORT_KEPT.match(clause, match.end())
+        if kept:
+            clause = clause[:match.start()] + ' ' * (kept.end() - match.start()) + clause[kept.end():]
+            continue
+        field, start = named_withdrawals.get(match.start(), (None, match.start()))
+        scope = _sort_scope(clause, start, None)
+        if match['all_keys'] or field is None:
+            edits.append(_SortEdit(offset + match.start(), scope, 'clear'))
         else:
-            field, start = withdrawal_keys.get(m.start(), (None, m.start()))
-            scoped = bool(_RESULT_SORT_PREFIX.search(text, 0, start))
-            if m['all_keys'] or field is None:
-                if not scoped:
-                    return ('cancelled',)
-                result_cancelled = True
-            else:
-                removed_keys.add(field)
-                result_only = result_only or scoped
-    if result_cancelled:
-        return ('result_cancelled',)
-    if removed_keys:
-        return ('removed', removed_keys, result_only)
-    mentioned = _SORT_WORDS.search(text)
+            edits.append(_SortEdit(offset + match.start(), scope, 'remove', fields=(field,)))
+
+    ordered = []
+    for edit in sorted(exact + edits, key=lambda item: item.position):
+        if (edit.kind == 'set' and ordered and ordered[-1].kind == 'set'
+                and edit.scope == ordered[-1].scope):
+            previous = ordered.pop()
+            edit = _SortEdit(previous.position, edit.scope, 'set', sorts=previous.sorts + edit.sorts)
+        ordered.append(edit)
+    if ordered:
+        return ordered
+
+    mentioned = next((match for match in _SORT_WORDS.finditer(clause)
+                      if not in_metadata_text(clause, match.start())), None)
     if mentioned:
-        fields, direction = _sort_hint(text, columns)
-        return ('hint', fields, direction, bool(_RESULT_SORT_PREFIX.search(text, 0, mentioned.start())))
-    return None
+        fields, direction = _sort_hint(clause, columns)
+        scope = _sort_scope(clause, mentioned.start(), None if dedup_at is None else dedup_at - offset)
+        return [_SortEdit(offset + mentioned.start(), scope, 'hint', fields=tuple(fields), direction=direction)]
+    return []
+
+
+def _sort_edits(text, columns, pattern, dedup_at):
+    for sentence in _SORT_SENTENCE.finditer(text):
+        # A correction starts a new command even when it follows a comma in the same sentence.
+        offsets = [sentence.start(), sentence.end()]
+        if dedup_at is not None and sentence.start() < dedup_at < sentence.end():
+            offsets.append(dedup_at)
+        offsets.extend(match.start() for match in _ROW_ORDER_CORRECTION.finditer(text, sentence.start(), sentence.end())
+                       if re.search(r'[,，]\s*$', text[sentence.start():match.start()]))
+        offsets = sorted(set(offsets))
+        for start, end in zip(offsets, offsets[1:]):
+            yield from _sort_clause_edits(text[start:end], start, columns, pattern, dedup_at)
 
 
 def _unique_sort_keys(sorts):
@@ -2501,111 +2610,119 @@ def _unique_sort_keys(sorts):
     unique = {}
     for item in sorts:
         unique.setdefault(item['field'], item)
-    return list(unique.values())
+    return tuple(unique.values())
 
 
-def _known_sort_request(sorts, text, pre_sorts=(), *, result_sort_cancelled=False):
-    request = {'kind': 'sorts', 'sorts': sorts, 'text': text}
-    if pre_sorts:
-        request['pre_sorts'] = pre_sorts
-    if result_sort_cancelled:
+def _apply_sort_edit(selection, edit):
+    if edit.kind == 'clear':
+        return None
+    if edit.kind == 'set':
+        return _SortSelection(sorts=_unique_sort_keys(edit.sorts))
+    if edit.kind == 'remove':
+        if not selection:
+            return None
+        sorts = tuple(sort for sort in selection.sorts if sort['field'] not in edit.fields)
+        fields = tuple(field for field in selection.fields if field not in edit.fields)
+        if not sorts and (selection.sorts or selection.fields and not fields):
+            return None
+        return _SortSelection(sorts, fields, selection.direction)
+
+    # A partial edit updates the mentioned property of the primary key.
+    selection = selection or _SortSelection()
+    if selection.sorts and len(edit.fields) <= 1:
+        primary, *secondary = selection.sorts
+        field = edit.fields[0] if edit.fields else primary['field']
+        revised = {'field': field, 'direction': edit.direction or primary['direction'],
+                   'value_type': primary['value_type'] if field == primary['field'] else None}
+        return _SortSelection(sorts=_unique_sort_keys((revised, *secondary)))
+    fields = edit.fields or selection.fields
+    direction = edit.direction or selection.direction
+    if len(fields) == 1 and direction:
+        return _SortSelection(sorts=({'field': fields[0], 'direction': direction, 'value_type': None},))
+    return _SortSelection(fields=fields, direction=direction)
+
+
+def _sort_snapshot(pre, result, text, cancelled, result_cancelled):
+    selection = result or pre
+    if selection is None:
+        return {'kind': 'cancelled' if cancelled else 'none', 'sorts': [], 'text': text}
+    request = {'kind': 'sorts' if selection.sorts else 'unparsed', 'sorts': list(selection.sorts), 'text': text}
+    if not selection.sorts:
+        request.update(fields=list(selection.fields), direction=selection.direction)
+    if pre and (result or result_cancelled):
+        if pre.sorts:
+            request['pre_sorts'] = list(pre.sorts)
+        else:
+            request['pre_sort_hint'] = {'fields': list(pre.fields), 'direction': pre.direction}
+    if pre and result_cancelled:
         request['result_sort_cancelled'] = True
     return request
 
 
-def sort_request(state):
-    """The user's current sorting instruction, built up over the user turns in order.
-
-    Returns {'kind': 'sorts'|'cancelled'|'unparsed'|'none', 'sorts': [...], 'text': turn,
-    'fields': [...], 'direction': str|None}. A separate sort before duplicate removal
-    is recorded in 'pre_sorts'. When only the result sort is withdrawn, 'sorts' describes
-    the inherited order and 'result_sort_cancelled' indicates there is no extra sort.
-    'sorts' lists exact attached-table columns (matched whole, longest first: "예정주문일"
-    is never "주문일") with their direction. A later turn that names column+direction
-    replaces it; "정렬 빼고" withdraws it ("취소하지 마" does not), and a withdrawal
-    limited to a named column keeps the other known keys. A later turn that
-    names only the column ("정렬 기준은 주문일이야") or only the direction ("최신순으로")
-    changes only that part and keeps what it did not say. 'unparsed' means sorting was
-    written but no column/direction pair is known: the draft must still carry a sort,
-    and the part read on its own ('fields' or 'direction') must hold for its primary key.
-    File names never count as wording.
-    """
+def _sort_history(state):
+    """Replay each directive against the stage it changes, in conversational order."""
     tables = [r for r in (state or {}).get('resources', []) if r.get('kind') == 'table']
     columns = sorted({c for r in tables for c in r.get('columns', []) if isinstance(c, str) and c.strip()},
                      key=len, reverse=True)
     pattern = (re.compile(r'(?<![가-힣A-Za-z0-9_])(?P<field>' + '|'.join(map(re.escape, columns)) + r')(?![A-Za-z0-9_])')
                if columns else None)
-    current = {'kind': 'none', 'sorts': [], 'text': ''}
-    row_order = None
+    ledger = (state or {}).get('condition_ledger') or {}
+    dedup_active = ledger.get('decision') != 'ready' or 'deduplicate' in ledger.get('operations', [])
+    pre = result = row_order = None
+    text = ''
+    cancelled = result_cancelled = False
     seen_operations = set()
     from agent_builder.capabilities.capability_judgement import active_request_messages
     for message in active_request_messages(state or {}):
         if message.get('role') != 'user' or not isinstance(message.get('content'), str):
             continue
-        text = _mask_quotes(mask_file_names(message['content']), columns)
-        order_change, operations = _row_order_in_turn(text, seen_operations == {'sort', 'deduplicate'})
+        turn = _sort_directives(message['content'], columns)
+        order_change, operations, dedup_at = _row_order_in_turn(
+            turn, dedup_active and seen_operations == {'sort', 'deduplicate'})
+        if not dedup_active:
+            order_change = dedup_at = None
         seen_operations.update(operations)
-        if order_change:
-            row_order = order_change
+        edits = list(_sort_edits(turn, columns, pattern, dedup_at))
         if order_change == 'deduplicate':
-            current.pop('pre_sorts', None)
-            current.pop('result_sort_cancelled', None)
-        said = _sort_turn(text, columns, pattern)
-        if said is None:
-            continue
-        kind = said[0]
-        pre = current.get('pre_sorts') or []
-        result_only = (kind == 'result_cancelled'
-                       or (kind == 'removed' and said[2])
-                       or (kind == 'hint' and said[3])
-                       or (kind == 'sorts' and _RESULT_SORT_PREFIX.search(text, 0, said[2][0])))
-        if not pre and row_order == 'sort' and current['kind'] == 'sorts' and result_only:
-            pre = current['sorts']
-        if kind == 'sorts':
-            # Repeated column names are distinct if one belongs to each processing stage.
-            turn_pre, result = _pre_dedup_split(text, said[1], said[2])
-            if turn_pre:
-                pre = _unique_sort_keys(turn_pre)
-            elif order_change:
-                pre = []
-            current = _known_sort_request(_unique_sort_keys(result), text, pre)
-            continue
-        if kind == 'cancelled':
-            current = {'kind': 'cancelled', 'sorts': [], 'text': text}
-            row_order = None
-            continue
-        if kind in ('result_cancelled', 'removed'):
-            remaining = []
-            if kind == 'removed' and not (pre and
-                    (not current.get('pre_sorts') or current.get('result_sort_cancelled'))):
-                remaining = [item for item in current['sorts'] if item['field'] not in said[1]]
-            if remaining or pre:
-                current = _known_sort_request(remaining or pre, text, pre, result_sort_cancelled=not remaining)
+            pre, result = None, result or pre
+            result_cancelled = False
+        elif order_change == 'sort' and pre is None:
+            # An order change moves an existing sort. A stage-targeted edit adds or edits
+            # that stage while preserving the result sort already specified.
+            stage_edit = any(edit.scope == 'pre' and _PRE_SORT_PREFIX.search(turn, 0, edit.position)
+                             for edit in edits)
+            if not stage_edit:
+                pre, result = result, None
+        row_order = order_change or row_order
+        inherited = pre
+
+        for edit in edits:
+            text = turn
+            if edit.kind == 'clear' and edit.scope is None:
+                pre = result = row_order = None
+                inherited = None
+                cancelled, result_cancelled = True, False
+                continue
+            scope = edit.scope or ('pre' if row_order == 'sort' and result is None else 'result')
+            if scope == 'pre':
+                pre = _apply_sort_edit(pre, edit)
+                row_order = 'sort' if pre else 'deduplicate'
             else:
-                current = {'kind': 'cancelled', 'sorts': [], 'text': text}
-                row_order = None
-            continue
-        fields, direction = said[1], said[2]
-        if current['kind'] == 'sorts':
-            primary = current['sorts'][0]
-            if len(fields) == 1 and (fields[0] != primary['field'] or direction):
-                same = fields[0] == primary['field']
-                current = _known_sort_request([{
-                    'field': fields[0], 'direction': direction or primary['direction'],
-                    'value_type': primary['value_type'] if same else None}], text, pre)
-            elif not fields and direction and direction != primary['direction']:
-                current = _known_sort_request([{**primary, 'direction': direction}] + current['sorts'][1:], text, pre)
-            elif len(fields) > 1:
-                current = {'kind': 'unparsed', 'sorts': [], 'text': text, 'fields': fields, 'direction': direction}
-                if pre:
-                    current['pre_sorts'] = pre
-            # Otherwise the turn only re-confirms the known sort ("정렬 기준은 주문일이야").
-        elif current['kind'] == 'unparsed':
-            current = {**current, 'text': text, 'fields': fields or current['fields'],
-                       'direction': direction or current['direction']}
-        else:
-            current = {'kind': 'unparsed', 'sorts': [], 'text': text, 'fields': fields, 'direction': direction}
-    return current
+                # A result edit can amend the order already inherited from an earlier turn.
+                baseline = inherited if result is None and edit.kind == 'hint' else result
+                result = _apply_sort_edit(baseline, edit)
+                result_cancelled = not result and edit.kind in ('clear', 'remove')
+            cancelled = not (pre or result)
+    return _sort_snapshot(pre, result, text, cancelled, result_cancelled), row_order
+
+
+def sort_request(state):
+    """Return the latest effective result sort and any separately requested pre-sort.
+
+    A presort alone determines the inherited result order. Known keys retain their
+    order within one command, and subsequent commands alter only the relevant stage.
+    """
+    return _sort_history(state)[0]
 
 
 def requested_sorts(state):
@@ -2613,67 +2730,79 @@ def requested_sorts(state):
     return sort_request(state)['sorts']
 
 
-def _result_content_node(workflow, path):
-    """Use the same final artifact as the runner, including a finish binding."""
-    from workflow_engine.execution_path import artifact_origin, artifact_output_ids
-    if not path:
-        return None
-    outputs = artifact_output_ids(workflow)
-    return artifact_origin(workflow, outputs[-1]) if outputs else path[-1]['id']
+def _content_path(path, endpoint, port):
+    from agent_builder.design.content_lineage import content_ancestors
 
-
-def _result_sort(draft, path, source):
-    """Find the nearest executed native sort that supplies the result's contents."""
-    from agent_builder.design.content_lineage import content_bindings
     nodes = {node['id']: node for node in path}
-    pending, seen = [(source, None)], set()
-    while pending:
-        node_id, output = pending.pop(0)
-        if (node_id, output) in seen or node_id not in nodes:
-            continue
-        seen.add((node_id, output))
-        node = nodes[node_id]
-        if node['tool'] == 'filter_sort' and not node['settings'].get('operation'):
-            sort = (node['settings'].get('execution_plan') or draft.get('execution_plan') or {}).get('sort') or []
-            if sort:
-                return node_id, sort
-        pending.extend((binding['node_id'], binding['output']) for binding in content_bindings(node, output))
-    return None, []
+    active = content_ancestors(nodes, endpoint, port) | {endpoint}
+    if not active <= nodes.keys():
+        raise ValueError('출력의 입력이 실행 경로에 없습니다.')
+    return [node for node in path if node['id'] in active]
 
 
-def _final_sort(draft):
-    """The order of the table the result actually receives."""
-    from workflow_engine.execution_path import execution_path
+def _result_content_path(draft):
+    """Trace the downloaded artifact or the displayed rows by their actual output port."""
+    from workflow_engine.execution_path import artifact_ids_on_path, execution_path, result_rows_endpoint
+
     workflow = draft.get('workflow') or {}
     path = execution_path(workflow)
-    return _result_sort(draft, path, _result_content_node(workflow, path))[1]
+    if path and path[-1]['tool'] == 'condition':
+        raise ValueError('분기 뒤 출력의 실행 경로가 확정되지 않았습니다.')
+    artifacts = artifact_ids_on_path(path)
+    if artifacts:
+        return _content_path(path, artifacts[-1], 'artifact')
+    preview = result_rows_endpoint(path)
+    return _content_path(path, preview[0]['id'], preview[1]) if preview else []
 
 
-def _sort_issue(requested, draft):
-    label = ', '.join(item['field'] + (' 내림차순' if item['direction'] == 'descending' else ' 오름차순') for item in requested)
-    try:
-        actual = _final_sort(draft)
-    except (KeyError, TypeError, ValueError):
-        return f'요청한 정렬({label})이 최종 결과에 적용되는지 확인하지 못했습니다.'
-    same = len(actual) == len(requested) and all(
+def _sort_stages(draft, path):
+    """List the row-stream sorts in execution order, including extension operations."""
+    for node in path:
+        if node['tool'] != 'filter_sort':
+            continue
+        settings = node['settings']
+        if settings.get('operation') == 'sort':
+            yield node['id'], None
+        elif not settings.get('operation'):
+            plan = settings.get('execution_plan') or draft.get('execution_plan') or {}
+            if plan.get('sort'):
+                yield node['id'], plan['sort']
+
+
+def _final_sort(draft, path=None, stages=None):
+    """Prove the ordering at the end of a result or intermediate data path."""
+    from agent_builder.design.final_table_criteria import final_sort_matches
+
+    if path is None:
+        path = _result_content_path(draft)
+    if stages is None:
+        stages = list(_sort_stages(draft, path))
+    sort = stages[-1][1] if stages else None
+    if sort and final_sort_matches(sort, draft, path, {node['id'] for node in path}):
+        return sort
+    return []
+
+
+def _same_requested_sort(actual, requested):
+    return len(actual) == len(requested) and all(
         a.get('field') == r['field'] and a.get('direction') == r['direction']
         and (r['value_type'] is None or a.get('value_type') == r['value_type'])
         for a, r in zip(actual, requested))
-    if same:
+
+
+def _sort_issue(requested, actual):
+    label = ', '.join(item['field'] + (' 내림차순' if item['direction'] == 'descending' else ' 오름차순') for item in requested)
+    if _same_requested_sort(actual, requested):
         return None
     return (f'요청한 정렬({label})이 최종 결과를 만드는 filter_sort의 sort와 다릅니다. '
             '요청한 열·방향 그대로 sort에 넣고, 다른 정렬은 넣지 마세요.')
 
 
-def _sort_request_issue(request, draft):
+def _sort_request_issue(request, actual, stages):
     if request['kind'] == 'sorts':
-        return _sort_issue(request['sorts'], draft)
-    try:
-        actual = _final_sort(draft)
-    except (KeyError, TypeError, ValueError):
-        return '요청한 정렬 여부가 최종 결과에 적용되는지 확인하지 못했습니다.'
+        return _sort_issue(request['sorts'], actual)
     if request['kind'] == 'cancelled':
-        if actual:
+        if stages:
             return '사용자가 정렬을 빼 달라고 했지만 최종 결과에 정렬이 남아 있습니다. 최종 filter_sort의 sort=[]로 두세요.'
         return None
     # Sorting was written but no column+direction pair could be read. Check the column
@@ -2700,6 +2829,8 @@ _ROW_ORDER_ACTION = re.compile(
     r'(?:(?:첫|마지막)\s*행\s*(?:만|을|은)?|하나\s*만)\s*(?:남(?:기|긴|길|겨)|유지|보존))')
 _ROW_ORDER_BEFORE = re.compile(r'\s*(?:하기|하는|할|기|는)?\s*전(?:에|에는)?(?=[\s,.!?]|$)')
 _ROW_ORDER_AFTER = re.compile(r'\s*(?:한|된|하고|하여|고)?\s*(?:난\s*)?(?:뒤|후|다음|나서)(?:에|에는)?(?=[\s,.!?]|$)')
+_ROW_ORDER_SEQUENCE = re.compile(r'\s*(?:하?고|해서|하여|하며)(?=[\s,，])')
+_ROW_ORDER_SENTENCE_BREAK = re.compile(r'[;.!?。！？\n]')
 _ROW_ORDER_NEXT = re.compile(r'[,.;!?。！？\n]\s*(?:그리고\s*)?(?:그\s*)?(?:다음(?:으로|에는|에)?|이어서|뒤이어|후에)\s*')
 _ROW_ORDER_FIRST_AFTER = re.compile(
     r'\s*(?:(?:은|는|을|를)?\s*(?:먼저|우선)|부터)(?=[\s,.!?]|하|해|$)')
@@ -2707,11 +2838,12 @@ _ROW_ORDER_FIRST_BEFORE = re.compile(r'(?<!\w)(?:먼저|우선)(?!\w)[^,.!?。�
 _ROW_ORDER_SHORT_FIRST_BEFORE = re.compile(r'(?<!\w)(?:먼저|우선)\s*$')
 _ROW_ORDER_SHORT_COMMAND = re.compile(
     r'\s*(?:을|를)?\s*(?:(?:시작|진행|실행|적용)\s*)?'
-    r'(?:해(?:\s*(?:줘|주세요|요))?|하(?:자|세요))?\s*[.!?。！？]*\s*$')
+    r'(?:해(?:\s*(?:줘|주세요|요))?|하(?:자|세요))?\s*[.!。！]*\s*$')
 _ROW_ORDER_CORRECTION = re.compile(
     r'(?<!\w)(?:아니(?:요)?|정정(?:할게|해|하면)?|반대로)(?=[\s,.!?。！？]|$)'
     r'|(?:가|이)\s*아니라\s*(?:먼저\s*)?(?=중복|정렬)'
     r'|순서\s*(?:를|는)?\s*(?:바꿔|바꾸|변경|반대)')
+_ROW_ACTION_DENIED = re.compile(r'\s*(?:하|해)?\s*(?:지|진)\s*(?:마|말|않)')
 
 
 def _explicit_row_order(text, actions):
@@ -2722,14 +2854,19 @@ def _explicit_row_order(text, actions):
         between = text[first.end():following.start()]
         if _ROW_ORDER_BEFORE.match(between):
             order = following.lastgroup
-            dedup_at = first.start() if order == 'sort' else None
+            # In "중복 제거 전에 정렬" the duplicate-removal phrase is a temporal
+            # reference. It cannot split the text into a before and an after step.
+            dedup_at = None
             continue
         prefix = text[actions[index - 1].end() if index else 0:first.start()]
         priority = _ROW_ORDER_FIRST_AFTER.match(between) or _ROW_ORDER_FIRST_BEFORE.search(prefix)
-        if not (priority or _ROW_ORDER_AFTER.match(between) or _ROW_ORDER_NEXT.search(between)):
+        linked = not _ROW_ORDER_SENTENCE_BREAK.search(between) and _ROW_ORDER_SEQUENCE.match(between)
+        if not (priority or _ROW_ORDER_AFTER.match(between) or linked
+                or _ROW_ORDER_NEXT.search(between)):
             continue
         if first.lastgroup == 'sort':
-            order, dedup_at = 'sort', following.start()
+            if dedup_at is None:
+                order, dedup_at = 'sort', following.start()
         elif dedup_at is None or (
                 first.start() != dedup_at
                 and (priority or _ROW_ORDER_CORRECTION.search(text, dedup_at, first.start()))):
@@ -2739,31 +2876,13 @@ def _explicit_row_order(text, actions):
     return order, dedup_at
 
 
-def _pre_dedup_split(text, sorts, positions):
-    """(pre_sorts, result_sorts) when the turn sorts first and sorts again after deduplicating."""
-    _, cut = _explicit_row_order(text, list(_ROW_ORDER_ACTION.finditer(text)))
-    if cut is None:
-        return [], sorts
-    before = [s for s, at in zip(sorts, positions) if at < cut]
-    after = [s for s, at in zip(sorts, positions) if at > cut]
-    return (before, after) if before and after else ([], sorts)
-
-
-def _pre_sorted(pre, draft, path, active, final_sort_matches):
-    """The table reaching a dedup step is ordered by exactly the requested pre-dedup keys."""
-    sort = None
-    for node in path:
-        if node['id'] in active and node['tool'] == 'filter_sort' and not node['settings'].get('operation'):
-            sort = (node['settings'].get('execution_plan') or draft.get('execution_plan') or {}).get('sort') or sort
-    same = bool(sort) and len(sort) == len(pre) and all(
-        a.get('field') == r['field'] and a.get('direction') == r['direction']
-        and (r['value_type'] is None or a.get('value_type') == r['value_type'])
-        for a, r in zip(sort, pre))
-    return same and final_sort_matches(sort, draft, path, active)
-
-
 def _row_order_in_turn(text, allow_abbreviated):
-    actions = list(_ROW_ORDER_ACTION.finditer(text))
+    actions = [
+        action for action in _ROW_ORDER_ACTION.finditer(text)
+        if not in_metadata_text(text, action.start())
+        and not _ROW_ACTION_DENIED.match(text, action.end())
+        and not (action.lastgroup == 'sort' and _SORT_CANCELLED.match(text, action.start()))
+    ]
     operations = {action.lastgroup for action in actions}
     if allow_abbreviated and len(actions) == 1:
         action = actions[0]
@@ -2773,31 +2892,18 @@ def _row_order_in_turn(text, allow_abbreviated):
             suffix = suffix[priority.end():]
         if ((priority or _ROW_ORDER_SHORT_FIRST_BEFORE.search(text[:action.start()]))
                 and _ROW_ORDER_SHORT_COMMAND.fullmatch(suffix)):
-            return action.lastgroup, operations
+            return action.lastgroup, operations, None
 
-    order, _ = _explicit_row_order(text, actions)
-    return order, operations
+    order, dedup_at = _explicit_row_order(text, actions)
+    return order, operations, dedup_at
 
 
 def sort_dedup_order(state, request=None):
     """Return the first operation named by the latest explicit order instruction."""
-    if request is None:
-        request = sort_request(state)
+    resolved, order = _sort_history(state)
+    request = request if request is not None else resolved
     if request['kind'] not in ('sorts', 'unparsed'):
         return None
-    from agent_builder.capabilities.capability_judgement import active_request_messages
-    ledger = (state or {}).get('condition_ledger') or {}
-    dedup_active = ledger.get('decision') != 'ready' or 'deduplicate' in ledger.get('operations', [])
-    seen = set()
-    order = None
-    for message in active_request_messages(state or {}):
-        if message.get('role') == 'user' and isinstance(message.get('content'), str):
-            text = _mask_quotes(mask_file_names(message['content']))
-            # A one-operation follow-up refers to an existing pair of actions in this task.
-            current, operations = _row_order_in_turn(text, dedup_active and seen == {'sort', 'deduplicate'})
-            seen.update(operations)
-            if current:
-                order = current
     return order
 
 
@@ -2805,72 +2911,40 @@ def sort_before_dedup_requested(state, request=None):
     return sort_dedup_order(state, request) == 'sort'
 
 
-def _dedup_result_issue(draft, dedup_ids):
-    """The returned result has to consume the executed duplicate-removal steps."""
-    from agent_builder.design.content_lineage import content_ancestors
-    from workflow_engine.execution_path import execution_path
+def _sort_dedup_order_issue(state, request, draft, path, dedup_ids, result_sort, stages):
+    """Prove which rows reach duplicate removal and which sort reaches the result."""
+    from agent_builder.design.planner_constraints import presort_request
 
-    problem = '최종 결과에 중복 제거 단계의 표가 연결되지 않았습니다. 결과 저장의 입력을 확인하세요.'
-    workflow = draft.get('workflow') or {}
-    try:
-        path = execution_path(workflow)
-        nodes_by_id = {node['id']: node for node in path}
-        source = _result_content_node(workflow, path)
-        lineage = content_ancestors(nodes_by_id, source) | {source}
-    except (KeyError, TypeError, ValueError):
-        return problem
-    return None if dedup_ids and dedup_ids <= lineage & nodes_by_id.keys() else problem
-
-
-def _sort_dedup_order_issue(state, request, draft, native_plans, dedup_ids):
-    """Verify the explicitly requested order of sorting and duplicate removal."""
-    order = sort_dedup_order(state, request)
-    if order is None:
+    before = sort_dedup_order(state, request) == 'sort'
+    positions = {node['id']: index for index, node in enumerate(path)}
+    inputs = [_content_path(path[:positions[node_id] + 1], node_id, 'table')[:-1] for node_id in dedup_ids]
+    input_stages = [list(_sort_stages(draft, source)) for source in inputs]
+    if not before:
+        # First/last refer to source row order unless the user authorizes reordering first.
+        if any(input_stages) or (stages and not dedup_ids <= {
+                node['id'] for node in _content_path(path, stages[-1][0], 'table')}):
+            return '중복을 제거한 뒤 정렬해야 합니다. 원본 행 순서에서 중복을 제거하고 그 표에 정렬을 적용하세요.'
         return None
-    from agent_builder.design.content_lineage import content_ancestors
-    from agent_builder.design.final_table_criteria import final_sort_matches
-    from workflow_engine.execution_path import execution_path
 
-    problem = ('원문은 정렬한 뒤 중복을 제거하라고 했습니다. filter_sort는 중복을 먼저 제거하므로, '
-               '요청한 열·방향으로 정렬하는 filter_sort 뒤에 그 표를 받는 중복 제거 filter_sort(sort=[])를 연결하세요.'
-               if order == 'sort' else
-               '원문은 중복을 제거한 뒤 정렬하라고 했습니다. 정렬 전에 중복을 제거하고 그 표에 정렬을 적용하세요.')
-    workflow = draft.get('workflow') or {}
-    try:
-        path = execution_path(workflow)
-        nodes_by_id = {node['id']: node for node in path}
-        positions = {node['id']: index for index, node in enumerate(path)}
-        source = _result_content_node(workflow, path)
-        sort_node, expected = _result_sort(draft, path, source)
-        if not expected or not dedup_ids or not dedup_ids <= positions.keys():
-            return problem
-        dedup_inputs = {node_id: content_ancestors(nodes_by_id, node_id) for node_id in dedup_ids}
-        pre = request.get('pre_sorts')
-        if order == 'sort' and pre:
-            ordered = all(_pre_sorted(pre, draft, path[:positions[node_id]], dedup_inputs[node_id], final_sort_matches)
-                          for node_id in dedup_ids)
-            if not ordered:
-                label = ', '.join(s['field'] + (' 내림차순' if s['direction'] == 'descending' else ' 오름차순') for s in pre)
-                return (f'원문은 {label}으로 정렬한 뒤 중복을 제거하라고 했습니다. filter_sort는 중복을 먼저 제거하므로, '
-                        f'{label}으로 정렬하는 filter_sort 뒤에 그 표를 받는 중복 제거 filter_sort를 연결하세요.')
+    separate_presort = presort_request(request)
+    pre = separate_presort or {'kind': 'sorts', 'sorts': result_sort}
+    if (not separate_presort and not result_sort) or any(
+        _sort_request_issue(pre, _final_sort(draft, source, source_stages), source_stages)
+        for source, source_stages in zip(inputs, input_stages)
+    ):
+        label = ', '.join(s['field'] + (' 내림차순' if s['direction'] == 'descending' else ' 오름차순')
+                          for s in pre.get('sorts', []))
+        return (f'원문은 {label + "으로 " if label else ""}정렬한 뒤 중복을 제거하라고 했습니다. '
+                '요청한 정렬 단계 뒤에 그 표를 받는 중복 제거 단계를 연결하세요.')
+    # A presort-only contract uses the input order at dedup as the visible order.
+    # A final sort would overwrite it, even if the setting is on the dedup node itself.
+    if request.get('result_sort_cancelled') or not separate_presort:
+        input_sort_ids = [{node_id for node_id, _ in source} for source in input_stages]
+        if any(node_id not in upstream for node_id, _ in stages for upstream in input_sort_ids):
             if request.get('result_sort_cancelled'):
-                output_nodes = content_ancestors(nodes_by_id, source) | {source}
-                separate_sort = any(sort_node not in inputs for inputs in dedup_inputs.values())
-                if separate_sort or not final_sort_matches(expected, draft, path, output_nodes):
-                    return '결과 정렬이 취소되었습니다. 중복 제거 전의 정렬을 유지하고 그 이후의 sort는 비워 주세요.'
-        elif order == 'sort':
-            # Use the output sort's concrete keys and types even for direction-only requests.
-            ordered = all(not native_plans[node_id].get('sort') and final_sort_matches(
-                expected, draft, path[:positions[node_id]], dedup_inputs[node_id]) for node_id in dedup_ids)
-        else:
-            sort_inputs = content_ancestors(nodes_by_id, sort_node) | {sort_node}
-            sorting = {node_id for node_id, plan in native_plans.items() if plan.get('sort')}
-            sorting.update(node['id'] for node in path
-                           if node['tool'] == 'filter_sort' and node['settings'].get('operation') == 'sort')
-            ordered = all(node_id in sort_inputs and not (sorting & dedup_inputs[node_id]) for node_id in dedup_ids)
-    except (KeyError, TypeError, ValueError):
-        return problem
-    return None if ordered else problem
+                return '결과 정렬이 취소되었습니다. 중복 제거 전의 정렬을 유지하고 그 이후의 sort는 비워 주세요.'
+            return '원문은 정렬한 뒤 중복을 제거하라고 했습니다. 중복 제거 단계와 그 이후의 sort는 비워 주세요.'
+    return None
 
 
 def plan_issues(ledger, draft, *, state=None):
@@ -2884,8 +2958,7 @@ def plan_issues(ledger, draft, *, state=None):
     nodes = (draft.get('workflow') or {}).get('nodes', [])
     native = [n for n in nodes if n['tool'] == 'filter_sort' and not n['settings'].get('operation')]
     plans = [n['settings'].get('execution_plan') or draft.get('execution_plan', {}) for n in native]
-    native_plans = {node['id']: plan for node, plan in zip(native, plans)}
-    dedup_ids = {node_id for node_id, plan in native_plans.items() if plan.get('duplicate_policy') in ('first', 'last')}
+    dedup_ids = {node['id'] for node, plan in zip(native, plans) if plan.get('duplicate_policy') in ('first', 'last')}
     from agent_builder.design.condition_requirements import ordered_row_steps
     order = ordered_row_steps(state)
     dedup_plans = plans
@@ -2906,27 +2979,34 @@ def plan_issues(ledger, draft, *, state=None):
             problems.append('원문에 지정된 선별과 중복 제거 순서대로 앞 단계의 행을 다음 단계에 연결해야 합니다.')
     if not nodes:
         problems.append('확정 조건을 적용할 워크플로우가 없습니다.')
-    if nodes and slots.get('duplicate.policy') in ('first', 'last'):
-        lineage_issue = _dedup_result_issue(draft, dedup_ids)
-        if lineage_issue:
-            problems.append(lineage_issue)
-    if ledger['operations'] == ['deduplicate']:
-        # This contract covers one deduplication operation, not implicit extra
-        # filtering/sorting. Combined requests need an expanded condition contract.
-        if any(plan.get('filters') for plan in plans):
-            problems.append('단일 중복 제거 계약에 없는 선별 조건이 추가됐습니다. filters=[]로 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
+    if set(ledger['operations']) <= {'deduplicate'} and (
+        any(plan.get('filters') for plan in plans)
+        or any(node['tool'] == 'filter_sort' and node['settings'].get('operation') == 'filter' for node in nodes)
+    ):
+        scope = '단일 중복 제거 계약' if ledger['operations'] else '확정 업무'
+        problems.append(f'{scope}에 없는 선별 조건이 추가됐습니다. 필터를 빼거나 적용할 조건을 먼저 확인하세요.')
     request = sort_request(state)
     if slots.get('sort.policy') == 'none' and request['kind'] == 'none':
         request = {**request, 'kind': 'cancelled', 'sorts': []}
-    if nodes and set(ledger['operations']) <= {'filter', 'deduplicate'} and request['kind'] != 'none':
-        # The written (or withdrawn) sort is part of the request: the output must carry exactly it.
-        issue = _sort_request_issue(request, draft)
-        if issue:
-            problems.append(issue)
-        order_issue = _sort_dedup_order_issue(state, request, draft, native_plans, dedup_ids)
-        if order_issue:
-            problems.append(order_issue)
-    elif ledger['operations'] == ['deduplicate'] and any(plan.get('sort') for plan in plans):
+    needs_dedup = slots.get('duplicate.policy') in ('first', 'last')
+    needs_sort_check = set(ledger['operations']) <= {'filter', 'deduplicate'} and request['kind'] != 'none'
+    if nodes and (needs_dedup or needs_sort_check):
+        try:
+            path = _result_content_path(draft)
+            stages = list(_sort_stages(draft, path))
+            dedup_linked = dedup_ids and dedup_ids <= {node['id'] for node in path}
+            if needs_dedup and not dedup_linked:
+                problems.append('최종 결과에 중복 제거 단계의 표가 연결되지 않았습니다. 결과 저장의 입력을 확인하세요.')
+            if needs_sort_check:
+                actual = _final_sort(draft, path, stages)
+                if issue := _sort_request_issue(request, actual, stages):
+                    problems.append(issue)
+                if needs_dedup and dedup_linked and request['kind'] != 'cancelled':
+                    if issue := _sort_dedup_order_issue(state, request, draft, path, dedup_ids, actual, stages):
+                        problems.append(issue)
+        except (KeyError, TypeError, ValueError):
+            problems.append('최종 결과에 확정된 정렬과 중복 정책이 적용되는지 확인하지 못했습니다.')
+    if request['kind'] == 'none' and ledger['operations'] == ['deduplicate'] and any(_sort_stages(draft, nodes)):
         problems.append('단일 중복 제거 계약에 없는 정렬이 추가됐습니다. sort=[]로 입력 행 순서를 유지하세요. 복합 요청은 업무 조건 범위를 다시 확인해야 합니다.')
     compound = compound_filter_state(state) if state else None
     compound_filter = bool(compound and compound['rules'] and not compound['seeded'])
@@ -2984,7 +3064,6 @@ def plan_issues(ledger, draft, *, state=None):
         outputs = [n for n in nodes if n['tool'] in ('write_result', 'export_result')]
         if not outputs or any(n['settings'].get('format') != slots['output.format'] for n in outputs):
             problems.append('확정된 출력 형식이 결과 저장 설정과 다릅니다.')
-    if (slots.get('sort.policy') == 'none' and sort_request(state)['kind'] in ('none', 'cancelled')
-            and any(plan.get('sort') for plan in plans)):
+    if (slots.get('sort.policy') == 'none' and request['kind'] == 'cancelled' and any(_sort_stages(draft, nodes))):
         problems.append('정렬하지 말라는 확정 조건과 실행 설정이 다릅니다.')
     return problems

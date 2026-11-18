@@ -100,12 +100,12 @@ def test_direct_v1_output_uses_deduplicated_rows(monkeypatch, service, request_t
     monkeypatch.setitem(CURRENT, 'request', request_text)
     act, saved, fakes = service
     uploaded = act('upload', lambda state: {}, asset=TABLE, rows=SORT_FIRST_ROWS)
-    candidate = make_planner([], sort=sort, sort_first=bool(sort))({
+    candidate = make_planner([], sort=sort)({
         'messages': [{'role': 'user', 'content': request_text}],
         'resources': uploaded['resources'],
     })['draft']
     if bypasses_dedup:
-        candidate['workflow']['nodes'][-1]['bindings'][0]['node_id'] = 'sort' if sort else 'read'
+        candidate['workflow']['nodes'][-1]['bindings'][0]['node_id'] = 'read'
 
     transport = ValidatingTransport(candidate, candidate)
     transport.schema = decoder_schema('v1')

@@ -161,3 +161,78 @@ def test_result_only_cancellation_keeps_the_presort_and_allows_a_later_result_so
 @pytest.mark.parametrize('follow_up', ['정렬은 모두 빼줘.', '중복 제거 먼저 해줘.', '새로운 작업: 금액순으로 정렬해줘.'])
 def test_withdrawing_or_reordering_all_steps_does_not_carry_the_presort(follow_up):
     assert 'pre_sorts' not in sort_request(table_request(SPLIT_SORT, follow_up))
+
+
+@pytest.mark.parametrize('separator', ['. 아니, ', ', 아니, ', '; '])
+def test_later_directive_in_the_same_turn_withdraws_a_sort(separator):
+    text = '주문일 오름차순으로 정렬해줘' + separator + '정렬은 빼고 원본 순서 그대로 저장해줘.'
+    assert sort_request(table_request(text))['kind'] == 'cancelled'
+
+
+@pytest.mark.parametrize('question', [
+    '금액 내림차순으로 정렬해?',
+    '금액 내림차순으로 정렬할까요？',
+    '금액 내림차순으로 정렬하는 방법을 알려줘.',
+])
+def test_sort_inquiry_does_not_change_a_confirmed_stage(question):
+    result = sort_request(table_request(SORT_FIRST, question))
+    assert result['sorts'] == [PRE_SORT]
+    assert 'pre_sorts' not in result
+
+
+def test_a_correction_starts_a_new_sort_command_inside_the_turn():
+    text = '주문일 오름차순으로 정렬해줘, 아니 주문일 내림차순으로 정렬해줘.'
+    assert sort_request(table_request(text))['sorts'] == [PRE_SORT]
+
+
+def test_withdrawing_a_key_in_the_same_turn_keeps_other_keys():
+    text = '주문일 오름차순, 금액 숫자 내림차순으로 정렬해줘. 주문일 정렬만 빼줘.'
+    assert sort_request(table_request(text))['sorts'] == [AMOUNT_DESCENDING]
+
+
+def test_presort_only_revision_keeps_an_independent_result_sort():
+    result = sort_request(table_request(SPLIT_SORT, '중복 제거 전에는 금액 숫자 내림차순으로 정렬해줘.'))
+    assert result['pre_sorts'] == [AMOUNT_DESCENDING]
+    assert result['sorts'] == [{'field': '금액', 'direction': 'ascending', 'value_type': None}]
+
+
+def test_result_scope_applies_to_every_key_in_one_command():
+    result = sort_request(table_request(SORT_FIRST, '결과는 주문일 오름차순, 금액 숫자 내림차순으로 정렬해줘.'))
+    assert result['pre_sorts'] == [PRE_SORT]
+    assert result['sorts'] == [ORDER_DATE, AMOUNT_DESCENDING]
+
+
+def test_partially_known_presort_keeps_its_own_hint():
+    text = ('먼저 최신순으로 정렬한 뒤 주문번호가 같은 행은 첫 행만 남기고, '
+            '결과는 금액 숫자 내림차순으로 정렬해줘.')
+    result = sort_request(table_request(text))
+    assert result['pre_sort_hint'] == {'fields': [], 'direction': 'descending'}
+    assert result['sorts'] == [AMOUNT_DESCENDING]
+
+
+def test_partially_known_result_sort_keeps_its_own_hint():
+    text = ('먼저 주문일 내림차순으로 정렬한 뒤 주문번호가 같은 행은 첫 행만 남기고, '
+            '결과는 금액 기준으로 정렬해줘.')
+    result = sort_request(table_request(text))
+    assert result['pre_sorts'] == [PRE_SORT]
+    assert result['kind'] == 'unparsed'
+    assert result['fields'] == ['금액']
+
+
+def test_separate_hints_for_one_stage_become_one_exact_key():
+    result = sort_request(table_request('최신순으로 정렬해줘.', '정렬 기준은 주문일이야.'))
+    assert result['sorts'] == [PRE_SORT]
+
+
+@pytest.mark.parametrize('data_clause', [
+    '결과에는 정렬 열만 표시해줘',
+    '정렬이 5 이상인 행만 골라줘',
+    '정렬방식이 정렬과 같은 행만 남겨줘',
+    '예시 문구는 주문일 내림차순으로 정렬해줘',
+])
+def test_non_directive_sort_words_do_not_become_sort_operations(data_clause):
+    columns = ['주문일', '금액', '정렬', '정렬방식']
+    assert sort_request(table_request(data_clause, columns=columns))['kind'] == 'none'
+    assert sort_request(table_request(data_clause, '주문일 오름차순으로 정렬해줘', columns=columns))['sorts'] == [
+        ORDER_DATE,
+    ]

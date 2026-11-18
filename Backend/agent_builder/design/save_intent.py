@@ -1,23 +1,30 @@
-"""A chat message that only asks to save is answered, never treated as a new request.
-
-Before this, "확인완료. 저장" resumed the approval wait as a change request: every
-check and the planner ran again, the same draft came back, and nothing was saved.
-Only whole messages made of acknowledgement words plus a save verb qualify, so a
-change such as "저장 형식을 JSON으로 바꿔줘" is still handled as a request. Such a
-message does not save either: the reply points to the save button or says what is
-still missing, so the button stays the only path that stores a workflow.
-"""
+"""Recognize chat about saving the current draft by its complete utterance."""
 import re
+import unicodedata
 
 _ACK = r'(?:네|예|응|넵|좋아(?:요)?|좋습니다|확인(?:\s*완료|했어(?:요)?|했습니다|했음)?|완료|됐어(?:요)?|ok|오케이|문제\s*없어(?:요)?|이대로|그대로|맞아(?:요)?)'
-_SAVE = (r'저장(?:\s*(?:해\s*(?:줘|주세요|줄래|요)?|할게(?:요)?|하자|합니다|해도\s*돼(?:요)?|하기|부탁(?:해요|합니다|드려요)?))?'
-         r'|저장\s*버튼(?:\s*눌러\s*(?:줘|주세요))?')
-_SEP = r'[\s.,!?~^]*'
-_SAVE_ONLY = re.compile(r'^' + _SEP + r'(?:' + _ACK + _SEP + r')*(?:' + _SAVE + r')' + _SEP + r'$', re.I)
+_SEPARATORS = ' \t\r\n.,!?~^。…'
+_ACK_PREFIX = re.compile(_ACK + r'(?=$|[\s.,!?~^。…])', re.I)
+_TARGET = r'(?:(?:이|그|현재)\s*)?(?:워크플로우|초안)(?:을|를|은|는)?\s*'
+_SAVE_ACTION = (
+    r'해\s*(?:줘|주세요|줄래(?:요)?|요)?|할게(?:요)?|하자|합니다|하기|'
+    r'부탁(?:해요|합니다|드려요)?')
+_SAVE_QUESTION = (
+    r'해도\s*(?:돼(?:요)?|되나요|되겠죠|됩니까)|할\s*수\s*있(?:어(?:요)?|나요|을까요|습니까)|'
+    r'할까요|하나요|하죠|합니까')
+_SAVE_BUTTON = r'저장\s*버튼(?:을|은)?(?:\s+(?:눌러\s*(?:줘|주세요)|어디(?:에)?\s*(?:있어(?:요)?|있나요)?))?'
+_SAVE_ONLY = re.compile(
+    rf'(?:{_TARGET})?(?:(?:어떻게\s+)?저장\s*(?:{_SAVE_ACTION}|{_SAVE_QUESTION})?|{_SAVE_BUTTON})')
 
 
 def is_save_request(text):
-    return isinstance(text, str) and len(text) <= 60 and bool(_SAVE_ONLY.match(text.strip()))
+    if not isinstance(text, str) or len(text) > 4000:
+        return False
+    rest = unicodedata.normalize('NFKC', text).strip(_SEPARATORS)
+    while acknowledgement := _ACK_PREFIX.match(rest):
+        rest = rest[acknowledgement.end():].lstrip(_SEPARATORS)
+    # Format, destination and workflow edits do not fit this grammar.
+    return _SAVE_ONLY.fullmatch(rest) is not None
 
 
 def blocked_save_reply(state):

@@ -24,8 +24,8 @@ SYSTEM='''이미 조건 검사가 끝난 단일 표 업무의 실행 단계를 �
 confirmed_conditions의 실제 값을 execution_plan에 반영합니다. gt는 초과, gte는 이상입니다. 이전 초안 값으로 되돌리지 않습니다.
 선별과 중복 제거가 함께 있으면 하나의 filter_sort 공통 execution_plan에 두 정책을 모두 보존합니다.
 filter_sort는 원본의 중복 보존 정책을 먼저 적용한 뒤 선별하며, 요청된 순서와 다르면 임의로 바꾸지 않습니다.
-단일 중복 제거는 filters=[], sort=[], duplicate_field=실제 중복 열, duplicate_policy=확정된 first/last/keep/error입니다.
-빈 값 처리 방식은 missing_policy이며 별도의 is_empty 필터가 아닙니다. 정렬은 추가하지 않습니다.
+선별 없는 중복 제거는 filters=[], duplicate_field=실제 중복 열, duplicate_policy=확정된 first/last/keep/error입니다.
+정렬의 열·방향은 requested_sort를 따릅니다. 빈 값 처리 방식은 missing_policy입니다.
 개별 단계 settings.execution_plan은 null입니다. 공통 execution_plan이 조건 처리 단계에 적용됩니다.
 requirements.quote는 source_quote_catalog의 실제 원문을 그대로 선택하고 해당 source_id를 씁니다.
 조건 판정이 READY이므로 질문·미지원 항목은 비웁니다. 저장 승인은 앱이 별도로 받습니다. 실행 완료를 미리 주장하지 않습니다.
@@ -76,6 +76,7 @@ def compile_plan(raw,state):
     if not isinstance(steps,list) or not 1<=len(steps)<=5:
         raise ValueError('선형 단계는 1~5개여야 합니다.')
     nodes=[];edges=[]
+    has_file_output = 'output.format' in ready_table_slots(state['condition_ledger'])
     for index,step in enumerate(steps):
         if not isinstance(step,dict) or set(step)!= {'tool','label','settings'} or step['tool'] not in ALLOWED:
             raise ValueError('선형 생성 범위의 등록 도구·단계 형식을 확인하세요.')
@@ -94,7 +95,8 @@ def compile_plan(raw,state):
         if index:
             previous=nodes[-1];inputs,outputs=PORTS[tool][0],PORTS[previous['tool']][1]
             compatible=[{'input':i,'node_id':previous['id'],'output':o} for i,kind in inputs.items() for o,value in outputs.items() if value==kind]
-            if len(compatible)!=1:
+            is_screen_finish = tool == 'finish' and not has_file_output and not compatible
+            if len(compatible)!=1 and not is_screen_finish:
                 raise ValueError('앞 단계 출력과 유일하게 연결할 수 없는 도구 순서입니다: '+previous['tool']+' → '+tool)
             bindings=compatible
             edges.append({'source':previous['id'],'target':identifier,'branch':'next'})

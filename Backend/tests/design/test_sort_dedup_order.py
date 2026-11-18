@@ -6,7 +6,7 @@ import pytest
 from agent_builder.conditions.condition_readiness import sort_dedup_order, sort_request
 from tests.design.test_dedup_sort_save_loop import (
     AMOUNT_ASC, CURRENT, LATEST, PRE_FINAL_REQUEST, PRE_FINAL_ROWS, REQUEST, SORT_FIRST_REQUEST, SORT_FIRST_ROWS,
-    TABLE, conversation, make_planner, press_save, service,
+    SORT, TABLE, conversation, make_planner, press_save, service,
 )
 
 
@@ -66,12 +66,16 @@ def test_short_priority_does_not_revive_deduplication_in_a_filter_only_contract(
 @pytest.mark.parametrize('followup', [
     '먼저 금액을 확인하고 중복 제거 설정은 설명해줘.',
     '중복 제거를 먼저 설명해줘.',
+    '중복 제거 먼저 해?',
+    '중복 제거를 먼저 하면 될까요？',
 ])
 def test_short_priority_requires_an_action_request(followup):
     assert sort_dedup_order(conversation(SORT_FIRST_REQUEST, followup)) == 'sort'
 
 
 @pytest.mark.parametrize(('request_text', 'prior_sort_first', 'expected_sort_first'), [
+    (REQUEST.replace('오름차순', '내림차순'), False, False),
+    (SORT_FIRST_REQUEST.replace('으로 먼저 정렬한 뒤', '으로 정렬하고,'), False, True),
     (SORT_FIRST_SENTENCES, False, True),
     (SORT_FIRST_AFTER_VERB, False, True),
     (SORT_FIRST_FROM, False, True),
@@ -156,3 +160,82 @@ def test_explicit_output_sort_does_not_reverse_the_pre_dedup_sort(service, reque
     else:
         assert first['status'] == 'validation_failed' and saved() == 0
         assert any('정렬한 뒤 중복' in issue for issue in first['issues'])
+
+
+@pytest.mark.parametrize(('follow_up', 'expected_sort', 'order'), [
+    ('아니, 정렬은 빼고 원본 순서 그대로 저장해줘.', [], [('A1', '2026-11-01'), ('B2', '2026-11-04')]),
+    ('금액 오름차순으로 먼저 정렬해？', LATEST, [('B2', '2026-11-04'), ('A1', '2026-11-01')]),
+])
+@pytest.mark.parametrize('correct', [True, False])
+def test_service_applies_the_latest_directive_but_keeps_order_across_questions(
+        service, follow_up, expected_sort, order, correct):
+    act, saved, fakes = service
+    text = REQUEST.replace('오름차순', '내림차순') + ' ' + follow_up
+    CURRENT['request'] = text
+    other_sort = [] if expected_sort else LATEST
+    planner = make_planner([], sort=expected_sort if correct else other_sort)
+    act('upload', planner, asset=dict(TABLE), rows=SORT_FIRST_ROWS)
+    first = act('message', planner, content=text)
+    if not correct:
+        assert first['status'] == 'validation_failed'
+        press_save(act, planner)
+        assert saved() == 0
+        return
+
+    assert first['status'] == 'ready'
+    done = press_save(act, planner)
+    assert done['status'] == 'saved'
+    result = fakes['run'](done['saved_agent_id'])
+    assert result['status'] == 'succeeded'
+    rows = csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff')))
+    assert [(row['주문번호'], row['주문일']) for row in rows] == order
+
+
+@pytest.mark.parametrize('correct', [True, False])
+def test_service_changes_only_the_presort_and_keeps_the_result_sort(service, correct):
+    act, saved, fakes = service
+    CURRENT['request'] = PRE_FINAL_REQUEST
+    original = make_planner([], sort=LATEST, sort_first=True, final_sort=AMOUNT_ASC)
+    act('upload', original, asset=dict(TABLE), rows=PRE_FINAL_ROWS)
+    assert act('message', original, content=PRE_FINAL_REQUEST)['status'] == 'ready'
+
+    text = '중복 제거 전에는 금액 오름차순으로 정렬해줘.'
+    CURRENT['request'] = text
+    planner = make_planner([], sort=AMOUNT_ASC if correct else LATEST, sort_first=True, final_sort=AMOUNT_ASC)
+    first = act('message', planner, content=text)
+    if not correct:
+        assert first['status'] == 'validation_failed'
+        press_save(act, planner)
+        assert saved() == 0
+        return
+
+    assert first['status'] == 'ready'
+    done = press_save(act, planner)
+    assert done['status'] == 'saved'
+    result = fakes['run'](done['saved_agent_id'])
+    assert result['status'] == 'succeeded'
+    rows = csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff')))
+    assert [(row['주문번호'], row['주문일']) for row in rows] == [('A1', '2026-11-01'), ('B2', '2026-11-04')]
+
+
+@pytest.mark.parametrize('correct', [True, False])
+def test_service_enforces_presort_direction_independently_of_the_result_sort(service, correct):
+    act, saved, fakes = service
+    text = PRE_FINAL_REQUEST.replace('주문일 내림차순으로 먼저', '최신순으로 먼저')
+    CURRENT['request'] = text
+    planner = make_planner([], sort=LATEST if correct else SORT, sort_first=True, final_sort=AMOUNT_ASC)
+    act('upload', planner, asset=dict(TABLE), rows=PRE_FINAL_ROWS)
+    first = act('message', planner, content=text)
+    if not correct:
+        assert first['status'] == 'validation_failed'
+        press_save(act, planner)
+        assert saved() == 0
+        return
+
+    assert first['status'] == 'ready'
+    done = press_save(act, planner)
+    assert done['status'] == 'saved'
+    result = fakes['run'](done['saved_agent_id'])
+    assert result['status'] == 'succeeded'
+    rows = csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff')))
+    assert [(row['주문번호'], row['주문일']) for row in rows] == [('B2', '2026-11-04'), ('A1', '2026-11-07')]

@@ -7,6 +7,28 @@ from tests.design.test_document_row_integrity import EXPECTED, NoModel, SOURCE, 
 from workflow_engine.runner import run_workflow
 
 
+def test_preserving_document_extraction_conditions_does_not_edit_an_attached_csv(tmp_path):
+    asset = document()
+    draft_state = state(asset)
+    draft_state['messages'] += [{'role': 'assistant', 'content': QUESTION},
+                                {'role': 'user', 'content': '품명, 실입고'}]
+    draft_state.update(document_rows_reply(draft_state), status='ready', confirmed=True)
+    table = dict(id='other', kind='table', name='별도.csv', format='csv', columns=['품명', '실입고'], version=1)
+    draft_state['resources'].append(table)
+    draft_state['messages'].append({'role': 'user', 'content': '기존 문서 추출 조건은 유지해줘.'})
+
+    storage = Storage(tmp_path)
+    try:
+        storage.add_asset(asset, [])
+        storage.add_asset(table, [{'품명': '별도 자료', '실입고': 99}])
+        saved_id = storage.save_agent(draft_state)
+        result = run_workflow(storage, saved_id, '워크플로우 실행', '', file_ids=[asset['id']], llm=NoModel())
+        assert result['status'] == 'succeeded', result.get('error')
+        assert output_rows(result['artifact']) == EXPECTED
+    finally:
+        storage.close()
+
+
 @pytest.mark.parametrize('has_text', [True, False])
 def test_reviewed_document_cannot_export_only_its_structured_page(tmp_path, has_text, monkeypatch):
     first = block(SOURCE[:3])

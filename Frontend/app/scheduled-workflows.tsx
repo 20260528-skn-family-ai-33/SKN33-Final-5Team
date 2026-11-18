@@ -131,7 +131,7 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
   resetManager();
  }
  return <section className="scheduled-workflows" aria-labelledby="schedules-heading"><PageTransition active={loading}/>
-  <div className="entry-page-heading"><WorkspacePageTitle icon={CalendarClock} id="schedules-heading">예약 관리</WorkspacePageTitle><WorkspaceIconButton size="standard" variant="outline" type="button"  aria-label="예약 목록 새로고침" disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={15}/></WorkspaceIconButton></div>
+  <div className="task-library-title"><WorkspacePageTitle icon={CalendarClock} id="schedules-heading">예약 관리</WorkspacePageTitle><WorkspaceIconButton size="standard" variant="outline" type="button"  aria-label="예약 목록 새로고침" disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={15}/></WorkspaceIconButton></div>
   <div className="schedule-page-actions workspace-page-actions"><button type="button" className="as-button as-secondary" disabled={loading||busy} onClick={toggleAdding}><Plus size={15}/>기존 워크플로우에 예약 추가</button><button type="button" className="as-button as-primary" disabled={busy} onClick={()=>navigate(onCreate)}>새 예약 워크플로우</button></div>
   {notice&&<p className="schedule-page-notice" role="status">{notice}</p>}
   {loading?<p className="entry-loading" role="status">예약 목록을 불러오고 있습니다.</p>:error?<div className="as-error" role="alert"><AlertCircle size={16}/><span>{error}</span><button type="button" onClick={()=>void load()}>다시 시도</button></div>:<>
@@ -142,13 +142,15 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
    </div>}
    <div className="schedule-overview" aria-label="예약 현황"><span>전체 <strong>{rows.length}</strong></span><span>활성 <strong>{counts.active}</strong></span><span>중지 <strong>{counts.paused}</strong></span>{counts.unconfigured>0&&<span>설정 확인 필요 <strong>{counts.unconfigured}</strong></span>}</div>
    {rows.length>0?<>
-    <div className="entry-list-tools schedule-list-tools"><label><Search size={17} aria-hidden="true"/><input aria-label="예약 워크플로우 검색" placeholder="이름이나 업무 내용 검색" value={query} onChange={event=>{setQuery(event.target.value);setSelected([]);}}/></label>
-     <div className="schedule-selection-actions" style={{visibility:selectedRows.length?undefined:'hidden'}}>{selectedRows.some(row=>row.status==='active')&&<button type="button" className="as-button as-secondary" disabled={busy} onClick={()=>void changeSelected('pause')}>선택 중지</button>}
-     <button type="button" className="as-button as-danger" disabled={busy||!selectedRows.length} onClick={()=>void changeSelected('remove')}><Trash2 size={16}/>선택 삭제 ({selectedRows.length})</button></div>
-     <select aria-label="예약 상태 필터" value={filter} onChange={event=>{setFilter(event.target.value as 'all'|Status);setSelected([]);}}><option value="all">전체 상태</option><option value="active">활성</option><option value="paused">중지</option><option value="unconfigured">설정 확인 필요</option></select>
+    <div className="entry-list-tools schedule-list-tools" aria-label="예약 목록 도구"><label><Search size={18} aria-hidden="true"/><input aria-label="예약 워크플로우 검색" placeholder="예약 워크플로우 검색" value={query} onChange={event=>{setQuery(event.target.value);setSelected([]);}}/></label>
+     <div className="schedule-list-filters">
+     <select aria-label="예약 상태 필터" value={filter} onChange={event=>{setFilter(event.target.value as 'all'|Status);setSelected([]);}}><option value="all">전체 상태</option><option value="active">활성</option><option value="paused">중지</option><option value="unconfigured">설정 확인 필요</option></select><span>{matches.length}개</span>
+     </div>
     </div>
     {matches.length>0&&<div className="schedule-selection">
      <label className="workflow-select-all"><input type="checkbox" disabled={busy} checked={selectedRows.length===matches.length} onChange={event=>setSelected(event.target.checked?matches.map(rowKey):[])}/>현재 목록 전체 선택</label>
+     {selectedRows.length>0&&<div className="schedule-selection-actions">{selectedRows.some(row=>row.status==='active')&&<button type="button" className="as-button as-secondary" disabled={busy} onClick={()=>void changeSelected('pause')}>선택 중지</button>}
+     <button type="button" className="as-button as-danger" disabled={busy||!selectedRows.length} onClick={()=>void changeSelected('remove')}><Trash2 size={16}/>선택 삭제 ({selectedRows.length})</button></div>}
     </div>}
     {matches.length>0?<div className="schedule-table-container"><table className="schedule-table"><caption className="sr-only">예약 워크플로우 목록</caption><thead><tr><th scope="col">워크플로우</th><th scope="col">반복 일정</th><th scope="col">상태</th><th scope="col">다음 실행</th><th scope="col"><span className="sr-only">관리</span></th></tr></thead><tbody>{matches.map(row=>{
      const spec=row.kind==='agent'?workflows.find(item=>item.agent.id===row.id)?.schedule?.spec??workflows.find(item=>item.agent.id===row.id)?.agent.config.schedule:undefined;

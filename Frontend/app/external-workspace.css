@@ -57,3 +57,24 @@
 @media(max-width:650px){
  .reservation-inline-settings .field :is(input,button){font-size:16px}
 }
+
+/* Reservation detail follows the page insets used by the work library and studio. */
+.unified-workspace .workspace:has(>.reservation-tab-bar){
+ padding:var(--workspace-page-top) var(--workspace-page-inline) var(--workspace-page-bottom);
+}
+.unified-workspace .topbar.as-page-title:has(+.reservation-tab-bar){
+ min-height:38px;
+ padding:0;
+ margin-bottom:20px;
+}
+.unified-workspace .reservation-tab-bar{
+ min-height:36px;
+ padding-inline:0;
+ margin-bottom:22px;
+}
+.reservation-tab-bar + .editor-body .unified-schedule-panel{
+ padding:0;
+}
+@media(max-width:650px){
+ .unified-workspace .reservation-tab-bar{margin-bottom:18px}
+}

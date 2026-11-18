@@ -5,3 +5,9 @@
 .schedule-settings .schedule-status.unconfigured{color:var(--a4b-warning);background:var(--a4b-warning-soft)}
 
 .schedule-settings-submit{justify-content:flex-end}
+
+.schedule-settings-form>.schedule-settings-fields+.schedule-settings-fields{margin-top:16px}
+.schedule-settings-weekdays{display:flex;flex-wrap:wrap;gap:6px 12px;grid-column:1/-1;min-width:0}
+.schedule-settings-weekdays legend{margin-bottom:6px;font-size:12px;color:var(--a4b-muted)}
+.schedule-settings-weekdays label{display:inline-flex;align-items:center;min-height:32px}
+.schedule-settings-weekdays input[type=checkbox]{width:16px;min-height:0;height:16px;padding:0;accent-color:var(--a4b-action)}

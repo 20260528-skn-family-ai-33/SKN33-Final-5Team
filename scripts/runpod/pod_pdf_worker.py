@@ -41,6 +41,8 @@ def analyze(work, policy=None):
     # Supplemental image requests stay on this Pod, using the warm Paddle models.
     os.environ['A4B_PARSER_URL'] = os.environ.get('A4B_POD_PADDLE_URL', 'http://127.0.0.1:' + os.environ.get('A4B_PARSER_PORT', '8100'))
     os.environ.update(A4B_PARSER_FALLBACK='off', A4B_PDF_DEVICE='cuda', A4B_PDF_PARSER_MODE='standard')
+    # This worker owns the shared PDF/Docling slot; never enqueue itself again.
+    os.environ['A4B_DOCLING_LOCAL_ONLY'] = '1'
     if policy == 'docling-paddle-fixed-v1':
         from documents.analysis.benchmark_baseline import run
         result = run(source, work)

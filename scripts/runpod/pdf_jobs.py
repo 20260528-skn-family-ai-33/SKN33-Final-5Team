@@ -1,5 +1,6 @@
 """Single GPU PDF slot with polling leases, cancellation and bounded result retention."""
 import os
+import json
 import signal
 import subprocess
 import tempfile
@@ -36,10 +37,12 @@ class PdfJobs:
         self.jobs = {}
         self.closed = False
 
-    def submit(self, data, policy=None, timeout=DEFAULT_TIMEOUT):
+    def submit(self, data, policy=None, timeout=DEFAULT_TIMEOUT, *, image=False):
         if not self.python:
             return 503, {'error': 'pdf_router_unconfigured'}
-        if b'%PDF-' not in data[:1024]:
+        if not 0 < len(data) <= MAX_PDF:
+            return 413, {'error': 'input_size_limit'}
+        if not image and b'%PDF-' not in data[:1024]:
             return 400, {'error': 'invalid_pdf'}
         if not isinstance(timeout, int) or not 1 <= timeout <= 1800:
             return 400, {'error': 'invalid_pdf_timeout'}
@@ -61,7 +64,7 @@ class PdfJobs:
             identifier = str(uuid.uuid4())
             job = Job(deadline=now + min(timeout, MAX_TIMEOUT), last_poll=now)
             self.jobs[identifier] = job
-            job.thread = threading.Thread(target=self._run, args=(identifier, job, data, policy), daemon=True)
+            job.thread = threading.Thread(target=self._run, args=(identifier, job, data, policy, image), daemon=True)
             job.thread.start()
         return 202, {'job_id': identifier}
 
@@ -94,15 +97,16 @@ class PdfJobs:
                 return 'pdf_job_lease_expired'
         return None
 
-    def _run(self, identifier, job, data, policy):
+    def _run(self, identifier, job, data, policy, image=False):
         process = None
         response = (422, {'error': 'pdf_gpu_processing_failed'})
         try:
             with tempfile.TemporaryDirectory(prefix='a4b-pdf-') as folder:
                 work = Path(folder)
-                (work / 'original.pdf').write_bytes(data)
+                (work / ('original.png' if image else 'original.pdf')).write_bytes(data)
                 env = {**os.environ, 'A4B_PDF_DEVICE': 'cuda', 'A4B_PDF_PARSER_MODE': 'standard'}
-                command = [self.python, str(WORKER), folder]
+                worker = WORKER.with_name('pod_docling_image_worker.py') if image else WORKER
+                command = [self.python, str(worker), folder]
                 if policy:
                     command.append(policy)
                 try:
@@ -123,10 +127,10 @@ class PdfJobs:
                     elif process.returncode:
                         raise subprocess.CalledProcessError(process.returncode, command)
                     else:
-                        archive = work / 'result.zip'
-                        if archive.stat().st_size > MAX_BUNDLE:
+                        archive = work / ('result.json' if image else 'result.zip')
+                        if archive.stat().st_size > (6 * 1024 * 1024 if image else MAX_BUNDLE):
                             raise ValueError('PDF result size limit')
-                        response = (200, archive.read_bytes())
+                        response = (200, json.loads(archive.read_text()) if image else archive.read_bytes())
                 finally:
                     if process is not None:
                         self._stop_process_group(process)

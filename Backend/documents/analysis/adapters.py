@@ -135,6 +135,16 @@ class LocalEngines:
                        status='failed', artifact=str(folder.relative_to(self.work)), elapsed_seconds=0)
         self.attempts.append(attempt)
         try:
+            if (engine == 'docling' and source and Path(source).suffix.lower() == '.png'
+                    and os.environ.get('A4B_PARSER_URL')
+                    and os.environ.get('A4B_DOCLING_LOCAL_ONLY') != '1'):
+                from .remote_docling import parse_remote_image
+                attempt['route'] = 'gpu_remote'
+                data = parse_remote_image(Path(source), timeout=self.timeout)
+                (folder / 'response.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+                attempt.update(status='partial' if data.get('partial') else 'succeeded',
+                               version=data['version'], model=data.get('model', {}))
+                return data
             remote = os.environ.get('A4B_PARSER_URL') if engine in REMOTE_ENGINES else None
             if remote:
                 attempt['route'] = 'gpu_remote'

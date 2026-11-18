@@ -90,6 +90,51 @@ def test_unquoted_sort_direction_can_be_used_as_an_equality_filter(tmp_path, req
         store.close()
 
 
+@pytest.mark.parametrize('request_text, value, field, direction, value_type, expected', [
+    pytest.param('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순으로 정렬해줘',
+                 '오름차순', '금액', 'descending', 'number', ['B', 'A'], id='data'),
+    pytest.param('정렬방식이 내림차순인 자료만 골라서 주문일 오름차순으로 정렬해줘',
+                 '내림차순', '주문일', 'ascending', 'text', ['D', 'C'], id='materials'),
+])
+def test_filter_values_and_sort_commands_in_the_same_sentence(
+    tmp_path, request_text, value, field, direction, value_type, expected,
+):
+    from agent_builder.conditions.condition_readiness import sort_request
+
+    rows = [
+        {'주문번호': 'A', '정렬방식': '오름차순', '금액': 100, '주문일': '2026-11-02'},
+        {'주문번호': 'B', '정렬방식': '오름차순', '금액': 200, '주문일': '2026-11-01'},
+        {'주문번호': 'C', '정렬방식': '내림차순', '금액': 400, '주문일': '2026-11-04'},
+        {'주문번호': 'D', '정렬방식': '내림차순', '금액': 300, '주문일': '2026-11-03'},
+    ]
+    s = state(request_text + '. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    asset = {'id': 'a', 'name': '주문.csv', 'kind': 'table', 'columns': list(rows[0]), 'profile': {}, 'text': ''}
+    s.update(resources=[asset], condition_enforced=True)
+    assert [(sort['field'], sort['direction']) for sort in sort_request(s)['sorts']] == [(field, direction)]
+
+    policies = {'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'}
+    ledger = checked(s, proposal(s, policies))
+    assert ledger['decision'] == 'ready', ledger['questions']
+    assert ledger['slots']['filter.value']['value'] == value
+    assert ledger['slots']['filter.operator']['value'] == 'eq'
+
+    candidate = workflow_draft(s)
+    plan = candidate['execution_plan']
+    plan['filters'] = [dict(field='정렬방식', operator='eq', value=value, compare_field=None, value_type='text')]
+    plan['sort'] = [dict(field=field, direction=direction, value_type=value_type)]
+    candidate['workflow']['nodes'][1]['settings']['execution_plan'] = plan
+    assert plan_issues(ledger, candidate, state=s) == []
+    s.update(draft=candidate, condition_ledger=ledger, confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, rows)
+        result = run_workflow(store, store.save_agent(s), '실행', '', file_ids=['a'])
+        assert result['status'] == 'succeeded'
+        assert [row['주문번호'] for row in result['rows']] == expected
+    finally:
+        store.close()
+
+
 @pytest.mark.parametrize(('request_text', 'proposed_value', 'expected_operator'), [
     ('정렬방식이 오름차순인 것만 삭제해줘.', '오름차순', 'ne'),
     ('정렬방식이 오름차순인 것만 남기지 마.', '오름차순', None),

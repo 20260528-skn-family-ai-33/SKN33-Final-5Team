@@ -979,6 +979,7 @@ def test_pre_dedup_sort_with_a_result_sort_end_to_end(service, pre, final, saves
 @pytest.mark.parametrize('sort_clause', [
     '주문일이 오름차순인 상태로 이 표의 전체 데이터를 정렬해서',
     '주문일이 오름차순인 상태로 이 표의 전체 데이터가 정렬된 결과를',
+    '주문일이 오름차순인 데이터만 나오도록 이 표의 전체 데이터를 정렬해서',
 ])
 def test_sort_after_a_long_result_description_checks_the_named_column(service, planned_sort, saves, sort_clause):
     act, saved, fakes = service

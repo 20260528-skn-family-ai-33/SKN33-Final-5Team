@@ -178,6 +178,8 @@ def filter_clauses(text):
 
 
 _SELECTION_VERB = r'(?:남기|남겨|고르|골라|선별하|선별해|포함하|포함해|제외하|제외해|삭제하|삭제해)'
+# "데이터" and "자료" can also describe the table to sort. Require a selection action.
+DATA_ROW_NOUN = r'(?:데이터|자료)(?:들)?\s*(?=만\s*(?:(?:안|못)\s*)?' + _SELECTION_VERB + r')'
 # Compose grammatical negation around the same action, including auxiliaries.
 # Unknown/negative selections stay unresolved; do not infer their complement.
 _ACTION_NEGATIVE_END = (

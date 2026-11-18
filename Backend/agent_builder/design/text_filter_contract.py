@@ -11,7 +11,8 @@ from .text_filter_parser import text_atoms, disjunctive_clause, uncovered_select
 
 _POSITIVE_ACTION = re.compile(
     r'\s*+(?:(?:남겨|골라|선별해|포함해)(?:\s*+(?:줘|주세요))?|(?:남긴|고른|선별한)\s+(?:뒤|후|다음)'
-    r'|남기고(?=\s+(?:(?:CSV|JSON)(?:으로|로)|파일로)\s+저장))(?![가-힣])', re.I)
+    r'|남기고(?=\s+(?:(?:CSV|JSON)(?:으로|로)|파일로)\s+저장)'
+    r'|(?:남기고|골라서)(?=\s+[^.!?;。！？\n]*?(?:으로|로)\s+정렬(?:해|하)))(?![가-힣])', re.I)
 _EXCLUDE_ACTION = re.compile(r'\s*+(?:제외해|삭제해|빼줘)(?:\s*+(?:줘|주세요))?(?![가-힣])')
 
 

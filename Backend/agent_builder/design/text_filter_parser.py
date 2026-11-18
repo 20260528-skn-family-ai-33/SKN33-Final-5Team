@@ -6,10 +6,10 @@ layer owns edits and pending decisions; this lexer never mutates a condition.
 from dataclasses import dataclass
 import re
 
-from agent_builder.conditions.filter_edits import in_quoted_text, in_metadata_text
+from agent_builder.conditions.filter_edits import DATA_ROW_NOUN, in_quoted_text, in_metadata_text
 
 _VALUE = r'''(?:"[^"\n]+"|'[^'\n]+'|“[^”\n]+”|‘[^’\n]+’|[^\s,'".!?]+?)'''
-_ROW_UNIT = r'(?:행|것|거래|항목|레코드|셀|주문(?:\s*+건)?|건)(?:들)?'
+_ROW_UNIT = r'(?:(?:행|것|거래|항목|레코드|셀|주문(?:\s*+건)?|건)(?:들)?|' + DATA_ROW_NOUN + r')'
 _ROWS = _ROW_UNIT + r'(?P<only>만|은|을|도)?'
 _EQUALITY_LINK = r'(?:인|(?:과|와)\s*+(?:같은|동일한|일치하는))'
 _END = (r'(?:' + _EQUALITY_LINK + r'\s+' + _ROWS

@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from .filter_dialogue import MATCH_CHOICES, match_answer, KEEP_ALL, KEEP_OTHERS, ONLY_NEW, confirmed_numeric_filter as _confirmed_filter
-from .filter_edits import in_metadata_text, selection_action_uncertain, denied_filter_change
+from .filter_edits import DATA_ROW_NOUN, in_metadata_text, selection_action_uncertain, denied_filter_change
 
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.conditions.input_resolution import (
@@ -1738,7 +1738,8 @@ def _scoped_answer(key, value, state, evidence):
     return False
 
 
-_ROW_FILTER_SELECTOR = r'(?:행|레코드|항목|셀)(?:\s*만)?|(?:것|건|주문(?:\s*건)?)\s*만'
+_ROW_FILTER_SELECTOR = (
+    r'(?:행|레코드|항목|셀)(?:\s*만)?|(?:것|건|주문(?:\s*건)?)\s*만|' + DATA_ROW_NOUN + r'만')
 
 
 def _written_text_equality(condition_slots, evidence):

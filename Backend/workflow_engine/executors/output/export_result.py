@@ -1,5 +1,8 @@
 import csv,io,json
 
+from workflow_engine.catalog.registry import uses_operation
+from workflow_engine.execution_path import TABLE_SCOPE_ERROR, records_source_node, records_table_scope_incomplete
+from workflow_engine.executors.document.legacy_table_headers import validate_legacy_record_headers
 from workflow_engine.library.reusable_workflows import REVIEW_EXPORT_ERROR
 
 REVIEW_PORTS=('reviews','_reviews','_review_updates')
@@ -66,7 +69,10 @@ def execute(node,state,storage,config,llm):
         raise ValueError(REVIEW_EXPORT_ERROR)
     format=settings.get('format')
     if 'records' in inputs:
+        if records_table_scope_incomplete(node, state['outputs'], config):
+            raise ValueError(TABLE_SCOPE_ERROR)
         records = inputs['records']
+        validate_legacy_record_headers(records, storage)
         from workflow_engine.executors.document.receipt_check import CHECK_FIELD
         warnings = list(dict.fromkeys(
             str(record[CHECK_FIELD]) for record in records
@@ -79,10 +85,11 @@ def execute(node,state,storage,config,llm):
             from workflow_engine.executors.document.extract_information import ROW_RESERVED_FIELDS
             fields = [field for field in records[0] if field not in ROW_RESERVED_FIELDS]
         if fields:
-            source_ids = {b['node_id'] for b in node['bindings'] if b['input'] == 'records'}
-            source_nodes = [n for n in (config or {}).get('workflow', {}).get('nodes', []) if n['id'] in source_ids]
-            field_records = any(n['tool'] == 'extract_information' and not n['settings'].get('operation')
-                                and n['settings'].get('extraction_mode') not in ('rows', 'receipt_items') for n in source_nodes)
+            workflow = (config or {}).get('workflow') or {}
+            nodes = {n['id']: n for n in workflow.get('nodes', [])}
+            source = records_source_node(node, nodes, dependencies=(config or {}).get('_saved_workflows'))
+            field_records = (source is not None and source['tool'] == 'extract_information' and not uses_operation(source)
+                             and source['settings'].get('extraction_mode') not in ('rows', 'receipt_items'))
             records = project_records(records, fields, field_records=field_records)
         artifact = records_artifact(records,format,inputs.get('answer'),fields=fields)
         if warnings:

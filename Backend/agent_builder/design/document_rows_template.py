@@ -519,23 +519,23 @@ def document_row_contract_issues(state, draft):
         rows_requested = row_collection_intent(*requests)
         if rows_requested is not True and not any(_TABLE_INTENT.search(request) for request in requests):
             return []
-        from documents.resources.document_resources import chunks_for_asset
+        from documents.resources.document_resources import chunks_for_asset, supports
+        from workflow_engine.executors.document.row_contract import scalar_selection
+        if rows_requested is not True and scalar_selection(*requests) is not None:
+            return []
         for node in nodes:
             settings = node['settings']
-            if (node['tool'] != 'extract_information' or not settings.get('fields')
+            if (node['tool'] != 'extract_information' or settings.get('operation') or not settings.get('fields')
                     or settings.get('extraction_mode') in ('rows', 'receipt_items')):
                 continue
             reader = next((readers[b['node_id']] for b in node.get('bindings', [])
                            if b.get('input') == 'documents' and b['node_id'] in readers), {})
-            file_ids = reader.get('file_ids') or []
+            file_ids = reader.get('file_ids') or draft.get('document_ids', [])
             table_id = reader.get('document_table_id')
             for asset in state.get('resources', []):
-                if asset.get('kind') != 'document' or (file_ids and asset['id'] not in file_ids):
+                if asset['id'] not in file_ids or not supports(asset, 'document'):
                     continue
                 parts = (part for part in chunks_for_asset(asset) if table_id is None or part.get('block_id') == table_id)
-                from workflow_engine.executors.document.row_contract import scalar_selection
-                if scalar_selection(*requests) is not None and rows_requested is not True:
-                    continue
                 if has_repeated_rows(parts, settings['fields'], across_pages=rows_requested is True):
                     return ['원본 표의 반복 행을 단일 값으로 축소할 수 없습니다. 행 단위 추출로 설계해 주세요.']
         return []
@@ -564,55 +564,54 @@ def document_row_source_issues(state, draft):
     """Reject known unexecutable row exports before ready/save, without model calls."""
     from documents.resources.document_resources import chunks_for_asset
     from workflow_engine.executors.document.row_contract import native_rows, NO_COORDINATES
-    from workflow_engine.executors.document.extract_information import EVIDENCE_KEYS, MAX_ROWS
+    from workflow_engine.executors.document.extract_information import EVIDENCE_KEYS, MAX_ROWS, validate_extraction_size
+    from workflow_engine.executors.sources import source_file_ids
+    from workflow_engine.execution_path import records_source_node
+
     nodes = (draft.get('workflow') or {}).get('nodes', [])
     readers = {node['id']: node for node in nodes if node['tool'] == 'read_document'}
     by_id = {node['id']: node for node in nodes}
-    pending = [binding['node_id'] for node in nodes if node['tool'] == 'export_result'
-               for binding in node.get('bindings', []) if binding.get('input') == 'records']
-    exported_sources = set()
-    while pending:
-        identifier = pending.pop()
-        if identifier in exported_sources:
-            continue
-        exported_sources.add(identifier)
-        pending.extend(binding['node_id'] for binding in by_id.get(identifier, {}).get('bindings', []))
+    exported_sources = {source['id'] for node in nodes if node['tool'] == 'export_result'
+                        and (source := records_source_node(node, by_id)) is not None}
     resources = {asset['id']: asset for asset in state.get('resources', [])}
     chunks = {}
+
+    class DesignStorage:
+        def asset(self, identifier):
+            if identifier not in resources:
+                raise ValueError('선택한 문서를 다시 연결해 주세요.')
+            return resources[identifier]
+
+    storage = DesignStorage()
     for node in nodes:
         settings = node['settings']
-        if (node['tool'] != 'extract_information' or settings.get('extraction_mode') != 'rows'
+        if (node['tool'] != 'extract_information' or settings.get('operation') or settings.get('extraction_mode') != 'rows'
                 or node['id'] not in exported_sources):
             continue
         for binding in node.get('bindings', []):
             reader = readers.get(binding['node_id']) if binding.get('input') == 'documents' else None
-            if not reader:
+            if not reader or reader['settings'].get('operation') or binding.get('output') != 'documents':
                 continue
-            source = reader['settings']
-            from workflow_engine.executors.sources import source_file_ids
-            class DesignStorage:
-                def asset(self, identifier):
-                    if identifier not in resources:
-                        raise ValueError('선택한 문서를 다시 연결해 주세요.')
-                    return resources[identifier]
+            table_id = reader['settings'].get('document_table_id')
+            selected_parts = []
             try:
-                ids = source_file_ids(reader, [], DesignStorage(), draft)
+                ids = source_file_ids(reader, [], storage, draft, allow_deferred=True)
+                for identifier in ids:
+                    asset = storage.asset(identifier)
+                    if identifier not in chunks:
+                        chunks[identifier] = list(chunks_for_asset(asset))
+                    parts = chunks[identifier]
+                    if table_id is not None:
+                        parts = [part for part in parts if part.get('block_id') == table_id]
+                    selected_parts.append((asset['name'], parts))
+                validate_extraction_size(part for _, parts in selected_parts for part in parts)
             except ValueError as error:
                 return [str(error)]
-            for identifier in ids:
-                asset = resources.get(identifier)
-                from documents.resources.document_resources import supports
-                if not asset or not supports(asset, 'document'):
-                    continue
-                if identifier not in chunks:
-                    chunks[identifier] = list(chunks_for_asset(asset))
-                parts = chunks[identifier]
-                if source.get('document_table_id') is not None:
-                    parts = [part for part in parts if part.get('block_id') == source['document_table_id']]
+            for name, parts in selected_parts:
                 try:
                     rows = native_rows(parts, settings.get('fields') or [], EVIDENCE_KEYS, MAX_ROWS)
                     if rows is None:
-                        return [asset['name'] + ': ' + NO_COORDINATES]
+                        return [name + ': ' + NO_COORDINATES]
                 except ValueError as error:
-                    return [asset['name'] + ': ' + str(error)]
+                    return [name + ': ' + str(error)]
     return []

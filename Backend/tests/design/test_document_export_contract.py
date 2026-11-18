@@ -124,6 +124,81 @@ def test_preflight_checks_row_exports_without_blocking_internal_model_extraction
     assert document_row_source_issues(current, draft) == []
 
 
+def test_preflight_follows_the_exported_records_through_a_condition():
+    from agent_builder.design.document_rows_template import _draft, document_row_source_issues
+    asset = document()
+    asset.pop('parser_metadata')
+    draft = _draft('문서를 CSV로 저장', '', ['품명'], [asset['id']])
+    nodes = draft['workflow']['nodes']
+    exporter = nodes[-1]
+    rows = exporter['bindings'][0]['node_id']
+    exporter['bindings'][0]['node_id'] = 'condition'
+    condition = {'id': 'condition', 'tool': 'condition', 'settings': {}, 'bindings': [
+        {'input': 'records', 'node_id': 'statistics', 'output': 'records'},
+        {'input': 'text', 'node_id': 'summary', 'output': 'text'},
+    ]}
+    nodes.extend([{'id': 'statistics', 'tool': 'text_statistics', 'settings': {}},
+                  {'id': 'summary', 'tool': 'compose_answer', 'settings': {}, 'bindings': [
+                      {'input': 'records', 'node_id': rows, 'output': 'records'}]}, condition])
+    assert document_row_source_issues(state(asset), draft) == []
+    condition['bindings'][0]['node_id'] = rows
+    assert '표 셀 좌표' in document_row_source_issues(state(asset), draft)[0]
+
+
+def test_save_then_attach_document_for_row_export_at_execution(tmp_path):
+    from agent_builder.design.document_rows_template import _draft
+    asset = mixed_document()
+    request = 'PDF는 실행할 때 첨부할게요. 각 품목에서 품명과 수량을 추출해 CSV로 저장해 주세요.'
+    current = state(asset, request)
+    current.update(resources=[], draft=_draft(request, '', ['품명', '수량'], []), status='ready', confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        agent_id = store.save_agent(current)
+        store.add_asset(asset, [])
+        result = run_workflow(store, agent_id, '실행', '', file_ids=[asset['id']], llm=NoModel())
+        assert result['status'] == 'succeeded', result.get('error')
+        assert output_rows(result['artifact']) == [{'품명': '볼트', '수량': '2'}, {'품명': '너트', '수량': '3'}]
+    finally:
+        store.close()
+
+
+def test_save_checks_combined_document_extraction_size(tmp_path):
+    from agent_builder.design.document_rows_template import _draft, document_row_source_issues
+    first = mixed_document()
+    first['parser_metadata']['document_analysis']['blocks'][1]['text'] = '가' * 20000
+    second = deepcopy(first)
+    second['id'] = 'second'
+    current = state(first)
+    fields = ['품명', '수량']
+    assert document_row_source_issues(current, _draft('각 품목 CSV', '', fields, [first['id']])) == []
+    current.update(resources=[first, second], draft=_draft('각 품목 CSV', '', fields, [first['id'], second['id']]),
+                   status='ready', confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        with pytest.raises(ValueError, match='추출 범위가 큽니다'):
+            store.save_agent(current)
+    finally:
+        store.close()
+
+
+def test_scalar_guard_ignores_attachments_the_reader_will_not_open():
+    from agent_builder.design.document_rows_template import _draft, document_row_contract_issues
+    selected = document([block([['문서번호'], ['DLV-1']])])
+    excluded = document([block([['문서번호'], ['DLV-2'], ['DLV-3']])])
+    excluded['id'] = 'other-document'
+    request = '이 문서의 문서번호 한 값을 CSV로 저장해줘.'
+    draft = _draft(request, request, ['문서번호'], [selected['id']])
+    read, extract_node, exporter = draft['workflow']['nodes']
+    read['settings']['file_ids'] = []
+    extract_node['settings']['extraction_mode'] = 'fields'
+    exporter['settings']['fields'] = []
+    current = state(selected, request)
+    current['resources'].append(excluded)
+    assert document_row_contract_issues(current, draft) == []
+    draft['document_ids'] = [excluded['id']]
+    assert '반복 행' in document_row_contract_issues(current, draft)[0]
+
+
 def test_document_metadata_is_file_scoped_and_table_continuations_are_not_prose():
     from documents.resources.document_resources import chunks_for_asset
     from workflow_engine.executors.document.row_contract import native_rows
@@ -201,11 +276,11 @@ def test_exclusion_is_not_selection(prefix):
 def test_overlapping_chunks_preserve_original_line(label):
     from documents.resources.document_resources import chunks_for_asset
     from workflow_engine.executors.document.row_contract import native_rows
-    parts = list(chunks_for_asset(mixed_document()))[:1]
-    text = 'x' * 1397 + '\n' + label + ': 2026-11-18\n' + 'x' * 500
-    for offset, end in [(0, 1415), (1390, len(text))]:
-        parts.append({'file_id': 'delivery', 'file_name': 'a.pdf', 'source_id': f'delivery:date:{offset}',
-                      'block_id': 'date', 'offset': offset, 'text': text[offset:end]})
+    asset = mixed_document()
+    prefix = 1788 if label == '거래일자' else 1396
+    asset['parser_metadata']['document_analysis']['blocks'][1]['text'] = (
+        'x' * prefix + '\n' + label + ': 2026-11-18\n' + 'x' * 500)
+    parts = list(chunks_for_asset(asset))
     if label == '거래일자':
         assert native_rows(parts, ['거래일자', '품명'], [], 200)[0]['거래일자'] == '2026-11-18'
     else:
@@ -238,7 +313,7 @@ def test_replacement_compares_header_below_merged_title_and_preflight():
     from workflow_engine.executors.sources import source_file_ids
     from types import SimpleNamespace
     def asset(identifier, last):
-        table = block([['Shared title'], ['Code', 'Qty', last], ['A', '2', '3']])
+        table = block([['Shared title'], ['Code', 'Qty', last], ['A', '2', '3']], header_rows=(1,))
         table['data']['cells'][0]['col_span'] = 3
         return dict(document([table]), id=identifier)
     old, new = asset('old', 'Ordered'), asset('new', 'Returned')

@@ -14,6 +14,7 @@ from .adapters import LocalEngines, convert
 from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, block, bounds, project, sha256, validate
 from .readers import Inspector
 from .image_metadata import png_resolution
+from .table_quality import reconcile, render_cells
 
 PRIMARY = {'pdf': 'mineru', 'hwp': 'docling', 'hwpx': 'docling', 'doc': 'docling',
            'docx': 'docling', 'ppt': 'docling', 'pptx': 'docling', 'xls': 'native', 'xlsx': 'native',
@@ -402,17 +403,27 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             result['routing_decisions'].append(decision)
             ocr_jobs.append(dict(path=path, parent=parent, context=job, origin=[0, 0], scale=scale, bands=bands))
 
-    if ocr_jobs:
+    # Table OCR is retained separately as evidence, never duplicated in body text.
+    table_ocr = {}
+    verification_jobs = [dict(j, verification=True) for j in table_jobs]
+    all_ocr_jobs = ocr_jobs + verification_jobs
+    if all_ocr_jobs:
         try:
-            recognized = engines.run('paddleocr', sources=[j['path'] for j in ocr_jobs],
-                                     scope=[j['parent']['id'] for j in ocr_jobs], phase='supplement')
-            mapped = {str(j['path']): j for j in ocr_jobs}
+            recognized = engines.run('paddleocr', sources=[j['path'] for j in all_ocr_jobs],
+                                     scope=[j['parent']['id'] for j in all_ocr_jobs], phase='supplement')
+            mapped = {str(j['path']): j for j in all_ocr_jobs}
             seen = set()
             for output in recognized['outputs']:
                 job = mapped[output['source']]
                 seen.add(output['source'])
                 region = job['parent']
                 prediction = output['result']
+                if job.get('verification'):
+                    table_ocr[region['id']] = prediction
+                    region['data']['table_ocr'] = {key: prediction.get(key, []) for key in
+                        ('rec_texts', 'rec_boxes', 'rec_scores')}
+                    region['data']['table_ocr']['coordinate_system'] = 'ocr_crop_pixels'
+                    continue
                 bands = job.get('bands') or []
                 if bands:
                     prediction, unread = ocr_in_bands(prediction, bands, job['scale'])
@@ -420,7 +431,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 item = block('ocr-' + str(len(result['blocks']) + 1), 'text', region['native_location'],
                              parent=region['id'], unit=region['unit_id'], text=text, engine='paddleocr',
                              data={'ocr_scores': prediction.get('rec_scores', []), 'crop_origin': job['origin'],
-                                   'crop_scale': job['scale']})
+                                   'crop_scale': job['scale'], 'ocr_texts': prediction.get('rec_texts', []),
+                                   'ocr_boxes': prediction.get('rec_boxes', [])})
                 item['parser_version'] = recognized['version']
                 if bands:
                     item['data']['upright_y_bands'] = bands
@@ -430,7 +442,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 result['blocks'].append(item)
                 if not text.strip():
                     review('empty_ocr_region:' + region['id'])
-            if len(seen) != len(ocr_jobs):
+            if len(seen) != len(all_ocr_jobs):
                 review('missing_ocr_output')
         except AnalysisError as exc:
             review('image_ocr:' + exc.code)
@@ -447,6 +459,24 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 # A crop-local engine box must not masquerade as original PDF geometry.
                 if item['bbox']:
                     item['bbox']['coordinate_system'] = 'docling_crop_input_points'
+            tables = [b for b in added if 'table' in b['content_types'] and b['data'].get('cells')]
+            if len(tables) == 1:
+                item = tables[0]
+                cells, quality = reconcile(item['data'], table_ocr.get(region['id'], {}))
+                item['data']['table_quality'] = quality
+                if quality['repairs']:
+                    item['data']['original_cells'] = item['data']['cells']
+                    item['data']['original_text'] = item['text']
+                    item['data']['original_html'] = item['data'].get('html', '')
+                    item['data']['cells'] = cells
+                    item['text'], item['data']['html'] = render_cells(cells)
+                if quality['issues']:
+                    item['status'] = 'review_required'
+                    review('table_quality_unresolved:' + region['id'])
+            elif tables:
+                for item in tables:
+                    item['status'] = 'review_required'
+                review('table_quality_ambiguous_tables:' + region['id'])
             if not any('table' in b['content_types'] and b['data'].get('cells') for b in added):
                 review('table_structure_missing:' + region['id'])
                 context = job['context']

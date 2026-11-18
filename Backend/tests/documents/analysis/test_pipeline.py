@@ -318,7 +318,7 @@ class PipelineTests(unittest.TestCase):
     def test_image_table_goes_to_docling_and_crop_coordinates_stay_local(self):
         payload = run(self.picture(), self.work, engines=Engines(table=True))
         data = payload['document_analysis']
-        self.assertEqual([r['processor'] for r in data['routes']], ['layout', 'docling'])
+        self.assertEqual([r['processor'] for r in data['routes']], ['layout', 'paddleocr', 'docling'])
         self.assertEqual(len(payload['tables']), 1)
         table = next(b for b in data['blocks'] if b['engine'] == 'docling')
         self.assertIsNotNone(table['parent_object_id'])
@@ -358,7 +358,7 @@ class PipelineTests(unittest.TestCase):
                 payload = run(self.picture(), self.root / f'budget-{budget}', engines=engine, max_supplements=budget)
                 analysis = payload['document_analysis']
                 self.assertEqual(payload['parser_status'], 'partial')
-                self.assertEqual(len(engine.attempts), 2 if budget == 1 else 3)
+                self.assertEqual(len(engine.attempts), 3 if budget == 1 else 4)
                 candidates = [b for b in analysis['blocks'] if b.get('phase') == 'comparison']
                 if budget == 1:
                     self.assertEqual(candidates, [])

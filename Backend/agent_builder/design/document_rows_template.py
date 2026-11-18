@@ -519,7 +519,7 @@ def document_rows_reply(state, *, check_sources=True):
         draft = _draft(request, users[-1]['content'], fields, documents, document_table_id=table_id)
         source_issues = document_row_source_issues(state, draft) if check_sources else []
         if source_issues:
-            draft['questions'] = source_issues
+            draft['questions'] = [] if document_row_source_issues(state, draft, structural_only=True) else source_issues
             explanation += '\n' + '\n'.join(source_issues)
         return {'messages': messages + [{'role': 'assistant', 'content': explanation}], 'draft': draft,
                 'pending_questions': _remaining_questions(state), 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
@@ -535,7 +535,7 @@ def document_rows_reply(state, *, check_sources=True):
             draft = _draft(request, request, fields, documents)
             source_issues = document_row_source_issues(state, draft) if check_sources else []
             if source_issues:
-                draft['questions'] = source_issues
+                draft['questions'] = [] if document_row_source_issues(state, draft, structural_only=True) else source_issues
             return {'messages': messages + [{'role': 'assistant', 'content': '\n'.join(source_issues) if source_issues else EXPLANATION}], 'draft': draft,
                     'pending_questions': _remaining_questions(state), 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                     'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
@@ -615,10 +615,11 @@ def document_row_contract_issues(state, draft):
     return []
 
 
-def document_row_source_issues(state, draft):
+def document_row_source_issues(state, draft, *, structural_only=False):
     """Reject known unexecutable row exports before ready/save, without model calls."""
     from documents.resources.document_resources import chunks_for_asset
     from workflow_engine.executors.document.row_contract import native_rows, NO_COORDINATES
+    from workflow_engine.executors.document.table_rows import TableStructureError
     from workflow_engine.executors.document.extract_information import EVIDENCE_KEYS, MAX_ROWS, validate_extraction_size
     from workflow_engine.executors.sources import source_file_ids
     from workflow_engine.execution_path import records_source_node
@@ -661,12 +662,13 @@ def document_row_source_issues(state, draft):
                     selected_parts.append((asset['name'], parts))
                 validate_extraction_size(part for _, parts in selected_parts for part in parts)
             except ValueError as error:
-                return [str(error)]
+                return [] if structural_only else [str(error)]
             for name, parts in selected_parts:
                 try:
                     rows = native_rows(parts, settings.get('fields') or [], EVIDENCE_KEYS, MAX_ROWS)
-                    if rows is None:
+                    if rows is None and not structural_only:
                         return [name + ': ' + NO_COORDINATES]
                 except ValueError as error:
-                    return [name + ': ' + str(error)]
+                    if not structural_only or isinstance(error, TableStructureError):
+                        return [name + ': ' + str(error)]
     return []

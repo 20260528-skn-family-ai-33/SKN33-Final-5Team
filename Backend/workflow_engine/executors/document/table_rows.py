@@ -6,6 +6,12 @@ row identity. Unknown/merged layouts are refused rather than silently flattened.
 import re
 import unicodedata
 
+
+class TableStructureError(ValueError):
+    """Parser evidence needs review; a clarification answer cannot repair it."""
+    code = 'document_table_structure'
+
+
 COVERAGE_KEY = 'row_coverage'
 TABLE_INTENT = re.compile(r'엑셀|excel|xlsx|csv|표로|표 형태|표 형식|목록으로|한 줄씩|행으로|스프레드시트', re.I)
 _ITEM_SCOPE = re.compile(
@@ -76,13 +82,13 @@ def _grid(cells):
     grid = {}
     for cell in cells:
         if not isinstance(cell, dict):
-            raise ValueError('표 셀의 행·열 위치를 확인할 수 없습니다.')
+            raise TableStructureError('표 셀의 행·열 위치를 확인할 수 없습니다.')
         row = cell.get('row', cell.get('start_row_offset_idx'))
         column = cell.get('column', cell.get('start_col_offset_idx'))
         if type(row) is not int or type(column) is not int or row < 0 or column < 0:
-            raise ValueError('표 셀의 행·열 위치를 확인할 수 없습니다.')
+            raise TableStructureError('표 셀의 행·열 위치를 확인할 수 없습니다.')
         if column in grid.setdefault(row, {}):
-            raise ValueError('동일한 행·열에 여러 셀이 있어 추출을 중단했습니다.')
+            raise TableStructureError('동일한 행·열에 여러 셀이 있어 추출을 중단했습니다.')
         grid[row][column] = cell
     return sorted(grid.items())
 
@@ -313,7 +319,7 @@ def native_records(parts, fields, evidence_keys, max_rows):
             unstructured_tables = True
             continue
         if part.get('review_required'):
-            raise ValueError('표 인식 결과에 검토가 필요합니다. 원본과 대조한 뒤 실행해 주세요.')
+            raise TableStructureError('표 인식 결과에 검토가 필요합니다. 원본과 대조한 뒤 실행해 주세요.')
         grid = _grid(cells)
         header, selected = _columns(grid, targets)
         if header is None:
@@ -326,9 +332,9 @@ def native_records(parts, fields, evidence_keys, max_rows):
             for field, column in selected.items():
                 cell = row.get(column)
                 if cell is None:
-                    raise ValueError('표의 일부 셀 위치가 없어 모든 항목의 대응을 확인할 수 없습니다.')
+                    raise TableStructureError('표의 일부 셀 위치가 없어 모든 항목의 대응을 확인할 수 없습니다.')
                 if not _unit_cell(cell):
-                    raise ValueError('추출 열의 병합 셀을 행별로 대응할 수 없습니다. 표 구조를 확인해 주세요.')
+                    raise TableStructureError('추출 열의 병합 셀을 행별로 대응할 수 없습니다. 표 구조를 확인해 주세요.')
                 value = _text(cell)
                 record[field] = value or None
                 evidence[field] = {**{key: part[key] for key in evidence_keys if key in part},
@@ -338,7 +344,7 @@ def native_records(parts, fields, evidence_keys, max_rows):
             if len(records) > max_rows:
                 raise ValueError('추출 행 제한을 넘었습니다. 파일을 나누어 주세요. 일부 행만 저장하지 않았습니다.')
     if relevant and unstructured_tables:
-        raise ValueError('셀 위치를 확인할 수 없는 표가 함께 있어 전체 행의 추출 범위를 확인할 수 없습니다. 원본 표를 검토해 주세요.')
+        raise TableStructureError('셀 위치를 확인할 수 없는 표가 함께 있어 전체 행의 추출 범위를 확인할 수 없습니다. 원본 표를 검토해 주세요.')
     if relevant and unmatched_tables:
         raise ValueError('요청한 열과 대응하지 않는 표가 함께 있습니다. 전체 행의 추출 범위를 확인해 주세요.')
     return records if relevant else None

@@ -4,6 +4,14 @@ def _unverifiable_tasks(coverage):
 
 
 def supervisor_node(state):
+    from agent_builder.design.document_rows_template import document_row_source_issues
+    if state.get('draft') and (problems := document_row_source_issues(state, state['draft'], structural_only=True)):
+        return {'route': 'invalid', 'status': 'validation_failed', 'confirmed': False,
+                'pending_questions': [], 'draft': {**state['draft'], 'questions': []},
+                'system_failure': {'kind': 'document_table_structure', 'retryable': False,
+                    'reason': '\n'.join(problems), 'action': '문서 인식 결과를 원본과 대조하고 수정한 뒤 다시 시도해 주세요.'},
+                'trace': state.get('trace', []) + [{'node': 'supervisor', 'label': '문서 표 품질 검토',
+                    'status': 'failed', 'detail': '\n'.join(problems)}]}
     from agent_builder.capabilities.capability_gate import blocking_issue
     issue=blocking_issue(state)
     if issue:

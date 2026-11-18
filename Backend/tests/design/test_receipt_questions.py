@@ -260,6 +260,7 @@ def test_reopened_capability_questions_resume_with_selected_fields(tmp_path, mon
                                      'question_id': result['pending_questions'][0]['id']}), config)
             assert {q['source'] for q in result['pending_questions']} == {'capability'}
             assert old_assessor.calls == len(decisions)
+            capability_answers = result.get('capability_answers', [])
             session = store.update_session(session, session['revision'], result)
         finally:
             connection.close()
@@ -292,6 +293,14 @@ def test_reopened_capability_questions_resume_with_selected_fields(tmp_path, mon
                       'question_id': fields['id'], 'content': answer}, conversation=planner)
     assert resumed['capability_assessment']['decision'] == 'existing_tools'
     assert [m['content'] for m in resumed['messages'] if m['role'] == 'user'] == [*user_turns, answer]
+    store = Storage(tmp_path)
+    graph, connection = reassess(store, conversation=planner)
+    try:
+        answers = graph.get_state(config).values.get('capability_answers', [])
+        assert answers == capability_answers
+    finally:
+        connection.close()
+        store.close()
     if prompt == EXCEL_REQUEST:
         assert_workbook_draft(resumed, ['상호명', '승인번호'], attached['resources'][0])
         assert not planner_inputs

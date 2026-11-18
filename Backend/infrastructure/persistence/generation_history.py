@@ -49,8 +49,9 @@ def error_info(error, stage, api_key=''):
         code, detail = 'save_failed', '워크플로우를 저장하지 못했습니다.'
     elif code == 'invalid_model_response':
         if isinstance(error, (ValueError, TypeError, KeyError)) and stage == 'request_analysis':
-            code = 'invalid_request'
-        detail = '모델 응답이 필요한 JSON·설정 형식을 충족하지 못했습니다.'
+            code, detail = 'invalid_request', '현재 입력과 대화 상태를 확인해 주세요.'
+        else:
+            detail = '모델 응답이 필요한 JSON·설정 형식을 충족하지 못했습니다.'
     elif code != 'processing_error':
         detail = details['reason']
     else:

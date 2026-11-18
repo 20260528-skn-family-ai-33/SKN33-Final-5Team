@@ -44,17 +44,24 @@ def chunks_for_asset(asset):
     if analysis:
         review=(asset.get('parser_metadata') or {}).get('document_review') or {}
         for block in analysis['blocks']:
-            if not block.get('selected', True) or not block.get('text', '').strip():
+            if not block.get('selected', True):
+                continue
+            block_text = block.get('text', '')
+            if not block_text.strip() and 'table' in block.get('content_types', []):
+                block_text = '\n'.join(str(cell.get('text') or '') for cell in (block.get('data') or {}).get('cells', []))
+            if not block_text.strip():
                 continue
             location = block['native_location']
-            for start in range(0, len(block['text']), 1400):
-                text = block['text'][start:start + 1800]
+            for start in range(0, len(block_text), 1400):
+                text = block_text[start:start + 1800]
                 if text.strip():
                     yield dict(source_id=f"{asset['id']}:{block['id']}:{start}", file_id=asset['id'],
                                file_name=asset['name'], page=location.get('page'), offset=start, text=text,
                                block_id=block['id'], native_location=location, bbox=block.get('bbox'),
                                parser_engine=block['engine'], review_required=analysis['review_required'] and review.get('status')!='completed',
-                               document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0))
+                               document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0),
+                               **({'table_cells': block['data']['cells']} if start == 0 and 'table' in block.get('content_types', [])
+                                  and (block.get('data') or {}).get('cells') else {}))
         return
     for page, text in enumerate(asset.get('pages') or [asset.get('text', '')], 1):
         for start in range(0, len(text), 1400):

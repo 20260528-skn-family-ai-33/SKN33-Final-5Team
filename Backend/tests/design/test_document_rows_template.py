@@ -165,11 +165,11 @@ def test_rows_mode_returns_one_verified_record_per_item_and_drops_invented_value
     assert [(r['row'],r['상품명'],r['금액'],r['status']) for r in records]==[(1,'굿모닝우유900ML','1.350','verified'),(2,'양파',None,'partial')]
     assert records[0]['evidence']['금액']['quote']=='*8801104210645 1.350'
 
-    saved=export_result.execute({'tool':'export_result','bindings':[{'input':'records','node_id':'extract','output':'records'}],'settings':{'format':'csv'}},
-                                {'outputs':{'extract':{'records':records}}},None,{},None)['artifact']
-    table=list(csv.reader(io.StringIO(saved['content'].lstrip('﻿'))))
-    assert table[0]==['file_name','row','상품명','금액','status','evidence']
-    assert table[1][:5]==['receipt.jpg','1','굿모닝우유900ML','1.350','verified'] and table[2][:5]==['receipt.jpg','2','양파','','partial']
+    # Value grounding alone cannot certify that every document row was extracted.
+    assert all(record['row_coverage'] == 'unverified' for record in records)
+    with pytest.raises(ValueError, match='전체 행'):
+        export_result.execute({'tool':'export_result','bindings':[{'input':'records','node_id':'extract','output':'records'}],'settings':{'format':'csv'}},
+                              {'outputs':{'extract':{'records':records}}},None,{},None)
 
 
 def test_explicit_xlsx_request_delegates_to_registered_spreadsheet_planner():

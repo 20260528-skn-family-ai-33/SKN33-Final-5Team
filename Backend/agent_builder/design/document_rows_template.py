@@ -190,7 +190,7 @@ def _draft(request, answer, fields, documents):
          'settings': _settings(fields=fields, extraction_mode='rows')},
         {'id': 'save', 'tool': 'export_result', 'label': 'CSV로 저장',
          'bindings': [{'input': 'records', 'node_id': 'extract', 'output': 'records'}],
-         'settings': _settings(format='csv')},
+         'settings': _settings(format='csv', fields=fields)},
     ]
     edges = [{'source': 'read', 'target': 'extract', 'branch': 'next'},
              {'source': 'extract', 'target': 'save', 'branch': 'next'}]
@@ -285,6 +285,7 @@ def _field_addition(state):
         return None
     result = deepcopy(draft)
     result['workflow']['nodes'][1]['settings']['fields'] = fields
+    result['workflow']['nodes'][2]['settings']['fields'] = fields
     result['instructions'] = _draft(draft['purpose'], '', fields, documents)['instructions']
     result['requirements'].append(dict(description='추출 항목 추가',source_id='user',quote=messages[-1]['content']))
     result['explanation'] = '기존 항목을 유지하고 추출 항목을 반영했습니다: ' + ', '.join(fields)
@@ -399,3 +400,46 @@ def _upload_followup_request(messages):
         if _TABLE_INTENT.search(text):return text
         if _CHANGE.search(text):return None
     return None
+
+
+def document_row_contract_issues(state, draft):
+    """The source request owns extraction granularity; a generated graph cannot downgrade it."""
+    messages = state.get('messages', [])
+    latest = max((index for index, message in enumerate(messages) if message.get('role') == 'user'), default=-1)
+    if latest < 0 or draft.get('questions') or draft.get('unsupported'):
+        return []
+    expected = document_rows_reply({**state, 'messages': messages[:latest + 1], 'draft': None})
+    expected_nodes = ((expected or {}).get('draft', {}).get('workflow') or {}).get('nodes', [])
+    if not expected_nodes:
+        # The full planner handles arbitrary document names/extra processing.
+        # Native source shape still forbids reducing repeated table cells to one value.
+        if not any(_TABLE_INTENT.search(message['content']) for message in messages if message.get('role') == 'user'):
+            return []
+        from documents.resources.document_resources import chunks_for_asset
+        from workflow_engine.executors.document.table_rows import native_records
+        from workflow_engine.executors.document.extract_information import EVIDENCE_KEYS, MAX_ROWS
+        for node in (draft.get('workflow') or {}).get('nodes', []):
+            if node['tool'] != 'extract_information' or not node['settings'].get('fields'):
+                continue
+            for asset in state.get('resources', []):
+                if asset.get('kind') != 'document':
+                    continue
+                try:
+                    records = native_records(list(chunks_for_asset(asset)), node['settings']['fields'], EVIDENCE_KEYS, MAX_ROWS)
+                except ValueError:
+                    continue  # The executor reports unsupported layouts before exporting.
+                if records is not None and node['settings'].get('extraction_mode') != 'rows':
+                    return ['원본 표의 반복 행을 단일 값으로 축소할 수 없습니다. 행 단위 추출로 설계해 주세요.']
+        return []
+    fields = expected_nodes[1]['settings']['fields']
+    nodes = (draft.get('workflow') or {}).get('nodes', [])
+    extractors = [node for node in nodes if node['tool'] == 'extract_information']
+    exporters = [node for node in nodes if node['tool'] == 'export_result']
+    if (len(extractors) != 1 or extractors[0]['settings'].get('extraction_mode') != 'rows'
+            or extractors[0]['settings'].get('fields') != fields
+            or len(exporters) != 1 or exporters[0]['settings'].get('fields') != fields
+            or exporters[0]['settings'].get('format') != 'csv'
+            or not any(binding.get('node_id') == extractors[0]['id'] and binding.get('output') == 'records'
+                       and binding.get('input') == 'records' for binding in exporters[0].get('bindings', []))):
+        return ['문서 표 정리는 항목마다 한 행을 추출하고 요청한 열을 CSV에 저장해야 합니다. 단일 값 추출로 변경할 수 없습니다.']
+    return []

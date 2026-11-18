@@ -84,10 +84,13 @@ def test_rows_extraction_adds_the_check_column_before_status_and_keeps_values():
     records = extract_information.execute(node, {'outputs': {'read': {'documents': [part]}}, 'request': '영수증 정리'}, None, {}, llm)['records']
     assert [r['금액'] for r in records] == ['2,100', '3,380', '2,100']
     assert all(r['합계_검산'].startswith('불일치') and r['status'] == 'verified' for r in records)
-    saved = export_result.execute({'tool': 'export_result', 'bindings': [{'input': 'records', 'node_id': 'extract', 'output': 'records'}],
-                                   'settings': {'format': 'csv'}}, {'outputs': {'extract': {'records': records}}}, None, {}, None)['artifact']
-    header = next(csv.reader(io.StringIO(saved['content'].lstrip('﻿'))))
-    assert header == ['file_name', 'row', '상품명', '금액', '합계_검산', 'status', 'evidence']
+    # Check results and provenance remain internal. A totals discrepancy or
+    # value citation does not certify that every source row was extracted.
+    assert list(records[0]).index('합계_검산') < list(records[0]).index('status')
+    assert all(record['row_coverage'] == 'unverified' for record in records)
+    with pytest.raises(ValueError, match='전체 행'):
+        export_result.execute({'tool': 'export_result', 'bindings': [{'input': 'records', 'node_id': 'extract', 'output': 'records'}],
+                              'settings': {'format': 'csv'}}, {'outputs': {'extract': {'records': records}}}, None, {}, None)
 
 
 def test_check_column_name_is_reserved():

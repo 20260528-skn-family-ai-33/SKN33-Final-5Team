@@ -406,10 +406,13 @@ def test_boolean_keyword_does_not_change_an_already_confirmed_relation(answer):
     assert compound_filter_state(compound_state(BASE, answer))['mode'] == 'all'
 
 
-def path_state(match='any'):
-    s=compound_state(('비용이 10원 미만이거나 수량이 3개 미만인 행' if match=='any' else
-                      '비용이 10원 이상이고 수량이 3개 이상인 행') + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
-    return generate(seal(s))
+def path_state(match='any', *, missing_policy='error'):
+    policy_label = {'error': '오류', 'keep': '유지'}[missing_policy]
+    selection = '비용이 10원 미만이거나 수량이 3개 미만인 행' if match == 'any' else '비용이 10원 이상이고 수량이 3개 이상인 행'
+    s = compound_state(selection + f'을 JSON으로 저장해줘. 빈 값은 {policy_label}, 중복은 유지해.')
+    values = {**PARTIAL, 'output.format': ('json', 'JSON'), 'missing.policy': (missing_policy, policy_label),
+              'duplicate.policy': ('keep', '유지')}
+    return generate(seal(s, values))
 
 
 def with_filter_chain(s, plans):
@@ -463,8 +466,9 @@ def test_filter_path_equivalence_matches_exhaustive_boolean_oracle(match):
 
 
 @pytest.mark.parametrize(('match','shape'),[('all','repeat'),('any','repeat'),('all','redundant-or')])
-def test_equivalent_sequential_graphs_store_and_export_exact_rows(tmp_path, match, shape):
-    s=path_state(match);plan=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+@pytest.mark.parametrize('missing_policy', ['error', 'keep'])
+def test_equivalent_sequential_graphs_store_and_export_exact_rows(tmp_path, match, shape, missing_policy):
+    s=path_state(match, missing_policy=missing_policy);plan=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
     if shape=='split':plans=[dict(filters=[r],match='all') for r in plan['filters']]
     elif shape=='repeat':plans=[plan,plan]
     else:plans=[dict(filters=plan['filters'],match='any'),plan]
@@ -472,14 +476,38 @@ def test_equivalent_sequential_graphs_store_and_export_exact_rows(tmp_path, matc
     result=validate_node(equivalent)
     assert result['status']=='ready',result['issues']
     rows=[dict(비용=15,수량=1),dict(비용=15,수량=4),dict(비용=5,수량=4)]
+    missing = [dict(비용=None, 수량=1), dict(비용=None, 수량=None)] if missing_policy == 'keep' else []
     store=Storage(tmp_path)
     try:
-        store.add_asset(s['resources'][0],rows)
+        store.add_asset(s['resources'][0],rows + missing)
         saved=store.save_agent(equivalent)
         actual=run_workflow(store,saved,'실행','',file_ids=[s['resources'][0]['id']])
-        expected=[rows[1]] if match=='all' else [rows[0],rows[2]]
+        expected=[rows[1], *missing[-1:]] if match=='all' else [rows[0], rows[2], *missing]
         assert actual['status']=='succeeded' and actual['rows']==expected
     finally:store.close()
+
+
+def test_keep_policy_cannot_discard_all_missing_alternatives_through_an_extra_stage(tmp_path):
+    s = path_state(missing_policy='keep')
+    plan = s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+    added = dict(field='할인', operator='gt', value=5, compare_field=None, value_type='number')
+    extra_plan = dict(plan, filters=[*plan['filters'], added])
+    matching = dict(비용=None, 수량=None, 할인=0)
+    ordinary = dict(비용=5, 수량=4, 할인=0)
+    not_matching = dict(비용=15, 수량=4, 할인=0)
+    invalid = with_filter_chain(s, [extra_plan, plan])
+    assert validate_node(invalid)['status'] != 'ready'
+    asset = s['resources'][0]
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [matching, ordinary, not_matching])
+        with pytest.raises(ValueError):
+            store.save_agent(invalid)
+        saved = store.save_agent(s)
+        result = run_workflow(store, saved, '실행', '', file_ids=[asset['id']])
+        assert result['status'] == 'succeeded' and result['rows'] == [matching, ordinary]
+    finally:
+        store.close()
 
 
 @pytest.mark.parametrize('mutation',['dedup','source','raw-branch','mutate-field','aggregate'])

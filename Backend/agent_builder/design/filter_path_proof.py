@@ -4,19 +4,41 @@ Sequential filters are conjunctions of clauses, not independent witnesses.
 Positive AND/OR clauses have a canonical form after redundant supersets are
 removed. No truth-table expansion or sampling of live rows is used as proof.
 """
+from .condition_requirements import ordered_row_steps
 from .content_lineage import content_bindings
 from .requirement_coverage import _arguments, _condition
 from .workflow_paths import workflow_paths
 
 
-def clauses(plan):
-    atoms = frozenset(_condition(rule) for rule in plan.get('filters', []))
-    if not atoms:
-        return frozenset()
+_UNARY_OPERATORS = {'is_empty', 'not_empty'}
+
+
+def _missing_operands(rule):
+    if rule['operator'] in _UNARY_OPERATORS:
+        return []
+    fields = [rule['field']]
+    if rule.get('compare_field'):
+        fields.append(rule['compare_field'])
+    return fields
+
+
+def clauses(plan, *, missing_policy):
+    rules = plan.get('filters', [])
     mode = plan.get('match', 'all')
     if mode not in ('all', 'any'):
         raise ValueError('Unknown selection connective')
-    return frozenset({atoms} if mode == 'any' else (frozenset({atom}) for atom in atoms))
+    groups = [rules] if rules and mode == 'any' else [[rule] for rule in rules]
+    expression = set()
+    for group in groups:
+        matches = frozenset(('matches', _condition(rule)) for rule in group)
+        if missing_policy == 'keep':
+            # An OR also passes when every comparison was skipped for missing operands.
+            # Distribute that conjunction across the OR before removing redundant clauses.
+            for rule in group:
+                expression.add(matches | {('missing', field) for field in _missing_operands(rule)})
+        else:
+            expression.add(matches)
+    return frozenset(expression)
 
 
 def canonical(expression):
@@ -28,15 +50,20 @@ def canonical(expression):
 
 def filter_path_issues(state, draft, groups):
     error = ['행 선별의 전체 데이터 경로가 요청한 AND/OR 조건과 일치하지 않습니다. 앞뒤 필터의 행 누락과 변환을 확인하세요.']
-    expected = canonical(frozenset().union(*(clauses(group) for group in groups)))
-    workflow = draft.get('workflow')
-    if not workflow:
-        return [] if canonical(clauses(draft.get('execution_plan') or {})) == expected else error
-    nodes = {node['id']: node for node in workflow['nodes']}
     fields = {rule['field'] for group in groups for rule in group['filters']}
     tables = {asset['id'] for asset in state.get('resources', []) if asset.get('kind') == 'table'}
     slots = (state.get('condition_ledger') or {}).get('slots') or {}
     policies = {key: slot.get('value') for key, slot in slots.items() if slot.get('status') == 'specified'}
+    default_plan = draft.get('execution_plan') or {}
+    missing_policies = (policies['missing.policy'],) if 'missing.policy' in policies else ('ask', 'keep')
+    expected = {canonical(frozenset().union(*(clauses(group, missing_policy=policy) for group in groups)))
+                for policy in missing_policies}
+    workflow = draft.get('workflow')
+    if not workflow:
+        actual = clauses(default_plan, missing_policy=default_plan.get('missing_policy', 'ask'))
+        return [] if canonical(actual) in expected else error
+    nodes = {node['id']: node for node in workflow['nodes']}
+    dedup_inputs = {frozenset()} if ordered_row_steps(state) == ('policy', 'filter') else expected
 
     def trace(identifier, output, active, seen):
         if identifier not in active or identifier in seen:
@@ -52,8 +79,8 @@ def filter_path_issues(state, draft, groups):
         if not operation:
             safe = tool in ('write_result', 'export_result')
             if tool == 'filter_sort' and output == 'table':
-                plan = settings.get('execution_plan') or draft.get('execution_plan') or {}
-                local = clauses(plan)
+                plan = settings.get('execution_plan') or default_plan
+                local = clauses(plan, missing_policy=plan.get('missing_policy', 'ask'))
                 # An extra node may not silently change the data policies.
                 for key, default in (('missing_policy', 'ask'), ('duplicate_policy', 'keep')):
                     policy_key = key.replace('_', '.')
@@ -84,8 +111,8 @@ def filter_path_issues(state, draft, groups):
         if upstream is None:
             return None
         combined = upstream | local
-        if removes_duplicates and canonical(upstream) != expected:
-            return None  # The executor deduplicates BEFORE its local filters; only upstream selection can protect rows.
+        if removes_duplicates and canonical(upstream) not in dedup_inputs:
+            return None  # Native deduplication runs before the local predicates.
         return combined
 
     try:
@@ -102,7 +129,7 @@ def filter_path_issues(state, draft, groups):
             for node, output in endpoints:
                 checked += 1
                 actual = trace(node['id'], output, active, set())
-                if actual is None or canonical(actual) != expected:
+                if actual is None or canonical(actual) not in expected:
                     return error
         return [] if checked else error
     except (ValueError, KeyError, TypeError):

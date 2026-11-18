@@ -86,6 +86,7 @@ def _fields_in_request(request):
 _RECEIPT = re.compile(r'(영수증|전표|receipt)', re.IGNORECASE)
 RECEIPT_FIELDS = ['상품명', '단가', '수량', '금액']
 
+QUESTION_KEY = 'document.fields'
 QUESTION = '어떤 항목을 한 줄씩 뽑을까요? 쉼표로 구분해 적어 주세요. (예: 상품명, 단가, 수량, 금액)'
 ASK_EXPLANATION = '첨부한 문서의 반복 항목을 한 줄씩 표로 정리합니다.'
 ALL_FIELDS_NOTE = '"전체"처럼 답하면 어떤 열을 만들지 정할 수 없어요. 표의 열이 될 항목 이름을 적어 주세요.'
@@ -169,7 +170,7 @@ def document_rows_cancel_reply(state):
         questions=[], question_options=[], unsupported=[], explanation=CANCELLED,
         execution_plan={'filters': [], 'sort': [], 'match': 'all', 'missing_policy': 'ask',
                         'duplicate_policy': 'keep', 'duplicate_field': None, 'output_format': 'csv'}).model_dump()
-    return {'messages': messages + [{'role': 'assistant', 'content': CANCELLED}], 'draft': draft,
+    return {'messages': messages + [{'role': 'assistant', 'content': CANCELLED}], 'draft': draft, 'pending_questions': _remaining_questions(state),
             'confirmed': False, 'saved_agent_id': None,
             'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 취소', 'status': 'completed',
                                                 'detail': '항목 질문에 대한 취소 답변을 모델 호출 없이 처리했습니다.', 'model_calls': 0}]}
@@ -210,19 +211,49 @@ def _ask(state, request, note=None):
     draft = AgentDraft(
         name='문서 항목을 표로 정리', purpose=request[:2000], instructions=request[:12000], tool_ids=[], document_ids=[],
         requirements=[{'description': '사용자 요청', 'source_id': 'user', 'quote': request[:2000]}],
-        questions=[QUESTION], question_options=[], unsupported=[], explanation=ASK_EXPLANATION,
+        questions=[QUESTION], question_options=[[]], question_responses=[{'type':'text'}], unsupported=[], explanation=ASK_EXPLANATION,
         execution_plan={'filters': [], 'sort': [], 'match': 'all', 'missing_policy': 'ask',
                         'duplicate_policy': 'keep', 'duplicate_field': None, 'output_format': 'csv'}).model_dump()
-    # The message must keep ending with QUESTION; that is how the next answer is recognized.
+    from agent_builder.conditions.clarification_core import question_record
+    scope = ':'.join([state.get('session_id', ''), *sorted(str(resource.get('id')) + '@' + str(resource.get('version'))
+                                                   for resource in state.get('resources', []) if resource.get('kind') == 'document')])
+    question = question_record('orchestration', QUESTION_KEY, QUESTION, scope=scope)
+    question['response'] = {'type':'text'}
+    # Preserve one typed question identity, independently of how the chat renders its sentences.
     return {'messages': state['messages'] + [{'role': 'assistant', 'content': ASK_EXPLANATION + ('\n' + note if note else '') + '\n• ' + QUESTION}],
-            'draft': draft, 'confirmed': False, 'saved_agent_id': None,
+            'draft': draft, 'pending_questions': [question], 'confirmed': False, 'saved_agent_id': None,
             'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 항목 확인', 'status': 'needs_input',
                                                 'detail': '고정 흐름(문서 읽기 → 목록 추출 → CSV 저장)에 쓸 항목을 모델 호출 없이 묻습니다.', 'model_calls': 0}]}
 
 
-def _field_answer(content):
-    # The answer form includes the question in the displayed chat message.
-    text = content.removeprefix(QUESTION + ' → ').strip()
+
+def _remaining_questions(state):
+    labels = {QUESTION, *re.split(r'(?<=[?？])\s+', QUESTION)}
+    return [question for question in state.get('pending_questions', [])
+            if question.get('key') != QUESTION_KEY and question.get('text') not in labels]
+
+def _field_answer(content, state=None):
+    # Read a typed answer by question identity; the chat label is presentation only.
+    text = content.strip()
+    labels = {QUESTION, *re.split(r'(?<=[?？])\s+', QUESTION)}
+    if state:
+        latest = max((index for index, message in enumerate(state.get('messages', [])) if message.get('role') == 'user'), default=-1)
+        for event in reversed(state.get('clarification_answers', [])):
+            if event.get('turn') != latest or not event.get('explicit'):
+                continue
+            ids = {question['id'] for question in event.get('questions', [])
+                   if question.get('key') == QUESTION_KEY or question.get('text') in labels}
+            values = [item.get('value') for item in event.get('answers', []) if item.get('question_id') in ids]
+            if len(values) == 1 and isinstance(values[0], str):
+                text = values[0].strip()
+                break
+    # Compatibility for older messages that saved a rendered question fragment.
+    for label in sorted(labels, key=len, reverse=True):
+        if text.startswith(label + ' → '):
+            text = text[len(label + ' → '):].strip()
+            break
+    if state:
+        text = _preview_field_selection(text, state.get('resources', [])) or text
     # Normalize only a complete field-list command, never a general sentence.
     command = re.fullmatch(r'(.+?)(?:을|를|도)\s*(?:추출|추가|포함)(?:해\s*(?:줘|주세요)|해주세요)[.!\s]*', text)
     if command:
@@ -231,6 +262,27 @@ def _field_answer(content):
             return fields
     return text
 
+
+
+def _preview_field_selection(content, resources):
+    """Resolve the existing preview action against actual source aliases, never guessed labels."""
+    documents = [resource for resource in resources if resource.get('kind') == 'document']
+    if len(documents) != 1:
+        return None  # Do not discard a multi-file/table scope that the fixed recipe cannot express.
+    resource = documents[0]
+    prefix, suffix = resource.get('name', '') + '에서 ', ' 항목을 추출해 주세요.'
+    if not content.startswith(prefix) or not content.endswith(suffix):
+        return None
+    from documents.resources.file_inspection import inspect_file
+    tables = inspect_file(resource)['tables']
+    if len(tables) != 1:
+        return None
+    table = tables[0]
+    aliases = {'「' + table['name'] + '」의 ' + field: field for field in table['columns']}
+    chosen = content[len(prefix):-len(suffix)].split(', ')
+    if not chosen or any(alias not in aliases for alias in chosen):
+        return None
+    return ', '.join(dict.fromkeys(aliases[alias] for alias in chosen))
 
 def _simple_extraction(state):
     from .request_guards import review_request
@@ -318,7 +370,7 @@ def document_rows_applies(state):
         return True
     if _awaiting_fields(state):
         # Same order as document_rows_reply: "다 뽑아줘" answers the question although it ends like a command.
-        answer = _field_answer(messages[-1]['content'])
+        answer = _field_answer(messages[-1]['content'], state)
         if _processing_in_fields(_SPLIT.split(answer)):
             return False
         return wants_all_fields(answer) or not is_request_change(answer)
@@ -353,7 +405,7 @@ def document_rows_reply(state):
                     detail='기존 문서 표 정리 흐름의 항목 목록만 확장했습니다.',model_calls=0)]}
     asked = _awaiting_fields(state)
     if asked:
-        answer = _field_answer(users[-1]['content'])
+        answer = _field_answer(users[-1]['content'], state)
         if _processing_in_fields(_SPLIT.split(answer)):
             return None
         request = next((m['content'] for m in users[:-1][::-1] if _TABLE_INTENT.search(m['content'])), users[0]['content'])
@@ -372,9 +424,9 @@ def document_rows_reply(state):
                 return _ask(state, request, note=FIELD_NAMES_NOTE)
             if reserved_field_issue(fields):
                 return _ask(state, request, note=reserved_field_issue(fields))
-        draft = _draft(request, answer, fields, documents)
+        draft = _draft(request, users[-1]['content'], fields, documents)
         return {'messages': messages + [{'role': 'assistant', 'content': explanation}], 'draft': draft,
-                'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
+                'pending_questions': _remaining_questions(state), 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                 'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
                                                     'detail': '문서 읽기 → 목록 추출(' + ', '.join(fields) + ') → CSV 저장을 코드로 구성했습니다.', 'model_calls': 0}]}
     request=users[-1]['content'] if _TABLE_INTENT.search(users[-1]['content']) else _upload_followup_request(messages)
@@ -386,7 +438,7 @@ def document_rows_reply(state):
             # Already listed: do not ask again (clarification core: settled questions are not asked).
             draft = _draft(request, request, fields, documents)
             return {'messages': messages + [{'role': 'assistant', 'content': EXPLANATION}], 'draft': draft,
-                    'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
+                    'pending_questions': _remaining_questions(state), 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                     'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
                                                         'detail': '요청에 적힌 항목(' + ', '.join(fields) + ')으로 문서 읽기 → 목록 추출 → CSV 저장을 구성했습니다.', 'model_calls': 0}]}
         return _ask(state, request)

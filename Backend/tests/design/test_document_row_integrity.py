@@ -258,3 +258,66 @@ def test_selected_table_cells_survive_even_without_flattened_parser_text():
     asset = document()
     asset['parser_metadata']['document_analysis']['blocks'][0]['text'] = ''
     assert [{field: row[field] for field in ('품명', '실입고')} for row in native(asset)] == EXPECTED
+
+
+@pytest.mark.parametrize('form', ['typed', 'whole_label', 'fragment_label', 'translated_label'])
+def test_field_answer_uses_question_identity_and_keeps_csv_in_the_workflow(tmp_path, form):
+    from agent_builder.design.document_rows_template import QUESTION_KEY
+    asset = document(); s = state(asset, '이 문서 csv 로 저장해줘')
+    store = Storage(tmp_path); store.add_asset(asset, [])
+    graph, connection = build_graph(store, conversation=no_planner, condition_mode='off', capability_mode='off')
+    config = {'configurable': {'thread_id': s['session_id']}}
+    try:
+        asked = graph.invoke(s, config)
+        assert len(asked['pending_questions']) == 1
+        q = asked['pending_questions'][0]
+        assert q['key'] == QUESTION_KEY and q['response'] == {'type': 'text'}
+        if form == 'typed':
+            answer = dict(type='message', content='품명, 실입고')
+        else:
+            label = (QUESTION if form == 'whole_label' else QUESTION.split('? ', 1)[1]
+                     if form == 'fragment_label' else 'changed display label')
+            answer = dict(type='message', content=label + ' → 품명, 실입고',
+                          question_answers=[dict(question_id=q['id'], value='품명, 실입고')])
+        ready = graph.invoke(Command(resume=answer), config)
+        assert ready['status'] == 'ready', ready.get('issues')
+        assert not ready['pending_questions']
+        assert [node['tool'] for node in ready['draft']['workflow']['nodes']] == ['read_document', 'extract_information', 'export_result']
+        assert ready['draft']['workflow']['nodes'][1]['settings']['fields'] == ['품명', '실입고']
+        saved = graph.invoke(Command(resume=dict(type='confirm')), config)
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[asset['id']], llm=NoModel())
+        assert result['status'] == 'succeeded' and output_rows(result['artifact']) == EXPECTED
+    finally:
+        connection.close(); store.close()
+
+
+def test_legacy_question_fragment_answer_is_accepted_without_a_second_question():
+    from tests.design.test_document_rows_template import asked_state
+    content = QUESTION.split('? ', 1)[1] + ' → 품명, 실입고'
+    reply = document_rows_reply(asked_state(content, request='이 문서 CSV로 저장해줘', doc=document()))
+    assert not reply['draft']['questions']
+    assert reply['draft']['workflow']['nodes'][1]['settings']['fields'] == ['품명', '실입고']
+    assert reply['draft']['workflow']['nodes'][2]['settings']['format'] == 'csv'
+
+
+def test_preview_selection_resolves_actual_aliases_without_losing_original_export(tmp_path):
+    from tests.design.test_document_rows_template import asked_state
+    asset = document()
+    content = asset['name'] + '에서 「표 1」의 품명, 「표 1」의 실입고 항목을 추출해 주세요.'
+    s = asked_state(content, request='이 문서 CSV로 저장해줘', doc=asset)
+    s.update(document_rows_reply(s)); s.update(status='ready', confirmed=True)
+    assert [node['tool'] for node in s['draft']['workflow']['nodes']] == ['read_document', 'extract_information', 'export_result']
+    assert s['draft']['workflow']['nodes'][1]['settings']['fields'] == ['품명', '실입고']
+    store = Storage(tmp_path); store.add_asset(asset, [])
+    try:
+        result = run_workflow(store, store.save_agent(s), '실행', '', file_ids=[asset['id']], llm=NoModel())
+        assert result['status'] == 'succeeded' and output_rows(result['artifact']) == EXPECTED
+    finally:
+        store.close()
+
+
+def test_preview_scope_is_not_silently_dropped_for_multiple_tables():
+    from agent_builder.design.document_rows_template import _preview_field_selection
+    asset = document([block(SOURCE), block(SOURCE, 'second', 2)])
+    content = asset['name'] + '에서 「표 1」의 품명 항목을 추출해 주세요.'
+    assert _preview_field_selection(content, [asset]) is None

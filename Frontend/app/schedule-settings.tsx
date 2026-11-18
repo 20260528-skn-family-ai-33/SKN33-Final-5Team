@@ -7,6 +7,7 @@ import './schedule-settings.css';
 export type ManagedSchedule={active:boolean;spec:ScheduleSpec;next_run_at:string;agent_version?:number};
 const defaultSpec:ScheduleSpec={frequency:'daily',timezone:'Asia/Seoul',hour:9,minute:0,weekday:null,monthday:null,month_end:false};
 const weekdays=['월요일','화요일','수요일','목요일','금요일','토요일','일요일'];
+export const scheduleRemovalMessage='예약을 삭제할까요? 예약 설정과 대기 중인 자동 실행은 해제됩니다. 워크플로우와 실행 기록은 유지됩니다.';
 const discardMessage='저장하지 않은 예약 일정 변경이 있습니다. 변경 내용을 버릴까요?';
 function effectiveSpec(spec:ScheduleSpec):ScheduleSpec {
  return {frequency:spec.frequency,timezone:'Asia/Seoul',hour:spec.frequency==='hourly'?null:spec.hour??9,minute:spec.minute,weekday:spec.frequency==='weekly'?spec.weekday??0:null,monthday:spec.frequency==='monthly'&&!spec.month_end?spec.monthday??1:null,month_end:spec.frequency==='monthly'&&!!spec.month_end};
@@ -42,7 +43,7 @@ export function ScheduleSettings({workflowId,workflowVersion,schedule,onChange,d
  }
  async function act(action:'configure'|'toggle'|'remove') {
   if(inFlight.current||disabled)return;
-  if(action==='remove'&&dirty&&!window.confirm(discardMessage))return;
+  if(action==='remove'&&(!window.confirm(scheduleRemovalMessage)||dirty&&!window.confirm(discardMessage)))return;
   inFlight.current=true;setBusy(true);onBusyChange?.(true);setError('');setNotice('');
   try {
    const configuredSpec=effectiveSpec(spec);
@@ -66,7 +67,7 @@ export function ScheduleSettings({workflowId,workflowVersion,schedule,onChange,d
    <p>{scheduleDescription(schedule.spec)} · 서울 표준시</p>
    {scheduleDateNote(schedule.spec)&&<small>{scheduleDateNote(schedule.spec)}</small>}
    {nextRun&&<small>다음 실행: {nextRun}</small>}
-   <div className="schedule-settings-actions"><button type="button" className="as-button as-primary" disabled={locked||!schedule.active&&(activationDisabled||stale)} onClick={()=>void act('toggle')}>{schedule.active?'예약 중지':'예약 켜기'}</button><button type="button" className="as-button as-secondary" disabled={locked} onClick={()=>{if(editing)closeEditor();else{setSpec(baseline);setEditing(true);setError('');}}}>일정 {editing?'수정 닫기':'수정'}</button><button type="button" className="as-button as-danger schedule-remove" disabled={locked} onClick={()=>void act('remove')}>예약 해제</button></div>
+   <div className="schedule-settings-actions"><button type="button" className="as-button as-primary" disabled={locked||!schedule.active&&(activationDisabled||stale)} onClick={()=>void act('toggle')}>{schedule.active?'예약 중지':'예약 켜기'}</button><button type="button" className="as-button as-secondary" disabled={locked} onClick={()=>{if(editing)closeEditor();else{setSpec(baseline);setEditing(true);setError('');}}}>일정 {editing?'수정 닫기':'수정'}</button><button type="button" className="as-button as-danger schedule-remove" disabled={locked} onClick={()=>void act('remove')}>예약 삭제</button></div>
    {stale&&<p className="schedule-settings-help">워크플로우가 수정되었습니다. 일정을 수정·저장하여 현재 버전 적용을 확인한 뒤 예약을 켜세요.</p>}
    {!schedule.active&&activationDisabled&&<p className="schedule-settings-help">자동 실행에 필요한 자료·요청 설정과 서비스 연결을 준비하면 예약을 켤 수 있습니다.</p>}
   </>}

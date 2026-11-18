@@ -24,6 +24,7 @@ import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWit
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
+import {updateWorkflowSchedule} from './workflow-schedule';
 import {withScheduleSourceContext,type ScheduleSourceContext} from './schedule-source';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
 
@@ -308,6 +309,16 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    }
    if(path==='/api/files/download'&&method==='GET'){
     const execution=store.getExecution(url.searchParams.get('executionId')||'');if(!execution)return json(res,404,{error:'파일이 저장된 실행 기록을 찾을 수 없어요.'});const integer=(key:string)=>{const raw=url.searchParams.get(key)||'0';if(!/^\d{1,6}$/.test(raw))throw new Error('파일 위치를 확인해주세요.');return Number(raw);};const record=execution.runs[integer('runIndex')];if(!record)throw new Error('파일 단계의 실행 기록을 찾을 수 없어요.');const side=url.searchParams.get('side')||'output';if(!['input','output'].includes(side))throw new Error('파일 위치를 확인해주세요.');const items=side==='input'?record.input:record.output[integer('output')];const item=items?.[integer('item')];if(!item)throw new Error('선택한 파일 결과를 찾을 수 없어요.');const file=getBinary(item,url.searchParams.get('property')||'data');const local=decodeBinaryFile(file);const bytes=await readWorkspaceFile(binaryObjectPath(side==='input'?'uploads':'results',local),()=>local);res.writeHead(200,{'Content-Type':file.mimeType,'Content-Length':bytes.length,'Content-Disposition':`attachment; filename="download.${file.fileExtension?.replace(/[^a-z0-9]/gi,'')||'bin'}"; filename*=UTF-8''${encodeURIComponent(file.fileName).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(bytes);return;
+   }
+   if(path==='/api/workflows/schedule'&&method==='POST'){
+    const data=await body(req),prior=getFlow(data.workflowId);
+    if(!data.updatedAt||data.updatedAt!==prior.updatedAt)return json(res,409,{error:'일정이 다른 화면에서 변경됐습니다. 새로고침 후 다시 시도해주세요.'});
+    const changed=updateWorkflowSchedule(prior,data.action,data.rule);
+    const workflow=store.saveFlow(changed);
+    for(const execution of store.listPendingExecutions())if(execution.workflowId===prior.id&&execution.trigger==='schedule'&&execution.status==='queued'){
+     store.saveExecution({...execution,status:'canceled',error:'예약 설정이 변경되어 대기 중인 자동 실행을 취소했습니다.'});
+    }
+    return json(res,200,{workflow});
    }
    if(path==='/api/activation'&&method==='POST'){const data=await body(req);return json(res,200,{workflow:activate(getFlow(data.workflowId),!!data.active)});}
    if(path==='/api/credentials'){

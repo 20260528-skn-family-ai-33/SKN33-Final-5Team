@@ -88,3 +88,21 @@ test('invalid settings, unsupported cron syntax and impossible dates are rejecte
   const invalidAnchor = node({field:'days'}); invalidAnchor.scheduleAnchorAt = 1e30;
   assert.throws(() => validateSchedule(invalidAnchor, 'Asia/Seoul'));
 });
+
+test('changing or deleting a workflow reservation preserves its trigger identity and edges',async()=>{
+ const {updateWorkflowSchedule}=await import('../src/workflow-schedule');
+ const trigger=node({field:'days',triggerAtHour:9});
+ const flow={id:'workflow',name:'업무',nodes:[trigger],connections:{[trigger.name]:{main:[[]]}},
+   settings:{timezone:'Asia/Seoul'},active:true,schedule:{triggerId:trigger.id,activatedAt:1,nextRunAt:2}};
+ const configured=updateWorkflowSchedule(flow,'configure',{interval:[{field:'days',triggerAtHour:10}]});
+ assert.equal(configured.active,false);
+ assert.equal(configured.schedule,undefined);
+ assert.equal(configured.nodes[0].parameters.rule.interval[0].triggerAtHour,10);
+ const removed=updateWorkflowSchedule(configured,'remove');
+ assert.equal(removed.nodes[0].type,'n8n-nodes-base.manualTrigger');
+ assert.equal(removed.nodes[0].id,trigger.id);
+ assert.equal(removed.nodes[0].name,trigger.name);
+ assert.deepEqual(removed.connections,flow.connections);
+ assert.equal(updateWorkflowSchedule(removed,'configure',{interval:[{field:'days'}]}).nodes[0].type,trigger.type);
+ assert.equal(flow.active,true);
+});

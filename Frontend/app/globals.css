@@ -331,3 +331,6 @@
 
 .app-shell .toolbar-actions .btn,.app-shell .design-launcher-actions .btn,.app-shell .execute-controls .btn{height:38px;min-height:38px;padding:8px 12px;font-size:13px;line-height:20px}
 .app-shell .canvas-toptools .btn{height:34px;min-height:34px;padding:6px 10px;font-size:12px;line-height:20px}
+
+.node-name{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:20px;height:40px;min-height:40px;width:100%;max-width:100%;overflow:hidden;}
+.node-description{overflow-wrap:anywhere;line-height:18px;}

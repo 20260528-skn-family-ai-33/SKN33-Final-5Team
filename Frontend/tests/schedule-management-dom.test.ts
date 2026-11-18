@@ -14,6 +14,7 @@ const previous=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(glo
 let dom:JSDOM;
 function installDOM(){
  dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'http://localhost/',pretendToBeVisual:true});
+ dom.window.confirm=()=>true;
  for(const key of globals)if(key==='IS_REACT_ACT_ENVIRONMENT')Object.defineProperty(globalThis,key,{value:true,writable:true,configurable:true});else if(key in dom.window)Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],writable:true,configurable:true});
 }
 installDOM();
@@ -50,7 +51,7 @@ test('schedule can be added to a manual workflow, paused, activated and removed 
   assert.equal(h.calls[0].body.id,'manual');assert.match(document.body.textContent!,/중지/);
   await click(button('예약 켜기'));assert.deepEqual(h.calls[1],{path:'/api/agent-builder/schedule',body:{id:'manual',active:true}});
   await click(button('예약 중지'));assert.equal(h.calls[2].body.active,false);
-  await click(button('예약 해제'));assert.deepEqual(h.calls[3],{path:'/api/agent-builder/schedule_remove',body:{id:'manual'}});
+  await click(button('예약 삭제'));assert.deepEqual(h.calls[3],{path:'/api/agent-builder/schedule_remove',body:{id:'manual'}});
   assert.match(document.body.textContent!,/워크플로우는 계속 직접 실행/);assert.ok(button('예약 추가'));
  }finally{await h.close();}
 });
@@ -61,7 +62,7 @@ test('incomplete automatic inputs block activation while an active reservation r
  try{
   assert.equal(button('예약 켜기').disabled,true);assert.match(document.body.textContent!,/자료·요청 설정/);
   await h.render(createElement(ScheduleSettings,{...props,schedule:{...saved,active:true}}));
-  assert.equal(button('예약 중지').disabled,false);assert.equal(button('예약 해제').disabled,false);
+  assert.equal(button('예약 중지').disabled,false);assert.equal(button('예약 삭제').disabled,false);
  }finally{await h.close();}
 });
 
@@ -138,7 +139,7 @@ test('reservation management uses saved schedule and keeps an unscheduled workfl
  try{
   assert.equal(document.querySelector('h1')?.textContent,'예약 관리');assert.match(document.querySelector('table')!.textContent!,/매일 09:00/);
   await click(button('일정 관리'));await click(button('예약 자료·실행 확인'));assert.deepEqual(opened,['A']);
-  await click(button('예약 해제'));assert.equal(document.querySelector('[data-schedule-id="A"]'),null);
+  await click(document.querySelector<HTMLButtonElement>('.schedule-manager .schedule-remove')!);assert.equal(document.querySelector('[data-schedule-id="A"]'),null);
   await click(button('기존 워크플로우에 예약 추가'));
   const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;assert.deepEqual(Array.from(picker.options).map(option=>option.value),['','A','B']);
   await change(picker,'B');await click(button('예약 추가'));assert.ok(document.querySelector('[data-schedule-id="B"]'));

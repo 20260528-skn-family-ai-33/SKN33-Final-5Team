@@ -1,0 +1,20 @@
+/* Embedded external workflows use the same workspace hierarchy as AgentStudio. */
+.unified-workspace .workspace{min-width:0;position:relative;margin:0!important;background:var(--a4b-surface);}
+.unified-workspace .topbar{min-height:76px;padding:16px 24px;border-bottom:1px solid var(--a4b-border);}
+.unified-workspace .breadcrumb{min-width:0;}.unified-workspace .workflow-title{overflow-wrap:anywhere;white-space:normal;text-align:left;}
+.unified-workspace .subbar{padding:0 24px;min-height:56px;border-bottom:1px solid var(--a4b-border);}
+.unified-workspace .editor-body{min-height:0;flex:1;}
+.unified-workspace .workspace.chat-open .editor-body{margin-left:360px;}
+.unified-workspace .assistant-panel{position:absolute;left:0;right:auto;top:132px;bottom:0;width:360px;border:0;border-right:1px solid var(--a4b-border);box-shadow:none;background:var(--a4b-surface);}
+.unified-workspace .assistant-panel-header{padding:18px 20px;border-bottom:1px solid var(--a4b-border);}
+.unified-workspace .assistant-panel-body{padding:20px;}
+.unified-workspace .chat-composer{background:var(--a4b-surface);}
+.unified-workspace .design-launcher[hidden]{display:none;}
+.unified-workspace .canvas-wrapper{min-height:0;flex:1;}
+.unified-workspace .canvas{background-color:#f7fafc;}
+.unified-workspace .bottom-status{display:none;}
+.unified-workspace .btn{border-radius:6px;font-size:13px;}
+.unified-schedule-panel{padding:24px;max-width:1000px;width:100%;margin:0 auto;overflow:auto;}
+.unified-workspace .execution-page{padding:24px;}
+@media(max-width:1000px) and (min-width:761px){.unified-workspace .assistant-panel{width:320px;}.unified-workspace .workspace.chat-open .editor-body{margin-left:320px;}}
+@media(max-width:760px){.unified-workspace .workspace.chat-open .editor-body{margin-left:0;padding-bottom:45dvh;}.unified-workspace .assistant-panel{top:auto;bottom:0;width:100%;height:45dvh;border-right:0;border-top:1px solid var(--a4b-border);}.unified-workspace .topbar{padding:12px;flex-wrap:wrap;}.unified-workspace .subbar{padding:0 12px;}.unified-schedule-panel{padding:16px;}}

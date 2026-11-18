@@ -1967,10 +1967,11 @@ test('rename: design and reservation detail persist the title across screens',as
  }finally{await h.close();}
 });
 
-test('schedules: every row has the same single schedule action and no rename control',async()=>{
+test('schedules: rows expose schedule removal and active rows can pause',async()=>{
  const h=await setup('?screen=schedules',{},path=>path.split('?')[0].endsWith('/schedules')?{workflows:scheduleFixtures()}:undefined,createElement(EntryApp));
  try{for(const row of document.querySelectorAll('[data-schedule-id]')){
-  const actions=row.querySelectorAll('.schedule-row-actions button');assert.equal(actions.length,1);
+  const actions=Array.from(row.querySelectorAll('.schedule-row-actions button'));
+  assert.deepEqual(actions.map(action=>action.textContent),row.querySelector('.schedule-status.active')?['일정 관리','예약 중지','예약 삭제']:['일정 관리','예약 삭제']);
   assert.equal(actions[0].textContent,'일정 관리');assert.ok(actions[0].classList.contains('as-secondary'));
   assert.equal(row.querySelector('[title="이름 변경"]'),null);
  }}finally{await h.close();}
@@ -2586,7 +2587,7 @@ test('execution separation: a manual workflow gains a reservation while direct i
   await click(button('실행'));assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
   assert.equal(button('워크플로우 실행').disabled,true);await input(document.querySelector<HTMLTextAreaElement>('textarea[data-tour="run-input"]')!,'이번에는 다른 요청');
   await click(button('워크플로우 실행'));sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[1].body,{id:'A',content:'이번에는 다른 요청',fileIds:[]});
-  await click(Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent==='예약 관리')!);await click(button('예약 해제'));
+  await click(Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent==='예약 관리')!);window.confirm=()=>true;await click(button('예약 삭제'));
   assert.equal(document.querySelector('.schedule-settings .schedule-status')?.textContent,'예약 없음');
   assert.equal(document.querySelector('h1')?.textContent,A.config.name);assert.equal(button('예약 자료로 지금 실행').disabled,true);
  }finally{await h.close();}
@@ -3885,4 +3886,31 @@ test('template deletion keeps default presets and clears a deleted editor',async
   assert.equal(h.calls.filter(call=>call.path==='/api/agent-builder/nodes?id=node&version=1').length,1);
   assert.equal(document.querySelector('.nl-presets [title="삭제"]'),null);
  }finally{await h.close();}
+});
+
+test('design composer preserves typing while an attachment is being analyzed',async()=>{
+ const session=readySession();
+ let finishUpload!: (value:unknown)=>void;
+ const pending=new Promise(resolve=>{finishUpload=resolve;});
+ const h=await setup('?screen=workflow',{'a4b-builder-session':session.id},path=>{
+  if(path.startsWith('/api/agent-builder/session?'))return session;
+  if(path.endsWith('/upload'))return pending;
+ });
+ try{
+  await click(button('자료 연결'));
+  await click(button('새 파일 올리기'));
+  const picker=document.querySelector<HTMLInputElement>('input[type=file]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['자료'], 'sample.txt')]});
+  await act(async()=>{picker.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+  const textarea=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  assert.equal(textarea.disabled,false);
+  await input(textarea,'자료를 요약해 주세요.');
+  const send=document.querySelector<HTMLButtonElement>('[aria-label="업무 설명 보내기"]')!;
+  assert.equal(send.disabled,true);
+  await act(async()=>{textarea.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+  assert.equal(h.calls.some(call=>call.path.endsWith('/message')),false);
+  await act(async()=>{finishUpload({...session,revision:session.revision+1});await h.flush();});
+  assert.equal(textarea.value,'자료를 요약해 주세요.');
+  assert.equal(send.disabled,false);
+ }finally{finishUpload(session);await h.close();}
 });

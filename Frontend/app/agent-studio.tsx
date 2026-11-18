@@ -454,12 +454,13 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  }
  // Files attached since the last message, per session: only these get a summary mid-conversation.
  const [freshFiles,setFreshFiles]=useState<{session:string;ids:string[]}>({session:'',ids:[]});
+ const [analyzingAttachment,setAnalyzingAttachment]=useState(false);
   async function attachSelectedDesignFiles(files:DesignFile[]){
    if(inFlight.current||recovery)return;
-   inFlight.current=true;setBusy('자료함 파일을 설계에 연결하고 있습니다.');setError('');
+   inFlight.current=true;setAnalyzingAttachment(true);setBusy('자료함 파일을 설계에 연결하고 있습니다.');setError('');
    try{const s=await ensureSession();remember(s);await connectDesignFiles(s,files);}
    catch(e){setError((e as Error).message);}
-   finally{inFlight.current=false;setBusy('');}
+   finally{inFlight.current=false;setAnalyzingAttachment(false);setBusy('');}
   }
  async function attachResource(source:File|string){return attachResources([source]);}
  async function attachResources(sources:(File|string)[]) {
@@ -470,7 +471,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
   if(receiptQuestion&&files.some(file=>!receiptFileTypes.split(',').some(ext=>file.name.toLowerCase().endsWith(ext)))){
    initialPromptPending.current=false;setError('영수증 사진이나 PDF 파일을 선택해 주세요.');return;
   }
-  inFlight.current=true;setBusy('자료의 열과 내용을 확인하고 있습니다.');setError('');
+  inFlight.current=true;setAnalyzingAttachment(true);setBusy('자료의 열과 내용을 확인하고 있습니다.');setError('');
   try {
    let current=await ensureSession();remember(current);
    for(const [index,source] of sources.entries()){
@@ -485,7 +486,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     setFreshFiles(prior=>({session:result.id,ids:[...(prior.session===result.id?prior.ids:[]),...added]}));
    }
   } catch(e){initialPromptPending.current=false;setError((e as Error).message);}
-  finally{inFlight.current=false;setBusy('');}
+  finally{inFlight.current=false;setAnalyzingAttachment(false);setBusy('');}
  }
 
  function reviewSave(){if(session?.draft?.schedule){setIncludeSchedule(true);setSaveReviewOpen(true);}else void save(false);}
@@ -835,7 +836,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
      event.preventDefault();
      if(busy||recovery||libraryBusy||saved||!credentialId&&!session)return;
      void attachResources(Array.from(files));
-    }}><textarea ref={input} aria-label="업무 설명" placeholder={collecting?'확인 질문에 답해주세요.':draft?'추가하거나 바꿀 조건을 설명하세요.':'예: 여러 자료에서 필요한 내용을 찾아 정리하는 기능이 필요해요.'} value={text} onChange={e=>setText(e.target.value)} maxLength={4000} disabled={!!busy||!!recovery||saved} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div className="as-composer-footer"><button data-tour="attach" type="button" className="as-text-button" onClick={()=>setAttachMode('choose')} disabled={!!busy||!!recovery||saved||!credentialId&&!session}><Paperclip size={16}/>자료 연결</button><small>Enter 전송 · Shift+Enter 줄바꿈</small><button type="submit" className="as-send" disabled={!!busy||!text.trim()||saved||!credentialId&&!session} aria-label="업무 설명 보내기"><ArrowUp size={19}/></button></div></form></>}
+    }}><textarea ref={input} aria-label="업무 설명" placeholder={collecting?'확인 질문에 답해주세요.':draft?'추가하거나 바꿀 조건을 설명하세요.':'예: 여러 자료에서 필요한 내용을 찾아 정리하는 기능이 필요해요.'} value={text} onChange={e=>setText(e.target.value)} maxLength={4000} disabled={!!busy&&!analyzingAttachment||!!recovery||saved} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div className="as-composer-footer"><button data-tour="attach" type="button" className="as-text-button" onClick={()=>setAttachMode('choose')} disabled={!!busy||!!recovery||saved||!credentialId&&!session}><Paperclip size={16}/>자료 연결</button><small aria-live="polite">{analyzingAttachment?'자료 분석 중에도 입력할 수 있습니다. 분석이 끝나면 전송하세요.':'Enter 전송 · Shift+Enter 줄바꿈'}</small><button type="submit" className="as-send" disabled={!!busy||!text.trim()||saved||!credentialId&&!session} aria-label="업무 설명 보내기"><ArrowUp size={19}/></button></div></form></>}
 
    </section>
    {screen==='workflow'&&<section data-tour="canvas" className="as-workspace" aria-label="워크플로우 캔버스"><WorkflowPreview onToggleConversation={()=>setConversationCollapsed(value=>!value)} conversationCollapsed={conversationCollapsed} workflow={draft?.workflow} selectedId={highlightedNodeId} onSelect={n=>{setHighlightedNodeId(n.id);setSelectedNodeId(null);}} onOpenSettings={(node,trigger)=>{setNodeTrigger(trigger);setHighlightedNodeId(node.id);setSelectedNodeId(node.id);}}/></section>}

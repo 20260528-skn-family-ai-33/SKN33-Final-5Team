@@ -276,3 +276,56 @@ def test_unconfirmed_conflicting_proposal_is_not_a_keepable_original():
     s = current('지역이 부산이고 지역이 대구인 행만 남겨줘')
     contract = text_filter_state(s)
     assert contract['issues'] and not contract['predicates'] and not contract['can_keep']
+
+
+@pytest.mark.parametrize('structured_threshold', [False, True])
+@pytest.mark.parametrize('structured_keep', [False, True])
+def test_numeric_condition_set_by_a_short_answer_survives_later_keep(tmp_path, structured_threshold, structured_keep):
+    s = current('')
+    s['messages'][0]['content'] = '비용이 낮고 수량이 10개보다 많은 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'
+    raw = proposal(s, {'filter.field': '비용', 'filter.operator': None, 'filter.value': None,
+                      'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'})
+    fake = Fake([raw])
+    rows = [dict(비용=4, 수량=11), dict(비용=6, 수량=11), dict(비용=4, 수량=9)]
+    store = Storage(tmp_path); store.add_asset(s['resources'][0], rows)
+    graph, connection = build_graph(store, conversation=compile_conditions, condition_transport=fake, condition_mode='enforce')
+    config = {'configurable': {'thread_id': s['session_id']}}
+    try:
+        first = graph.invoke(s, config)
+        assert first['status'] == 'needs_clarification'
+        q = next(q for q in first['pending_questions'] if q['key'] == 'filter.match')
+        answered = deepcopy(first); answered['messages'].append(dict(role='user', content='5원 미만'))
+        update = proposal(answered, {'filter.operator': 'lt', 'filter.value': '5'})
+        fake.packets = iter([update, dict(operations=['filter'], conditions=[], unsupported_actions=[])])
+        answer = dict(type='message', content='5원 미만', question_id=q['id'])
+        if structured_threshold:
+            answer.update(content=q['text'] + ' → 5원 미만',
+                          question_answers=[dict(question_id=q['id'], value='5원 미만')])
+        ready = graph.invoke(Command(resume=answer), config)
+        assert ready['status'] == 'ready', ready.get('issues')
+        original = deepcopy(ready['draft']['execution_plan']['filters'])
+        asked = graph.invoke(Command(resume=dict(type='message', content='비용 조건 삭제해도 될까?')), config)
+        assert asked['status'] == 'needs_clarification'
+        q = next(q for q in asked['pending_questions'] if q['key'] == 'filter.match')
+        answer = dict(type='message', content='기존 조건 모두 유지', question_id=q['id'])
+        if structured_keep:
+            answer.update(content=q['text'] + ' → 기존 조건 모두 유지',
+                          question_answers=[dict(question_id=q['id'], value='기존 조건 모두 유지')])
+        calls = fake.calls
+        kept = graph.invoke(Command(resume=answer), config)
+        assert kept['status'] == 'ready', kept.get('pending_questions')
+        assert kept['condition_answers'][-1]['filter_context']['field'] == '비용'
+        assert kept['condition_answers'][-1]['filter_context']['value'] == 5
+        assert not kept['pending_questions'] and kept['draft']['execution_plan']['filters'] == original
+        assert fake.calls == calls
+        # Old checkpoints do not yet contain the server-owned context snapshot.
+        legacy = deepcopy(kept)
+        for event in legacy['condition_answers']:
+            event.pop('filter_context', None)
+        from agent_builder.conditions.condition_readiness import compound_filter_state
+        assert compound_filter_state(legacy)['pending'] is None
+        saved = graph.invoke(Command(resume=dict(type='confirm')), config)
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[s['resources'][0]['id']])
+        assert result['status'] == 'succeeded' and result['rows'] == rows[:1]
+    finally:
+        connection.close(); store.close()

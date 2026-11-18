@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .filter_dialogue import MATCH_CHOICES, match_answer, KEEP_ALL, KEEP_OTHERS, ONLY_NEW
+from .filter_dialogue import MATCH_CHOICES, match_answer, KEEP_ALL, KEEP_OTHERS, ONLY_NEW, confirmed_numeric_filter as _confirmed_filter
 
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.conditions.input_resolution import (
@@ -529,7 +529,9 @@ def _compound_turn_text(state, index, message):
         from agent_builder.design.text_filter_contract import text_filter_state
         prior = text_filter_state({**state, 'messages': state['messages'][:index]})
         reply = (user_filter_text(state, index, message) or '').strip().rstrip('.!?')
-        numeric_owner = any(field in prior.get('numeric_fields', set()) for field in prior.get('pending_decisions', {}))
+        confirmed = event.get('filter_context') or _confirmed_filter(state)[0] or {}
+        numeric_fields = prior.get('numeric_fields', set()) | {confirmed.get('field')}
+        numeric_owner = any(field in numeric_fields for field in prior.get('pending_decisions', {}))
         if prior['issues'] and not (reply == KEEP_ALL and numeric_owner):
             return None  # This answer owns the pending text predicate, not the numeric group.
     return user_filter_text(state, index, message)
@@ -758,22 +760,6 @@ def compound_filter_state(state):
     return {'mode': mode, 'rules': rules, 'pending': pending, 'candidate': candidate,
             'seeded': seeded and len(rules) < 2, 'missing_fields': missing_fields,
             'addition': addition, 'relation_count': relation_count or (len(addition['added']) if addition else len(rules))}
-
-
-def _confirmed_filter(state):
-    """The single numeric filter the last ledger confirmed, and the turn that settled it."""
-    ledger = state.get('condition_ledger') or {}
-    slots = ledger.get('slots') or {}
-    parts = [slots.get(key) or {} for key in ('filter.field', 'filter.operator', 'filter.value')]
-    if (any(part.get('status') != 'specified' for part in parts) or parts[1].get('value') not in _OPERATOR_WORD
-            or isinstance(parts[2].get('value'), bool) or not isinstance(parts[2].get('value'), (int, float))):
-        return None, None, False
-    turns = [item.get('turn') for part in parts for item in part.get('evidence') or []
-             if isinstance(item.get('turn'), int)]
-    if not turns:
-        return None, None, False
-    return (dict(field=parts[0]['value'], operator=parts[1]['value'], value=float(parts[2]['value']),
-                 compare_field=None, value_type='number'), max(turns), False)
 
 
 def literal_compound_filter(state):

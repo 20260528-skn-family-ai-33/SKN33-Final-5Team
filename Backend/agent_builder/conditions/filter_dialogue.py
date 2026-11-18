@@ -32,3 +32,19 @@ class PendingFilterDecision:
     message: str
     can_keep: bool
     proposed: tuple = ()
+
+
+def confirmed_numeric_filter(state):
+    """The single numeric filter the last ledger confirmed, and the turn that settled it."""
+    ledger = state.get('condition_ledger') or {}
+    slots = ledger.get('slots') or {}
+    parts = [slots.get(key) or {} for key in ('filter.field', 'filter.operator', 'filter.value')]
+    if (any(part.get('status') != 'specified' for part in parts) or parts[1].get('value') not in {'gt', 'gte', 'lt', 'lte'}
+            or isinstance(parts[2].get('value'), bool) or not isinstance(parts[2].get('value'), (int, float))):
+        return None, None, False
+    turns = [item.get('turn') for part in parts for item in part.get('evidence') or []
+             if isinstance(item.get('turn'), int)]
+    if not turns:
+        return None, None, False
+    return (dict(field=parts[0]['value'], operator=parts[1]['value'], value=float(parts[2]['value']),
+                 compare_field=None, value_type='number'), max(turns), False)

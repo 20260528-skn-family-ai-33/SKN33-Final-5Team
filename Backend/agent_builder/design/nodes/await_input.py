@@ -39,6 +39,8 @@ def await_input_node(state):
     from agent_builder.conditions.clarification_core import record_answer
     event=record_answer(state,answer['content'],answer.get('question_id'),answer.get('question_answers'))
     if event:result['clarification_answers']=state.get('clarification_answers',[])+[event]
+    from agent_builder.conditions.filter_dialogue import confirmed_numeric_filter
+    filter_context = confirmed_numeric_filter(state)[0]
     if answer.get('question_answers'):
         from agent_builder.design.question_answers import answer_text
         by_id={q['id']:q for q in pending}
@@ -55,7 +57,7 @@ def await_input_node(state):
                 'questions':[question for question,_ in conditions],
                 'question_ids':[question['id'] for question,_ in conditions],
                 'candidate_keys':[question['key'] for question,_ in conditions],
-                'answer':answer['content'],'turn':len(state['messages']),
+                'answer':answer['content'],'turn':len(state['messages']), 'filter_context':filter_context,
                 'answers':[{'question_id':question['id'],'key':question['key'],'value':item['value'],
                             'answer':answer_text(item['value'])} for question,item in conditions]}]
         return result
@@ -68,6 +70,8 @@ def await_input_node(state):
         event={'questions':selected,'question_ids':[q['id'] for q in selected],
                'candidate_keys':[q['key'] for q in selected],'answer':answer['content'],
                'message_content':answer['content'],'turn':len(state['messages'])}
+        if channel == 'condition_answers':
+            event['filter_context'] = filter_context
         result[channel]=[*state.get(channel,[]),event]
     return result
 

@@ -273,6 +273,77 @@ def test_general_planner_allows_scalar_extraction_from_one_matching_native_row()
     assert not document_row_contract_issues(state(asset, request), draft)
 
 
+@pytest.mark.parametrize('request_text', [
+    '이 자료의 모든 품목에서 요청한 값인 품명을 한 값씩 뽑아줘.',
+    '품명만 뽑아서 내림차순으로 정렬해 CSV로 저장해줘.',
+])
+def test_general_planner_rejects_scalar_extraction_from_continued_table(tmp_path, request_text):
+    from agent_builder.design.document_rows_template import _draft, document_row_contract_issues
+    asset = document([block(SOURCE[:2]), block([HEADERS, SOURCE[2]], 'continued', 2)])
+    draft = _draft(request_text, request_text, ['품명'], [asset['id']])
+    draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
+    draft['workflow']['nodes'][2]['settings']['fields'] = []
+    current = dict(state(asset, request_text), draft=draft, status='ready', confirmed=True)
+    assert any('반복 행' in issue for issue in document_row_contract_issues(current, draft))
+    assert validate_node(current)['status'] != 'ready'
+    store = Storage(tmp_path)
+    try:
+        with pytest.raises(ValueError, match='반복 행'):
+            store.save_agent(current)
+    finally:
+        store.close()
+
+
+def test_saved_scalar_workflow_checks_continue_table_on_a_new_execution_file(tmp_path):
+    from agent_builder.design.document_rows_template import _draft
+    asset = document([block(SOURCE[:2])])
+    replacement = document([block(SOURCE[:2]), block([HEADERS, SOURCE[2]], 'continued', 2)])
+    replacement['id'] = 'replacement'
+    request = '이 자료에서 모든 품목의 품명을 뽑아줘.'
+    draft = _draft(request, request, ['품명'], [asset['id']])
+    draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
+    draft['workflow']['nodes'][2]['settings']['fields'] = []
+    current = dict(state(asset, request), draft=draft, status='ready', confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        store.add_asset(replacement, [])
+        saved = store.save_agent(current)
+        result = run_workflow(store, saved, '실행', '', file_ids=[replacement['id']], llm=NoModel())
+        assert result['status'] == 'failed' and not result.get('artifact')
+        assert '여러 행으로 반복' in result['error']
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('request_text', [
+    '문서당 문서번호 하나를 CSV로 저장해줘.',
+    '문서별로 문서번호 한 값을 CSV로 저장해줘.',
+])
+def test_explicit_single_metadata_request_allows_same_table_on_two_pages(request_text):
+    from agent_builder.design.document_rows_template import _draft, document_row_contract_issues
+    grid = [['문서번호', '발행일'], ['DLV-H-11011', '2026-11-17']]
+    asset = document([block(grid), block(grid, 'continued', 2)])
+    draft = _draft(request_text, request_text, ['문서번호'], [asset['id']])
+    node = draft['workflow']['nodes'][1]
+    node['settings']['extraction_mode'] = 'fields'
+    draft['workflow']['nodes'][2]['settings']['fields'] = []
+    assert not document_row_contract_issues(state(asset, request_text), draft)
+
+    class ScalarModel:
+        def with_structured_output(self, schema, **_kwargs):
+            assert schema is Facts
+            return self
+
+        def invoke(self, _messages):
+            return Facts.model_validate(dict(facts=[dict(field='문서번호', value='DLV-H-11011',
+                source_id='delivery:table-1:0', quote='DLV-H-11011')]))
+
+    result = extract(node, {'outputs': {'read': {'documents': list(chunks_for_asset(asset))}},
+                            'request': '실행'}, None, draft, ScalarModel())
+    assert result['table']['rows'] == [{'문서번호': 'DLV-H-11011'}]
+
+
 def test_selected_table_cells_survive_even_without_flattened_parser_text():
     asset = document()
     asset['parser_metadata']['document_analysis']['blocks'][0]['text'] = ''

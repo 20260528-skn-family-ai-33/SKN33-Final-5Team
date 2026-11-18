@@ -3,7 +3,7 @@ import pytest
 from agent_builder.design.document_rows_template import QUESTION, document_rows_reply
 from documents.resources.document_resources import chunks_for_asset
 from infrastructure.persistence.storage import Storage
-from tests.design.test_document_row_integrity import EXPECTED, NoModel, SOURCE, block, document, native, state
+from tests.design.test_document_row_integrity import EXPECTED, NoModel, SOURCE, block, document, native, output_rows, state
 from workflow_engine.runner import run_workflow
 
 
@@ -57,3 +57,29 @@ def test_selected_structured_child_covers_empty_layout_region():
     assert parts[0]['offset'] > 0 and parts[0]['table_cells'] == selected_table['data']['cells']
     assert all('table_cells' not in part for part in parts[1:])
     assert [{field: record[field] for field in ('품명', '실입고')} for record in native(asset)] == EXPECTED
+
+
+@pytest.mark.parametrize('repeat_header', [False, True])
+def test_single_column_export_preserves_item_named_like_header(tmp_path, repeat_header):
+    header = ['코드', '품명', '수량']
+    grid = [header, ['A01', '종이', '2']]
+    if repeat_header:
+        grid.append(header)
+    grid.append(['A02', '품명', '3'])
+    asset = document([block(grid)])
+    draft_state = state(asset)
+    draft_state['messages'] += [{'role': 'assistant', 'content': QUESTION},
+                                {'role': 'user', 'content': '품명'}]
+    draft_state.update(document_rows_reply(draft_state), status='ready', confirmed=True)
+    storage = Storage(tmp_path)
+    try:
+        storage.add_asset(asset, [])
+        saved_id = storage.save_agent(draft_state)
+        result = run_workflow(storage, saved_id, '워크플로우 실행', '', file_ids=[asset['id']], llm=NoModel())
+        assert result['status'] == 'succeeded', result.get('error')
+        assert output_rows(result['artifact']) == [{'품명': '종이'}, {'품명': '품명'}]
+        records = result['outputs']['extract']['records']
+        assert records[-1]['evidence']['품명']['table_row'] == len(grid) - 1
+        assert records[-1]['row_coverage'] == 'complete'
+    finally:
+        storage.close()

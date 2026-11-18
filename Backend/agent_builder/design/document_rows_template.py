@@ -10,9 +10,8 @@ from copy import deepcopy
 
 from contracts.models import AgentDraft, NodeSettings, WorkflowDefinition
 from workflow_engine.executors.document.extract_information import reserved_field_issue
+from workflow_engine.executors.document.table_rows import TABLE_INTENT as _TABLE_INTENT, has_repeated_rows, row_collection_intent
 
-# The user wants a table-shaped result, not a summary.
-_TABLE_INTENT = re.compile(r'(엑셀|excel|xlsx|csv|표로|표 형태|표 형식|목록으로|한 줄씩|행으로|스프레드시트)', re.IGNORECASE)
 _SPLIT = re.compile(r'\s*(?:,|，|、|·|/|\n|\s및\s|\s그리고\s)\s*')
 # A reply to the field question that cancels or changes the request instead of naming fields.
 _CHANGE = re.compile(r'(취소|그만|중단|됐어|됐습니다|필요\s*없|안\s*할래|하지\s*마|말고|대신|바꿔|바꿀|처음부터)')
@@ -505,10 +504,12 @@ def document_row_contract_issues(state, draft):
     if not expected_nodes:
         # The full planner handles arbitrary document names/extra processing.
         # Only evidence of multiple item rows forbids a scalar extraction.
-        if not any(_TABLE_INTENT.search(message['content']) for message in messages if message.get('role') == 'user'):
+        from agent_builder.capabilities.capability_judgement import active_request_messages
+        requests = [message['content'] for message in active_request_messages(state) if message.get('role') == 'user']
+        rows_requested = row_collection_intent(*requests)
+        if rows_requested is not True and not any(_TABLE_INTENT.search(request) for request in requests):
             return []
         from documents.resources.document_resources import chunks_for_asset
-        from workflow_engine.executors.document.table_rows import has_repeated_rows
         for node in nodes:
             settings = node['settings']
             if (node['tool'] != 'extract_information' or not settings.get('fields')
@@ -522,7 +523,7 @@ def document_row_contract_issues(state, draft):
                 if asset.get('kind') != 'document' or (file_ids and asset['id'] not in file_ids):
                     continue
                 parts = (part for part in chunks_for_asset(asset) if table_id is None or part.get('block_id') == table_id)
-                if has_repeated_rows(parts, settings['fields']):
+                if has_repeated_rows(parts, settings['fields'], across_pages=rows_requested is True):
                     return ['원본 표의 반복 행을 단일 값으로 축소할 수 없습니다. 행 단위 추출로 설계해 주세요.']
         return []
     fields = expected_nodes[1]['settings']['fields']

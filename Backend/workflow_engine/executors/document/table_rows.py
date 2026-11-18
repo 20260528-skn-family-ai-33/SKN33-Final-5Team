@@ -7,6 +7,15 @@ import re
 import unicodedata
 
 COVERAGE_KEY = 'row_coverage'
+TABLE_INTENT = re.compile(r'엑셀|excel|xlsx|csv|표로|표 형태|표 형식|목록으로|한 줄씩|행으로|스프레드시트', re.I)
+_ROW_REQUEST = re.compile(
+    r'한\s*(?:행|줄)씩|(?:행|품목|항목)\s*단위|(?:품목|항목)\s*(?:별|마다)'
+    r'|(?:모든|각|전체|반복)\s*(?:품목|행|항목)|모두\s*(?:추출|뽑)|목록으로'
+)
+_SCALAR_REQUEST = re.compile(
+    r'(?:문서|파일)\s*(?:당|마다|별(?:로)?)\s*(?:\S+\s+){0,3}(?:한\s*(?:행|줄|값|개)|하나|1\s*개)'
+    r'|\b한\s*값(?!\s*씩)|\b(?:한\s*개|하나|1\s*개)\s*만|\b(?:첫(?:\s*번째)?|마지막)\s*(?:행|항목|값)\s*만'
+)
 _SUMMARY_LABELS = frozenset({
     '합계', '소계', '총계', '총합계', '부가세', '부가가치세', '세액',
     'total', 'subtotal', 'grandtotal', 'vat', 'tax',
@@ -20,6 +29,20 @@ ROW_DESIGN_INSTRUCTION = ('문서의 반복 항목을 CSV/표로 정리하는 �
 
 def label(text):
     return re.sub(r'\s+', '', unicodedata.normalize('NFC', '' if text is None else str(text))).casefold()
+
+
+def row_collection_intent(*requests):
+    """Use output format as a hint when the user hasn't specified granularity."""
+    table_requested = False
+    for request in reversed(requests):
+        if not request:
+            continue
+        if _SCALAR_REQUEST.search(request):
+            return False
+        if _ROW_REQUEST.search(request):
+            return True
+        table_requested = table_requested or bool(TABLE_INTENT.search(request))
+    return True if table_requested else None
 
 
 def _table_parts(parts):
@@ -83,9 +106,17 @@ def _summary_labels(row):
     return [column for column, cell in row.items() if label(cell.get('text')).rstrip(':：') in _SUMMARY_LABELS]
 
 
-def _detail_rows(grid, header, selected, *, strict):
+def _row_shape(row):
+    return {column: (label(cell.get('text')), cell.get('row_span') or 1, cell.get('col_span') or 1)
+            for column, cell in row.items()}
+
+
+def _detail_rows(grid, header, *, strict):
+    # A projected column can contain the same value as its heading. Only an
+    # entire row matching the original header can be a repeated header.
+    header_shape = _row_shape(next(row for number, row in grid if number == header))
     rows = [(number, row) for number, row in grid if number > header
-            and not all(label(row.get(column, {}).get('text')) == label(field) for field, column in selected.items())
+            and _row_shape(row) != header_shape
             and any(_text(cell) for cell in row.values())]
     ordinary = [row for _, row in rows if not _summary_labels(row)]
     text_columns = [{column for column, cell in row.items() if _text(cell) and not _SUMMARY_VALUE.fullmatch(label(_text(cell)))}
@@ -118,11 +149,12 @@ def _detail_rows(grid, header, selected, *, strict):
             raise ValueError('합계·세금 행과 일반 항목을 구분할 수 없습니다. 원본 표를 확인해 주세요.')
 
 
-def has_repeated_rows(parts, fields):
-    """Positive evidence of multiple value rows under one matching table header."""
+def has_repeated_rows(parts, fields, *, across_pages=False):
+    """Find multiple value rows under the same header, across pages only for row requests."""
     targets = {label(field): field for field in fields}
     if not targets or len(targets) != len(fields):
         return False
+    pages_by_header = {}
     for part in _table_parts(parts):
         if not part.get('table_cells') or part.get('review_required'):
             continue
@@ -134,12 +166,25 @@ def has_repeated_rows(parts, fields):
         if header is None:
             continue
         count = 0
-        for _, row in _detail_rows(grid, header, selected, strict=False):
+        for _, row in _detail_rows(grid, header, strict=False):
             cells = [row.get(column) for column in selected.values()]
             if all(cell is not None and _unit_cell(cell) for cell in cells) and any(_text(cell) for cell in cells):
                 count += 1
                 if count == 2:
                     return True
+        if not across_pages or not count:
+            continue
+        page = part.get('page')
+        if page is None:
+            page = (part.get('native_location') or {}).get('page')
+        if type(page) is not int or page < 1:
+            continue
+        header_shape = _row_shape(next(row for number, row in grid if number == header))
+        if any(type(span) is not int or span < 1 for _, height, width in header_shape.values() for span in (height, width)):
+            continue
+        key = (part['file_id'], frozenset(header_shape.items()))
+        if pages_by_header.setdefault(key, page) != page:
+            return True
     return False
 
 
@@ -163,7 +208,7 @@ def native_records(parts, fields, evidence_keys, max_rows):
             unmatched_tables = True
             continue
         relevant = True
-        for number, row in _detail_rows(grid, header, selected, strict=True):
+        for number, row in _detail_rows(grid, header, strict=True):
             record = dict(file_name=part['file_name'], row=len(records) + 1)
             evidence = {}
             for field, column in selected.items():

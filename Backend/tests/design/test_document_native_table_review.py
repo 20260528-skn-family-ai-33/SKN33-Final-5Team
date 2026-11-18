@@ -69,3 +69,30 @@ def test_scalar_field_check_ignores_rows_without_a_requested_value():
     part = table([('문서번호', '발행일'), ('DLV-1', '2026-11-17'), ('', '2026-11-18')])
     assert not has_repeated_rows([part], ['문서번호'])
     assert has_repeated_rows([part], ['문서번호', '발행일'])
+
+
+def test_row_request_detects_same_table_with_one_value_row_on_each_page():
+    first = table([('Item', 'Count'), ('Paper', '3')], name='first')
+    second = table([(' item ', 'COUNT'), ('Pencil', '5')], name='second', page=None)
+    second['native_location'] = {'page': 2}
+    assert has_repeated_rows([second, first], ['Item'], across_pages=True)
+    assert not has_repeated_rows([second, first], ['Item'])
+
+
+@pytest.mark.parametrize('difference', ['page', 'missing_page', 'file', 'header', 'header_span', 'empty_value'])
+def test_row_request_keeps_independent_single_row_tables_distinct(difference):
+    first = table([('Item', 'Count'), ('Paper', '3')], name='first')
+    second = table([('Item', 'Count'), ('Pencil', '5')], name='second', page=2)
+    if difference == 'page':
+        second['page'] = first['page']
+    elif difference == 'missing_page':
+        second['page'] = None
+    elif difference == 'file':
+        second['file_id'] = 'another-file'
+    elif difference == 'header':
+        second['table_cells'][1]['text'] = 'Weight'
+    elif difference == 'header_span':
+        second['table_cells'][1]['col_span'] = 2
+    else:
+        second['table_cells'][2]['text'] = ''
+    assert not has_repeated_rows([first, second], ['Item'], across_pages=True)

@@ -415,7 +415,7 @@ def document_rows_applies(state):
     return bool(request) and not _extra_processing(request, _listed_segment(request))
 
 
-def document_rows_reply(state):
+def document_rows_reply(state, *, check_sources=True):
     """Return the fixed-flow result, or None to continue with the model planner."""
     if os.getenv('A4B_DOCUMENT_ROWS_TEMPLATE', 'on') == 'off':
         return None
@@ -462,6 +462,10 @@ def document_rows_reply(state):
         if issue := reserved_field_issue(fields):
             return _ask(state, request, note=issue)
         draft = _draft(request, users[-1]['content'], fields, documents, document_table_id=table_id)
+        source_issues = document_row_source_issues(state, draft) if check_sources else []
+        if source_issues:
+            draft['questions'] = source_issues
+            explanation += '\n' + '\n'.join(source_issues)
         return {'messages': messages + [{'role': 'assistant', 'content': explanation}], 'draft': draft,
                 'pending_questions': _remaining_questions(state), 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                 'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
@@ -474,7 +478,10 @@ def document_rows_reply(state):
         if fields and not reserved_field_issue(fields):
             # Already listed: do not ask again (clarification core: settled questions are not asked).
             draft = _draft(request, request, fields, documents)
-            return {'messages': messages + [{'role': 'assistant', 'content': EXPLANATION}], 'draft': draft,
+            source_issues = document_row_source_issues(state, draft) if check_sources else []
+            if source_issues:
+                draft['questions'] = source_issues
+            return {'messages': messages + [{'role': 'assistant', 'content': '\n'.join(source_issues) if source_issues else EXPLANATION}], 'draft': draft,
                     'pending_questions': _remaining_questions(state), 'confirmed': False, 'saved_agent_id': None, 'semantic_issues': [],
                     'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 고정 흐름', 'status': 'completed',
                                                         'detail': '요청에 적힌 항목(' + ', '.join(fields) + ')으로 문서 읽기 → 목록 추출 → CSV 저장을 구성했습니다.', 'model_calls': 0}]}
@@ -497,7 +504,10 @@ def document_row_contract_issues(state, draft):
     latest = max((index for index, message in enumerate(messages) if message.get('role') == 'user'), default=-1)
     if latest < 0 or draft.get('questions') or draft.get('unsupported'):
         return []
-    expected = document_rows_reply({**state, 'messages': messages[:latest + 1], 'draft': None})
+    feasibility = document_row_source_issues(state, draft)
+    if feasibility:
+        return feasibility
+    expected = document_rows_reply({**state, 'messages': messages[:latest + 1], 'draft': None}, check_sources=False)
     expected_nodes = ((expected or {}).get('draft', {}).get('workflow') or {}).get('nodes', [])
     nodes = (draft.get('workflow') or {}).get('nodes', [])
     readers = {node['id']: node['settings'] for node in nodes if node['tool'] == 'read_document'}
@@ -509,18 +519,21 @@ def document_row_contract_issues(state, draft):
         rows_requested = row_collection_intent(*requests)
         if rows_requested is not True and not any(_TABLE_INTENT.search(request) for request in requests):
             return []
-        from documents.resources.document_resources import chunks_for_asset
+        from documents.resources.document_resources import chunks_for_asset, supports
+        from workflow_engine.executors.document.row_contract import scalar_selection
+        if rows_requested is not True and scalar_selection(*requests) is not None:
+            return []
         for node in nodes:
             settings = node['settings']
-            if (node['tool'] != 'extract_information' or not settings.get('fields')
+            if (node['tool'] != 'extract_information' or settings.get('operation') or not settings.get('fields')
                     or settings.get('extraction_mode') in ('rows', 'receipt_items')):
                 continue
             reader = next((readers[b['node_id']] for b in node.get('bindings', [])
                            if b.get('input') == 'documents' and b['node_id'] in readers), {})
-            file_ids = reader.get('file_ids') or []
+            file_ids = reader.get('file_ids') or draft.get('document_ids', [])
             table_id = reader.get('document_table_id')
             for asset in state.get('resources', []):
-                if asset.get('kind') != 'document' or (file_ids and asset['id'] not in file_ids):
+                if asset['id'] not in file_ids or not supports(asset, 'document'):
                     continue
                 parts = (part for part in chunks_for_asset(asset) if table_id is None or part.get('block_id') == table_id)
                 if has_repeated_rows(parts, settings['fields'], across_pages=rows_requested is True):
@@ -544,4 +557,61 @@ def document_row_contract_issues(state, draft):
             and readers[binding['node_id']].get('file_ids') == expected_reader['file_ids']
             for binding in extractors[0].get('bindings', [])):
         return ['미리보기에서 선택한 원본 문서와 표만 읽도록 연결해 주세요.']
+    return []
+
+
+def document_row_source_issues(state, draft):
+    """Reject known unexecutable row exports before ready/save, without model calls."""
+    from documents.resources.document_resources import chunks_for_asset
+    from workflow_engine.executors.document.row_contract import native_rows, NO_COORDINATES
+    from workflow_engine.executors.document.extract_information import EVIDENCE_KEYS, MAX_ROWS, validate_extraction_size
+    from workflow_engine.executors.sources import source_file_ids
+    from workflow_engine.execution_path import records_source_node
+
+    nodes = (draft.get('workflow') or {}).get('nodes', [])
+    readers = {node['id']: node for node in nodes if node['tool'] == 'read_document'}
+    by_id = {node['id']: node for node in nodes}
+    exported_sources = {source['id'] for node in nodes if node['tool'] == 'export_result'
+                        and (source := records_source_node(node, by_id)) is not None}
+    resources = {asset['id']: asset for asset in state.get('resources', [])}
+    chunks = {}
+
+    class DesignStorage:
+        def asset(self, identifier):
+            if identifier not in resources:
+                raise ValueError('선택한 문서를 다시 연결해 주세요.')
+            return resources[identifier]
+
+    storage = DesignStorage()
+    for node in nodes:
+        settings = node['settings']
+        if (node['tool'] != 'extract_information' or settings.get('operation') or settings.get('extraction_mode') != 'rows'
+                or node['id'] not in exported_sources):
+            continue
+        for binding in node.get('bindings', []):
+            reader = readers.get(binding['node_id']) if binding.get('input') == 'documents' else None
+            if not reader or reader['settings'].get('operation') or binding.get('output') != 'documents':
+                continue
+            table_id = reader['settings'].get('document_table_id')
+            selected_parts = []
+            try:
+                ids = source_file_ids(reader, [], storage, draft, allow_deferred=True)
+                for identifier in ids:
+                    asset = storage.asset(identifier)
+                    if identifier not in chunks:
+                        chunks[identifier] = list(chunks_for_asset(asset))
+                    parts = chunks[identifier]
+                    if table_id is not None:
+                        parts = [part for part in parts if part.get('block_id') == table_id]
+                    selected_parts.append((asset['name'], parts))
+                validate_extraction_size(part for _, parts in selected_parts for part in parts)
+            except ValueError as error:
+                return [str(error)]
+            for name, parts in selected_parts:
+                try:
+                    rows = native_rows(parts, settings.get('fields') or [], EVIDENCE_KEYS, MAX_ROWS)
+                    if rows is None:
+                        return [name + ': ' + NO_COORDINATES]
+                except ValueError as error:
+                    return [name + ': ' + str(error)]
     return []

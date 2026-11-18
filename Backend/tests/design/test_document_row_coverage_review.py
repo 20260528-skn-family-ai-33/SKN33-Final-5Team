@@ -8,7 +8,7 @@ from workflow_engine.runner import run_workflow
 
 
 @pytest.mark.parametrize('has_text', [True, False])
-def test_reviewed_document_cannot_export_only_its_structured_page(tmp_path, has_text):
+def test_reviewed_document_cannot_export_only_its_structured_page(tmp_path, has_text, monkeypatch):
     first = block(SOURCE[:3])
     second = block([SOURCE[0], *SOURCE[3:]], 'second', 2)
     second['data'] = {}
@@ -30,7 +30,11 @@ def test_reviewed_document_cannot_export_only_its_structured_page(tmp_path, has_
     storage = Storage(tmp_path)
     try:
         storage.add_asset(asset, [])
-        saved_id = storage.save_agent(draft_state)
+        with pytest.raises(ValueError, match='셀 위치'):
+            storage.save_agent(draft_state)
+        with monkeypatch.context() as legacy:
+            legacy.setattr('agent_builder.capabilities.capability_gate.require_save_ready', lambda _state: None)
+            saved_id = storage.save_agent(draft_state)
         result = run_workflow(storage, saved_id, '워크플로우 실행', '', file_ids=[asset['id']], llm=NoModel())
         assert result['status'] == 'failed'
         assert not result.get('artifact')

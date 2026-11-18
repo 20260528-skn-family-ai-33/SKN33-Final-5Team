@@ -90,8 +90,9 @@ def test_explicit_first_turn_fields_and_natural_answer_avoid_reasking():
 
 
 def test_explanation_preserves_question_and_restart_can_answer_it(tmp_path):
+    from tests.design.test_document_row_integrity import document
     store = Storage(tmp_path)
-    state = request(REQUEST, resources=[DOC])
+    state = request(REQUEST, resources=[document()])
     cfg = {'configurable': {'thread_id': state['session_id']}}
     graph, connection = build_graph(store, conversation=no_planner)
     first = graph.invoke(state, cfg)
@@ -297,8 +298,10 @@ def test_written_arithmetic_symbols_keep_formula_and_output_column(symbol, formu
 
 
 def test_natural_field_addition_preserves_ready_recipe_and_original_fields(tmp_path):
+    from tests.design.test_document_row_integrity import document, block, SOURCE
+    asset = document([block([SOURCE[0] + ['유통기한'], *[row + ['2027-01-01'] for row in SOURCE[1:]]])])
     store = Storage(tmp_path)
-    state = request(REQUEST+'\n추출 항목: 품명, 실입고',resources=[DOC])
+    state = request(REQUEST+'\n추출 항목: 품명, 실입고',resources=[asset])
     cfg = {'configurable':{'thread_id':state['session_id']}}
     graph, connection = build_graph(store,conversation=no_planner)
     try:
@@ -314,7 +317,8 @@ def test_natural_field_addition_preserves_ready_recipe_and_original_fields(tmp_p
 
 
 def test_field_addition_never_replaces_a_customized_or_compound_workflow():
-    state = request(REQUEST+'\n추출 항목: 품명',resources=[DOC])
+    from tests.design.test_document_row_integrity import document
+    state = request(REQUEST+'\n추출 항목: 품명',resources=[document()])
     state.update(document_rows_reply(state))
     state['messages'].append(dict(role='user',content='실입고도 추가해줘'))
     before = deepcopy(state)

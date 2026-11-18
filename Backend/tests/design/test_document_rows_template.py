@@ -38,7 +38,8 @@ def test_attached_document_asks_fields_then_builds_the_fixed_flow_without_the_mo
     assert [n['tool'] for n in nodes]==['read_document','extract_information','export_result']
     assert nodes[1]['settings']['fields']==['상품명','단가','수량','금액'] and nodes[1]['settings']['extraction_mode']=='rows'
     assert nodes[2]['settings']['format']=='csv' and nodes[0]['settings']['file_ids']==['receipt']
-    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='review'
+    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='clarification'
+    assert '표 셀 좌표가 없습니다' in done['draft']['questions'][0]
     assert not store.agents()
     connection.close();store.close()
 
@@ -53,7 +54,8 @@ def test_enforced_condition_check_delegates_the_fixed_flow_without_a_model_call(
     assert first['draft']['questions']==[QUESTION]
     done=graph.invoke(Command(resume={'type':'message','content':'상품명, 수량, 단가, 금액'}),cfg)
     assert done['draft']['workflow']['nodes'][1]['settings']['fields']==['상품명','수량','단가','금액']
-    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='review'
+    assert not done.get('issues') and done['__interrupt__'][0].value['kind']=='clarification'
+    assert '표 셀 좌표가 없습니다' in done['draft']['questions'][0]
     checks=[t for t in done['trace'] if t['node']=='condition_check' and t.get('model_calls')==0 and 'outside_scope' in t['detail']]
     assert len(checks)==2 and done['condition_enforced'] is False
     connection.close();store.close()

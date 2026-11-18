@@ -52,6 +52,11 @@ def test_saved_native_receipt_preserves_arithmetic_in_history_and_only_requested
         records = persisted['outputs']['extract']['records']
         assert all(record['합계_검산'].startswith(expected_check) for record in records)
         assert all(record['row_coverage'] == 'complete' and record['evidence'] for record in records)
+        if expected_check == '불일치':
+            assert '영수증 검산: 불일치' in run['answer']
+            assert run['artifact']['warnings']
+        else:
+            assert not run['artifact'].get('warnings')
     finally:
         store.close()
 
@@ -83,11 +88,11 @@ def test_saved_receipt_uses_payment_amount_not_product_labels_or_quantity(tmp_pa
         store.close()
 
 
-def block(grid, identifier='table-1', page=1):
+def block(grid, identifier='table-1', page=1, *, header_rows=(0,)):
     return dict(id=identifier, selected=True, content_types=['table'],
                 text='\n'.join(str(value) for row in grid for value in row),
                 native_location={'page': page}, engine='mineru',
-                data={'cells': [dict(row=r, column=c, row_span=1, col_span=1, text=value)
+                data={'cells': [dict(row=r, column=c, row_span=1, col_span=1, text=value, column_header=r in header_rows)
                                 for r, row in enumerate(grid) for c, value in enumerate(row)]})
 
 
@@ -116,6 +121,130 @@ def no_planner(_state):
 
 def output_rows(artifact):
     return list(csv.DictReader(io.StringIO(artifact['content'].lstrip('\ufeff'))))
+
+
+@pytest.mark.parametrize('omission', ['tail', 'conflicting_block'])
+def test_saved_document_search_cannot_establish_a_document_wide_value(tmp_path, omission):
+    from agent_builder.design.document_rows_template import _draft, _settings
+    from workflow_engine.executors.schemas import SearchTerms
+
+    date_line = '조회표식\n거래일자: 2026-11-18'
+    if omission == 'tail':
+        date_line = '조회표식\n' + 'x' * 1784 + '\n거래일자: 2026-11-18'
+    metadata = dict(id='date', selected=True, content_types=['text'], text=date_line,
+                    native_location={'page': 1}, engine='mineru')
+    blocks = [block([['품명'], ['볼트'], ['너트']]), metadata]
+    if omission == 'conflicting_block':
+        blocks.append(dict(metadata, id='later', text='거래일자: 2026-11-19'))
+    asset = document(blocks)
+    request = '문서 검색을 먼저 하고 품명과 거래일자를 CSV로 저장해줘.'
+    draft = _draft(request, request, ['품명', '거래일자'], [asset['id']])
+    workflow = draft['workflow']
+    workflow['nodes'].insert(1, dict(id='search', tool='search_document', label='문서 검색',
+        settings=_settings(query='품명 및 조회표식'),
+        bindings=[dict(input='documents', output='documents', node_id='read')]))
+    workflow['nodes'][2]['bindings'][0]['node_id'] = 'search'
+    workflow['edges'][0]['target'] = 'search'
+    workflow['edges'].insert(1, dict(source='search', target='extract', branch='next'))
+    draft['tool_ids'].insert(1, 'search_document')
+    current = dict(state(asset, request), draft=draft, status='ready', confirmed=True)
+
+    class SearchModel(NoModel):
+        def with_structured_output(self, schema, **_kwargs):
+            assert schema is SearchTerms
+            return self
+
+        def invoke(self, _messages):
+            return SearchTerms(keywords=['품명', '조회표식'])
+
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        result = run_workflow(store, store.save_agent(current), '실행', '', llm=SearchModel())
+        assert result['status'] == 'failed' and not result.get('artifact')
+        assert '요청한 열' in result['error']
+        picked = result['outputs']['search']['documents']
+        assert len(picked) == 2 and len(list(chunks_for_asset(asset))) == 3
+        if omission == 'tail':
+            assert next(part['text'] for part in picked if part['block_id'] == 'date').endswith('2026')
+    finally:
+        store.close()
+
+
+def test_native_common_value_has_the_actual_line_offset_and_recovers_older_chunks(tmp_path):
+    from workflow_engine.executors.document.row_contract import native_rows
+
+    # The same quote appears inside a different label in the first chunk.
+    text = '예정 거래일자: 2026-11-18\n' + 'x' * 1800 + '\n  거래일자: 2026-11-18'
+    asset = document([block([['품명'], ['볼트']]),
+                      dict(id='date', selected=True, content_types=['text'], text=text,
+                           native_location={'page': 1}, engine='mineru')])
+    parts = list(chunks_for_asset(asset))
+    older_parts = [{key: value for key, value in part.items()
+                    if key not in ('document_chunk_count', 'source_text_length')} for part in parts]
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        for supplied in (parts, older_parts):
+            records = native_rows(supplied, ['품명', '거래일자'], EVIDENCE_KEYS, MAX_ROWS, storage=store)
+            proof = records[0]['evidence']['거래일자']
+            assert proof['source_id'] == 'delivery:date:1400'
+            assert proof['quote_offset'] == text.rindex('거래일자')
+            assert proof['quote'] == '거래일자: 2026-11-18'
+            with pytest.raises(ValueError, match='요청한 열'):
+                native_rows(supplied[:-1], ['품명', '거래일자'], EVIDENCE_KEYS, MAX_ROWS, storage=store)
+    finally:
+        store.close()
+
+
+def test_native_common_value_counts_a_conflict_when_its_quote_spans_chunks():
+    from workflow_engine.executors.document.row_contract import native_rows
+
+    # The second labelled value starts before the overlap and ends after it.
+    text = '메모: 확인완료\n' + 'x' * 1300 + '\n메모: ' + '검토필요' * 150
+    asset = document([block([['품명'], ['볼트']]),
+                      dict(id='note', selected=True, content_types=['text'], text=text,
+                           native_location={'page': 1}, engine='mineru')])
+    with pytest.raises(ValueError, match='요청한 열'):
+        native_rows(list(chunks_for_asset(asset)), ['품명', '메모'], EVIDENCE_KEYS, MAX_ROWS)
+
+
+@pytest.mark.parametrize('item_names', [['빼빼로'], ['빼빼로', '너트']])
+def test_runtime_can_cancel_a_saved_first_item_and_retains_selection_with_a_product_name(tmp_path, item_names):
+    from agent_builder.design.document_rows_template import _draft
+
+    asset = document([block([['품명'], *[[name] for name in item_names]])])
+    request = '문서마다 첫 품목 하나만 CSV로 저장해줘'
+    draft = _draft(request, request, ['품명'], [asset['id']])
+    draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
+    current = dict(state(asset, request), draft=draft, status='ready', confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        saved = store.save_agent(current)
+        result = run_workflow(store, saved, '빼빼로인지 확인하려면 첫 품목 하나만 추출해줘', '', llm=NoModel())
+        assert result['status'] == 'succeeded', result.get('error')
+        assert output_rows(result['artifact']) == [{'품명': '빼빼로'}]
+        cancelled = run_workflow(store, saved, '첫 품목 선택을 취소해줘', '', llm=NoModel())
+        assert cancelled['status'] == 'failed' and not cancelled.get('artifact')
+        assert '선택을 취소' in cancelled['error']
+    finally:
+        store.close()
+
+
+def test_marked_header_rows_are_not_items_and_body_labels_do_not_block_common_values():
+    from workflow_engine.executors.document.row_contract import native_rows
+
+    asset = document([
+        block([['품명', '분류'], ['품명', '품목군'], ['거래일자', '기타'], ['볼트', '부품']],
+              header_rows=(0, 1)),
+        dict(id='date', selected=True, content_types=['text'], text='거래일자: 2026-11-18',
+             native_location={'page': 1}, engine='mineru'),
+    ])
+    records = native_rows(list(chunks_for_asset(asset)), ['품명', '거래일자'], EVIDENCE_KEYS, MAX_ROWS)
+    assert [(record['품명'], record['거래일자']) for record in records] == [
+        ('거래일자', '2026-11-18'), ('볼트', '2026-11-18'),
+    ]
 
 
 @pytest.mark.parametrize('append_total', [False, True])
@@ -238,13 +367,19 @@ class FirstRowModel:
             dict(field='실입고', value='48', source_id='delivery:1:0', quote='48')])]))
 
 
-def test_grounded_first_row_without_native_coverage_cannot_be_exported_as_finished_csv(tmp_path):
+def test_grounded_first_row_without_native_coverage_cannot_be_exported_as_finished_csv(tmp_path, monkeypatch):
     asset = document(); asset.pop('parser_metadata')
     s = state(asset); store = Storage(tmp_path); store.add_asset(asset, [])
     s['messages'] += [dict(role='assistant', content=QUESTION), dict(role='user', content='품명, 실입고')]
     s.update(document_rows_reply(s)); s.update(status='ready', confirmed=True)
     try:
-        result = run_workflow(store, store.save_agent(s), '워크플로우 실행', '', file_ids=[asset['id']], llm=FirstRowModel())
+        with pytest.raises(ValueError, match='전체 행'):
+            store.save_agent(s)
+        # Simulate a workflow persisted before source feasibility was enforced.
+        with monkeypatch.context() as legacy:
+            legacy.setattr('agent_builder.capabilities.capability_gate.require_save_ready', lambda _state: None)
+            saved_id = store.save_agent(s)
+        result = run_workflow(store, saved_id, '워크플로우 실행', '', file_ids=[asset['id']], llm=FirstRowModel())
         assert result['status'] == 'failed' and not result.get('artifact')
         assert '전체 행' in str(result.get('error'))
     finally:

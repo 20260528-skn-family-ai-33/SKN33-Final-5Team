@@ -2,6 +2,22 @@
 import json
 
 
+TABLE_SCOPE_INCOMPLETE = 'table_scope_incomplete'
+EMPTY_DOCUMENTS = '_empty_documents'
+TABLE_HEADERS_CHECKED = 'table_headers_checked'
+
+
+def document_scope(output):
+    """Metadata that must travel with documents even when the chunk list is empty."""
+    return {key: output[key] for key in (TABLE_SCOPE_INCOMPLETE, EMPTY_DOCUMENTS) if key in output}
+
+
+def input_document_scope(node, outputs):
+    source = next((binding['node_id'] for binding in node['bindings']
+                   if binding['input'] == binding['output'] == 'documents'), None)
+    return document_scope(outputs.get(source, {}))
+
+
 class RemovedUpload(ValueError):
     """A saved reader may still need the input slot's name, type and columns."""
     def __init__(self, record):
@@ -37,9 +53,58 @@ def supports(asset, kind):
     return kind == 'document' and bool(analysis_of(asset)) and bool(asset.get('text', '').strip())
 
 
+def table_cell_layout(cells):
+    from workflow_engine.executors.document.table_rows import _grid, label
+
+    layout = []
+    for row, row_cells in _grid(cells):
+        for column, cell in sorted(row_cells.items()):
+            height, width = (1 if cell.get(key) is None else cell[key] for key in ('row_span', 'col_span'))
+            if any(type(span) is not int or span < 1 for span in (height, width)):
+                raise ValueError('표 셀의 행·열 병합 범위를 확인할 수 없습니다.')
+            position = (row, column, height, width, label(cell.get('text')))
+            layout.append((position, cell.get('column_header') is True))
+    return layout
+
+
+def table_cells(block):
+    """Recover legacy MinerU column headers only from matching saved HTML."""
+    data = block.get('data') or {}
+    cells = data.get('cells') or []
+    if not cells or block.get('engine') != 'mineru' or not data.get('html'):
+        return cells
+    from documents.analysis.tables import from_html
+
+    try:
+        if not all(isinstance(cell, dict) and 'column_header' not in cell for cell in cells):
+            return cells
+        restored = match_table_headers(cells, table_cell_layout(from_html(data['html'])['cells']))
+    except (TypeError, ValueError):
+        return cells
+    return cells if restored is None else restored
+
+
+def match_table_headers(cells, reference_layout):
+    """Transfer header markers without changing the matched cells' evidence."""
+    if [position for position, _ in reference_layout] != [position for position, _ in table_cell_layout(cells)]:
+        return None
+    headers = {(row, column) for (row, column, _, _, _), marked in reference_layout if marked}
+    return [dict(cell, column_header=True)
+            if (cell.get('row', cell.get('start_row_offset_idx')),
+                cell.get('column', cell.get('start_col_offset_idx'))) in headers else cell
+            for cell in cells]
+
+
 def chunks_for_asset(asset):
     if not supports(asset, 'document'):
         raise ValueError('문서 읽기에 사용할 본문 또는 분석 결과가 없습니다.')
+    chunks = list(_asset_chunks(asset))
+    for chunk in chunks:
+        chunk['document_chunk_count'] = len(chunks)
+        yield chunk
+
+
+def _asset_chunks(asset):
     analysis = analysis_of(asset)
     if analysis:
         review=(asset.get('parser_metadata') or {}).get('document_review') or {}
@@ -52,7 +117,7 @@ def chunks_for_asset(asset):
         for block in blocks:
             block_text = block.get('text', '')
             is_table = 'table' in block.get('content_types', [])
-            cells = ((block.get('data') or {}).get('cells') or []) if is_table else None
+            cells = table_cells(block) if is_table else None
             if not block_text.strip() and cells:
                 block_text = '\n'.join(str(cell.get('text') or '') for cell in cells)
             empty = not block_text.strip()
@@ -62,6 +127,7 @@ def chunks_for_asset(asset):
             location = block['native_location']
             source = f"{asset['id']}:{block['id']}:"
             provenance = dict(file_id=asset['id'], file_name=asset['name'], page=location.get('page'),
+                              source_text_length=len(block_text),
                               block_id=block['id'], native_location=location, bbox=block.get('bbox'),
                               parser_engine=block['engine'], review_required=analysis['review_required'] and review.get('status')!='completed',
                               document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0))
@@ -75,6 +141,8 @@ def chunks_for_asset(asset):
                 part = dict(source_id=source + str(start), offset=start, text=text, **provenance)
                 if cells is not None:
                     part['table_cells'] = cells
+                    if cells:
+                        part[TABLE_HEADERS_CHECKED] = True
                     cells = None
                 has_text = True
                 yield part
@@ -87,7 +155,8 @@ def chunks_for_asset(asset):
             chunk = text[start:start + 1800]
             if chunk.strip():
                 yield dict(source_id=f"{asset['id']}:{page}:{start}", file_id=asset['id'], file_name=asset['name'],
-                           page=page if asset.get('format') == 'pdf' else None, offset=start, text=chunk)
+                           page=page if asset.get('format') == 'pdf' else None, offset=start, text=chunk,
+                           source_text_length=len(text))
 
 
 def locator(chunk):

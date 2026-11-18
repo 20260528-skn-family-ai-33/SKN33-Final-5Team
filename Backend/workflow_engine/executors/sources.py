@@ -1,6 +1,8 @@
 """Shared source resolution for the registered document/table entrypoints."""
-from documents.resources.document_resources import document_chunks
-from documents.resources.document_resources import saved_input, supports
+from documents.resources.document_resources import (
+    EMPTY_DOCUMENTS, analysis_of, chunks_for_asset, document_scope, saved_input, supports,
+    table_cell_layout, table_cells,
+)
 
 DOCUMENT_TABLE_ERROR = '선택한 표를 원본 문서에서 확인할 수 없습니다. 문서 미리보기에서 표를 다시 선택해 주세요.'
 
@@ -27,16 +29,27 @@ def replacement_files(readers, provided, storage):
     return replacements
 
 
-def source_file_ids(node,file_ids,storage,config,outputs=None):
-    """Shared file selection for preflight and execution; never reads file rows."""
+def source_file_ids(node, file_ids, storage, config, outputs=None, *, allow_deferred=False):
+    """Select physical inputs and validate explicit document table replacements."""
+    ids, _ = _resolve_source(node, file_ids, storage, config, outputs, allow_deferred=allow_deferred)
+    return ids
+
+
+def _resolve_source(node, file_ids, storage, config, outputs, *, allow_deferred=False):
     tool=node['tool'];settings=node['settings']
     expected='document' if tool=='read_document' else 'table'
     provided=[id for id in file_ids if supports(storage.asset(id),expected)]
     selected=settings.get('file_ids') or []
     if tool == 'read_document' and settings.get('document_table_id') is not None:
-        if len(selected) != 1 or (file_ids and selected[0] not in provided):
+        table_id = settings['document_table_id']
+        if len(selected) != 1:
             raise ValueError(DOCUMENT_TABLE_ERROR)
-        return selected
+        if file_ids and selected[0] not in provided:
+            if len(provided) == 1 and len([n for n in (config.get('workflow') or {}).get('nodes', [])
+                                          if n['tool'] == 'read_document']) <= 1:
+                return provided, _replacement_table_id(storage.asset(selected[0]), table_id, storage.asset(provided[0]))
+            raise ValueError(DOCUMENT_TABLE_ERROR)
+        return selected, table_id
     other_readers=[n for n in (config.get('workflow') or {}).get('nodes',[])
                    if n['tool'] in ('read_table','read_document') and n['tool']!=tool]
     if file_ids and not provided and not other_readers:
@@ -65,26 +78,109 @@ def source_file_ids(node,file_ids,storage,config,outputs=None):
     else:
         ids=[i for i in selected or config['document_ids'] if supports(saved_input(storage,i),expected)]
     if not ids:
+        if allow_deferred and not file_ids and not selected:
+            return [], None
         raise ValueError('이번 실행에 사용할 '+('문서' if expected=='document' else '표 파일')+'를 연결하세요.')
     if tool=='read_table' and len(ids)!=1:raise ValueError('표 읽기 노드는 한 파일을 선택해야 합니다. 파일을 하나만 연결하세요.')
-    return ids
+    return ids, None
 
 
 def read_source(node,state,storage,config,external_port):
     # Preserve binding lookup order/errors for direct executor callers.
     _inputs={b['input']:state['outputs'][b['node_id']][b['output']] for b in node['bindings']}
     table_id = node['settings'].get('document_table_id') if node['tool'] == 'read_document' else None
-    if external_port in state.get('external_inputs',{}):
+    external_inputs = state.get('external_inputs', {})
+    if external_port in external_inputs:
         if table_id is not None:
             raise ValueError(DOCUMENT_TABLE_ERROR)
-        return {external_port:state['external_inputs'][external_port]}
-    ids=source_file_ids(node,state['file_ids'],storage,config,state.get('outputs'))
+        scope = document_scope(external_inputs) if external_port == 'documents' else {}
+        return {external_port: external_inputs[external_port], **scope}
+    ids, table_id = _resolve_source(node, state['file_ids'], storage, config, state.get('outputs'))
     if node['tool'] == 'read_document':
-        parts = document_chunks(storage, ids)
+        parts = []
+        empty_documents = []
+        for identifier in ids:
+            asset = storage.asset(identifier)
+            chunks = list(chunks_for_asset(asset))
+            if not chunks:
+                empty_documents.append(asset['name'])
+            parts.extend(chunks)
         if table_id is not None:
             parts = [part for part in parts if part.get('block_id') == table_id]
             if not any(part.get('table_cells') for part in parts):
                 raise ValueError(DOCUMENT_TABLE_ERROR)
-        return {'documents': parts}
+        result = {'documents': parts}
+        if empty_documents:
+            result[EMPTY_DOCUMENTS] = empty_documents
+        return result
     asset=storage.asset(ids[0])
     return {'table':{'rows':storage.rows(ids[0]),'columns':asset['columns'],'file_id':ids[0]}}
+
+
+def _contiguous_extent(ranges):
+    ranges = sorted(ranges)
+    start = end = ranges[0][0]
+    for left, right in ranges:
+        if left > end:
+            return None
+        end = max(end, right)
+    return start, end
+
+
+def _table_structure(block):
+    try:
+        layout = table_cell_layout(table_cells(block))
+    except (TypeError, ValueError):
+        return (), None
+    shape = tuple(position for position, _ in layout)
+    headers = [position for position, is_header in layout if is_header]
+    return shape, _header_signature(shape, headers)
+
+
+def _header_signature(shape, headers):
+    if not headers:
+        return None
+    header_rows = _contiguous_extent((row, row + height) for row, _, height, _, _ in headers)
+    labelled_columns = [(column, column + width) for _, column, _, width, name in headers if name]
+    if header_rows is None or not labelled_columns:
+        return None
+    all_columns = _contiguous_extent((column, column + width) for _, column, _, width, _ in shape)
+    if all_columns is None or _contiguous_extent(labelled_columns) != all_columns:
+        return None
+    end = header_rows[1]
+    if not any(row + height == end and name for row, _, height, _, name in headers):
+        return None
+    leading = tuple(entry for entry in shape if entry[0] < end)
+    if any(row + height > end for row, _, height, _, _ in leading):
+        return None
+    return leading
+
+
+def _document_tables(asset):
+    analysis = analysis_of(asset) or {}
+    review = (asset.get('parser_metadata') or {}).get('document_review') or {}
+    if analysis.get('review_required') and review.get('status') != 'completed':
+        return []
+    return [block for block in analysis.get('blocks', []) if block.get('selected', True)
+            and 'table' in block.get('content_types', [])]
+
+
+def _replacement_table_id(original, table_id, replacement):
+    """Rebind to a unique, parser-confirmed header and merge structure."""
+    original_tables = [block for block in _document_tables(original) if block.get('id') == table_id]
+    expected = _table_structure(original_tables[0])[1] if len(original_tables) == 1 else None
+    if expected is None:
+        raise ValueError(DOCUMENT_TABLE_ERROR)
+    error = '새 문서에서 같은 열 구조의 표를 하나로 확정할 수 없습니다. 미리보기에서 사용할 표를 다시 선택해 주세요.'
+    header_end = max(row + height for row, _, height, _, _ in expected)
+    candidates = []
+    for block in _document_tables(replacement):
+        shape, signature = _table_structure(block)
+        if signature == expected:
+            candidates.append(block.get('id'))
+        elif signature is None and tuple(entry for entry in shape if entry[0] < header_end) == expected:
+            # An unconfirmed table with the same leading cells can also be the requested table.
+            raise ValueError(error)
+    if len(candidates) != 1 or candidates[0] is None:
+        raise ValueError(error)
+    return candidates[0]

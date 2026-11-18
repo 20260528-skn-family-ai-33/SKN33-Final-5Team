@@ -1,11 +1,15 @@
 import sys,copy,json
+import csv
+import io
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 import pytest
 from contracts.models import AgentDraft
+from documents.resources.document_resources import TABLE_SCOPE_INCOMPLETE
 from infrastructure.persistence.storage import Storage; from infrastructure.persistence.ids import uid
 from workflow_engine.workflow import workflow_errors
 from workflow_engine.runner import run_workflow, execute_node; from workflow_engine.executors.schemas import Facts, Fact
+from workflow_engine.executors.schemas import SearchTerms
 from tests.design.test_builder import draft, initial
 from workflow_engine.executors.legacy_tools.filter_sort import filter_sort_node
 
@@ -27,11 +31,13 @@ class FakeLLM:
     def invoke(self,messages):
         data=json.loads(messages[-1]['content']);d=data['documents'][0]
         return Facts(facts=[Fact(field='제목',value='테스트',source_id=d['source_id'],quote='제목: 테스트'),Fact(field='금액',value=None,source_id=None,quote=None)])
-def saved(tmp_path,w,**config):
+def saved(tmp_path,w,*,document_text='제목: 테스트\n작성일: 2026-10-12',credential_id=None,**config):
     store=Storage(tmp_path);s=initial();d=draft();d['workflow']=w;d['tool_ids']=list(dict.fromkeys(n['tool'] for n in w['nodes']));d['document_ids']=[]
     s.update(draft=AgentDraft.model_validate({**d,**config}).model_dump(),confirmed=True)
+    if credential_id is not None:
+        s['credential_id'] = credential_id
     id=store.save_agent(s)
-    asset={'id':uid(),'name':'sample.txt','kind':'document','format':'txt','text':'제목: 테스트\n작성일: 2026-10-12','pages':['제목: 테스트\n작성일: 2026-10-12'],'columns':[]};store.add_asset(asset,[])
+    asset={'id':uid(),'name':'sample.txt','kind':'document','format':'txt','text':document_text,'pages':[document_text],'columns':[]};store.add_asset(asset,[])
     return store,id,asset
 
 def test_contract_rejects_type_missing_port_and_cycles():
@@ -59,6 +65,282 @@ def test_checkpoint_resume_same_id_after_restart_and_no_forged_evidence(tmp_path
     assert second['id']==run_id;assert second['status']=='succeeded'
     result=json.loads(second['artifact']['content']);assert result['user_confirmation']=='누락을 표시하고 계속하세요';assert result['records'][1]['value'] is None
     assert len([s for s in second['steps'] if s['node']=='extract'])==1;assert all(s['node']!='out_no' for s in second['steps']);store.close()
+
+@pytest.mark.parametrize('format', ['csv', 'json'])
+def test_resumed_export_projects_forwarded_field_values(tmp_path, format):
+    class StatusLLM(FakeLLM):
+        def invoke(self, messages):
+            source = json.loads(messages[-1]['content'])['documents'][0]
+            return Facts(facts=[
+                Fact(field='status', value='paid', source_id=source['source_id'], quote='status: paid'),
+                Fact(field='금액', value=None, source_id=None, quote=None),
+            ])
+
+    workflow = flow(branch=True)
+    workflow['nodes'][1]['settings']['fields'] = ['status', '금액']
+    output = next(n for n in workflow['nodes'] if n['id'] == 'out_yes')
+    output['settings'].update(fields=['status'], format=format)
+    store, identifier, asset = saved(tmp_path, workflow, document_text='status: paid')
+    try:
+        initial_run = run_workflow(store, identifier, '추출', 'unused', file_ids=[asset['id']], llm=StatusLLM())
+        assert initial_run['status'] == 'needs_input', initial_run.get('error')
+    finally:
+        store.close()
+
+    store = Storage(tmp_path)
+    try:
+        confirmation = '누락을 표시하고 계속하세요'
+        run = run_workflow(store, identifier, '추출', 'unused', run_id=initial_run['id'],
+                           answer=confirmation, llm=StatusLLM())
+        assert run['status'] == 'succeeded', run.get('error')
+        assert run['outputs']['ask']['records'][0]['status'] == 'verified'
+        content = run['artifact']['content']
+        if format == 'csv':
+            assert list(csv.DictReader(io.StringIO(content.lstrip('\ufeff')))) == [{'status': 'paid'}]
+        else:
+            assert json.loads(content) == {'records': [{'status': 'paid'}], 'user_confirmation': confirmation}
+    finally:
+        store.close()
+
+
+def test_forwarded_generic_records_keep_their_original_columns(tmp_path):
+    generic_row = {'file_name': 'sample.txt', 'field': 'kind', 'value': 'paid', 'status': 'provided'}
+    source = node('source', 'json_transform', operation='lookup', output_port='records',
+                  arguments_json=json.dumps({'value': {'rows': [generic_row]}, 'path': ['rows']}))
+    check = node('check', 'condition', [bind('records', 'source', 'records')], condition_operator='empty')
+    output = node('out', 'export_result', [bind('records', 'check', 'records')], format='json', fields=['status'])
+    workflow = {'entry': 'source', 'nodes': [source, check, output, node('empty', 'finish', instructions='결과 없음')],
+                'edges': [edge('source', 'check'), edge('check', 'empty', 'yes'), edge('check', 'out', 'no')]}
+    store, identifier, _ = saved(tmp_path, workflow)
+    try:
+        run = run_workflow(store, identifier, '실행', 'unused', llm=FakeLLM())
+        assert run['status'] == 'succeeded', run.get('error')
+        assert json.loads(run['artifact']['content']) == [{'status': 'provided'}]
+    finally:
+        store.close()
+
+
+def test_export_projects_field_values_from_pinned_workflow(tmp_path):
+    child_workflow = flow()
+    child_workflow['nodes'].pop()
+    child_workflow['edges'].pop()
+    credential_id = uid()
+    store, child_id, asset = saved(tmp_path, child_workflow, credential_id=credential_id)
+    store.close()
+
+    child = node('child', 'saved_workflow', agent_id=child_id, agent_version=1, output_node='extract', output_port='records')
+    output = node('out', 'export_result', [bind('records', 'child', 'records')], format='json', fields=['제목'])
+    workflow = {'entry': 'child', 'nodes': [child, output], 'edges': [edge('child', 'out')]}
+    store, identifier, _ = saved(tmp_path, workflow, credential_id=credential_id)
+    try:
+        run = run_workflow(store, identifier, '추출', 'unused', file_ids=[asset['id']], llm=FakeLLM())
+        assert run['status'] == 'succeeded', run.get('error')
+        assert json.loads(run['artifact']['content']) == [{'제목': '테스트'}]
+    finally:
+        store.close()
+
+
+class SearchLLM:
+    def __init__(self, keyword):
+        self.keyword = keyword
+
+    def with_structured_output(self, schema, **_kwargs):
+        assert schema is SearchTerms
+        return self
+
+    def invoke(self, _messages):
+        return SearchTerms(keywords=[self.keyword])
+
+
+@pytest.mark.parametrize(('omitted', 'number_of_searches', 'preview_scope', 'incomplete'), [
+    ('table', 1, False, True),
+    ('empty_table', 1, False, True),
+    ('table', 2, False, True),
+    ('whole_file', 1, False, True),
+    ('zero_matches', 2, False, True),
+    ('prose', 1, False, False),
+    ('table', 1, True, False),
+])
+def test_row_export_preserves_the_table_scope_of_document_search(
+        tmp_path, omitted, number_of_searches, preview_scope, incomplete):
+    from agent_builder.design.document_rows_template import _draft
+    from tests.design.test_document_row_integrity import block, document, output_rows, state
+
+    keyword = '소켓' if omitted == 'zero_matches' else '볼트'
+    kept = block([['품명', '수량'], ['볼트', '2']], identifier='kept')
+    if omitted == 'prose':
+        other = dict(id='omitted', selected=True, content_types=['text'], text='참고 설명',
+                     native_location={'page': 1}, engine='mineru')
+    else:
+        other_rows = [] if omitted == 'empty_table' else [['품명', '수량'], ['너트', '3']]
+        other = block(other_rows, identifier='omitted')
+    asset = document([kept] if omitted == 'whole_file' else [kept, other])
+    assets = [asset]
+    if omitted == 'whole_file':
+        assets.append(dict(document([other], name='두 번째 자료.pdf'), id='second-file'))
+    request = '문서 검색을 먼저 하고 모든 품목의 품명과 수량을 CSV로 저장해줘.'
+    current_draft = _draft(request, request, ['품명', '수량'], [item['id'] for item in assets],
+                           document_table_id=kept['id'] if preview_scope else None)
+    read, extract, export = current_draft['workflow']['nodes']
+    path = [read]
+    for index in range(number_of_searches):
+        path.append(node(f'search{index}', 'search_document',
+                         [bind('documents', path[-1]['id'], 'documents')], query=keyword))
+    if omitted == 'zero_matches':
+        path.append(node('check_scope', 'condition', [bind('documents', path[-1]['id'], 'documents')],
+                         condition_operator='empty'))
+        path.append(node('confirm_scope', 'ask_user', [bind('documents', 'check_scope', 'documents')],
+                         question='검색 결과를 확인했나요?'))
+    extract['bindings'] = [bind('documents', path[-1]['id'], 'documents')]
+    path.extend([extract, export])
+    edges = [edge(a['id'], b['id'], 'yes' if a['id'] == 'check_scope' else 'next') for a, b in zip(path, path[1:])]
+    if omitted == 'zero_matches':
+        path.append(node('unexpected', 'finish', instructions='검색 결과 확인'))
+        edges.append(edge('check_scope', 'unexpected', 'no'))
+    current_draft['workflow'].update(nodes=path, edges=edges)
+    current_draft['tool_ids'] = list(dict.fromkeys(n['tool'] for n in path))
+    current = dict(state(asset, request), resources=assets, draft=current_draft, status='ready', confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        for item in assets:
+            store.add_asset(item, [])
+        identifier = store.save_agent(current)
+        run = run_workflow(store, identifier, '실행', '', llm=SearchLLM(keyword))
+        if omitted == 'zero_matches':
+            assert run['status'] == 'needs_input', run.get('error')
+            run = run_workflow(store, identifier, '실행', '', run_id=run['id'], answer='확인했어요',
+                               llm=SearchLLM(keyword))
+        assert all(TABLE_SCOPE_INCOMPLETE not in part for part in run['outputs']['read']['documents'])
+        for index in range(number_of_searches):
+            search = run['outputs'][f'search{index}']
+            selected = search['documents']
+            expected_blocks = [] if omitted == 'zero_matches' else ['kept']
+            assert [part['block_id'] for part in selected] == expected_blocks
+            assert search.get(TABLE_SCOPE_INCOMPLETE, False) is incomplete
+            assert all(part.get(TABLE_SCOPE_INCOMPLETE, False) is incomplete for part in selected)
+        if omitted == 'zero_matches':
+            for identifier in ('check_scope', 'confirm_scope'):
+                output = run['outputs'][identifier]
+                assert output['documents'] == []
+                assert output[TABLE_SCOPE_INCOMPLETE] is True
+        if incomplete:
+            assert run['status'] == 'failed' and not run.get('artifact')
+            assert '일부 표가 제외' in run['error']
+        else:
+            assert run['status'] == 'succeeded', run.get('error')
+            assert output_rows(run['artifact']) == [{'품명': '볼트', '수량': '2'}]
+    finally:
+        store.close()
+
+
+def test_row_export_blocks_zero_matches_from_pinned_search(tmp_path):
+    from tests.design.test_document_row_integrity import block, document
+
+    read = node('read', 'read_document')
+    search = node('search', 'search_document', [bind('documents', 'read', 'documents')], query='소켓')
+    child_workflow = {'entry': 'read', 'nodes': [read, search], 'edges': [edge('read', 'search')]}
+    credential_id = uid()
+    store, child_id, _ = saved(tmp_path, child_workflow, credential_id=credential_id)
+    store.close()
+
+    child = node('child', 'saved_workflow', agent_id=child_id, agent_version=1,
+                 output_node='search', output_port='documents')
+    extract = node('extract', 'extract_information', [bind('documents', 'child', 'documents')],
+                   fields=['품명'], extraction_mode='rows')
+    output = node('out', 'export_result', [bind('records', 'extract', 'records')], fields=['품명'], format='json')
+    parent_workflow = {'entry': 'child', 'nodes': [child, extract, output],
+                       'edges': [edge('child', 'extract'), edge('extract', 'out')]}
+    store, identifier, _ = saved(tmp_path, parent_workflow, credential_id=credential_id)
+    asset = document([block([['품명'], ['볼트']])])
+    try:
+        store.add_asset(asset, [])
+        run = run_workflow(store, identifier, '실행', '', file_ids=[asset['id']], llm=SearchLLM('소켓'))
+        assert run['outputs']['child']['documents'] == []
+        assert run['outputs']['child'][TABLE_SCOPE_INCOMPLETE] is True
+        assert run['status'] == 'failed' and not run.get('artifact')
+        assert '일부 표가 제외' in run['error']
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('extract_before_confirmation', [False, True])
+@pytest.mark.parametrize('scope', ['all_tables', 'missing_file', 'preview_table'])
+def test_legacy_search_checkpoint_rechecks_scope_before_export(tmp_path, extract_before_confirmation, scope):
+    from tests.design.test_document_row_integrity import block, document, output_rows
+
+    kept = block([['품명', '수량'], ['볼트', '2']], identifier='kept')
+    other = block([['품명', '수량'], ['너트', '3']], identifier='other')
+    blocks = [kept]
+    if scope == 'preview_table':
+        blocks.append(other)
+    elif scope == 'all_tables':
+        blocks.append(block([['품명', '수량'], ['볼트 추가', '3']], identifier='second'))
+    asset = document(blocks)
+    read = node('read', 'read_document')
+    if scope == 'preview_table':
+        read['settings'].update(file_ids=[asset['id']], document_table_id='kept')
+    search = node('search', 'search_document', [bind('documents', 'read', 'documents')], query='볼트')
+    extract = node('extract', 'extract_information', fields=['품명', '수량'], extraction_mode='rows')
+    check = node('check', 'condition', condition_operator='empty')
+    ask = node('ask', 'ask_user', question='검색 결과를 확인했나요?')
+    out = node('out', 'export_result', fields=['품명', '수량'], format='csv')
+    empty = node('empty', 'finish', instructions='검색 결과 없음')
+    if extract_before_confirmation:
+        extract['bindings'] = [bind('documents', 'search', 'documents')]
+        check['bindings'] = [bind('records', 'extract', 'records')]
+        ask['bindings'] = [bind('records', 'check', 'records')]
+        out['bindings'] = [bind('records', 'ask', 'records')]
+        path = [read, search, extract, check, ask, out]
+    else:
+        check['bindings'] = [bind('documents', 'search', 'documents')]
+        ask['bindings'] = [bind('documents', 'check', 'documents')]
+        extract['bindings'] = [bind('documents', 'ask', 'documents')]
+        out['bindings'] = [bind('records', 'extract', 'records')]
+        path = [read, search, check, ask, extract, out]
+    edges = [edge(a['id'], b['id'], 'no' if a is check else 'next') for a, b in zip(path, path[1:])]
+    workflow = {'entry': 'read', 'nodes': [*path, empty], 'edges': [*edges, edge('check', 'empty', 'yes')]}
+    store, identifier, _ = saved(tmp_path, workflow)
+
+    def legacy_executor(n, current, storage, config, llm):
+        # Simulate a checkpoint from before search stored scope metadata and
+        # before extraction consulted the workflow's document ancestry.
+        result = execute_node(n, current, storage, {**config, 'workflow': {}} if n['id'] == 'extract' else config, llm)
+        if n['id'] == 'search':
+            result.pop(TABLE_SCOPE_INCOMPLETE)
+            result['documents'] = [{k: v for k, v in part.items() if k != TABLE_SCOPE_INCOMPLETE}
+                                   for part in result['documents']]
+        return result
+
+    try:
+        store.add_asset(asset, [])
+        file_ids = [asset['id']]
+        if scope == 'missing_file':
+            missing = dict(document([other]), id='second-file')
+            store.add_asset(missing, [])
+            file_ids.append(missing['id'])
+        paused = run_workflow(store, identifier, '첨부한 자료의 모든 품목을 CSV로 저장해줘', '',
+                              file_ids=file_ids, llm=SearchLLM('볼트'), executor=legacy_executor)
+        assert paused['status'] == 'needs_input', paused.get('error')
+        assert TABLE_SCOPE_INCOMPLETE not in paused['outputs']['search']
+    finally:
+        store.close()
+
+    store = Storage(tmp_path)
+    try:
+        run = run_workflow(store, identifier, '실행', '', run_id=paused['id'], answer='확인했어요', llm=SearchLLM('볼트'))
+        if scope == 'missing_file':
+            assert run['status'] == 'failed' and not run.get('artifact')
+            assert '일부 표가 제외' in run['error']
+            assert run['steps'][-1]['node'] == ('out' if extract_before_confirmation else 'extract')
+        else:
+            assert run['status'] == 'succeeded', run.get('error')
+            expected = [{'품명': '볼트', '수량': '2'}]
+            if scope == 'all_tables':
+                expected.append({'품명': '볼트 추가', '수량': '3'})
+            assert output_rows(run['artifact']) == expected
+    finally:
+        store.close()
+
 
 def test_no_missing_branch_skips_question(tmp_path):
     store,id,asset=saved(tmp_path,flow(True))

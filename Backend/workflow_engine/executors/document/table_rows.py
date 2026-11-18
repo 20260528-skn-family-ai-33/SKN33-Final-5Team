@@ -91,9 +91,38 @@ def _unit_cell(cell):
     return (cell.get('row_span') or 1) == 1 and (cell.get('col_span') or 1) == 1
 
 
+def _marked_header(row):
+    return any(cell.get('column_header') is True for cell in row.values())
+
+
+def _leading_headers(grid):
+    marked = [(number, row) for number, row in grid if _marked_header(row)]
+    if not marked:
+        return []
+    leading = [marked[0]]
+    for number, row in marked[1:]:
+        if number != leading[-1][0] + 1:
+            break
+        leading.append((number, row))
+    shapes = [_row_shape(row) for _, row in leading]
+    if any(_row_shape(row) not in shapes for _, row in marked[len(leading):]):
+        raise ValueError('표에서 서로 다른 머리글 구간을 하나의 항목 표로 확인할 수 없습니다.')
+    return leading
+
+
+def native_header_labels(parts):
+    labels = set()
+    for part in _table_parts(parts):
+        grid = _grid(part.get('table_cells') or [])
+        for _, row in _leading_headers(grid) or grid:
+            labels.update(label(cell.get('text')) for cell in row.values())
+    return labels
+
+
 def _columns(grid, targets):
+    headers = _leading_headers(grid)
     partial_header = False
-    for number, row in grid:
+    for number, row in reversed(headers) if headers else grid:
         found = {}
         for column, cell in row.items():
             field = targets.get(label(cell.get('text')))
@@ -105,7 +134,7 @@ def _columns(grid, targets):
         if len(found) == len(targets):
             if any(not _unit_cell(row[column]) for column in found.values()):
                 raise ValueError('병합된 표 머리글의 열 대응을 확인할 수 없습니다.')
-            return number, found
+            return headers[-1][0] if headers else number, found
         partial_header = partial_header or bool(found)
     if partial_header:
         raise ValueError('표에서 요청한 열을 모두 찾지 못했습니다. 원본의 열 이름을 확인해 주세요.')
@@ -199,6 +228,7 @@ def _detail_rows(grid, header, *, strict):
     header_shape = _row_shape(next(row for number, row in grid if number == header))
     rows = [(number, row) for number, row in grid if number > header
             and _row_shape(row) != header_shape
+            and not _marked_header(row)
             and any(_text(cell) for cell in row.values())]
     ordinary = [row for _, row in rows if not _summary_labels(row)]
     text_columns = [{column for column, cell in row.items() if _text(cell) and not _SUMMARY_VALUE.fullmatch(label(_text(cell)))}

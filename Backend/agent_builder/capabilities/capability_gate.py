@@ -96,6 +96,8 @@ def require_ready(state):
 
 def require_save_ready(state):
     require_ready(state)
+    if (state.get('draft') or {}).get('questions'):
+        raise ValueError('확인 질문이 남아 있어 저장할 수 없습니다: ' + ' / '.join(state['draft']['questions']))
     from agent_builder.design.document_rows_template import document_row_contract_issues
     issues = document_row_contract_issues(state, state.get('draft') or {})
     if issues:

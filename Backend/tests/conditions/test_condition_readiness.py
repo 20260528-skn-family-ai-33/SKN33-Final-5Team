@@ -144,6 +144,9 @@ def test_filter_values_and_sort_commands_in_the_same_sentence(
     ('정렬방식이 내림차순인 자료 만 골라서 주문일 오름차순으로 정렬해줘', '내림차순', '주문일', 'ascending'),
     ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순 정렬해줘', '오름차순', '금액', 'descending'),
     ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순 정렬해 주세요', '오름차순', '금액', 'descending'),
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순으로 정렬하세요', '오름차순', '금액', 'descending'),
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순으로 정렬해서 JSON으로 저장해줘', '오름차순', '금액', 'descending'),
+    ('정렬방식이 오름차순인 데이터만 남기고 금액 내림차순으로 정렬하고 JSON으로 저장해 주세요', '오름차순', '금액', 'descending'),
 ])
 def test_direction_filter_and_sort_export_only_matching_rows(tmp_path, request_text, filter_value, sort_field, direction):
     from agent_builder.conditions.condition_readiness import literal_condition_issues
@@ -201,6 +204,11 @@ def test_direction_filter_and_sort_export_only_matching_rows(tmp_path, request_t
     '남기고 금액 내림차순 정렬할까요?',
     '남기고 금액 내림차순 정렬?',
     '남기고 금액 내림차순 정렬해?',
+    '남기고 금액 내림차순으로 정렬해?',
+    '남기고 금액 내림차순으로 정렬해 줘?',
+    '골라서 금액 내림차순으로 정렬하세요?',
+    '남기고 금액 내림차순으로 정렬해？',
+    '남기고 금액 내림차순으로 정렬하는 방법을 알려줘',
     '남기고 금액 내림차순 정렬하지 마',
     '남기고 결과 제목은 "금액 내림차순 정렬"로 적어줘',
     '남기고 "금액 내림차순" 정렬',

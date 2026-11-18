@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import type { Flow, FlowNode, Execution, Json } from '../../../shared/workflow';
 
 const project = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -334,7 +335,24 @@ test('standalone server persists and executes workflows, credentials, schedules 
           if(!automatic)await delay(25);
         }
         assert.ok(automatic,'scheduler must enqueue an automatic run before pause');
-        const paused=await server.request('/api/activation','POST',{workflowId:scheduled.id,active:false,expectedUpdatedAt:active.data.workflow.updatedAt});
+        const pauseRequest={workflowId:scheduled.id,active:false,expectedUpdatedAt:active.data.workflow.updatedAt};
+        const db=new DatabaseSync(join(directory,'easyflow.sqlite'));
+        try{
+          db.exec(`CREATE TRIGGER reject_schedule_cancellation BEFORE UPDATE ON executions
+            WHEN json_extract(OLD.json,'$.status')='queued' AND json_extract(NEW.json,'$.status')='canceled'
+            BEGIN SELECT RAISE(ABORT,'injected cancellation failure'); END`);
+          const failed=await server.request('/api/activation','POST',pauseRequest);
+          assert.equal(failed.status,400);
+          const persisted=JSON.parse(String(db.prepare('SELECT json FROM flows WHERE id=?').get(scheduled.id)?.json)) as Flow;
+          assert.equal(persisted.active,true,'cancel failure must roll back the pause');
+          assert.equal(persisted.updatedAt,active.data.workflow.updatedAt,'the same version must still be retryable');
+          const untouched=await server.request('/api/executions?id='+automatic.id);
+          assert.equal(untouched.data.execution.status,'queued');
+        }finally{
+          db.exec('DROP TRIGGER IF EXISTS reject_schedule_cancellation');
+          db.close();
+        }
+        const paused=await server.request('/api/activation','POST',pauseRequest);
         assert.equal(paused.status,200);
         assert.equal(paused.data.workflow.active,false);
         const canceled=await server.execution(automatic.id,item=>item.status==='canceled');

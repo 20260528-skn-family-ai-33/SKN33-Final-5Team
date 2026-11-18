@@ -70,5 +70,9 @@ def source_upload(c):
     if a['kind'] not in ('table','document'):raise ValueError('관리 데이터 소스는 표 파일이나 문서를 연결하세요.')
     schedules=Schedules(storage)
     storage.begin_write()
-    storage.add_asset(a,data['rows'],commit=False)
-    return {'source':schedules.replace_source(data['id'],a['id'])}
+    try:
+        storage.add_asset(a,data['rows'],commit=False)
+        source=schedules.replace_source(data['id'],a['id'],commit=False)
+        storage.db.commit()
+        return {'source':source}
+    except Exception:storage.db.rollback();raise

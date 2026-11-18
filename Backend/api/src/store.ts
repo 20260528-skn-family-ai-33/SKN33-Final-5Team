@@ -38,6 +38,18 @@ export class Store {
  listFlows():Flow[] {return this.db.prepare('SELECT json FROM flows ORDER BY updated_at DESC').all().map(row=>JSON.parse(String(row.json)));}
  getFlow(id:string):Flow|undefined {const row=this.db.prepare('SELECT json FROM flows WHERE id=?').get(id);return row?JSON.parse(String(row.json)):undefined;}
  saveFlow(value:Flow):Flow {const previous=Date.parse(this.getFlow(value.id)?.updatedAt??'');const updatedAt=new Date(Math.max(Date.now(),Number.isFinite(previous)?previous+1:0)).toISOString();const flow={...validateFlow(clone(value)),updatedAt};this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at').run(flow.id,JSON.stringify(flow),flow.updatedAt);return flow;}
+ saveFlowAndCancelQueuedSchedules(value:Flow,inFlight:ReadonlySet<string>,reason:string):Flow {
+  this.db.exec('BEGIN IMMEDIATE');
+  try{
+   const saved=this.saveFlow(value);
+   this.db.prepare(`UPDATE executions SET json=json_set(json,'$.status','canceled','$.error',?)
+    WHERE workflow_id=? AND json_extract(json,'$.status')='queued'
+      AND json_extract(json,'$.trigger')='schedule' AND id NOT IN (SELECT value FROM json_each(?))`)
+    .run(reason,value.id,JSON.stringify([...inFlight]));
+   this.db.exec('COMMIT');
+   return saved;
+  }catch(error){this.db.exec('ROLLBACK');throw error;}
+ }
  advanceSchedule(id:string,version:string|undefined,nextRunAt:number){
   if(!version)return;
   this.db.prepare("UPDATE flows SET json=json_set(json,'$.schedule.nextRunAt',?) WHERE id=? AND updated_at=? AND json_extract(json,'$.active')=1 AND json_type(json,'$.schedule')='object'").run(nextRunAt,id,version);

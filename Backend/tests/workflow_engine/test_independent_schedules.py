@@ -228,3 +228,33 @@ def test_schedule_writes_reject_a_version_from_before_reconfiguration(tmp_path):
     assert advanced['revision']==active['revision']
     store.close()
     assert request(tmp_path,'schedule_remove',id=agent_id,expected_revision=active['revision'])=={'schedule':None}
+
+
+def test_schedule_revision_guards_replaced_inputs_from_stale_removal(tmp_path):
+    from tests.workflow_engine.test_library_schedule_sources import workflow,upload,spec
+    from workflow_engine.scheduling.library_sources import LibrarySources
+    store=Storage(tmp_path)
+    try:
+        agent_id=workflow(store)
+        schedules=Schedules(store)
+        first=upload(store,'first.csv',amount=1)
+        second=upload(store,'second.csv',amount=2)
+        schedules.replace_source(agent_id,first['id'])
+        old=schedules.get(agent_id)['revision']
+        schedules.replace_source(agent_id,second['id'])
+        current=schedules.get(agent_id)
+        assert current['revision']!=old
+        assert schedules.listing()[agent_id]['revision']==current['revision']
+        with pytest.raises(ValueError,match='다른 화면에서 예약'):
+            schedules.remove(agent_id,expected_revision=old)
+        assert schedules.source(agent_id)['asset_id']==second['id']
+        assert schedules.get(agent_id)==current
+        sources=LibrarySources(store)
+        sources.save(agent_id,spec(asset_ids=[second['id']]),0)
+        with_library=schedules.get(agent_id)
+        assert with_library['revision']!=current['revision']
+        with pytest.raises(ValueError,match='다른 화면에서 예약'):
+            schedules.remove(agent_id,expected_revision=current['revision'])
+        schedules.remove(agent_id,expected_revision=with_library['revision'])
+        assert schedules.get(agent_id) is None
+    finally:store.close()

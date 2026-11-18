@@ -9,9 +9,15 @@ import uuid
 from .contracts import AnalysisError, MAX_BYTES, MAX_RESULT, sha256
 from .remote_pdf import NoRedirect
 
+QUEUE_WAIT_SECONDS = 10
+RETRY_SECONDS = 5  # match PDF admission retries; polling an accepted job stays at 1 s
+
 
 def parse_remote_image(source, timeout=240):
-    data = source.read_bytes()
+    deadline = time.monotonic() + timeout
+    queue_deadline = min(deadline, time.monotonic() + QUEUE_WAIT_SECONDS)
+    with source.open('rb') as stream:
+        data = stream.read(MAX_BYTES + 1)
     if not 0 < len(data) <= MAX_BYTES or not data.startswith(b'\x89PNG\r\n\x1a\n'):
         raise AnalysisError('input_limit', 'Docling 표 보완 입력은 8MB 이내의 PNG여야 합니다.')
     key = os.environ.get('A4B_PARSER_API_KEY', '')
@@ -20,11 +26,10 @@ def parse_remote_image(source, timeout=240):
     url = os.environ['A4B_PARSER_URL'].rstrip('/') + '/v1/docling-image'
     headers = {'Authorization': 'Bearer ' + key, 'User-Agent': 'A4B/0.1'}
     opener = urllib.request.build_opener(NoRedirect())
-    deadline = time.monotonic() + timeout
     job, finished = None, False
 
-    def send(request):
-        remaining = deadline - time.monotonic()
+    def send(request, until=deadline):
+        remaining = until - time.monotonic()
         if remaining <= 0:
             raise AnalysisError('timeout', 'RunPod Docling 표 보완 제한 시간을 초과했습니다.')
         with opener.open(request, timeout=min(60, remaining)) as response:
@@ -38,12 +43,14 @@ def parse_remote_image(source, timeout=240):
             try:
                 status, result = send(urllib.request.Request(url, data=data, headers={
                     **headers, 'Content-Type': 'image/png',
-                    'X-A4B-Docling-Timeout': str(max(1, int(deadline - time.monotonic())))}))
+                    'X-A4B-Docling-Timeout': str(max(1, int(deadline - time.monotonic())))}), until=queue_deadline)
             except urllib.error.HTTPError as exc:
                 if exc.code != 429:
                     raise
                 exc.close()
-                time.sleep(max(0, min(1, deadline - time.monotonic())))
+                if time.monotonic() + RETRY_SECONDS >= queue_deadline:
+                    raise AnalysisError('busy', 'RunPod이 다른 문서를 처리 중입니다. 표 보완은 재검토가 필요합니다.') from exc
+                time.sleep(RETRY_SECONDS)
                 continue
             if status != 202:
                 raise AnalysisError('invalid_engine_result', 'Docling 작업 ID가 반환되지 않았습니다.')
@@ -73,7 +80,7 @@ def parse_remote_image(source, timeout=240):
     finally:
         if job and not finished:
             try:
-                with opener.open(urllib.request.Request(url + '/' + job, method='DELETE', headers=headers), timeout=5):
+                with opener.open(urllib.request.Request(url + '/' + job, method='DELETE', headers=headers), timeout=2):
                     pass
             except (OSError, ValueError):
                 pass

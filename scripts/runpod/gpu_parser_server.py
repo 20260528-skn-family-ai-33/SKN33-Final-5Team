@@ -118,7 +118,7 @@ def make_handler(key, models, device, version):
             if self.path.startswith('/v1/docling-image/'):
                 if not self.authenticated():
                     return self.reply(401, {'error': 'unauthorized'})
-                return self.reply(*jobs.result(self.path[len('/v1/docling-image/'):]))
+                return self.reply(*jobs.result(self.path[len('/v1/docling-image/'):], kind='docling-image'))
             if self.path.startswith('/v1/pdf/'):
                 if not self.authenticated():
                     return self.reply(401, {'error': 'unauthorized'})
@@ -135,7 +135,7 @@ def make_handler(key, models, device, version):
             if not self.authenticated():
                 return self.reply(401, {'error': 'unauthorized'})
             if self.path.startswith('/v1/docling-image/'):
-                return self.reply(*jobs.cancel(self.path[len('/v1/docling-image/'):]))
+                return self.reply(*jobs.cancel(self.path[len('/v1/docling-image/'):], kind='docling-image'))
             if self.path.startswith('/v1/pdf/'):
                 return self.reply(*jobs.cancel(self.path[len('/v1/pdf/'):]))
             self.reply(404, {'error': 'not_found'})

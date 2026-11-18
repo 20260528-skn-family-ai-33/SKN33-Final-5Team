@@ -1,6 +1,7 @@
 """Local process adapters keep PyTorch/Paddle dependencies outside the web server."""
 import base64
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -20,6 +21,29 @@ REMOTE_TOO_LARGE = 'remote_parser_payload_too_large'
 REMOTE_MAX_IMAGE = 12 * 1024 * 1024
 REMOTE_MAX_BODY = 48 * 1024 * 1024
 REMOTE_MAX_SOURCES = 32
+
+
+def image_supplement_deadline(timeout):
+    """One document-wide budget, including earlier inspection/layout/OCR time.
+
+    The web worker supplies its actual deadline. CLI callers fall back to the
+    same configured timeout. Reserve time for cancellation and writing partials.
+    """
+    raw = os.environ.get('A4B_DOCUMENT_TIMEOUT_MS') or os.environ.get('A4B_PDF_TIMEOUT_MS', '')
+    try:
+        configured = float(raw)
+    except ValueError:
+        configured = 300000
+    if not math.isfinite(configured) or not 0 < configured <= 1800000:
+        configured = 300000
+    remaining = configured / 1000
+    try:
+        end = float(os.environ.get('A4B_DOCUMENT_DEADLINE_UNIX_MS', ''))
+        if math.isfinite(end):
+            remaining = min(remaining, end / 1000 - time.time())
+    except ValueError:
+        pass
+    return time.monotonic() + max(0, min(timeout, 120, remaining - 20))
 
 
 def remote_request_batches(names):
@@ -116,6 +140,8 @@ class LocalEngines:
         self.work = Path(work)
         self.timeout = timeout
         self.attempts = []
+        self.image_deadline = image_supplement_deadline(timeout)
+        self.image_unavailable = None
 
     def run(self, engine, *, source=None, sources=None, scope=None, phase='primary'):
         started = time.perf_counter()
@@ -140,7 +166,17 @@ class LocalEngines:
                     and os.environ.get('A4B_DOCLING_LOCAL_ONLY') != '1'):
                 from .remote_docling import parse_remote_image
                 attempt['route'] = 'gpu_remote'
-                data = parse_remote_image(Path(source), timeout=self.timeout)
+                if self.image_unavailable:
+                    raise AnalysisError(self.image_unavailable, '이 문서의 나머지 표 보완은 검토가 필요합니다.')
+                remaining = self.image_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise AnalysisError('timeout', '문서 전체의 이미지 표 보완 시간 예산을 소진했습니다.')
+                try:
+                    data = parse_remote_image(Path(source), timeout=remaining)
+                except AnalysisError as exc:
+                    if exc.code in ('busy', 'timeout'):
+                        self.image_unavailable = exc.code
+                    raise
                 (folder / 'response.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
                 attempt.update(status='partial' if data.get('partial') else 'succeeded',
                                version=data['version'], model=data.get('model', {}))

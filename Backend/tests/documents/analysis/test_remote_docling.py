@@ -107,3 +107,78 @@ def test_busy_retries_within_budget_and_timeout_cancels(tmp_path, monkeypatch):
         with pytest.raises(AnalysisError):
             remote_docling.parse_remote_image(source)
     assert [r.get_method() for r in requests] == ['POST', 'POST', 'GET', 'DELETE']
+
+
+class Clock:
+    now = 0
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def timed_client(tmp_path, monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr('time.monotonic', lambda: clock.now)
+    monkeypatch.setattr('time.time', lambda: 1000 + clock.now)
+    monkeypatch.setattr('time.sleep', clock.sleep)
+    monkeypatch.setenv('A4B_PARSER_URL', 'https://parser.example')
+    monkeypatch.setenv('A4B_PARSER_API_KEY', 'fixture-key')
+    monkeypatch.delenv('A4B_DOCLING_LOCAL_ONLY', raising=False)
+    monkeypatch.delenv('A4B_DOCUMENT_DEADLINE_UNIX_MS', raising=False)
+    monkeypatch.setenv('A4B_DOCUMENT_TIMEOUT_MS', '300000')
+    source = tmp_path / 'crop.png'
+    source.write_bytes(b'\x89PNG\r\n\x1a\nfixture')
+    return clock, source, LocalEngines(tmp_path / 'attempts')
+
+
+def test_two_busy_tables_stop_early_instead_of_waiting_480_seconds(tmp_path, monkeypatch):
+    clock, source, engines = timed_client(tmp_path, monkeypatch)
+    calls = []
+    def busy(request, timeout):
+        calls.append(clock.now)
+        raise urllib.error.HTTPError(request.full_url, 429, 'busy', {}, io.BytesIO(b'{}'))
+    with patch('urllib.request.build_opener') as opener:
+        opener.return_value.open.side_effect = busy
+        for _ in range(2):
+            with pytest.raises(AnalysisError) as error:
+                engines.run('docling', source=source, phase='supplement')
+            assert error.value.code == 'busy'
+    assert calls == [0, 5]  # PDF and image admission retry at the same interval
+    assert clock.now < 10
+    assert [r['error_code'] for r in engines.attempts] == ['busy', 'busy']
+
+
+def test_accepted_job_uses_remaining_document_time_and_cancels(tmp_path, monkeypatch):
+    clock, source, _ = timed_client(tmp_path, monkeypatch)
+    # API hard deadline is 60 seconds; retain 20 seconds for writing partials.
+    monkeypatch.setenv('A4B_DOCUMENT_DEADLINE_UNIX_MS', '1060000')
+    engines = LocalEngines(tmp_path / 'remaining')
+    clock.now = 30  # inspection/layout/OCR already used 30 seconds
+    requests = []
+    job = str(uuid4())
+    def pending(request, timeout):
+        requests.append((request.get_method(), timeout))
+        return reply(202, {'job_id': job})
+    with patch('urllib.request.build_opener') as opener:
+        opener.return_value.open.side_effect = pending
+        for _ in range(2):
+            with pytest.raises(AnalysisError) as error:
+                engines.run('docling', source=source)
+            assert error.value.code == 'timeout'
+    assert clock.now == 40
+    assert sum(method == 'POST' for method, _ in requests) == 1
+    assert requests[-1][0] == 'DELETE'
+    assert all(timeout <= 10 for _, timeout in requests)
+
+
+def test_completed_tables_share_one_budget(tmp_path, monkeypatch):
+    clock, source, engines = timed_client(tmp_path, monkeypatch)
+    budgets = []
+    def complete(source, timeout):
+        budgets.append(timeout)
+        clock.sleep(50)
+        return {'version': 'test', 'model': {}, 'blocks': []}
+    with patch.object(remote_docling, 'parse_remote_image', side_effect=complete):
+        for _ in range(2):
+            engines.run('docling', source=source)
+    assert budgets == [120, 70]

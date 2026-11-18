@@ -30,3 +30,14 @@ Pod 내부 PDF worker는 `A4B_DOCLING_LOCAL_ONLY=1`로 이미 점유한 슬롯�
 - 시간은 검증 클라이언트 파이프라인 기준으로 홈페이지 업로드·설계·CSV 생성 시간 또는 CPU/GPU 성능 개선율이 아니다.
 - 최종 운영 엔진 경로 검증: 합성 영수증 20.96초(이미지 Docling 17.06초), GS25 2.08초, 합성 1쪽 PDF MinerU 69.23초, 같은 PDF Docling+OCR 20.10초. 모두 `succeeded`. PDF Docling CUDA peak 705,547,776 bytes 확인. 두 PDF 경로 모두 기존 API 계약 유지.
 - 검증 후 임시 서버만 종료한다. 운영 적용은 RunPod 새 릴리스 우선 반영 후 AWS 배포 순서이며, 이 PR 검증만으로 운영 배포 완료를 의미하지 않는다.
+
+## 리뷰 보완: 경합·시간 예산·작업 경로
+
+- AWS API가 자식 프로세스에 실제 종료 예정 시각(`A4B_DOCUMENT_DEADLINE_UNIX_MS`)을 전달한다. `LocalEngines`는 생성 시 문서 전체의 이미지 보완 예산을 한 번만 계산한다. 기본 상한은 120초이며, AWS 종료까지 남은 시간에서 20초를 뺀 값보다 클 수 없다. 검사·layout·OCR 및 앞선 표 보완에 쓴 시간도 차감한다. 직접 CLI 호출은 `A4B_DOCUMENT_TIMEOUT_MS`/`A4B_PDF_TIMEOUT_MS`(기본 300초)를 기준으로 계산한다.
+- 표마다 240초를 새로 부여하지 않는다. 이미 소진한 예산은 새 영역·전체 이미지 비교에서도 재설정하지 않는다. 취소 요청은 최대 2초이며, 결과 직렬화·정리를 위한 여유 안에서 수행한다.
+- 429 입장 대기는 최대 10초 범위이며 PDF와 동일한 5초 간격으로 재시도한다. 계속 바쁘거나 기한이 소진되면 이번 문서의 후속 이미지 Docling 요청도 건너뛴다. `image_table:busy`/`image_table:timeout`과 이미 끝난 OCR을 포함한 부분 결과를 반환한다. 이 방식은 빈번한 재시도 차이를 줄이지만 FIFO 공정성을 보장하는 서버 큐는 아니다.
+- 작업에 `pdf`/`docling-image` 종류를 기록한다. 다른 경로의 조회·취소는 404로 처리하며 polling lease·delivered·취소 상태를 변경하지 않는다.
+- 별도 활성화 플래그는 추가하지 않았다. RunPod 우선 반영 후 AWS 배포 순서는 유지한다. Office 로컬 Docling 및 기존 Windows POSIX 테스트 문제는 이번 연결 수정 범위 밖이다.
+- 리뷰 보완 로컬 검증: Python 72 tests + 6 subtests 통과, API 문서 분석 통합 테스트 2개 및 Backend API TypeScript 검사 통과. 가짜 시계에서 연속 429인 표 2개는 5초 후 busy로 종료했고 두 번째 영역은 재요청하지 않았다. 이미 30초를 사용한 60초 작업은 40초 시점에 취소해 결과 저장 여유를 남긴다.
+- RunPod 실제 PDF·이미지 경합 검증: PDF가 슬롯을 점유하는 동안 합성 영수증은 9.46초에 `partial` + `image_table:busy`를 반환하고 OCR을 보존했다. 이미지 경로로 해당 PDF의 조회/취소를 요청하면 모두 404였다.
+- 경합 해소 후 해당 PDF는 정상 완료됐으며, 동일 합성 영수증의 새 실행은 22.19초에 Docling GPU 보완까지 성공했다. 검증용 서버만 종료하고 운영 파서는 기존 릴리스를 유지했다.

@@ -22,6 +22,7 @@ LEASE_SECONDS = 90  # longer than the client's 60 s HTTP timeout
 class Job:
     deadline: float
     last_poll: float
+    kind: str = 'pdf'
     cancel: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
     response: tuple | None = None
@@ -62,7 +63,8 @@ class PdfJobs:
                     return 429, {'error': 'pdf_router_busy'}
                 self.jobs.pop(evict)
             identifier = str(uuid.uuid4())
-            job = Job(deadline=now + min(timeout, MAX_TIMEOUT), last_poll=now)
+            job = Job(deadline=now + min(timeout, MAX_TIMEOUT), last_poll=now,
+                      kind='docling-image' if image else 'pdf')
             self.jobs[identifier] = job
             job.thread = threading.Thread(target=self._run, args=(identifier, job, data, policy, image), daemon=True)
             job.thread.start()
@@ -147,10 +149,10 @@ class PdfJobs:
         with self.lock:
             self.jobs.pop(identifier, None)
 
-    def result(self, identifier):
+    def result(self, identifier, *, kind='pdf'):
         with self.lock:
             job = self.jobs.get(identifier)
-            if job is None:
+            if job is None or job.kind != kind:
                 return 404, {'error': 'pdf_job_not_found'}
             if job.response is not None:
                 job.delivered = True
@@ -161,10 +163,10 @@ class PdfJobs:
                 job.last_poll = now
             return 202, {'job_id': identifier}
 
-    def cancel(self, identifier):
+    def cancel(self, identifier, *, kind='pdf'):
         with self.lock:
             job = self.jobs.get(identifier)
-            if job is None:
+            if job is None or job.kind != kind:
                 return 404, {'error': 'pdf_job_not_found'}
             if job.response is not None:
                 return 200, {'job_id': identifier, 'finished': True}

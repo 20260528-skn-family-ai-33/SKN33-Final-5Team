@@ -1,9 +1,11 @@
-"""A chat message that only asks to save the reviewed draft is the save button, not a new request.
+"""A chat message that only asks to save is answered, never treated as a new request.
 
 Before this, "확인완료. 저장" resumed the approval wait as a change request: every
 check and the planner ran again, the same draft came back, and nothing was saved.
 Only whole messages made of acknowledgement words plus a save verb qualify, so a
-change such as "저장 형식을 JSON으로 바꿔줘" is still handled as a request.
+change such as "저장 형식을 JSON으로 바꿔줘" is still handled as a request. Such a
+message does not save either: the reply points to the save button or says what is
+still missing, so the button stays the only path that stores a workflow.
 """
 import re
 

@@ -79,7 +79,37 @@ def table_tool_issues(state):
             if tools-set(TABLE_PLAN_TOOLS) else [])
 
 
-def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft=False, allowed_tools=None):
+def _constrain_sort(defs, plan, request):
+    """The sort the validator requires is the sort the decoder may emit (PR #142 review 5).
+
+    No written sort (or a withdrawn one) keeps sort empty. An exact request fixes the
+    columns, directions and count; an unparsed one requires a sort and fixes only what
+    was read (its key columns or its one direction).
+    """
+    kind = (request or {}).get('kind', 'none')
+    if kind in ('none', 'cancelled'):
+        plan['sort']['maxItems'] = 0
+        return
+    item = deepcopy(defs['SortCondition'])
+    props = item['properties']
+    if kind == 'sorts':
+        sorts = request['sorts']
+        props['field'] = {'type': 'string', 'enum': list(dict.fromkeys(s['field'] for s in sorts))}
+        props['direction'] = {'type': 'string', 'enum': list(dict.fromkeys(s['direction'] for s in sorts))}
+        plan['sort'].update(minItems=len(sorts), maxItems=len(sorts))
+    else:
+        if request.get('fields'):
+            props['field'] = {'type': 'string', 'enum': list(request['fields'])}
+        if request.get('direction'):
+            props['direction'] = {'type': 'string', 'enum': [request['direction']]}
+        plan['sort']['minItems'] = 1
+    item['required'] = list(props)
+    defs['RequestedSortCondition'] = item
+    plan['sort']['items'] = {'$ref': '#/$defs/RequestedSortCondition'}
+
+
+def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft=False, allowed_tools=None,
+                          sort_request=None):
     result=deepcopy(schema);defs=result['$defs']
     ids=list(dict.fromkeys(r['id'] for r in resources))
     root_ids=result['properties']['document_ids']
@@ -158,7 +188,7 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
         for key,field in [('duplicate.field','duplicate_field'),('duplicate.policy','duplicate_policy'),
                           ('missing.policy','missing_policy'),('output.format','output_format')]:
             if key in slots:plan[field]=literal_schema(slots[key])
-        plan['sort']['maxItems']=0
+        _constrain_sort(defs, plan, sort_request)
         if 'filter' not in ledger['operations']:
             plan['filters']['maxItems']=0
         elif all(key in slots for key in ('filter.field','filter.operator','filter.value')):

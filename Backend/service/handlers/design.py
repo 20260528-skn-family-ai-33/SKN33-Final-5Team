@@ -53,22 +53,32 @@ def _work_messages(storage,s,graph):
     return state.get('messages',[])
 
 
+def _waiting_for_answers(state,before):
+    """A clarification question is open: a typed "저장" may be its answer (e.g. a column name)."""
+    reviewing=any(isinstance(item.value,dict) and item.value.get('kind')=='review'
+                  for task in before.tasks for item in task.interrupts)
+    return not reviewing and bool(state.get('pending_questions') or (state.get('draft') or {}).get('questions'))
+
+
 def _chat_save_reply(state,before):
-    """None when a typed save request may run the save-button path; otherwise why not, in plain words."""
+    """What a typed save request gets: where to save, or why not yet. It never saves.
+
+    Saving stays on the save button, which carries the approval checks, the schedule
+    choice, the resource-version check and crash recovery (PR #142 review 5).
+    """
     from agent_builder.design.save_intent import blocked_save_reply
     reviewing=any(isinstance(item.value,dict) and item.value.get('kind')=='review'
                   for task in before.tasks for item in task.interrupts)
     if not reviewing or state.get('status')!='ready':
         return blocked_save_reply(state)
-    if (state.get('draft') or {}).get('schedule'):
-        # The save button asks whether to store the schedule too; never guess it.
-        return '예약을 함께 저장할지 선택해야 합니다. 오른쪽 위 저장 버튼을 눌러 주세요.'
     from agent_builder.capabilities.capability_gate import require_ready
     from agent_builder.conditions.clarification_core import open_required
     try:require_ready(state)
     except ValueError as error:return '아직 저장할 수 없습니다. '+str(error)
     if open_required(state):return blocked_save_reply({**state,'pending_questions':[True]})
-    return None
+    if (state.get('draft') or {}).get('schedule'):
+        return '채팅으로는 저장하지 않습니다. 오른쪽 위 저장 버튼을 눌러 예약을 함께 저장할지 선택해 주세요.'
+    return '채팅으로는 저장하지 않습니다. 초안을 확인했다면 오른쪽 위 저장 버튼을 눌러 주세요.'
 
 
 def _with_side_messages(messages,s):
@@ -199,7 +209,10 @@ def _session_action(c):
             fresh=[storage.asset(id) for id in s['file_ids']]
             versions=lambda resources:[(r['id'],str(r.get('version') or r.get('hash') or '1')) for r in resources]
             if snapshot.values and versions(snapshot.values.get('resources',[]))!=versions(fresh):
-                if action=='confirm':raise ValueError('자료 검토 결과가 변경됐습니다. 업무 설명을 다시 보내 설정과 근거를 확인하세요.')
+                from agent_builder.design.save_intent import is_save_request
+                typed_save=(action=='message' and not data.get('question_id') and not data.get('question_answers')
+                            and is_save_request(data.get('content')))
+                if action=='confirm' or typed_save:raise ValueError('자료 검토 결과가 변경됐습니다. 업무 설명을 다시 보내 설정과 근거를 확인하세요.')
                 graph.update_state({'configurable':{'thread_id':s['id']}},{'resources':fresh,'confirmed':False,'verification':None,'verification_last_candidate':None})
         if action=='session':return public_state(storage,s,graph)
         if action in ('tool_gap_replan_propose','tool_gap_replan_decide'):
@@ -268,19 +281,18 @@ def _session_action(c):
                   if state.get(key) != (before.values or {}).get(key)}
         from agent_builder.design.save_intent import is_save_request
         if (action=='message' and not data.get('question_id') and not data.get('question_answers')
-                and is_save_request(data.get('content'))):
-            # "확인완료. 저장" is the save button, not a change request: never re-run
-            # the checks and planner for it (that returned the same draft forever).
+                and is_save_request(data.get('content')) and not _waiting_for_answers(state,before)):
+            # "확인완료. 저장" is not a change request: never re-run the checks and planner
+            # for it (that returned the same draft forever). It is not the save button
+            # either; the reply says where to save or what is still missing.
             reply=_chat_save_reply(state,before)
             shown=len(state.get('messages') or _work_messages(storage,s,graph))
-            side=[{'after':shown,'role':'user','content':data['content'].strip(),'scope':'side'}]
-            if reply:
-                s={**s,'side_messages':s.get('side_messages',[])+side+[{'after':shown,'role':'assistant','content':reply,'scope':'side'}],
-                   'last_generation_request_id':data.get('generation_request_id')}
-                s=storage.update_session(s,data['revision'])
-                return public_state(storage,s,graph)
-            s={**s,'side_messages':s.get('side_messages',[])+side}
-            action='confirm'
+            s={**s,'side_messages':s.get('side_messages',[])+[
+                   {'after':shown,'role':'user','content':data['content'].strip(),'scope':'side'},
+                   {'after':shown,'role':'assistant','content':reply,'scope':'side'}],
+               'last_generation_request_id':data.get('generation_request_id')}
+            s=storage.update_session(s,data['revision'])
+            return public_state(storage,s,graph)
         if action=='confirm':
             if state.get('status')=='saved':return public_state(storage,s,graph)
             from agent_builder.capabilities.capability_gate import require_ready

@@ -531,7 +531,7 @@ def policy_clauses(text, columns):
     """Missing/duplicate policy per clause. A clause runs from its subject (빈 값·빈칸·결측·누락 /
     중복·같은 <열>·<열>이 겹치면) to the next subject or sentence end. Exactly one named policy is
     specified; two are a conflict; vague, fill or negated-only wording is left to the model or a question."""
-    text = mask_file_names(text)
+    original, text = text, mask_file_names(text)
     cols = '|'.join(re.escape(c) for c in sorted(columns, key=len, reverse=True)) or r'(?!)'
     missing = r'빈\s*(?:값|칸|셀|행|' + cols + r')|빈\s+[가-힣A-Za-z_][가-힣A-Za-z0-9_]{0,15}|비어\s*있|값이\s*없|누락|결측(?:치|값)?'
     dup = r'중복|같은\s*(?:' + cols + r')|(?:' + cols + r')\s*(?:이|가)?\s*(?:같(?!거나)|겹치)'
@@ -543,7 +543,8 @@ def policy_clauses(text, columns):
         if i and subjects[i - 1][1] == key and start - subjects[i - 1][0] < 12:
             continue  # two subject words of one clause ("거래ID가 같은 중복")
         end = min([p for p, k in subjects[i + 1:] if k != key or p - start >= 12] + [e for e in ends if e > start])
-        segment = quote = text[start:end]
+        # Parse the masked text, but quote the user's own words over the same span.
+        segment, quote = text[start:end], original[start:end]
         if key == 'missing.policy':
             if re.search(_MISSING_VAGUE, segment):
                 out.append((key, 'conflict', quote.strip())); continue
@@ -1652,7 +1653,8 @@ _WRITTEN_SORT = re.compile(
     r'\s*(?:열|컬럼|칼럼|항목)?\s*(?:을|를|은|는|의|이|가|으로|로)?\s*(?:값\s*)?(?P<type>숫자|문자|날짜)?\s*'
     r'(?:(?:을|를)?\s*기준\s*(?:으로)?\s*(?:해서|하여|삼아)?\s*)?(?:으로\s*|로\s*)?(?:정렬\s*(?:은|을|하되)?\s*)?'
     r'(?:(?P<asc>' + _ASC_WORDS + r')|(?P<desc>' + _DESC_WORDS + r'))')
-_SORT_DROPPED_AFTER = re.compile(r'\s*(?:은|는|을|를)?\s*(?:말고|빼고|빼|아니라|대신|제외|취소|하지\s*(?:마|말))')
+_SORT_DROPPED_AFTER = re.compile(
+    r'\s*(?:은|는|을|를|이|가)?\s*(?:말고|빼고|빼|아니라|아니고|아닌|대신|제외|취소|하지\s*(?:마|말))')
 # "정렬 빼고", "정렬은 하지 마", "정렬 없이", "입력 순서 그대로": the user withdrew sorting.
 _SORT_CANCELLED = re.compile(
     r'정렬\s*(?:은|을|도|기준은|기준을)?\s*(?:모두\s*|전부\s*|다\s*)?(?:빼|제외|없이|취소|필요\s*없|안\s*(?:해|함|할)|하지\s*(?:마|말|않)|말고|지워|삭제)'
@@ -1739,10 +1741,11 @@ def sort_request(state):
     pattern = (re.compile(r'(?<![가-힣A-Za-z0-9_])(?P<field>' + '|'.join(map(re.escape, columns)) + r')(?![A-Za-z0-9_])')
                if columns else None)
     current = {'kind': 'none', 'sorts': [], 'text': ''}
-    for message in (state or {}).get('messages', []):
+    from agent_builder.capabilities.capability_judgement import active_request_messages
+    for message in active_request_messages(state or {}):
         if message.get('role') != 'user' or not isinstance(message.get('content'), str):
             continue
-        text = mask_file_names(message['content'])
+        text = _QUOTED_TEXT.sub(lambda m: ' ' * len(m.group()), mask_file_names(message['content']))
         said = _sort_turn(text, columns, pattern)
         if said is None:
             continue

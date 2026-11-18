@@ -9,6 +9,11 @@ from workflow_engine.catalog.registry import PORTS
 from agent_builder.design.planner_constraints import native_decoder_schema, ready_table_slots, table_plan_scope, TABLE_PLAN_TOOLS
 
 ALLOWED=TABLE_PLAN_TOOLS
+
+def _sort_request(state):
+    from agent_builder.conditions.condition_readiness import sort_request
+    return sort_request(state)
+
 SYSTEM='''이미 조건 검사가 끝난 단일 표 업무의 실행 단계를 설계합니다. 규격의 JSON 하나만 반환합니다.
 모델은 실제로 필요한 도구의 순서·설정·설명을 결정합니다. workflow.steps에 순서대로 작성합니다.
 노드 ID·entry·edges·bindings는 출력하지 않습니다. 컴파일러가 단계 순서에 따라 연결합니다.
@@ -35,7 +40,8 @@ def eligible(state):
 def schema_for(base,state):
     if not eligible(state):raise ValueError('선형 단계 생성은 READY 단일 선별·중복 제거 범위에서만 지원합니다.')
     schema=(deepcopy(base) if 'NativeNode_read_table' in base['$defs'] else
-            native_decoder_schema(base,state['resources'],state['condition_ledger'],require_ready_draft=True))
+            native_decoder_schema(base,state['resources'],state['condition_ledger'],require_ready_draft=True,
+                                  sort_request=_sort_request(state)))
     settings=deepcopy(schema['$defs']['NodeSettings'])
     settings['properties']['execution_plan']={'type':'null'}
     settings['properties']['condition_field']={'type':'null'}

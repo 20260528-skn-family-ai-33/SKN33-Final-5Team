@@ -238,7 +238,16 @@ def service(monkeypatch):
     return act, saved, fakes
 
 
-def test_reported_request_is_ready_without_a_question_and_typed_save_saves(service):
+def press_save(act, planner):
+    """The save button; a refused save leaves the session as it was."""
+    try:
+        return act('confirm', planner)
+    except Exception:
+        return act('session', planner)
+
+
+@pytest.mark.parametrize('typed', ['확인완료. 저장', '저장 버튼', '저장해도 돼요'])
+def test_typed_save_points_to_the_button_and_never_saves(service, typed):
     act, saved, fakes = service
     calls = []
     planner = make_planner(calls)
@@ -246,11 +255,13 @@ def test_reported_request_is_ready_without_a_question_and_typed_save_saves(servi
     first = act('message', planner, content=REQUEST)
     assert first['status'] == 'ready' and not first['pending_questions'] and not first['issues']
     assert len(calls) == 1
-    done = act('message', planner, content='확인완료. 저장')
-    assert done['status'] == 'saved' and done['saved_agent_id'] and saved() == 1
+    reply = act('message', planner, content=typed)
+    assert reply['status'] == 'ready' and saved() == 0 and not reply.get('saved_agent_id')
     assert len(calls) == 1 and fakes['cap'].calls == 1  # nothing re-planned for the save request
-    shown = [m['content'] for m in done['messages'] if m['role'] == 'user']
-    assert shown[-1] == '확인완료. 저장'
+    assert [m['content'] for m in reply['messages'] if m['role'] == 'user'][-1] == typed
+    assert '저장 버튼' in reply['messages'][-1]['content']
+    done = press_save(act, planner)  # the approval wait is intact
+    assert done['status'] == 'saved' and done['saved_agent_id'] and saved() == 1
 
 
 def test_typed_save_on_a_blocked_draft_explains_instead_of_replanning(service):
@@ -305,7 +316,7 @@ def test_correct_sort_saves_by_chat_and_runs_in_the_requested_order(service, tab
     planner = make_planner(calls, sort=sort)
     act('upload', planner, asset=dict(table), rows=rows)
     assert act('message', planner, content=request_text)['status'] == 'ready'
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     assert done['status'] == 'saved' and saved() == 1
     result = fakes['run'](done['saved_agent_id'])
     assert result['status'] == 'succeeded'
@@ -405,7 +416,7 @@ def test_withdrawing_the_sort_in_a_later_turn(service, planner_sort, saves, orde
     assert act('message', planner, content=REQUEST)['status'] == 'ready'
     changed = act('message', planner, content='정렬 빼고 저장해줘')
     assert not changed['pending_questions']
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     if saves:
         assert changed['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -427,7 +438,7 @@ def test_column_basis_wording_is_enforced_end_to_end(service, planner_sort, save
     act('upload', planner, asset=dict(TABLE), rows=ROWS)
     first = act('message', planner, content=BASIS_REQUEST)
     assert not first['pending_questions']
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     if saves:
         assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -453,7 +464,7 @@ def test_latest_first_wording_saves_a_sorted_draft_end_to_end(service, planner_s
     act('upload', planner, asset=dict(TABLE), rows=ROWS)
     first = act('message', planner, content=LATEST_REQUEST)
     assert not first['pending_questions']
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     if saves:
         assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -515,7 +526,7 @@ def test_file_named_like_a_sort_saves_a_dedup_only_draft_end_to_end(service, pla
     act('upload', planner, asset=dict(TABLE, name='정렬대상.csv'), rows=ROWS)
     first = act('message', planner, content=FILE_ONLY_REQUEST)
     assert not first['pending_questions']
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     if saves:
         assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -540,7 +551,7 @@ def test_sort_key_named_in_a_later_turn_end_to_end(service, planner_sort, saves,
     act('message', planner, content=KEY_LATER_REQUEST)
     changed = act('message', planner, content='정렬 기준은 주문일이야')
     assert not changed['pending_questions']
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     if saves:
         assert changed['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -612,7 +623,7 @@ def test_keep_sort_reply_end_to_end(service, planner_sort, saves, order):
     assert act('message', planner, content=REQUEST)['status'] == 'ready'
     planner = make_planner(calls, sort=planner_sort)
     changed = act('message', planner, content='정렬은 취소하지 말고 저장해줘')
-    done = act('message', planner, content='확인완료. 저장') if changed['status'] != 'saved' else changed
+    done = press_save(act, planner)
     if saves:
         assert done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -638,7 +649,7 @@ def test_column_reconfirmation_keeps_the_direction_end_to_end(service, planner_s
     planner = make_planner(calls, sort=planner_sort)
     changed = act('message', planner, content='정렬 기준은 주문일이야')
     assert not changed['pending_questions']
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     if saves:
         assert changed['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -653,7 +664,7 @@ def test_csv_must_come_from_the_sorted_table_end_to_end(service, bypass, saves):
     planner = make_planner([], sort=SORT, bypass=bypass)
     act('upload', planner, asset=dict(TABLE), rows=ROWS)
     first = act('message', planner, content=REQUEST)
-    done = act('message', planner, content='확인완료. 저장')
+    done = press_save(act, planner)
     if saves:
         assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
@@ -661,3 +672,97 @@ def test_csv_must_come_from_the_sorted_table_end_to_end(service, bypass, saves):
     else:
         assert first['status'] == 'validation_failed' and any('정렬' in i for i in first['issues'])
         assert done['status'] == 'validation_failed' and saved() == 0
+
+
+# --- PR #142 review 5 ------------------------------------------------------------------------
+
+def test_a_typed_save_word_answering_an_open_question_is_not_intercepted():
+    from types import SimpleNamespace
+    from service.handlers.design import _waiting_for_answers
+    asking = SimpleNamespace(tasks=[SimpleNamespace(interrupts=[SimpleNamespace(value={'kind': 'clarification'})])])
+    review = SimpleNamespace(tasks=[SimpleNamespace(interrupts=[SimpleNamespace(value={'kind': 'review'})])])
+    assert _waiting_for_answers({'pending_questions': [{'id': 'q', 'key': 'duplicate.field'}]}, asking)
+    assert _waiting_for_answers({'draft': {'questions': ['어느 열이 기준인가요?']}}, asking)
+    assert not _waiting_for_answers({'status': 'ready', 'draft': {'workflow': {}}}, review)
+
+
+def test_negated_direction_is_not_the_requested_one():
+    text = '주문번호 중복은 첫 행만 남기고 주문일 내림차순이 아니라 주문일 오름차순으로 정렬해줘'
+    assert sort_request(table_state(text))['sorts'] == [{'field': '주문일', 'direction': 'ascending', 'value_type': None}]
+    assert not sort_problems(text, SORT) and sort_problems(text, LATEST)
+    assert sort_request(table_state('주문일 오름차순 아니고 주문일 내림차순으로 정렬'))['sorts'][0]['direction'] == 'descending'
+
+
+NEGATED_REQUEST = REQUEST.replace('주문일 오름차순으로', '주문일 내림차순이 아니라 주문일 오름차순으로')
+
+
+@pytest.mark.parametrize('planner_sort,saves', [(SORT, True), (LATEST, False)])
+def test_negated_direction_end_to_end(service, planner_sort, saves):
+    act, saved, fakes = service
+    CURRENT['request'] = NEGATED_REQUEST
+    planner = make_planner([], sort=planner_sort)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    first = act('message', planner, content=NEGATED_REQUEST)
+    done = press_save(act, planner)
+    if saves:
+        assert first['status'] == 'ready' and done['status'] == 'saved'
+        assert csv_order(fakes['run'](done['saved_agent_id'])) == ['B2', 'A1']
+    else:
+        assert first['status'] == 'validation_failed' and saved() == 0
+
+
+def test_file_name_policy_change_keeps_the_original_quote_as_evidence():
+    from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+    text = '중복은 첫 행만 남기고 결과.csv로 저장해줘'
+    clauses = policy_clauses(text, COLUMNS)
+    assert clauses[0][:2] == ('duplicate.policy', 'first') and '결과.csv' in clauses[0][2]
+    state = conversation('중복은 마지막 행만 남겨줘', text)
+    state['resources'] = [dict(TABLE, id='t')]
+    catalog, _ = source_catalog(state)
+    assert explicit_policies(state, catalog)['duplicate.policy']['value'] == 'first'
+
+
+def test_sort_word_inside_a_quoted_value_is_not_a_sort_request():
+    text = '상태가 "정렬 완료"인 행만 골라 JSON으로 저장해줘. 빈 값은 오류로 처리하고 중복은 유지해.'
+    assert sort_request(table_state(text, COLUMNS + ['상태']))['kind'] == 'none'
+
+
+def test_a_new_task_drops_the_previous_sort():
+    state = conversation(REQUEST, '새로운 작업: 주문번호가 같은 행은 첫 행만 남기고 CSV로 저장')
+    assert sort_request(state)['kind'] == 'none'
+    assert sort_request(conversation(REQUEST, '첫 행만 남김'))['kind'] == 'sorts'
+
+
+def ready_ledger():
+    slot = lambda value: {'status': 'specified', 'value': value}
+    return {'decision': 'ready', 'operations': ['deduplicate'],
+            'slots': {'duplicate.field': slot('주문번호'), 'duplicate.policy': slot('first'),
+                      'missing.policy': slot('keep'), 'output.format': slot('csv')}}
+
+
+@pytest.mark.parametrize('version', ['v6', 'v7', 'v8'])
+def test_ready_decoder_schema_allows_exactly_the_requested_sort(version):
+    from agent_builder.design.nodes.direct_conversation import decoder_schema
+    from agent_builder.design.planner_constraints import native_decoder_schema
+    from agent_builder.design.linear_plan import schema_for
+
+    def sort_schema(text):
+        state = table_state(text)
+        request = sort_request(state)
+        graph = native_decoder_schema(decoder_schema(version), [], ready_ledger(),
+                                      require_ready_draft=version != 'v6', sort_request=request)
+        schemas = [graph]
+        if version == 'v8':
+            schemas.append(schema_for(decoder_schema('v8'), {'condition_enforced': True, 'condition_ledger': ready_ledger(),
+                                                             'resources': state['resources'], 'messages': state['messages']}))
+        return [(schema['$defs']['ExecutionPlan']['properties']['sort'], schema['$defs']) for schema in schemas]
+
+    for sort, defs in sort_schema(REQUEST):
+        assert sort['minItems'] == sort['maxItems'] == 1
+        item = defs[sort['items']['$ref'].rsplit('/', 1)[1]]['properties']
+        assert item['field']['enum'] == ['주문일'] and item['direction']['enum'] == ['ascending']
+    for sort, defs in sort_schema('주문번호 중복은 첫 행만 남기고 최신순으로 정렬해줘'):
+        assert sort['minItems'] == 1 and sort.get('maxItems', 5) >= 1
+        assert defs[sort['items']['$ref'].rsplit('/', 1)[1]]['properties']['direction']['enum'] == ['descending']
+    for sort, _ in sort_schema('주문번호 중복은 첫 행만 남겨줘'):
+        assert sort['maxItems'] == 0

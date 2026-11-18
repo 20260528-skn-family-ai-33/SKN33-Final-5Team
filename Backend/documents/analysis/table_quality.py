@@ -19,6 +19,15 @@ def position(cell):
             cell.get('column', cell.get('start_col_offset_idx')))
 
 
+def finite_number(value):
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def validate_prediction(prediction):
     """Validate optional engine evidence before persisting any of it."""
     if not isinstance(prediction, dict):
@@ -30,10 +39,11 @@ def validate_prediction(prediction):
     if len(texts) > 2000:
         raise AnalysisError('quality_input_limit', '표 OCR 검증 입력 제한을 넘었습니다.')
     for text, box, score in zip(texts, boxes, scores):
-        if (not isinstance(text, str) or not isinstance(box, (list, tuple)) or len(box) != 4
-                or not all(type(v) in (int, float) and math.isfinite(v) for v in box)
+        if (not isinstance(text, str) or any(0xD800 <= ord(c) <= 0xDFFF for c in text)
+                or not isinstance(box, (list, tuple)) or len(box) != 4
+                or not all(finite_number(v) for v in box)
                 or box[0] >= box[2] or box[1] >= box[3]
-                or type(score) not in (int, float) or not math.isfinite(score) or not 0 <= score <= 1):
+                or not finite_number(score) or not 0 <= score <= 1):
             raise AnalysisError('invalid_engine_result', '표 OCR 문자·좌표·점수 형식이 올바르지 않습니다.')
     return prediction
 
@@ -122,7 +132,8 @@ def candidate_set_issues(matches, candidates, row_references):
     issues = anchor_geometry_issues([*matches, *candidates])
     candidate_rows = defaultdict(list)
     for cell, piece in candidates:
-        candidate_rows[position(cell)[0]].append((cell, piece))
+        if cell.get('row_span', 1) == 1:
+            candidate_rows[position(cell)[0]].append((cell, piece))
     for row, peers in candidate_rows.items():
         references = row_references[row]
         if not row_alignment_supported([*references, *peers], references=references):
@@ -274,27 +285,46 @@ def reconcile(data, prediction):
         lo = (max(b[2] for _, b in before) + left) / 2 if before else (-math.inf if col == 0 else left)
         hi = (right + min(b[0] for _, b in after)) / 2 if after else (math.inf if col == logical_cols-1 else right)
         corridors[col] = lo, hi
+    def existing_bounds(cell):
+        row, col = position(cell)
+        if cell.get('col_span', 1) == 1:
+            return corridors.get(col, (math.inf, -math.inf))
+        end = col + cell.get('col_span', 1)
+        left = [p['box'][2] for c, p in matches if position(c)[1] + c.get('col_span', 1) == col]
+        right = [p['box'][0] for c, p in matches if position(c)[1] == end]
+        return (max(left) if left else -math.inf if col == 0 else math.inf,
+                min(right) if right else math.inf if end == logical_cols else -math.inf)
+
+    def existing_row_matches(cell, piece, single_row):
+        row, _ = position(cell)
+        span = cell.get('row_span', 1)
+        if span == 1:
+            return single_row == [row]
+        # Validate a vertical merge within independently observed row extents.
+        # Its text need not fill the merge, and it never creates row anchors.
+        support = [row_evidence.get(r, []) for r in range(row, row+span)]
+        if not all(support):
+            return False
+        boxes = [box for group in support for box in group]
+        box = piece['box']
+        return (min(b[1] for b in boxes) <= box[1] < box[3] <= max(b[3] for b in boxes)
+                and not any(overlap(box, b, 1) > 0 for r, group in row_evidence.items()
+                            if not row <= r < row+span for b in group))
+
     pending = []
     reserved = set(confirmed)
     duplicate_candidates = False
     for p in pieces:
         if p['index'] in anchors or p['score'] < .98:
             continue
-        rr = safe_rows(p, repair=False)
-        if len(rr) != 1:
-            continue
-        candidates = [c for c in cells if position(c)[0] == rr[0]
-                      and normalized(c.get('text')) == normalized(p['text'])
-                      and c.get('row_span', 1) == c.get('col_span', 1) == 1
-                      and corridors.get(position(c)[1], (math.inf, -math.inf))[0] <= p['box'][0]
-                      and p['box'][2] <= corridors.get(position(c)[1], (math.inf, -math.inf))[1]]
+        single_row = safe_rows(p, repair=False)
+        candidates = [c for c in cells if normalized(c.get('text')) == normalized(p['text'])
+                      and existing_row_matches(c, p, single_row)
+                      and existing_bounds(c)[0] <= p['box'][0] < p['box'][2] <= existing_bounds(c)[1]]
         if len(candidates) != 1:
             continue
         cell = candidates[0]
         row, col = position(cell)
-        lo, hi = corridors.get(col, (math.inf, -math.inf))
-        if not lo <= p['box'][0] < p['box'][2] <= hi:
-            continue
         if (row, col) in reserved:
             report['issues'].append({'kind': 'duplicate_ocr_for_cell', 'ocr_index': p['index']})
             duplicate_candidates = True
@@ -310,7 +340,8 @@ def reconcile(data, prediction):
         for cell, p in pending:
             row, col = position(cell)
             confirmed.add((row, col))
-            columns[col].append((row, p['box']))
+            if cell.get('row_span', 1) == cell.get('col_span', 1) == 1:
+                columns[col].append((row, p['box']))
             anchors.add(p['index'])
     for cell in cells:
         if normalized(cell.get('text')) and position(cell) not in confirmed:

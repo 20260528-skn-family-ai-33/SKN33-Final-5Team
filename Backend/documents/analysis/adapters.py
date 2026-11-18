@@ -190,7 +190,7 @@ class LocalEngines:
                 try:
                     data = (remote_engine(remote, engine, sources or [], deadline=self.image_deadline) if verification
                             else remote_engine(remote, engine, sources or []))
-                    (folder / 'raw.json').write_text(json.dumps(data['outputs'], ensure_ascii=False), encoding='utf-8')
+                    (folder / 'raw.json').write_text(json.dumps(data['outputs'], ensure_ascii=True), encoding='utf-8')
                     attempt.update(status='succeeded', version=data['version'], model=data.get('model', {}))
                     return data
                 except AnalysisError as exc:

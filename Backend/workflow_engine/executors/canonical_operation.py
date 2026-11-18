@@ -77,6 +77,16 @@ def validate_settings(node, resources=(), allow_unbound=False):
     return spec, args
 
 
+def file_aliases(outputs, inherited=None):
+    """Collect completed writes in order, with local outputs taking precedence."""
+    aliases = {Path(logical): physical for logical, physical in (inherited or {}).items()}
+    for output in outputs.values():
+        aliases.update((Path(logical), physical) for logical, physical in output.get('_file_aliases', {}).items())
+        if alias := output.get('_file_alias'):
+            aliases[Path(alias['logical'])] = alias['physical']
+    return aliases
+
+
 def execution_context(storage, file_aliases=None):
     root = Path(storage.path).parent / 'operation-files'
     root.mkdir(parents=True, exist_ok=True)
@@ -154,10 +164,7 @@ def execute(node, state, storage, config, llm):
         # days of this run, for scheduled and one-off runs alike.
         gmail_period=query_period(args.get('query'),config)
         args['query']=resolve_gmail_query(args.get('query'),config)
-    aliases = {}
-    for output in state.get('outputs', {}).values():
-        if alias := output.get('_file_alias'):
-            aliases[Path(alias['logical'])] = alias['physical']
+    aliases = file_aliases(state.get('outputs', {}), state.get('inherited_file_aliases'))
     context = execution_context(storage, aliases)
     args = resolve_assets(args, storage, context, ids)
     logical = None

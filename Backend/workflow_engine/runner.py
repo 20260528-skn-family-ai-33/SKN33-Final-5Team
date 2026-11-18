@@ -27,6 +27,7 @@ class RunState(TypedDict,total=False):
     customer_message:str
     reply_draft:str
     external_inputs:dict
+    inherited_file_aliases:dict[str,str]
 
 def validate_node_result(tool,result,node=None):
     """Reject broken public outputs before a downstream node can consume them."""

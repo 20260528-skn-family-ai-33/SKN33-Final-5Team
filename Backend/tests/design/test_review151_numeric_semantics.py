@@ -143,6 +143,27 @@ def test_large_numeric_threshold_and_compare_field_preserve_precision():
         assert context['rows'] == rows[1:]
 
 
+def test_written_threshold_can_be_saved_without_rounding():
+    from agent_builder.design.output_selection_request import literal_numeric_filters
+    from agent_builder.design.requirement_coverage import _condition
+    from agent_builder.design.requirement_ledger import extract_plan
+    from tests.design.test_feedback_requirement_extraction import packet, state
+
+    current = state()
+    expected = '9007199254740993'
+    current['messages'][-1]['content'] = current['messages'][-1]['content'].replace('100000', expected)
+    candidate = packet()
+    candidate['tasks'][2]['spec']['filters'][1]['value'] = expected
+    assert literal_numeric_filters(current)[0]['value'] == expected
+    exact = extract_plan(candidate, current)['tasks'][2]['spec']['filters'][1]
+    assert exact['value'] == expected
+    assert _condition({**exact, 'value': '123456789012345678901234567890.1'}) != _condition(
+        {**exact, 'value': '123456789012345678901234567890.2'})
+    candidate['tasks'][2]['spec']['filters'][1]['value'] = '9007199254740992'
+    with pytest.raises(ValueError, match='선별 기준 숫자'):
+        extract_plan(candidate, current)
+
+
 def test_numeric_comparisons_keep_rows_and_audit_json_serializable():
     rows = [{'qty': '0x10'}, {'qty': '9007199254740993'}]
     rule = dict(field='qty', operator='gte', value='1,000', value_type='number', compare_field=None)

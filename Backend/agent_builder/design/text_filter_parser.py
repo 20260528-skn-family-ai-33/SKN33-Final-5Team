@@ -15,6 +15,9 @@ _CONTAINMENT_END = (r'(?:(?:이|가)\s*+(?:들어\s*+(?:있는|간)|포함된)|(
                     + _ROWS + r'(?![가-힣])')
 _OR = re.compile(r'또는|혹은|이거나|이든|아니면')
 _OUTPUT_SCOPE = re.compile(r'(?:결과물?|출력|산출물|보고서|파일|CSV|JSON|XLSX|엑셀)(?:(?:에|에서)(?:는|도)?|은|는)', re.I)
+_DISPLAY_FIELDS = re.compile(
+    r'\s*(?P<columns>[\w.-]+(?:\s*[,·]\s*[\w.-]+)*)\s*'
+    r'(?:열|컬럼)\s*(?:만)?(?:을|를)?\s*(?:표시|보여|출력)', re.I)
 
 
 @dataclass(frozen=True)
@@ -25,19 +28,24 @@ class ColumnProjection:
     affirmed: bool
 
 
-def column_projection_requests(text, fields):
+def column_projection_requests(text, fields, *, explicit_display=False):
     """Locate schema-owned output column lists without interpreting them as cell values."""
     names = '|'.join(re.escape(field) for field in sorted(fields, key=len, reverse=True))
-    if not names:
+    if not names and not explicit_display:
         return []
     column = r'(?:' + names + ')'
     pattern = re.compile(r'\s*(?P<columns>' + column + r'(?:\s*(?:,|·|과|와|및)\s*' + column + r')*)'
-                         r'\s*(?:열|컬럼)?\s*(?:만)?(?:을|를)?\s*(?:포함|표시|출력|보여|저장|내보내|남겨|남기)', re.I)
+                         r'\s*(?:열|컬럼)?\s*(?:만)?(?:을|를)?\s*(?:포함|표시|출력|보여|저장|내보내|남겨|남기)', re.I) if names else None
     result = []
     for scope in _OUTPUT_SCOPE.finditer(text):
-        match = pattern.match(text, scope.end())
+        match = pattern.match(text, scope.end()) if pattern is not None else None
+        # The user can explicitly name a result column before that name exists
+        # in the uploaded schema. Its presence in the result is proved later.
+        literal = _DISPLAY_FIELDS.match(text, scope.end()) if explicit_display and not match else None
+        match = match or literal
         if match and not in_quoted_text(text, scope.start()) and not in_metadata_text(text, scope.start()):
-            selected = [item.group() for item in re.finditer(column, match['columns'])]
+            selected = (re.split(r'\s*[,·]\s*', literal['columns']) if literal
+                        else [item.group() for item in re.finditer(column, match['columns'])])
             tail = re.split(r'[.!?;\n]|하고|그리고', text[match.end():], maxsplit=1)[0]
             denied = bool(re.match(r'\s*(?:하)?(?:지|진)\s*(?:는|도)?\s*(?:말|마|않|안)|\s*고\s*싶지\s*않', tail))
             result.append(ColumnProjection(scope.start(), match.end(), tuple(dict.fromkeys(selected)), not denied))

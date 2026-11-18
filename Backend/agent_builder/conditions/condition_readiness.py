@@ -1512,16 +1512,22 @@ _BOUND_JOIN = re.compile(r'\s*(?:이고|이며|이거나|또는|혹은|및|,)\s*
 _BOUND_SUBJECT_END = r'\s*(?:이|가|은|는|의|을|를)?\s*(?:열\s*)?(?:(?:값|상한|하한)\s*)?(?:이|가|은|는|을|를)?\s*(?:기준으로|기준)?\s*$'
 _RANGE_PROHIBITION = re.compile(r'^\s*(?:두|놓)?(?:하|으)?면\s*안\s*(?:돼요?|됩니다|된다|됨)(?=\s*(?:[.!?,;\n]|$))')
 _AFFIRMATIVE_END = re.compile(r'^(?:(?:해)?\s*(?:줘요?|주세요|주십시오)|해)?\s*(?=$|[.,;!?~])')
-_ACTION_CONNECTIVE = re.compile(r'^(?:하고|해서|하여|한\s+(?:뒤|후)|고|서)?\s+')
+_ACTION_CONNECTIVE = re.compile(r'^(?:하고|해서|하여|한\s+(?:뒤|후)|고|되|서)?\s+')
 _NEXT_OPERATION = re.compile(r'(?:(?:CSV|JSON|엑셀|파일|표)(?:으로|로)\s*)?(?:저장|출력|정렬|집계)'
                              r'|[^\s.,]+\s+(?:큰|작은|높은|낮은)\s*순(?:서)?로\s*정렬', re.I)
+_FOLLOWUP_EXPLANATION = re.compile(
+    r'(?:그리고\s+)?(?:(?:그\s+)?이유|왜)[^.!?;\n]{0,32}?\s*'
+    r'(?:설명|알려)\s*(?:해\s*)?(?:줘|주세요)(?=[.!\s]|$)')
 _QUOTED_TEXT = re.compile(r'''“[^”]*”|‘[^’]*’|「[^」]*」|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`''')
 
 
-def _range_action(suffix, subjects):
+def written_range_action(suffix, subjects=(), *, require_action=False):
     """Classify only the action on these rows, stopping before the next operation or condition."""
-    tail = re.sub(r'^\s*(?:인\s*)?(?:(?:행|항목|값|것)(?:들)?\s*)?(?:까지|부터|만|을|를|은|는)?\s*(?:으로|로)?\s*', '', suffix)
-    action = re.match(r'(제외|빼|삭제|지우|지워|버리|버려|없애|남기|남겨|포함|골라|고르|저장|바꾸|바꿔|변경)', tail)
+    suffix = re.split(r'(?<=[.!?;])\s+|[\r\n]+', suffix, maxsplit=1)[0]
+    tail = re.sub(r'^\s*(?:인\s*)?(?:(?:행|항목|값|것|주문|건|레코드)(?:들)?\s*)?'
+                  r'(?:까지|부터|만|을|를|은|는)?\s*(?:으로|로)?\s*', '', suffix)
+    action = re.match(r'제외|빼|삭제|지우|지워|버리|버려|없애|남기|남겨|포함|골라|고르|추려|추리|'
+                      r'선별|필터링|저장|바꾸|바꿔|변경', tail)
     if action:
         rest = tail[action.end():]
         if _RANGE_PROHIBITION.match(rest):
@@ -1539,7 +1545,7 @@ def _range_action(suffix, subjects):
             if not connective:
                 return None
             following = rest[connective.end():]
-            if not _NEXT_OPERATION.match(following):
+            if not (_NEXT_OPERATION.match(following) or _FOLLOWUP_EXPLANATION.match(following)):
                 bound = _WRITTEN_BOUND.search(following)
                 if not bound or not any(pattern.fullmatch(following[:bound.start()]) for _, pattern in subjects):
                     return None
@@ -1547,9 +1553,20 @@ def _range_action(suffix, subjects):
     if re.match(r'말고', tail):
         return 'exclude'
     # Do not infer a predicate for unrecognized or negated phrasing.
-    if not tail or re.match(r'[,.;!?\n]|이고|이며|이거나|또는|혹은|및', tail):
+    if not require_action and (not tail or re.match(r'[,.;!?\n]|이고|이며|이거나|또는|혹은|및', tail)):
         return 'include'
     return None
+
+
+def has_written_row_action(text):
+    return any(_numeric_instruction_at(text, match.start())
+               and written_range_action(text[match.end():], require_action=True) is not None
+               for match in _WRITTEN_BOUND.finditer(text))
+
+
+def _written_subjects(fields):
+    return [(field, re.compile(r'(?<![\w])' + re.escape(field) + _BOUND_SUBJECT_END))
+            for field in sorted(fields, key=len, reverse=True)]
 
 
 def _comparison_turns(messages, subjects):
@@ -1579,7 +1596,7 @@ def _comparison_turns(messages, subjects):
                 continue
             operator = _WRITTEN_OPERATOR[match['operator']]
             side = 'lower' if operator in ('gt', 'gte') else 'upper'
-            action = _range_action(text[match.end():], subjects)
+            action = written_range_action(text[match.end():], subjects)
             for amount in _amounts(match['amount'], owner):
                 # #44: replacing the whole condition also retires the opposite bound.
                 # Anchor the marker to this subject, not another field in the same turn.
@@ -1629,6 +1646,19 @@ def _field_bounds(turns, field):
     return active, retired
 
 
+def written_filter_bounds(messages, columns, fields):
+    """Replay scoped comparisons and yield the active, unambiguous written predicates."""
+    turns = list(_comparison_turns(messages, _written_subjects(columns)))
+    for field in fields:
+        active, _ = _field_bounds(turns, field)
+        for value, bounds in active.items():
+            if len(bounds) != 1:
+                continue
+            operator, action = next(iter(bounds))
+            if action in ('include', 'exclude'):
+                yield field, value, operator if action == 'include' else _OPPOSITE_BOUND[operator]
+
+
 def _draft_comparison_mismatches(state, draft):
     plans = [draft.get('execution_plan')]
     for node in (draft.get('workflow') or {}).get('nodes', []):
@@ -1638,9 +1668,7 @@ def _draft_comparison_mismatches(state, draft):
     fields = {rule['field'] for plan in plans for rule in (plan or {}).get('filters', []) if rule.get('field')}
     if not fields:
         return
-    subjects = [(field, re.compile(r'(?<![\w])' + re.escape(field) + _BOUND_SUBJECT_END))
-                for field in sorted(fields, key=len, reverse=True)]
-    turns = list(_comparison_turns(state.get('messages', []), subjects))
+    turns = list(_comparison_turns(state.get('messages', []), _written_subjects(fields)))
     by_field = {}
     for plan in plans:
         for rule in (plan or {}).get('filters', []):

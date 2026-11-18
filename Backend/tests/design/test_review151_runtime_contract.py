@@ -230,3 +230,101 @@ def test_explicit_overwrite_retains_shared_location_and_replaces_the_run_alias(t
         assert other['rows'] == [{'id':'shared'}]
     finally:
         store.close()
+
+
+def save_nested_file_exchange(storage, *, writer_in_child, source_path='source.csv'):
+    from tests.design.test_builder import draft
+    from tests.design.test_node_connections import save
+
+    def config(*nodes):
+        return {**draft(), 'document_ids':[], 'tool_ids':list(dict.fromkeys(n['tool'] for n in nodes)),
+            'workflow':dict(entry=nodes[0]['id'], nodes=list(nodes),
+                            edges=[edge(a['id'], b['id']) for a, b in zip(nodes, nodes[1:])])}
+
+    source = node('source', 'read_table', operation='read_csv', arguments_json=dict(path=source_path))
+    writer = node('write', 'export_result', [bind('rows', 'source', 'records')], operation='write_csv',
+                  arguments_json=dict(path='result.csv', columns=['id']))
+    reader = node('read', 'read_table', operation='read_csv', arguments_json=dict(path='result.csv'))
+    child_nodes = [source, writer] if writer_in_child else [reader]
+    child = save(storage, config(*child_nodes))
+    call = node('call', 'saved_workflow', agent_id=child, agent_version=1,
+                output_node=child_nodes[-1]['id'], output_port='artifact' if writer_in_child else 'records')
+    return save(storage, config(call, reader) if writer_in_child else config(source, writer, call))
+
+
+@pytest.mark.parametrize('writer_in_child', [False, True], ids=['parent-writes', 'child-writes'])
+def test_nested_literal_reads_the_current_export_after_rerun_and_retry(tmp_path, monkeypatch, writer_in_child):
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.unified_tools.expansion import runtime
+
+    root = tmp_path / 'operation-files'
+    root.mkdir()
+    source = root / 'source.csv'
+    stale = root / 'result.csv'
+    storage = Storage(tmp_path)
+    try:
+        identifier = save_nested_file_exchange(storage, writer_in_child=writer_in_child)
+    finally:
+        storage.close()
+    request = dict(directory=str(tmp_path), action='test', id=identifier, content='')
+
+    def assert_exchange_result(run, row):
+        assert run['status'] == 'succeeded', run.get('error')
+        assert run['rows'] == [{'id':row}]
+        assert run['artifact']['name'] == 'result.csv'
+        contents = base64.b64decode(run['artifact']['content']).decode('utf-8-sig')
+        assert list(csv.DictReader(io.StringIO(contents))) == [{'id':row}]
+
+    source.write_text('id\nfirst\n', encoding='utf-8')
+    first = handle(request)
+    assert_exchange_result(first, 'first')
+    assert not stale.exists()
+    stale.write_text('id\nstale\n', encoding='utf-8')
+    source.write_text('id\nsecond\n', encoding='utf-8')
+    second = handle(request)
+    assert_exchange_result(second, 'second')
+    assert first['id'] != second['id']
+    assert stale.read_text(encoding='utf-8') == 'id\nstale\n'
+
+    read_tool = runtime.TOOLS['file.read_csv']
+    original_read = read_tool['function']
+    interrupted = False
+
+    def interrupt_once(path, context):
+        nonlocal interrupted
+        if path == 'result.csv' and not interrupted:
+            interrupted = True
+            raise OSError('interrupted before reading the output file')
+        return original_read(path, context)
+
+    monkeypatch.setitem(read_tool, 'function', interrupt_once)
+    source.write_text('id\nthird\n', encoding='utf-8')
+    failed = handle(request)
+    assert failed['status'] == 'failed' and failed['error_type'] == 'OSError'
+    retried = handle(dict(directory=str(tmp_path), action='retry_run', id=failed['id']))
+    assert retried['id'] == failed['id']
+    assert_exchange_result(retried, 'third')
+    assert stale.read_text(encoding='utf-8') == 'id\nstale\n'
+
+
+def test_concurrent_nested_workflows_keep_same_named_exports_separate(tmp_path):
+    from infrastructure.persistence.storage import Storage
+
+    root = tmp_path / 'operation-files'
+    root.mkdir()
+    requests = []
+    storage = Storage(tmp_path)
+    try:
+        for writer_in_child, row in [(False, 'parent'), (True, 'child')]:
+            source_path = row + '.csv'
+            (root / source_path).write_text(f'id\n{row}\n', encoding='utf-8')
+            identifier = save_nested_file_exchange(storage, writer_in_child=writer_in_child, source_path=source_path)
+            requests.append(dict(directory=str(tmp_path), action='test', id=identifier, content=''))
+    finally:
+        storage.close()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(handle, requests))
+    for result, row in zip(results, ['parent', 'child']):
+        assert result['status'] == 'succeeded', result.get('error')
+        assert result['rows'] == [{'id':row}]
+    assert not (root / 'result.csv').exists()

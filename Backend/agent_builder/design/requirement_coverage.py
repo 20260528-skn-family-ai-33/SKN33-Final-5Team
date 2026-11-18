@@ -6,7 +6,7 @@ Unknown semantics are held for review, rather than silently dropped.
 import ast
 import json
 import os
-from decimal import Decimal
+from decimal import MAX_EMAX, MIN_EMIN, Context, Decimal
 
 from contracts.numeric_criteria import number_value
 from .requirement_ledger import ledger_fingerprint, plan_digest, validate_plan
@@ -30,7 +30,9 @@ def _condition(value):
     result=dict(value)
     if result.get('value_type')=='number' and result.get('value') is not None:
         if isinstance(result['value'],bool):raise ValueError('숫자 기준에 bool을 사용할 수 없습니다.')
-        result['value']=str(number_value(result['value']).normalize())
+        number = number_value(result['value'])
+        exact = Context(prec=len(number.as_tuple().digits), Emax=MAX_EMAX, Emin=MIN_EMIN)
+        result['value'] = str(number.normalize(context=exact))
     return json.dumps(result,ensure_ascii=False,sort_keys=True)
 
 

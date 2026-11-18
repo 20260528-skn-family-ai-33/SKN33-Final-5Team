@@ -5,7 +5,9 @@ from the user source; conflicting model candidates still fail validation.
 """
 import re
 from copy import deepcopy
+from decimal import Decimal
 
+from agent_builder.conditions.condition_readiness import has_written_row_action, written_filter_bounds, written_range_action
 from contracts.numeric_criteria import number_value
 from .export_intent import explicit_export_intent, request_clauses
 from .text_filter_parser import column_projection_requests
@@ -47,7 +49,7 @@ def _request_turns(state):
                 r'바꿔|변경해|추가해|제외해|선택해|'
                 r'(?:계산|집계|합산|선별|필터링|정렬|결합|병합|저장|내보내|추출)\s*'
                 r'(?:해\s*(?:줘|주세요)|하(?:고|며|세요|도록))(?=\s|[.!?,;]|$)', clause)
-            if not explanation or instruction:
+            if not explanation or instruction or has_written_row_action(clause):
                 requested.append(clause)
         retained = text if len(requested) == len(clauses) else '\n'.join(requested)
         if retained.strip():
@@ -63,8 +65,25 @@ def _single_requests(text, columns):
 
 
 def _known_columns(state):
+    from .compute_grounding import _named_column
+    from .output_selection_revision import sealed_output_plan
+
     columns = set(state.get('resources', [{}])[0].get('columns', []))
-    for _, text in _request_turns(state):
+    turns = list(_request_turns(state))
+    # A follow-up can refer to a computed or renamed field by its existing
+    # name. Only the sealed plan for this input and request can supply it.
+    if turns and any(re.search(r'표시|보여|출력', text) for _, text in turns):
+        messages = state.get('messages', [])
+        last = max(i for i, message in enumerate(messages) if message.get('role') == 'user')
+        plan = sealed_output_plan(state, messages, messages[:last])
+        if plan:
+            result_keys = {'compute': 'output_column', 'rename': 'target'}
+            for task in plan['tasks']:
+                spec = task['spec']
+                if task['source_message'] >= turns[0][0] and spec['kind'] in result_keys:
+                    columns.add(spec[result_keys[spec['kind']]])
+    for _, text in turns:
+        columns.update(_named_column(text))
         columns.update(_selection_fields(text, columns) or [])
     return columns
 
@@ -81,11 +100,11 @@ def _selection_request(state, columns, *, display_only=False):
             # selection for displayed rows still applies after cancelling it.
             clauses = [clause for _, clause in request_clauses(text)
                        if any(p.affirmed and _DISPLAY.search(clause[p.start:p.end])
-                              for p in column_projection_requests(clause, columns))]
+                              for p in column_projection_requests(clause, columns, explicit_display=True))]
             if clauses:
                 return index, '\n'.join(clauses)
             continue
-        if (any(item.affirmed for item in column_projection_requests(text, columns)) or _NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
+        if (any(item.affirmed for item in column_projection_requests(text, columns, explicit_display=True)) or _NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
                 or re.search(r'\w+(?:\s*[·,]\s*\w+)+(?:을|를)\s*(?:내보내|저장)', text)
                 or re.search(r'(?:출력|저장할|내보낼)\s*(?:열|컬럼)|(?:열|컬럼).{0,20}(?:추가|제외|변경|바꿔)', text)):
             return index, text
@@ -103,7 +122,7 @@ def output_requirements(state):
     display_clauses = set()
     if fields:
         for _, clause in request_clauses(text):
-            for projection in column_projection_requests(clause, columns):
+            for projection in column_projection_requests(clause, columns, explicit_display=True):
                 if (projection.affirmed and list(projection.fields) == fields
                         and _DISPLAY.search(clause[projection.start:projection.end])
                         and not clause[:projection.start].strip()
@@ -118,7 +137,7 @@ def output_selection(state):
 
 
 def _selection_fields(text, columns):
-    projections = column_projection_requests(text, columns)
+    projections = column_projection_requests(text, columns, explicit_display=True)
     if projections:
         return list(projections[0].fields) if len(projections) == 1 and projections[0].affirmed else None
     matches = [m for m in _NAMED_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
@@ -304,7 +323,7 @@ def project_output_selection(candidates,state):
         result.insert(index,dict(source_message=source,description='명시한 최종 출력 열',spec=dict(kind='select_fields',fields=fields)))
     output_format = _projectable_format(intent)
     if output_format and not any(c['spec'].get('kind')=='export' for c in result):
-        result.append(dict(source_message=intent['active_from'],description='명시한 결과 파일 저장',
+        result.append(dict(source_message=intent['format_sources'][output_format],description='명시한 결과 파일 저장',
                            spec=dict(kind='export',format=output_format)))
     return result
 
@@ -315,6 +334,12 @@ def literal_numeric_filters(state):
 
 def literal_or_filters(state):
     return _literal_numeric_contracts(state)[1]
+
+
+def _literal_number(value):
+    number = number_value(value)
+    approximate = float(number)
+    return approximate if Decimal(str(approximate)) == number else str(number)
 
 
 def _literal_numeric_contracts(state):
@@ -338,38 +363,41 @@ def _literal_numeric_contracts(state):
     columns = _known_columns(state)
     for _,text in turns:
         fields.update(_selection_fields(text,columns) or [])
-    if not fields:return [], []
-    names='|'.join(re.escape(f) for f in sorted(fields,key=len,reverse=True))
-    criteria={}; alternatives={}
+    if not fields:
+        return [], []
+    names = '|'.join(re.escape(f) for f in sorted(fields, key=len, reverse=True))
+    tracked = {}
+    alternatives = {}
+    threshold = re.compile(
+        r'\s*(' + names + r')(?:이|가|은|는)?\s+'
+        r'([+-]?\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)')
     for _,text in turns:
-        revised={}; or_revised={}
-        for part in re.split(r',\s+|[\n;]',text):
-            match=re.fullmatch(r'\s*('+names+r')(?:이|가|은|는)?\s+'
-                              r'(\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)\s*[.!]?\s*',part)
-            if match:
-                rule = dict(field=match[1],
-                    operator={'이상':'gte','이하':'lte','초과':'gt','미만':'lt'}[match[3]],
-                    value=float(number_value(match[2])),compare_field=None,value_type='number')
-                rules = revised.setdefault(match[1], [])
-                if rule not in rules:
-                    rules.append(rule)
+        parts = (part for _, clause in request_clauses(text) for part in re.split(r',\s+|[\n;]', clause))
+        for part in parts:
+            match = threshold.match(part)
+            tail = part[match.end():] if match else ''
+            if match and (written_range_action(tail, require_action=True) or re.fullmatch(r'\s*[.!]?\s*', tail)):
+                tracked[match[1]] = None
+                alternatives.pop(match[1], None)
             cancel=re.fullmatch(r'\s*('+names+r')\s*(?:숫자\s*)?(?:조건|기준|필터)(?:은|는|을|를)?\s*'
                                 r'(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?\s*[.!]?\s*',part)
             if cancel:
-                revised[cancel[1]]=[]
-                or_revised.pop(cancel[1],None)
+                tracked.pop(cancel[1], None)
+                alternatives.pop(cancel[1], None)
             alternative=re.fullmatch(r'\s*[^,;\n]{1,80}?(?:이거나|또는|혹은)\s+'
                 r'('+names+r')(?:이|가|은|는)?\s+(\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)(?:인)?\s*'
                 r'(?:주문|행|건)(?:을|만)?\s*(?:대상으로|남겨\s*(?:줘|주세요))\s*[.!]?\s*',part)
             if alternative:
-                revised[alternative[1]]=[]
-                or_revised[alternative[1]]=dict(field=alternative[1],
+                tracked.pop(alternative[1], None)
+                alternatives[alternative[1]]=dict(field=alternative[1],
                     operator={'이상':'gte','이하':'lte','초과':'gt','미만':'lt'}[alternative[3]],
-                    value=float(number_value(alternative[2])),compare_field=None,value_type='number')
-        criteria.update(revised)
-        for field in revised:alternatives.pop(field,None)
-        alternatives.update(or_revised)
-    return [rule for rules in criteria.values() for rule in rules], list(alternatives.values())
+                    value=_literal_number(alternative[2]),compare_field=None,value_type='number')
+    # Projection establishes which fields need independent proof. The
+    # condition replay alone decides their latest values and polarity.
+    messages = [dict(role='user', content=text) for _, text in turns]
+    required = [dict(field=field, operator=operator, value=_literal_number(value), compare_field=None, value_type='number')
+                for field, value, operator in written_filter_bounds(messages, columns | fields, tracked)] if tracked else []
+    return required, list(alternatives.values())
 
 
 def literal_output_compute(state):

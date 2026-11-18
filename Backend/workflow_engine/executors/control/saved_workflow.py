@@ -12,6 +12,7 @@ def child_configuration(agent,parent,file_ids):
 
 def execute(node,state,storage,config,llm):
     from workflow_engine.runner import compile_workflow
+    from workflow_engine.executors.canonical_operation import file_aliases
     from verification.reply_review.state import collect_reviews
     settings=node['settings'];agent=config.get('_saved_workflows',{}).get(node['id'])
     if not agent:raise ValueError('저장된 워크플로우의 고정 버전이 연결되지 않았습니다. 설정을 다시 저장하세요.')
@@ -22,7 +23,9 @@ def execute(node,state,storage,config,llm):
     child=child_configuration(agent,config,state.get('file_ids',[]))
     graph,connection=compile_workflow(storage,child,llm,ownership=config.get('_ownership'),inherit_checkpoint=True,external_inputs=inputs)
     try:
-        result=graph.invoke({'outputs':{},'steps':[],'request':inputs.get('text') or state['request'],'customer_message':state.get('customer_message',state['request']),'reply_draft':state.get('reply_draft'),'file_ids':state.get('file_ids',[]),'messages':state.get('messages',[]),'external_inputs':inputs})
+        aliases = file_aliases(state['outputs'], state.get('inherited_file_aliases'))
+        inherited = {logical.as_posix():physical for logical, physical in aliases.items()}
+        result=graph.invoke({'outputs':{},'steps':[],'request':inputs.get('text') or state['request'],'customer_message':state.get('customer_message',state['request']),'reply_draft':state.get('reply_draft'),'file_ids':state.get('file_ids',[]),'messages':state.get('messages',[]),'external_inputs':inputs,'inherited_file_aliases':inherited})
         selected=result['outputs'].get(settings['output_node'],{})
         if settings['output_port'] not in selected:raise ValueError('저장된 워크플로우가 선택한 출력을 반환하지 않았습니다.')
         value=selected[settings['output_port']]
@@ -37,6 +40,10 @@ def execute(node,state,storage,config,llm):
         reviews={id:{**by_id[id],'source_review_id':by_id[id].get('source_review_id',id),'id':node['id']+':'+str(i)} for i,id in enumerate(ordered)}
         if settings['output_port']=='reviews':value=[reviews[id] for id in selected_ids]
         scope = document_scope(selected) if settings['output_port'] == 'documents' else {}
+        # Publish only completed child writes, including writes from nested calls.
+        # The aliases inherited from the caller are already in the caller's state.
+        if produced := file_aliases(result['outputs']):
+            scope['_file_aliases'] = {logical.as_posix():physical for logical, physical in produced.items()}
         if settings['output_port'] == 'records':
             if output_records_table_scope_incomplete(settings['output_node'], result['outputs'], child):
                 raise ValueError(TABLE_SCOPE_ERROR)

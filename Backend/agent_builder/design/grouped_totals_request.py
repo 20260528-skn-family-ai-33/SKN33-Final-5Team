@@ -17,7 +17,7 @@ _REQUEST = re.compile(
     rf'(?P<group>{_NAME})별\s+(?P=measure)\s+합계(?:와|\s*및)\s+(?:(?P=subject)\s+)?행\s*(?:개수|수)를\s*구해서\s+'
     rf'열\s*이름을\s*(?P=group)\s*,\s*(?P<total>{_NAME})\s*,\s*(?P<count>{_NAME})(?:으로|로)\s*{_END}\s+'
     rf'(?P=group)\s+(?P<direction>오름차순|내림차순)(?:으로)?\s*정렬한\s*뒤\s+'
-    rf'(?P<output>[^\s/\\]+\.csv)(?:으로|로)\s*저장{_END}'
+    rf'(?P<output>[^\s/\\]+\.(?:csv|json))(?:으로|로)\s*저장{_END}'
     rf'(?:\s+(?P=left)(?:이|가)\s*0인\s+(?P=value)\s+(?P=subject)도\s+(?P=count)(?:에는|에)\s*포함{_END})?\s*', re.I)
 
 

@@ -10,7 +10,7 @@ import pytest
 
 from agent_builder.design.requirement_ledger import extract_plan, make_requirement_check, ledger_fingerprint, plan_digest
 from agent_builder.design.requirement_coverage import coverage_report
-from agent_builder.design.grouped_totals_contract import grouped_contract, contract_specs
+from agent_builder.design.grouped_totals_contract import contract_source, contract_specs, grouped_contract
 from tests.design.test_grouped_totals_request import state, sealed_state, controlled_draft, upload_profile
 
 
@@ -52,9 +52,8 @@ def test_csv_oracle_does_not_normalize_embedded_newlines():
 
 def contract_packet(current):
     contract = grouped_contract(current)
-    return dict(tasks=[dict(source_message=(contract['export_source'] if role.startswith('export_')
-        else contract['revisions'].get(role, contract['source'])),
-        description=role, spec=spec) for role, spec in contract_specs(contract)], unresolved=[])
+    return dict(tasks=[dict(source_message=contract_source(contract, role), description=role, spec=spec)
+                       for role, spec in contract_specs(contract)], unresolved=[])
 
 
 def seal(current, packet):

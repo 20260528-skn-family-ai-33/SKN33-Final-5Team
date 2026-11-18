@@ -125,7 +125,7 @@ def ledger_fingerprint(state):
     meaning = state.get('request_meaning_digest') or ''
     ledger = state.get('condition_ledger') or {}
     authority = (condition_digest(ledger), ledger.get('validation_digest')) if state.get('condition_enforced') else None
-    return plan_digest(['a4b.requirements.v11.active-output', input_fingerprint(state), meaning, authority])
+    return plan_digest(['a4b.requirements.v12.complete-revisions', input_fingerprint(state), meaning, authority])
 
 
 def plan_digest(plan):

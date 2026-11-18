@@ -55,6 +55,14 @@ def test_revision_from_at_least_to_greater_than_excludes_equal_value():
     assert result_rows(session, rows, [('amount', 'gte', 30)]) == [rows[2]]
 
 
+def test_format_change_and_explained_new_bound_reject_the_old_filter_without_a_projection():
+    session = conversation('amount가 30 이상인 행만 남겨 CSV로 저장해줘.',
+                           'JSON으로 바꿔줘. amount가 40 이상인 행만 필터링하고 이유도 설명해줘.')
+    rows = [{'amount': value} for value in (30, 39, 40)]
+    assert any('바뀐 이전 조건' in issue for issue in audited(session, rows, [('amount', 'gte', 30)])['issues'])
+    assert result_rows(session, rows, [('amount', 'gte', 40)]) == [rows[-1]]
+
+
 def test_new_task_offers_and_accepts_only_its_own_quotes():
     receipt = '올려준 영수증 이미지 파일 내용을 엑셀파일로 정리해줘'
     sales = '10월 26일부터 11월 1일까지 지점 매출을 그 전주와 비교해서 회의용 표로 만들어줘.'

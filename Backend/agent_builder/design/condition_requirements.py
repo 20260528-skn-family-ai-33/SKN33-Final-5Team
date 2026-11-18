@@ -83,8 +83,8 @@ def owned_specs(confirmed, state):
                 fmt = next(iter(intent['formats']))
             if fmt not in intent['forbidden_formats']:
                 add('export', '요청한 형식으로 결과 저장', ['output.format'], format=fmt)
-                if not intent['multiple'] and intent['active_from'] >= 0:
-                    specs['export']['source_message'] = intent['active_from']
+                if not intent['multiple'] and fmt in intent['format_sources']:
+                    specs['export']['source_message'] = intent['format_sources'][fmt]
     return specs
 
 

@@ -37,7 +37,9 @@ def grouped_contract(state):
                     sort_type=group_sort_type(asset, values['group']),
                     formula=f"{values['left']} * {values['right']}", request=request.strip(),
                     revisions={}, revision_clauses={}, unknown=[],
-                    formats=set(intent['formats']), export_source=max(source, intent['active_from']))
+                    formats=intent['formats'], format_sources=intent['format_sources'],
+                    format_clauses=intent['format_clauses'], cancellation_evidence=intent['cancellation_evidence'],
+                    global_cancellation=intent['global_cancellation'])
     group = re.escape(values['group'])
     for index, text in active:
         if index <= source or _ACK.fullmatch(text.strip()):
@@ -73,7 +75,7 @@ def grouped_contract(state):
                 contract['formula'] = formula[1]
                 role = 'compute'
             elif (index, clause) in intent['accepted_clauses']:
-                role = 'export'
+                continue  # The export reducer owns each format's request and cancellation.
             else:
                 # Never discard a new instruction or silently unseal old work.
                 contract['unknown'].append(clause)
@@ -88,10 +90,18 @@ def grouped_evidence(contract, state):
 
     users = [m['content'] for m in state['messages'] if m['role'] == 'user']
     changes = {'filter': '선별 조건 변경', 'compute': '계산식 변경',
-               'sort': '정렬 조건 변경', 'export': '결과물 저장 변경'}
+               'sort': '정렬 조건 변경'}
     entries = [(contract['source'], contract['request'], '합계·행 개수 원문')]
     entries.extend((source, contract['revision_clauses'][role], changes[role])
                    for role, source in contract['revisions'].items())
+    entries.extend((source, contract['format_clauses'][fmt], f'{fmt.upper()} 저장 요청')
+                   for fmt, source in sorted(contract['format_sources'].items()) if source > contract['source'])
+    global_cancellation = contract['global_cancellation']
+    if global_cancellation and global_cancellation[0] > contract['source']:
+        entries.append((*global_cancellation, '결과물 저장 취소'))
+    entries.extend((source, clause, f'{fmt.upper()} 저장 취소')
+                   for fmt, (source, clause) in sorted(contract['cancellation_evidence'].items())
+                   if source > contract['source'] and (source, clause) != global_cancellation)
     evidence = {}
     for index, parsed, description in sorted(entries, key=lambda entry: entry[0]):
         original = users[index]
@@ -110,7 +120,8 @@ def grouped_evidence(contract, state):
 
 def contract_source(contract, role):
     if role.startswith('export_'):
-        return contract['export_source']
+        fmt = role.removeprefix('export_')
+        return contract['format_sources'][fmt]
     return contract['revisions'].get(role, contract['source'])
 
 

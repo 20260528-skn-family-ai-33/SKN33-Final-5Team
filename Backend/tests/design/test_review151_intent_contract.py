@@ -14,7 +14,7 @@ from infrastructure.persistence.storage import Storage
 from service.worker import handle
 from tests.design.test_builder import draft, initial
 from tests.design.test_feedback_service_scenarios import (
-    COLUMNS, ORDER_ANSWER, ORDER_REQUEST, ROWS, order_draft, order_specs,
+    COLUMNS, ORDER_ANSWER, ORDER_REQUEST, ROWS, UnexpectedConditionCall, order_draft, order_specs,
 )
 from tests.workflow_engine.test_workflow import bind, edge, node
 from workflow_engine.runner import run_workflow
@@ -28,6 +28,13 @@ def table_session(tmp_path, monkeypatch):
     directory = str(tmp_path)
     packet = None
     require_reuse = False
+    enforce_conditions = False
+
+    class Capabilities:
+        def invoke(self, messages):
+            return {'content': json.dumps(dict(decision='existing_tools', reason='표 선별 및 파일 저장',
+                tool_ids=['read_table', 'calculate_columns', 'filter_sort', 'json_transform', 'export_result'],
+                missing_conditions=[], missing_actions=[], user_quotes=[ORDER_REQUEST]), ensure_ascii=False)}
 
     class Requirements:
         def invoke(self, messages):
@@ -36,11 +43,16 @@ def table_session(tmp_path, monkeypatch):
             return {'content': json.dumps(packet, ensure_ascii=False)}
 
     monkeypatch.setattr(design, 'build_graph', lambda *args, **kwargs: build(*args, **{
-        **kwargs, 'capability_mode': 'off', 'condition_mode': 'off', 'verifier_mode': 'off',
+        **kwargs, 'capability_mode': 'enforce' if enforce_conditions else 'off',
+        'capability_transport': Capabilities(),
+        'condition_mode': 'enforce' if enforce_conditions else 'off',
+        'condition_transport': UnexpectedConditionCall(), 'verifier_mode': 'off',
         'requirement_mode': 'enforce', 'requirement_transport': Requirements(),
     }))
 
-    def start(name, columns, rows):
+    def start(name, columns, rows, *, enforce=False):
+        nonlocal enforce_conditions
+        enforce_conditions = enforce
         design_states = []
         result = handle(dict(directory=directory, action='new_session', model='fixture', credential_id='fixture'))
         session_id = result['id']
@@ -125,6 +137,56 @@ def test_format_replacement_and_acknowledgement_keep_the_original_rows(table_ses
     ]
 
 
+@pytest.mark.parametrize('selection', [
+    '주문금액이 150000 이상인 행만 남기고 이유도 설명해줘.',
+    '주문금액이 150000 이상인 주문만 필터링해줘.',
+    '주문금액이 150000 이상인 행만 남기고 왜 그런지도 설명해줘.',
+    '주문금액이 150000 이상인 행만 남기되 이유도 설명해줘.',
+])
+def test_format_change_with_filter_revision_saves_only_the_new_selection(table_session, selection):
+    identifier, send, save_and_run, states = table_session('주문내역.csv', COLUMNS, ROWS, enforce=True)
+    csv_specs = deepcopy(order_specs(identifier))
+    original = order_draft(identifier)
+    pending = send(ORDER_REQUEST, csv_specs[-1:], original, unresolved=[
+        dict(key='filter.value', text='계산식과 높은 주문의 기준을 알려주세요.'),
+    ])
+    assert pending['status'] == 'needs_clarification', pending.get('issues')
+    ready = send(ORDER_ANSWER, csv_specs, original, source=1, question_id=pending['pending_questions'][0]['id'])
+    assert ready['status'] == 'ready', ready.get('issues')
+
+    updated_specs = deepcopy(csv_specs)
+    updated_specs[2]['filters'][1]['value'] = 150000
+    updated_specs[-1]['format'] = 'json'
+    candidate = deepcopy(original)
+    writer = candidate['workflow']['nodes'][-1]
+    writer['settings'].update(operation='write_json', arguments_json=json.dumps(dict(path='고액주문.json')))
+    writer['bindings'][0]['input'] = 'value'
+    candidate['execution_plan']['filters'][1]['value'] = 150000
+    candidate['workflow']['nodes'][2]['settings']['execution_plan']['filters'][1]['value'] = 150000
+    revision = 'JSON으로 바꿔줘. ' + selection
+    ready = send(revision, updated_specs, candidate, source=1, output_source=2)
+    assert ready['status'] == 'ready', ready.get('issues')
+
+    current = states[-1]
+    active = current['requirement_ledger']
+    assert active['tasks'][2]['spec']['filters'][1]['value'] == 150000
+    assert active['tasks'][2]['spec']['filters'][0] == csv_specs[2]['filters'][0]
+    for index in (0, 1, 3, 4):
+        assert active['tasks'][index]['spec'] == csv_specs[index]
+    stale = deepcopy(active)
+    stale['tasks'][2]['spec'] = csv_specs[2]
+    with pytest.raises(ValueError, match='숫자 선별 조건'):
+        validate_plan(stale, current)
+    wrong_graph = deepcopy(candidate)
+    wrong_graph['workflow']['nodes'][2]['settings']['execution_plan'] = deepcopy(
+        original['workflow']['nodes'][2]['settings']['execution_plan'])
+    assert validate_node({**current, 'draft': wrong_graph})['issues']
+
+    run = save_and_run()
+    assert run['artifact']['name'] == '고액주문.json'
+    assert json.loads(artifact_text(run['artifact'])) == [{'주문번호': 'ORD-003', '주문금액': 150000}]
+
+
 SIMPLE_ROWS = [dict(amount=75, note='below'), dict(amount=100, note='boundary'), dict(amount=180, note='above')]
 AMOUNT_FILTER = dict(field='amount', operator='gte', value=100, compare_field=None, value_type='number')
 
@@ -196,9 +258,56 @@ def test_cancel_only_file_and_keep_the_filtered_column_preview(table_session, re
     assert run['rows'] == [dict(amount=100), dict(amount=180)]
 
 
+@pytest.mark.parametrize('display, fields', [
+    ('주문금액 열만', ['주문금액']),
+    ('주문금액만', ['주문금액']),
+    ('수량과 주문금액 열만', ['수량', '주문금액']),
+])
+def test_cancelled_export_keeps_only_the_requested_calculated_columns(table_session, display, fields):
+    rows = [dict(수량=2, 단가=5, 숨길열='one'), dict(수량=3, 단가=7, 숨길열='two')]
+    identifier, send, save_and_run, states = table_session('입력.csv', list(rows[0]), rows)
+    request = '첨부 표의 수량*단가를 계산한 뒤 CSV로 저장해줘.'
+    specs, candidate = simple_plan(identifier, request, 'csv')
+    compute = dict(kind='compute', formula='수량*단가', output_column='주문금액')
+    read, writer = candidate['workflow']['nodes']
+    calculation = node('compute', 'calculate_columns', [bind('table', 'read', 'table')],
+        table_operation='compute', calculation_formula='수량*단가', output_column='주문금액')
+    writer['bindings'] = [bind('table', 'compute', 'table')]
+    candidate['tool_ids'].insert(1, 'calculate_columns')
+    candidate['workflow']['nodes'] = [read, calculation, writer]
+    candidate['workflow']['edges'] = [edge('read', 'compute'), edge('compute', 'out')]
+    ready = send(request, [specs[0], compute, specs[-1]], candidate)
+    assert ready['status'] == 'ready', ready.get('issues')
+
+    projected = deepcopy(candidate)
+    unprojected = deepcopy(candidate)
+    unprojected['workflow']['nodes'].pop()
+    unprojected['workflow']['edges'].pop()
+    unprojected['tool_ids'].remove('write_result')
+    projected['tool_ids'] = [*unprojected['tool_ids'], 'json_transform', 'filter_sort']
+    projected['workflow']['nodes'][2:] = [
+        node('rows', 'json_transform', [bind('value', 'compute', 'table')], operation='lookup',
+             arguments_json=json.dumps({'path': ['rows']}), output_port='records'),
+        node('columns', 'filter_sort', [bind('rows', 'rows', 'records')], operation='select_columns',
+             arguments_json=json.dumps({'columns': fields}, ensure_ascii=False)),
+    ]
+    projected['workflow']['edges'] = [edge('read', 'compute'), edge('compute', 'rows'), edge('rows', 'columns')]
+    ready = send(f'CSV 저장은 취소해줘. 결과는 {display} 보여줘.',
+                 [specs[0], compute], projected, reuse=True)
+    assert ready['status'] == 'ready', ready.get('issues')
+    current = states[-1]
+    assert current['requirement_ledger']['tasks'][-1]['spec'] == dict(kind='select_fields', fields=fields)
+    assert any('출력 열' in issue for issue in validate_node({**current, 'draft': unprojected})['issues'])
+    run = save_and_run()
+    assert run['artifact'] is None
+    expected = [dict(수량=2, 주문금액=10), dict(수량=3, 주문금액=21)]
+    assert run['rows'] == [{key: row[key] for key in fields} for row in expected]
+
+
 @pytest.mark.parametrize('request_text, output_format', [
     ('첨부 표의 amount와 note 열을 각각 그대로 유지하고 CSV로 저장해줘.', 'csv'),
     ('예를 들어 report.csv로 저장해줘. 실제로는 JSON으로 저장해줘.', 'json'),
+    ('첨부 표는 CSV와 JSON 중 하나야. 이 표를 그대로 CSV로 저장해줘.', 'csv'),
 ])
 def test_one_file_is_saved_even_when_other_clauses_mention_scope_or_format(table_session, request_text, output_format):
     identifier, send, save_and_run, _ = table_session('input.csv', ['amount', 'note'], SIMPLE_ROWS)

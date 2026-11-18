@@ -15,21 +15,32 @@ def revision_context(state):
     return input_fingerprint({**state, 'request_meaning_digest': None})
 
 
+def sealed_output_plan(state, *scopes):
+    """Read verified table work from one of the supplied conversation prefixes."""
+    from .requirement_ledger import plan_digest
+
+    plan = state.get('requirement_ledger')
+    context = state.get('requirement_context')
+    if (not context or not plan or plan.get('unresolved') or not state.get('requirement_required')
+            or state.get('requirement_digest') != plan_digest(plan)):
+        return None
+    if any(context == revision_context({**state, 'messages': messages}) for messages in scopes):
+        return plan
+    return None
+
+
 def narrow_output_revision(state):
-    from .requirement_ledger import plan_digest, validate_plan
+    from .requirement_ledger import validate_plan
     from .export_intent import request_clauses
-    from .output_selection_request import _request_turns, output_requirements
+    from .output_selection_request import output_requirements
 
     messages = state.get('messages', [])
     last = next((i for i in range(len(messages)-1, -1, -1)
                  if messages[i].get('role') == 'user'), None)
     if last is None:
         return None
-    old = state.get('requirement_ledger')
-    if (not old or old.get('unresolved')
-            or not state.get('requirement_required')
-            or state.get('requirement_digest') != plan_digest(old)
-            or state.get('requirement_context') != revision_context({**state, 'messages': messages[:last]})):
+    old = sealed_output_plan(state, messages[:last])
+    if not old:
         return None
     assets = state.get('resources', [])
     specs = [t['spec'] for t in old['tasks']]
@@ -44,8 +55,9 @@ def narrow_output_revision(state):
     source = sum(m.get('role') == 'user' for m in messages[:last])
     match = _NARROW.fullmatch(quote.strip())
     intent = output_requirements(state)
-    actual_turn = dict(_request_turns(state)).get(source, '')
-    clauses = [(source, clause.strip()) for _, clause in request_clauses(actual_turn) if clause.strip()]
+    # The display and export parsers may deliberately ignore parts of a turn.
+    # Reusing sealed work requires accounting for the entire original request.
+    clauses = [(source, clause.strip()) for _, clause in request_clauses(quote) if clause.strip()]
     display_changed = any(clause in intent['display_clauses'] for clause in clauses)
     output_only = (intent['active_from'] == source and not intent['multiple'] and clauses
                    and all(clause in intent['accepted_clauses'] or clause in intent['display_clauses']
@@ -67,8 +79,11 @@ def narrow_output_revision(state):
             selection.update(source_message=source, quote=quote, description='최종 표시 열 변경',
                              spec={'kind': 'select_fields', 'fields': intent['fields']})
     elif output_only and not display_changed and len(intent['formats']) == 1:
-        plan['tasks'][-1].update(source_message=source, quote=quote, description='결과 파일 형식 변경',
-                                 spec={'kind': 'export', 'format': next(iter(intent['formats']))})
+        fmt = next(iter(intent['formats']))
+        output_source = intent['format_sources'][fmt]
+        user_turns = [m['content'] for m in messages if m['role'] == 'user']
+        plan['tasks'][-1].update(source_message=output_source, quote=user_turns[output_source],
+                                 description='결과 파일 형식 변경', spec={'kind': 'export', 'format': fmt})
     elif (match and kinds.count('select_fields') == 1 and kinds[-2] == 'select_fields'
           and specs[-1]['format'] == 'csv' and match['column'] in specs[-2]['fields']):
         plan['tasks'][-2].update(source_message=source, quote=quote, description='최종 출력 열 변경',

@@ -38,6 +38,32 @@ def validate_prediction(prediction):
     return prediction
 
 
+def row_corridors(rows, cells):
+    """Bound a row using independent anchors, not a candidate being verified.
+
+    A real gap between consecutive logical rows is split at its midpoint.
+    Missing neighbours and table edges stop at the known row extent. Overlapping
+    or reversed row evidence and vertical spans cannot define safe repair rows.
+    """
+    extents = {r: (min(b[1] for b in boxes), max(b[3] for b in boxes)) for r, boxes in rows.items()}
+    merged_rows = {r for cell in cells if cell.get('row_span', 1) > 1
+                   for r in range(position(cell)[0], position(cell)[0] + cell['row_span'])}
+    ordered = sorted(extents)
+    unsafe = set(merged_rows)
+    for first, second in zip(ordered, ordered[1:]):
+        if extents[first][1] > extents[second][0]:
+            unsafe.update((first, second))
+    result = {}
+    for row, (top, bottom) in extents.items():
+        if row in unsafe:
+            continue
+        before, after = extents.get(row-1), extents.get(row+1)
+        lo = (before[1] + top) / 2 if before and row-1 not in unsafe else top
+        hi = (bottom + after[0]) / 2 if after and row+1 not in unsafe else bottom
+        result[row] = lo, hi
+    return result
+
+
 def reconcile(data, prediction):
     cells = deepcopy(data.get('cells') or [])
     report = {'repairs': [], 'issues': [], 'method': 'unique_text_ocr_geometry_v1'}
@@ -103,6 +129,19 @@ def reconcile(data, prediction):
                 anchors.add(p['index'])
     def overlap(a, b, axis):
         return max(0, min(a[axis+2], b[axis+2]) - max(a[axis], b[axis])) / min(a[axis+2]-a[axis], b[axis+2]-b[axis])
+    vertical_corridors = row_corridors(rows, cells)
+    # Freeze row anchors: a repeated-value candidate cannot widen its own row.
+    row_evidence = {r: list(boxes) for r, boxes in rows.items()}
+    def safe_rows(box):
+        touched = [r for r, boxes in row_evidence.items() if any(overlap(box, b, 1) > 0 for b in boxes)]
+        if len(touched) != 1:
+            return []
+        row = touched[0]
+        lo, hi = vertical_corridors.get(row, (math.inf, -math.inf))
+        if not lo <= box[1] < box[3] <= hi:
+            return []
+        return [row] if all(overlap(box, b, 1) >= .65 for b in row_evidence[row]) else []
+
     # Column corridors allow header/body alignment differences. Boundaries
     # come from gaps between existing column evidence, never the candidate.
     ordered = sorted(columns)
@@ -116,7 +155,7 @@ def reconcile(data, prediction):
     for p in pieces:
         if p['index'] in anchors or p['score'] < .98:
             continue
-        rr = [r for r, bs in rows.items() if all(overlap(p['box'], b, 1) >= .65 for b in bs)]
+        rr = safe_rows(p['box'])
         if len(rr) != 1:
             continue
         candidates = [c for c in cells if position(c)[0] == rr[0]
@@ -146,7 +185,7 @@ def reconcile(data, prediction):
     for p in pieces:
         if p['index'] in anchors:
             continue
-        rr = [r for r, bs in rows.items() if all(overlap(p['box'], b, 1) >= .65 for b in bs)]
+        rr = safe_rows(p['box'])
         cols = [c for c, bs in columns.items() if any(overlap(p['box'], b, 0) > 0 for _, b in bs)]
         if len(rr) != 1 or len(cols) != 1 or p['score'] < .98:
             report['issues'].append({'kind': 'unmapped_ocr', 'ocr_index': p['index']})

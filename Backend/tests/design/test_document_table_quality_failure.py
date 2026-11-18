@@ -5,12 +5,19 @@ from infrastructure.persistence.storage import Storage
 from tests.design.test_document_row_integrity import document, block, state
 
 
-@pytest.mark.parametrize('kind', ['missing', 'review'])
+@pytest.mark.parametrize('kind', ['missing', 'review', 'merged_header', 'conflicting_header'])
 def test_parser_structure_failure_stops_without_a_clarification_or_save(tmp_path, kind):
     asset = document([block([['상품명', '수량'], ['우유', '1'], ['초콜릿', '2']])], name='영수증.png')
     analysis = asset['parser_metadata']['document_analysis']
     if kind == 'missing':
         analysis['blocks'][0]['data']['cells'].pop()
+    elif kind == 'merged_header':
+        analysis['blocks'][0]['data']['cells'][0]['col_span'] = 2
+    elif kind == 'conflicting_header':
+        analysis['review_required'] = True
+        cells = analysis['blocks'][0]['data']['cells']
+        cells.extend([dict(row=3, column=0, text='다른상품', column_header=True),
+                      dict(row=3, column=1, text='수량', column_header=True)])
     else:
         analysis['review_required'] = True
     current = state(asset, '이 영수증 내용을 CSV로 정리해줘.')

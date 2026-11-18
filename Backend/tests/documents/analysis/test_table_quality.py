@@ -8,7 +8,7 @@ from workflow_engine.executors.document.table_rows import native_records, TableS
 
 
 def receipt():
-    return json.loads((Path(__file__).parents[2] / 'fixtures/receipt_table_ocr.json').read_text())
+    return json.loads((Path(__file__).parents[2] / 'fixtures/receipt_table_ocr.json').read_text(encoding='utf-8'))
 
 
 def test_recorded_receipt_repairs_only_three_missing_values_and_preserves_original():
@@ -150,3 +150,48 @@ def test_missing_ocr_text_does_not_prove_a_complete_table():
     for k in ocr: ocr[k].pop()
     _, report = reconcile(data, ocr)
     assert any(i.get('kind') == 'cell_not_confirmed_by_ocr' for i in report['issues'] if isinstance(i, dict))
+
+
+def review_case(rows, pieces):
+    data = {'cells': [dict(row=r, column=c, text=t) for r, row in enumerate(rows)
+                      for c, t in enumerate(row) if t is not None]}
+    prediction = dict(rec_texts=[t for t, _ in pieces], rec_boxes=[b for _, b in pieces],
+                      rec_scores=[.999] * len(pieces))
+    return data, prediction
+
+
+def test_cross_column_ocr_is_not_unique_after_filtering_sparse_column():
+    data, ocr = review_case([['Item', 'Count', 'Amount'], ['Bread', '1', ''], ['Milk', None, '']], [
+        ('Item', [0,0,50,20]), ('Count', [100,0,150,20]), ('Amount', [200,0,250,20]),
+        ('Bread', [0,30,50,50]), ('1', [100,30,120,50]), ('Milk', [0,60,50,80]),
+        ('2 1200', [100,60,250,80])])
+    cells, report = reconcile(data, ocr)
+    assert report['issues'] and not report['repairs']
+    assert cells == data['cells']
+    part = dict(file_id='test', file_name='test', source_id='t', table_cells=cells)
+    with pytest.raises(TableStructureError):
+        native_records([part], ['Item', 'Count', 'Amount'], [], 10)
+
+
+def repeated_counts(pieces):
+    return review_case([['Item', 'Count'], ['Milk', '1'], ['Bread', '1']], [
+        ('Item', [0,0,50,20]), ('Count', [100,0,130,20]),
+        ('Milk', [0,30,50,50]), ('Bread', [0,60,50,80]), *pieces])
+
+
+def test_left_header_right_aligned_repeated_values_stay_exportable():
+    from workflow_engine.executors.output.export_result import records_artifact
+    data, ocr = repeated_counts([('1', [160,30,180,50]), ('1', [160,60,180,80])])
+    cells, report = reconcile(data, ocr)
+    assert not report['issues'] and cells == data['cells']
+    part = dict(file_id='test', file_name='test', source_id='t', table_cells=cells)
+    records = native_records([part], ['Item', 'Count'], [], 10)
+    assert 'Milk,1\r\nBread,1' in records_artifact(records, 'csv', fields=['Item', 'Count'])['content']
+
+
+def test_duplicate_ocr_cannot_confirm_same_value_on_a_different_row():
+    data, ocr = repeated_counts([('1', [100,30,120,50]), ('1', [100,30,120,50])])
+    cells, report = reconcile(data, ocr)
+    assert cells == data['cells']
+    assert any(i.get('kind') == 'duplicate_ocr_for_cell' for i in report['issues'] if isinstance(i, dict))
+    assert {'kind': 'cell_not_confirmed_by_ocr', 'slot': [2, 1]} in report['issues']

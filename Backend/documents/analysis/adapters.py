@@ -80,10 +80,10 @@ def remote_request_body(names):
     return first[1]
 
 
-def remote_engine(url, engine, sources):
+def remote_engine(url, engine, sources, *, deadline=None):
     """Layout/OCR on the GPU parser server (scripts/runpod/gpu_parser_server.py), same contract as engine_worker."""
     names = [str(p) for p in sources]
-    deadline = time.monotonic() + REMOTE_TIMEOUT
+    deadline = min(deadline, time.monotonic() + REMOTE_TIMEOUT) if deadline is not None else time.monotonic() + REMOTE_TIMEOUT
     result, received = None, 0
     for batch_names, body in remote_request_batches(names):
         remaining = deadline - time.monotonic()
@@ -161,6 +161,9 @@ class LocalEngines:
                        status='failed', artifact=str(folder.relative_to(self.work)), elapsed_seconds=0)
         self.attempts.append(attempt)
         try:
+            verification = phase == 'table_verification'
+            if verification and self.image_deadline <= time.monotonic():
+                raise AnalysisError('timeout', '표 OCR 검증에 사용할 문서 시간이 남아 있지 않습니다.')
             if (engine == 'docling' and source and Path(source).suffix.lower() == '.png'
                     and os.environ.get('A4B_PARSER_URL')
                     and os.environ.get('A4B_DOCLING_LOCAL_ONLY') != '1'):
@@ -185,7 +188,8 @@ class LocalEngines:
             if remote:
                 attempt['route'] = 'gpu_remote'
                 try:
-                    data = remote_engine(remote, engine, sources or [])
+                    data = (remote_engine(remote, engine, sources or [], deadline=self.image_deadline) if verification
+                            else remote_engine(remote, engine, sources or []))
                     (folder / 'raw.json').write_text(json.dumps(data['outputs'], ensure_ascii=False), encoding='utf-8')
                     attempt.update(status='succeeded', version=data['version'], model=data.get('model', {}))
                     return data
@@ -194,9 +198,12 @@ class LocalEngines:
                         raise
                     attempt['remote_error'] = exc.code
             attempt['route'] = 'cpu_local'
+            local_timeout = min(self.timeout, self.image_deadline - time.monotonic()) if verification else self.timeout
+            if local_timeout <= 0:
+                raise AnalysisError('timeout', '표 OCR 검증에 사용할 문서 시간이 남아 있지 않습니다.')
             with (folder / 'engine.log').open('wb') as log:
                 completed = subprocess.run([executable, str(Path(__file__).with_name('engine_worker.py')), str(request_file), str(output)],
-                                           stdout=log, stderr=log, timeout=self.timeout, check=False,
+                                           stdout=log, stderr=log, timeout=local_timeout, check=False,
                                            cwd=PROJECT_ROOT,
                                            env={**os.environ, 'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1'})
             if not output.is_file() or output.stat().st_size > MAX_RESULT:

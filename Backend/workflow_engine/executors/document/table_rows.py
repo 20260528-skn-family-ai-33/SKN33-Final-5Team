@@ -112,7 +112,7 @@ def _leading_headers(grid):
         leading.append((number, row))
     shapes = [_row_shape(row) for _, row in leading]
     if any(_row_shape(row) not in shapes for _, row in marked[len(leading):]):
-        raise ValueError('표에서 서로 다른 머리글 구간을 하나의 항목 표로 확인할 수 없습니다.')
+        raise TableStructureError('표에서 서로 다른 머리글 구간을 하나의 항목 표로 확인할 수 없습니다.')
     return leading
 
 
@@ -135,11 +135,11 @@ def _columns(grid, targets):
             if field is None:
                 continue
             if field in found:
-                raise ValueError('표에 같은 추출 열 이름이 여러 개 있습니다.')
+                raise TableStructureError('표에 같은 추출 열 이름이 여러 개 있습니다.')
             found[field] = column
         if len(found) == len(targets):
             if any(not _unit_cell(row[column]) for column in found.values()):
-                raise ValueError('병합된 표 머리글의 열 대응을 확인할 수 없습니다.')
+                raise TableStructureError('병합된 표 머리글의 열 대응을 확인할 수 없습니다.')
             return headers[-1][0] if headers else number, found
         partial_header = partial_header or bool(found)
     if partial_header:

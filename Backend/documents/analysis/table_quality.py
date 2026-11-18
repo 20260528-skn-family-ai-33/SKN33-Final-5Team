@@ -59,15 +59,15 @@ def reconcile(data, prediction):
     pc = Counter(normalized(p['text']) for p in pieces)
     cc = Counter(normalized(c.get('text')) for c in cells)
     by_text = {normalized(c.get('text')): c for c in cells}
-    for text, count in cc.items():
-        if text and pc[text] < count:
-            report['issues'].append({'kind': 'cell_not_confirmed_by_ocr', 'text': text})
     rows, columns = defaultdict(list), defaultdict(list)
     anchors = set()
+    confirmed = set()
     for p in pieces:
         key = normalized(p['text'])
         if pc[key] == cc[key] == 1 and p['score'] >= .98:
             cell = by_text[key]
+            confirmed.add(position(cell))
+            anchors.add(p['index'])
             if cell.get('row_span', 1) == cell.get('col_span', 1) == 1:
                 row, col = position(cell)
                 rows[row].append(p['box'])
@@ -75,31 +75,60 @@ def reconcile(data, prediction):
                 anchors.add(p['index'])
     def overlap(a, b, axis):
         return max(0, min(a[axis+2], b[axis+2]) - max(a[axis], b[axis])) / min(a[axis+2]-a[axis], b[axis+2]-b[axis])
-    # Repeated numbers become anchors only after both their row and column
-    # agree with unique anchors and the existing cell has the exact same text.
+    # Column corridors allow header/body alignment differences. Boundaries
+    # come from gaps between existing column evidence, never the candidate.
+    ordered = sorted(columns)
+    corridors = {}
+    for i, col in enumerate(ordered):
+        left = min(b[0] for _, b in columns[col])
+        right = max(b[2] for _, b in columns[col])
+        lo = (max(b[2] for _, b in columns[ordered[i-1]]) + left) / 2 if i else -math.inf
+        hi = (right + min(b[0] for _, b in columns[ordered[i+1]])) / 2 if i+1 < len(ordered) else math.inf
+        corridors[col] = lo, hi
     for p in pieces:
         if p['index'] in anchors or p['score'] < .98:
             continue
         rr = [r for r, bs in rows.items() if all(overlap(p['box'], b, 1) >= .65 for b in bs)]
-        cols = [c for c, bs in columns.items() if all(overlap(p['box'], b, 0) >= .65 for _, b in bs)]
-        if len(rr) == len(cols) == 1:
-            cell = occupied.get((rr[0], cols[0]))
-            if (cell is not None and normalized(cell.get('text')) == normalized(p['text'])
-                    and cell.get('row_span', 1) == cell.get('col_span', 1) == 1):
-                rows[rr[0]].append(p['box'])
-                columns[cols[0]].append((rr[0], p['box']))
-                anchors.add(p['index'])
+        if len(rr) != 1:
+            continue
+        candidates = [c for c in cells if position(c)[0] == rr[0]
+                      and normalized(c.get('text')) == normalized(p['text'])
+                      and c.get('row_span', 1) == c.get('col_span', 1) == 1
+                      and corridors.get(position(c)[1], (math.inf, -math.inf))[0] <= p['box'][0]
+                      and p['box'][2] <= corridors.get(position(c)[1], (math.inf, -math.inf))[1]]
+        if len(candidates) != 1:
+            continue
+        cell = candidates[0]
+        row, col = position(cell)
+        lo, hi = corridors.get(col, (math.inf, -math.inf))
+        if not lo <= p['box'][0] < p['box'][2] <= hi:
+            continue
+        if (row, col) in confirmed:
+            report['issues'].append({'kind': 'duplicate_ocr_for_cell', 'ocr_index': p['index']})
+            anchors.add(p['index'])
+            continue
+        confirmed.add((row, col))
+        rows[row].append(p['box'])
+        columns[col].append((row, p['box']))
+        anchors.add(p['index'])
+    for cell in cells:
+        if normalized(cell.get('text')) and position(cell) not in confirmed:
+            report['issues'].append({'kind': 'cell_not_confirmed_by_ocr', 'slot': list(position(cell))})
     proposals = defaultdict(list)
     for p in pieces:
         if p['index'] in anchors:
             continue
         rr = [r for r, bs in rows.items() if all(overlap(p['box'], b, 1) >= .65 for b in bs)]
-        cols = [c for c, bs in columns.items() if len({r for r, _ in bs}) >= 2
-                and all(overlap(p['box'], b, 0) >= .65 for _, b in bs)]
+        cols = [c for c, bs in columns.items() if any(overlap(p['box'], b, 0) > 0 for _, b in bs)]
         if len(rr) != 1 or len(cols) != 1 or p['score'] < .98:
             report['issues'].append({'kind': 'unmapped_ocr', 'ocr_index': p['index']})
             continue
-        slot = rr[0], cols[0]
+        col = cols[0]
+        if (len({r for r, _ in columns[col]}) < 2
+                or not all(overlap(p['box'], b, 0) >= .65 for _, b in columns[col])):
+            report['issues'].append({'kind': 'insufficient_column_evidence', 'ocr_index': p['index']})
+            continue
+        slot = rr[0], col
         existing = occupied.get(slot)
         if existing is not None:
             if normalized(existing.get('text')) != normalized(p['text']):

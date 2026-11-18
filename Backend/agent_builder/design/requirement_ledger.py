@@ -125,7 +125,7 @@ def ledger_fingerprint(state):
     meaning = state.get('request_meaning_digest') or ''
     ledger = state.get('condition_ledger') or {}
     authority = (condition_digest(ledger), ledger.get('validation_digest')) if state.get('condition_enforced') else None
-    return plan_digest(['a4b.requirements.v9.grouped-result', input_fingerprint(state), meaning, authority])
+    return plan_digest(['a4b.requirements.v10.grouped-totals', input_fingerprint(state), meaning, authority])
 
 
 def plan_digest(plan):
@@ -313,6 +313,8 @@ def validate_plan(raw, state):
     validate_processing_presence(plan, state)
     validate_group_aggregations(plan, state)
     validate_grouped_result(plan, state)
+    from .grouped_totals_request import validate_grouped_totals
+    validate_grouped_totals(plan, state)
     validate_explicit_ledger(plan,state)
     from .output_selection_request import validate_output_selection
     validate_output_selection(plan,state)
@@ -549,6 +551,8 @@ def extract_plan(raw,state):
                 task['depends_on'] = reads
             elif task['spec'] in (delivery, dict(kind='export', format='md')):
                 task['depends_on'] = summaries
+    from .grouped_totals_request import connect_grouped_totals
+    tasks = connect_grouped_totals(tasks, state)
     return validate_plan(dict(tasks=tasks,unresolved=unresolved),state)
 
 
@@ -619,6 +623,10 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                                         depends_on=[], spec=send)], unresolved=[])
                 return _completed(state, target, validate_plan(plan, state), fingerprint, 0)
             confirmed = confirmed_condition_view(state)
+            from .grouped_totals_request import grouped_totals_packet
+            totals = grouped_totals_packet(state)
+            if totals is not None:
+                return _completed(state, target, extract_plan(totals, state), fingerprint, 0)
             from .scheduled_table_request import scheduled_table_plan
             scheduled = scheduled_table_plan(state, confirmed)
             old=state.get('requirement_ledger')

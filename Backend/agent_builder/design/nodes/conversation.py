@@ -184,10 +184,14 @@ def make_conversation(api_key,model,model_factory=None):
         selected_contract_ids=set((state.get('capability_assessment') or {}).get('tool_ids',[])) & {t['id'] for t in catalog}
         from agent_builder.design.requirement_generation import generation_requirements, constrain_generation, constrain_ordered_steps, generation_mode, output_budget, required_operation_variants, TOOLS as REQUIREMENT_TOOLS
         requirement_specs,required_steps=generation_requirements(state)
+        from agent_builder.design.grouped_totals_decoder import grouped_totals_steps
+        grouped_steps = grouped_totals_steps(state)
         requirement_generation_mode=generation_mode()
         planner_token_budget=output_budget(required_steps,requirement_generation_mode)
         if local_ollama:planner_token_budget=bounded_output_limit(planner_token_budget)
         selected_contract_ids|={REQUIREMENT_TOOLS[s['kind']] for s in requirement_specs if s['kind'] in REQUIREMENT_TOOLS} & {t['id'] for t in catalog}
+        if grouped_steps:
+            selected_contract_ids.add('join_tables')
         if any(s['kind']=='select_fields' for s in requirement_specs):
             selected_contract_ids.update({'json_transform','export_result'})
         # Ollama may ignore forced tool_choice. Supply authoritative read-only
@@ -271,6 +275,10 @@ def make_conversation(api_key,model,model_factory=None):
                     item={'source_id':source['source_id'],'quote':source['quote']}
                     if item not in evidence.values():evidence['e'+str(len(evidence)+1)]=item
         if not evidence:raise ValueError('업무 설명이 필요합니다.')
+        if grouped_steps:
+            # The complete request, not an input data row, owns these operations.
+            request = next(m['content'] for m in state['messages'] if m['role']=='user')
+            evidence = {k:v for k,v in evidence.items() if v == {'source_id':'user','quote':request}}
         schema=AgentDraft.model_json_schema()
         schema['properties']['name']['description']='완성할 사용자 업무의 이름. list_tools/inspect_resource/validate_workflow 같은 설계 보조 도구의 호출명이 아닙니다.'
         schema['properties']['questions']['description']='아직 사용자가 정하지 않은 필수 업무 조건만 질문합니다. 이미 명시한 기준·정렬·결측·중복 정책의 재확인이나 내부 구현 허락은 질문하지 않습니다. 조건이 충분하면 빈 배열입니다.'
@@ -412,6 +420,8 @@ def make_conversation(api_key,model,model_factory=None):
                 bounded=constrain_review_steps(decoder_schema,state)
                 from agent_builder.design.projected_table_decoder import constrain_projected_table
                 bounded=constrain_projected_table(bounded,state)
+                from agent_builder.design.grouped_totals_decoder import constrain_grouped_totals
+                bounded=constrain_grouped_totals(bounded,state)
                 decoder_schema.clear();decoder_schema.update(bounded)
             if runtime_file:
                 constrained = constrain_runtime_readers(decoder_schema, state)

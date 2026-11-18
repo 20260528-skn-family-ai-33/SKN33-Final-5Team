@@ -268,6 +268,11 @@ def coverage_report(state,draft):
     except (ValueError,TypeError,KeyError) as error:
         return dict(enabled=True,tasks=[],issues=['요구사항 검증: 원문·자료에 맞는 업무 목록을 다시 확인해야 합니다. '+str(error)])
     workflow=draft.get('workflow') or {};nodes={n['id']:n for n in workflow.get('nodes',[])}
+    from .grouped_totals_decoder import grouped_totals_issues
+    try:
+        problems.extend(grouped_totals_issues(state, draft))
+    except (ValueError, TypeError, KeyError):
+        problems.append('합계·행 개수의 공통 입력과 최종 출력 연결을 확인하지 못했습니다.')
     expected_sends = sum(t['spec']['kind'] == 'email_send' for t in plan['tasks'])
     if expected_sends and sum(n['tool'] == 'email.send' for n in nodes.values()) != expected_sends:
         problems.append('확인된 이메일 발송 업무 수와 실제 발송 단계 수가 일치하지 않습니다.')

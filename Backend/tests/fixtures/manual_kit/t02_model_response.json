@@ -1,0 +1,724 @@
+{
+  "metadata": {
+    "model": "a4b-qwen35-9b-final664-pilot32k",
+    "server_base": "a129638a47c083a2b7ae1429c4165b972e19c47d",
+    "date": "2026-11-18",
+    "requirements_model_calls": 0,
+    "source": "actual model draft using in-memory local fixes; only uploaded resource ID remapped",
+    "input_sha256": "1b1c8d0736f06556932157231a2ca1566003f1283cae84be9fd69b0b3df1dd5d"
+  },
+  "draft": {
+    "name": "자료 처리",
+    "purpose": "read, filter, compute, aggregate, rename, sort, select_fields, export",
+    "instructions": "read_table(read_table.read_csv), filter_sort(filter, execution_plan={filters:[{field:\"주문상태\",operator:\"eq\",value:\"완료\",compare_field:null,value_type:\"text\"}],match:\"all\",missing_policy:\"keep\",duplicate_policy:\"keep\",duplicate_field:null,sort:[],output_format:\"table\"}), calculate_columns(compute, calculation_formula=\"수량 * 단가\", output_column=\"주문금액\"), aggregate_table(fields=[\"지역\"], aggregation=\"sum\", sum_field=\"주문금액\"), calculate_columns(rename, rename_from=\"sum\", rename_to=\"총매출\"), aggregate_table(fields=[\"지역\"], aggregation=\"count\", sum_field=null), calculate_columns(rename, rename_from=\"count\", rename_to=\"주문건수\"), filter_sort(sort, execution_plan={filters:[],match:\"all\",missing_policy:\"keep\",duplicate_policy:\"keep\",duplicate_field:null,sort:[{\"field\":\"지역\",\"direction\":\"ascending\",\"value_type\":\"text\"}],output_format:\"table\"}), filter_sort(select_columns, execution_plan={filters:[],match:\"all\",missing_policy:\"keep\",duplicate_policy:\"keep\",duplicate_field:null,sort:[],output_format:\"table\"}), write_result(format=\"csv\")",
+    "request_input_mode": "saved_instructions",
+    "tool_ids": [
+      "read_table",
+      "filter_sort",
+      "calculate_columns",
+      "aggregate_table",
+      "join_tables",
+      "json_transform",
+      "export_result"
+    ],
+    "document_ids": [
+      "table-source"
+    ],
+    "requirements": [
+      {
+        "description": "read_table(read_table.read_csv)",
+        "source_id": "user",
+        "quote": "주문내역.csv에서 완료 주문만 대상으로 수량 곱하기 단가를 주문금액으로 계산해줘. 지역별 주문금액 합계와 주문 행 개수를 구해서 열 이름을 지역, 총매출, 주문건수로 해줘. 지역 오름차순으로 정렬한 뒤 지역별매출.csv로 저장해줘. 수량이 0인 완료 주문도 주문건수에는 포함해줘."
+      }
+    ],
+    "questions": [],
+    "question_options": [],
+    "question_responses": [],
+    "unsupported": [],
+    "explanation": "초안의 처리 순서: 표 파일 읽기 → 조건에 따라 정리 (선별 조건 1개) → 표 열 계산·이름 변경 → 목록 집계 (합계) → 표 열 계산·이름 변경 → 목록 집계 (건수) → 나머지 6단계\n업무 조건과 처리 순서를 확인해 주세요.",
+    "execution_plan": {
+      "filters": [],
+      "sort": [],
+      "match": "all",
+      "missing_policy": "keep",
+      "duplicate_policy": "keep",
+      "duplicate_field": null,
+      "output_format": "json"
+    },
+    "workflow": {
+      "entry": "step_1",
+      "nodes": [
+        {
+          "id": "step_1",
+          "tool": "read_table",
+          "label": "read_table",
+          "bindings": [],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [
+              "table-source"
+            ],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_2",
+          "tool": "filter_sort",
+          "label": "filter_sort",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_1",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": {
+              "filters": [
+                {
+                  "field": "주문상태",
+                  "operator": "eq",
+                  "value": "완료",
+                  "compare_field": null,
+                  "value_type": "text"
+                }
+              ],
+              "sort": [],
+              "match": "all",
+              "missing_policy": "keep",
+              "duplicate_policy": "keep",
+              "duplicate_field": null,
+              "output_format": "json"
+            },
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": "{\"filters\": [{\"field\": \"주문상태\", \"operator\": \"eq\", \"value\": \"완료\", \"compare_field\": null, \"value_type\": \"text\"}], \"sort\": [], \"match\": \"all\", \"missing_policy\": \"keep\", \"duplicate_policy\": \"keep\", \"duplicate_field\": null, \"output_format\": \"json\"}",
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_3",
+          "tool": "calculate_columns",
+          "label": "calculate_columns",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_2",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": "compute",
+            "output_column": "주문금액",
+            "calculation_formula": "수량 * 단가",
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_4",
+          "tool": "aggregate_table",
+          "label": "aggregate_table",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_3",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": "sum",
+            "sum_field": "주문금액",
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [
+              "지역"
+            ],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_5",
+          "tool": "calculate_columns",
+          "label": "calculate_columns",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_4",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": "rename",
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": "sum",
+            "rename_to": "총매출",
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_6",
+          "tool": "aggregate_table",
+          "label": "aggregate_table",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_3",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": "count",
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [
+              "지역"
+            ],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_7",
+          "tool": "calculate_columns",
+          "label": "calculate_columns",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_6",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": "rename",
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": "count",
+            "rename_to": "주문건수",
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_8",
+          "tool": "join_tables",
+          "label": "join_tables",
+          "bindings": [
+            {
+              "input": "left",
+              "node_id": "step_5",
+              "output": "table"
+            },
+            {
+              "input": "right",
+              "node_id": "step_7",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": "join",
+            "arguments_json": "{\"left\": {\"$binding\": \"left\"}, \"right\": {\"$binding\": \"right\"}, \"keys\": [\"지역\"], \"how\": \"inner\", \"cardinality\": \"one_to_one\", \"null_keys\": \"error\", \"max_rows\": 100000}",
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_9",
+          "tool": "filter_sort",
+          "label": "filter_sort",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_8",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": {
+              "filters": [],
+              "sort": [
+                {
+                  "field": "지역",
+                  "direction": "ascending",
+                  "value_type": "text"
+                }
+              ],
+              "match": "all",
+              "missing_policy": "keep",
+              "duplicate_policy": "keep",
+              "duplicate_field": null,
+              "output_format": "json"
+            },
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": "{\"filters\": [], \"sort\": [{\"field\": \"지역\", \"direction\": \"ascending\", \"value_type\": \"text\"}], \"match\": \"all\", \"missing_policy\": \"keep\", \"duplicate_policy\": \"keep\", \"duplicate_field\": null, \"output_format\": \"json\"}",
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_10",
+          "tool": "json_transform",
+          "label": "json_transform",
+          "bindings": [
+            {
+              "input": "value",
+              "node_id": "step_9",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": "lookup",
+            "arguments_json": "{\"path\": [\"rows\"]}",
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": "records",
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_11",
+          "tool": "filter_sort",
+          "label": "filter_sort",
+          "bindings": [
+            {
+              "input": "rows",
+              "node_id": "step_10",
+              "output": "records"
+            }
+          ],
+          "settings": {
+            "operation": "select_columns",
+            "arguments_json": "{\"columns\": [\"지역\", \"총매출\", \"주문건수\"]}",
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_12",
+          "tool": "export_result",
+          "label": "export_result",
+          "bindings": [
+            {
+              "input": "rows",
+              "node_id": "step_11",
+              "output": "records"
+            }
+          ],
+          "settings": {
+            "operation": "write_csv",
+            "arguments_json": "{\"path\": \"지역별매출.csv\", \"columns\": [\"지역\", \"총매출\", \"주문건수\"]}",
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "step_1",
+          "target": "step_2",
+          "branch": "next"
+        },
+        {
+          "source": "step_2",
+          "target": "step_3",
+          "branch": "next"
+        },
+        {
+          "source": "step_3",
+          "target": "step_4",
+          "branch": "next"
+        },
+        {
+          "source": "step_4",
+          "target": "step_5",
+          "branch": "next"
+        },
+        {
+          "source": "step_5",
+          "target": "step_6",
+          "branch": "next"
+        },
+        {
+          "source": "step_6",
+          "target": "step_7",
+          "branch": "next"
+        },
+        {
+          "source": "step_7",
+          "target": "step_8",
+          "branch": "next"
+        },
+        {
+          "source": "step_8",
+          "target": "step_9",
+          "branch": "next"
+        },
+        {
+          "source": "step_9",
+          "target": "step_10",
+          "branch": "next"
+        },
+        {
+          "source": "step_10",
+          "target": "step_11",
+          "branch": "next"
+        },
+        {
+          "source": "step_11",
+          "target": "step_12",
+          "branch": "next"
+        }
+      ]
+    },
+    "schedule": null,
+    "report_destination": null
+  }
+}

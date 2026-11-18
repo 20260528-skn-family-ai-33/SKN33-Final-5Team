@@ -3972,6 +3972,7 @@ test('external schedule form saves the same weekly, monthly and Cron fields the 
  const fixture=structuredClone(externalScheduleFixture);
  let flow:Flow={...fixture,nodes:fixture.nodes.map((node,index)=>({...node,typeVersion:index===0?1.2:3.4,position:[node.position[0],node.position[1]],parameters:index===0?{rule:{interval:[{field:'days',triggerAtHour:9,triggerAtMinute:0}]}}:node.parameters}))};
  const h=await setup('?screen=schedule&external='+flow.id,{},(path,body)=>{
+  if(path==='/api/workflows'&&body){flow={...body,updatedAt:'2026-11-18T01:00:00Z'};return {workflow:flow};}
   if(path==='/api/workflows')return {workflows:[flow]};
   if(path.startsWith('/api/executions'))return {executions:[]};
   if(path==='/api/workflows/schedule'){
@@ -3991,11 +3992,13 @@ test('external schedule form saves the same weekly, monthly and Cron fields the 
   window.confirm=()=>true;
   await click(button('예약 삭제'));
   assert.ok(button('일정 저장'),'default daily rule can be added again after deletion');
+  await input(scheduleField('반복 간격 1'),'367');
   await chooseSource('반복 주기 1','weeks');
   const weekday=(day:string)=>Array.from(document.querySelectorAll('.schedule-settings-weekdays label')).find(label=>label.textContent===day)!.querySelector('input')!;
   await click(weekday('일요일'));await click(weekday('수요일'));
   await save('2026-11-18T00:00:00.000Z');
   assert.deepEqual(savedRule().triggerAtDay,[3]);
+  assert.equal(Object.hasOwn(savedRule(),'daysInterval'),false);
   await click(button('일정 수정'));
   assert.equal(weekday('수요일').checked,true);
   await click(weekday('수요일'));await click(weekday('금요일'));
@@ -4010,8 +4013,19 @@ test('external schedule form saves the same weekly, monthly and Cron fields the 
   await input(scheduleField('실행 일정 1'),'8 15 * * *');await save('2026-11-16T06:08:00.000Z');
   assert.equal(savedRule().customExpression,'8 15 * * *');
   await click(button('작업 라이브러리'));
+  const externalCard=[...document.querySelectorAll('article')].find(card=>card.querySelector('h2')?.textContent===flow.name)!;
+  await click([...externalCard.querySelectorAll('button')].find(item=>item.textContent==='설계 열기')!);
+  const open=async()=>await act(async()=>{document.querySelector('.node.trigger')!.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await tick();});
+  await open();
+  const cron=document.querySelector<HTMLInputElement>('#schedule-cron')!;
+  assert.equal(cron.value,'8 15 * * *');
+  await input(cron,'9 16 * * *');
+  await click(button('설정 적용'));await click(button('저장'));
+  assert.equal(new Date(nextRunAt(flow.nodes[0],after,'Asia/Seoul')).toISOString(),'2026-11-16T07:09:00.000Z');
+  await act(async()=>{document.querySelector('[data-slot="sheet-close"]')?.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));await tick();});
+  await click(button('작업 라이브러리'));
   await click(button('예약 관리'));
-  assert.match(document.querySelector('.schedule-table')?.textContent||'',/Cron 8 15/);
+  assert.match(document.querySelector('.schedule-table')?.textContent||'',/Cron 9 16/);
  }finally{await h.close();}
 });
 
@@ -4063,6 +4077,50 @@ test('external design keeps its prompt across tabs and rejects an in-flight resp
   assert.equal(tab('실행').getAttribute('aria-current'),'page');
   await click(tab('설계'));
   assert.match(document.querySelector('.studio-assistant [role=alert]')?.textContent||'',/다른 화면에서 변경/);
+  assert.equal(button('저장').disabled,true);
+ }finally{await h.close();}
+});
+
+test('external node settings opened before a polling refresh cannot restore a deleted reservation',async()=>{
+ let saved={...structuredClone(externalScheduleFixture),active:true};
+ const h=await setup('?screen=workflow&external='+saved.id,{},(path,body)=>{
+  if(path==='/api/workflows'&&!body)return {workflows:[saved]};
+  if(path.startsWith('/api/executions'))return {executions:[]};
+  if(path==='/api/assistant/sessions')return {id:'node-chat',revision:0,conversation:[]};
+ },createElement(EntryApp));
+ try{
+  await act(async()=>{document.querySelector('.node.trigger')!.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await tick();});
+  const name=document.querySelector<HTMLInputElement>('#node-name')!;
+  assert.equal(name.value,'예약 시작');
+  await input(name,'예전 시작 단계 이름');
+  saved={...saved,updatedAt:'2026-11-18T01:00:00Z',active:false,nodes:[{...saved.nodes[0],name:'수동 시작',type:'n8n-nodes-base.manualTrigger',parameters:{}},...saved.nodes.slice(1)]};
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,2600));});
+  assert.match(document.querySelector('.node.trigger')?.getAttribute('aria-label')||'',/수동 시작/);
+  await click(button('설정 적용'));
+  assert.equal(button('저장').disabled,true);
+  assert.equal(h.calls.some(call=>call.path==='/api/workflows'&&call.body),false);
+ }finally{await h.close();}
+});
+
+test('late external design responses leave the active reservation screen and server graph intact',async()=>{
+ const pending=deferred(),saved={...structuredClone(externalScheduleFixture),active:true};
+ const h=await setup('?screen=workflow&external='+saved.id,{},(path,body)=>{
+  if(path==='/api/workflows')return {workflows:[saved]};
+  if(path.startsWith('/api/executions'))return {executions:[]};
+  if(path==='/api/assistant/sessions')return {id:'late-chat',revision:0,conversation:[]};
+  if(path==='/api/assistant/sessions/late-chat'&&body)return pending.promise;
+ },createElement(EntryApp));
+ try{
+  const tab=(label:string)=>Array.from(document.querySelectorAll('nav[aria-label="워크플로우 작업"] button')).find(item=>item.textContent===label)!;
+  const composer=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  await input(composer,'새 초안을 만들어줘');await submit(composer.closest('form')!);
+  await click(tab('예약 관리'));
+  assert.equal(document.querySelector('.schedule-settings .schedule-status')?.textContent,'활성');
+  await act(async()=>{pending.resolve({id:'late-chat',revision:1,conversation:[],result:{workflow:{...saved,name:'늦은 초안'},summary:'초안',checklist:[]}});await tick();});
+  assert.equal(tab('예약 관리').getAttribute('aria-current'),'page');
+  assert.equal(document.querySelector('.schedule-settings .schedule-status')?.textContent,'활성');
+  await click(tab('설계'));
+  assert.match(document.querySelector('.studio-assistant [role=alert]')?.textContent||'',/예약 관리가 열려/);
   assert.equal(button('저장').disabled,true);
  }finally{await h.close();}
 });

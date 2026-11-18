@@ -1,3 +1,4 @@
+import {scheduleCronExpression,scheduleRuleForField} from '../../shared/schedule-rule';
 import {useEffect,useRef,useState} from 'react';
 import {CalendarClock} from 'lucide-react';
 import type {Flow} from '../lib/workflow';
@@ -16,14 +17,15 @@ export function ExternalScheduleSettings({flow,onChange,onDirtyChange,onBusyChan
  useEffect(()=>{setRule(JSON.parse(saved));setEditing(!hasSchedule);setError('');},[flow.id,saved,hasSchedule]);
  useEffect(()=>{dirtyCallback.current?.(dirty);return()=>dirtyCallback.current?.(false);},[dirty]);
  const intervals=Array.isArray(rule.interval)?rule.interval:[];
- function patch(index:number,value:Record<string,unknown>){setRule({...rule,interval:intervals.map((entry:any,i:number)=>i===index?{...entry,...value}:entry)});}
+ function replaceRule(index:number,value:Record<string,unknown>){setRule({...rule,interval:intervals.map((entry:any,i:number)=>i===index?value:entry)});}
+ function patch(index:number,value:Record<string,unknown>){replaceRule(index,{...intervals[index],...value});}
  async function act(action:'toggle'|'configure'|'remove'){
   if(disabled||lock.current)return;
   if(action==='remove'&&!window.confirm(scheduleRemovalMessage))return;
   if(action==='remove'&&dirty&&!window.confirm('저장하지 않은 일정 변경을 버리고 예약을 삭제할까요?'))return;
   lock.current=true;setBusy(true);onBusyChange?.(true);setError('');
   try{
-   const result=await request<{workflow:Flow}>(action==='toggle'?'/api/activation':'/api/workflows/schedule',action==='toggle'?{workflowId:flow.id,active:!flow.active}:{workflowId:flow.id,updatedAt:flow.updatedAt,action,...(action==='configure'?{rule}:{})});
+   const result=await request<{workflow:Flow}>(action==='toggle'?'/api/activation':'/api/workflows/schedule',action==='toggle'?{workflowId:flow.id,active:!flow.active,expectedUpdatedAt:flow.updatedAt}:{workflowId:flow.id,updatedAt:flow.updatedAt,action,...(action==='configure'?{rule}:{})});
    onChange(result.workflow);if(action!=='toggle')setEditing(action==='remove');
   }catch(err){setError((err as Error).message);}finally{lock.current=false;setBusy(false);onBusyChange?.(false);}
  }
@@ -34,12 +36,12 @@ export function ExternalScheduleSettings({flow,onChange,onDirtyChange,onBusyChan
   {triggers.length>0&&<div className="schedule-settings-actions"><button className="as-button as-primary" disabled={disabled||busy||dirty&&!flow.active} onClick={()=>void act('toggle')}>{flow.active?'예약 중지':'예약 켜기'}</button><button className="as-button as-secondary" disabled={disabled||busy} onClick={()=>{if(editing&&dirty&&!window.confirm('저장하지 않은 일정 변경을 버릴까요?'))return;setRule(JSON.parse(saved));setEditing(!editing);}}>일정 {editing?'수정 닫기':'수정'}</button><button className="as-button as-danger schedule-remove" disabled={disabled||busy} onClick={()=>void act('remove')}>예약 삭제</button></div>}
   {editing?<form className="schedule-settings-form" onSubmit={event=>{event.preventDefault();void act('configure');}}>
    {intervals.map((entry:any,index:number)=><fieldset className="schedule-settings-fields" key={index} disabled={disabled||busy}><legend>반복 일정 {intervals.length>1?index+1:''}</legend>
-    <label>반복 주기<select aria-label={'반복 주기 '+(index+1)} value={entry.field||'days'} onChange={event=>{const field=event.target.value;patch(index,{field,triggerAtHour:entry.triggerAtHour??9,triggerAtMinute:entry.triggerAtMinute??0,triggerAtDay:Array.isArray(entry.triggerAtDay)?entry.triggerAtDay:[0],triggerAtDayOfMonth:entry.triggerAtDayOfMonth??1,customExpression:entry.customExpression??entry.expression??trigger?.parameters.customExpression??'0 9 * * *',[field+'Interval']:1});}}>{[['seconds','초 간격'],['minutes','분 간격'],['hours','시간 간격'],['days','매일'],['weeks','매주'],['months','매월'],['cronExpression','직접 지정']].map(([value,name])=><option key={value} value={value}>{name}</option>)}</select></label>
+    <label>반복 주기<select aria-label={'반복 주기 '+(index+1)} value={entry.field||'days'} onChange={event=>replaceRule(index,scheduleRuleForField(event.target.value,entry,trigger?.parameters))}>{[['seconds','초 간격'],['minutes','분 간격'],['hours','시간 간격'],['days','매일'],['weeks','매주'],['months','매월'],['cronExpression','직접 지정']].map(([value,name])=><option key={value} value={value}>{name}</option>)}</select></label>
     {['seconds','minutes','hours','days','weeks','months'].includes(entry.field)&&<label>반복 간격<input aria-label={'반복 간격 '+(index+1)} type="number" min="1" step="1" required value={entry[entry.field+'Interval']??(entry.field==='seconds'?30:entry.field==='minutes'?5:1)} onChange={event=>patch(index,{[entry.field+'Interval']:Number(event.target.value)})}/></label>}
     {['days','weeks','months'].includes(entry.field||'days')&&<label>실행 시간<input aria-label={'실행 시간 '+(index+1)} type="time" required value={String(entry.triggerAtHour??0).padStart(2,'0')+':'+String(entry.triggerAtMinute??0).padStart(2,'0')} onChange={event=>{const [triggerAtHour,triggerAtMinute]=event.target.value.split(':').map(Number);patch(index,{triggerAtHour,triggerAtMinute});}}/></label>}
     {entry.field==='weeks'&&<fieldset className="schedule-settings-weekdays"><legend>실행 요일</legend>{['일','월','화','수','목','금','토'].map((day,i)=><label key={day}><input type="checkbox" checked={(Array.isArray(entry.triggerAtDay)?entry.triggerAtDay:entry.triggerAtDay===undefined?[0]:[]).map(Number).includes(i)} onChange={event=>{const days:number[]=(Array.isArray(entry.triggerAtDay)?entry.triggerAtDay:entry.triggerAtDay===undefined?[0]:[]).map(Number);patch(index,{triggerAtDay:event.target.checked?[...days,i]:days.filter(day=>day!==i)});}}/>{day}요일</label>)}</fieldset>}
     {entry.field==='months'&&<label>실행일<input aria-label={'실행일 '+(index+1)} type="number" min="1" max="31" required value={entry.triggerAtDayOfMonth??1} onChange={event=>patch(index,{triggerAtDayOfMonth:Number(event.target.value)})}/></label>}
-    {entry.field==='cronExpression'&&<label>실행 일정 (Cron)<input aria-label={'실행 일정 '+(index+1)} required value={entry.customExpression??entry.expression??trigger?.parameters.customExpression??''} onChange={event=>patch(index,{customExpression:event.target.value})}/></label>}
+    {entry.field==='cronExpression'&&<label>실행 일정 (Cron)<input aria-label={'실행 일정 '+(index+1)} required value={String(scheduleCronExpression(entry,trigger?.parameters??{})??'')} onChange={event=>patch(index,{customExpression:event.target.value})}/></label>}
    </fieldset>)}{flow.active&&<p className="schedule-settings-help">일정을 저장하면 예약이 중지됩니다.</p>}<div className="schedule-settings-actions schedule-settings-submit"><button className="as-button as-primary" type="submit" disabled={disabled||busy}>일정 저장</button></div>
   </form>:null}
   {error&&<p role="alert" className="schedule-settings-error">{error}</p>}

@@ -106,3 +106,9 @@ test('changing or deleting a workflow reservation preserves its trigger identity
  assert.equal(updateWorkflowSchedule(removed,'configure',{interval:[{field:'days'}]}).nodes[0].type,trigger.type);
  assert.equal(flow.active,true);
 });
+
+test('calendar rules ignore saved inputs that belong to a different frequency',()=>{
+  const trigger=node({field:'weeks',triggerAtDay:[1],triggerAtHour:9,daysInterval:367,triggerAtDayOfMonth:32});
+  validateSchedule(trigger,'Asia/Seoul');
+  assert.equal(next(trigger,'2026-10-07T02:00:00.000Z'),'2026-10-12T00:00:00.000Z');
+});

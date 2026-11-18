@@ -1,3 +1,4 @@
+import {scheduleCronExpression} from '../../shared/schedule-rule';
 import {WorkspaceIconButton} from './workspace-icon-button';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
@@ -39,7 +40,7 @@ function externalScheduleDescription(flow:ExternalFlow):string {
     return every(rule.weeksInterval??1,'주','매주')+' '+weekdays.map(day=>days[Number(day)]+'요일').join(' · ')+' '+time;
    }
    case 'months':return every(rule.monthsInterval??1,'개월','매월')+' '+(rule.triggerAtDayOfMonth??1)+'일 '+time;
-   case 'cronExpression':return 'Cron '+(rule.customExpression??rule.expression??trigger?.parameters.customExpression??'설정 확인 필요');
+   case 'cronExpression':return 'Cron '+(scheduleCronExpression(rule,trigger?.parameters??{})??'설정 확인 필요');
    case 'seconds':return (rule.secondsInterval??30)+'초마다';
    case 'minutes':return (rule.minutesInterval??5)+'분마다';
    case 'hours':return (rule.hoursInterval??1)+'시간마다'+(rule.triggerAtMinute===undefined?'':' '+rule.triggerAtMinute+'분');
@@ -117,7 +118,7 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
     setWorkflows(prior=>action==='remove'?prior.filter(item=>item.agent.id!==row.id):prior.map(item=>item.agent.id===row.id?{...item,schedule:result.schedule}:item));
    }else{
     const flow=externalFlows.find(item=>item.id===row.id)!;
-    const result=await request<{workflow:Flow}>(action==='remove'?'/api/workflows/schedule':'/api/activation',action==='remove'?{workflowId:row.id,updatedAt:flow.updatedAt,action:'remove'}:{workflowId:row.id,active:false});
+    const result=await request<{workflow:Flow}>(action==='remove'?'/api/workflows/schedule':'/api/activation',action==='remove'?{workflowId:row.id,updatedAt:flow.updatedAt,action:'remove'}:{workflowId:row.id,active:false,expectedUpdatedAt:flow.updatedAt});
     setExternalFlows(prior=>prior.map(item=>item.id===row.id?result.workflow:item));
    }
    if(action==='remove'&&(manageId===row.id||manageId==='external:'+row.id))resetManager();

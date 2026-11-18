@@ -323,7 +323,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
     cancelQueuedScheduleExecutions(prior.id);
     return json(res,200,{workflow});
    }
-   if(path==='/api/activation'&&method==='POST'){const data=await body(req);return json(res,200,{workflow:activate(getFlow(data.workflowId),!!data.active)});}
+   if(path==='/api/activation'&&method==='POST'){const data=await body(req),flow=getFlow(data.workflowId);if(data.expectedUpdatedAt!==undefined&&data.expectedUpdatedAt!==flow.updatedAt)return json(res,409,{error:'일정이 다른 화면에서 변경됐습니다. 최신 일정을 확인한 뒤 다시 시도해주세요.'});return json(res,200,{workflow:activate(flow,!!data.active)});}
    if(path==='/api/credentials'){
     if(method==='GET')return json(res,200,{credentials:store.listCredentials()});
     if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});

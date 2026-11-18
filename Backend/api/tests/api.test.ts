@@ -118,6 +118,11 @@ test('standalone server persists and executes workflows, credentials, schedules 
       assert.equal(edited.status,200);
       const newest=edited.data.workflow as Flow;
       assert.notEqual(newest.updatedAt,created.updatedAt);
+      const staleActivation=await server.request('/api/activation','POST',{workflowId:created.id,active:true,expectedUpdatedAt:created.updatedAt});
+      assert.equal(staleActivation.status,409);
+      const listed=(await server.request('/api/workflows')).data.workflows.find((item:Flow)=>item.id===created.id);
+      assert.equal(listed.active,false);
+      assert.equal(listed.updatedAt,newest.updatedAt);
       const stale=await server.request('/api/workflows','POST',{...created,expectedUpdatedAt:created.updatedAt});
       assert.equal(stale.status,409);
       const saved=await server.request('/api/workflows','POST',{...newest,settings:{...newest.settings,timezone:'UTC'},expectedUpdatedAt:newest.updatedAt});

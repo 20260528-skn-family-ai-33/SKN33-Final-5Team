@@ -180,6 +180,8 @@ jobs:
                       tests/design/test_human_review_records.py tests/design/test_bounded_output_columns.py \
                       tests/design/test_pending_preview_contract.py tests/design/test_design_failure_guidance.py \
                       tests/design/test_saved_requirement_failure_diagnostics.py tests/design/test_multiple_output_scope.py \
+                      tests/conditions/test_clarification_choices.py tests/design/test_compound_filter_pipeline.py \
+                      tests/design/test_filter_edit_sequences.py tests/design/test_text_filter_dialogue.py \
                       tests/design/test_requirement_clarification.py tests/design/test_requirement_error_presentation.py \
                       tests/design/test_failed_design_edits.py tests/design/test_beta_feedback.py \
                       tests/design/test_failure_recovery.py tests/design/test_model_failure_classification.py \

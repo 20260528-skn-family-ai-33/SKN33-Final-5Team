@@ -6,6 +6,8 @@ column in an output/sort instruction cannot invalidate an unchanged predicate.
 """
 import re
 from agent_builder.conditions.filter_edits import ALL_FILTERS_CANCELLED, addition_intent, in_quoted_text
+from agent_builder.conditions.filter_dialogue import KEEP_ALL, PendingFilterDecision
+from .text_filter_parser import text_atoms, disjunctive_clause, uncovered_selection_fields
 
 _NEGATIVE_ACTION = re.compile(
     r'\s*+(?:남기|남겨|고르|골라|선별하|선별해|포함하|포함해|제외하|제외해|삭제하|삭제해)'
@@ -21,12 +23,12 @@ def text_filter_state(state):
     fields = {field for field in tables[0].get('columns', []) if isinstance(field, str) and field}
     if not fields:
         return {'predicates': [], 'issues': [], 'cleared_fields': set(), 'replaced_numeric_fields': set()}
-    names = '|'.join(re.escape(field) for field in sorted(fields, key=len, reverse=True))
-    assertion = re.compile(
-        r'(?<![\w])(?P<field>' + names + r')\s*+(?:열[의은는이가]?\s*+)?(?:이|가|은|는)\s*+'
-        r'''(?:'(?P<single>[^'\n]+)'|"(?P<double>[^"\n]+)"|“(?P<curly>[^”\n]+)”|‘(?P<curly_single>[^’\n]+)’|(?P<value>[^\s,'"]+?))인\s+행(?P<only>만|은|을|도)?''')
     active, pending, cleared_fields = {}, {}, set()
     numeric_fields, replaced_numeric_fields = set(), set()
+
+    def ask(field, message, reason='predicate'):
+        pending[field] = PendingFilterDecision(reason, message, reason == 'cancel' or field in active)
+
     users = [(index, message) for index, message in enumerate(state.get('messages', [])) if message.get('role') == 'user']
     from agent_builder.conditions.condition_readiness import _COMPARATOR_SPAN, _comparison_subject, _uncertain_comparison, _excludes_named_range, _POLICY_SUBJECTS, _schedule_evidence
     from agent_builder.conditions.filter_edits import filter_clear_events, user_filter_text, filter_clauses
@@ -35,6 +37,11 @@ def text_filter_state(state):
         if text is None:
             continue
         event = next((entry for entry in state.get('condition_answers', []) if entry.get('turn') == turn), {})
+        if 'filter.match' in event.get('candidate_keys', []) and text.strip().rstrip('.!?') == KEEP_ALL:
+            for field in list(pending):
+                if pending[field].can_keep:
+                    pending.pop(field)
+            continue
         if len(pending) == 1 and 'filter.match' in event.get('candidate_keys', []):
             field = next(iter(pending))
             if not re.search(r'(?<![\w])' + re.escape(field), text):
@@ -43,9 +50,6 @@ def text_filter_state(state):
                     text = field + '가 ' + short[1] + '인 행만 남겨줘'
                 elif re.fullmatch(r'(?:조건|필터)\s*+(?:취소|제거|해제)(?:해줘)?[.!?\s]*', text):
                     text = field + ' 조건 취소'
-                elif text == '기존 조건 모두 유지' and field in active:
-                    pending.pop(field)
-                    continue
         if ALL_FILTERS_CANCELLED.fullmatch(text):
             active.clear()
             pending.clear()
@@ -54,7 +58,7 @@ def text_filter_state(state):
             replaced_numeric_fields.clear()
             continue
         events = [(start, 'clear', field, None) for start, _, field in filter_clear_events(text, fields)]
-        events += [(start, 'pending', field, f'{field} 조건을 취소할지 확인해주세요. 유지하거나 취소할 조건을 알려주세요.')
+        events += [(start, 'pending_cancel', field, f'{field} 조건을 취소할지 확인해주세요. 유지하거나 취소할 조건을 알려주세요.')
                    for start, _, field in filter_clear_events(text, fields, uncertain=True)]
         spans = list(_COMPARATOR_SPAN.finditer(text))
         for index, span in enumerate(spans):
@@ -63,37 +67,48 @@ def text_filter_state(state):
             prefix = text[spans[index - 1].end() if index else 0:span.start()]
             events.extend((span.start(), 'numeric', field, None) for field in fields if _comparison_subject(field, prefix))
         for offset, clause in filter_clauses(text):
-            matches = list(assertion.finditer(clause))
+            matches = text_atoms(clause, fields)
             for index, match in enumerate(matches):
-                if in_quoted_text(text, offset + match.start()):
+                field = match.field
+                tail = clause[match.end:matches[index + 1].start if index + 1 < len(matches) else len(clause)]
+                action_tail = clause[matches[-1].end:] if match.joined else tail
+                if _NEGATIVE_ACTION.match(action_tail):
+                    events.append((offset + match.start, 'negative', field, None))
                     continue
-                field = match['field']
-                tail = clause[match.end():matches[index + 1].start() if index + 1 < len(matches) else len(clause)]
-                prefix = clause[:match.start()]
-                if _NEGATIVE_ACTION.match(tail):
-                    events.append((offset + match.start(), 'negative', field, None))
+                if disjunctive_clause(clause):
+                    events.append((offset + match.start, 'pending', field, '텍스트 조건의 OR(또는) 결합은 현재 자동 확정할 수 없습니다. AND로 바꾸려면 모두 만족할 조건을 다시 적어주세요.'))
                     continue
-                if re.search(r'또는|혹은|이거나|이든|아니면', prefix) and not re.search(r'(?:이고|그리고|또한)\s*+$', prefix):
-                    events.append((offset + match.start(), 'pending', field, f'{field} 조건과 앞 조건을 어떻게 결합할지 확인해주세요.'))
+                excluded = bool(_EXCLUDE_ACTION.match(action_tail))
+                if excluded and len(matches) > 1:
+                    events.append((offset + match.start, 'pending', field, '여러 조건을 함께 만족하는 행을 제외할지, 각각 제외할지 확인해주세요.'))
                     continue
-                excluded = bool(_EXCLUDE_ACTION.match(tail))
-                bare = match['only'] == '만' and bool(re.match(r'\s*+(?:$|(?:CSV|JSON|파일|결과)(?:으로|로|\s))', tail, re.I))
-                positive = bool(_POSITIVE_ACTION.match(tail)) or bare
+                bare = match.only and bool(re.match(r'\s*+(?:$|,|(?:이고|이며|그리고|및)\s|(?:CSV|JSON|파일|결과)(?:으로|로|\s))', tail, re.I))
+                positive = bool(_POSITIVE_ACTION.match(action_tail)) or bare
+                if match.joined and matches[-1].only and re.match(
+                        r'\s*+(?:$|(?:CSV|JSON|파일|결과)(?:으로|로|\s))', action_tail, re.I):
+                    positive = True
                 required = bool(re.match(r'\s*+이어야\s*+(?:해|합니다)', tail))
                 if not (excluded or positive or required):
-                    events.append((offset + match.start(), 'pending', field, f'{field} 조건을 적용할지 확인해주세요.'))
+                    events.append((offset + match.start, 'pending', field, f'{field} 조건을 적용할지 확인해주세요.'))
                     continue
-                rule = dict(field=field, operator='ne' if excluded else 'eq', value=next(value for value in (match['single'], match['double'], match['curly'], match['curly_single'], match['value']) if value is not None),
+                rule = dict(field=field, operator='ne' if excluded else 'eq', value=match.value,
                             compare_field=None, value_type='text')
                 if 'number' in (tables[0].get('profile', {}).get(field, {}) or {}).get('types', []):
                     from agent_builder.conditions.condition_readiness import _amounts
                     from agent_builder.conditions.input_resolution import _PLAIN_AMOUNT, executable_number
                     amounts = _amounts(rule['value'], field) if _PLAIN_AMOUNT.fullmatch(rule['value'].strip()) else set()
                     if len(amounts) != 1 or not executable_number(next(iter(amounts))):
-                        events.append((offset + match.start(), 'pending', field, f'{field}의 숫자 기준값을 확인해주세요.'))
+                        events.append((offset + match.start, 'pending', field, f'{field}의 숫자 기준값을 확인해주세요.'))
                         continue
                     rule.update(value=float(next(iter(amounts))), value_type='number')
-                events.append((offset + match.start(), 'predicate', field, rule))
+                events.append((offset + match.start, 'predicate', field, rule))
+            for field in uncovered_selection_fields(clause, fields, matches):
+                events.append((offset + len(clause), 'pending', field, f'{field}의 선별 값을 확인해주세요.'))
+            # Distinct values of the same column in one AND clause cannot be
+            # silently replayed as a replacement. Ask how they combine.
+            for field in {atom.field for atom in matches}:
+                if len({atom.value for atom in matches if atom.field == field}) > 1:
+                    events.append((offset + len(clause), 'pending', field, f'{field}의 여러 값을 어떻게 결합할지 확인해주세요.'))
             for field in sorted(fields):
                 subject = re.search(r'(?<![\w])' + re.escape(field) + r'\s*+(?:선별\s*+)?(?:조건|필터|기준)', clause)
                 if not subject or in_quoted_text(text, offset + subject.start()):
@@ -119,15 +134,15 @@ def text_filter_state(state):
                 replaced_numeric_fields.discard(field)
             elif kind == 'negative':
                 if field not in cleared_fields:
-                    pending[field] = f'{field} 조건을 적용할지 확인해주세요. 적용할 조건을 적거나 {field} 조건 취소라고 알려주세요.'
-            elif kind == 'pending':
-                pending[field] = value
+                    ask(field, f'{field} 조건을 적용할지 확인해주세요. 적용할 조건을 적거나 {field} 조건 취소라고 알려주세요.')
+            elif kind in ('pending', 'pending_cancel'):
+                ask(field, value, 'cancel' if kind == 'pending_cancel' else 'predicate')
             elif kind == 'predicate':
                 intent = addition_intent(text)
                 if intent == 'denied':
                     continue
                 if intent == 'uncertain' or (intent == 'add' and (field in numeric_fields or field in active and active[field][1] != value)):
-                    pending[field] = f'{field}의 기존 값과 새 값을 함께 적용할지, 교체할지 확인해주세요.'
+                    ask(field, f'{field}의 기존 값과 새 값을 함께 적용할지, 교체할지 확인해주세요.', 'addition')
                     continue
                 active[field] = (source, value)
                 if field in numeric_fields:
@@ -135,8 +150,9 @@ def text_filter_state(state):
                     numeric_fields.discard(field)
                 pending.pop(field, None)
                 cleared_fields.discard(field)
-    return {'predicates': list(active.values()), 'issues': list(pending.values()), 'cleared_fields': cleared_fields,
-            'replaced_numeric_fields': replaced_numeric_fields}
+    return {'predicates': list(active.values()), 'issues': [decision.message for decision in pending.values()], 'cleared_fields': cleared_fields,
+            'replaced_numeric_fields': replaced_numeric_fields,
+            'can_keep': bool(pending) and all(decision.can_keep for decision in pending.values())}
 
 
 def text_filter_issues(state, draft):
@@ -159,3 +175,25 @@ def text_filter_issues(state, draft):
             except (ValueError, TypeError, AttributeError):
                 issues.append('확장 선별 조건의 실행 인자를 확인해주세요.')
     return issues
+
+
+def literal_text_slots(state, catalog, primary):
+    """Project the same replayed predicate into legacy slots without re-reading prose."""
+    contract = text_filter_state(state)
+    if contract['issues']:
+        return {}
+    predicates = contract['predicates']
+    selected = next(((source, rule) for source, rule in predicates if rule['field'] == primary), None)
+    if selected is None and primary is None and predicates:
+        selected = predicates[0]
+    if selected is None:
+        return {}
+    source, rule = selected
+    turns = [index for index, message in enumerate(state.get('messages', [])) if message['role'] == 'user']
+    evidence = [entry for entry in catalog if entry['source_id'] == 'user' and entry.get('turn') == turns[source]]
+    if not evidence:
+        return {}
+    values = {'filter.field': rule['field'], 'filter.operator': rule['operator'], 'filter.value': rule['value']}
+    return {key: {'key': key, 'status': 'specified', 'value': value,
+                  'evidence_ids': [entry['id'] for entry in evidence], 'evidence': evidence,
+                  'extraction': 'explicit_text_predicate'} for key, value in values.items()}

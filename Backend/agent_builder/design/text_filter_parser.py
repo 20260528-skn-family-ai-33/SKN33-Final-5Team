@@ -1,0 +1,77 @@
+"""Locate text comparison operands before interpreting a clause's action.
+
+A conjunction is a boundary between atoms, not part of a value. The replay
+layer owns edits and pending decisions; this lexer never mutates a condition.
+"""
+from dataclasses import dataclass
+import re
+
+from agent_builder.conditions.filter_edits import in_quoted_text, in_metadata_text
+
+_VALUE = r'''(?:"[^"\n]+"|'[^'\n]+'|“[^”\n]+”|‘[^’\n]+’|[^\s,'".!?]+?)'''
+_END = r'(?:인\s+(?:행|것|거래|항목)(?:들)?(?P<only>만|은|을|도)?|(?P<join>이고|이며|이면서)(?=\s)|(?P<bare>만)(?=\s|[,;.!?]|$))'
+_OR = re.compile(r'또는|혹은|이거나|이든|아니면')
+
+
+@dataclass(frozen=True)
+class TextAtom:
+    start: int
+    end: int
+    field: str
+    value: str
+    only: bool
+    joined: bool = False
+
+
+def text_atoms(text, fields):
+    names = '|'.join(re.escape(field) for field in sorted(fields, key=len, reverse=True))
+    if not names:
+        return []
+    forward = re.compile(r'(?<![\w])(?P<field>' + names + r')\s*+(?:열[의은는이가]?\s*+)?(?:이|가|은|는)\s*+(?P<value>' + _VALUE + ')' + _END)
+    reverse = re.compile(r'(?<![\w])(?P<value>' + _VALUE + r')\s+(?P<field>' + names + r')(?:만|인\s+(?:행|것|거래|항목)(?:들)?만)(?=\s|[,;.!?]|$)')
+    atoms = []
+    for pattern in (forward, reverse):
+        for match in pattern.finditer(text):
+            if (in_quoted_text(text, match.start('field')) or in_metadata_text(text, match.start('field'))
+                    or any(atom.start < match.end() and match.start() < atom.end for atom in atoms)):
+                continue
+            groups = match.groupdict()
+            value = match['value']
+            if value[0] in '\"\'“‘':
+                value = value[1:-1]
+            atoms.append(TextAtom(match.start(), match.end(), match['field'], value,
+                                  bool(groups.get('only') == '만' or groups.get('bare') or pattern is reverse),
+                                  bool(groups.get('join'))))
+    return sorted(atoms, key=lambda atom: atom.start)
+
+
+def disjunctive_clause(text):
+    # Quoted cell contents such as '서울 또는 부산' are one literal value.
+    from agent_builder.conditions.filter_edits import _QUOTED
+    return bool(_OR.search(_QUOTED.sub(' ', text)))
+
+
+def uncovered_selection_fields(text, fields, atoms):
+    """An unparsed row-selection operand is a question, never permission to drop it."""
+    if not re.search(r'만|남겨|골라|선별', text):
+        return set()
+    if re.search(r'(?:열|컬럼)(?:만|을|를)', text) and not atoms:
+        return set()
+    missing = set()
+    for field in fields:
+        for match in re.finditer(r'(?<![\w])' + re.escape(field) + r'(?![A-Za-z0-9_])', text):
+            if (in_quoted_text(text, match.start()) or in_metadata_text(text, match.start())
+                    or any(atom.start <= match.start() < atom.end for atom in atoms)):
+                continue
+            tail = text[match.end():]
+            prefix = text[:match.start()]
+            if re.search(r'중복|빈\s*$|결측', prefix):
+                continue
+            if re.match(r'\s*(?:이|가|은|는)?\s*(?:큰|작은|높은|낮은|많은|적은|부족한|같은|같거나|다른|겹치|비어|빈|없는|누락)', tail):
+                continue
+            # Numeric operands, policy subjects and output mentions have other owners.
+            if re.search(r'\d|이상|초과|미만|이하|중복|정렬|포함|출력|기준|조건|필터', tail):
+                continue
+            if re.match(r'\s*(?:이|가|은|는)\s*', tail):
+                missing.add(field)
+    return missing

@@ -84,12 +84,22 @@ def option_answer(state):
         answers = [item.get('answer', '') for item in (event or {}).get('answers', [])
                    if item.get('key') == 'filter.match']
         reply = answers[0] if len(answers) == 1 else messages[latest]['content']
+        from .filter_dialogue import KEEP_ALL
+        if reply.strip().rstrip('.!?') == KEEP_ALL:
+            from agent_builder.design.text_filter_contract import text_filter_state
+            prior = text_filter_state({**state, 'messages': messages[:latest]})
+            if prior.get('can_keep'):
+                eligible = [q for q in state.get('pending_questions', []) if q.get('key') == 'filter.match'
+                            and (not event or q['id'] in event.get('question_ids', []))]
+                if len(eligible) == 1:
+                    return {'key': 'filter.match', 'label': KEEP_ALL, 'question_id': eligible[0]['id'], 'turn': latest}
         found = compound_filter_state(state)
         mode = match_answer(reply, found['relation_count'])
         matches = [{'key': q['key'], 'label': label, 'question_id': q['id'], 'turn': latest}
                    for q in state.get('pending_questions', []) if q.get('key') == 'filter.match'
                    and (not event or q['id'] in event.get('question_ids', []))
-                   for label in q.get('options', []) if mode and MATCH_CHOICES.get(label) == mode]
+                   for label in q.get('options', [])
+                   if _compact(label) == _compact(reply) or mode and MATCH_CHOICES.get(label) == mode]
     return matches[0] if len(matches) == 1 else None
 
 

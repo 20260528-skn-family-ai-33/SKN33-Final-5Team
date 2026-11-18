@@ -14,6 +14,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .filter_dialogue import MATCH_CHOICES, match_answer, KEEP_ALL, KEEP_OTHERS, ONLY_NEW
+
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.conditions.input_resolution import (
     column_amount, column_unit, executable_number, latest_resolution, numeric_answer,
@@ -400,19 +402,6 @@ _SUBJECT_END = r'\s*(?:열\s*)?(?:이|가|은|는|도|을|를)?\s*$'
 _ALL_JOIN = re.compile(r'(?:이고|이며|이면서|면서|그리고|및)(?=[\s,]|$)')
 _ANY_JOIN = re.compile(r'(?:이거나|거나|또는|혹은)(?=[\s,]|$)')
 # Clickable answers. A clicked label is matched exactly, so no synonym is guessed.
-MATCH_CHOICES = {'모두 만족': 'all', '하나라도 만족': 'any'}
-
-
-def match_answer(text, count):
-    """Only complete answers to the pending relation question; 'one only' is not OR."""
-    word = text.strip().casefold()
-    if word in ('and', 'or'):
-        return 'all' if word == 'and' else 'any'
-    text = re.sub(r'\s+', '', text.strip().rstrip('.!?。'))
-    choices = {re.sub(r'\s+', '', label): mode for label, mode in MATCH_CHOICES.items()}
-    if count == 2:
-        choices.update({'둘다': 'all', '둘다만족': 'all'})
-    return choices.get(text)
 
 
 # Words that name the selection criterion itself, and the subjects of the empty-value and
@@ -421,7 +410,6 @@ _CRITERION_NOUN = re.compile(r'(?:기준(?:값|액|점)?|임계값|문턱값|선
 _POLICY_SUBJECTS = {'missing.policy': r'빈\s*(?:값|칸|셀|행)|빈\s+\S+|비어\s*있|결측|누락|값이\s*없',
                     'duplicate.field': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치',
                     'duplicate.policy': r'중복|같은\s+\S+|\S+\s*(?:이|가)\s*겹치'}
-KEEP_ALL, KEEP_OTHERS, ONLY_NEW = '기존 조건 모두 유지', '나머지 조건 유지', '새 조건만 적용'
 
 
 def _comparison_subject(field, prefix):
@@ -1049,28 +1037,6 @@ def policy_clauses(text, columns):
     return out
 
 
-def _explicit_text_slots(state, catalog, filter_field):
-    result = {}
-    from agent_builder.design.text_filter_contract import text_filter_state
-    typed_text = text_filter_state(state)
-    primary = filter_field
-    if not typed_text['issues']:
-        user_turns = [index for index, message in enumerate(state.get('messages', [])) if message.get('role') == 'user']
-        for source, rule in typed_text['predicates']:
-            if rule['field'] != primary or source >= len(user_turns):
-                continue
-            refs = [entry for entry in catalog if entry.get('source_id') == 'user' and entry.get('turn') == user_turns[source]
-                    and (Decimal(str(rule['value'])) in _amounts(entry['quote'], primary) if rule['value_type'] == 'number'
-                         else str(rule['value']) in entry['quote'])]
-            if not refs:
-                refs = [entry for entry in catalog if entry.get('source_id') == 'user' and entry.get('turn') == user_turns[source]]
-            if refs:
-                for key, value in [('filter.operator', rule['operator']), ('filter.value', rule['value'])]:
-                    result[key] = dict(key=key, status='specified', value=value, evidence_ids=[refs[0]['id']],
-                                      evidence=[refs[0]], extraction='explicit_text_predicate')
-    return result
-
-
 def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=None):
     """Only literal, narrow policy phrases; ambiguity stays unresolved.
 
@@ -1239,7 +1205,8 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=
     if any(key.startswith('schedule.') for key in result) or 'schedule' in (state.get('condition_ledger') or {}).get('operations',[]):
         result['schedule.timezone']={'key':'schedule.timezone','status':'specified','value':'Asia/Seoul',
             'evidence_ids':[],'evidence':[],'extraction':'application_setting'}
-    result.update(_explicit_text_slots(state, catalog, filter_field))
+    from agent_builder.design.text_filter_contract import literal_text_slots
+    result.update(literal_text_slots(state, catalog, filter_field))
     return result
 
 

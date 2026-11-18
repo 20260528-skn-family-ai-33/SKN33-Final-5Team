@@ -4,20 +4,14 @@
 .unified-workspace .breadcrumb{min-width:0;}.unified-workspace .workflow-title{overflow-wrap:anywhere;white-space:normal;text-align:left;}
 .unified-workspace .subbar{padding:0 24px;min-height:56px;border-bottom:1px solid var(--a4b-border);}
 .unified-workspace .editor-body{min-height:0;flex:1;}
-.unified-workspace .workspace.chat-open .editor-body{margin-left:360px;}
-.unified-workspace .assistant-panel{position:absolute;left:0;right:auto;top:132px;bottom:0;width:360px;border:0;border-right:1px solid var(--a4b-border);box-shadow:none;background:var(--a4b-surface);}
-.unified-workspace .assistant-panel-header{padding:18px 20px;border-bottom:1px solid var(--a4b-border);}
-.unified-workspace .assistant-panel-body{padding:20px;}
-.unified-workspace .chat-composer{background:var(--a4b-surface);}
+.unified-workspace .assistant-panel{box-shadow:none;background:var(--a4b-surface);}
 .unified-workspace .design-launcher[hidden]{display:none;}
 .unified-workspace .canvas-wrapper{min-height:0;flex:1;}
 .unified-workspace .canvas{background-color:#f7fafc;}
 .unified-workspace .bottom-status{display:none;}
 .unified-workspace .btn{border-radius:6px;font-size:13px;}
-.unified-schedule-panel{padding:24px;max-width:1000px;width:100%;margin:0 auto;overflow:auto;}
 .unified-workspace .execution-page{padding:24px;}
-@media(max-width:1000px) and (min-width:761px){.unified-workspace .assistant-panel{width:320px;}.unified-workspace .workspace.chat-open .editor-body{margin-left:320px;}}
-@media(max-width:760px){.unified-workspace .workspace.chat-open .editor-body{margin-left:0;padding-bottom:45dvh;}.unified-workspace .assistant-panel{top:auto;bottom:0;width:100%;height:45dvh;border-right:0;border-top:1px solid var(--a4b-border);}.unified-workspace .topbar{padding:12px;flex-wrap:wrap;}.unified-workspace .subbar{padding:0 12px;}.unified-schedule-panel{padding:16px;}}
+@media(max-width:760px){.unified-workspace .topbar{padding:12px;flex-wrap:wrap;}.unified-workspace .subbar{padding:0 12px;}}
 
 .unified-workspace .topbar.as-page-title{margin-bottom:0}
 .unified-workspace .workspace.chat-open .editor-body{margin-left:0;padding-bottom:0}
@@ -36,7 +30,7 @@
 .unified-workspace .intent-strip,.unified-workspace .external-config,.unified-workspace .run-console{grid-column:1/-1}
 .unified-workspace .external-config{height:auto}
 .unified-workspace .external-config .as-config-body{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
-.unified-schedule-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);align-items:start;gap:16px;max-width:none}
+.unified-schedule-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);align-items:start;gap:16px;padding:24px;width:100%;overflow:auto}
 .unified-schedule-panel .as-workspace{height:clamp(320px,calc(100dvh - 300px),720px)}
 @media(max-width:900px){
  .unified-workspace .editor-container,.unified-workspace .workspace.chat-open .editor-container,.unified-schedule-panel{grid-template-columns:minmax(0,1fr);padding:16px}
@@ -44,3 +38,19 @@
 
 .unified-workspace .editor-container>.studio-assistant{background:var(--a4b-surface);color:var(--a4b-ink)}
 .studio-assistant .as-composer-footer small{margin-left:auto}
+
+.unified-workspace .reservation-tab-bar{padding-inline:24px;margin-bottom:0}
+@media(max-width:760px){.unified-workspace .reservation-tab-bar{padding-inline:16px}}
+
+.unified-workspace .topbar.as-page-title:has(+.reservation-tab-bar){border-bottom:0}
+
+.reservation-editor-preview{min-width:0;height:clamp(320px,calc(100dvh - 300px),850px)}
+
+.reservation-inline-settings{min-width:0;align-self:start}
+.reservation-inline-settings form{padding:16px}
+
+.reservation-settings-footer{grid-column:1/-1;min-width:0}
+.reservation-inline-settings .field :is(label,input,button){font-size:13px}
+@media(max-width:650px){
+ .reservation-inline-settings .field :is(input,button){font-size:16px}
+}

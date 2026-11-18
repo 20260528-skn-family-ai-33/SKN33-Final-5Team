@@ -82,7 +82,7 @@ export function ScheduleSettings({workflowId,workflowVersion,schedule,onChange,d
    </div>
    <p className="schedule-settings-help">예약은 중지 상태로 저장됩니다. 자동 실행에 사용할 자료와 서비스 연결을 먼저 준비하세요.</p>
    {scheduleDateNote(spec)&&<small>{scheduleDateNote(spec)}</small>}
-   <div className="schedule-settings-actions"><button type="submit" className="as-button as-primary" disabled={locked}>{busy?'저장 중…':stale?'일정 저장 · 현재 버전 적용':schedule?'일정 저장':'예약 추가'}</button>{schedule&&<button type="button" className="as-button" disabled={locked} onClick={closeEditor}>취소</button>}</div>
+   <div className="schedule-settings-actions schedule-settings-submit"><button type="submit" className="as-button as-primary" disabled={locked}>{busy?'저장 중…':stale?'일정 저장 · 현재 버전 적용':schedule?'일정 저장':'예약 추가'}</button>{schedule&&<button type="button" className="as-button" disabled={locked} onClick={closeEditor}>취소</button>}</div>
   </form>}
   {error&&<p className="schedule-settings-error" role="alert">{error}</p>}
   {notice&&<p className="schedule-settings-notice" role="status">{notice}</p>}

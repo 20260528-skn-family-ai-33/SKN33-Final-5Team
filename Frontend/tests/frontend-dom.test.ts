@@ -14,7 +14,7 @@ const nodeCompiled=buildSync({entryPoints:[resolve(FRONTEND_ROOT,'app/node-libra
 const sourceCompiled=buildSync({stdin:{contents:"export {ScheduleLibrarySourceSettings} from './app/schedule-library-source'; export {AuthProvider} from './app/auth';",resolveDir:FRONTEND_ROOT,sourcefile:'schedule-source-test.tsx'},absWorkingDir:FRONTEND_ROOT,bundle:true,platform:'node',format:'cjs',packages:'external',loader:{'.css':'empty'},write:false,logLevel:'silent'}).outputFiles[0].text;
 function load(code:string){const module={exports:{} as any};new Function('require','module','exports',code)(require,module,module.exports);return module.exports;}
 let dom:JSDOM;
-const globals=['crypto','window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','DOMRect','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
+const globals=['crypto','window','document','navigator','location','localStorage','sessionStorage','HTMLElement','HTMLInputElement','HTMLFormElement','HTMLTextAreaElement','Element','Node','NodeFilter','SVGElement','HTMLButtonElement','HTMLSelectElement','DocumentFragment','DOMRect','MutationObserver','Event','CustomEvent','File','FileReader','getComputedStyle','ResizeObserver','requestAnimationFrame','cancelAnimationFrame','IS_REACT_ACT_ENVIRONMENT'];
 const old=new Map(globals.map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
 // ReactDOM feature detection must see the DOM on first import.
 function installDOM(search=''){
@@ -23,7 +23,7 @@ function installDOM(search=''){
  Object.defineProperty(dom.window.crypto,'randomUUID',{value:()=>'00000000-0000-4000-8000-000000000081',configurable:true});
  dom.window.localStorage.setItem('a4b-product-tour-v1','done');
  Object.defineProperty(globalThis,'ResizeObserver',{value:class{observe(){}disconnect(){}},configurable:true});
- dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.scrollTo=()=>{};
+ dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.scrollTo=()=>{};dom.window.matchMedia=query=>({matches:false,media:query,onchange:null,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){},dispatchEvent:()=>true});
 }
 installDOM();
 const {createElement,act,StrictMode}=require('react');
@@ -1977,6 +1977,45 @@ test('schedules: rows offer checkboxes and a single management action',async()=>
  }}finally{await h.close();}
 });
 
+const externalScheduleFixture={id:'external-test',name:'외부 예약 검증',active:false,updatedAt:'2026-11-18T00:00:00Z',settings:{timezone:'Asia/Seoul'},connections:{},nodes:[
+ {id:'start',name:'예약 시작',type:'n8n-nodes-base.scheduleTrigger',position:[0,0],parameters:{rule:{interval:[{field:'days',triggerAtHour:9,triggerAtMinute:0}]}}},
+ {id:'end',name:'데이터 정리',type:'n8n-nodes-base.set',position:[240,0],parameters:{}},
+]};
+
+test('external reservation guards unsaved settings and returns from conversation to its schedule',async()=>{
+ const h=await setup('?screen=schedules',{},path=>path==='/api/workflows'?{workflows:[externalScheduleFixture]}:path.startsWith('/api/executions')?{executions:[]}:undefined,createElement(EntryApp));
+ try{
+  await click(document.querySelector('[aria-label="외부 예약 검증 일정 관리"]')!);
+  assert.equal(new URL(location.href).searchParams.get('external'),externalScheduleFixture.id);
+  assert.deepEqual([...document.querySelectorAll('.reservation-tab-bar button')].map(button=>button.textContent),['예약 관리','실행']);
+  assert.ok(document.querySelector('.reservation-settings-footer'));
+  await input(document.querySelector<HTMLInputElement>('#workflow-timezone')!,'UTC');
+  let confirmations=0;
+  window.confirm=()=>{confirmations++;return false;};
+  await click(button('실행'));
+  assert.equal(confirmations,1);
+  assert.equal(document.querySelector<HTMLInputElement>('#workflow-timezone')?.value,'UTC');
+  await click(button('취소'));
+  await click(button('대화 펼치기'));
+  assert.ok(document.querySelector('textarea[aria-label="업무 설명"]'));
+  assert.equal(document.querySelector('.execute-controls'),null);
+  await click(button('대화 접기'));
+  assert.ok(document.querySelector('.reservation-settings-footer'));
+  await click(button('실행'));
+  assert.match(document.querySelector('.editor-body')!.textContent!,/실행 기록/);
+  assert.equal(h.calls.some(call=>call.body&&call.path==='/api/workflows'),false);
+ }finally{await h.close();}
+});
+
+test('external reservation with a missing workflow never opens a different workflow',async()=>{
+ const h=await setup('?screen=schedule&external=missing',{},path=>path==='/api/workflows'?{workflows:[externalScheduleFixture]}:path.startsWith('/api/executions')?{executions:[]}:undefined,createElement(EntryApp));
+ try{
+  assert.match(document.body.textContent!,/요청한 워크플로우를 찾을 수 없습니다/);
+  assert.equal(document.querySelector('.unified-schedule-panel'),null);
+  assert.equal(h.calls.some(call=>call.body),false);
+ }finally{await h.close();}
+});
+
 test('schedules: an empty list offers a fresh workflow without changing an existing saved workflow',async()=>{
  const h=await setup('?screen=schedules',{'a4b-builder-session':'old','a4b-selected-agent':'A'},undefined,createElement(EntryApp));
  try{
@@ -3875,7 +3914,7 @@ test('deleted workflow history opens without offering execution or edits',async(
 test('template deletion keeps default presets and clears a deleted editor',async()=>{
  const preset={...complex,id:'builtin',ref:'builtin:1',origin:'builtin'};let removed=false;
  const props={...libraryProps(async()=>{removed=true;}),defaults:[preset]};
- const h=await setup('',{},(path,_body,method)=>method==='DELETE'?{deleted:complex.id}:undefined,createElement(NodeLibrary,props));
+ const h=await setup('',{},(_path,_body,method)=>method==='DELETE'?{deleted:complex.id}:undefined,createElement(NodeLibrary,props));
  dom.window.confirm=()=>true;
  try{
   assert.equal(document.querySelectorAll('[aria-label="복합 필터 삭제"]').length,1);

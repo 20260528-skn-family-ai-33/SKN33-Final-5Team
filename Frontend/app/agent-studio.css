@@ -294,3 +294,5 @@ details.as-setting-section[open] > summary:not(:has(> svg))::after { transform:r
 .as-main>.as-global-error>span{flex:1 1 200px}
 
 .as-app>.as-global-error{position:relative;z-index:1;flex-wrap:wrap}
+
+.as-flow-node strong{word-break:keep-all}

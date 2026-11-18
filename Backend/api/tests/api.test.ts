@@ -111,6 +111,21 @@ test('standalone server persists and executes workflows, credentials, schedules 
       const callback=await fetch(server.base+'/api/oauth/callback?state='+encodeURIComponent(begin.data.stateId)+'&error=access_denied');assert.equal(callback.status,400);assert.match(callback.headers.get('content-type')||'',/text\/html/);const html=await callback.text();assert.ok(!html.includes(privateValue));assert.match(html,/easyflow-oauth/);
       const replay=await fetch(server.base+'/api/oauth/callback?state='+encodeURIComponent(begin.data.stateId)+'&code=not-a-real-code');assert.equal(replay.status,400);assert.ok(!(await replay.text()).includes('not-a-real-code'));
     });
+    await t.test('reservation workspace saves reject stale versions without overwriting a changed schedule',async()=>{
+      const flow=workflow('예약 동시 수정 검증',[stage('scheduleTrigger','예약 시작',{rule:{interval:[{field:'days',triggerAtHour:9}]}}),rawSet('결과')]);
+      const created=(await server.request('/api/workflows','POST',flow)).data.workflow as Flow;
+      const edited=await server.request('/api/workflows/schedule','POST',{workflowId:created.id,updatedAt:created.updatedAt,action:'configure',rule:{interval:[{field:'days',triggerAtHour:11}]}});
+      assert.equal(edited.status,200);
+      const newest=edited.data.workflow as Flow;
+      assert.notEqual(newest.updatedAt,created.updatedAt);
+      const stale=await server.request('/api/workflows','POST',{...created,expectedUpdatedAt:created.updatedAt});
+      assert.equal(stale.status,409);
+      const saved=await server.request('/api/workflows','POST',{...newest,settings:{...newest.settings,timezone:'UTC'},expectedUpdatedAt:newest.updatedAt});
+      assert.equal(saved.status,200);
+      assert.equal(saved.data.workflow.settings.timezone,'UTC');
+      assert.deepEqual(saved.data.workflow.nodes,newest.nodes);
+      assert.equal(Object.hasOwn(saved.data.workflow,'expectedUpdatedAt'),false);
+    });
     await t.test('file upload, CSV extraction and download return actual bytes with safe metadata',async()=>{
       const csv='name,score\r\n"예시 고객, A",92\r\n예시 고객 B,68\r\n';const uploaded=await server.request('/api/files','POST',{data:Buffer.from(csv).toString('base64'),fileName:'../입력.csv',mimeType:'text/csv'});assert.equal(uploaded.status,200);assert.equal(uploaded.data.input[0].__easyflowBinary.data.fileName,'입력.csv');
       assert.equal((await server.request('/api/files','POST',{data:'AB==',fileName:'bad.txt'})).status,400);assert.equal((await server.request('/api/files','POST',{data:'AA==',property:'__proto__'})).status,400);

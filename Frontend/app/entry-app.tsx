@@ -42,7 +42,7 @@ export default function EntryApp(){
  const historyIndex=useRef(Number(window.history.state?.a4bIndex||0));
  const updateContext=()=>{context.current=location.search;historyIndex.current=Number(window.history.state?.a4bIndex||0);};
  useEffect(()=>{if(new URLSearchParams(location.search).get('screen')==='models'){const legacy=new URL(location.href);legacy.searchParams.set('screen','workflows');window.history.replaceState(window.history.state,'',legacy);context.current=location.search;}window.history.replaceState({...window.history.state,a4bIndex:historyIndex.current},'',location.href);const pop=()=>{const next=routeFromLocation(),internal=(r:string)=>['nodes','workflow','run','schedule'].includes(r),before=new URLSearchParams(context.current),after=new URLSearchParams(location.search);
-  const remount=!internal(routeRef.current)||!internal(next)||before.get('external')!==after.get('external')||before.get('service')!==after.get('service')||before.get('run')!==after.get('run');
+  const remount=!internal(routeRef.current)||!internal(next)||before.get('external')!==after.get('external')||Boolean(before.get('external')&&routeRef.current!==next)||before.get('service')!==after.get('service')||before.get('run')!==after.get('run');
   const targetIndex=Number(window.history.state?.a4bIndex||0);
   if(remount&&(internal(routeRef.current)||routeRef.current==='assets'||routeRef.current==='schedules')&&!guard.current()){
    const delta=historyIndex.current-targetIndex;

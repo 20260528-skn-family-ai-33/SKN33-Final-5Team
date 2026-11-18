@@ -85,6 +85,9 @@
 
 /* View switches and secondary row actions use the same compact spacing. */
 .task-library-header .task-library-tabs .as-button,
+.schedule-row-actions .as-button,
+.schedule-selection-actions .as-button,
+.schedule-settings-actions .as-button:not(.as-primary),
 .as-run-actions .as-button:not(.as-primary),
 .asset-file-actions .as-button:not(.as-primary),
 .asset-folder-actions .as-button:not(.as-primary) {

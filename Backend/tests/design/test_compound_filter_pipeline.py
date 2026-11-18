@@ -122,14 +122,59 @@ def test_schedule_condition_does_not_reopen_numeric_filter():
     assert 'filter.match' not in l['unresolved']
 
 
-def test_partial_conditions_across_turns_are_preserved_through_generation(tmp_path):
-    s = compound_state('비용이 낮고 수량이 10개보다 많은 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+@pytest.mark.parametrize(('criteria', 'relation_reply', 'expected'), [
+    ('비용이 낮고 수량이 10개보다 많은 행', None, [(3, 11)]),
+    ('수량이 10개보다 크거나 같은 값이고 비용이 낮은 행', None, [(3, 11)]),
+    ('수량이 10개보다 크거나 같은 값이거나 비용이 낮은 행', None, [(3, 1), (3, 11), (7, 11)]),
+    ('수량이 10개 이상, 비용이 낮은 행', '모두 만족', [(3, 11)]),
+])
+def test_partial_conditions_across_turns_are_preserved_through_generation(tmp_path, criteria, relation_reply, expected):
+    s = compound_state(criteria + '을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
     assert compound_filter_state(s)['pending'] == 'complete'
     s['messages'].append(dict(role='user', content='비용은 5원 미만'))
+    if relation_reply:
+        assert compound_filter_state(s)['pending'] == 'match'
+        s['messages'].append(dict(role='user', content=relation_reply))
     s = generate(seal(s, {'filter.field': ('비용', '비용'), 'filter.operator': ('lt', '미만'),
         'filter.value': ('5', '5원'), 'output.format': ('json', 'JSON'),
         'missing.policy': ('error', '오류'), 'duplicate.policy': ('keep', '유지')}))
-    with_store(s, [dict(비용=3, 수량=1), dict(비용=3, 수량=11), dict(비용=7, 수량=11)], [(3, 11)], tmp_path)
+    with_store(s, [dict(비용=3, 수량=1), dict(비용=3, 수량=11), dict(비용=7, 수량=11)], expected, tmp_path)
+
+
+def test_amending_one_bound_preserves_other_bounds_and_columns(tmp_path):
+    s = compound_state('수량이 3개 이상이고 비용이 10원 이상이며 비용이 20원 이하인 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.')
+    values = {'filter.field': ('수량', '수량'), 'filter.operator': ('gte', '이상'), 'filter.value': ('3', '3개'),
+              'output.format': ('json', 'JSON'), 'missing.policy': ('error', '오류'), 'duplicate.policy': ('keep', '유지')}
+    s = generate(seal(s, values))
+    s['messages'].append(dict(role='user', content='비용 하한은 15원 이상으로 바꿔줘'))
+    s = generate(seal(s, values))
+    rows = [dict(비용=cost, 수량=quantity) for cost, quantity in [(12, 3), (15, 3), (20, 3), (21, 3), (16, 2)]]
+    with_store(s, rows, [(15, 3), (20, 3)], tmp_path)
+
+
+@pytest.mark.parametrize('column', ['파일명길이', '상품설명길이'])
+def test_numeric_column_containing_metadata_label_is_still_a_filter(column):
+    s = compound_state(f'수량이 3개 이상이고 {column}가 10 이상인 행을 JSON으로 저장해줘.')
+    s['resources'][0]['columns'].append(column)
+    found = compound_filter_state(s)
+    assert found['pending'] is None
+    assert {(rule['field'], rule['value']) for rule in found['rules']} == {('수량', 3.0), (column, 10.0)}
+
+
+@pytest.mark.parametrize(('name', 'proposed'), [
+    ('비용이 20원 이상', {}),
+    ('"비용이 20원 이상"', {}),
+    ('비용이 20원 미만', {}),
+    ('수량이 20개 미만', {'filter.field': ('수량', '수량이 20개'),
+                       'filter.operator': ('lt', '20개 미만'), 'filter.value': ('20', '20개')}),
+])
+def test_numeric_comparison_in_output_name_does_not_change_filters(tmp_path, name, proposed):
+    s = generate(seal(compound_state(BASE + '. 빈 값은 오류, 중복은 유지해.')))
+    s['messages'].append(dict(role='user', content=f'파일 이름을 {name}으로 바꿔줘'))
+    s = generate(seal(s, {**PARTIAL, 'output.format': ('json', 'JSON'),
+                         'missing.policy': ('error', '오류'), 'duplicate.policy': ('keep', '유지'), **proposed}))
+    rows = [dict(비용=cost, 수량=quantity) for cost, quantity in [(5, 3), (15, 3), (20, 3), (20, 2)]]
+    with_store(s, rows, [(15, 3), (20, 3)], tmp_path)
 
 
 def test_adding_a_different_boolean_group_requires_grouping_instead_of_dropping_rules():

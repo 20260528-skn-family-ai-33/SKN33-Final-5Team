@@ -11,6 +11,7 @@ from agent_builder.design.condition_requirements import multiple_outputs
 from agent_builder.design.condition_templates import compile_conditions
 from agent_builder.design.graph import build_graph
 from agent_builder.design.nodes.validation import validate_node
+from agent_builder.design.output_selection_request import output_selection
 from agent_builder.design.requirement_ledger import extract_plan, ledger_fingerprint, plan_digest
 from agent_builder.design.text_filter_contract import text_filter_state
 from infrastructure.persistence.storage import Storage
@@ -85,6 +86,28 @@ def test_three_text_conditions_are_order_independent(tmp_path, order):
 @pytest.mark.parametrize('instruction', ['서울 지역만', '지역이 서울인 것만', '지역은 서울만 남겨줘', '서울 지역인 행만'])
 def test_alternate_text_wording_has_the_same_result(tmp_path, instruction):
     assert execute(prepare(current(instruction)), tmp_path) == [ROWS[0], ROWS[2]]
+
+
+@pytest.mark.parametrize('instruction', ['결과에는 상태만 포함해줘.', '출력에 상태만 포함해줘.'])
+def test_output_column_followup_preserves_the_existing_row_filter(tmp_path, instruction):
+    s = current('상태가 완료인 행만 남겨줘.')
+    s['messages'].append(dict(role='user', content=instruction))
+    assert execute(prepare(s), tmp_path) == ROWS[:2]
+
+
+def test_exporting_one_column_preserves_its_row_filter():
+    s = current('서울 지역만 남겨줘.')
+    s['messages'].append(dict(role='user', content='결과에는 지역만 저장해줘.'))
+    contract = text_filter_state(s)
+    assert not contract['issues']
+    assert [(rule['field'], rule['value']) for _, rule in contract['predicates']] == [('지역', '서울')]
+    assert output_selection(s) == ['지역']
+
+
+def test_quoted_output_destination_remains_a_literal_filter_value():
+    contract = text_filter_state(current("'결과에는' 상태만 남겨줘."))
+    assert not contract['issues']
+    assert [(rule['field'], rule['value']) for _, rule in contract['predicates']] == [('상태', '결과에는')]
 
 
 @pytest.mark.parametrize('instruction', [

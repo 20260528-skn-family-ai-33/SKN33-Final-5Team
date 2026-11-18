@@ -42,6 +42,8 @@ def run_rows(s, path):
     (['상태와 관계없이 저장해줘. 상태가 완료인 행만 남기지 마.'], ROWS[:2]),
     (['상태가 완료인 행만 남겨줘.', '상태가 대기인 행만 남겨줘.'], [ROWS[1]]),
     (['상태가 완료인 행만 남겨줘.', '상태 조건 취소해줘.'], ROWS[:2]),
+    (['상태가 완료인 행만 남겨줘.', '상태 조건은 취소하면 안 돼.'], [ROWS[0]]),
+    (['상태가 완료인 행만 남겨줘.', '상태 조건 삭제해도 될까?', '상태 조건은 삭제할 필요 없어.'], [ROWS[0]]),
     (['상태가 완료인 행만 남겨줘.', '상태 조건 취소해줘.', '상태가 대기인 행만 남겨줘.'], [ROWS[1]]),
     (['상태 조건 취소해줘. 상태가 완료인 행만 남겨줘.'], [ROWS[0]]),
     (['상태가 완료인 행만 남겨줘. 상태 조건 취소해줘.'], ROWS[:2]),
@@ -51,6 +53,57 @@ def run_rows(s, path):
 ])
 def test_text_transitions_apply_only_the_final_explicit_intent(tmp_path, turns, expected):
     assert run_rows(current(*turns), tmp_path) == expected
+
+
+@pytest.mark.parametrize(('instruction', 'field', 'operator', 'value', 'cells', 'expected'), [
+    ('지역이 서울인 행만 남긴 뒤 JSON으로 저장해줘.', '지역', 'eq', '서울',
+     ['서울', '서울특별시', '부산'], ['서울']),
+    ('상품명은 사과가 들어 있는 행만 남겨줘. JSON으로 저장해줘.', '상품명', 'contains', '사과',
+     ['사과', '청사과', '사과즙', '포도'], ['사과', '청사과', '사과즙']),
+    ("상품명에 '사과'가 들어 있는 행만 남긴 뒤 JSON으로 저장해줘.", '상품명', 'contains', '사과',
+     ['사과', '청사과', '사과즙', '포도'], ['사과', '청사과', '사과즙']),
+])
+def test_complete_text_selection_proceeds_without_a_question_and_exports_expected_rows(
+        tmp_path, instruction, field, operator, value, cells, expected):
+    s = compound_state(instruction + ' 빈 값은 오류, 중복은 유지해.')
+    asset = s['resources'][0]
+    asset.update(columns=[field], format='csv', profile={field: {'types': ['string']}})
+    raw = proposal(s, {'filter.field': field, 'filter.operator': operator, 'filter.value': value,
+                       'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'})
+    store = Storage(tmp_path)
+    store.add_asset(asset, [{field: cell} for cell in cells])
+    graph, connection = build_graph(store, conversation=compile_conditions,
+                                    condition_transport=Fake([raw]), condition_mode='enforce')
+    config = {'configurable': {'thread_id': s['session_id']}}
+    try:
+        ready = graph.invoke(s, config)
+        assert ready['status'] == 'ready', ready['pending_questions']
+        assert not ready['pending_questions']
+        assert ready['draft']['execution_plan']['filters'][0]['operator'] == operator
+        saved = graph.invoke(Command(resume=dict(type='confirm')), config)
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[asset['id']])
+        assert result['status'] == 'succeeded'
+        assert result['rows'] == [{field: cell} for cell in expected]
+    finally:
+        connection.close()
+        store.close()
+
+
+@pytest.mark.parametrize('reply', ['사과', '사과만 남겨줘'])
+def test_short_answer_cannot_turn_unconfirmed_containment_into_equality(reply):
+    s = current('상품명에 사과가 들어 있는 행만 남길까?')
+    s['resources'][0]['columns'].append('상품명')
+    assert text_filter_state(s)['issues']
+
+    s['messages'].append(dict(role='user', content=reply))
+    s['condition_answers'] = [dict(turn=1, candidate_keys=['filter.match'])]
+    unresolved = text_filter_state(s)
+    assert unresolved['issues'] and not unresolved['predicates']
+
+    s['messages'].append(dict(role='user', content='상품명에 사과가 들어 있는 행만 남겨줘.'))
+    resolved = text_filter_state(s)
+    assert not resolved['issues']
+    assert [(rule['operator'], rule['value']) for _, rule in resolved['predicates']] == [('contains', '사과')]
 
 
 @pytest.mark.parametrize('instruction', ['상태가 완료인 행만 남기지 마.', '상태가 완료인 행만 남겨주지 마.', '상태가 완료인 행만 남겨야 할까?', '상태가 완료인 행만 제외하지 마.'])

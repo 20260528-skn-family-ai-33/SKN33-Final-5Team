@@ -9,8 +9,12 @@ import re
 from agent_builder.conditions.filter_edits import in_quoted_text, in_metadata_text
 
 _VALUE = r'''(?:"[^"\n]+"|'[^'\n]+'|“[^”\n]+”|‘[^’\n]+’|[^\s,'".!?]+?)'''
-_END = r'(?:인\s+(?:행|것|거래|항목)(?:들)?(?P<only>만|은|을|도)?|(?P<join>이고|이며|이면서)(?=\s)|(?P<bare>만)(?=\s|[,;.!?]|$))'
+_ROWS = r'(?:행|것|거래|항목)(?:들)?(?P<only>만|은|을|도)?'
+_END = r'(?:인\s+' + _ROWS + r'|(?P<join>이고|이며|이면서)(?=\s)|(?P<bare>만)(?=\s|[,;.!?]|$))'
+_CONTAINMENT_END = (r'(?:(?:이|가)\s*+(?:들어\s*+(?:있는|간)|포함된)|(?:을|를)\s*+포함하는)\s+'
+                    + _ROWS + r'(?![가-힣])')
 _OR = re.compile(r'또는|혹은|이거나|이든|아니면')
+_OUTPUT_SCOPE = re.compile(r'(?:결과물?|출력|산출물|보고서|파일|CSV|JSON|XLSX|엑셀)(?:(?:에|에서)(?:는|도)?|은|는)', re.I)
 
 
 @dataclass(frozen=True)
@@ -21,27 +25,37 @@ class TextAtom:
     value: str
     only: bool
     joined: bool = False
+    operator: str = 'eq'
 
 
 def text_atoms(text, fields):
     names = '|'.join(re.escape(field) for field in sorted(fields, key=len, reverse=True))
     if not names:
         return []
-    forward = re.compile(r'(?<![\w])(?P<field>' + names + r')\s*+(?:열[의은는이가]?\s*+)?(?:이|가|은|는)\s*+(?P<value>' + _VALUE + ')' + _END)
-    reverse = re.compile(r'(?<![\w])(?P<value>' + _VALUE + r')\s+(?P<field>' + names + r')(?:만|인\s+(?:행|것|거래|항목)(?:들)?만)(?=\s|[,;.!?]|$)')
+    subject = r'(?<![\w])(?P<field>' + names + r')\s*+(?:열\s*+)?'
+    operand = r'\s*+(?P<value>' + _VALUE + ')'
+    containment = re.compile(subject + r'(?:이|가|은|는|에(?:는)?)' + operand + _CONTAINMENT_END)
+    forward = re.compile(r'(?<![\w])(?P<field>' + names + r')\s*+(?:열[의은는이가]?\s*+)?(?:이|가|은|는)' + operand + _END)
+    reverse = re.compile(
+        r'(?<![\w])(?P<value>' + _VALUE + r')\s+(?P<field>' + names + r')'
+        r'(?:(?P<bare>만)|인\s+(?:행|것|거래|항목)(?:들)?(?P<only>만))(?=\s|[,;.!?]|$)')
     atoms = []
-    for pattern in (forward, reverse):
+    for pattern in (containment, forward, reverse):
         for match in pattern.finditer(text):
             if (in_quoted_text(text, match.start('field')) or in_metadata_text(text, match.start('field'))
                     or any(atom.start < match.end() and match.start() < atom.end for atom in atoms)):
                 continue
             groups = match.groupdict()
             value = match['value']
+            # In "결과에는 상태만", the first token introduces the output scope.
+            if pattern is reverse and groups.get('bare') and _OUTPUT_SCOPE.fullmatch(value):
+                continue
             if value[0] in '\"\'“‘':
                 value = value[1:-1]
             atoms.append(TextAtom(match.start(), match.end(), match['field'], value,
-                                  bool(groups.get('only') == '만' or groups.get('bare') or pattern is reverse),
-                                  bool(groups.get('join'))))
+                                  bool(groups.get('only') == '만' or groups.get('bare')),
+                                  bool(groups.get('join')),
+                                  operator='contains' if pattern is containment else 'eq'))
     return sorted(atoms, key=lambda atom: atom.start)
 
 

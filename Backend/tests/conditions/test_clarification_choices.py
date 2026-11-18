@@ -684,6 +684,38 @@ def test_cancelled_compound_is_not_restored_from_the_old_single_filter_ledger():
     assert found['rules'] == [] and found['pending'] is None
 
 
+@pytest.mark.parametrize('follow_up', [
+    '지역 조건은 취소하면 안 돼.',
+    '지역 조건은 삭제할 필요 없어.',
+    '지역 조건을 제거해서는 안 됩니다.',
+])
+def test_denied_cancellation_preserves_the_saved_text_filter(tmp_path, follow_up):
+    from tests.design.test_text_filter_dialogue import ROWS, current, execute, prepare
+
+    s = current('지역이 서울인 행만 남겨줘.')
+    prepare(s)
+    s['messages'].append(dict(role='user', content=follow_up))
+    assert execute(prepare(s), tmp_path) == [ROWS[0], ROWS[2]]
+
+
+@pytest.mark.parametrize('follow_ups', [
+    ('비용 조건은 취소하면 안 돼.',),
+    ('비용 조건은 삭제할 필요 없어.',),
+    ('비용 조건을 취소할지 모르겠어.', '비용 조건은 취소하면 안 돼.'),
+])
+def test_denied_cancellation_preserves_the_saved_numeric_filter(tmp_path, follow_ups):
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    from tests.design.test_compound_filter_pipeline import generate, seal, with_store
+
+    s = seal(compound_state(BASE + '. 빈 값은 오류, 중복은 유지해.'))
+    s['messages'].extend(dict(role='user', content=text) for text in follow_ups)
+    found = compound_filter_state(s)
+    assert found['pending'] is None
+    assert {rule['field'] for rule in found['rules']} == {'비용', '수량'}
+    rows = [dict(비용=15, 수량=4), dict(비용=5, 수량=4), dict(비용=15, 수량=1)]
+    with_store(generate(seal(s)), rows, [(15, 4)], tmp_path)
+
+
 def test_compound_save_rejects_a_ledger_value_not_in_the_confirmed_rules():
     from copy import deepcopy
     from agent_builder.conditions.condition_readiness import compound_filter_state, plan_issues

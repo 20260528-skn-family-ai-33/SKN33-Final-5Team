@@ -17,6 +17,35 @@ from agent_builder.design.node_edit_copy import public_request, public_error, is
 # Actions that only read or update session state: the model conversation is never invoked.
 STATE_ONLY={'session','upload','attach_asset','tool_gap','tool_gap_choice','tool_gap_job_claim','tool_gap_job_finish','tool_gap_job_recover','tool_gap_replan_propose','tool_gap_replan_decide'}
 
+_QUESTION_WAIT_ROUTES = {
+    ('await_input',): ('attachment_gate', 'attachment_route', 'ask'),
+    ('await_capability',): ('capability_check', 'capability_route', 'await_capability'),
+}
+
+
+def _update_session_checkpoint(graph, config, update, next_nodes):
+    route = _QUESTION_WAIT_ROUTES.get(next_nodes)
+    if route and 'pending_questions' not in update:
+        # A state-only update clears the interrupt. Keep the same question node scheduled.
+        predecessor, key, value = route
+        graph.update_state(config, {**update, key:value}, as_node=predecessor)
+    else:
+        graph.update_state(config, update)
+
+
+def _recover_question_wait(state, next_nodes, answers):
+    # Older attachment checkpoints could point back to the entry node with a valid question still open.
+    if state.get('status') != 'needs_clarification' or next_nodes != ('resources',):
+        return ()
+    answered = {item['question_id'] for item in answers}
+    capability_ids = {q['id'] for q in state.get('capability_questions', [])}
+    if state.get('capability_route') == 'await_capability' and answered <= capability_ids:
+        return ('await_capability',)
+    from agent_builder.design.nodes.await_input import input_question_records
+    if isinstance(state.get('draft'), dict) and answered <= {q['id'] for q in input_question_records(state)}:
+        return ('await_input',)
+    return ()
+
 
 def _last_user(state):
     return next((m.get('content') for m in reversed(state.get('messages',[]) or []) if m.get('role')=='user'),None)
@@ -210,12 +239,14 @@ def _session_action(c):
     try:
         s=storage.session(data['id']);graph,connection=build_graph(storage,api_key,s['model'],conversation=conversation if conversation else (lambda state:{}) if action in STATE_ONLY else None)
         if action in {'message','confirm'}:
-            snapshot=graph.get_state({'configurable':{'thread_id':s['id']}})
+            config={'configurable':{'thread_id':s['id']}}
+            snapshot=graph.get_state(config)
             fresh=[storage.asset(id) for id in s['file_ids']]
             versions=lambda resources:[(r['id'],str(r.get('version') or r.get('hash') or '1')) for r in resources]
             if snapshot.values and versions(snapshot.values.get('resources',[]))!=versions(fresh):
                 if action=='confirm':raise ValueError('자료 검토 결과가 변경됐습니다. 업무 설명을 다시 보내 설정과 근거를 확인하세요.')
-                graph.update_state({'configurable':{'thread_id':s['id']}},{'resources':fresh,'confirmed':False,'verification':None,'verification_last_candidate':None})
+                _update_session_checkpoint(graph,config,{'resources':fresh,'confirmed':False,
+                    'verification':None,'verification_last_candidate':None},snapshot.next)
         if action=='session':return public_state(storage,s,graph)
         if action in ('tool_gap_replan_propose','tool_gap_replan_decide'):
             state=graph.get_state({'configurable':{'thread_id':s['id']}}).values or {}
@@ -242,7 +273,8 @@ def _session_action(c):
             if s['revision']!=data['revision']:raise ValueError('대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
             if len(s['file_ids'])>=10:raise ValueError('자료는 최대 10개 연결할 수 있습니다.')
             config={'configurable':{'thread_id':s['id']}}
-            state=graph.get_state(config).values or {}
+            snapshot=graph.get_state(config)
+            state=snapshot.values or {}
             if state.get('status')=='saved':raise ValueError('저장된 에이전트의 자료를 바꾸려면 설정 수정 대화를 시작하세요.')
             storage.begin_write()
             try:
@@ -282,12 +314,13 @@ def _session_action(c):
                     update['pending_questions']=[]
                     if isinstance(state.get('draft'),dict):
                         update['draft']={**state['draft'],'questions':[],'question_options':[],'question_responses':[]}
-                graph.update_state(config,update)
+                _update_session_checkpoint(graph,config,update,snapshot.next)
             return public_state(storage,s,graph)
         if action not in ['message','confirm']:raise ValueError('지원하지 않는 요청입니다.')
         if s['revision']!=data['revision']:raise ValueError('다른 요청에서 대화가 변경됐습니다. 새로고침 후 다시 시도하세요.')
         config={'configurable':{'thread_id':s['id']},'recursion_limit':30}
         before=graph.get_state(config);state=before.values or {};has_interrupt=any(task.interrupts for task in before.tasks)
+        question_wait = before.next if before.next in _QUESTION_WAIT_ROUTES else ()
         from agent_builder.design.failed_design import retained_design, MEANING_FIELDS
         state=retained_design(state,graph,config,(before.config or {}).get('configurable',{}).get('checkpoint_id'))
         restored={key:state.get(key) for key in ('draft', *MEANING_FIELDS)
@@ -324,7 +357,7 @@ def _session_action(c):
             # Planner questions live only in the draft (with their declared answer controls).
             planner=[{'text':text,'options':(draft.get('question_options') or [[]]*len(draft.get('questions') or []))[i] if i<len(draft.get('question_options') or []) else [],
                       'response':(draft.get('question_responses') or [])[i] if i<len(draft.get('question_responses') or []) else {}}
-                     for i,text in enumerate(draft.get('questions') or [])] if has_interrupt else []
+                      for i,text in enumerate(draft.get('questions') or [])] if has_interrupt or question_wait else []
             waiting=pending or planner
             pending_texts=[q['text'] for q in waiting if q.get('text')]
             # A current failure or explicit file-recovery marker is guidance;
@@ -346,7 +379,10 @@ def _session_action(c):
                 content=turn['work']
             from agent_builder.design.question_answers import question_answers
             answers=question_answers(data.get('question_answers'),state)
-            if answers and not has_interrupt:raise ValueError('질문이 변경되었습니다. 현재 질문을 확인한 뒤 다시 답변해주세요.')
+            if answers and not (has_interrupt or question_wait):
+                question_wait = _recover_question_wait(state, before.next, answers)
+                if not question_wait:
+                    raise ValueError('질문이 변경되었습니다. 현재 질문을 확인한 뒤 다시 답변해주세요.')
             # Older uploads could leave await_input scheduled but not yet interrupted.
             # Install the projected control before deciding how to resume the graph.
             legacy = legacy_receipt_intake(state) if data.get('question_id') else None
@@ -355,6 +391,7 @@ def _session_action(c):
                 before=graph.get_state(config)
                 state=before.values
                 has_interrupt=any(task.interrupts for task in before.tasks)
+                question_wait = before.next if before.next in _QUESTION_WAIT_ROUTES else ()
             elif legacy and not any(q['id']==data['question_id'] for q in state.get('pending_questions',[])):
                 raise ValueError('현재 대화의 확인 질문에 답변해주세요.')
             from agent_builder.design.retry_request import is_generation_retry
@@ -363,7 +400,7 @@ def _session_action(c):
                         and is_generation_retry(content)
                         and (failure or state.get('status') == 'validation_failed'
                              or projected_recovery_failure(state)
-                             or before.next and not has_interrupt))
+                             or before.next and not (has_interrupt or question_wait)))
             cleared_failures={'system_failure':None,'requirement_failure':None,
                 'previous_system_failure':state.get('system_failure') or state.get('requirement_failure')
                     or state.get('previous_system_failure')}
@@ -371,13 +408,15 @@ def _session_action(c):
                 # Retry is a control action, not a new business requirement or a
                 # response to a pending field. Keep exact source turns and IDs.
                 _rerun_from_gates(graph,config,state,restored)
-            elif has_interrupt:
+            elif has_interrupt or question_wait:
                 if data.get('question_id') and data['question_id'] not in [q['id'] for q in state.get('pending_questions',[])]:
                     raise ValueError('현재 대화의 확인 질문에 답변해주세요.')
                 # A migrated receipt checkpoint moved from await_capability to await_input.
                 # An unqualified update here can restore the old node and its obsolete question IDs.
                 if not any(q.get('source')=='receipt' for q in state.get('pending_questions',[])):
-                    graph.update_state(config,{'repair_count':0,**cleared_failures})
+                    _update_session_checkpoint(graph,config,{'repair_count':0,**cleared_failures},question_wait)
+                elif question_wait and question_wait!=before.next:
+                    _update_session_checkpoint(graph,config,{},question_wait)
                 graph.invoke(Command(resume={'type':'message','content':content,
                     **({'node_edit':node_edit} if node_edit is not None else {}),
                     **({'question_id':data['question_id']} if data.get('question_id') else {}),

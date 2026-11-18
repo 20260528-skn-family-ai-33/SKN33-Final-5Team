@@ -757,3 +757,37 @@ def test_separate_output_restriction_does_not_negate_an_affirmed_row_selection()
 def test_explicit_literal_cancel_status_is_still_a_valid_cell_value():
     s=current('상태가 취소인 행만 남겨줘')
     assert [(r['field'],r['value']) for _,r in text_filter_state(s)['predicates']]==[('상태','취소')]
+
+
+@pytest.mark.parametrize('ending', [
+    '남겨주지 마', '남겨 주지 마', '안 남겨줘', '못 골라줘',
+    '골라주지 마', '골라 주지 마', '남기는 건 하지 마', '남기는 걸 하지 마',
+    '남기기는 하지 마', '선별하는 것은 하지 마', '남겨줘서는 안 돼',
+])
+def test_negative_selection_forms_block_positive_draft_storage(tmp_path, ending):
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    s=current('')
+    s['messages'][0]['content']=f'비용이 10원 이상이고 수량이 3개 이상인 행만 {ending}. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'
+    assert compound_filter_state(s)['pending']
+    assert judge(s,VALUES)['decision']!='ready'
+    good=prepare(current(''))
+    stale={**s,'condition_ledger':good['condition_ledger'],'condition_enforced':True,
+           'condition_required':True,'confirmed':True,'draft':good['draft']}
+    store=Storage(tmp_path)
+    try:
+        with pytest.raises(ValueError):store.save_agent(stale)
+    finally:store.close()
+
+
+@pytest.mark.parametrize('ending',['남겨줘','골라줘','선별해줘','남겨 주세요'])
+def test_affirmative_selection_still_saves_and_executes(tmp_path, ending):
+    s=current('')
+    s['messages'][0]['content']=f'비용이 10원 이상이고 수량이 3개 이상인 행만 {ending}. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'
+    assert execute(prepare(s),tmp_path)==ROWS[:3]
+
+
+@pytest.mark.parametrize('ending',['남겨주지 마','안 남겨줘','남기는 건 하지 마'])
+def test_negated_text_selection_cannot_become_positive(ending):
+    s=current('지역이 서울인 행만 '+ending)
+    contract=text_filter_state(s)
+    assert contract['issues'] and not contract['predicates']

@@ -177,15 +177,24 @@ def filter_clauses(text):
     yield start, text[start:]
 
 
+_SELECTION_VERB = r'(?:남기|남겨|고르|골라|선별하|선별해|포함하|포함해|제외하|제외해|삭제하|삭제해)'
+# Compose grammatical negation around the same action, including auxiliaries.
+# Unknown/negative selections stay unresolved; do not infer their complement.
+_ACTION_NEGATIVE_END = (
+    r'(?:\s*(?:주|주시|줘))?'
+    r'(?:\s*(?:지|진)\s*(?:는|도)?\s*(?:말|마|않|안)'
+    r'|\s*고\s*싶지\s*않|\s*(?:면|서는|선)\s*안\s*(?:돼|되)'
+    r'|\s*(?:는|기)\s*(?:건|것(?:은|을|도)?|걸|를|은|는)?\s*(?:하지|하진)\s*(?:말|마|않|안))')
 _SELECTION_NEGATION = re.compile(
-    r'(?:남기|남겨|고르|골라|선별하|선별해|포함하|포함해|제외하|제외해|삭제하|삭제해)'
-    r'(?:\s*(?:지|진)\s*(?:는|도)?\s*(?:말|마|않|안)|\s*고\s*싶지\s*않|\s*(?:면|서는|선)\s*안\s*(?:돼|되))')
+    _SELECTION_VERB + _ACTION_NEGATIVE_END + r'|(?<![\w])(?:안|못)\s*' + _SELECTION_VERB)
 
 
 def selection_action_uncertain(text):
     """Negating selection does not authorize the positive predicate or its complement."""
-    clause = re.split(r'[.!?;\n]|그리고|남긴\s+(?:뒤|후)|남겨\s*줘(?:요)?', _QUOTED.sub(' ', text), maxsplit=1)[0]
-    return bool(_SELECTION_NEGATION.search(clause))
+    clause = re.split(r'[.!?;\n]|그리고|남긴\s+(?:뒤|후)', _QUOTED.sub(' ', text), maxsplit=1)[0]
+    negative = _SELECTION_NEGATION.search(clause)
+    affirmative = re.search(r'남겨\s*줘(?:요)?(?![가-힣])', clause)
+    return bool(negative and (not affirmative or negative.start() <= affirmative.start()))
 
 
 def denied_filter_change(text):

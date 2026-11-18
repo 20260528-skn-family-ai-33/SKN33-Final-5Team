@@ -10,7 +10,7 @@ def gmail_collection_notices(result):
     if period:
         notices.append(f"조회 범위: {period['start'][:10]} 하루 ({period['timezone']}). {result['returned_count']}건을 읽었습니다.")
     if result.get('nextPageToken'):
-        notices.append(f"검색 결과가 더 있어 이번 요약에는 최대 {result['requested_count']}건만 포함했습니다. 나머지 메일은 요약하지 않았습니다.")
+        notices.append('검색 결과가 더 있어 조회 한도 밖의 메일은 이번 조회에서 제외했습니다.')
     if result.get('truncated_message_ids'):
         notices.append(f"긴 메일 {len(result['truncated_message_ids'])}건은 본문 앞 {result.get('body_character_limit', 8000):,}자까지만 읽었습니다. 생략된 부분은 요약에 포함하지 않았습니다.")
     if result.get('body_unavailable_message_ids'):

@@ -192,6 +192,101 @@ def test_gmail_verification_expands_budget_without_replaying_reads_or_sending_pa
         assert slack_calls == [('slack.post_message', {'channel_id': CHANNEL, 'text': final_summary})]
 
 
+@pytest.mark.parametrize('read_count,summary_count', [(5, 3), (2, 2), (0, 0)])
+def test_gmail_slack_reports_actual_counts_and_preserves_partial_summary(tmp_path, monkeypatch, read_count, summary_count):
+    from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT
+    from workflow_engine.executors import agent_factory
+
+    workflow = gmail_to_slack_workflow()
+    workflow['nodes'][0]['settings']['arguments_json'] = '{"max_results":5,"query":"is:unread"}'
+    workflow['nodes'][1]['settings']['instructions'] += SUMMARY_CARD_FORMAT
+    ids = [f'm{index}' for index in range(read_count, 0, -1)]
+    shown = ids[::2] if read_count == 5 else ids[:summary_count]
+    gmail_calls, slack_calls, drafts, verification_requests = [], [], [], []
+
+    def cards(identifiers):
+        return '\n\n'.join(
+            f'제목: 제목 {identifier}\n보낸 사람: sender@example.com\n핵심: 확인할 업무 {identifier}'
+            for identifier in identifiers
+        )
+
+    def gmail(operation, args):
+        gmail_calls.append((operation, args))
+        if operation == 'email.list':
+            listing = {'messages': [{'id': identifier} for identifier in ids]}
+            if read_count == 5:
+                listing['nextPageToken'] = 'next'
+            return listing
+        identifier = args['message_id']
+        return message(identifier, f'확인할 업무 {identifier}' if identifier in shown else '행사 홍보 안내')
+
+    def slack(operation, args):
+        slack_calls.append((operation, args))
+        return {'status': 'accepted_by_provider', 'channel_id': CHANNEL, 'ts': '1731477600.000001'}
+
+    def grounded_agent(**options):
+        evidence = options['tools'][0].invoke({})
+        draft = {'text': cards(ids), 'citations': [{'evidence_id': item['evidence_id']} for item in evidence]}
+        drafts.append(draft)
+        return SimpleNamespace(invoke=lambda *args: {'structured_response': draft})
+
+    def verify(messages):
+        verification_requests.append(json.loads(messages[-1]['content']))
+        return {'text': cards(shown), 'citations': []}
+
+    def with_structured_output(schema, *, method, strict):
+        assert method == 'json_schema' and strict
+        return SimpleNamespace(invoke=verify)
+
+    monkeypatch.setattr(agent_factory, 'create_deep_agent', grounded_agent)
+    store, agent_id, _ = saved(tmp_path, workflow)
+    try:
+        store.workflow_connectors = {'gmail': gmail, 'slack': slack}
+        llm = SimpleNamespace(with_structured_output=with_structured_output)
+        run = run_workflow(store, agent_id, '안 읽은 Gmail 5건을 요약해 Slack에 보내줘', '', llm=llm)
+    finally:
+        store.close()
+
+    assert gmail_calls == [('email.list', {'max_results': 5, 'query': 'is:unread'})] + [
+        ('email.get', {'message_id': identifier, 'format': 'full'}) for identifier in ids
+    ]
+    assert run['status'] == 'succeeded', run.get('error')
+    text = run['outputs']['summary']['text']
+    counts = f'메일 처리 결과: 읽음 {read_count}건 · 요약 {summary_count}건 · 누락 {read_count - summary_count}건'
+    assert counts in text
+    assert text in run['answer']
+    assert slack_calls == [('slack.post_message', {'channel_id': CHANNEL, 'text': text})]
+    assert '광고' not in text and '홍보' not in text
+    notice = '검색 결과가 더 있어 조회 한도 밖의 메일은 이번 조회에서 제외했습니다.'
+    assert (notice in text) == (read_count == 5)
+    if ids:
+        assert len(drafts) == len(verification_requests) == 1
+        assert verification_requests[0]['draft'] == drafts[0]
+        assert cards(shown) in text
+        assert all(f'제목: 제목 {identifier}' not in text for identifier in ids if identifier not in shown)
+    else:
+        assert not drafts and not verification_requests
+
+
+def test_gmail_slack_counts_distinct_matches_and_ignores_cards_without_a_summary():
+    from workflow_engine.executors.document.gmail_slack_summary import summarized_mail_ids
+
+    header = '제목: 같은 제목\n보낸 사람: 보낸 이 <sender@example.com>'
+    documents = [
+        {'source_id': 'gmail:first', 'file_name': '같은 제목', 'text': header + '\n\n첫 번째 업무'},
+        {'source_id': 'gmail:second', 'file_name': '같은 제목', 'text': header + '\n\n두 번째 업무'},
+    ]
+    first_card = header + '\n핵심: 첫 번째 업무'
+    duplicate_card = header + '\n핵심: 첫 번째 업무\ncitations=["e1"]'
+    empty_card = header + '\n핵심:\ncitations=["e2"]'
+    unmatched = header.replace('같은 제목', '다른 제목') + '\n핵심: 확인하지 않은 업무'
+
+    text = '\n\n'.join([first_card, duplicate_card, empty_card, unmatched])
+    assert summarized_mail_ids(text, documents) == {'gmail:first'}
+    text += '\n\n**제목:** 같은 제목\n**보낸 사람:** sender@example.com\n**핵심:** 두 번째 업무'
+    assert summarized_mail_ids(text, documents) == {'gmail:first', 'gmail:second'}
+
+
 @pytest.mark.parametrize("change", [
     lambda step: step.update(bindings=[]),
     lambda step: step["settings"].update(arguments_json=json.dumps({"channel_id": CHANNEL, "text": "임의 텍스트"})),

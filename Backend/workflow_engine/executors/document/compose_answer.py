@@ -39,13 +39,30 @@ def execute(node,state,storage,config,llm):
                      and source.get('settings',{}).get('operation')=='read_messages']
     gmail_results = [state['outputs'].get(identifier, {}).get('result', {}) for identifier in gmail_sources]
     from workflow_engine.executors.document.gmail_summary_batches import append_collection_notices
+    from .gmail_slack_summary import append_summary_counts, is_slack_card_summary, summarized_mail_ids
+    show_slack_counts = (bool(gmail_sources) and not reviews
+                         and all(doc.get('parser_engine') == 'gmail' for doc in docs)
+                         and is_slack_card_summary(config, node))
     if not docs:
         if gmail_sources:
             text = append_collection_notices('검색 조건에 맞는 Gmail 메일이 없어 요약할 내용이 없습니다.', gmail_results)
+            if show_slack_counts:
+                text = append_summary_counts(text, 0, 0)
             return answer_result(node,text,[],reviews)
         return answer_result(node,'문서에서 질문과 관련된 근거를 찾지 못했습니다.',[],reviews)
     if any(document.get('parser_engine') == 'gmail' for document in docs):
         from workflow_engine.executors.document.gmail_summary_batches import summarize_all
+        originals = {doc['source_id']: doc for doc in docs} if show_slack_counts else {}
+        summarized = set()
+        summary_node = node
+        if show_slack_counts:
+            from agent_builder.design.gmail_slack import SUMMARY_CARD_FORMAT
+            instructions = settings['instructions'].rstrip()
+            if not instructions.endswith(SUMMARY_CARD_FORMAT):
+                instructions += SUMMARY_CARD_FORMAT
+            instructions += '\n메일별 요약만 작성하세요. 조회·요약 건수와 메일 누락 여부 또는 이유는 시스템이 표시합니다.'
+            summary_node = {**node, 'settings': {**settings, 'instructions': instructions}}
+
         def compose_batch(batch, index, total):
             batch_config = config
             if total > 1:
@@ -53,9 +70,15 @@ def execute(node,state,storage,config,llm):
                     f'\n현재는 전체 {total}개 중 {index}번째 메일 묶음입니다. 이 묶음에 제공된 모든 메일과 본문 구간을 빠짐없이 요약하세요. '
                     '본문 구간이 나뉜 메일은 이 구간의 내용만 요약하고 다른 구간의 내용을 추정하지 마세요. '
                     '메일마다 제목·보낸 사람과 핵심 내용을 구분하세요. 이 묶음 밖의 메일 수나 내용을 추측하지 마세요.'}
-            return _compose_documents(node, state, storage, batch_config, llm, batch, inputs, [])
+            result = _compose_documents(summary_node, state, storage, batch_config, llm, batch, inputs, [])
+            if show_slack_counts:
+                batch_sources = dict.fromkeys(doc['source_id'] for doc in batch)
+                summarized.update(summarized_mail_ids(result['text'], (originals[key] for key in batch_sources)))
+            return result
         result = summarize_all(docs, compose_batch)
         text = append_collection_notices(result['text'], gmail_results)
+        if show_slack_counts:
+            text = append_summary_counts(text, len(originals), len(summarized))
         return answer_result(node, text, result['evidence'], reviews)
     return _compose_documents(node, state, storage, config, llm, docs, inputs, reviews)
 

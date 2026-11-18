@@ -282,6 +282,14 @@ test('standalone server persists and executes workflows, credentials, schedules 
         assert.equal(result.runs.at(-1)?.output[0][0].timezone,'Asia/Seoul');
         const stored = (await server.request('/api/workflows')).data.workflows.find((flow:Flow) => flow.id === scheduled.id) as Flow;
         assert.ok(stored.schedule.nextRunAt > due,'the timer must advance the persisted next execution time');
+        assert.equal(stored.updatedAt,activation.data.workflow.updatedAt,'a timer tick preserves the configuration version');
+        const removed=await server.request('/api/workflows/schedule','POST',{workflowId:scheduled.id,updatedAt:activation.data.workflow.updatedAt,action:'remove'});
+        assert.equal(removed.status,200);
+        assert.match(removed.data.workflow.nodes[0].type,/manualTrigger$/);
+        const staleDesign=await server.request('/api/workflows','POST',{...activation.data.workflow,name:'오래된 설계'});
+        assert.equal(staleDesign.status,409);
+        const unversioned=await server.request('/api/workflows','POST',{...activation.data.workflow,updatedAt:undefined});
+        assert.equal(unversioned.status,409);
         const executions = (await server.request('/api/executions')).data.executions as Execution[];
         assert.equal(executions.filter(matchesFirstDue).length,1);
       } finally {

@@ -5,6 +5,7 @@ import {buildSync} from 'esbuild';
 import {JSDOM} from 'jsdom';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import type {Flow} from '../../shared/workflow';
 const FRONTEND_ROOT=resolve(fileURLToPath(new URL('..',import.meta.url)));
 
 const require=createRequire(new URL('../../package.json',import.meta.url));
@@ -3964,4 +3965,104 @@ test('design composer preserves typing while an attachment is being analyzed',as
   assert.equal(textarea.value,'자료를 요약해 주세요.');
   assert.equal(send.disabled,false);
  }finally{finishUpload(session);await h.close();}
+});
+
+test('external schedule form saves the same weekly, monthly and Cron fields the scheduler reads',async()=>{
+ const {nextRunAt}=await import('../../Backend/api/src/schedule');
+ const fixture=structuredClone(externalScheduleFixture);
+ let flow:Flow={...fixture,nodes:fixture.nodes.map((node,index)=>({...node,typeVersion:index===0?1.2:3.4,position:[node.position[0],node.position[1]],parameters:index===0?{rule:{interval:[{field:'days',triggerAtHour:9,triggerAtMinute:0}]}}:node.parameters}))};
+ const h=await setup('?screen=schedule&external='+flow.id,{},(path,body)=>{
+  if(path==='/api/workflows')return {workflows:[flow]};
+  if(path.startsWith('/api/executions'))return {executions:[]};
+  if(path==='/api/workflows/schedule'){
+   if(body.action==='remove')flow={...flow,nodes:[{...flow.nodes[0],type:'n8n-nodes-base.manualTrigger',parameters:{}},...flow.nodes.slice(1)]};
+   else flow={...flow,nodes:[{...flow.nodes[0],type:'n8n-nodes-base.scheduleTrigger',parameters:{rule:body.rule}},...flow.nodes.slice(1)]};
+   return {workflow:flow};
+  }
+ },createElement(EntryApp));
+ const after=Date.parse('2026-11-16T00:00:00Z');
+ const scheduleField=(label:string)=>document.querySelector<HTMLInputElement>('[aria-label="'+label+'"]')!;
+ const savedRule=()=>h.calls.filter(call=>call.path==='/api/workflows/schedule').at(-1)?.body.rule.interval[0];
+ const save=async(expected:string)=>{
+  await click(button('일정 저장'));
+  assert.equal(new Date(nextRunAt({...flow.nodes[0],typeVersion:1.2},after,'Asia/Seoul')).toISOString(),expected);
+ };
+ try{
+  window.confirm=()=>true;
+  await click(button('예약 삭제'));
+  assert.ok(button('일정 저장'),'default daily rule can be added again after deletion');
+  await chooseSource('반복 주기 1','weeks');
+  const weekday=(day:string)=>Array.from(document.querySelectorAll('.schedule-settings-weekdays label')).find(label=>label.textContent===day)!.querySelector('input')!;
+  await click(weekday('일요일'));await click(weekday('수요일'));
+  await save('2026-11-18T00:00:00.000Z');
+  assert.deepEqual(savedRule().triggerAtDay,[3]);
+  await click(button('일정 수정'));
+  assert.equal(weekday('수요일').checked,true);
+  await click(weekday('수요일'));await click(weekday('금요일'));
+  await save('2026-11-20T00:00:00.000Z');
+  await click(button('일정 수정'));await chooseSource('반복 주기 1','months');
+  await input(scheduleField('실행일 1'),'20');await save('2026-11-20T00:00:00.000Z');
+  assert.equal(savedRule().triggerAtDayOfMonth,20);
+  await click(button('일정 수정'));await chooseSource('반복 주기 1','cronExpression');
+  await input(scheduleField('실행 일정 1'),'7 14 * * *');await save('2026-11-16T05:07:00.000Z');
+  await click(button('일정 수정'));
+  assert.equal(scheduleField('실행 일정 1').value,'7 14 * * *');
+  await input(scheduleField('실행 일정 1'),'8 15 * * *');await save('2026-11-16T06:08:00.000Z');
+  assert.equal(savedRule().customExpression,'8 15 * * *');
+  await click(button('작업 라이브러리'));
+  await click(button('예약 관리'));
+  assert.match(document.querySelector('.schedule-table')?.textContent||'',/Cron 8 15/);
+ }finally{await h.close();}
+});
+
+test('home attachment analysis preserves an edited initial request until manual submit',async()=>{
+ const upload=deferred();
+ const h=await setup('?screen=home',{},(path,body)=>{
+  if(path.endsWith('/sessions'))return {...readySession(),status:'empty',draft:null,resources:[]};
+  if(path.endsWith('/upload'))return upload.promise;
+  if(path.endsWith('/message'))return {...readySession(),messages:[{role:'user',content:body.content}]};
+ },createElement(EntryApp));
+ try{
+  await input(document.querySelector('textarea[aria-label="자동화할 업무"]')!,'원래 요청');
+  const picker=document.querySelector<HTMLInputElement>('.overview-composer input[type=file]')!;
+  Object.defineProperty(picker,'files',{value:[new dom.window.File(['내용'],'문서.txt')]});
+  await act(async()=>picker.dispatchEvent(new dom.window.Event('change',{bubbles:true})));
+  await submit(document.querySelector('.overview-composer')!);
+  await sourceSettles(()=>h.calls.some(call=>call.path.endsWith('/upload')));
+  const composer=()=>document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  assert.equal(composer().disabled,false);
+  await input(composer(),'분석 중 바꾼 요청');
+  await act(async()=>{upload.resolve({...readySession(),revision:2,status:'empty',draft:null,resources:[{id:'file',name:'문서.txt',kind:'document'}]});await tick();});
+  assert.equal(composer().value,'분석 중 바꾼 요청');
+  assert.equal(h.calls.some(call=>call.path.endsWith('/message')),false);
+  await submit(composer().closest('form')!);
+  assert.equal(h.calls.find(call=>call.path.endsWith('/message'))?.body.content,'분석 중 바꾼 요청');
+ }finally{await h.close();}
+});
+
+test('external design keeps its prompt across tabs and rejects an in-flight response from a stale graph',async()=>{
+ const pending=deferred();
+ let saved=structuredClone(externalScheduleFixture);
+ const h=await setup('?screen=workflow&external='+saved.id,{},(path,body)=>{
+  if(path==='/api/workflows')return {workflows:[saved]};
+  if(path.startsWith('/api/executions'))return {executions:[]};
+  if(path==='/api/assistant/sessions')return {id:'external-chat',revision:0,conversation:[]};
+  if(path==='/api/assistant/sessions/external-chat'&&body)return pending.promise;
+ },createElement(EntryApp));
+ try{
+  const composer=()=>document.querySelector<HTMLTextAreaElement>('textarea[aria-label="업무 설명"]')!;
+  const tab=(label:string)=>Array.from(document.querySelectorAll('nav[aria-label="워크플로우 작업"] button')).find(item=>item.textContent===label)!;
+  await input(composer(),'보고서 제목 바꾸기');
+  await click(tab('실행'));await click(tab('설계'));
+  assert.equal(composer().value,'보고서 제목 바꾸기');
+  const previous=saved;
+  await submit(composer().closest('form')!);
+  await click(tab('실행'));
+  saved={...saved,updatedAt:'2026-11-18T01:00:00Z',nodes:[{...saved.nodes[0],type:'n8n-nodes-base.manualTrigger',parameters:{}},...saved.nodes.slice(1)]};
+  await act(async()=>{pending.resolve({id:'external-chat',revision:1,conversation:[],result:{workflow:previous,summary:'초안',checklist:[]}});await tick();});
+  assert.equal(tab('실행').getAttribute('aria-current'),'page');
+  await click(tab('설계'));
+  assert.match(document.querySelector('.studio-assistant [role=alert]')?.textContent||'',/다른 화면에서 변경/);
+  assert.equal(button('저장').disabled,true);
+ }finally{await h.close();}
 });

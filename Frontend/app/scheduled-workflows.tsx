@@ -23,15 +23,29 @@ function statusOf({agent,schedule}:ScheduledWorkflow):Status {
  return schedule.active?'active':'paused';
 }
 function externalScheduleDescription(flow:ExternalFlow):string {
- const rule=flow.nodes.find(node=>!node.disabled&&node.type.endsWith('.scheduleTrigger'))?.parameters?.rule?.interval?.[0];
- if(!rule)return '일정 설정 필요';
- const time=String(rule.triggerAtHour??9).padStart(2,'0')+':'+String(rule.triggerAtMinute??0).padStart(2,'0');
- if(rule.field==='days')return '매일 '+time;
- if(rule.field==='weeks')return '매주 '+(rule.triggerAtDayOfWeek||[]).map((day:number)=>['일','월','화','수','목','금','토'][day]+'요일').join(' · ')+' '+time;
- if(rule.field==='months')return '매월 '+(rule.triggerAtDay??1)+'일 '+time;
- if(rule.field==='cronExpression')return 'Cron '+(rule.expression||'설정 확인 필요');
- if(rule.field==='seconds'||rule.field==='minutes'||rule.field==='hours')return (rule[`${rule.field}Interval` as 'secondsInterval'|'minutesInterval'|'hoursInterval']??1)+({seconds:'초',minutes:'분',hours:'시간'}[rule.field as 'seconds'|'minutes'|'hours']||'')+'마다';
- return '일정 설정 필요';
+ const trigger=flow.nodes.find(node=>!node.disabled&&node.type.endsWith('.scheduleTrigger'));
+ const rules=trigger?.parameters.rule?.interval;
+ if(!Array.isArray(rules)||!rules.length)return '일정 설정 필요';
+ const days=['일','월','화','수','목','금','토'];
+ return rules.map(rule=>{
+  if(!rule||typeof rule!=='object')return '일정 설정 필요';
+  const time=String(rule.triggerAtHour??0).padStart(2,'0')+':'+String(rule.triggerAtMinute??0).padStart(2,'0');
+  const every=(interval:number,label:string,single:string)=>Number(interval)===1?single:interval+label+'마다';
+  switch(rule.field??'days'){
+   case 'days':return every(rule.daysInterval??1,'일','매일')+' '+time;
+   case 'weeks':{
+    const weekdays=rule.triggerAtDay===undefined?[0]:rule.triggerAtDay;
+    if(!Array.isArray(weekdays)||!weekdays.length||weekdays.some(day=>!days[Number(day)]))return '일정 설정 필요';
+    return every(rule.weeksInterval??1,'주','매주')+' '+weekdays.map(day=>days[Number(day)]+'요일').join(' · ')+' '+time;
+   }
+   case 'months':return every(rule.monthsInterval??1,'개월','매월')+' '+(rule.triggerAtDayOfMonth??1)+'일 '+time;
+   case 'cronExpression':return 'Cron '+(rule.customExpression??rule.expression??trigger?.parameters.customExpression??'설정 확인 필요');
+   case 'seconds':return (rule.secondsInterval??30)+'초마다';
+   case 'minutes':return (rule.minutesInterval??5)+'분마다';
+   case 'hours':return (rule.hoursInterval??1)+'시간마다'+(rule.triggerAtMinute===undefined?'':' '+rule.triggerAtMinute+'분');
+   default:return '일정 설정 필요';
+  }
+ }).join(' / ');
 }
 function formatNextAt(value:string|number|undefined):string {
  const date=new Date(value??NaN);

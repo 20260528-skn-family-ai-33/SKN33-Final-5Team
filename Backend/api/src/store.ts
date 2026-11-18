@@ -37,7 +37,11 @@ export class Store {
  saveAssistantSession(value:any,revision:number){const prior=this.getAssistantSession(value.id);if(prior.revision!==revision)throw new Error('대화가 변경됐어요. 다시 열고 확인해주세요.');value.revision=revision+1;const update=this.db.prepare('UPDATE assistant_sessions SET json=? WHERE id=? AND json=?').run(JSON.stringify(value),value.id,JSON.stringify(prior));if(!update.changes)throw new Error('대화가 변경됐어요.');return value;}
  listFlows():Flow[] {return this.db.prepare('SELECT json FROM flows ORDER BY updated_at DESC').all().map(row=>JSON.parse(String(row.json)));}
  getFlow(id:string):Flow|undefined {const row=this.db.prepare('SELECT json FROM flows WHERE id=?').get(id);return row?JSON.parse(String(row.json)):undefined;}
- saveFlow(value:Flow):Flow {const flow={...validateFlow(clone(value)),updatedAt:new Date().toISOString()};this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at').run(flow.id,JSON.stringify(flow),flow.updatedAt);return flow;}
+ saveFlow(value:Flow):Flow {const previous=Date.parse(this.getFlow(value.id)?.updatedAt??'');const updatedAt=new Date(Math.max(Date.now(),Number.isFinite(previous)?previous+1:0)).toISOString();const flow={...validateFlow(clone(value)),updatedAt};this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at').run(flow.id,JSON.stringify(flow),flow.updatedAt);return flow;}
+ advanceSchedule(id:string,version:string|undefined,nextRunAt:number){
+  if(!version)return;
+  this.db.prepare("UPDATE flows SET json=json_set(json,'$.schedule.nextRunAt',?) WHERE id=? AND updated_at=? AND json_extract(json,'$.active')=1 AND json_type(json,'$.schedule')='object'").run(nextRunAt,id,version);
+ }
  deleteFlow(id:string):boolean {
   const active=this.db.prepare("SELECT 1 FROM executions WHERE workflow_id=? AND json_extract(json,'$.status') IN ('queued','running','waiting') LIMIT 1").get(id);
   if(active)throw new Error('실행 중인 워크플로우는 완료한 뒤 삭제하세요.');

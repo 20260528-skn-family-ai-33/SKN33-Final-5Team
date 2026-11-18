@@ -21,8 +21,11 @@ def confirmed_filter_groups(state):
     """The same explicit predicates used by requirement ownership and row-lineage proof."""
     from agent_builder.conditions.condition_readiness import literal_compound_filter
     compound = literal_compound_filter(state)
-    if not compound:
-        return []
+    return filter_groups(state, compound) if compound else []
+
+
+def filter_groups(state, compound):
+    """Build the ordered selection stages for a given compound relation."""
     mode, rules = compound
     extra = [predicate for _, predicate in additional_row_predicates(state, None)]
     if mode == 'all':

@@ -39,16 +39,12 @@ def _filter_issues(state, draft, compound):
     required = [(r, guarantees_filter) for r in literal_numeric_filters(state)]
     required += [(r, contains_alternative) for r in literal_or_filters(state)]
     if compound:
-        from .condition_requirements import additional_row_predicates
+        from .condition_requirements import filter_groups
         from .filter_path_proof import filter_path_issues
         try:
-            extra = [predicate for _, predicate in additional_row_predicates(state, None)]
+            groups = filter_groups(state, compound)
         except ValueError as error:
             return [str(error)]
-        mode, rules = compound
-        groups = [dict(match=mode, filters=rules)]
-        if extra:
-            groups.append(dict(match='all', filters=extra))
         return filter_path_issues(state, draft, groups)
 
     if not required:
@@ -59,6 +55,7 @@ def _filter_issues(state, draft, compound):
     from .workflow_paths import workflow_paths
     from .content_lineage import content_bindings
     from .requirement_coverage import _arguments
+    from .filter_path_proof import filter_result_endpoints
     nodes = {n['id']: n for n in draft['workflow']['nodes']}
 
     def proven(identifier, output, rule, check, active, seen):
@@ -95,9 +92,9 @@ def _filter_issues(state, draft, compound):
         checked_outputs = 0
         for path, _ in workflow_paths(draft['workflow']):
             active = {n['id'] for n in path}
-            endpoints = [(node, None) for node in path if node['tool'] in ('write_result', 'export_result')]
+            endpoints, artifact_emitted = filter_result_endpoints(state, draft['workflow'], path)
+            checked_outputs += artifact_emitted
             for node, output in endpoints:
-                checked_outputs += 1
                 if any(not proven(node['id'], output, rule, check, active, set()) for rule, check in required):
                     return error
         return [] if checked_outputs else error

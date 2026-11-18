@@ -406,10 +406,11 @@ def test_boolean_keyword_does_not_change_an_already_confirmed_relation(answer):
     assert compound_filter_state(compound_state(BASE, answer))['mode'] == 'all'
 
 
-def path_state(match='any', *, missing_policy='error'):
-    policy_label = {'error': '오류', 'keep': '유지'}[missing_policy]
+def path_state(match='any', *, missing_policy='error', extra_columns=()):
+    policy_label = {'error': '오류', 'keep': '유지', 'exclude': '제외'}[missing_policy]
     selection = '비용이 10원 미만이거나 수량이 3개 미만인 행' if match == 'any' else '비용이 10원 이상이고 수량이 3개 이상인 행'
     s = compound_state(selection + f'을 JSON으로 저장해줘. 빈 값은 {policy_label}, 중복은 유지해.')
+    s['resources'][0]['columns'].extend(extra_columns)
     values = {**PARTIAL, 'output.format': ('json', 'JSON'), 'missing.policy': (missing_policy, policy_label),
               'duplicate.policy': ('keep', '유지')}
     return generate(seal(s, values))
@@ -448,7 +449,7 @@ def test_or_cannot_lose_an_alternative_in_another_filter_stage(tmp_path, positio
 def test_filter_path_equivalence_matches_exhaustive_boolean_oracle(match):
     from itertools import product
     from agent_builder.design.numeric_filter_proof import numeric_filter_issues
-    s=path_state(match);rules=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']['filters']
+    s=path_state(match, missing_policy='keep');rules=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']['filters']
     # All nonempty subsets, both connectives, every chain of 1..3 stages.
     variants=[dict(filters=[rules[i] for i in subset],match=mode) for subset in [(0,),(1,),(0,1)] for mode in ('all','any')]
     def accepts(plan, truth):
@@ -465,8 +466,59 @@ def test_filter_path_equivalence_matches_exhaustive_boolean_oracle(match):
     assert count==258
 
 
+@pytest.mark.parametrize('missing_policy', ['keep', 'exclude'])
+@pytest.mark.parametrize('match', ['all', 'any'])
+@pytest.mark.parametrize('operand', ['literal', 'column', 'is_empty'])
+def test_approved_filter_chains_preserve_runtime_rows_with_missing_values(missing_policy, match, operand):
+    from itertools import product
+
+    from agent_builder.design.filter_path_proof import filter_path_issues
+    from tests.conditions.test_clarification_choices import filter_draft
+    from workflow_engine.executors.legacy_tools.filter_sort import filter_sort_node
+
+    left = dict(field='비용', operator='lt', value=10, compare_field=None, value_type='number')
+    right = dict(field='수량', operator='lt', value=3, compare_field=None, value_type='number')
+    if operand == 'column':
+        right.update(value=None, compare_field='한도')
+    elif operand == 'is_empty':
+        right.update(operator='is_empty', value=None)
+    note = dict(field='비고', operator='eq', value='메모', compare_field=None, value_type='text')
+    columns = ['번호', '비용', '수량', '한도', '비고']
+    rows = [dict(번호=index, 비용=cost, 수량=quantity, 한도=limit, 비고=remark)
+            for index, (cost, quantity, limit, remark) in enumerate(product(
+                (None, 1, 20), (None, 1, 20), (None, 3), (None, '메모', '다른 메모')))]
+    state = compound_state('비용과 수량으로 행을 선별하고 JSON으로 저장해줘.')
+    state['resources'][0]['columns'] = columns
+    state['condition_ledger'] = {'slots': {'missing.policy': {'status': 'specified', 'value': missing_policy}}}
+    state['draft'] = filter_draft(state, [left, right], match)
+
+    selected = dict(filters=[left, right], match=match, missing_policy=missing_policy)
+    variants = [dict(filters=list(rules), match=mode, missing_policy=missing_policy)
+                for rules in ((), (left,), (right,), (left, right), (left, right, note))
+                for mode in ('all', 'any')]
+    variants.append(dict(selected, sort=[dict(field='비고', direction='ascending', value_type='text')]))
+
+    def retained(chains):
+        context = {'rows': rows, 'columns': columns, 'trace': []}
+        for plan in chains:
+            filter_sort_node(context, plan['filters'], plan.get('sort', []),
+                             match=plan['match'], missing_policy=plan['missing_policy'])
+        return {row['번호'] for row in context['rows']}
+
+    expected = retained([selected])
+    for chain in ([selected], [selected, selected]):
+        candidate = with_filter_chain(state, chain)
+        assert not filter_path_issues(candidate, candidate['draft'], [selected])
+
+    for length in (1, 2):
+        for chain in product(variants, repeat=length):
+            candidate = with_filter_chain(state, chain)
+            if not filter_path_issues(candidate, candidate['draft'], [selected]):
+                assert retained(chain) == expected, chain
+
+
 @pytest.mark.parametrize(('match','shape'),[('all','repeat'),('any','repeat'),('all','redundant-or')])
-@pytest.mark.parametrize('missing_policy', ['error', 'keep'])
+@pytest.mark.parametrize('missing_policy', ['error', 'keep', 'exclude'])
 def test_equivalent_sequential_graphs_store_and_export_exact_rows(tmp_path, match, shape, missing_policy):
     s=path_state(match, missing_policy=missing_policy);plan=s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
     if shape=='split':plans=[dict(filters=[r],match='all') for r in plan['filters']]
@@ -506,6 +558,95 @@ def test_keep_policy_cannot_discard_all_missing_alternatives_through_an_extra_st
         saved = store.save_agent(s)
         result = run_workflow(store, saved, '실행', '', file_ids=[asset['id']])
         assert result['status'] == 'succeeded' and result['rows'] == [matching, ordinary]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('mutation', ['policy-only', 'extra-sort'])
+def test_exclude_policy_checks_only_the_requested_filter_columns(tmp_path, mutation):
+    import json
+
+    s = path_state(missing_policy='exclude', extra_columns=['비고'])
+    plan = s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+    if mutation == 'policy-only':
+        changed = with_filter_chain(s, [dict(plan, filters=[], sort=[]), plan])
+    else:
+        sort = [dict(field='비고', direction='ascending', value_type='text')]
+        changed = with_filter_chain(s, [dict(plan, sort=sort)])
+    assert validate_node(changed)['status'] != 'ready'
+    matching = dict(비용=15, 수량=1, 할인=0, 비고=None)
+    ordinary = dict(비용=5, 수량=4, 할인=0, 비고='기록 있음')
+    not_matching = dict(비용=15, 수량=4, 할인=0, 비고='기록 있음')
+    asset = s['resources'][0]
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [matching, ordinary, not_matching])
+        with pytest.raises(ValueError):
+            store.save_agent(changed)
+        result = run_workflow(store, store.save_agent(s), '실행', '', file_ids=[asset['id']])
+        assert result['status'] == 'succeeded'
+        assert json.loads(result['artifact']['content']) == [matching, ordinary]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('requirement_required', [False, True])
+def test_requested_sort_column_can_extend_the_exclude_policy(tmp_path, requirement_required):
+    import json
+
+    s = path_state(missing_policy='exclude', extra_columns=['비고'])
+    s['messages'].append(dict(role='user', content='결과를 비고 기준으로 오름차순 정렬해줘.'))
+    values = {**PARTIAL, 'output.format': ('json', 'JSON'), 'missing.policy': ('exclude', '제외'),
+              'duplicate.policy': ('keep', '유지')}
+    seal(s, values)
+    sort = [dict(field='비고', direction='ascending', value_type='text')]
+    raw = packet(dict(kind='sort', sort=sort), dict(kind='export', format='json'))
+    raw['tasks'][0]['source_message'] = 1
+    requirements = extract_plan(raw, s)
+    s.update(requirement_required=requirement_required, requirement_ledger=requirements,
+             requirement_fingerprint=ledger_fingerprint(s), requirement_digest=plan_digest(requirements))
+    plan = s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+    ready = with_filter_chain(s, [dict(plan, sort=sort)])
+    checked = validate_node(ready)
+    assert checked['status'] == 'ready', checked['issues']
+    missing = dict(비용=15, 수량=1, 할인=0, 비고=None)
+    first = dict(비용=5, 수량=4, 할인=0, 비고='A')
+    last = dict(비용=15, 수량=2, 할인=0, 비고='B')
+    asset = s['resources'][0]
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [missing, last, first])
+        result = run_workflow(store, store.save_agent(ready), '실행', '', file_ids=[asset['id']])
+        assert result['status'] == 'succeeded'
+        assert json.loads(result['artifact']['content']) == [first, last]
+    finally:
+        store.close()
+
+
+def test_policy_only_exclude_cannot_use_the_design_files_columns_to_prove_runtime_scope(tmp_path):
+    import json
+
+    s = compound_state('비용이 10원 미만이거나 수량이 3개 미만인 행을 JSON으로 저장해줘. 빈 값은 제외, 중복은 유지해.')
+    asset = s['resources'][0]
+    asset['columns'] = ['비용', '수량']
+    values = {**PARTIAL, 'output.format': ('json', 'JSON'), 'missing.policy': ('exclude', '제외'),
+              'duplicate.policy': ('keep', '유지')}
+    s = generate(seal(s, values))
+    plan = s['draft']['workflow']['nodes'][1]['settings']['execution_plan']
+    changed = with_filter_chain(s, [dict(plan, filters=[], sort=[]), plan])
+    assert validate_node(changed)['status'] != 'ready'
+
+    matching = [dict(비용=15, 수량=1, 비고=None), dict(비용=5, 수량=4, 비고='기록 있음')]
+    replacement = dict(asset, id='replacement', name='추가 열.csv', columns=['비용', '수량', '비고'])
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [{field: row[field] for field in asset['columns']} for row in matching])
+        store.add_asset(replacement, matching)
+        with pytest.raises(ValueError):
+            store.save_agent(changed)
+        result = run_workflow(store, store.save_agent(s), '실행', '', file_ids=[replacement['id']])
+        assert result['status'] == 'succeeded'
+        assert json.loads(result['artifact']['content']) == matching
     finally:
         store.close()
 

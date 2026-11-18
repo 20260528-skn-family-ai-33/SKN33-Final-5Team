@@ -749,3 +749,208 @@ def test_duplicate_policy_follows_its_renamed_logical_key(monkeypatch, tmp_path,
     if duplicate == 'error':
         with pytest.raises(ValueError, match='중복'):
             execute_artifact(state, tmp_path, [rows[0], rows[0]])
+
+
+def _compound_preview_state(save_file=True):
+    from agent_builder.design.condition_templates import compile_conditions
+    from tests.conditions.test_clarification_choices import BASE, PARTIAL, compound_state, judge
+
+    request = BASE if save_file else '비용이 10원 이상이고 수량이 3개 이상인 행만 남겨줘'
+    request += '. 빈 값은 오류, 중복은 유지해.'
+    s = compound_state(request)
+    asset = s['resources'][0]
+    asset.update(format='csv', profile={field: {'types': ['number']} for field in asset['columns']})
+    values = {**PARTIAL, 'missing.policy': ('error', '오류'), 'duplicate.policy': ('keep', '유지')}
+    if save_file:
+        values['output.format'] = ('json', 'JSON')
+    ledger = judge(s, values)
+    assert ledger['decision'] == 'ready', ledger['questions']
+    s.update(condition_ledger=ledger, condition_required=True, condition_enforced=True)
+    s.update(compile_conditions(s), status='ready', confirmed=True)
+    return s, asset
+
+
+_PREVIEW_ROWS = [dict(비용=15, 수량=4, 할인=0), dict(비용=15, 수량=1, 할인=0), dict(비용=5, 수량=4, 할인=0)]
+
+
+@pytest.mark.parametrize('preview_source', ['read', 'apply', None])
+def test_the_displayed_rows_follow_the_same_filter_as_the_saved_artifact(monkeypatch, tmp_path, preview_source):
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.runner import run_workflow
+
+    monkeypatch.setenv('A4B_REQUIREMENT_MODE', 'off')
+    s, asset = _compound_preview_state()
+    nodes = s['draft']['workflow']['nodes']
+    if preview_source:
+        neutral = {**s['draft']['execution_plan'], 'filters': []}
+        nodes.append(node('preview', 'filter_sort', preview_source, execution_plan=neutral))
+    done = node('done', 'finish')
+    done['bindings'] = [binding('artifact', 'output', 'artifact')]
+    set_nodes(s, [*nodes, done])
+    rows = _PREVIEW_ROWS
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, rows)
+        validation = validate_node(s)
+        if preview_source == 'read':
+            # A previously saved draft can still execute. Its artifact is correct,
+            # but the API previews the raw table from the later node.
+            snapshot = dict(config=s['draft'], version=1, model=s['model'], credential_id=s['credential_id'])
+            run = run_workflow(store, 'prior-draft', '실행', '', file_ids=[asset['id']], agent_snapshot=snapshot)
+            assert run['status'] == 'succeeded', run.get('error')
+            assert json.loads(run['artifact']['content']) == rows[:1]
+            assert run['rows'] == rows
+            assert validation['status'] != 'ready'
+            with pytest.raises(ValueError, match='선별|확정 업무 조건'):
+                store.save_agent(s)
+        else:
+            assert validation['status'] == 'ready', validation['issues']
+            run = run_workflow(store, store.save_agent(s), '실행', '', file_ids=[asset['id']])
+            assert run['status'] == 'succeeded', run.get('error')
+            assert run['rows'] == json.loads(run['artifact']['content']) == rows[:1]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('preview_source', ['read', 'apply'])
+def test_single_numeric_filter_also_checks_rows_displayed_after_export(preview_source):
+    from agent_builder.design.numeric_filter_proof import numeric_filter_issues
+
+    filters = [dict(field='qty', operator='gte', value=10, compare_field=None, value_type='number')]
+    s = configured(dict(selection=filters))
+    neutral = s['draft']['execution_plan']
+    set_nodes(s, [
+        node('read', 'read_table', file_ids=['source']),
+        node('apply', 'filter_sort', 'read', execution_plan={**neutral, 'filters': filters}),
+        node('output', 'write_result', 'apply', format='json'),
+        node('preview', 'filter_sort', preview_source, execution_plan=neutral),
+    ])
+    assert bool(numeric_filter_issues(s, s['draft'])) == (preview_source == 'read')
+
+
+@pytest.mark.parametrize('read_first', [True, False])
+def test_no_file_branch_only_passes_without_unfiltered_displayed_rows(monkeypatch, tmp_path, read_first):
+    from agent_builder.design.nodes.save import make_save_node
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.runner import run_workflow
+
+    monkeypatch.setenv('A4B_REQUIREMENT_MODE', 'off')
+    s, asset = _compound_preview_state()
+    s.update(condition_required=False, condition_enforced=False)  # General designs can branch.
+    read, apply, output = s['draft']['workflow']['nodes']
+    gate = node('gate', 'condition', 'read' if read_first else None, condition_operator='semantic',
+                instructions='안내만 필요한 경우 결과 파일을 만들지 않습니다.')
+    notice = node('notice', 'finish', instructions='안내를 표시하고 종료합니다.')
+    edges = [('read', 'gate', 'next'), ('gate', 'apply', 'no')] if read_first else [
+        ('gate', 'read', 'no'), ('read', 'apply', 'next')]
+    edges.extend([('gate', 'notice', 'yes'), ('apply', 'output', 'next')])
+    nodes = [read, gate, apply, output, notice] if read_first else [gate, read, apply, output, notice]
+    set_nodes(s, nodes)
+    workflow = s['draft']['workflow']
+    workflow['edges'] = [dict(source=source, target=target, branch=branch) for source, target, branch in edges]
+
+    class BranchDecision:
+        def __init__(self, decision):
+            self.decision = decision
+
+        def with_structured_output(self, *_args, **_kwargs):
+            return self
+
+        def invoke(self, *_args, **_kwargs):
+            return SimpleNamespace(decision=self.decision, reason='테스트 분기')
+
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, _PREVIEW_ROWS)
+        validation = validate_node(s)
+        assert (validation['status'] == 'ready') is not read_first, validation['issues']
+        snapshot = dict(config=s['draft'], version=1, model=s['model'], credential_id=s['credential_id'])
+        withdrawn = run_workflow(store, 'prior-draft', '안내', '', file_ids=[asset['id']],
+                                 agent_snapshot=snapshot, llm=BranchDecision(True))
+        assert withdrawn['status'] == 'succeeded', withdrawn.get('error')
+        assert withdrawn['artifact'] is None
+        assert withdrawn['rows'] == (_PREVIEW_ROWS if read_first else [])
+        if read_first:
+            with pytest.raises(ValueError, match='확인·검증'):
+                make_save_node(store)(s)
+        else:
+            saved_id = make_save_node(store)(s)['saved_agent_id']
+            saved = run_workflow(store, saved_id, '실행', '', file_ids=[asset['id']], llm=BranchDecision(False))
+            assert saved['status'] == 'succeeded', saved.get('error')
+            assert saved['rows'] == json.loads(saved['artifact']['content']) == _PREVIEW_ROWS[:1]
+    finally:
+        store.close()
+
+
+def test_preview_only_filter_with_terminal_notice_can_be_validated_saved_and_run(monkeypatch, tmp_path):
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.runner import run_workflow
+
+    monkeypatch.setenv('A4B_REQUIREMENT_MODE', 'off')
+    s, asset = _compound_preview_state(save_file=False)
+    read, apply = s['draft']['workflow']['nodes']
+    set_nodes(s, [read, apply, node('done', 'finish', instructions='조건에 맞는 행을 정리했습니다.')])
+    checked = validate_node(s)
+    assert checked['status'] == 'ready', checked['issues']
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, _PREVIEW_ROWS)
+        run = run_workflow(store, store.save_agent(s), '실행', '', file_ids=[asset['id']])
+        assert run['status'] == 'succeeded', run.get('error')
+        assert run['artifact'] is None and run['rows'] == _PREVIEW_ROWS[:1]
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('json_requested', [True, False])
+def test_downloaded_workbook_must_match_the_filter_and_requested_format(monkeypatch, tmp_path, json_requested):
+    import base64
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    from agent_builder.design.nodes.save import make_save_node
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.runner import run_workflow
+
+    monkeypatch.setenv('A4B_REQUIREMENT_MODE', 'off')
+    s, asset = _compound_preview_state(save_file=json_requested)
+    s.update(condition_required=False, condition_enforced=False)
+    nodes = s['draft']['workflow']['nodes']
+    source = 'read' if json_requested else 'apply'
+    workbook = operation('sheet', 'create_spreadsheet', [binding('sheet_data', source, 'table')],
+                         'create', sheets=[dict(name='결과', table={'$binding': 'sheet_data'})])
+    done = node('done', 'finish')
+    done['bindings'] = [binding('artifact', 'sheet', 'artifact')]
+    set_nodes(s, [*nodes, workbook, done])
+    if not json_requested:
+        s['messages'][0]['content'] += ' 결과를 XLSX로 저장해줘.'
+        s['draft']['execution_plan']['output_format'] = 'xlsx'
+    else:
+        # A guessed export task may not override the user's literal JSON request.
+        s['requirement_ledger'] = dict(tasks=[dict(spec=dict(kind='export', format='xlsx'))])
+
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, _PREVIEW_ROWS)
+        checked = validate_node(s)
+        assert (checked['status'] == 'ready') is not json_requested, checked['issues']
+        if json_requested:
+            with pytest.raises(ValueError, match='확인·검증'):
+                make_save_node(store)(s)
+            snapshot = dict(config=s['draft'], version=1, model=s['model'], credential_id=s['credential_id'])
+            run = run_workflow(store, 'prior-draft', '실행', '', file_ids=[asset['id']], agent_snapshot=snapshot)
+        else:
+            saved_id = make_save_node(store)(s)['saved_agent_id']
+            run = run_workflow(store, saved_id, '실행', '', file_ids=[asset['id']])
+        assert run['status'] == 'succeeded', run.get('error')
+        assert run['artifact']['name'].endswith('.xlsx')
+        actual = load_workbook(BytesIO(base64.b64decode(run['artifact']['content'])), read_only=True)
+        try:
+            saved_rows = list(actual['결과'].values)[1:]
+            requested_rows = _PREVIEW_ROWS if json_requested else _PREVIEW_ROWS[:1]
+            assert saved_rows == [tuple(row.values()) for row in requested_rows]
+            assert run['rows'] == _PREVIEW_ROWS[:1]
+        finally:
+            actual.close()
+    finally:
+        store.close()

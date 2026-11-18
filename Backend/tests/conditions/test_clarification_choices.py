@@ -501,8 +501,11 @@ def test_branch_that_returns_no_rows_does_not_block_a_complete_compound_filter()
     _, rules = literal_compound_filter(s)
     for filters, blocked in ((rules, False), (rules[:1], True)):
         draft = filter_draft(s, filters, 'all')
+        draft['workflow']['entry'] = 'gate'
+        draft['workflow']['nodes'].append(node('gate', 'condition', [], condition_operator='semantic',
+                                              instructions='안내만 필요한지 먼저 판단합니다.'))
         draft['workflow']['nodes'].append(node('notice', 'finish', []))
-        draft['workflow']['edges'].append(edge('read', 'notice'))
+        draft['workflow']['edges'].extend([edge('gate', 'notice', 'yes'), edge('gate', 'read', 'no')])
         assert bool(numeric_filter_issues(s, draft)) == blocked
 
 

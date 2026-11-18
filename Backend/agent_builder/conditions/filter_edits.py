@@ -17,16 +17,19 @@ def in_metadata_text(text, position):
     return bool(_METADATA_LABEL.search(prefix))
 
 _CLEAR_DENIED = re.compile(
-    r'\s*+(?:(?:하지|하진|는)?\s*+(?:말|마|않|안)'
+    r'\s*+(?:를\s*)?(?:(?:하지|하진|는)?\s*+(?:말|마|않|안)'
     r'|(?:하(?:시)?면|해서는|해선)\s*+안\s*+(?:돼|되|됩)'
     r'|할\s*+필요(?:가|는)?\s*+없'
     r'|(?:하는\s*+(?:건|것(?:은|을|도)?|걸)|하기는|는)\s*+(?:하지\s*+)?(?:말|마|않|안))')
 _CLEAR_UNCERTAIN = re.compile(r'\s*+(?:할지|하는지|해도|할까|인지|여부)')
 
 
-def addition_intent(text):
+def addition_intent(text, position=None):
     """An explicit addition never means replacement; denied/uncertain edits are distinct."""
-    text = _QUOTED.sub(' ', text)
+    text = _QUOTED.sub(lambda match: ' ' * len(match.group()), text)
+    if position is not None:
+        prefix = re.split(r'[.;!?\n]|(?<=하고)\s', text[:position])[-1]
+        text = prefix + re.split(r'[.;!?\n]', text[position:], maxsplit=1)[0]
     edits = [match for match in re.finditer('추가', text) if not in_metadata_text(text, match.start())]
     tail = text[edits[-1].start():] if edits else ''
     if re.search(r'대신|교체|새\s*+조건만', tail):
@@ -89,7 +92,9 @@ def filter_edit_events(text, fields, *, numeric_fields=()):
     listed_operand = re.compile(r'(?P<field>' + name + ')' + column_marker + r'(?:' + _FILTER_OBJECT + r')?')
     events = []
     previous = 0
-    actions = list(_EDIT_ACTION.finditer(text))
+    column_spans = list(re.finditer(name, text))
+    actions = [action for action in _EDIT_ACTION.finditer(text)
+               if not any(column.start() <= action.start() < column.end() for column in column_spans)]
     for index, action in enumerate(actions):
         if in_quoted_text(text, action.start()) or in_metadata_text(text, action.start()):
             continue
@@ -100,7 +105,7 @@ def filter_edit_events(text, fields, *, numeric_fields=()):
             prefix = _EDIT_CONTINUATION.sub('', prefix)
         prefix = _SUBJECT_INTRO.sub('', prefix)
         start = action.start() - len(prefix)
-        previous = action.end()
+        prefix = re.sub(r'^\s*(?:첨부(?:한)?|연결(?:한)?|현재)\s*(?:표|자료|파일|문서)(?:에서|의)\s*', '', prefix)
         scoped = _EDIT_SCOPE.fullmatch(prefix)
         bare = bare_names.fullmatch(prefix)
         verb = action.group()
@@ -114,6 +119,7 @@ def filter_edit_events(text, fields, *, numeric_fields=()):
             targets, scope = fields, 'unresolved'
         else:
             continue  # File/column deletion is owned by another operation.
+        previous = action.end()
         tail_end = actions[index + 1].start() if index + 1 < len(actions) else len(text)
         tail = re.split(r'[.!?;\n]|그리고|하고', text[action.end():tail_end])[0]
         denied = _CLEAR_DENIED.match(tail)
@@ -169,3 +175,21 @@ def filter_clauses(text):
         yield start, text[start:match.start()]
         start = match.end()
     yield start, text[start:]
+
+
+_SELECTION_NEGATION = re.compile(
+    r'(?:남기|남겨|고르|골라|선별하|선별해|포함하|포함해|제외하|제외해|삭제하|삭제해)'
+    r'(?:\s*(?:지|진)\s*(?:는|도)?\s*(?:말|마|않|안)|\s*고\s*싶지\s*않|\s*(?:면|서는|선)\s*안\s*(?:돼|되))')
+
+
+def selection_action_uncertain(text):
+    """Negating selection does not authorize the positive predicate or its complement."""
+    clause = re.split(r'[.!?;\n]|그리고|남긴\s+(?:뒤|후)|남겨\s*줘(?:요)?', _QUOTED.sub(' ', text), maxsplit=1)[0]
+    return bool(_SELECTION_NEGATION.search(clause))
+
+
+def denied_filter_change(text):
+    changes = list(re.finditer(r'바꿔|바꾸|변경|수정', text))
+    return bool(changes) and all(re.match(
+        r'\s*(?:을|를|은|는)?\s*(?:(?:하)?(?:지|진)\s*(?:는|도)?\s*(?:말|마|않|안)|(?:하)?면\s*안|(?:할\s*)?필요(?:가|는)?\s*없)',
+        text[match.end():]) for match in changes)

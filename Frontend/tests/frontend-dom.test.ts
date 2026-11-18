@@ -835,7 +835,8 @@ for(const pending of [false,true])test('DOM: native document table selection is 
   await click(groups[1].querySelector('button')!);
   const messages=h.calls.filter(c=>c.path.endsWith('/message'));
   assert.equal(messages.length,1);
-  assert.equal(messages[0].body.questionId,question.id);
+  assert.equal(messages[0].body.questionId,undefined);
+  assert.deepEqual(messages[0].body.answers,[{questionId:question.id,value:JSON.stringify({document_selection:{file_id:'pdf',block_id:'table-1',fields:columns}})}]);
   assert.equal(messages[0].body.content,'Slack 내역.pdf에서 「표 2」의 품명, 「표 2」의 실입고 항목을 추출해 주세요.');
   assert.equal(h.calls.some(c=>c.path==='/api/workflows/from-request'),false);
   assert.equal(card.querySelector('fieldset'),null);

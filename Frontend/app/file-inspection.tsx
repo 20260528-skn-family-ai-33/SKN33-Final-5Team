@@ -20,10 +20,10 @@ export function PreviewRows({label,columns,rows}:{label:string;columns:string[];
 }
 
 type FileDetails = {label:string;open:()=>void};
-type DocumentTableSelection = {disabled:boolean;onAnswer:(message:string)=>void};
+type DocumentTableSelection = {disabled:boolean;onAnswer:(message:string,selection?:{file_id:string;block_id:string;fields:string[]})=>void};
 
-function DocumentTableColumns({fileName,table,selection}:{
-  fileName:string;table:InspectedTable;selection:DocumentTableSelection
+function DocumentTableColumns({fileId,fileName,table,selection}:{
+  fileId:string;fileName:string;table:InspectedTable;selection:DocumentTableSelection
 }) {
   const [selected,setSelected]=useState<string[]>([]);
   const fields=table.columns.filter(column=>selected.includes(column));
@@ -37,7 +37,7 @@ function DocumentTableColumns({fileName,table,selection}:{
     </label>)}</div>
     <button type="button" className="as-button" disabled={!fields.length} onClick={()=>{
       const aliases=fields.map(column=>'「'+table.name+'」의 '+column);
-      selection.onAnswer(fileName+'에서 '+aliases.join(', ')+' 항목을 추출해 주세요.');
+      selection.onAnswer(fileName+'에서 '+aliases.join(', ')+' 항목을 추출해 주세요.',table.block_id?{file_id:fileId,block_id:table.block_id,fields}:undefined);
     }}>선택한 열로 답변</button>
   </fieldset>;
 }
@@ -62,7 +62,7 @@ function InspectedSource({file,open,details,selection}:{
     {tables.map((table,index)=><div key={table.block_id || index}>
       <PreviewRows label={table.name} columns={table.columns} rows={table.preview}/>
       {tableSelection&&table.block_id&&table.preview.length>0&&
-        <DocumentTableColumns fileName={file.name} table={table} selection={tableSelection}/>}
+        <DocumentTableColumns fileId={file.id} fileName={file.name} table={table} selection={tableSelection}/>}
     </div>)}
     {details&&<button type="button" className="as-text-button" onClick={details.open}>{details.label}</button>}
     {file.fields.length>0&&<dl>{file.fields.map(field=><div key={field.label}>

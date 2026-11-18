@@ -186,3 +186,65 @@ def test_legacy_document_draft_can_still_add_fields():
     current['messages'].append({'role': 'user', 'content': '실입고도 추가해줘'})
     revised = document_rows_reply(current)
     assert revised['draft']['workflow']['nodes'][1]['settings']['fields'] == ['품명', '실입고']
+
+
+@pytest.mark.parametrize('answer', ['표 1', '두 번째 표'])
+def test_scope_answer_preserves_the_original_fields(answer):
+    from agent_builder.design.document_rows_template import TABLE_SCOPE_QUESTION
+    asset=document([block(SOURCE,'first'),block(SOURCE,'second',2)])
+    initial=asked_state('품명, 실입고')
+    initial['resources']=[asset]
+    initial['messages'][-1]['content']='품명, 실입고'
+    waiting=document_rows_reply(initial)
+    assert waiting['pending_questions'][0]['document_fields']==['품명','실입고']
+    current={**initial,**waiting}
+    current['messages']=waiting['messages']+[dict(role='user',content=answer)]
+    result=document_rows_reply(current)
+    if answer=='표 1':
+        nodes=result['draft']['workflow']['nodes']
+        assert nodes[0]['settings']['document_table_id']=='first'
+        assert nodes[1]['settings']['fields']==['품명','실입고']
+    else:
+        assert result['draft']['questions']==[TABLE_SCOPE_QUESTION]
+        assert result['pending_questions'][0]['document_fields']==['품명','실입고']
+
+
+def test_structured_preview_binds_same_named_document_by_identity(tmp_path):
+    import json
+    from agent_builder.design.document_rows_template import document_row_contract_issues
+    first=document([block(SOURCE,'same-block')],name='same.pdf')
+    second=document([block([SOURCE[0],['H999','다른 자료','1','99','0']],'same-block')],name='same.pdf');second['id']='second'
+    initial=state(first,'이 문서 CSV로 저장해줘');initial['resources']=[first,second]
+    store=Storage(tmp_path)
+    for asset in initial['resources']:store.add_asset(asset,[])
+    graph,connection=build_graph(store,conversation=no_planner,condition_mode='off',capability_mode='off')
+    config={'configurable':{'thread_id':initial['session_id']}}
+    try:
+        asked=graph.invoke(initial,config);question=asked['pending_questions'][0]
+        value=json.dumps(dict(document_selection=dict(file_id=first['id'],block_id='same-block',fields=['품명','실입고'])))
+        ready=graph.invoke(Command(resume=dict(type='message',content=preview_message(first,['「표 1」의 품명','「표 1」의 실입고']),
+                        question_answers=[dict(question_id=question['id'],value=value)])),config)
+        assert ready['status']=='ready',ready.get('issues')
+        from copy import deepcopy
+        bad=deepcopy(ready['draft']);bad['workflow']['nodes'][0]['settings']['file_ids']=[second['id']]
+        assert document_row_contract_issues(ready,bad)
+        saved=graph.invoke(Command(resume=dict(type='confirm')),config)
+        result=run_workflow(store,saved['saved_agent_id'],'실행','',file_ids=[first['id']],llm=NoModel())
+        assert result['status']=='succeeded' and output_rows(result['artifact'])==EXPECTED
+    finally:
+        connection.close();store.close()
+
+
+@pytest.mark.parametrize('selection', [
+    {'file_id':'missing','block_id':'table-1','fields':['품명']},
+    {'file_id':'delivery','block_id':'missing','fields':['품명']},
+    {'file_id':'delivery','block_id':'table-1','fields':['없는 열']},
+])
+def test_stale_or_forged_preview_identity_is_rejected_at_answer_boundary(selection):
+    import json
+    from agent_builder.design.document_rows_template import _ask
+    from agent_builder.design.question_answers import question_answers
+    s=state(document(),'이 문서 CSV로 저장해줘');s.update(_ask(s,s['messages'][0]['content']))
+    identifier=s['pending_questions'][0]['id']
+    with pytest.raises(ValueError,match='원본 문서'):
+        question_answers([dict(question_id=identifier,value=json.dumps(dict(document_selection=selection)))],s)

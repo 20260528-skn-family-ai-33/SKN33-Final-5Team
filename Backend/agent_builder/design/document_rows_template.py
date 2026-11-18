@@ -252,6 +252,9 @@ def _field_answer(content, state=None):
             values = [item.get('value') for item in event.get('answers', []) if item.get('question_id') in ids]
             if len(values) == 1 and isinstance(values[0], str):
                 text = values[0].strip()
+                if text.startswith('{'):
+                    from .document_selection import document_selection
+                    return document_selection(text, state.get('resources', []))
                 break
     # Compatibility for older messages that saved a rendered question fragment.
     for label in sorted(QUESTION_LABELS, key=len, reverse=True):
@@ -452,6 +455,25 @@ def document_rows_reply(state):
     answer = _field_answer(users[-1]['content'], state)
     preview = isinstance(answer, tuple)
     asked = _awaiting_fields(state)
+    scope_question = next((question for question in state.get('pending_questions', [])
+                           if question.get('text') == TABLE_SCOPE_QUESTION), None)
+    if scope_question and not preview:
+        fields = scope_question.get('document_fields') or []
+        from documents.resources.file_inspection import inspect_file
+        tables = [(resource['id'], table) for resource in resources if resource.get('kind') == 'document'
+                  for table in inspect_file(resource)['tables'] if table.get('block_id')
+                  and set(fields) <= set(table['columns'])]
+        chosen = [(identifier, table) for identifier, table in tables if answer == table['name']]
+        if len(chosen) == 1 and fields:
+            answer = chosen[0][0], chosen[0][1]['block_id'], fields
+            preview = True
+        elif not (isinstance(answer, str) and _ALL_TABLES_ANSWER.fullmatch(answer)):
+            waiting = _ask(state, (state.get('draft') or {}).get('purpose') or users[0]['content'],
+                           note=TABLE_SCOPE_NOTE, question_text=TABLE_SCOPE_QUESTION)
+            waiting['pending_questions'][0]['document_fields'] = fields
+            waiting['clarification_answers'] = [{**event, 'kind':'unresolved'} if event.get('turn') == len(messages)-1 else event
+                                                for event in state.get('clarification_answers', [])]
+            return waiting
     if answer is None or (preview and not asked) or not _supports_csv_recipe(state, preview=preview):
         return None
     addition = _field_addition(state)
@@ -490,6 +512,7 @@ def document_rows_reply(state):
                     and any(question.get('text') == TABLE_SCOPE_QUESTION for question in event.get('questions', []))
                     else event for event in state.get('clarification_answers', [])
                 ]
+                waiting['pending_questions'][0]['document_fields'] = fields
                 return waiting
         if issue := reserved_field_issue(fields):
             return _ask(state, request, note=issue)

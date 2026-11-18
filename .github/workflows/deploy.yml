@@ -224,7 +224,9 @@ jobs:
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/design/test_receipt_questions.py') != ''
         working-directory: Backend
         run: |
-          tests=(tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py)
+          tests=(tests/design/test_receipt_questions.py tests/conditions/test_reported_dialogues.py
+                 tests/conditions/test_clarification_choices.py tests/design/test_compound_filter_pipeline.py
+                 tests/design/test_filter_edit_sequences.py tests/design/test_text_filter_dialogue.py)
           for suite in test_document_rows_template test_document_row_integrity test_document_row_coverage_review \
                        test_document_native_table_review test_document_preview_review; do
             path="tests/design/${suite}.py"

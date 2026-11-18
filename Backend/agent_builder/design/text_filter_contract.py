@@ -5,13 +5,10 @@ pending, while an explicit cancellation clears that column. A later mention of a
 column in an output/sort instruction cannot invalidate an unchanged predicate.
 """
 import re
-from agent_builder.conditions.filter_edits import addition_intent, in_quoted_text
+from agent_builder.conditions.filter_edits import addition_intent, in_quoted_text, selection_action_uncertain, denied_filter_change
 from agent_builder.conditions.filter_dialogue import KEEP_ALL, PendingFilterDecision
 from .text_filter_parser import text_atoms, disjunctive_clause, uncovered_selection_fields
 
-_NEGATIVE_ACTION = re.compile(
-    r'\s*+(?:남기|남겨|고르|골라|선별하|선별해|포함하|포함해|제외하|제외해|삭제하|삭제해)'
-    r'(?:주)?\s*+(?:지|진)?\s*+(?:말|마|않|안)')
 _POSITIVE_ACTION = re.compile(
     r'\s*+(?:(?:남겨|골라|선별해|포함해)(?:\s*+(?:줘|주세요))?|(?:남긴|고른|선별한)\s+(?:뒤|후|다음))(?![가-힣])')
 _EXCLUDE_ACTION = re.compile(r'\s*+(?:제외해|삭제해|빼줘)(?:\s*+(?:줘|주세요))?(?![가-힣])')
@@ -31,7 +28,7 @@ def text_filter_state(state):
         pending[field] = PendingFilterDecision(reason, message, reason == 'cancel' or field in active, proposed)
 
     users = [(index, message) for index, message in enumerate(state.get('messages', [])) if message.get('role') == 'user']
-    from agent_builder.conditions.condition_readiness import _comparison_spans, _comparison_subject, _uncertain_comparison, _excludes_named_range, _POLICY_SUBJECTS, _schedule_evidence
+    from agent_builder.conditions.condition_readiness import _comparison_spans, _comparison_subject, _compound_filter_in_turn, _uncertain_comparison, _excludes_named_range, _POLICY_SUBJECTS, _schedule_evidence
     from agent_builder.conditions.filter_edits import filter_edit_events, user_filter_text, filter_clauses
     for source, (turn, message) in enumerate(users):
         text = user_filter_text(state, turn, message)
@@ -43,6 +40,10 @@ def text_filter_state(state):
                 if pending[field].can_keep:
                     pending.pop(field)
             continue
+        from agent_builder.conditions.input_resolution import answer_kind
+        nonanswer = answer_kind(text) != 'answer' or text.strip().rstrip('.!?') in {'취소', '아니', '아뇨', '상관없어', '상관없어요'}
+        if nonanswer and 'filter.match' in event.get('candidate_keys', []):
+            continue  # Do not turn refusal/uncertainty into a literal predicate.
         if len(pending) == 1 and 'filter.match' in event.get('candidate_keys', []):
             field = next(iter(pending))
             if not re.search(r'(?<![\w])' + re.escape(field), text):
@@ -54,6 +55,9 @@ def text_filter_state(state):
                     text = field + '가 ' + short[1] + '인 행만 남겨줘'
                 elif re.fullmatch(r'(?:조건|필터)\s*+(?:취소|제거|해제)(?:해줘)?[.!?\s]*', text):
                     text = field + ' 조건 취소'
+        numeric_turn = _compound_filter_in_turn(state, text)
+        if numeric_turn and numeric_turn[0] == 'partial':
+            numeric_fields.update(numeric_turn[1]['missing'])
         known_numeric = numeric_fields | {field for field, (_, rule) in active.items() if rule.get('value_type') == 'number'}
         known_numeric |= {field for field in fields if 'number' in (tables[0].get('profile', {}).get(field) or {}).get('types', [])}
         from agent_builder.conditions.filter_dialogue import confirmed_numeric_filter
@@ -81,7 +85,7 @@ def text_filter_state(state):
                 pending_kind = 'pending_operator' if match.operator == 'contains' else 'pending'
                 tail = clause[match.end:matches[index + 1].start if index + 1 < len(matches) else len(clause)]
                 action_tail = clause[matches[-1].end:] if match.joined else tail
-                if _NEGATIVE_ACTION.match(action_tail):
+                if selection_action_uncertain(action_tail):
                     events.append((offset + match.start, 'negative', field, match.operator))
                     continue
                 if disjunctive_clause(clause):
@@ -130,13 +134,15 @@ def text_filter_state(state):
                 subject = re.search(r'(?<![\w])' + re.escape(field) + r'\s*+(?:선별\s*+)?(?:조건|필터|기준)', clause)
                 if not subject or in_quoted_text(text, offset + subject.start()):
                     continue
+                if denied_filter_change(clause[subject.end():]):
+                    continue
                 if not re.search(r'바꿔|바꾸|변경|수정|정할|미정|나중', clause[subject.end():]):
                     continue
                 other_scope = (any(re.search(pattern, clause) for pattern in _POLICY_SUBJECTS.values())
                                or bool(_schedule_evidence(clause, follow_up=True))) and not re.search(r'필터|선별', clause)
                 if not other_scope:
                     events.append((offset + subject.start(), 'pending', field, f'{field}의 새 선별 조건을 알려주세요.'))
-        for _, kind, field, value in sorted(events, key=lambda event: event[0]):
+        for position, kind, field, value in sorted(events, key=lambda event: event[0]):
             if kind == 'clear':
                 active.pop(field, None)
                 pending.pop(field, None)
@@ -163,7 +169,7 @@ def text_filter_state(state):
             elif kind == 'predicate':
                 if field in conflicting_proposals:
                     continue  # A proposed replacement cannot mutate the confirmed value before resolution.
-                intent = addition_intent(text)
+                intent = addition_intent(text, position=position)
                 if intent == 'denied':
                     continue
                 if intent == 'uncertain' or (intent == 'add' and (field in numeric_fields or field in active and active[field][1] != value)):

@@ -18,6 +18,33 @@ _OUTPUT_SCOPE = re.compile(r'(?:결과물?|출력|산출물|보고서|파일|CSV
 
 
 @dataclass(frozen=True)
+class ColumnProjection:
+    start: int
+    end: int
+    fields: tuple[str, ...]
+    affirmed: bool
+
+
+def column_projection_requests(text, fields):
+    """Locate schema-owned output column lists without interpreting them as cell values."""
+    names = '|'.join(re.escape(field) for field in sorted(fields, key=len, reverse=True))
+    if not names:
+        return []
+    column = r'(?:' + names + ')'
+    pattern = re.compile(r'\s*(?P<columns>' + column + r'(?:\s*(?:,|·|과|와|및)\s*' + column + r')*)'
+                         r'\s*(?:열|컬럼)?\s*(?:만)?(?:을|를)?\s*(?:포함|표시|출력|저장|내보내|남겨|남기)', re.I)
+    result = []
+    for scope in _OUTPUT_SCOPE.finditer(text):
+        match = pattern.match(text, scope.end())
+        if match and not in_quoted_text(text, scope.start()) and not in_metadata_text(text, scope.start()):
+            selected = [item.group() for item in re.finditer(column, match['columns'])]
+            tail = re.split(r'[.!?;\n]|하고|그리고', text[match.end():], maxsplit=1)[0]
+            denied = bool(re.match(r'\s*(?:하)?(?:지|진)\s*(?:는|도)?\s*(?:말|마|않|안)|\s*고\s*싶지\s*않', tail))
+            result.append(ColumnProjection(scope.start(), match.end(), tuple(dict.fromkeys(selected)), not denied))
+    return result
+
+
+@dataclass(frozen=True)
 class TextAtom:
     start: int
     end: int
@@ -39,10 +66,12 @@ def text_atoms(text, fields):
     reverse = re.compile(
         r'(?<![\w])(?P<value>' + _VALUE + r')\s+(?P<field>' + names + r')'
         r'(?:(?P<bare>만)|인\s+(?:행|것|거래|항목)(?:들)?(?P<only>만))(?=\s|[,;.!?]|$)')
+    projections = column_projection_requests(text, fields)
     atoms = []
     for pattern in (containment, forward, reverse):
         for match in pattern.finditer(text):
-            if (in_quoted_text(text, match.start('field')) or in_metadata_text(text, match.start('field'))
+            if (any(item.start <= match.start('field') < item.end for item in projections)
+                    or in_quoted_text(text, match.start('field')) or in_metadata_text(text, match.start('field'))
                     or any(atom.start < match.end() and match.start() < atom.end for atom in atoms)):
                 continue
             groups = match.groupdict()
@@ -71,10 +100,12 @@ def uncovered_selection_fields(text, fields, atoms):
         return set()
     if re.search(r'(?:열|컬럼)(?:만|을|를)', text) and not atoms:
         return set()
+    projections = column_projection_requests(text, fields)
     missing = set()
     for field in fields:
         for match in re.finditer(r'(?<![\w])' + re.escape(field) + r'(?![A-Za-z0-9_])', text):
-            if (in_quoted_text(text, match.start()) or in_metadata_text(text, match.start())
+            if (any(item.start <= match.start() < item.end for item in projections)
+                    or in_quoted_text(text, match.start()) or in_metadata_text(text, match.start())
                     or any(atom.start <= match.start() < atom.end for atom in atoms)):
                 continue
             tail = text[match.end():]

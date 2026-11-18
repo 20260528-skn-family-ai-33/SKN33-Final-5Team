@@ -38,12 +38,43 @@ def generate(s):
     # actual ordered generation schema and decoder, rather than bypassing them.
     proposed = compile_conditions(s)['draft']
     nodes = proposed['workflow']['nodes']
+    from agent_builder.design.output_selection_request import output_selection
+    selected = output_selection(s)
+    if selected:
+        from contracts.models import AgentDraft
+        from agent_builder.design.planner_constraints import native_decoder_schema
+        schema = native_decoder_schema(AgentDraft.model_json_schema(), s['resources'])
+        schema['$defs']['WorkflowNode']['anyOf'] = [deepcopy(schema['$defs'][variant['$ref'].split('/')[-1]]) if '$ref' in variant else variant
+                                                   for variant in schema['$defs']['WorkflowNode']['anyOf']]
+        bounded = constrain_ordered_steps(schema_for(constrain_generation(schema, s)), s)
+        output = nodes.pop()
+        parent = nodes[-1]['id']
+        nodes.extend([
+            dict(id='records', tool='json_transform', label='행 읽기',
+                 settings=dict(operation='lookup', arguments_json=dict(path=['rows']), output_port='records'),
+                 bindings=[dict(input='value', node_id=parent, output='table')]),
+            dict(id='columns', tool='filter_sort', label='출력 열 선택',
+                 settings=dict(operation='select_columns', arguments_json=dict(columns=selected), output_port=None),
+                 bindings=[dict(input='rows', node_id='records', output='records')]),
+            dict(id='output', tool='export_result', label='결과 저장', settings=output['settings'],
+                 bindings=[dict(input='records', node_id='columns', output='records')]),
+        ])
+        proposed['tool_ids'] = list(dict.fromkeys(node['tool'] for node in nodes))
     indices = {node['id']: index for index, node in enumerate(nodes, 1)}
     steps = [dict(tool=node['tool'], label=node['label'], settings=deepcopy(node['settings']),
                   bindings=[dict(input=b['input'], step=indices[b['node_id']], output=b['output'])
                             for b in node['bindings']]) for node in nodes]
+    if selected:
+        from agent_builder.design.native_settings import NATIVE_SETTINGS
+        for step in steps:
+            if step['settings'].get('operation'):
+                import json
+                step['settings']['arguments_json'] = json.dumps(step['settings']['arguments_json'], ensure_ascii=False)
+            else:
+                step['settings'] = {key: step['settings'].get(key) for key in (*NATIVE_SETTINGS[step['tool']], 'node_ref')}
     first = steps[0]; first.pop('bindings')
-    wire = dict(first_step=first, next_steps={'step_' + str(index): step for index, step in enumerate(steps[1:], 2)})
+    next_steps = steps[1:] if bounded['$defs']['WorkflowDefinition']['properties']['next_steps'].get('type') == 'array' else {'step_' + str(index): step for index, step in enumerate(steps[1:], 2)}
+    wire = dict(first_step=first, next_steps=next_steps)
     validator = Draft202012Validator({'$ref': '#/$defs/WorkflowDefinition', '$defs': bounded['$defs']})
     validator.validate(wire)
     if len(nodes) == 3:
@@ -56,6 +87,9 @@ def generate(s):
                 plan['match'] = 'any' if plan['match'] == 'all' else 'all'
             assert not validator.is_valid(bad)
     proposed['workflow'] = compile_workflow(wire)
+    if selected:
+        from agent_builder.design.native_settings import expand_node_settings
+        proposed = expand_node_settings(proposed)
     s.update(draft=proposed, confirmed=True)
     result = validate_node(s)
     assert result['status'] == 'ready', result['issues']

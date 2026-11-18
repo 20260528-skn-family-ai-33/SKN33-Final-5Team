@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field
 
 from .filter_dialogue import MATCH_CHOICES, match_answer, KEEP_ALL, KEEP_OTHERS, ONLY_NEW, confirmed_numeric_filter as _confirmed_filter
-from .filter_edits import in_metadata_text
+from .filter_edits import in_metadata_text, selection_action_uncertain, denied_filter_change
 
 from workflow_engine.catalog.registry import TOOLS
 from agent_builder.conditions.input_resolution import (
@@ -445,7 +445,10 @@ def _uncertain_comparison(tail):
     clause is about that comparison. "-지 않" denies the verb it is attached to,
     so it counts only when attached to the comparison itself.
     """
-    return bool(re.search(r'아니|아닌|아님|말고', _own_clause(tail))
+    clause = re.split(r'[.!?;\n]', tail, maxsplit=1)[0]
+    uncertain_decision = re.search(r'할지|정할지|정하지|모르겠|미정|아직.*정하지', clause)
+    return bool(uncertain_decision or selection_action_uncertain(tail)
+                or re.search(r'아니|아닌|아님|말고', _own_clause(tail))
                 or re.match(r'\s*(?:이|하)?지\s*(?:는|도)?\s*않', tail)
                 or re.match(r'\s*(?:인지|은지|는지|을지|지)(?:는|도|를|가)?(?![가-힣])', tail))
 
@@ -481,6 +484,8 @@ def _compound_filter_in_turn(state, text):
     """
     text = _QUOTED_TEXT.sub(' ', text)
     comparisons = _comparison_spans(text)
+    if any(selection_action_uncertain(text[match.end():]) for match in comparisons):
+        return 'rewrite', None
     fields = _table_fields(state)
     if len(comparisons) == 1:
         match = comparisons[0]
@@ -824,6 +829,8 @@ def compound_filter_state(state):
                                     r'(?<![\w])' + re.escape(field) +
                                     r'\s*(?:열\s*)?(?:이|가|은|는|의)?\s*' + _CRITERION_NOUN.pattern, text))
                                 and not re.search(r'중복\s*' + re.escape(field), text) for field in named)
+        if denied_filter_change(text):
+            continue
         if criterion_subject and not schedule_edit:
             pending, candidate = 'revise' if mode else 'rewrite', None
         elif (not matches and any(is_criterion_edit(match) for match in _CRITERION_NOUN.finditer(text))

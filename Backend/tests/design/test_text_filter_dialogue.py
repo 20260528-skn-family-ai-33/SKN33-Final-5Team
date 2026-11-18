@@ -92,7 +92,7 @@ def test_alternate_text_wording_has_the_same_result(tmp_path, instruction):
 def test_output_column_followup_preserves_the_existing_row_filter(tmp_path, instruction):
     s = current('상태가 완료인 행만 남겨줘.')
     s['messages'].append(dict(role='user', content=instruction))
-    assert execute(prepare(s), tmp_path) == ROWS[:2]
+    assert execute(prepare(s), tmp_path) == [{'상태': row['상태']} for row in ROWS[:2]]
 
 
 def test_exporting_one_column_preserves_its_row_filter():
@@ -634,3 +634,126 @@ def test_cancelling_a_resolved_operand_does_not_drop_the_other_unresolved_operan
     complete = compound_filter_state(s)
     assert not complete['pending'] and complete['mode'] == 'all'
     assert [(r['field'], r['operator'], r['value']) for r in complete['rules']] == [('수량', 'gt', 3)]
+
+
+@pytest.mark.parametrize('instruction', ['결과에는 지역과 등급만 포함해줘', '출력에 지역, 등급만 표시해줘', '결과에는 등급 및 지역만 저장해줘'])
+def test_projection_list_is_not_a_literal_predicate_and_exports_requested_columns(tmp_path, instruction):
+    s = current('지역이 서울인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content=instruction))
+    assert [(r['field'], r['value']) for _, r in text_filter_state(s)['predicates']] == [('지역', '서울')]
+    fields = output_selection(s)
+    assert set(fields) == {'지역', '등급'}
+    assert execute(prepare(s), tmp_path) == [{key: row[key] for key in fields} for row in [ROWS[0], ROWS[2]]]
+
+
+@pytest.mark.parametrize('ending', ['남기지 마', '남기고 싶지 않아', '골라서는 안 돼', '선별하지 마'])
+def test_denied_numeric_selection_cannot_be_saved_as_positive(ending):
+    s = current('')
+    s['messages'][0]['content'] = f'비용이 10원 이상이고 수량이 3개 이상인 행만 {ending}. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'
+    assert judge(s, VALUES)['decision'] != 'ready'
+
+
+@pytest.mark.parametrize('answer', ['몰라', '취소', '아니', '모르겠어', '상관없어'])
+def test_nonanswer_never_becomes_a_text_value(answer):
+    s = current('상태가 완료된 주문만 남겨줘')
+    s['messages'].append(dict(role='user', content=answer))
+    s['condition_answers'] = [dict(turn=1, candidate_keys=['filter.match'])]
+    contract = text_filter_state(s)
+    assert contract['issues'] and not contract['predicates']
+    assert judge(s, VALUES)['decision'] != 'ready'
+
+
+@pytest.mark.parametrize('instruction', ['지역 조건은 바꾸지 마', '지역 조건은 변경하지 않아도 돼', '지역 조건 수정은 필요 없어'])
+def test_denied_amendment_keeps_the_original_text_filter(tmp_path, instruction):
+    s = current('지역이 서울인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content=instruction))
+    assert not text_filter_state(s)['issues']
+    assert execute(prepare(s), tmp_path) == [ROWS[0], ROWS[2]]
+
+
+def test_adding_a_column_does_not_mean_adding_a_second_region_predicate():
+    s = current('지역이 서울인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content='합계 열을 추가하고 지역이 부산인 행만 남겨줘'))
+    contract = text_filter_state(s)
+    assert not contract['issues'] and [(r['field'],r['value']) for _,r in contract['predicates']] == [('지역','부산')]
+
+
+def test_all_null_values_error_policy_is_not_multiple_artifacts():
+    assert not multiple_outputs(current('빈 값은 모두 오류로 처리해'))
+
+
+def test_field_name_containing_an_edit_verb_cannot_cancel_another_field():
+    from agent_builder.conditions.filter_edits import filter_edit_events
+    assert {field for event in filter_edit_events('보존지역 조건 취소해줘', {'지역','보존지역'})
+            if event.action == 'clear' for field in event.fields} == {'보존지역'}
+
+
+@pytest.mark.parametrize('instruction', ['비용과 수량 필터 삭제를 하지 마', '첨부 표에서 지역과 관계없이 저장해줘'])
+def test_edit_subject_and_negated_action_noun_are_preserved(instruction):
+    from agent_builder.conditions.filter_edits import filter_edit_events
+    events = filter_edit_events(instruction, {'비용','수량','지역'}, numeric_fields={'비용','수량'})
+    expected = {'지역'} if instruction.startswith('첨부') else set()
+    assert {field for event in events if event.action=='clear' for field in event.fields} == expected
+
+
+@pytest.mark.parametrize('answer', ['3개 미만으로 할지는 아직 모르겠어', '3개 미만으로 정하지 마'])
+def test_unconfirmed_numeric_reply_does_not_set_a_missing_operand(answer):
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    s = current(''); s['messages'][0]['content']='비용이 10원 이상이고 수량이 많은 행만 남겨줘'
+    s['messages'].append(dict(role='user',content=answer))
+    assert compound_filter_state(s)['pending']
+
+
+def test_text_only_cancel_preserves_an_unresolved_numeric_subject_without_profile():
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    s=current('');s['resources'][0].pop('profile',None)
+    s['messages'][0]['content']='비용이 10원 이상이고 수량이 많은 행만 남겨줘'
+    s['messages'].append(dict(role='user',content='모든 텍스트 조건 취소해줘'))
+    assert '수량' not in text_filter_state(s)['cleared_fields']
+    assert compound_filter_state(s)['pending']=='complete'
+
+
+@pytest.mark.parametrize('reply', ['몰라', '취소', '아니', '모르겠어', '상관없어'])
+def test_real_question_nonanswer_stays_unresolved_and_cannot_save(tmp_path, reply):
+    s=current('');s['messages'][0]['content']='상태가 완료된 주문만 남겨줘. JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'
+    raw=proposal(s,{'filter.field':'상태','filter.operator':None,'filter.value':None,
+                    'missing.policy':'error','duplicate.policy':'keep','output.format':'json'})
+    store=Storage(tmp_path);store.add_asset(s['resources'][0],ROWS)
+    graph,connection=build_graph(store,conversation=compile_conditions,condition_transport=Fake([raw,raw,raw]),condition_mode='enforce')
+    config={'configurable':{'thread_id':s['session_id']}}
+    try:
+        first=graph.invoke(s,config)
+        question=next(q for q in first['pending_questions'] if q['key']=='filter.match')
+        after=graph.invoke(Command(resume=dict(type='message',content=reply,
+                         question_answers=[dict(question_id=question['id'],value=reply)])),config)
+        assert after['status']!='ready' and not after.get('saved_agent_id')
+        with pytest.raises(ValueError):store.save_agent({**after,'confirmed':True})
+    finally:
+        connection.close();store.close()
+
+
+def test_source_qualified_filter_clear_reaches_storage_and_execution(tmp_path):
+    s=current('지역이 서울인 행만 남겨줘')
+    s['messages'].append(dict(role='user',content='첨부 표에서 지역과 관계없이 저장해줘'))
+    assert execute(prepare(s),tmp_path)==ROWS[:3]
+
+
+def test_column_name_with_keep_verb_cancels_only_that_exact_column(tmp_path):
+    s=current('지역이 서울이고 보존지역이 부산인 행만 남겨줘')
+    s['resources'][0]['columns'].append('보존지역')
+    s['messages'].append(dict(role='user',content='보존지역 조건 취소해줘'))
+    contract=text_filter_state(s)
+    assert contract['cleared_fields']=={'보존지역'}
+    assert [(r['field'],r['value']) for _,r in contract['predicates']]==[('지역','서울')]
+
+
+def test_separate_output_restriction_does_not_negate_an_affirmed_row_selection():
+    from agent_builder.conditions.filter_edits import selection_action_uncertain
+    assert not selection_action_uncertain('인 행만 남겨줘. 파일 삭제하지 마')
+    assert not selection_action_uncertain('인 행만 남겨줘 그리고 지역 열 삭제하지 마')
+    assert selection_action_uncertain('인 행만 남기지 마')
+
+
+def test_explicit_literal_cancel_status_is_still_a_valid_cell_value():
+    s=current('상태가 취소인 행만 남겨줘')
+    assert [(r['field'],r['value']) for _,r in text_filter_state(s)['predicates']]==[('상태','취소')]

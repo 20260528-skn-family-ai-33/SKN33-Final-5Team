@@ -95,28 +95,30 @@ def match_table_headers(cells, reference_layout):
             for cell in cells]
 
 
-def selected_table_needs_review(analysis, block):
-    """Only explicit parser scopes may narrow a document-wide review flag.
-
-    Legacy/missing/unknown scope data stays blocking. Selection never clears a
-    global error, a local table error, or an error on its layout parent.
-    """
-    if block.get('status') == 'review_required' or (block.get('data', {}).get('table_quality') or {}).get('issues'):
-        return True
+def document_review_scope(analysis):
+    """Compute global/affected scope once per document, including unknown scopes."""
     if not analysis.get('review_required'):
-        return False
+        return False, set()
     reasons = set(analysis.get('review_reasons') or []) | set(analysis.get('warnings') or [])
     scopes = analysis.get('review_scopes')
     if not reasons or not isinstance(scopes, dict):
-        return True
+        return True, set()
     ids = {b['id'] for b in analysis.get('blocks', [])}
+    affected_ids = set()
     for reason in reasons:
         affected = scopes.get(reason)
         if not isinstance(affected, list) or not affected or any(not isinstance(i, str) or i not in ids for i in affected):
-            return True
-        if block['id'] in affected or block.get('parent_object_id') in affected:
-            return True
-    return False
+            return True, set()
+        affected_ids.update(affected)
+    return False, affected_ids
+
+
+def selected_table_needs_review(analysis, block, *, scope=None):
+    """Selection never clears global, local, parent, or unknown review errors."""
+    if block.get('status') == 'review_required' or (block.get('data', {}).get('table_quality') or {}).get('issues'):
+        return True
+    global_review, affected = document_review_scope(analysis) if scope is None else scope
+    return global_review or block['id'] in affected or block.get('parent_object_id') in affected
 
 
 def select_table_parts(parts, table_id):
@@ -138,6 +140,7 @@ def _asset_chunks(asset):
     analysis = analysis_of(asset)
     if analysis:
         review=(asset.get('parser_metadata') or {}).get('document_review') or {}
+        review_scope = document_review_scope(analysis)
         blocks = [block for block in analysis['blocks'] if block.get('selected', True)]
         structured_parents = {block['parent_object_id'] for block in blocks
                               if block.get('parent_object_id') and 'table' in block.get('content_types', [])
@@ -160,7 +163,7 @@ def _asset_chunks(asset):
                               source_text_length=len(block_text),
                               block_id=block['id'], native_location=location, bbox=block.get('bbox'),
                               parser_engine=block['engine'], review_required=analysis['review_required'] and review.get('status')!='completed',
-                              selected_table_review_required=selected_table_needs_review(analysis, block) and review.get('status')!='completed',
+                              selected_table_review_required=selected_table_needs_review(analysis, block, scope=review_scope) and review.get('status')!='completed',
                               document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0))
             if empty:
                 coverage_only.append(dict(source_id=source + '0', offset=0, text='', table_cells=cells, **provenance))

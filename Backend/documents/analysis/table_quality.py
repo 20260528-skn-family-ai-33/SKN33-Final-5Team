@@ -132,30 +132,36 @@ def reconcile(data, prediction):
     vertical_corridors = row_corridors(rows, cells)
     # Freeze row anchors: a repeated-value candidate cannot widen its own row.
     row_evidence = {r: list(boxes) for r, boxes in rows.items()}
-    def safe_rows(box):
+    def safe_rows(box, *, repair=True):
         touched = [r for r, boxes in row_evidence.items() if any(overlap(box, b, 1) > 0 for b in boxes)]
         if len(touched) != 1:
             return []
         row = touched[0]
         lo, hi = vertical_corridors.get(row, (math.inf, -math.inf))
-        if not lo <= box[1] < box[3] <= hi:
+        if repair and not lo <= box[1] < box[3] <= hi:
             return []
         return [row] if all(overlap(box, b, 1) >= .65 for b in row_evidence[row]) else []
 
     # Column corridors allow header/body alignment differences. Boundaries
     # come from gaps between existing column evidence, never the candidate.
     ordered = sorted(columns)
+    logical_cols = data.get('num_cols', max((c for _, c in occupied), default=-1) + 1)
+    if type(logical_cols) is not int or logical_cols <= 0:
+        report['issues'].append('invalid_table_dimensions')
+        return cells, report
     corridors = {}
-    for i, col in enumerate(ordered):
+    for col in ordered:
         left = min(b[0] for _, b in columns[col])
         right = max(b[2] for _, b in columns[col])
-        lo = (max(b[2] for _, b in columns[ordered[i-1]]) + left) / 2 if i else -math.inf
-        hi = (right + min(b[0] for _, b in columns[ordered[i+1]])) / 2 if i+1 < len(ordered) else math.inf
+        # Never bridge an unanchored logical column or extrapolate past evidence.
+        before, after = columns.get(col-1), columns.get(col+1)
+        lo = (max(b[2] for _, b in before) + left) / 2 if before else (-math.inf if col == 0 else left)
+        hi = (right + min(b[0] for _, b in after)) / 2 if after else (math.inf if col == logical_cols-1 else right)
         corridors[col] = lo, hi
     for p in pieces:
         if p['index'] in anchors or p['score'] < .98:
             continue
-        rr = safe_rows(p['box'])
+        rr = safe_rows(p['box'], repair=False)
         if len(rr) != 1:
             continue
         candidates = [c for c in cells if position(c)[0] == rr[0]

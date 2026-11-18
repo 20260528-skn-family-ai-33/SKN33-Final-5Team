@@ -68,7 +68,8 @@ def complete_document_parts(parts, storage):
     for part in parts:
         original = by_source[part['source_id']]
         if part != {key: value for key, value in original.items()
-                    if key not in ('document_chunk_count', 'source_text_length')}:
+                    if key not in ('document_chunk_count', 'source_text_length')
+                    and (key != 'selected_table_review_required' or key in part)}:
             return None
     return originals
 

@@ -607,9 +607,21 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             validate(result)
             return project(result)
         except AnalysisError as exc:
-            if exc.code not in ('result_limit', 'text_limit') or not optional_snapshots:
+            if exc.code not in ('result_limit', 'text_limit'):
                 raise
-            discard_enrichment(optional_snapshots.pop())
+            # Body OCR arrays are optional too; drop copies before sacrificing
+            # table repairs. Preserve text, scores, geometry origin and scale.
+            body_details = [b for b in result['blocks'] if b['engine'] == 'paddleocr'
+                            and ('ocr_texts' in b['data'] or 'ocr_boxes' in b['data'])]
+            if body_details:
+                for item in body_details:
+                    item['data'].pop('ocr_texts', None)
+                    item['data'].pop('ocr_boxes', None)
+                review('body_ocr_details:result_limit', [b['id'] for b in body_details])
+            elif optional_snapshots:
+                discard_enrichment(optional_snapshots.pop())
+            else:
+                raise
             text_units = {b['unit_id'] for b in result['blocks'] if b.get('selected', True) and b['text'].strip()}
             empty_units = [u['id'] for u in result['units'] if u['id'] not in text_units]
             result['coverage'].update(units_with_text=len(text_units), units_without_text=empty_units)

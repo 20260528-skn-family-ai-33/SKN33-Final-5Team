@@ -31,10 +31,24 @@ def _request_turns(state):
     for index, content in enumerate(active_users):
         text = re.sub(r'```[\s\S]*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|\x27[^\x27\n]*\x27', ' ', content)
         text = re.sub(r'(?:^|[.!?;\n])\s*(?:예시(?:로|는)\s+|예를\s*들어\s+|문구는\s+)[^.!?;\n]*', ' ', text)
-        if (re.search(r'뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요', text)
-                and not re.search(r'바꿔|변경해|추가해|제외해|선택해', text)):
-            continue
-        yield offset+index, text
+        # An explanation request does not cancel work in another sentence of
+        # the same turn. Ignore only explanation-only clauses, not the turn.
+        clauses = re.split(r'((?<=[.!?;])\s+|\n+)', text)
+        requested = []
+        for position in range(0, len(clauses), 2):
+            clause = clauses[position]
+            explanation = re.search(r'뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요', clause)
+            instruction = re.search(
+                r'바꿔|변경해|추가해|제외해|선택해|'
+                r'(?:계산|집계|합산|선별|필터링|정렬|결합|병합|저장|내보내|추출)\s*'
+                r'(?:해\s*(?:줘|주세요)|하(?:고|며|세요|도록))(?=\s|[.!?,;]|$)', clause)
+            if not explanation or instruction:
+                requested.append(clause)
+            if position + 1 < len(clauses):
+                requested.append(clauses[position + 1])
+        retained = ''.join(requested)
+        if retained.strip():
+            yield offset+index, retained
 
 
 def _single_requests(text, columns):
@@ -119,7 +133,8 @@ def literal_output_format(state):
     """The format of one unambiguous named projection, never a source filename."""
     from .condition_requirements import multiple_outputs
     from .export_intent import explicit_export_intent
-    if explicit_export_intent(state)['cancelled']:
+    intent = explicit_export_intent(state)
+    if intent['cancelled']:
         return None
     if output_selection(state) is None or multiple_outputs(state):
         return None
@@ -134,6 +149,10 @@ def literal_output_format(state):
     matches = [m for pattern in (_NAMED_EXPORT, _SINGLE_EXPORT) for m in pattern.finditer(text)
                if _EXPORT_END.match(text[m.end():]) and m['format']]
     formats = {m['format'].lower() for m in matches}
+    # A same-turn correction supersedes the old filename's extension while
+    # retaining its projection. Only one active save format is unambiguous.
+    if len(formats) == 1 and len(intent['formats']) == 1:
+        return next(iter(intent['formats']))
     return next(iter(formats)) if len(formats) == 1 else None
 
 

@@ -80,6 +80,41 @@ def grouped_totals_packet(state):
     return dict(tasks=[dict(source_message=0, description=s['kind'], spec=s) for s in specs], unresolved=[])
 
 
+def validate_grouped_totals_intent(plan, state):
+    """A complete sum/count instruction remains binding outside auto projection.
+
+    A saved base, unknown sort profile, an acknowledgement, or an unrelated
+    attachment can disable automatic generation without cancelling its work.
+    Corrections and other unmatched instructions stay with the general path.
+    """
+    if plan['unresolved']:
+        return
+    from .output_selection_request import _request_turns
+    requests = [text for _, text in _request_turns(state)
+                if not re.fullmatch(r'\s*(?:네|예|응|알겠어|알겠습니다|확인했어|확인했습니다)[.!]?\s*', text)]
+    if len(requests) != 1 or len(requests[0]) > 2000:
+        return
+    match = _REQUEST.fullmatch(requests[0])
+    if not match:
+        return
+    v = match.groupdict()
+    sources = [a for a in state.get('resources', []) if a.get('kind') == 'table' and a.get('name') == v['file']]
+    if len(sources) != 1 or not {v['left'], v['right'], v['group'], v['subject'] + '상태'} <= set(sources[0].get('columns', [])):
+        return
+    specs = [t['spec'] for t in plan['tasks']]
+    for aggregation, measure in [('sum', v['measure']), ('count', None)]:
+        if not any(s['kind'] == 'aggregate' and s['fields'] == [v['group']]
+                   and s['aggregation'] == aggregation and s['sum_field'] == measure for s in specs):
+            raise ValueError(f'원문에서 요청한 {v["group"]}별 {aggregation} 집계가 업무 목록에서 누락되거나 변경됐습니다.')
+    for source, target in [('sum', v['total']), ('count', v['count'])]:
+        if source == target:
+            continue
+        if not any(s['kind'] == 'rename' and s['source'] == source and s['target'] == target for s in specs):
+            raise ValueError(f'요청한 집계 결과 열 이름 {target}이 업무 목록에서 누락되거나 변경됐습니다.')
+    if not any(s['kind'] == 'select_fields' and s['fields'] == [v['group'], v['total'], v['count']] for s in specs):
+        raise ValueError('요청한 그룹·합계·행 개수의 최종 출력 열을 모두 보존해야 합니다.')
+
+
 def connect_grouped_totals(tasks, state):
     """Both measures consume the same rows; final consumers need both branches."""
     packet = grouped_totals_packet(state)

@@ -12,8 +12,8 @@
   },
   "draft": {
     "name": "자료 처리",
-    "purpose": "read, filter, compute, aggregate, rename, sort, select_fields, export",
-    "instructions": "read_table(read_table.read_csv), filter_sort(filter, execution_plan={filters:[{field:\"주문상태\",operator:\"eq\",value:\"완료\",compare_field:null,value_type:\"text\"}],match:\"all\",missing_policy:\"keep\",duplicate_policy:\"keep\",duplicate_field:null,sort:[],output_format:\"table\"}), calculate_columns(compute, calculation_formula=\"수량 * 단가\", output_column=\"주문금액\"), aggregate_table(fields=[\"지역\"], aggregation=\"sum\", sum_field=\"주문금액\"), calculate_columns(rename, rename_from=\"sum\", rename_to=\"총매출\"), aggregate_table(fields=[\"지역\"], aggregation=\"count\", sum_field=null), calculate_columns(rename, rename_from=\"count\", rename_to=\"주문건수\"), filter_sort(sort, execution_plan={filters:[],match:\"all\",missing_policy:\"keep\",duplicate_policy:\"keep\",duplicate_field:null,sort:[{\"field\":\"지역\",\"direction\":\"ascending\",\"value_type\":\"text\"}],output_format:\"table\"}), filter_sort(select_columns, execution_plan={filters:[],match:\"all\",missing_policy:\"keep\",duplicate_policy:\"keep\",duplicate_field:null,sort:[],output_format:\"table\"}), write_result(format=\"csv\")",
+    "purpose": "read_table, calculate_columns, filter_sort, aggregate_table, write_result를 실행합니다.",
+    "instructions": "주문내역.csv에서 완료 주문만 대상으로 수량 곱하기 단가를 주문금액으로 계산해줘. 지역별 주문금액 합계와 주문 행 개수를 구해서 열 이름을 지역, 총매출, 주문건수로 해줘. 지역 오름차순으로 정렬한 뒤 지역별매출.csv로 저장해줘. 수량이 0인 완료 주문도 주문건수에는 포함해줘.",
     "request_input_mode": "saved_instructions",
     "tool_ids": [
       "read_table",
@@ -29,7 +29,7 @@
     ],
     "requirements": [
       {
-        "description": "read_table(read_table.read_csv)",
+        "description": "read_table",
         "source_id": "user",
         "quote": "주문내역.csv에서 완료 주문만 대상으로 수량 곱하기 단가를 주문금액으로 계산해줘. 지역별 주문금액 합계와 주문 행 개수를 구해서 열 이름을 지역, 총매출, 주문건수로 해줘. 지역 오름차순으로 정렬한 뒤 지역별매출.csv로 저장해줘. 수량이 0인 완료 주문도 주문건수에는 포함해줘."
       }
@@ -739,5 +739,20 @@
     },
     "schedule": null,
     "report_destination": null
+  },
+  "latest_capture": {
+    "date": "2026-11-18",
+    "deployment": "baee617a33571c643c3514f6a07c53e64cf69191",
+    "input": "latest saved T02 before requirements checkpoint",
+    "requirements": 10,
+    "requirement_model_calls": 0,
+    "workflow_nodes": 12,
+    "num_ctx": 32768,
+    "num_predict": 8192,
+    "method": "PR151 modules loaded into one-off process memory; server files and DB unchanged",
+    "normalization": [
+      "file UUID -> table-source",
+      "null document_table_id removed for branch schema compatibility"
+    ]
   }
 }

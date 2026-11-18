@@ -311,6 +311,8 @@ def validate_plan(raw, state):
     validate_requested_dates(plan,state)
     from .processing_guard import validate_group_aggregations, validate_processing_presence
     validate_processing_presence(plan, state)
+    from .grouped_totals_request import validate_grouped_totals_intent
+    validate_grouped_totals_intent(plan, state)
     validate_group_aggregations(plan, state)
     validate_grouped_result(plan, state)
     from .grouped_totals_request import validate_grouped_totals

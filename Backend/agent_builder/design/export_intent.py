@@ -6,6 +6,7 @@ _FORMAT = r'(?:csv|json|xlsx|pdf|md)'
 _FORMATS = _FORMAT + r'(?:\s*(?:와|과|및|,|/)\s*' + _FORMAT + r')*'
 _END = r'(?:해\s*(?:주세요|줘)|하(?:고|며|도록)|해|합니다)?(?=[.!?,;\s]|$)'
 _SAVE = re.compile(
+    r'(?:(?P<replacement>' + _FORMATS + r')\s*말고\s*)?'
     r'(?P<formats>' + _FORMATS + r')\s*(?:파일)?(?:으로|로)(?P<also>도)?\s*'
     r'(?:저장|내보내)' + _END, re.I)
 _CANCEL = re.compile(
@@ -52,7 +53,7 @@ def explicit_export_intent(state):
                 active_from = source
                 started = False
             else:
-                if not match['also'] and not started:
+                if match['replacement'] or (not match['also'] and not started):
                     formats.clear()
                     additional = False
                     active_from = source

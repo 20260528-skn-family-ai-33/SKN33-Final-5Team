@@ -18,3 +18,26 @@
 .unified-workspace .execution-page{padding:24px;}
 @media(max-width:1000px) and (min-width:761px){.unified-workspace .assistant-panel{width:320px;}.unified-workspace .workspace.chat-open .editor-body{margin-left:320px;}}
 @media(max-width:760px){.unified-workspace .workspace.chat-open .editor-body{margin-left:0;padding-bottom:45dvh;}.unified-workspace .assistant-panel{top:auto;bottom:0;width:100%;height:45dvh;border-right:0;border-top:1px solid var(--a4b-border);}.unified-workspace .topbar{padding:12px;flex-wrap:wrap;}.unified-workspace .subbar{padding:0 12px;}.unified-schedule-panel{padding:16px;}}
+
+.unified-workspace .topbar.as-page-title{margin-bottom:0}
+.unified-workspace .workspace.chat-open .editor-body{margin-left:0;padding-bottom:0}
+.unified-workspace .editor-body{overflow:auto}
+.unified-workspace .editor-container{
+ display:grid;grid-template-columns:minmax(0,1.25fr);grid-auto-rows:min-content;align-content:start;
+ padding:20px 24px;gap:16px;
+}
+.unified-workspace .workspace.chat-open .editor-container{grid-template-columns:minmax(250px,1fr) minmax(0,1.25fr)}
+.unified-workspace .editor-container>.assistant-panel,
+.unified-workspace .editor-container>.canvas-wrapper{height:clamp(320px,calc(100dvh - 300px),850px);min-height:0}
+.unified-workspace .editor-container>.assistant-panel{
+ position:relative;inset:auto;width:auto;border:1px solid var(--a4b-border);border-radius:7px;overflow:hidden;
+}
+.unified-workspace .canvas-wrapper{border:1px solid var(--a4b-border);border-radius:7px;overflow:hidden}
+.unified-workspace .intent-strip,.unified-workspace .external-config,.unified-workspace .run-console{grid-column:1/-1}
+.unified-workspace .external-config{height:auto}
+.unified-workspace .external-config .as-config-body{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.unified-schedule-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);align-items:start;gap:16px;max-width:none}
+.unified-schedule-panel .as-workspace{height:clamp(320px,calc(100dvh - 300px),720px)}
+@media(max-width:900px){
+ .unified-workspace .editor-container,.unified-workspace .workspace.chat-open .editor-container,.unified-schedule-panel{grid-template-columns:minmax(0,1fr);padding:16px}
+}

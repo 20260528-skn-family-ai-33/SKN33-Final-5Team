@@ -400,14 +400,15 @@ def business_condition_context(ledger):
     return result
 
 
-def planning_decoder_schema(schema, ledger):
+def planning_decoder_schema(schema, ledger, sort_request=None):
     """Mirror the enforced single-dedup contract, without supplying a graph."""
     result = deepcopy(schema)
     if ledger.get('decision') != 'ready' or ledger.get('operations') != ['deduplicate']:
         return result
     props = result['$defs']['ExecutionPlan']['properties']
-    for field in ('filters', 'sort'):
-        props[field]['maxItems'] = 0
+    props['filters']['maxItems'] = 0
+    if (sort_request or {}).get('kind', 'none') in ('none', 'cancelled'):
+        props['sort']['maxItems'] = 0  # a written sort belongs to the request (PR #142)
     for key, field in [('duplicate.field','duplicate_field'), ('duplicate.policy','duplicate_policy'),
                        ('missing.policy','missing_policy'), ('output.format','output_format')]:
         slot = ledger.get('slots', {}).get(key, {})
@@ -463,7 +464,7 @@ def make_direct_conversation(api_key, model, model_factory=None):
             context['source_quote_catalog'] = source_quote_choices(state['messages'], resources)
             context['schema'] = citation_decoder_schema(context['schema'], context['source_quote_catalog'])
             if version in ('v5','v6','v7','v8') and state.get('condition_enforced'):
-                context['schema'] = planning_decoder_schema(context['schema'], state.get('condition_ledger') or {})
+                context['schema'] = planning_decoder_schema(context['schema'], state.get('condition_ledger') or {}, _sort_request(state))
             context['citation_scope'] = '최근 사용자 발언 12개(발언별 앞 4000자)부터 제공 자료 발췌·열 이름 순으로 최대 64구간·총 6000자. 전체 문서 검색 결과가 아닙니다.'
             if version in ('v6','v7','v8'):
                 context['schema']=native_decoder_schema(context['schema'],resources,state.get('condition_ledger') if state.get('condition_enforced') else None, require_ready_draft=version in ('v7','v8'), allowed_tools=linear_plan.ALLOWED if table_scope else None, sort_request=_sort_request(state))

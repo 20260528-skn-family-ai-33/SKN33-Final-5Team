@@ -167,7 +167,7 @@ def node(id, tool, bindings=(), **settings):
     return {'id': id, 'tool': tool, 'label': id, 'bindings': list(bindings), 'settings': {**base, **settings}}
 
 
-def make_planner(calls, sort=SORT, schedule=None, bypass=False):
+def make_planner(calls, sort=SORT, schedule=None, bypass=False, sort_first=False):
     def planner(state):
         calls.append(state['messages'][-1]['content'])
         chosen = sort(state) if callable(sort) else sort
@@ -189,6 +189,19 @@ def make_planner(calls, sort=SORT, schedule=None, bypass=False):
             edges = [{'source': 'read', 'target': 'dedup', 'branch': 'next'},
                      {'source': 'dedup', 'target': 'sort', 'branch': 'next'},
                      {'source': 'sort', 'target': 'out', 'branch': 'next'}]
+        if sort_first:
+            # read -> sort only -> dedup only (consumes the sorted table) -> out (PR #142 review 6).
+            sorting = {**plan, 'duplicate_policy': 'keep', 'duplicate_field': None}
+            dedup = {**plan, 'sort': []}
+            nodes = [nodes[0],
+                     node('sort', 'filter_sort', [{'input': 'table', 'node_id': 'read', 'output': 'table'}],
+                          execution_plan=sorting, instructions=json.dumps(sorting, ensure_ascii=False)),
+                     node('dedup', 'filter_sort', [{'input': 'table', 'node_id': 'sort', 'output': 'table'}],
+                          execution_plan=dedup, instructions=json.dumps(dedup, ensure_ascii=False)),
+                     node('out', 'write_result', [{'input': 'table', 'node_id': 'dedup', 'output': 'table'}], format='csv')]
+            edges = [{'source': 'read', 'target': 'sort', 'branch': 'next'},
+                     {'source': 'sort', 'target': 'dedup', 'branch': 'next'},
+                     {'source': 'dedup', 'target': 'out', 'branch': 'next'}]
         draft = AgentDraft(name='중복 주문 정리', purpose='중복 제거 후 정렬', instructions='요청대로 처리',
                            tool_ids=['read_table', 'filter_sort', 'write_result'], document_ids=[file_id],
                            requirements=[{'description': '요청', 'source_id': 'user', 'quote': CURRENT['request']}],
@@ -733,36 +746,120 @@ def test_a_new_task_drops_the_previous_sort():
     assert sort_request(conversation(REQUEST, '첫 행만 남김'))['kind'] == 'sorts'
 
 
-def ready_ledger():
+def ready_ledger(**extra):
     slot = lambda value: {'status': 'specified', 'value': value}
-    return {'decision': 'ready', 'operations': ['deduplicate'],
-            'slots': {'duplicate.field': slot('주문번호'), 'duplicate.policy': slot('first'),
-                      'missing.policy': slot('keep'), 'output.format': slot('csv')}}
+    slots = {'duplicate.field': slot('주문번호'), 'duplicate.policy': slot('first'),
+             'missing.policy': slot('keep'), 'output.format': slot('csv')}
+    slots.update({key: slot(value) for key, value in extra.items()})
+    return {'decision': 'ready', 'operations': ['deduplicate'], 'slots': slots}
+
+
+def sort_bounds(schema):
+    sort = schema['$defs']['ExecutionPlan']['properties']['sort']
+    item = schema['$defs'][sort['items']['$ref'].rsplit('/', 1)[1]]['properties']
+    return sort.get('minItems', 0), sort.get('maxItems', 5), item
 
 
 @pytest.mark.parametrize('version', ['v6', 'v7', 'v8'])
-def test_ready_decoder_schema_allows_exactly_the_requested_sort(version):
+def test_direct_generator_schema_admits_the_requested_sort(monkeypatch, version):
+    """Through the real Direct generator: the schema handed to the model (PR #142 review 5/6)."""
+    from tests.design.test_direct_conversation import Fake, draft, planner, state as base_state
+    monkeypatch.setenv('A4B_PLANNER_PROMPT', version)
+
+    def schema_for(text):
+        st = base_state()
+        st['resources'] = [{'id': 'asset-1', 'name': '중복주문.csv', 'kind': 'table', 'columns': COLUMNS, 'profile': {}}]
+        st['messages'] = [{'role': 'user', 'content': text}]
+        st.update(condition_enforced=True, condition_ledger=ready_ledger())
+        fake = Fake(draft(), draft(), draft())
+        try:
+            planner(monkeypatch, fake)(st)
+        except ValueError:
+            pass  # the canned graph draft does not fit v8 linear steps; only the schema matters
+        return fake.schema
+
+    low, high, item = sort_bounds(schema_for(REQUEST))
+    assert low == 0 and high == 1 and item['field']['enum'] == ['주문일'] and item['direction']['enum'] == ['ascending']
+    low, high, item = sort_bounds(schema_for('주문번호 중복은 첫 행만 남기고 최신순으로 정렬해서 CSV로 저장해줘'))
+    assert low <= high and high >= 1 and item['direction']['enum'] == ['descending']
+    no_sort = schema_for('주문번호 중복은 첫 행만 남기고 CSV로 저장해줘')
+    assert no_sort['$defs']['ExecutionPlan']['properties']['sort']['maxItems'] == 0
+
+
+def test_linear_schema_admits_the_requested_sort():
     from agent_builder.design.nodes.direct_conversation import decoder_schema
-    from agent_builder.design.planner_constraints import native_decoder_schema
     from agent_builder.design.linear_plan import schema_for
+    st = table_state(REQUEST)
+    schema = schema_for(decoder_schema('v8'), {'condition_enforced': True, 'condition_ledger': ready_ledger(),
+                                               'resources': st['resources'], 'messages': st['messages']})
+    low, high, item = sort_bounds(schema)
+    assert low == 0 and high == 1 and item['field']['enum'] == ['주문일']
 
-    def sort_schema(text):
-        state = table_state(text)
-        request = sort_request(state)
-        graph = native_decoder_schema(decoder_schema(version), [], ready_ledger(),
-                                      require_ready_draft=version != 'v6', sort_request=request)
-        schemas = [graph]
-        if version == 'v8':
-            schemas.append(schema_for(decoder_schema('v8'), {'condition_enforced': True, 'condition_ledger': ready_ledger(),
-                                                             'resources': state['resources'], 'messages': state['messages']}))
-        return [(schema['$defs']['ExecutionPlan']['properties']['sort'], schema['$defs']) for schema in schemas]
 
-    for sort, defs in sort_schema(REQUEST):
-        assert sort['minItems'] == sort['maxItems'] == 1
-        item = defs[sort['items']['$ref'].rsplit('/', 1)[1]]['properties']
-        assert item['field']['enum'] == ['주문일'] and item['direction']['enum'] == ['ascending']
-    for sort, defs in sort_schema('주문번호 중복은 첫 행만 남기고 최신순으로 정렬해줘'):
-        assert sort['minItems'] == 1 and sort.get('maxItems', 5) >= 1
-        assert defs[sort['items']['$ref'].rsplit('/', 1)[1]]['properties']['direction']['enum'] == ['descending']
-    for sort, _ in sort_schema('주문번호 중복은 첫 행만 남겨줘'):
-        assert sort['maxItems'] == 0
+# --- PR #142 review 6 ------------------------------------------------------------------------
+
+def test_quoted_sort_operand_is_kept():
+    assert sort_request(table_state('"주문일 오름차순"으로 정렬해줘'))['sorts'] == [
+        {'field': '주문일', 'direction': 'ascending', 'value_type': None}]
+    assert sort_request(table_state('상태가 "정렬 완료"인 행만 골라줘', COLUMNS + ['상태']))['kind'] == 'none'
+
+
+def test_cancelling_a_written_sort():
+    assert sort_request(conversation(REQUEST, '주문일 오름차순 정렬 빼줘'))['kind'] == 'cancelled'
+    assert sort_request(conversation(REQUEST, '주문일 오름차순으로 정렬하지 마'))['kind'] == 'cancelled'
+
+
+def test_sort_inside_an_unquoted_value_is_not_wording():
+    assert sort_request(table_state('상태가 정렬완료와 같은 행만 골라 JSON으로 저장해줘', COLUMNS + ['상태']))['kind'] == 'none'
+    assert sort_request(table_state('주문일 기준으로 정렬해줘'))['kind'] == 'unparsed'
+
+
+def test_file_name_after_a_period_keeps_the_policy_sentence():
+    from agent_builder.conditions.condition_readiness import explicit_policies, source_catalog
+    text = '중복은 첫 행만 남겨줘.결과.csv도 첨부했어.'
+    assert policy_clauses(text, COLUMNS)[0][:2] == ('duplicate.policy', 'first')
+    state = conversation('중복은 마지막 행만 남겨줘', text)
+    state['resources'] = [dict(TABLE, id='t')]
+    catalog, _ = source_catalog(state)
+    assert explicit_policies(state, catalog)['duplicate.policy']['value'] == 'first'
+
+
+def test_an_old_no_sort_policy_does_not_override_a_new_sort_request():
+    state = conversation('주문번호 중복은 첫 행만 남기고 정렬은 하지 마',
+                         '새로운 작업: 주문번호 중복은 첫 행만 남기고 주문일 오름차순으로 정렬해줘')
+    ledger = ready_dedup_ledger()
+    ledger['slots']['sort.policy'] = {'key': 'sort.policy', 'status': 'specified', 'value': 'none', 'evidence': []}
+    problems = lambda sort: [p for p in plan_issues(ledger, dedup_draft(sort), state=state) if '정렬' in p]
+    assert not problems(SORT) and problems([])
+    same_task = conversation('주문번호 중복은 첫 행만 남기고 정렬은 하지 마', '역시 주문일 오름차순으로 정렬해줘')
+    assert not [p for p in plan_issues(ledger, dedup_draft(SORT), state=same_task) if '정렬' in p]
+
+
+def test_question_marked_save_request_is_a_save_request():
+    assert is_save_request('저장해도 돼요?') and is_save_request('확인완료. 저장?')
+
+
+SORT_FIRST_ROWS = [{'주문번호': 'A1', '고객명': '김', '주문일': '2026-11-01', '금액': 100},
+                   {'주문번호': 'A1', '고객명': '김', '주문일': '2026-11-07', '금액': 100},
+                   {'주문번호': 'B2', '고객명': '이', '주문일': '2026-11-04', '금액': 200}]
+SORT_FIRST_REQUEST = ('중복주문.csv를 주문일 내림차순으로 먼저 정렬한 뒤 주문번호가 같은 행은 첫 행만 남기고 CSV로 저장해줘. '
+                      '빈 값은 그대로 유지해.')
+
+
+@pytest.mark.parametrize('sort_first,saves', [(True, True), (False, False)])
+def test_sort_before_dedup_keeps_the_latest_row_end_to_end(service, sort_first, saves):
+    act, saved, fakes = service
+    CURRENT['request'] = SORT_FIRST_REQUEST
+    planner = make_planner([], sort=LATEST, sort_first=sort_first)
+    act('upload', planner, asset=dict(TABLE), rows=SORT_FIRST_ROWS)
+    first = act('message', planner, content=SORT_FIRST_REQUEST)
+    done = press_save(act, planner)
+    if saves:
+        assert first['status'] == 'ready' and done['status'] == 'saved', first['issues']
+        result = fakes['run'](done['saved_agent_id'])
+        import csv as _csv
+        rows = list(_csv.DictReader(io.StringIO(result['artifact']['content'].lstrip('\ufeff'))))
+        assert [(r['주문번호'], r['주문일']) for r in rows] == [('A1', '2026-11-07'), ('B2', '2026-11-04')]
+    else:
+        assert first['status'] == 'validation_failed' and any('정렬한 뒤 중복' in i for i in first['issues'])
+        assert saved() == 0

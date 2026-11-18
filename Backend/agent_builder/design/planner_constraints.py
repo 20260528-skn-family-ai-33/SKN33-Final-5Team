@@ -82,9 +82,11 @@ def table_tool_issues(state):
 def _constrain_sort(defs, plan, request):
     """The sort the validator requires is the sort the decoder may emit (PR #142 review 5).
 
-    No written sort (or a withdrawn one) keeps sort empty. An exact request fixes the
-    columns, directions and count; an unparsed one requires a sort and fixes only what
-    was read (its key columns or its one direction).
+    No written sort (or a withdrawn one) keeps sort empty. Otherwise the schema only
+    limits which columns/directions may appear (exact request: those and at most that
+    many; unparsed: what was read). It never forces a minimum, because the same plan
+    shape is used by every filter_sort step (a dedup step after a sort step has none);
+    the validator checks that the output is actually sorted.
     """
     kind = (request or {}).get('kind', 'none')
     if kind in ('none', 'cancelled'):
@@ -96,13 +98,15 @@ def _constrain_sort(defs, plan, request):
         sorts = request['sorts']
         props['field'] = {'type': 'string', 'enum': list(dict.fromkeys(s['field'] for s in sorts))}
         props['direction'] = {'type': 'string', 'enum': list(dict.fromkeys(s['direction'] for s in sorts))}
-        plan['sort'].update(minItems=len(sorts), maxItems=len(sorts))
+        plan['sort'].pop('minItems', None)
+        plan['sort']['maxItems'] = len(sorts)
     else:
         if request.get('fields'):
             props['field'] = {'type': 'string', 'enum': list(request['fields'])}
         if request.get('direction'):
             props['direction'] = {'type': 'string', 'enum': [request['direction']]}
-        plan['sort']['minItems'] = 1
+        plan['sort'].pop('minItems', None)
+        plan['sort']['maxItems'] = 5  # lift any earlier "no sort" bound
     item['required'] = list(props)
     defs['RequestedSortCondition'] = item
     plan['sort']['items'] = {'$ref': '#/$defs/RequestedSortCondition'}

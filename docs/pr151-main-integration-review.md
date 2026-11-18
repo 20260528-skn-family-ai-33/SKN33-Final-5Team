@@ -1,5 +1,23 @@
 # PR #151 최신 main 통합 및 리뷰 재검증
 
+## 최종 병합 검토 후 추가 보완
+
+대상: PR #151 `ba600dc` 이후 수정과 PR #142 `2cd5a3b`의 로컬 통합본. main 기준은 `6e80a43`이며 PR 병합과 운영 배포는 수행하지 않았다.
+
+- `첨부 표의 행을 모두 CSV로 저장해줘.`를 복수 파일 요청으로 오인하여 저장을 막던 회귀를 수정했다. 행·열·레코드에 붙은 전체 수량 표현만 분리하며, 원본/결과 별도 파일·CSV와 JSON·각각 저장은 계속 확인한다.
+- 서로 다른 행 집합을 지칭하는 `서울 행과 부산 행을 모두 CSV로 저장해줘.`는 단일 출력으로 임의 확정하지 않는다. `실행`을 `행`으로 잘라 읽지 않도록 단어 경계도 검사한다.
+- 단일 CSV 요청 5종을 임시 SQLite 저장과 실제 실행기로 검증한다. 전체 헤더·값·순서, 수량 0, 빈 셀, 중복 행, 쉼표·따옴표를 포함한 값까지 대조한다.
+- T02 정답 비교는 checkout의 LF/CRLF 차이를 허용하는 CSV 레코드 비교로 변경했다. 열/행 순서, 값, 중복, 빈 셀은 정확히 일치해야 하며, 셀 내부 줄바꿈은 정규화하지 않는다. 내용 변경을 실패시키는 반례도 추가했다.
+- 새 회귀 24건: 출력 범위/실제 CSV 실행 15건, CSV 비교의 정상/오류 대조 9건. 기존 CI의 `test_review151_*.py` 수집에 포함된다.
+
+두 PR의 통합 전체 검사(design / conditions / capabilities / workflow_engine / infrastructure)는 **5,580 passed / 18 failed / 34 skipped** (233.47초). 기존 main 대조 기록과 실패 목록을 직접 비교해 신규 실패가 없음을 확인했다. 기존 실패는 카탈로그 fixture 불일치 17건, slack.post_message/execute 커버리지 목록 누락 1건이다.
+
+위 전체 검사는 마지막 단어 경계 보강 직전의 통합본이다. 최종 보강 후 영향 7파일은 **494 passed** (27.07초): `test_review151_scope_revisions`, `test_review151_followup_contract`, `test_review151_export_semantics`, `test_multiple_output_scope`, `test_text_filter_dialogue`, `test_condition_readiness`, `test_sort_request_wording`.
+
+운영 모델을 새로 호출한 검증은 아니며 통제 응답/기존 응답 재생을 사용했다. 아래의 바이트 비교 및 5,292건 기록은 `ba600dc` 당시 기록이다.
+
+## ba600dc 통합 시점 기록
+
 검증일: 2026-11-18. 수정 전 PR: `51205524`. 통합한 main: `6e80a43`.
 
 ## 리뷰 입력별 변경

@@ -201,3 +201,71 @@ def test_same_turn_single_file_replaces_the_previous_format():
     raw = dict(tasks=[dict(source_message=0, description='읽기', spec=dict(kind='read', file_ids=['table-source'])),
                       dict(source_message=0, description='저장', spec=dict(kind='export', format='csv'))], unresolved=[])
     assert extract_plan(raw, current)['tasks'][-1]['spec']['format'] == 'csv'
+
+
+@pytest.mark.parametrize('request_text', [
+    '첨부 표의 행을 모두 CSV로 저장해줘.',
+    '첨부 표의 모든 행을 CSV로 저장해줘.',
+    '첨부 표의 모든 열을 모두 CSV로 저장해줘.',
+    '첨부 표의 레코드들은 빠짐없이 모두 CSV로 저장해줘.',
+    '첨부 표의 행과 열을 모두 CSV로 저장해줘.',
+])
+def test_all_rows_single_csv_is_saved_and_executed(request_text, tmp_path):
+    import base64
+    import csv
+    import io
+    from tests.design.test_builder import initial, draft
+    from tests.workflow_engine.test_workflow import node, bind, edge
+    from agent_builder.design.requirement_ledger import extract_plan, ledger_fingerprint, plan_digest
+    from agent_builder.design.requirement_coverage import coverage_report
+    from infrastructure.persistence.storage import Storage
+    from workflow_engine.runner import run_workflow
+
+    current = initial()
+    current.update(messages=[dict(role='user', content=request_text)], resources=[
+        dict(id='source', name='input.csv', kind='table', columns=['amount', 'note'], format='csv')])
+    raw = dict(tasks=[dict(source_message=0, description='읽기', spec=dict(kind='read', file_ids=['source'])),
+                      dict(source_message=0, description='저장', spec=dict(kind='export', format='csv'))], unresolved=[])
+    plan = extract_plan(raw, current)
+    current.update(requirement_required=True, requirement_ledger=plan,
+                   requirement_fingerprint=ledger_fingerprint(current), requirement_digest=plan_digest(plan))
+    candidate = draft()
+    candidate.update(name='표 내보내기', purpose=request_text, instructions=request_text, document_ids=['source'],
+        tool_ids=['read_table', 'write_result'], requirements=[dict(source_id='user', quote=request_text, description='모든 행 저장')],
+        workflow=dict(entry='read', nodes=[node('read', 'read_table', file_ids=['source']),
+            node('out', 'write_result', [bind('table', 'read', 'table')], format='csv')], edges=[edge('read', 'out')]))
+    current.update(draft=candidate, confirmed=True, status='ready')
+    assert not multiple_outputs(current)
+    assert coverage_report(current, candidate)['issues'] == []
+    rows = [dict(amount=10, note='쉼표,따옴표"'), dict(amount=0, note=''), dict(amount=10, note='쉼표,따옴표"')]
+    storage = Storage(str(tmp_path))
+    try:
+        storage.add_asset(current['resources'][0], rows)
+        run = run_workflow(storage, storage.save_agent(current), '', '')
+        assert run['status'] == 'succeeded', run.get('error')
+        assert run['rows'] == rows
+        artifact = run['artifact']
+        content = (base64.b64decode(artifact['content']).decode('utf-8-sig')
+                   if artifact.get('encoding') == 'base64' else artifact['content'].lstrip('\ufeff'))
+        assert list(csv.reader(io.StringIO(content, newline=''))) == [
+            ['amount', 'note'], ['10', '쉼표,따옴표"'], ['0', ''], ['10', '쉼표,따옴표"']]
+    finally:
+        storage.close()
+
+
+@pytest.mark.parametrize('request_text', [
+    '첨부 표의 행을 모두 CSV와 JSON으로 저장해줘.',
+    '첨부 표의 행을 모두 CSV로 저장해줘. 원본은 별도 JSON으로 저장해줘.',
+    '첨부 표의 행을 모두 각각 CSV 파일로 저장해줘.',
+    '첨부 표의 행을 모두 유지하고 결과를 두 파일로 저장해줘.',
+    '결과 파일을 모두 저장해줘.',
+    '원본 데이터와 처리 결과 데이터를 모두 CSV로 저장해줘.',
+    '서울 행과 부산 행을 모두 CSV로 저장해줘.',
+    '원본 레코드와 처리 결과 레코드를 모두 CSV로 저장해줘.',
+    '서울 행 및 부산 행을 모두 CSV로 저장해줘.',
+    '실행을 모두 CSV로 저장해줘.',
+])
+def test_all_rows_does_not_erase_independent_multiple_artifacts(request_text):
+    current = state()
+    current['messages'] = [dict(role='user', content=request_text)]
+    assert multiple_outputs(current)

@@ -19,6 +19,37 @@ def raw_from(plan):
                        for t in plan['tasks']], unresolved=[])
 
 
+def assert_csv_matches_kit(actual, expected):
+    # Checkout line endings are not CSV data. Preserve field contents (including
+    # embedded newlines), header order, row order, duplicates and empty cells.
+    def records(content):
+        return list(csv.reader(io.StringIO(content.decode('utf-8-sig'), newline=''), strict=True))
+    assert records(actual) == records(expected)
+
+
+def test_csv_oracle_accepts_record_terminators_only():
+    assert_csv_matches_kit(b'a,b\r\n1,"x,y"\r\n0,\r\n', b'a,b\n1,"x,y"\n0,\n')
+
+
+@pytest.mark.parametrize('actual', [
+    b'b,a\n1,"x,y"\n0,\n',  # header order
+    b'a,b\n0,\n1,"x,y"\n',  # row order
+    b'a,b\n2,"x,y"\n0,\n',  # changed value
+    b'a,b\n1,"x,y"\n',      # omitted zero/empty row
+    b'a,b\n1,"x,y"\n0,\n0,\n',  # duplicate
+    b'a,b\n1,x,y\n0,\n',    # wrong quoting adds a column
+    b'a,b\n1,"x, y"\n0,\n',  # whitespace within a field
+])
+def test_csv_oracle_rejects_changed_content(actual):
+    with pytest.raises(AssertionError):
+        assert_csv_matches_kit(actual, b'a,b\n1,"x,y"\n0,\n')
+
+
+def test_csv_oracle_does_not_normalize_embedded_newlines():
+    with pytest.raises(AssertionError):
+        assert_csv_matches_kit(b'a\n"x\r\ny"\n', b'a\n"x\ny"\n')
+
+
 def contract_packet(current):
     contract = grouped_contract(current)
     return dict(tasks=[dict(source_message=(contract['export_source'] if role.startswith('export_')
@@ -205,7 +236,7 @@ def test_t02_followup_design_save_execute_matches_kit_csv(replies, tmp_path, mon
     fmt = 'json' if replies == ['같은 열을 JSON으로 저장해줘.', '네.'] else 'csv'
     assert run['artifact']['name'] == '지역별매출.' + fmt
     if not any(change in joined for change in ('취소 주문', '계산식', '내림차순')) and fmt == 'csv':
-        assert actual == source.with_name('t02_expected.csv').read_bytes()
+        assert_csv_matches_kit(actual, source.with_name('t02_expected.csv').read_bytes())
     else:
         # Compute a separate oracle from the original kit rows; do not use
         # workflow helpers or the contract being tested to calculate answers.

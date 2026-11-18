@@ -218,7 +218,8 @@ def test_t02_uppercase_filename_is_validated_saved_and_returned(reply, expected_
         artifact = run['artifact']
         content = base64.b64decode(artifact['content']) if artifact.get('encoding') == 'base64' else artifact['content'].encode('utf-8')
         if expected_name.endswith('.CSV'):
-            assert content == source.with_name('t02_expected.csv').read_bytes()
+            from tests.design.test_review151_followup_contract import assert_csv_matches_kit
+            assert_csv_matches_kit(content, source.with_name('t02_expected.csv').read_bytes())
         else:
             assert json.loads(content) == [
                 {'지역': '경기', '총매출': 110000, '주문건수': 3},

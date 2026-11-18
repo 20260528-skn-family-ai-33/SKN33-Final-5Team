@@ -1967,22 +1967,13 @@ test('rename: design and reservation detail persist the title across screens',as
  }finally{await h.close();}
 });
 
-test('rename: reservation list preserves active status after changing the name',async()=>{
- const workflows=scheduleFixtures();
- const initial=workflows.find(row=>row.agent.id==='A')!;
- const h=await setup('?screen=schedules',{},(path,body)=>{
-  if(path.split('?')[0].endsWith('/schedules'))return {workflows};
-  if(path.endsWith('/rename_agent'))return {agent:{...initial.agent,version:initial.agent.version+1,config:{...initial.agent.config,name:body.name}}};
- },createElement(EntryApp));
- try{
-  const row=scheduleRow('A');
-  const status=row.querySelector('.schedule-status')?.textContent;
-  await click(row.querySelector('button[title="이름 변경"]')!);
-  await input(field('워크플로우 이름'),'새 예약 이름');
-  await click(button('이름 저장'));
-  assert.equal(scheduleRow('A').querySelector('h2')?.textContent,'새 예약 이름');
-  assert.equal(scheduleRow('A').querySelector('.schedule-status')?.textContent,status);
- }finally{await h.close();}
+test('schedules: every row has the same single schedule action and no rename control',async()=>{
+ const h=await setup('?screen=schedules',{},path=>path.split('?')[0].endsWith('/schedules')?{workflows:scheduleFixtures()}:undefined,createElement(EntryApp));
+ try{for(const row of document.querySelectorAll('[data-schedule-id]')){
+  const actions=row.querySelectorAll('.schedule-row-actions button');assert.equal(actions.length,1);
+  assert.equal(actions[0].textContent,'일정 관리');assert.ok(actions[0].classList.contains('as-secondary'));
+  assert.equal(row.querySelector('[title="이름 변경"]'),null);
+ }}finally{await h.close();}
 });
 
 test('schedules: an empty list offers a fresh workflow without changing an existing saved workflow',async()=>{
@@ -2004,8 +1995,8 @@ test('schedules: management opens the chosen workflow and leaving a pending list
   if(path.includes('/agent?id=A'))return snapshot(daily);
  },createElement(EntryApp));
  try{
-  const manage=Array.from(scheduleRow('A').querySelectorAll('button')).find(item=>item.textContent?.trim()==='상세 확인');assert.ok(manage);
-  await click(manage);
+  await click(scheduleRow('A').querySelector('[aria-label="'+scheduleFixtures().find(row=>row.agent.id==='A')!.agent.config.name+' 일정 관리"]')!);
+  await click(document.querySelector('.schedule-detail-link')!);
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(new URL(location.href).searchParams.get('service'),'A');
   assert.equal(document.querySelector('h1')?.textContent,'일일 보고서');assert.ok(document.querySelector('.as-schedule-card'));
   await click(button('예약 관리'));assert.match(document.body.textContent!,/불러오고/);
@@ -2734,7 +2725,8 @@ test('home: linked detail pages keep the selected workflow and return to home',a
  const closeDialog=async()=>{await click(document.querySelector('[role=dialog] [data-slot=dialog-close]')!);assert.equal(document.querySelector('[role=dialog]'),null);};
  try{
   await click(button('예약 관리'));
-  await click(scheduleRow('A').querySelector('[aria-label="일일 보고서 예약 자료·실행 확인"]')!);
+  await click(scheduleRow('A').querySelector('[aria-label="일일 보고서 일정 관리"]')!);
+  await click(document.querySelector('.schedule-detail-link')!);
   route('schedule','A');
   assert.ok(document.querySelector('.as-schedule-card'));
   await click(button('설계'));
@@ -3251,7 +3243,7 @@ test('workflow folders: create, select, move, filter, rename and delete preserve
  },createElement(EntryApp));
  try{
   await click(button('폴더 만들기'));await input(field('폴더 이름'),'매일 업무');await submit(document.querySelector('.workflow-folder-form')!);
-  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('선택한 워크플로우 이동 (1)'));
+  await click(document.querySelector('input[aria-label="서비스 A 선택"]')!);await click(button('폴더로 이동 (1)'));
   await act(async()=>{const el=field('대상 폴더');el.value='folder-1';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
   await submit(document.querySelector('.workflow-folder-form')!);await click(button('매일 업무'));
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
@@ -3296,7 +3288,7 @@ test('workflow folder search and folder changes clear hidden selection',async()=
  const h=await setup('?screen=workflows',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[A,B],organization:{revision:1,folders:[{id:'f',name:'정리'}],assignments:{A:'f'}}}:undefined,createElement(EntryApp));
  try{
   await click(document.querySelector('input[aria-label="현재 목록 전체 선택"]')!);
-  assert.equal(button('선택한 워크플로우 이동 (2)').disabled,false);
+  assert.equal(button('폴더로 이동 (2)').disabled,false);
   await input(document.querySelector('input[aria-label="워크플로우 검색"]')!,'서비스 A');
   assert.equal(document.querySelector('.workflow-folder-move'),null);
   assert.equal(document.querySelectorAll('.entry-workflow-card').length,1);
@@ -3317,11 +3309,11 @@ test('workflow folder selection caps at 500 and releases a slot when unchecked',
   await click(document.querySelector('input[aria-label="현재 목록에서 500개 선택"]')!);
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
   const last=document.querySelector<HTMLInputElement>('input[aria-label="대량 500 선택"]')!;
-  assert.equal(last.disabled,true);assert.ok(button('선택한 워크플로우 이동 (500)'));
+  assert.equal(last.disabled,true);assert.ok(button('폴더로 이동 (500)'));
   await click(document.querySelector('input[aria-label="대량 0 선택"]')!);
   assert.equal(last.disabled,false);await click(last);
   assert.equal(document.querySelectorAll('.workflow-card-select input:checked').length,500);
-  await click(button('선택한 워크플로우 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
+  await click(button('폴더로 이동 (500)'));await submit(document.querySelector('.workflow-folder-form')!);
   assert.equal(moved.length,500);assert.ok(moved.includes('bulk-500'));assert.ok(!moved.includes('bulk-0'));
  }finally{await h.close();}
 });
@@ -3707,7 +3699,7 @@ test('all saved-design entry paths preserve left selection and right-click setti
  try{
   await click(document.querySelector('[aria-label="서비스 A 설계 열기"]')!);await verify('library design');
   await click(document.querySelector('[data-tour="menu-schedules"]')!);
-  await click(document.querySelector('[aria-label="서비스 A 예약 자료·실행 확인"]')!);await click(button('설계'));await verify('schedule detail to design');
+  await click(document.querySelector('[aria-label="서비스 A 일정 관리"]')!);await click(document.querySelector('.schedule-detail-link')!);await click(button('설계'));await verify('schedule detail to design');
   await click(document.querySelector('[data-tour="menu-history"]')!);await click(button('결과 보기'));await click(button('설계'));await verify('history result to design');
   await click(document.querySelector('.as-workflow-switcher summary')!);await click(document.querySelector('.as-workflow-switcher nav button')!);await click(button('설계'));await verify('saved workflow switcher to design');
   assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);
@@ -3840,5 +3832,57 @@ test('design batch limits count existing attachments and reject oversize files b
   const large=new dom.window.File(['a'],'large.txt');Object.defineProperty(large,'size',{value:8*1024*1024+1});
   await choose([large]);assert.match(document.body.textContent||'',/파일당 8MB/);
   assert.equal(h.calls.filter(call=>call.path.endsWith('/upload')).length,0);
+ }finally{await h.close();}
+});
+
+test('library deletion: confirmation, versioned deletion and partial failures preserve failed items',async()=>{
+ let allow=false;const removed:string[]=[];
+ const h=await setup('?screen=workflows',{},(path,_body,method)=>{
+  if(method==='DELETE'){removed.push(path);return path.includes('id=B')?Response.json({error:'실행 중입니다.'},{status:409}):{deleted:'A'};}
+ },createElement(EntryApp));
+ dom.window.confirm=()=>allow;
+ try{
+  await click(document.querySelector('[aria-label="서비스 A 삭제"]')!);assert.equal(removed.length,0);
+  allow=true;
+  await act(async()=>{document.querySelector<HTMLInputElement>('[aria-label="현재 목록 전체 선택"]')!.click();await tick();});
+  await click(button('선택 삭제 (2)'));
+  assert.equal(document.querySelector('[aria-label="서비스 A 삭제"]'),null);
+  assert.ok(document.querySelector('[aria-label="서비스 B 삭제"]'));
+  assert.match(document.querySelector('[role=alert]')!.textContent!,/실행 중/);
+  assert.deepEqual(removed,['/api/agent-builder/agents?id=A&version=1','/api/agent-builder/agents?id=B&version=1']);
+  assert.match(document.body.textContent!,/1개 워크플로우를 삭제했습니다/);
+  assert.equal(button('폴더로 이동 (1)').disabled,false,'삭제 실패는 폴더 작업을 막지 않는다');
+  await click(button('폴더로 이동 (1)'));
+  assert.ok(document.querySelector('.workflow-folder-form'));
+ }finally{await h.close();}
+});
+
+test('deleted workflow history opens without offering execution or edits',async()=>{
+ const deleted={...A,deleted_at:'2026-11-17T00:00:00Z'};
+ const run={id:'old-run',agent_version:1,status:'succeeded',steps:[],rows:[],answer:'보관된 결과',created_at:'2026-11-16T00:00:00Z'};
+ const h=await setup('?screen=run&service=A',{},path=>path.split('?')[0].endsWith('/agents')?{agents:[]}:path.includes('/agent?id=A')?snapshot(deleted,[run]):undefined);
+ try{
+  assert.match(document.body.textContent!,/삭제된 워크플로우/);
+  assert.match(document.body.textContent!,/보관된 결과/);
+  assert.ok(document.querySelector('[aria-label="실행 기록 선택"]'));
+  assert.equal(document.querySelector('[data-tour="edit-workflow"]'),null);
+  assert.equal(document.querySelector('.as-service-input'),null);
+  assert.ok(!buttons().some(b=>b.textContent?.trim()==='실행하기'));
+ }finally{await h.close();}
+});
+
+test('template deletion keeps default presets and clears a deleted editor',async()=>{
+ const preset={...complex,id:'builtin',ref:'builtin:1',origin:'builtin'};let removed=false;
+ const props={...libraryProps(async()=>{removed=true;}),defaults:[preset]};
+ const h=await setup('',{},(path,_body,method)=>method==='DELETE'?{deleted:complex.id}:undefined,createElement(NodeLibrary,props));
+ dom.window.confirm=()=>true;
+ try{
+  assert.equal(document.querySelectorAll('[aria-label="복합 필터 삭제"]').length,1);
+  await click(document.querySelector('.nl-list .as-secondary')!);
+  assert.ok(document.querySelector('form[aria-label="작업 설정"]'));
+  await click(document.querySelector('[aria-label="복합 필터 삭제"]')!);
+  assert.ok(removed);assert.equal(document.querySelector('form[aria-label="작업 설정"]'),null);
+  assert.equal(h.calls.filter(call=>call.path==='/api/agent-builder/nodes?id=node&version=1').length,1);
+  assert.equal(document.querySelector('.nl-presets [title="삭제"]'),null);
  }finally{await h.close();}
 });

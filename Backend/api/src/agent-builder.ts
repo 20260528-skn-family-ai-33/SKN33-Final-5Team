@@ -350,6 +350,12 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
   res.writeHead(200,{'Content-Type':artifact.mime,'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(artifact.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(artifact.content);return true;
  }
  if(action==='original'&&method==='GET'){const id=url.searchParams.get('id');if(!id||!idPattern.test(id))throw new Error('자료 ID를 확인하세요.');const {asset}=await builderWorker({action:'asset',id});if(!/^builder-originals\/[a-f0-9]{64}\.[a-z0-9]+$/.test(asset.original_path||''))throw new Error('원본 파일이 없는 이전 자료입니다. 다시 연결하세요.');const content=await readWorkspaceFile(asset.original_path,()=>readFile(dataDirectory(asset.original_path)));res.writeHead(200,{'Content-Type':originalMime(asset.format),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(content);return true;}
+ if(['agents','nodes'].includes(action)&&method==='DELETE'){
+  libraryQuery(url,['id','version']);const id=url.searchParams.get('id'),version=Number(url.searchParams.get('version'));
+  if(!id||!idPattern.test(id)||!Number.isSafeInteger(version)||version<1)throw new Error('삭제할 작업 ID와 버전을 확인하세요.');
+  res.setHeader('Cache-Control','no-store');
+  json(res,200,await builderWorker({action:'delete_entry',kind:action==='agents'?'agent':'node',id,base_version:version}));return true;
+ }
  if(action==='nodes'&&method==='GET'){json(res,200,await builderWorker({action:'nodes'}));return true;}
  if(action==='nodes'&&method==='POST'){
   const data=await readBody(req,50000);

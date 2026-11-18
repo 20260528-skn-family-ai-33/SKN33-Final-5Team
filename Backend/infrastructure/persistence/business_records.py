@@ -67,6 +67,13 @@ class BusinessRecords:
             VALUES (%s,%s,%s,'a4b.builder.v1',%s,%s)
             """, (agent['id'], agent['version'], graph, digest(graph), self.member))
 
+    def archive_workflow(self, id):
+        changed = self.connection.execute(
+            "UPDATE a4b.workflows SET status='archived',updated_at=now() WHERE id=%s AND created_by=%s",
+            (id, self.member))
+        if changed.rowcount != 1:
+            raise ValueError('이 회원의 워크플로우 삭제 상태를 저장하지 못했습니다.')
+
     def save_document(self, asset):
         meta = {key: asset[key] for key in ('kind','format','hash','parser_status','processing_status') if key in asset}
         self.connection.execute("""

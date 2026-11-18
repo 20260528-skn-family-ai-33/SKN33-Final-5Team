@@ -40,6 +40,15 @@ test('node library API pins selected versions, rejects stale writes and preserve
   assert.equal(restored.node_library.find((n:any)=>n.ref===v1.ref).spec.name,spec.name);
   assert.equal(restored.required_node_refs[0],v1.ref);
   const listed=await(await call('nodes')).json() as any;assert.equal(listed.nodes.length,1);assert.equal(listed.nodes[0].version,2);
+  const remove=(id:string,version:number)=>fetch(base+'nodes?id='+encodeURIComponent(id)+'&version='+version,{method:'DELETE'});
+  assert.equal((await remove(v1.id,1)).status,400,'stale versions cannot delete');
+  assert.equal((await remove(catalog.defaults[0].id,1)).status,400,'presets cannot be deleted');
+  assert.equal((await remove(v1.id,2)).status,200);
+  assert.deepEqual((await(await call('nodes')).json() as any).nodes,[]);
+  assert.equal((await remove(v1.id,2)).status,200,'duplicate deletion is idempotent');
+  assert.equal((await call('nodes',{id:v1.id,baseVersion:3,spec})).status,400,'removed templates cannot be edited');
+  const preserved=await(await call('session?id='+session.id)).json() as any;assert.equal(preserved.node_library[0].ref,v1.ref);
+
  }finally{await new Promise<void>(done=>server.close(()=>done()));store.close();if(previous===undefined)delete process.env.EASYFLOW_DATA_DIR;else process.env.EASYFLOW_DATA_DIR=previous;await rm(directory,{recursive:true,force:true});}
 });
 

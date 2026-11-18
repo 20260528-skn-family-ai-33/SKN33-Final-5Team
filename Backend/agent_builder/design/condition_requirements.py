@@ -12,6 +12,8 @@ def additional_row_predicates(state, primary):
     contract = text_filter_state(state)
     if contract['issues']:
         raise ValueError(' / '.join(contract['issues']))
+    if contract['predicates'] and multiple_outputs(state):
+        raise ValueError('여러 출력 중 선별 조건을 어느 결과에 적용할지 확인해주세요.')
     return [(source, rule) for source, rule in contract['predicates'] if rule['field'] != primary]
 
 

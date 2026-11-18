@@ -33,7 +33,7 @@ def addition_intent(text):
     return None
 
 
-def filter_clear_events(text, fields):
+def filter_clear_events(text, fields, *, uncertain=False):
     events = []
     denied_tail = re.compile(r'\s*+(?:하지|하진|는)?\s*+(?:말|마|않|안)')
     for field in fields:
@@ -43,7 +43,13 @@ def filter_clear_events(text, fields):
         for pattern in patterns:
             for match in re.finditer(pattern, text):
                 if not in_quoted_text(text, match.start()) and not in_metadata_text(text, match.start()) and not denied_tail.match(text[match.end():]):
-                    events.append((match.start(), match.end(), field))
+                    tail = text[match.end():]
+                    unresolved = bool(re.match(
+                        r'\s*+(?:할지|하는지|해도|해도\s*+될지|할까|할까요|해도\s*+될까|인지|여부)', tail)
+                        or re.search(r'모르겠|미정|아직\s*+(?:안|못)|결정하지',
+                                     re.split(r'[.!?;\n]|그리고', tail)[0]))
+                    if unresolved == uncertain:
+                        events.append((match.start(), match.end(), field))
     return sorted(events)
 
 

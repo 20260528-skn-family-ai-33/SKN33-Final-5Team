@@ -54,6 +54,8 @@ def text_filter_state(state):
             replaced_numeric_fields.clear()
             continue
         events = [(start, 'clear', field, None) for start, _, field in filter_clear_events(text, fields)]
+        events += [(start, 'pending', field, f'{field} 조건을 취소할지 확인해주세요. 유지하거나 취소할 조건을 알려주세요.')
+                   for start, _, field in filter_clear_events(text, fields, uncertain=True)]
         spans = list(_COMPARATOR_SPAN.finditer(text))
         for index, span in enumerate(spans):
             if in_quoted_text(text, span.start()) or _uncertain_comparison(text[span.end():]) or _excludes_named_range(text, span.end()):

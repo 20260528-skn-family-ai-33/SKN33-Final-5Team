@@ -208,8 +208,10 @@ def test_boundary_grid_results_match_an_independent_predicate(tmp_path, instruct
 
 @pytest.mark.parametrize('structured', [False, True])
 @pytest.mark.parametrize('reply', ['대기만 남겨줘', '조건 취소'])
-def test_text_answer_uses_its_question_context_without_executing_echoed_labels(tmp_path, structured, reply):
-    s = current('상태가 완료인 행만 남기지마.'); asset = s['resources'][0]
+@pytest.mark.parametrize('instruction', ['상태가 완료인 행만 남기지마.',
+                                         '상태 조건 취소할지 모르겠어', '상태 조건 삭제해도 될까?'])
+def test_text_answer_uses_its_question_context_without_executing_echoed_labels(tmp_path, structured, reply, instruction):
+    s = current('상태가 완료인 행만 남겨줘. ' + instruction); asset = s['resources'][0]
     raw = proposal(s, {'filter.field': '비용', 'filter.operator': None, 'filter.value': None, 'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'})
     fake = Fake([raw, raw]); store = Storage(tmp_path); store.add_asset(asset, ROWS)
     graph, conn = build_graph(store, conversation=compile_conditions, condition_transport=fake, condition_mode='enforce')
@@ -281,3 +283,39 @@ def test_adding_instead_of_replacing_a_comparison_on_the_same_column_requires_cl
     s['messages'].append(dict(role='user', content="비용이 '1'인 행만 남기는 조건도 추가해줘."))
     assert text_filter_state(s)['issues']
     assert judge(s, VALUES)['decision'] != 'ready'
+
+
+@pytest.mark.parametrize('instruction', [
+    '상태 조건 취소할지 모르겠어', '상태 조건 삭제해도 될까?',
+    '상태 조건 제거할까요?', '상태 조건 해제 여부는 미정이야',
+])
+def test_uncertain_cancellation_preserves_the_predicate_and_blocks_save(tmp_path, instruction):
+    s = current('상태가 완료인 행만 남겨줘.'); seal(s)
+    original = text_filter_state(s)['predicates']
+    s['messages'].append(dict(role='user', content=instruction))
+    contract = text_filter_state(s)
+    assert contract['predicates'] == original
+    assert contract['issues'] and '상태' not in contract['cleared_fields']
+    assert judge(s, VALUES)['decision'] != 'ready'
+    store = Storage(tmp_path)
+    try:
+        s.update(confirmed=True)
+        with pytest.raises(ValueError):
+            store.save_agent(s)
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('reply', ['상태 조건 취소해줘', '기존 조건 모두 유지'])
+def test_uncertain_cancellation_can_be_resolved_without_repeating(reply):
+    s = current('상태가 완료인 행만 남겨줘.', '상태 조건 삭제해도 될까?')
+    ledger = judge(s, VALUES)
+    question = next(q for q in ledger['questions'] if q['key'] == 'filter.match')
+    s.update(condition_ledger=ledger, pending_questions=ledger['questions'])
+    s['messages'].append(dict(role='user', content=reply))
+    s['condition_answers'] = [dict(turn=len(s['messages'])-1, question_ids=[question['id']],
+                                 candidate_keys=['filter.match'], answer=reply)]
+    contract = text_filter_state(s)
+    assert not contract['issues']
+    assert bool(contract['predicates']) == (reply == '기존 조건 모두 유지')
+    assert judge(s, VALUES)['decision'] == 'ready'

@@ -89,6 +89,8 @@ def test_unquoted_sort_direction_can_be_used_as_an_equality_filter(tmp_path):
 @pytest.mark.parametrize(('request_text', 'proposed_value'), [
     ('정렬방식이 오름차순인 것만 삭제해줘.', '오름차순'),
     ('정렬방식이 오름차순인 것만 남기지 마.', '오름차순'),
+    ('정렬방식이 오름차순인 것만 남기면 안 돼. 나머지도 유지해줘.', '오름차순'),
+    ('정렬방식이 오름차순인 것만 골라서는 안 됩니다.', '오름차순'),
     ('정렬방식이 오름차순인 것만 남기고 결과 제목은 완료로 적어줘.', '완료'),
 ])
 def test_unquoted_equality_needs_the_literal_in_a_keep_clause(request_text, proposed_value):

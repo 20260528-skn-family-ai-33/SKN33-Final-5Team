@@ -970,3 +970,26 @@ def test_pre_dedup_sort_with_a_result_sort_end_to_end(service, pre, final, saves
         assert [(r['주문번호'], r['주문일']) for r in rows] == [('B2', '2026-11-04'), ('A1', '2026-11-07')]
     else:
         assert first['status'] == 'validation_failed' and saved() == 0
+
+
+@pytest.mark.parametrize('planned_sort,saves', [
+    pytest.param(SORT, True, id='order-date'),
+    pytest.param(AMOUNT_ASC, False, id='amount'),
+])
+@pytest.mark.parametrize('sort_clause', [
+    '주문일이 오름차순인 상태로 이 표의 전체 데이터를 정렬해서',
+    '주문일이 오름차순인 상태로 이 표의 전체 데이터가 정렬된 결과를',
+])
+def test_sort_after_a_long_result_description_checks_the_named_column(service, planned_sort, saves, sort_clause):
+    act, saved, fakes = service
+    request = REQUEST.replace('주문일 오름차순으로 정렬해서', sort_clause)
+    CURRENT['request'] = request
+    planner = make_planner([], sort=planned_sort)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    first = act('message', planner, content=request)
+    done = press_save(act, planner)
+    if saves:
+        assert first['status'] == 'ready' and done['status'] == 'saved'
+        assert csv_order(fakes['run'](done['saved_agent_id'])) == ['B2', 'A1']
+    else:
+        assert first['status'] == 'validation_failed' and saved() == 0

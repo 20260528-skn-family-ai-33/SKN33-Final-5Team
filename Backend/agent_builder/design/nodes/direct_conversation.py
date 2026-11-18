@@ -536,11 +536,12 @@ def make_direct_conversation(api_key, model, model_factory=None):
         system_prompt=linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]+PLANNER_INSTRUCTIONS
         system_prompt += '\n' + ROW_DESIGN_INSTRUCTION
         if sort_first:
+            sort_result = requested_sort.get('pre_sorts') and not requested_sort.get('result_sort_cancelled')
             system_prompt += ('\n중복 제거보다 정렬을 먼저 실행합니다. filter_sort를 서로 다른 ID로 두 단계 만드세요. '
                               '첫 단계에 요청한 sort와 duplicate_policy=keep, duplicate_field=null을 지정합니다. '
                               '두 번째 단계의 table 입력은 첫 단계의 table 출력에 연결하고 확정된 중복 정책을 지정하세요. '
                               + ('중복 제거 뒤 결과 정렬은 두 번째 단계의 sort에 지정하세요.'
-                                 if (requested_sort or {}).get('pre_sorts') else '두 번째 단계는 sort=[]입니다.'))
+                                 if sort_result else '두 번째 단계는 sort=[]입니다.'))
         if runtime_file:system_prompt+='\n'+runtime_file['instruction']
         from agent_builder.design.question_controls import QUESTION_RESPONSE_INSTRUCTION
         system_prompt+='\n'+QUESTION_RESPONSE_INSTRUCTION

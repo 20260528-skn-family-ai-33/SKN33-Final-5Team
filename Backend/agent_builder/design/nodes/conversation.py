@@ -588,9 +588,11 @@ def make_conversation(api_key,model,model_factory=None):
             context['confirmed_conditions']=state.get('condition_ledger')
             context['repair_instruction']+=' confirmed_conditions의 확정 값을 실제 노드·예약·출력 설정에 반영하고 이미 해결한 조건은 다시 묻지 마세요.'
         if sort_before_dedup:
-            from agent_builder.conditions.condition_readiness import sort_request as _sort_request
+            from agent_builder.conditions.condition_readiness import sort_request
+            request = sort_request(state)
+            sort_result = request.get('pre_sorts') and not request.get('result_sort_cancelled')
             result_sort = ('중복 제거 뒤 결과 정렬을 그 filter_sort의 sort에 지정하세요. '
-                           if _sort_request(state).get('pre_sorts') else 'sort=[]로 두세요. ')
+                           if sort_result else 'sort=[]로 두세요. ')
             context['repair_instruction'] += (' 정렬을 먼저 적용하는 filter_sort는 duplicate_policy=keep으로 두세요. '
                 '그 table 출력을 받는 다음 filter_sort에 확정 중복 정책을 적용하고 ' + result_sort +
                 '결과 저장에는 두 번째 filter_sort의 table을 연결하세요.')

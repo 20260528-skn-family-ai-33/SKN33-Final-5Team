@@ -79,7 +79,7 @@ def table_tool_issues(state):
             if tools-set(TABLE_PLAN_TOOLS) else [])
 
 
-def constrain_sort(defs, plan, request):
+def constrain_sort(defs, plan, request, *, condition_name='RequestedSortCondition'):
     """The sort the validator requires is the sort the decoder may emit (PR #142 review 5).
 
     No written sort (or a withdrawn one) keeps sort empty. Otherwise the schema only
@@ -108,18 +108,26 @@ def constrain_sort(defs, plan, request):
         plan['sort'].pop('minItems', None)
         plan['sort']['maxItems'] = 5  # lift any earlier "no sort" bound
     item['required'] = list(props)
-    defs['RequestedSortCondition'] = item
-    plan['sort']['items'] = {'$ref': '#/$defs/RequestedSortCondition'}
+    defs[condition_name] = item
+    plan['sort']['items'] = {'$ref': '#/$defs/' + condition_name}
 
 
 def split_sort_dedup_plans(defs, request=None):
     """Give the sort and duplicate-removal steps independent execution plans.
 
-    With a separate result sort (request['pre_sorts']) the dedup step may carry that
-    sort: filter_sort removes duplicates before it sorts.
+    The dedup step may carry a requested result sort because filter_sort removes
+    duplicates before sorting.
     """
+    request = request or {}
+    pre_sorts = request.get('pre_sorts')
+    result_request = None
+    if pre_sorts and not request.get('result_sort_cancelled'):
+        result_request = {key: value for key, value in request.items() if key != 'pre_sorts'}
+
     sort_plan = deepcopy(defs['ExecutionPlan'])
     sort_props = sort_plan['properties']
+    if pre_sorts:
+        constrain_sort(defs, sort_props, {'kind': 'sorts', 'sorts': pre_sorts}, condition_name='PreDedupSortCondition')
     sort_props['sort']['minItems'] = 1
     sort_props['duplicate_policy'] = literal_schema('keep')
     sort_props['duplicate_field'] = literal_schema(None)
@@ -127,7 +135,7 @@ def split_sort_dedup_plans(defs, request=None):
     dedup_plan = deepcopy(defs['ExecutionPlan'])
     dedup_props = dedup_plan['properties']
     dedup_props['sort'].pop('minItems', None)
-    dedup_props['sort']['maxItems'] = len((request or {}).get('sorts') or []) if (request or {}).get('pre_sorts') else 0
+    constrain_sort(defs, dedup_props, result_request, condition_name='ResultSortCondition')
     # A confirmed filter, if any, belongs to one step. Validation checks its placement.
     for props in (sort_props, dedup_props):
         props['filters'].pop('minItems', None)

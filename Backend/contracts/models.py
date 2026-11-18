@@ -79,6 +79,8 @@ class NodeSettings(BaseModel):
     date_output_format: str | None = Field(default=None, max_length=120)
     # extract_information: 'rows' returns one record per repeated item (e.g. receipt lines).
     extraction_mode: Literal['fields','rows','receipt_items'] | None = None
+    document_table_id: str | None = Field(default=None, min_length=1, max_length=200,
+        description='문서 미리보기에서 사용자가 고른 파서 표 블록 ID. 하나의 원본 file_id에 연결합니다.')
     file_ids: list[str]
     query: str | None
     fields: list[str]

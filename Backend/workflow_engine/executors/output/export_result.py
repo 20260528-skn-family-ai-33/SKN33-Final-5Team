@@ -46,7 +46,20 @@ def execute(node,state,storage,config,llm):
     if any(state['outputs'][b['node_id']].get(port) for b in node['bindings'] for port in REVIEW_PORTS):
         raise ValueError(REVIEW_EXPORT_ERROR)
     format=settings.get('format')
-    if 'records' in inputs:return {'artifact':records_artifact(inputs['records'],format,inputs.get('answer'))}
+    if 'records' in inputs:
+        records = inputs['records']
+        fields = settings.get('fields') or []
+        from workflow_engine.executors.document.table_rows import COVERAGE_KEY
+        if any(record.get(COVERAGE_KEY) == 'unverified' for record in records):
+            raise ValueError('값의 인용 근거만 확인됐으며 원본 전체 행의 추출 여부는 확인하지 못했습니다. 표 인식 결과를 검토해 주세요.')
+        if not fields and records and all(record.get(COVERAGE_KEY) == 'complete' for record in records):
+            from workflow_engine.executors.document.extract_information import ROW_RESERVED_FIELDS
+            fields = [field for field in records[0] if field not in ROW_RESERVED_FIELDS]
+        if fields:
+            if not records or any(record.get(COVERAGE_KEY) != 'complete' or any(field not in record for field in fields) for record in records):
+                raise ValueError('추출된 값의 근거는 확인했지만 원본 전체 행의 추출 여부는 확인하지 못했습니다. 표 인식 결과를 검토해 주세요. 일부 결과를 완성된 CSV로 저장하지 않았습니다.')
+            records = [{field: record[field] for field in fields} for record in records]
+        return {'artifact':records_artifact(records,format,inputs.get('answer'))}
     text=inputs.get('text') or inputs.get('answer')
     if isinstance(text,str) and text.strip():return {'artifact':text_artifact(text,format)}
     raise ValueError('저장할 records/text/answer 결과 입력이 필요합니다.')

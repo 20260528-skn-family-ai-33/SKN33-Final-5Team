@@ -5,12 +5,15 @@ from infrastructure.persistence.storage import Storage
 from tests.design.test_document_row_integrity import document, block, state
 
 
-@pytest.mark.parametrize('kind', ['missing', 'review', 'merged_header', 'conflicting_header'])
+@pytest.mark.parametrize('kind', ['missing', 'review', 'merged_header', 'conflicting_header', 'empty_cells'])
 def test_parser_structure_failure_stops_without_a_clarification_or_save(tmp_path, kind):
     asset = document([block([['상품명', '수량'], ['우유', '1'], ['초콜릿', '2']])], name='영수증.png')
     analysis = asset['parser_metadata']['document_analysis']
     if kind == 'missing':
         analysis['blocks'][0]['data']['cells'].pop()
+    elif kind == 'empty_cells':
+        analysis['blocks'][0]['data']['cells'] = []
+        analysis['review_required'] = True
     elif kind == 'merged_header':
         analysis['blocks'][0]['data']['cells'][0]['col_span'] = 2
     elif kind == 'conflicting_header':

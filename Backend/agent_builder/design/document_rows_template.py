@@ -574,7 +574,7 @@ def document_row_contract_issues(state, draft):
         rows_requested = row_collection_intent(*requests)
         if rows_requested is not True and not any(_TABLE_INTENT.search(request) for request in requests):
             return []
-        from documents.resources.document_resources import chunks_for_asset, supports
+        from documents.resources.document_resources import chunks_for_asset, select_table_parts, supports
         from workflow_engine.executors.document.row_contract import scalar_selection
         if rows_requested is not True and scalar_selection(*requests) is not None:
             return []
@@ -590,7 +590,9 @@ def document_row_contract_issues(state, draft):
             for asset in state.get('resources', []):
                 if asset['id'] not in file_ids or not supports(asset, 'document'):
                     continue
-                parts = (part for part in chunks_for_asset(asset) if table_id is None or part.get('block_id') == table_id)
+                parts = list(chunks_for_asset(asset))
+                if table_id is not None:
+                    parts = select_table_parts(parts, table_id)
                 if has_repeated_rows(parts, settings['fields'], across_pages=rows_requested is True):
                     return ['원본 표의 반복 행을 단일 값으로 축소할 수 없습니다. 행 단위 추출로 설계해 주세요.']
         return []
@@ -617,7 +619,7 @@ def document_row_contract_issues(state, draft):
 
 def document_row_source_issues(state, draft, *, structural_only=False):
     """Reject known unexecutable row exports before ready/save, without model calls."""
-    from documents.resources.document_resources import chunks_for_asset
+    from documents.resources.document_resources import chunks_for_asset, select_table_parts
     from workflow_engine.executors.document.row_contract import native_rows, NO_COORDINATES
     from workflow_engine.executors.document.table_rows import TableStructureError
     from workflow_engine.executors.document.extract_information import EVIDENCE_KEYS, MAX_ROWS, validate_extraction_size
@@ -658,7 +660,7 @@ def document_row_source_issues(state, draft, *, structural_only=False):
                         chunks[identifier] = list(chunks_for_asset(asset))
                     parts = chunks[identifier]
                     if table_id is not None:
-                        parts = [part for part in parts if part.get('block_id') == table_id]
+                        parts = select_table_parts(parts, table_id)
                     selected_parts.append((asset['name'], parts))
                 validate_extraction_size(part for _, parts in selected_parts for part in parts)
             except ValueError as error:

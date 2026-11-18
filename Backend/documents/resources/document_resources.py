@@ -95,6 +95,36 @@ def match_table_headers(cells, reference_layout):
             for cell in cells]
 
 
+def selected_table_needs_review(analysis, block):
+    """Only explicit parser scopes may narrow a document-wide review flag.
+
+    Legacy/missing/unknown scope data stays blocking. Selection never clears a
+    global error, a local table error, or an error on its layout parent.
+    """
+    if block.get('status') == 'review_required' or (block.get('data', {}).get('table_quality') or {}).get('issues'):
+        return True
+    if not analysis.get('review_required'):
+        return False
+    reasons = set(analysis.get('review_reasons') or []) | set(analysis.get('warnings') or [])
+    scopes = analysis.get('review_scopes')
+    if not reasons or not isinstance(scopes, dict):
+        return True
+    ids = {b['id'] for b in analysis.get('blocks', [])}
+    for reason in reasons:
+        affected = scopes.get(reason)
+        if not isinstance(affected, list) or not affected or any(not isinstance(i, str) or i not in ids for i in affected):
+            return True
+        if block['id'] in affected or block.get('parent_object_id') in affected:
+            return True
+    return False
+
+
+def select_table_parts(parts, table_id):
+    """Apply narrow review scope only for an explicit table selection."""
+    return [{**part, 'review_required': part.get('selected_table_review_required', part.get('review_required', False))}
+            for part in parts if part.get('block_id') == table_id]
+
+
 def chunks_for_asset(asset):
     if not supports(asset, 'document'):
         raise ValueError('문서 읽기에 사용할 본문 또는 분석 결과가 없습니다.')
@@ -130,6 +160,7 @@ def _asset_chunks(asset):
                               source_text_length=len(block_text),
                               block_id=block['id'], native_location=location, bbox=block.get('bbox'),
                               parser_engine=block['engine'], review_required=analysis['review_required'] and review.get('status')!='completed',
+                              selected_table_review_required=selected_table_needs_review(analysis, block) and review.get('status')!='completed',
                               document_review_status=review.get('status','pending'), document_review_revision=review.get('revision',0))
             if empty:
                 coverage_only.append(dict(source_id=source + '0', offset=0, text='', table_cells=cells, **provenance))

@@ -1,7 +1,7 @@
 """Shared source resolution for the registered document/table entrypoints."""
 from documents.resources.document_resources import (
     EMPTY_DOCUMENTS, analysis_of, chunks_for_asset, document_scope, saved_input, supports,
-    table_cell_layout, table_cells,
+    table_cell_layout, table_cells, select_table_parts,
 )
 
 DOCUMENT_TABLE_ERROR = '선택한 표를 원본 문서에서 확인할 수 없습니다. 문서 미리보기에서 표를 다시 선택해 주세요.'
@@ -106,7 +106,7 @@ def read_source(node,state,storage,config,external_port):
                 empty_documents.append(asset['name'])
             parts.extend(chunks)
         if table_id is not None:
-            parts = [part for part in parts if part.get('block_id') == table_id]
+            parts = select_table_parts(parts, table_id)
             if not any(part.get('table_cells') for part in parts):
                 raise ValueError(DOCUMENT_TABLE_ERROR)
         result = {'documents': parts}

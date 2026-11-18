@@ -11,10 +11,10 @@ import time
 from pathlib import Path
 from . import CONTRACT_VERSION
 from .adapters import LocalEngines, convert
-from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, block, bounds, project, sha256, validate
+from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, MAX_RESULT, block, bounds, project, sha256, validate
 from .readers import Inspector
 from .image_metadata import png_resolution
-from .table_quality import reconcile, render_cells
+from .table_quality import reconcile, render_cells, validate_prediction
 
 PRIMARY = {'pdf': 'mineru', 'hwp': 'docling', 'hwpx': 'docling', 'doc': 'docling',
            'docx': 'docling', 'ppt': 'docling', 'pptx': 'docling', 'xls': 'native', 'xlsx': 'native',
@@ -147,7 +147,12 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                   processor=primary, source_format=fmt)], policy=dict(max_supplements=max_supplements, scan_characters=30,
                   broken_ratio=.05, scan_image_fraction=.6, detection_threshold=.5, thresholds_are_provisional=True,
                   ocr_upscale_below=OCR_UPSCALE_BELOW, ocr_max_scale=OCR_MAX_SCALE))
-    def review(reason):
+    def review(reason, block_ids=None):
+        scopes = result.setdefault('review_scopes', {})
+        if block_ids is None or reason in scopes and scopes[reason] is None:
+            scopes[reason] = None
+        else:
+            scopes[reason] = sorted(set(scopes.get(reason, [])) | set(block_ids))
         if reason not in result['warnings']:
             result['warnings'].append(reason)
         if reason not in result['review_reasons']:
@@ -509,39 +514,62 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             except AnalysisError as exc:
                 review('table_comparison:' + exc.code)
 
-    # Optional verification has its own failure boundary and runs only after
-    # base text/table output is safe. LocalEngines caps all calls by one deadline.
+    # Optional enrichment is transactional: malformed/oversized evidence must
+    # never invalidate already parsed body/table data.
+    optional_snapshots = []
+    def discard_enrichment(snapshot):
+        region, region_data, item, item_data, item_text = snapshot
+        region['data'], item['data'], item['text'] = region_data, item_data, item_text
+        item['status'] = 'review_required'
+        review('table_verification:result_limit', [item['id']])
+
     for region, job, added in table_checks:
-        prediction = {}
-        try:
-            recognized = engines.run('paddleocr', sources=[job['path']], scope=region['id'], phase='table_verification')
-            outputs = [o for o in recognized['outputs'] if o['source'] == str(job['path'])]
-            if len(outputs) != 1:
-                raise AnalysisError('invalid_engine_result', '표 검증 OCR 응답을 확인할 수 없습니다.')
-            prediction = outputs[0]['result']
-            region['data']['table_ocr'] = {key: prediction.get(key, []) for key in
-                ('rec_texts', 'rec_boxes', 'rec_scores')}
-            region['data']['table_ocr']['coordinate_system'] = 'ocr_crop_pixels'
-        except AnalysisError as exc:
-            review('table_verification:' + exc.code)
         tables = [b for b in added if 'table' in b['content_types'] and b['data'].get('cells')]
-        if len(tables) == 1:
-            item = tables[0]
-            cells, quality = reconcile(item['data'], prediction)
-            item['data']['table_quality'] = quality
-            if quality['repairs']:
-                item['data']['original_cells'] = item['data']['cells']
-                item['data']['original_text'] = item['text']
-                item['data']['original_html'] = item['data'].get('html', '')
-                item['data']['cells'] = cells
-                item['text'], item['data']['html'] = render_cells(cells)
-            if quality['issues']:
-                item['status'] = 'review_required'
-                review('table_quality_unresolved:' + region['id'])
-        elif tables:
+        affected = [b['id'] for b in tables]
+        if len(tables) != 1:
             for item in tables:
                 item['status'] = 'review_required'
-            review('table_quality_ambiguous_tables:' + region['id'])
+            review('table_quality_ambiguous_tables:' + region['id'], affected)
+            continue
+        item = tables[0]
+        try:
+            recognized = engines.run('paddleocr', sources=[job['path']], scope=region['id'], phase='table_verification')
+            if not isinstance(recognized, dict) or not isinstance(recognized.get('outputs'), list):
+                raise AnalysisError('invalid_engine_result', '표 검증 OCR 응답 형식이 올바르지 않습니다.')
+            outputs = [o for o in recognized['outputs'] if isinstance(o, dict) and o.get('source') == str(job['path'])]
+            if len(outputs) != 1 or len(recognized['outputs']) != 1:
+                raise AnalysisError('invalid_engine_result', '표 검증 OCR 응답을 확인할 수 없습니다.')
+            prediction = validate_prediction(outputs[0].get('result'))
+        except AnalysisError as exc:
+            item['status'] = 'review_required'
+            review('table_verification:' + exc.code, affected)
+            continue
+        cells, quality = reconcile(item['data'], prediction)
+        snapshot = (region, region['data'], item, item['data'], item['text'])
+        region['data'] = {**region['data'], 'table_ocr': {
+            **{key: prediction[key] for key in ('rec_texts', 'rec_boxes', 'rec_scores')},
+            'coordinate_system': 'ocr_crop_pixels'}}
+        item['data'] = {**item['data'], 'table_quality': quality}
+        if quality['repairs']:
+            item['data'].update(original_cells=snapshot[3]['cells'], original_text=item['text'],
+                                original_html=item['data'].get('html', ''), cells=cells)
+            item['text'], item['data']['html'] = render_cells(cells)
+        try:
+            # Leave room for final coverage/review metadata; final validation
+            # below also rolls back optional records if that reserve is exceeded.
+            if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode()) > MAX_RESULT - 65536:
+                raise AnalysisError('result_limit', '표 검증 증거를 보존할 공간이 부족합니다.')
+            validate(result)
+            project(result)
+        except AnalysisError as exc:
+            if exc.code not in ('result_limit', 'text_limit'):
+                raise
+            discard_enrichment(snapshot)
+            continue
+        optional_snapshots.append(snapshot)
+        if quality['issues']:
+            item['status'] = 'review_required'
+            review('table_quality_unresolved:' + region['id'], affected)
 
     # Retain important-value conflicts. No automatic spelling/number repair.
     native_text = '\n'.join(b['text'] for b in result['blocks'] if b['engine'] in {'native', 'openpyxl+xml', 'pymupdf'})
@@ -554,7 +582,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             result['quality'] = {'important_native_value_conflict_count': len(absent)}
     for item in result['blocks']:
         if item['status'] == 'review_required' or 'unknown' in item['content_types']:
-            review('unprocessed_or_ambiguous_object')
+            scoped = any(ids and item['id'] in ids for ids in result.get('review_scopes', {}).values())
+            review('unprocessed_or_ambiguous_object', [item['id']] if scoped else None)
     selected = [b for b in result['blocks'] if b.get('selected', True) and b['text'].strip()]
     text_units = {b['unit_id'] for b in selected}
     empty_units = [u['id'] for u in result['units'] if u['id'] not in text_units]
@@ -573,5 +602,17 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                               unprocessed_image_objects=max(0, len(images) - classified_count))
     result['status'] = 'partial' if result['review_required'] else 'succeeded'
     result['timings']['total_seconds'] = time.perf_counter() - started
-    validate(result)
-    return project(result)
+    while True:
+        try:
+            validate(result)
+            return project(result)
+        except AnalysisError as exc:
+            if exc.code not in ('result_limit', 'text_limit') or not optional_snapshots:
+                raise
+            discard_enrichment(optional_snapshots.pop())
+            text_units = {b['unit_id'] for b in result['blocks'] if b.get('selected', True) and b['text'].strip()}
+            empty_units = [u['id'] for u in result['units'] if u['id'] not in text_units]
+            result['coverage'].update(units_with_text=len(text_units), units_without_text=empty_units)
+            if empty_units:
+                review('units_without_extracted_text')
+            result['status'] = 'partial'

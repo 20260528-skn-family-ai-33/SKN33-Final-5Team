@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 import math
 import re
+from .contracts import AnalysisError
 
 
 def normalized(value):
@@ -18,9 +19,33 @@ def position(cell):
             cell.get('column', cell.get('start_col_offset_idx')))
 
 
+def validate_prediction(prediction):
+    """Validate optional engine evidence before persisting any of it."""
+    if not isinstance(prediction, dict):
+        raise AnalysisError('invalid_engine_result', '표 OCR 결과가 객체가 아닙니다.')
+    arrays = [prediction.get(k) for k in ('rec_texts', 'rec_boxes', 'rec_scores')]
+    if not all(isinstance(v, list) for v in arrays) or len({len(v) for v in arrays}) != 1:
+        raise AnalysisError('invalid_engine_result', '표 OCR 배열 형식 또는 길이가 올바르지 않습니다.')
+    texts, boxes, scores = arrays
+    if len(texts) > 2000:
+        raise AnalysisError('quality_input_limit', '표 OCR 검증 입력 제한을 넘었습니다.')
+    for text, box, score in zip(texts, boxes, scores):
+        if (not isinstance(text, str) or not isinstance(box, (list, tuple)) or len(box) != 4
+                or not all(type(v) in (int, float) and math.isfinite(v) for v in box)
+                or box[0] >= box[2] or box[1] >= box[3]
+                or type(score) not in (int, float) or not math.isfinite(score) or not 0 <= score <= 1):
+            raise AnalysisError('invalid_engine_result', '표 OCR 문자·좌표·점수 형식이 올바르지 않습니다.')
+    return prediction
+
+
 def reconcile(data, prediction):
     cells = deepcopy(data.get('cells') or [])
     report = {'repairs': [], 'issues': [], 'method': 'unique_text_ocr_geometry_v1'}
+    try:
+        validate_prediction(prediction)
+    except AnalysisError as exc:
+        report['issues'].append(exc.code)
+        return cells, report
     texts = prediction.get('rec_texts', [])
     boxes = prediction.get('rec_boxes', [])
     scores = prediction.get('rec_scores', [])
@@ -42,6 +67,9 @@ def reconcile(data, prediction):
             pieces.append(dict(text=text, box=list(box), score=score, index=i))
     occupied = {}
     for cell in cells:
+        if not isinstance(cell, dict):
+            report['issues'].append('invalid_cell_structure')
+            return cells, report
         row, col = position(cell)
         rs, cs = cell.get('row_span', 1), cell.get('col_span', 1)
         if any(type(v) is not int or v < 0 for v in (row, col)) or any(type(v) is not int or v < 1 for v in (rs, cs)) or rs * cs > 20000:
@@ -127,6 +155,10 @@ def reconcile(data, prediction):
         if (len({r for r, _ in columns[col]}) < 2
                 or not all(overlap(p['box'], b, 0) >= .65 for _, b in columns[col])):
             report['issues'].append({'kind': 'insufficient_column_evidence', 'ocr_index': p['index']})
+            continue
+        lo, hi = corridors.get(col, (math.inf, -math.inf))
+        if not lo <= p['box'][0] < p['box'][2] <= hi:
+            report['issues'].append({'kind': 'cross_column_ocr', 'ocr_index': p['index']})
             continue
         slot = rr[0], col
         existing = occupied.get(slot)

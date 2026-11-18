@@ -10,7 +10,7 @@ from documents.analysis.adapters import LocalEngines
 from documents.analysis.pipeline import run
 
 
-@pytest.mark.parametrize('failure', ['504', 'deadline', 'cpu_fallback'])
+@pytest.mark.parametrize('failure', ['504', 'deadline', 'cpu_fallback', 'null_result', 'null_scores'])
 def test_optional_table_ocr_preserves_base_results_and_shared_deadline(tmp_path, monkeypatch, failure):
     monkeypatch.setenv('A4B_DOCUMENT_TIMEOUT_MS', '60000')
     monkeypatch.delenv('A4B_DOCUMENT_DEADLINE_UNIX_MS', raising=False)
@@ -43,6 +43,9 @@ def test_optional_table_ocr_preserves_base_results_and_shared_deadline(tmp_path,
             assert ('docling', 'supplement') in events
             assert timeout == pytest.approx(5)
             now[0] += 3 if failure == 'cpu_fallback' else timeout
+            if failure in ('null_result', 'null_scores'):
+                result = None if failure == 'null_result' else {'rec_texts': [], 'rec_boxes': [], 'rec_scores': None}
+                return Response(dict(version='test', outputs=[dict(source=p['name'], result=result) for p in sources]))
             if failure == 'deadline': raise TimeoutError('fixture')
             raise urllib.error.HTTPError(request.full_url, 504, 'fixture', {}, None)
         now[0] = 5

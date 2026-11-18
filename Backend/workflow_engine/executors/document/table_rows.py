@@ -315,11 +315,11 @@ def native_records(parts, fields, evidence_keys, max_rows):
         return None
     for part in _table_parts(parts):
         cells = part.get('table_cells')
+        if part.get('review_required'):
+            raise TableStructureError('표 인식 결과에 검토가 필요합니다. 원본과 대조한 뒤 실행해 주세요.')
         if not cells:
             unstructured_tables = True
             continue
-        if part.get('review_required'):
-            raise TableStructureError('표 인식 결과에 검토가 필요합니다. 원본과 대조한 뒤 실행해 주세요.')
         grid = _grid(cells)
         header, selected = _columns(grid, targets)
         if header is None:

@@ -95,6 +95,35 @@ def test_read_messages_marks_unreadable_and_truncated_bodies_and_bounds_total_co
     assert all(d['text'].endswith('[이후 본문 생략]') for d in result['documents'][1:])
 
 
+@pytest.mark.parametrize('dates,body,sent_at', [
+    (['Wed, 18 Nov 2026 14:05:06 +0900'], 'body', '2026-11-18T05:05:06+00:00'),
+    (['Wed, 18 Nov 2026 23:05:06 -0500'], None, '2026-11-19T04:05:06+00:00'),
+    ([], 'body', None),
+    (['invalid Date'], 'body', None),
+    (['Tue, 31 Feb 2026 14:05:06 +0900'], 'body', None),
+    (['Wed, 18 Nov 2026 14:05:06'], None, None),
+    (['Wed, 18 Nov 2026 14:05:06 -0000'], 'body', None),
+    (['Wed, 18 Nov 2026 14:05:06 +1260'], 'body', None),
+    (['Wed, 18 Nov 2026 14:05:06 +0099'], 'body', None),
+    (['Wed, 18 Nov 2026 14:05:06 -123'], 'body', None),
+    (['Wed, 18 Nov 2026 14:05:06 +0900', 'Wed, 18 Nov 2026 14:05:06 +0000'], 'body', None),
+])
+def test_read_messages_exposes_only_a_valid_original_date_header(dates, body, sent_at):
+    def call(operation, args):
+        if operation == 'email.list':
+            return {'messages': [{'id': 'm'}]}
+        response = message(args['message_id'], body)
+        response['payload']['headers'].extend({'name': 'dAtE', 'value': date} for date in dates)
+        return response
+
+    result = read_gmail_messages(call, max_results=1)
+    document = result['documents'][0]
+    assert document.get('sent_at') == sent_at
+    assert ('sent_at' in document) == (sent_at is not None)
+    assert document.get('body_unavailable', False) == (body is None)
+    assert result['messages'][0]['internalDate'] == '1234567890'
+
+
 def test_service_executes_latest_five_summary_with_only_read_requests_and_real_evidence(tmp_path,monkeypatch):
     from service.dispatch import handle
     from tests.workflow_engine.test_workflow import bind, edge, node, saved
@@ -113,7 +142,10 @@ def test_service_executes_latest_five_summary_with_only_read_requests_and_real_e
             return {'messages':[{'id':id} for id in ids]}
         id=path.rsplit('/',1)[-1]
         assert id in ids and query=={'format':'full'}
-        return message(id,'실제 본문 '+id)
+        result = message(id, '실제 본문 '+id)
+        if id == 'm5':
+            result['payload']['headers'].append({'name': 'Date', 'value': 'Wed, 18 Nov 2026 14:05:06 +0900'})
+        return result
 
     class Model:
         def with_structured_output(self,*args,**kwargs):return self
@@ -142,5 +174,8 @@ def test_service_executes_latest_five_summary_with_only_read_requests_and_real_e
     assert [e['source_id'] for e in result['outputs']['summary']['evidence']]==['gmail:'+id for id in ids]
     assert result['outputs']['summary']['text']==expected['text']
     assert result['answer']==expected['text']
+    documents = result['outputs']['mail']['documents']
+    assert documents[0]['sent_at'] == '2026-11-18T05:05:06+00:00'
+    assert all('sent_at' not in document for document in documents[1:])
     assert '실제 본문 m5' in result['outputs']['mail']['text']
     assert 'scoped-read-token' not in json.dumps(result)

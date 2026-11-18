@@ -23,7 +23,7 @@ _QUESTION = '요약을 보낼 Slack 채널 ID를 알려주세요. (예: C0123456
 _FORMAT_QUESTION = 'Slack에 올릴 내용은 메일 원문 전체인가요, 핵심 요약인가요? 요약을 원하면 "요약"이라고 답해주세요.'
 _PERIOD_QUESTION = '어느 기간에 받은 Gmail 메일을 요약할까요? (예: 어제, 오늘, 최근)'
 _TIME_QUESTION = '매일 몇 시에 실행할까요? (한국 시간, 예: 오전 9시)'
-SUMMARY_CARD_FORMAT = (
+LEGACY_SUMMARY_CARD_FORMAT = (
     '\n메일이 있으면 메일마다 아래 세 필드를 순서대로 한 번씩 쓰고, 메일 사이는 빈 줄로 구분하세요. '
     '필드명은 바꾸지 말고 Markdown 표·목록이나 앞뒤 설명을 추가하지 마세요.\n'
     '제목: 실제 메일의 제목\n보낸 사람: 실제 메일의 발신자\n'
@@ -32,6 +32,8 @@ SUMMARY_CARD_FORMAT = (
     '메일 본문 전체나 홍보 문구를 옮기지 말고 긴 URL을 복사하지 마세요. '
     '원문에 없는 메일·날짜·조치·사실을 만들지 마세요.'
 )
+SUMMARY_CARD_FORMAT = LEGACY_SUMMARY_CARD_FORMAT.replace('1~2문장', '최대 두 문장')
+SUMMARY_CARD_FORMATS = (SUMMARY_CARD_FORMAT, LEGACY_SUMMARY_CARD_FORMAT)
 
 
 def _users(state):

@@ -4,6 +4,7 @@ Transport/token injection allows offline tests without exposing connector creden
 from __future__ import annotations
 import base64,datetime,json,mimetypes,os,re,socket
 from email.message import EmailMessage, Message
+from email.utils import parsedate_to_datetime
 from email import policy
 from html.parser import HTMLParser
 from pathlib import Path
@@ -239,6 +240,24 @@ def gmail_documents(message,read_body=None):
              'offset':0,'parser_engine':'gmail','derived_result':True,'text':text}]
 
 
+def _gmail_sent_at(headers):
+    dates = [header['value'] for header in headers if header['name'].lower() == 'date']
+    if len(dates) != 1 or not isinstance(dates[0], str):
+        return None
+    numeric_zone = re.search(r'\b\d{1,2}:\d{2}(?::\d{2})?\s*([+-][0-9]+)(?=\s|\(|$)', dates[0])
+    if numeric_zone:
+        zone = numeric_zone[1]
+        if len(zone) != 5 or int(zone[1:3]) > 23 or int(zone[3:]) > 59:
+            return None
+    try:
+        sent_at = parsedate_to_datetime(dates[0])
+        if sent_at.utcoffset() is not None:
+            return sent_at.astimezone(datetime.timezone.utc).isoformat()
+    except (ValueError, OverflowError):
+        pass
+    return None
+
+
 def read_gmail_messages(call,query=None,max_results=100):
     """Read up to a chosen limit across pages through account-scoped read calls.
 
@@ -281,6 +300,7 @@ def read_gmail_messages(call,query=None,max_results=100):
             if not isinstance(message,dict) or message.get('id')!=id or not isinstance(message.get('payload'),dict):
                 raise ValueError('Gmail 메일 본문 응답을 확인하지 못했습니다.')
             chunks=gmail_documents(message,gmail_body_reader(call))
+            sent_at = _gmail_sent_at(message['payload'].get('headers', []))
         except Exception as error:
             if isinstance(error,GoogleApiError) and error.status in {401,403}:raise
             raise ValueError(f'Gmail 메일 {len(documents)+1}번째 읽기에 실패해 전체 요약을 중단했습니다. 연결 상태를 확인하고 다시 실행해주세요.') from None
@@ -293,6 +313,8 @@ def read_gmail_messages(call,query=None,max_results=100):
             chunk={'source_id':'gmail:'+id,'file_id':None,'file_name':title,'page':None,'offset':0,
                    'parser_engine':'gmail','derived_result':True,'body_unavailable':True,
                    'text':f"제목: {title}\n보낸 사람: {headers.get('from','')}\n\n[읽을 수 있는 텍스트 본문이 없습니다.]"}
+        if sent_at is not None:
+            chunk['sent_at'] = sent_at
         if len(chunk['text'])>per_message:
             marker='\n[이후 본문 생략]'
             chunk={**chunk,'text':chunk['text'][:per_message-len(marker)]+marker,'truncated':True}

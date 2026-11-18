@@ -216,6 +216,16 @@ A4B_OLLAMA_MODEL_ALIASES='{"a4b-qwen35-4b-16k":"a4b-qwen35-9b-final664-pilot32k"
 이 PR의 전환 회귀 검사는 임시 DB, 실제 워커·워크플로우 실행기와 모의 Ollama HTTP 응답을
 사용합니다. 운영 DB의 참조 조사와 실제 RunPod 추론·예약 검증은 배포 단계에서 별도로 수행합니다.
 
+### Ollama 구조화 응답의 출력 상한
+
+저장 워크플로우는 첫 모델 호출에 최대 5,000토큰을 요청합니다. Ollama의 `json_schema` 응답이
+출력 한도에 걸리면, 앱은 `A4B_OLLAMA_NUM_PREDICT`가 허용하는 범위에서 최대 8,192토큰으로
+해당 호출을 한 번 더 시도합니다. 상한이 4,096이면 첫 호출에 4,096이 적용되고 증액 재시도는 생략됩니다.
+
+8,192 상한을 검증하려면 EC2의 `/var/lib/a4b-deploy/env-overrides`에
+`A4B_OLLAMA_NUM_PREDICT=8192`를 적용한 뒤 백엔드를 배포합니다. 이 값은 같은 상한을 참조하는
+Ollama 설계 호출에도 적용됩니다.
+
 ### 배포 영역
 
 워크플로우는 `Use workflow from`을 `main`으로 두고, `branch`에 테스트할 브랜치를 입력합니다.

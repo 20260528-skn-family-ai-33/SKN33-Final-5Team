@@ -4,7 +4,7 @@ def public_error(error,api_key='',*service_tokens):
     # Provider bodies can contain prompts, billing details or secrets. Do not expose them.
     from pydantic import ValidationError
     import os
-    from openai import APITimeoutError,APIConnectionError,AuthenticationError,PermissionDeniedError,RateLimitError,NotFoundError,APIStatusError
+    from openai import APITimeoutError,APIConnectionError,AuthenticationError,LengthFinishReasonError,PermissionDeniedError,RateLimitError,NotFoundError,APIStatusError
     if type(error).__name__=='SlackDeliveryUnknown':
         return 'Slack 전송 결과를 확인할 수 없습니다. 채널에서 메시지를 확인한 뒤 필요하면 새 실행을 시작해주세요.'
     if isinstance(error,ValidationError):
@@ -17,6 +17,8 @@ def public_error(error,api_key='',*service_tokens):
             if isinstance(secret,str) and secret:message=message.replace(secret,'[보호된 키]')
         return message[:1000]
     name=type(error).__name__
+    if isinstance(error,LengthFinishReasonError):
+        return '모델 응답이 출력 길이 제한에 도달해 중단됐습니다. 출력 분량을 줄여 다시 시도해주세요.'
     if isinstance(error,(APITimeoutError,TimeoutError)):
         return '모델 응답 시간이 초과됐습니다. 대화는 보존되어 있으니 서버 상태와 응답 제한 시간을 확인한 뒤 다시 시도해주세요.'
     if os.getenv('A4B_MAIN_PROVIDER') in ('ollama','vllm'):

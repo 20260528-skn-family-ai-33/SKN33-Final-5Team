@@ -1,6 +1,8 @@
 """Ollama transport; keep vLLM's reviewed adapter unchanged."""
 from langchain_openai import ChatOpenAI
+from openai import LengthFinishReasonError
 from copy import deepcopy
+from infrastructure.llm.ollama_settings import bounded_output_limit
 from infrastructure.llm.qwen_chat_model import omit_empty_tools
 
 
@@ -52,6 +54,19 @@ def compatible_schema_payload(payload):
 
 
 class OllamaChatOpenAI(ChatOpenAI):
+    def with_structured_output(self, schema=None, *, method='json_schema', **kwargs):
+        response = super().with_structured_output(schema, method=method, **kwargs)
+        if method != 'json_schema' or not self.max_tokens or self.max_tokens < 1:
+            return response
+        retry_limit = bounded_output_limit(min(self.max_tokens * 2, 8192))
+        if retry_limit <= self.max_tokens:
+            return response
+
+        # Retry the model call before handing its parsed output to the workflow.
+        retry_model = self.model_copy(update={'max_tokens': retry_limit})
+        retry = ChatOpenAI.with_structured_output(retry_model, schema, method=method, **kwargs)
+        return response.with_fallbacks([retry], exceptions_to_handle=(LengthFinishReasonError,))
+
     def _get_request_payload(self, input_, *, stop=None, **kwargs):
         payload=compatible_schema_payload(omit_empty_tools(super()._get_request_payload(input_, stop=stop, **kwargs)))
         from agent_builder.design.graph import _timing_event

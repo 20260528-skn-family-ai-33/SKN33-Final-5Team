@@ -1,10 +1,14 @@
 """Slack delivery contracts and a checkpointed Gmail-to-Slack workflow (offline)."""
 import io
 import json
+from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 
+import httpx
 import pytest
 
+from infrastructure.llm.model_factory import create_chat_model
+from tests.workflow_engine.test_gmail_batch_read import message
 from tests.workflow_engine.test_workflow import bind, edge, node, saved
 from workflow_engine.catalog.canonical import BUSINESS_IDS, TOOL_IDS
 from workflow_engine.catalog.registry import EXECUTORS, PORTS, TOOLS, node_ports
@@ -116,6 +120,76 @@ def test_gmail_summary_flows_into_slack_once_without_saving_token(tmp_path):
         assert TOKEN not in json.dumps(run, ensure_ascii=False)
     finally:
         store.close()
+
+
+@pytest.mark.parametrize('truncations', [0, 1, 2])
+def test_gmail_verification_expands_budget_without_replaying_reads_or_sending_partial_summary(
+    tmp_path, monkeypatch, truncations,
+):
+    from workflow_engine.executors import agent_factory
+
+    workflow = gmail_to_slack_workflow()
+    workflow['nodes'][0]['settings']['arguments_json'] = '{"max_results":5}'
+    ids = [f'm{index}' for index in range(1, 6)]
+    gmail_calls, slack_calls, drafts, verification_requests = [], [], [], []
+    final_summary = '\n'.join(f'제목 {identifier}: 핵심 일정 확인' for identifier in ids)
+
+    def gmail(operation, args):
+        gmail_calls.append(operation)
+        if operation == 'email.list':
+            return {'messages': [{'id': identifier} for identifier in ids]}
+        return message(args['message_id'], '핵심 일정 확인')
+
+    def slack(operation, args):
+        slack_calls.append((operation, args))
+        return {'status': 'accepted_by_provider', 'channel_id': CHANNEL, 'ts': '1731477600.000001'}
+
+    def grounded_agent(**options):
+        evidence = options['tools'][0].invoke({})
+        draft = {'text': '초안', 'citations': [{'evidence_id': item['evidence_id']} for item in evidence]}
+        drafts.append(draft)
+        return SimpleNamespace(invoke=lambda *args: {'structured_response': draft})
+
+    def verification_response(request):
+        verification_requests.append(json.loads(request.content))
+        truncated = len(verification_requests) <= truncations
+        text = '{"text":' if truncated else json.dumps({**drafts[0], 'text': final_summary})
+        chunk = {'id': 'fixture', 'object': 'chat.completion.chunk', 'created': 0, 'model': 'fixture',
+                 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': text},
+                              'finish_reason': 'length' if truncated else 'stop'}]}
+        return httpx.Response(200, headers={'Content-Type': 'text/event-stream'},
+                              text='data: ' + json.dumps(chunk) + '\n\ndata: [DONE]\n\n')
+
+    monkeypatch.setattr(agent_factory, 'create_deep_agent', grounded_agent)
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', 'ollama')
+    monkeypatch.setenv('A4B_MAIN_BASE_URL', 'https://fixture.test/v1')
+    monkeypatch.setenv('A4B_OLLAMA_NUM_PREDICT', '8192')
+    monkeypatch.delenv('A4B_MAIN_API_KEY', raising=False)
+    store, agent_id, _ = saved(tmp_path, workflow)
+    try:
+        store.workflow_connectors = {'gmail': gmail, 'slack': slack}
+        with httpx.Client(transport=httpx.MockTransport(verification_response)) as client:
+            model = create_chat_model('', 'fixture', max_tokens=5000, max_retries=0, http_client=client)
+            run = run_workflow(store, agent_id, '안 읽은 Gmail 5건을 요약해 Slack에 보내줘', '', llm=model)
+    finally:
+        store.close()
+
+    assert gmail_calls == ['email.list'] + ['email.get'] * 5
+    assert len(drafts) == 1
+    assert [payload['max_tokens'] for payload in verification_requests] == ([5000, 8192] if truncations else [5000])
+    if truncations:
+        initial, retry = verification_requests
+        assert retry['messages'] == initial['messages']
+        assert retry['response_format'] == initial['response_format']
+    if truncations == 2:
+        assert run['status'] == 'failed' and run['error_type'] == 'LengthFinishReasonError'
+        assert run['steps'][-1]['node'] == 'summary'
+        assert not slack_calls
+    else:
+        assert run['status'] == 'succeeded', run.get('error')
+        summary = run['outputs']['summary']
+        assert {item['source_id'] for item in summary['evidence']} == {'gmail:' + identifier for identifier in ids}
+        assert slack_calls == [('slack.post_message', {'channel_id': CHANNEL, 'text': final_summary})]
 
 
 @pytest.mark.parametrize("change", [

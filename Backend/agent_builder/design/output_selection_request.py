@@ -11,14 +11,14 @@ from contracts.numeric_criteria import number_value
 
 _NAMED_EXPORT = re.compile(
     r'(?<![\w·])(?P<columns>[\w]+(?:\s*·\s*[\w]+)+)'
-    r'(?:만)?(?:을|를)\s+[\w.-]+\.(?:csv|json|xlsx)'
+    r'(?:만)?(?:을|를)\s+[\w.-]+\.(?P<format>csv|json|xlsx)'
     r'(?:으로|로)\s*(?:저장|내보내)', re.I)
 
 _EXPORT_END = re.compile(r'\s*(?:해\s*(?:줘|주세요)|하(?:고|며|도록)|[.!;,\n]|$)')
 _ALL_COLUMNS = re.compile(r'(?:전체|모든)\s*열(?:들)?(?:만)?(?:을|로)?\s*(?:저장|내보내)')
 _SINGLE_EXPORT = re.compile(
     r'(?<![\w·])(?P<column>\w+?)(?:\s+(?P<marker>열|컬럼))?만(?:을|를)?\s*'
-    r'(?:[\w.-]+\.(?:csv|json|xlsx)(?:으로|로)\s*)?(?:저장|내보내)', re.I)
+    r'(?:[\w.-]+\.(?P<format>csv|json|xlsx)(?:으로|로)\s*)?(?:저장|내보내)', re.I)
 
 
 def _request_turns(state):
@@ -89,6 +89,11 @@ def output_selection(state):
 def _selection_fields(text, columns):
     matches = [m for m in _NAMED_EXPORT.finditer(text) if _EXPORT_END.match(text[m.end():])]
     singles = [m for m in _single_requests(text, columns) if _EXPORT_END.match(text[m.end():])]
+    # A batch clarification reply can repeat the same answer after each question.
+    # Identical instructions name one output, not several ambiguous projections.
+    # Include the filename in the identity: separate outputs must stay separate.
+    matches = list({m.group(): m for m in matches}.values())
+    singles = list({m.group(): m for m in singles}.values())
     if singles:
         if matches or len(singles)!=1:
             return None
@@ -104,6 +109,25 @@ def _selection_fields(text, columns):
         if literal not in columns:
             fields[-1] = without_particle
     return fields
+
+
+def literal_output_format(state):
+    """The format of one unambiguous named projection, never a source filename."""
+    from .condition_requirements import multiple_outputs
+    if output_selection(state) is None or multiple_outputs(state):
+        return None
+    source, text = _selection_request(state)
+    # A later format-only revision preserves columns but supersedes this
+    # filename. Leave it to extraction rather than restoring the old format.
+    if any(index > source and re.search(r'csv|json|xlsx|저장\s*형식|파일\s*형식|저장하지|내보내지', turn, re.I)
+           for index, turn in _request_turns(state)):
+        return None
+    if re.search(r'(?:csv|json|xlsx).{0,16}(?:대신|바꿔|변경)|(?:대신|바꿔|변경).{0,16}(?:csv|json|xlsx)', text, re.I):
+        return None
+    matches = [m for pattern in (_NAMED_EXPORT, _SINGLE_EXPORT) for m in pattern.finditer(text)
+               if _EXPORT_END.match(text[m.end():]) and m['format']]
+    formats = {m['format'].lower() for m in matches}
+    return next(iter(formats)) if len(formats) == 1 else None
 
 
 def validate_output_selection(plan, state):
@@ -141,6 +165,9 @@ def validate_output_selection(plan, state):
         return
     if not any(s['kind'] == 'select_fields' and s['fields'] == fields for s in specs):
         raise ValueError('명시한 최종 출력 열 선택이 누락되거나 변경됐습니다: ' + ', '.join(fields))
+    output_format = literal_output_format(state)
+    if output_format and [s['format'] for s in specs if s['kind'] == 'export'] != [output_format]:
+        raise ValueError('명시한 결과 파일 저장 작업이 누락되거나 형식이 변경됐습니다.')
 
 
 def output_selection_issues(state, draft):
@@ -192,10 +219,16 @@ def output_selection_issues(state, draft):
 
 def project_output_selection(candidates,state):
     fields=output_selection(state)
-    if not fields or any(c['spec'].get('kind')=='select_fields' for c in candidates):return candidates
+    if not fields:return candidates
     result=deepcopy(candidates)
-    index=next((i for i,item in enumerate(result) if item['spec'].get('kind')=='export'),len(result))
-    result.insert(index,dict(source_message=_selection_request(state)[0],description='명시한 최종 출력 열',spec=dict(kind='select_fields',fields=fields)))
+    source = _selection_request(state)[0]
+    if not any(c['spec'].get('kind')=='select_fields' for c in result):
+        index=next((i for i,item in enumerate(result) if item['spec'].get('kind')=='export'),len(result))
+        result.insert(index,dict(source_message=source,description='명시한 최종 출력 열',spec=dict(kind='select_fields',fields=fields)))
+    output_format = literal_output_format(state)
+    if output_format and not any(c['spec'].get('kind')=='export' for c in result):
+        result.append(dict(source_message=source,description='명시한 결과 파일 저장',
+                           spec=dict(kind='export',format=output_format)))
     return result
 
 
@@ -237,9 +270,12 @@ def _literal_numeric_contracts(state):
             match=re.fullmatch(r'\s*('+names+r')(?:이|가|은|는)?\s+'
                               r'(\d[\d,]*(?:\.\d+)?)\s*(이상|이하|초과|미만)\s*[.!]?\s*',part)
             if match:
-                revised.setdefault(match[1],[]).append(dict(field=match[1],
+                rule = dict(field=match[1],
                     operator={'이상':'gte','이하':'lte','초과':'gt','미만':'lt'}[match[3]],
-                    value=float(number_value(match[2])),compare_field=None,value_type='number'))
+                    value=float(number_value(match[2])),compare_field=None,value_type='number')
+                rules = revised.setdefault(match[1], [])
+                if rule not in rules:
+                    rules.append(rule)
             cancel=re.fullmatch(r'\s*('+names+r')\s*(?:숫자\s*)?(?:조건|기준|필터)(?:은|는|을|를)?\s*'
                                 r'(?:취소|삭제|제거|해제)(?:해\s*(?:줘|주세요))?\s*[.!]?\s*',part)
             if cancel:
@@ -300,4 +336,13 @@ def constrain_literal_selection(schema,state):
     literals=literal_numeric_filters(state)
     if not literals:return result
     result['$defs']['FilterCondition']['description']='명시한 숫자 조건: '+str(literals)
+    # A complete literal computation + threshold over a single connected table
+    # needs three distinct task kinds: read, compute and filter. Prevent native
+    # decoding from ending after read. Do not impose a guessed workflow length
+    # on general requests, inherited workflows, or condition-owned task kinds.
+    kinds = result['$defs']['RequiredTask']['properties']['spec']['discriminator']['mapping']
+    if (computed and {'read', 'compute', 'filter'} <= set(kinds)
+            and not state.get('base_agent_id') and not state.get('required_node_refs')):
+        tasks = result['properties']['tasks']
+        tasks['minItems'] = max(tasks.get('minItems', 0), 3)
     return result

@@ -281,7 +281,8 @@ class OllamaPlanner:
                 raise ModelContextLimitError(error_code=code)
             raise ModelTransportError()
         if raw.get('done_reason') == 'length':
-            raise ValueError('로컬 모델 응답이 출력 길이 제한으로 중단되었습니다. 잘린 응답은 처리하지 않습니다.')
+            from infrastructure.llm.failure_classification import ModelOutputLimitError
+            raise ModelOutputLimitError()
         return {'content': raw.get('message', {}).get('content', ''),
                 'metrics': {**{k: raw.get(k) for k in ('prompt_eval_count','eval_count','total_duration','load_duration','done_reason')},
                             'seconds': time.perf_counter()-started}}

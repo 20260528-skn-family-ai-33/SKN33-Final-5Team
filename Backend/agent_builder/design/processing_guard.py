@@ -92,6 +92,27 @@ def _io_only(node):
     return tool in IO_ONLY
 
 
+def validate_processing_presence(plan, state):
+    """Do not seal a read/export-only ledger for an explicit table processing request.
+
+    This is independent of the model's ledger, so later coverage checks cannot
+    accept a graph merely because the extractor also omitted the same work.
+    Detailed validators still check each operation's operands and data lineage.
+    """
+    if plan['unresolved'] or not state.get('resources'):
+        return
+    if any(asset.get('kind') != 'table' for asset in state['resources']):
+        return
+    actions = _legacy_actions(state)
+    if not actions & {'compute', 'aggregate', 'filter', 'sort', 'join'}:
+        return
+    if any(task['spec']['kind'] not in {'read', 'export', 'select_fields', 'schedule'}
+           for task in plan['tasks']):
+        return
+    raise ValueError('사용자가 요청한 표 처리 작업이 업무 목록에서 모두 빠졌습니다. '
+                     '읽기·출력 열 선택·저장만 남기지 말고 원문의 계산·선별·집계·정렬·결합을 추출하세요.')
+
+
 def processing_issues(state, draft):
     from agent_builder.capabilities.capability_gate import capability_enforced, blocking_issue
 

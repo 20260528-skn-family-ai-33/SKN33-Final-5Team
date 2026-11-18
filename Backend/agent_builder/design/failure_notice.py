@@ -44,11 +44,15 @@ def requirement_failure_reason(error):
         '요청한 선별·중복 제거 순서를 선행 업무에 반영해야 합니다.': 'AI가 선별과 중복 제거의 처리 순서를 요청과 다르게 작성했습니다.',
         '요구사항에 실제 연결 자료가 아닌 ID가 있습니다.': 'AI가 작업에 연결되지 않은 자료를 입력으로 지정했습니다.',
         '원문에서 요청한 사람 검토가 업무 목록에서 누락됐습니다.': 'AI가 요청한 사람 검토 단계를 작업 목록에서 빠뜨렸습니다.',
+        '명시한 출력 열의 숫자 선별 조건이 누락되거나 변경됐습니다.':
+            'AI가 사용자가 지정한 숫자 선별 조건을 빠뜨리거나 다르게 작성했습니다.',
     }
     if message.startswith('검증된 업무 조건과 요구사항 설정이 다릅니다: '):
         return 'AI가 작성한 작업 설정이 이미 확인한 업무 조건과 일치하지 않습니다.'
     if message.startswith('요구사항 ID·선행 업무 관계가 잘못됐습니다: '):
         return 'AI가 실제로 존재하지 않거나 순서가 맞지 않는 선행 작업을 연결했습니다.'
+    if message.startswith('사용자가 요청한 표 처리 작업이 업무 목록에서 모두 빠졌습니다.'):
+        return 'AI가 파일을 읽고 저장하는 작업만 작성하고 요청한 표 처리 작업을 빠뜨렸습니다.'
     return reasons.get(message, 'AI가 작성한 작업 목록의 설정이나 작업 간 연결을 검증하지 못했습니다.')
 
 
@@ -62,7 +66,10 @@ def requirement_failure_details(kind, error=None, *, attempt=1, stage='requireme
     from infrastructure.llm.failure_classification import classify_model_failure
     code, canonical_kind = classify_model_failure(kind, error, http_status=http_status, error_code=error_code)
     transient = False
-    if code == 'context_budget_exceeded':
+    if code == 'model_output_limit':
+        reason = 'AI가 응답을 끝까지 작성하기 전에 출력 토큰 한도에 도달했습니다.'
+        action = '관리자가 해당 단계의 출력 한도와 추론·응답 구성을 확인해야 합니다. 입력한 업무 조건이 부족해서 묻는 질문이 아닙니다.'
+    elif code == 'context_budget_exceeded':
         reason = 'AI 서버가 처리할 수 있는 입력 길이를 초과했습니다.'
         action = '관리자가 대화·자료의 크기와 AI 서버의 문맥 한도를 확인해야 합니다. 업무 조건을 임의로 바꾸지 않아도 됩니다.'
     elif code == 'model_timeout':

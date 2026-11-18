@@ -57,9 +57,21 @@ def test_native_length_limit_rejects_even_parseable_partial_content(monkeypatch)
     def open_request(request,timeout):
         calls.append(request);return Response()
     monkeypatch.setattr('urllib.request.urlopen',open_request)
-    with pytest.raises(ValueError,match='출력 길이 제한'):
+    from infrastructure.llm.failure_classification import ModelOutputLimitError, classify_model_failure
+    from agent_builder.design.failure_notice import requirement_failure_details
+    from infrastructure.persistence.generation_history import error_info
+    with pytest.raises(ModelOutputLimitError,match='출력 길이 제한') as raised:
         OllamaPlanner('final664').invoke([{'role':'user','content':'test'}])
     assert len(calls)==1
+    for evidence in (raised.value, type(raised.value).__name__):
+        assert classify_model_failure('system_error', evidence) == ('model_output_limit', 'model_output_error')
+        details = requirement_failure_details('system_error', evidence)
+        assert details['reason_code'] == 'model_output_limit'
+        assert '출력 토큰 한도' in details['reason']
+        assert not details['retryable']
+    assert error_info(raised.value, 'requirements')['reason_code'] == 'model_output_limit'
+    assert classify_model_failure('model_error', 'ModelOutputLimitError', http_status=503) == (
+        'model_server_error', 'model_error')
 
 
 @pytest.mark.parametrize('name', ['a4b-qwen35-9b-previous-pilot32k',

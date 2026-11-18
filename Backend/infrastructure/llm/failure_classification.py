@@ -14,6 +14,12 @@ _CONTEXT_CODES = {'context_length_exceeded', 'context_window_exceeded', 'context
                   'max_context_length_exceeded', 'prompt_too_long', 'input_too_long'}
 
 
+class ModelOutputLimitError(ValueError):
+    """A finished transport response whose generation exhausted its output budget."""
+    def __init__(self):
+        super().__init__('로컬 모델 응답이 출력 길이 제한으로 중단되었습니다. 잘린 응답은 처리하지 않습니다.')
+
+
 def _http_status(value):
     return value if type(value) is int and 100 <= value <= 599 else None
 
@@ -87,6 +93,7 @@ _SAFE_CODES = {error_type.__name__:code for code,error_type in _SAFE_ERRORS.item
 _CANONICAL_KINDS = {**{code:'model_error' for code in _SAFE_ERRORS},
     'context_budget_exceeded':'model_input_error','model_request_rejected':'model_input_error',
     'invalid_model_response':'model_output_error','condition_state_invalid':'condition_state_error',
+    'model_output_limit':'model_output_error',
     'generation_step_limit':'model_error'}
 
 
@@ -131,11 +138,15 @@ def classify_model_failure(kind, error=None, *, http_status=None, error_code=Non
     code = _transport_category(names,status,context) if causes else None
     if code:
         return code,_CANONICAL_KINDS[code]
+    if causes and 'ModelOutputLimitError' in names:
+        return 'model_output_limit', 'model_output_error'
     # Canonical, fixed metadata is a fallback when no actual transport diagnosis
     # survives. It must never override an exception's response status or cause.
     code = _transport_category(names if not causes else set(),_http_status(http_status),context_limit_code(error_code))
     if code:
         return code,_CANONICAL_KINDS[code]
+    if 'ModelOutputLimitError' in names:
+        return 'model_output_limit', 'model_output_error'
     if isinstance(error_code,str) and error_code in _CANONICAL_KINDS:
         return error_code,_CANONICAL_KINDS[error_code]
     if kind == 'condition_state_error':

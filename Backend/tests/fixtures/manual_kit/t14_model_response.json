@@ -1,0 +1,530 @@
+{
+  "capture": {
+    "date": "2026-11-18",
+    "model": "a4b-qwen35-9b-final664-pilot32k",
+    "num_ctx": 32768,
+    "num_predict": 8192,
+    "thinking": true,
+    "source_release": "facfeaa14014ed5e82551ac7345153c40236e2e0",
+    "local_base": "1f87070",
+    "note": "Read-only checkpoint, local output-selection fixes applied in one-off process memory. File ID replaced with table-source; expected CSV not supplied to model."
+  },
+  "extraction": {
+    "tasks": [
+      {
+        "source_message": 1,
+        "description": "read_table 업무",
+        "spec": {
+          "kind": "read",
+          "file_ids": [
+            "table-source"
+          ]
+        }
+      },
+      {
+        "source_message": 1,
+        "description": "compute 업무",
+        "spec": {
+          "kind": "compute",
+          "formula": "수량*단가",
+          "output_column": "주문금액"
+        }
+      },
+      {
+        "source_message": 1,
+        "description": "filter 업무",
+        "spec": {
+          "kind": "filter",
+          "filters": [
+            {
+              "field": "주문상태",
+              "operator": "eq",
+              "value": "완료",
+              "compare_field": null,
+              "value_type": "text"
+            },
+            {
+              "field": "주문금액",
+              "operator": "gte",
+              "value": 100000.0,
+              "compare_field": null,
+              "value_type": "number"
+            }
+          ],
+          "match": "all"
+        }
+      },
+      {
+        "source_message": 1,
+        "description": "sort 업무",
+        "spec": {
+          "kind": "sort",
+          "sort": [
+            {
+              "field": "주문번호",
+              "direction": "ascending",
+              "value_type": "text"
+            }
+          ]
+        }
+      },
+      {
+        "source_message": 1,
+        "description": "select_fields 업무",
+        "spec": {
+          "kind": "select_fields",
+          "fields": [
+            "주문번호",
+            "주문금액"
+          ]
+        }
+      }
+    ],
+    "unresolved": []
+  },
+  "draft": {
+    "name": "자료 처리",
+    "purpose": "사용자 조건 확인 후 업무 설계",
+    "instructions": "확정 조건과 사용자 답변을 보존합니다.",
+    "request_input_mode": null,
+    "tool_ids": [
+      "read_table",
+      "calculate_columns",
+      "filter_sort",
+      "json_transform",
+      "export_result"
+    ],
+    "document_ids": [
+      "table-source"
+    ],
+    "requirements": [
+      {
+        "description": "사용자 요청의 확인 조건",
+        "source_id": "user",
+        "quote": "완료 주문만 대상으로 매출은 수량×단가, 주문금액 100000 이상, 주문번호 오름차순, 주문번호·주문금액을 고액주문.csv로 저장해줘."
+      }
+    ],
+    "questions": [],
+    "question_options": [],
+    "question_responses": [],
+    "unsupported": [],
+    "explanation": "초안의 처리 순서: 표 파일 읽기 → 표 열 계산·이름 변경 → 조건에 따라 정리 (선별 조건 2개) → 조건에 따라 정리 (정렬 기준 1개) → JSON 해석·값 조회 → 출력 열 선택 → 나머지 1단계\n업무 조건과 처리 순서를 확인해 주세요.",
+    "execution_plan": {
+      "filters": [],
+      "sort": [],
+      "match": "all",
+      "missing_policy": "keep",
+      "duplicate_policy": "keep",
+      "duplicate_field": null,
+      "output_format": "json"
+    },
+    "workflow": {
+      "entry": "step_1",
+      "nodes": [
+        {
+          "id": "step_1",
+          "tool": "read_table",
+          "label": "read_table",
+          "bindings": [],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [
+              "table-source"
+            ],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_2",
+          "tool": "calculate_columns",
+          "label": "calculate_columns",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_1",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": "compute",
+            "output_column": "주문금액",
+            "calculation_formula": "수량*단가",
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_3",
+          "tool": "filter_sort",
+          "label": "filter_sort",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_2",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": {
+              "filters": [
+                {
+                  "field": "주문상태",
+                  "operator": "eq",
+                  "value": "완료",
+                  "compare_field": null,
+                  "value_type": "text"
+                },
+                {
+                  "field": "주문금액",
+                  "operator": "gte",
+                  "value": 100000.0,
+                  "compare_field": null,
+                  "value_type": "number"
+                }
+              ],
+              "sort": [],
+              "match": "all",
+              "missing_policy": "keep",
+              "duplicate_policy": "keep",
+              "duplicate_field": null,
+              "output_format": "json"
+            },
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": "{\"filters\": [{\"field\": \"주문상태\", \"operator\": \"eq\", \"value\": \"완료\", \"compare_field\": null, \"value_type\": \"text\"}, {\"field\": \"주문금액\", \"operator\": \"gte\", \"value\": 100000.0, \"compare_field\": null, \"value_type\": \"number\"}], \"sort\": [], \"match\": \"all\", \"missing_policy\": \"keep\", \"duplicate_policy\": \"keep\", \"duplicate_field\": null, \"output_format\": \"json\"}",
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_4",
+          "tool": "filter_sort",
+          "label": "filter_sort",
+          "bindings": [
+            {
+              "input": "table",
+              "node_id": "step_3",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": null,
+            "arguments_json": null,
+            "node_ref": null,
+            "execution_plan": {
+              "filters": [],
+              "sort": [
+                {
+                  "field": "주문번호",
+                  "direction": "ascending",
+                  "value_type": "text"
+                }
+              ],
+              "match": "all",
+              "missing_policy": "keep",
+              "duplicate_policy": "keep",
+              "duplicate_field": null,
+              "output_format": "json"
+            },
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": "{\"filters\": [], \"sort\": [{\"field\": \"주문번호\", \"direction\": \"ascending\", \"value_type\": \"text\"}], \"match\": \"all\", \"missing_policy\": \"keep\", \"duplicate_policy\": \"keep\", \"duplicate_field\": null, \"output_format\": \"json\"}",
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_5",
+          "tool": "json_transform",
+          "label": "json_transform",
+          "bindings": [
+            {
+              "input": "value",
+              "node_id": "step_4",
+              "output": "table"
+            }
+          ],
+          "settings": {
+            "operation": "lookup",
+            "arguments_json": "{\"path\": [\"rows\"]}",
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": "records",
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_6",
+          "tool": "filter_sort",
+          "label": "filter_sort",
+          "bindings": [
+            {
+              "input": "rows",
+              "node_id": "step_5",
+              "output": "records"
+            }
+          ],
+          "settings": {
+            "operation": "select_columns",
+            "arguments_json": "{\"columns\": [\"주문번호\", \"주문금액\"]}",
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        },
+        {
+          "id": "step_7",
+          "tool": "export_result",
+          "label": "export_result",
+          "bindings": [
+            {
+              "input": "rows",
+              "node_id": "step_6",
+              "output": "records"
+            }
+          ],
+          "settings": {
+            "operation": "write_csv",
+            "arguments_json": "{\"columns\": [\"주문번호\", \"주문금액\"], \"overwrite\": true, \"path\": \"고액주문.csv\"}",
+            "node_ref": null,
+            "execution_plan": null,
+            "agent_id": null,
+            "agent_version": null,
+            "output_node": null,
+            "output_port": null,
+            "aggregation": null,
+            "sum_field": null,
+            "table_operation": null,
+            "output_column": null,
+            "calculation_formula": null,
+            "rename_from": null,
+            "rename_to": null,
+            "date_input_format": null,
+            "date_timezone": null,
+            "text_find": null,
+            "text_replacement": null,
+            "codec_mode": null,
+            "statistics_unit": null,
+            "include_whitespace": null,
+            "date_operation": null,
+            "date_seconds": null,
+            "date_output_format": null,
+            "extraction_mode": null,
+            "file_ids": [],
+            "query": null,
+            "fields": [],
+            "instructions": null,
+            "format": null,
+            "question": null,
+            "condition_field": null,
+            "condition_operator": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "source": "step_1",
+          "target": "step_2",
+          "branch": "next"
+        },
+        {
+          "source": "step_2",
+          "target": "step_3",
+          "branch": "next"
+        },
+        {
+          "source": "step_3",
+          "target": "step_4",
+          "branch": "next"
+        },
+        {
+          "source": "step_4",
+          "target": "step_5",
+          "branch": "next"
+        },
+        {
+          "source": "step_5",
+          "target": "step_6",
+          "branch": "next"
+        },
+        {
+          "source": "step_6",
+          "target": "step_7",
+          "branch": "next"
+        }
+      ]
+    },
+    "schedule": null,
+    "report_destination": null
+  }
+}

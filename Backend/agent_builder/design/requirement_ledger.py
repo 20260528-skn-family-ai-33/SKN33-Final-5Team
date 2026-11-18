@@ -309,7 +309,8 @@ def validate_plan(raw, state):
     from .explicit_date_criteria import validate_requested_dates
     from .explicit_table_criteria import validate_explicit_ledger
     validate_requested_dates(plan,state)
-    from .processing_guard import validate_group_aggregations
+    from .processing_guard import validate_group_aggregations, validate_processing_presence
+    validate_processing_presence(plan, state)
     validate_group_aggregations(plan, state)
     validate_grouped_result(plan, state)
     validate_explicit_ledger(plan,state)

@@ -390,13 +390,16 @@ def _extract_amounts(text, field):
 # number cannot be split in every possible way between the optional pieces.
 _COMPARATOR_SPAN = re.compile(
     r'(?<![\d.,+-])(?:\d[\d,]*(?:\.\d+)?|(?<![가-힣])[일이삼사오육칠팔구십]*[십백천만억]+)\s*+(?:천만|백만|십만|만|천|백)?\s*+(?:원|점|개|명|건|kg)?'
-    r'\s*+(?:(?:을|를|이|가)?\s*+(?:초과|이상|미만|이하)|보다\s*+(?:작은|적은|낮은|큰|많은|높은|작거나|적거나|낮거나|크거나|많거나|높거나))')
+    r'\s*+(?:(?:을|를|이|가)?\s*+(?:초과|이상|미만|이하)|보다\s*+(?:작은|적은|낮은|큰|많은|높은|(?:작거나|적거나|낮거나|크거나|많거나|높거나)(?:\s*+같(?:은|고|거나))?))')
 
 
 _NATURAL_COMPARISON = re.compile(r'보다\s*(작은|적은|낮은|큰|많은|높은)$')
 _NATURAL_OPERATORS = {'작은': 'lt', '적은': 'lt', '낮은': 'lt', '큰': 'gt', '많은': 'gt', '높은': 'gt'}
 _JOINING_OPERATORS = {'작거나': 'lt', '적거나': 'lt', '낮거나': 'lt', '크거나': 'gt', '많거나': 'gt', '높거나': 'gt'}
-_COMPARISON_WORD = re.compile('(' + '|'.join(['초과', '이상', '미만', '이하', *_NATURAL_OPERATORS, *_JOINING_OPERATORS]) + ')$')
+_JOINING_OPERATORS.update({word + ending: ('lte' if operator == 'lt' else 'gte')
+                           for word, operator in list(_JOINING_OPERATORS.items())
+                           for ending in ('같은', '같고', '같거나')})
+_COMPARISON_WORD = re.compile('(' + '|'.join(re.escape(word).replace('거나같', r'거나\s*+같') for word in ['초과', '이상', '미만', '이하', *_NATURAL_OPERATORS, *_JOINING_OPERATORS]) + ')$')
 _SUBJECT_END = r'\s*(?:열\s*)?(?:이|가|은|는|도|을|를)?\s*$'
 # Connective endings join two conditions of one clause; anything else between them is asked about.
 _ALL_JOIN = re.compile(r'(?:이고|이며|이면서|면서|그리고|및)(?=[\s,]|$)')
@@ -453,7 +456,7 @@ def _stated_rule(field, span):
     values = _amounts(span, field)
     if not word or len(values) != 1 or not executable_number(next(iter(values))):
         return None
-    operator = (_WRITTEN_OPERATOR | _NATURAL_OPERATORS | _JOINING_OPERATORS)[word[1]]
+    operator = (_WRITTEN_OPERATOR | _NATURAL_OPERATORS | _JOINING_OPERATORS)[re.sub(r'\s+', '', word[1])]
     return dict(field=field, operator=operator, value=float(next(iter(values))),
                 compare_field=None, value_type='number')
 
@@ -498,6 +501,8 @@ def _compound_filter_in_turn(state, text):
         end = match.end()
         if index:
             if not prefix.strip():
+                joins.append('all')
+            elif comparisons[index - 1].group().endswith('같고'):
                 joins.append('all')
             elif comparisons[index - 1].group().endswith('거나'):
                 joins.append('any')
@@ -1054,7 +1059,7 @@ def explicit_policies(state, catalog, *, duplicate_candidate=None, filter_field=
         comparisons = list(_COMPARATOR_SPAN.finditer(text))
         for index, comparison in enumerate(comparisons):
             word = _COMPARISON_WORD.search(comparison.group())
-            natural = word and (_NATURAL_OPERATORS | _JOINING_OPERATORS).get(word[1])
+            natural = word and (_NATURAL_OPERATORS | _JOINING_OPERATORS).get(re.sub(r'\s+', '', word[1]))
             prefix = text[comparisons[index - 1].end() if index else 0:comparison.start()]
             if (natural and _comparison_subject(filter_field, prefix)
                     and not _uncertain_comparison(text[comparison.end():])
@@ -1999,8 +2004,13 @@ def validate_conditions(raw, state, catalog):
     if compound['pending']:
         # Several columns are compared but the filter is not settled; never finish on a part of it.
         unresolved.append('filter.match')
-    if text_contract['issues'] and 'filter.match' not in unresolved:
-        unresolved.append('filter.match')
+    if text_contract['issues']:
+        primary = slots.get('filter.field', {}).get('value')
+        if primary in text_contract.get('pending_decisions', {}):
+            # The text operand question owns its missing operator/value as one answer.
+            unresolved = [key for key in unresolved if key not in ('filter.operator', 'filter.value')]
+        if 'filter.match' not in unresolved:
+            unresolved.append('filter.match')
     issues = input_issues(state)
     last_user = state.get('messages', [])[latest]['content'] if latest >= 0 else ''
     # Cancelling only the optional trigger keeps the workflow's processing

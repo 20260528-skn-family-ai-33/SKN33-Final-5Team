@@ -89,7 +89,8 @@ def multiple_outputs(state):
         r'(?:중복(?:\s*행)?|행|열|레코드|데이터|값|항목)(?:들)?(?:은|는|을|를|도)?\s*'
         r'(?:(?:그대로|빠짐없이)\s*)?모두\s*(?:(?:다|그대로)\s*)?(?:유지|보존)',
         lambda match: match.group().replace('모두', '', 1), text)
-    return bool(re.search(r'각각|각자|별도|따로|두\s*(?:개|파일)|(?:파일|결과|출력)(?:들)?(?:을|를|은|는)?\s*(?:둘\s*다|모두)|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
+    text = re.sub(r'(?:조건|기준)(?:을|은|는)?\s*(?:둘\s*다|모두)', '', text)
+    return bool(re.search(r'둘\s*다|모두|각각|각자|별도|따로|두\s*(?:개|파일)|(?:파일|결과|출력)(?:들)?(?:을|를|은|는)?\s*(?:둘\s*다|모두)|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
 
 
 def ordered_row_steps(state):

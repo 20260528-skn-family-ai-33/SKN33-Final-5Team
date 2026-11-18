@@ -46,16 +46,23 @@ def text_filter_state(state):
             field = next(iter(pending))
             if not re.search(r'(?<![\w])' + re.escape(field), text):
                 short = re.fullmatch(r"(.+?)만\s*+(?:남겨|골라)(?:\s*+(?:줘|주세요))?[.!?\s]*", text)
-                if short:
+                if (pending[field].reason == 'predicate' and not short
+                        and re.fullmatch(r'[\w가-힣-]+', text.strip())):
+                    text = field + '가 ' + text.strip() + '인 행만 남겨줘'
+                elif short:
                     text = field + '가 ' + short[1] + '인 행만 남겨줘'
                 elif re.fullmatch(r'(?:조건|필터)\s*+(?:취소|제거|해제)(?:해줘)?[.!?\s]*', text):
                     text = field + ' 조건 취소'
-        if ALL_FILTERS_CANCELLED.fullmatch(text):
-            active.clear()
-            pending.clear()
-            cleared_fields.update(fields)
-            numeric_fields.clear()
-            replaced_numeric_fields.clear()
+        cancellation = ALL_FILTERS_CANCELLED.fullmatch(text)
+        if cancellation:
+            targets = fields if not cancellation['numeric'] else (numeric_fields | {
+                field for field, (_, rule) in active.items() if rule.get('value_type') == 'number'})
+            for field in targets:
+                active.pop(field, None)
+                pending.pop(field, None)
+            cleared_fields.update(targets)
+            numeric_fields.difference_update(targets)
+            replaced_numeric_fields.difference_update(targets)
             continue
         conflicting_proposals = {}
         events = [(start, 'clear', field, None) for start, _, field in filter_clear_events(text, fields)]

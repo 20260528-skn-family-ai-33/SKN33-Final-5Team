@@ -65,6 +65,8 @@ def uncovered_selection_fields(text, fields, atoms):
                 continue
             tail = text[match.end():]
             prefix = text[:match.start()]
+            if re.match(r'\s*(?:이|가|은|는|을|를)?\s*(?:마스킹|익명화|가려|숨겨)', tail):
+                continue
             if re.search(r'중복|빈\s*$|결측', prefix):
                 continue
             if re.match(r'\s*(?:이|가|은|는)?\s*(?:큰|작은|높은|낮은|많은|적은|부족한|같은|같거나|다른|겹치|비어|빈|없는|누락)', tail):

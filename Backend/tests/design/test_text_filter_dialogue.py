@@ -329,3 +329,98 @@ def test_numeric_condition_set_by_a_short_answer_survives_later_keep(tmp_path, s
         assert result['status'] == 'succeeded' and result['rows'] == rows[:1]
     finally:
         connection.close(); store.close()
+
+
+@pytest.mark.parametrize('scope', ['모든 숫자 조건 취소해줘', '전체 숫자 필터 제거해주세요', '기존 숫자 조건은 해제해줘'])
+def test_numeric_bulk_cancel_preserves_text_and_actual_rows(tmp_path, scope):
+    s = current('상태가 완료인 행만 남겨줘.')
+    s['messages'].append(dict(role='user', content=scope))
+    contract = text_filter_state(s)
+    assert [rule['field'] for _, rule in contract['predicates']] == ['상태']
+    assert contract['cleared_fields'] == {'비용', '수량'}
+    assert execute(prepare(s, {**VALUES, 'filter.field': ('상태', '상태'),
+                               'filter.operator': ('eq', '완료'), 'filter.value': ('완료', '완료')}), tmp_path) == [ROWS[0], ROWS[1], ROWS[3]]
+
+
+@pytest.mark.parametrize('instruction', ['요약표와 상세표 둘 다 CSV로 만들어줘', '서울 행과 부산 행을 모두 CSV로 저장해줘'])
+def test_multiple_output_quantifiers_are_retained(instruction):
+    assert multiple_outputs(current(instruction))
+
+
+def test_uncovered_text_question_accepts_its_short_answer():
+    s = current('상태가 완료된 주문만 남겨줘')
+    contract = text_filter_state(s)
+    assert contract['issues']
+    turn = len(s['messages'])
+    s['messages'].append(dict(role='user', content='완료'))
+    s['condition_answers'] = [dict(turn=turn, candidate_keys=['filter.match'])]
+    contract = text_filter_state(s)
+    assert not contract['issues']
+    assert [(rule['field'], rule['value']) for _, rule in contract['predicates']] == [('상태', '완료')]
+
+
+@pytest.mark.parametrize(('word', 'operator'), [('크거나 같은', 'gte'), ('작거나 같은', 'lte'), ('크거나 같고', 'gte')])
+def test_inclusive_natural_comparisons_do_not_become_exclusive_or_or(word, operator):
+    from agent_builder.conditions.condition_readiness import _compound_filter_in_turn, _stated_rule, _COMPARATOR_SPAN
+    request = f'비용이 10원보다 {word} 수량이 3개 미만인 행만 남겨줘'
+    s = current('')
+    assert _stated_rule('비용', next(_COMPARATOR_SPAN.finditer(request)).group())['operator'] == operator
+    if word.endswith('같고'):
+        mode, rules = _compound_filter_in_turn(s, request)
+        assert mode == 'all' and [rule['operator'] for rule in rules] == ['gte', 'lt']
+
+
+def test_masking_a_column_is_not_an_uncovered_selection_operand():
+    from agent_builder.design.text_filter_parser import uncovered_selection_fields
+    assert not uncovered_selection_fields('고객명은 마스킹하고 첫 행만 남겨줘', {'고객명'}, [])
+
+
+@pytest.mark.parametrize('structured', [False, True])
+def test_short_text_answer_resolves_real_graph_and_exports(tmp_path, structured):
+    s = current('')
+    s['messages'] = [dict(role='user', content='JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'),
+                     dict(role='user', content='상태가 완료된 주문만 남겨줘')]
+    raw = proposal(s, {'filter.field': '상태', 'filter.operator': None, 'filter.value': None,
+                      'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'})
+    fake = Fake([raw, raw])
+    store = Storage(tmp_path); store.add_asset(s['resources'][0], ROWS)
+    graph, connection = build_graph(store, conversation=compile_conditions, condition_transport=fake, condition_mode='enforce')
+    config = {'configurable': {'thread_id': s['session_id']}}
+    try:
+        asked = graph.invoke(s, config)
+        assert any(q['key'] == 'filter.match' for q in asked['pending_questions']), {key: asked.get(key) for key in ('status', 'pending_questions', 'issues', 'last_error')}
+        question = next(q for q in asked['pending_questions'] if q['key'] == 'filter.match')
+        answer = dict(type='message', content='완료', question_id=question['id'])
+        if structured:
+            answer.update(content=question['text'] + ' → 완료', question_answers=[dict(question_id=question['id'], value='완료')])
+        ready = graph.invoke(Command(resume=answer), config)
+        assert ready['status'] == 'ready', ready.get('issues')
+        assert not ready['pending_questions'] and fake.calls == 2
+        saved = graph.invoke(Command(resume=dict(type='confirm')), config)
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[s['resources'][0]['id']])
+        assert result['status'] == 'succeeded' and result['rows'] == [ROWS[0], ROWS[1], ROWS[3]]
+    finally:
+        connection.close(); store.close()
+
+
+def test_inclusive_and_pipeline_keeps_boundary_and_excludes_one_sided_matches(tmp_path):
+    s = current('')
+    s['messages'][0]['content'] = '비용이 15원보다 크거나 같고 수량이 5개 미만인 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'
+    assert execute(prepare(s), tmp_path) == ROWS[:3]
+
+
+@pytest.mark.parametrize('instruction', ['모든 조건 취소해줘', '전체 필터 삭제해줘'])
+def test_unscoped_bulk_cancel_still_clears_text_and_numeric(instruction):
+    s = current('상태가 완료인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content=instruction))
+    contract = text_filter_state(s)
+    assert not contract['predicates'] and contract['cleared_fields'] == set(s['resources'][0]['columns'])
+
+
+@pytest.mark.parametrize('instruction', ['모든 숫자 조건 취소하지 마', '모든 숫자 조건 취소해도 될까?'])
+def test_numeric_bulk_cancel_requires_a_decisive_command(instruction):
+    s = current('상태가 완료인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content=instruction))
+    contract = text_filter_state(s)
+    assert [rule['field'] for _, rule in contract['predicates']] == ['상태']
+    assert not contract['cleared_fields']

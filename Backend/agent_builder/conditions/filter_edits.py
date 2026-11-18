@@ -13,7 +13,7 @@ def in_metadata_text(text, position):
     return bool(re.search(r'(?:파일\s*+(?:이름|명)|설명|제목|출력\s*+이름).{0,40}$', prefix))
 
 ALL_FILTERS_CANCELLED = re.compile(
-    r'(?:모든|전체|기존)\s*+(?:숫자\s*+)?(?:선별\s*+)?(?:조건|필터)(?:을|를|은|는)?\s*+'
+    r'(?:모든|전체|기존)\s*+(?P<numeric>숫자\s*+)?(?:선별\s*+)?(?:조건|필터)(?:을|를|은|는)?\s*+'
     r'(?:취소|삭제|제거|해제)(?:해\s*+(?:줘|주세요))?[.!?\s]*')
 
 

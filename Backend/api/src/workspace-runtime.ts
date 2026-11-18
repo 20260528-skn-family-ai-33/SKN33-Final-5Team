@@ -24,6 +24,7 @@ import {BINARY_KEY,createBinaryFileFromBase64,decodeBinaryFile,getBinary,jsonWit
 import {runCode} from './sandbox';
 import {binaryObjectPath,readWorkspaceFile,saveWorkspaceFile,workspaceFilesEnabled} from './workspace-files';
 import {nextRunAt,validateSchedule} from './schedule';
+import {enabledAutomationStarts} from '../../../shared/schedule-rule';
 import {updateWorkflowSchedule} from './workflow-schedule';
 import {withScheduleSourceContext,type ScheduleSourceContext} from './schedule-source';
 import {validateFlow,makeFlow,catalog,clone,type Flow,type FlowNode,type Execution,type Json} from '../../../shared/workflow';
@@ -232,7 +233,7 @@ function cancelQueuedScheduleExecutions(workflowId:string,reason='예약 설정�
  }
 }
 function activate(flow:Flow,active:boolean){
- if(active){checkLive(flow);const triggers=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(triggers.length!==1)throw new Error('자동 실행에는 예약 시작 또는 Webhook 시작 단계 하나가 필요해요.');const allStarts=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.manualTrigger')||n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(allStarts.length!==1)throw new Error('시작 단계는 하나만 사용해주세요. 기존 시작 단계에서 시작 방식을 바꿀 수 있어요.');const n=triggers[0];if(n.type.endsWith('.scheduleTrigger')){validateSchedule(n,flow.settings.timezone||'Asia/Seoul');const activatedAt=Date.now();flow.schedule={triggerId:n.id,activatedAt,nextRunAt:nextRunAt({...n,scheduleAnchorAt:activatedAt},activatedAt,flow.settings.timezone||'Asia/Seoul')};}if(n.type.endsWith('.webhook')){validateWebhookConfiguration(flow,n);flow.hookToken??=randomBytes(24).toString('hex');}}
+ if(active){checkLive(flow);const triggers=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(triggers.length!==1)throw new Error('자동 실행에는 예약 시작 또는 Webhook 시작 단계 하나가 필요해요.');const allStarts=enabledAutomationStarts(flow.nodes);if(allStarts.length!==1)throw new Error('시작 단계는 하나만 사용해주세요. 기존 시작 단계에서 시작 방식을 바꿀 수 있어요.');const n=triggers[0];if(n.type.endsWith('.scheduleTrigger')){validateSchedule(n,flow.settings.timezone||'Asia/Seoul');const activatedAt=Date.now();flow.schedule={triggerId:n.id,activatedAt,nextRunAt:nextRunAt({...n,scheduleAnchorAt:activatedAt},activatedAt,flow.settings.timezone||'Asia/Seoul')};}if(n.type.endsWith('.webhook')){validateWebhookConfiguration(flow,n);flow.hookToken??=randomBytes(24).toString('hex');}}
  else delete flow.schedule;
  const saved=store.saveFlow({...flow,active});
  if(!active)cancelQueuedScheduleExecutions(flow.id,'예약이 중지되어 대기 중인 자동 실행을 취소했습니다.');

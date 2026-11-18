@@ -44,7 +44,7 @@ import {ClarificationForm,type ClarificationAnswer} from './clarification-form';
 import {SlackChannelPicker} from './slack-channel-picker';
 
 
-type SavedSchedule={active:boolean;next_run_at:string;spec:ScheduleSpec;agent_version:number};
+type SavedSchedule={active:boolean;next_run_at:string;spec:ScheduleSpec;agent_version:number;revision?:string};
 type Source={id:string;asset_id:string;version:number;asset:Resource};
 type Job={id:string;kind:string;status:string;due_at:string;run_id?:string;error?:string;source_name?:string;source_version?:string};
 type Draft={schedule?:ScheduleSpec|null;report_destination?:string|null;workflow?:Workflow|null;name:string;purpose:string;instructions:string;tool_ids:string[];document_ids:string[];requirements:{description:string;source_id:string;quote:string}[];questions:string[];question_options?:string[][];question_responses?:(QuestionResponse|null)[];unsupported:string[];explanation:string;execution_plan?:{match:string;filters:{field:string;operator:string;compare_field:string|null;value:unknown}[];sort:{field:string;direction:string;value_type:string}[];missing_policy:string;duplicate_policy:string;duplicate_field:string|null;output_format:string}};
@@ -767,6 +767,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     setSelected(current=>current?.id===updated.id?{...current,...updated}:current);
     setAgents(current=>current.map(agent=>agent.id===updated.id?updated:agent));
     setSchedule(current=>current?.agent_version===renaming.version?{...current,agent_version:updated.version}:current);
+    if(screen==='schedule')void refreshScheduleSource().catch(error=>setError((error as Error).message));
    }}/>}
    {screen==='workflow'&&!saved&&<div className="as-progress"  aria-label="설계 진행">
     <span className={draft?'done':'current'}><i>{draft?<Check size={12}/>:'1'}</i>업무 설명</span>

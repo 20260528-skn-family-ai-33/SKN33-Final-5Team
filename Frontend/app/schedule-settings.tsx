@@ -4,7 +4,7 @@ import {request} from '../components/flow/connection-panel';
 import {scheduleDateNote,scheduleDescription,type ScheduleSpec} from '../lib/schedule-spec';
 import './schedule-settings.css';
 
-export type ManagedSchedule={active:boolean;spec:ScheduleSpec;next_run_at:string;agent_version?:number};
+export type ManagedSchedule={active:boolean;spec:ScheduleSpec;next_run_at:string;agent_version?:number;revision?:string};
 const defaultSpec:ScheduleSpec={frequency:'daily',timezone:'Asia/Seoul',hour:9,minute:0,weekday:null,monthday:null,month_end:false};
 const weekdays=['월요일','화요일','수요일','목요일','금요일','토요일','일요일'];
 export const scheduleRemovalMessage='예약을 삭제할까요? 예약 설정과 대기 중인 자동 실행은 해제됩니다. 워크플로우와 실행 기록은 유지됩니다.';
@@ -48,7 +48,7 @@ export function ScheduleSettings({workflowId,workflowVersion,schedule,onChange,d
   try {
    const configuredSpec=effectiveSpec(spec);
    const result=await request<{schedule:ManagedSchedule|null}>('/api/agent-builder/'+(action==='configure'?'schedule_configure':action==='remove'?'schedule_remove':'schedule'),
-    action==='configure'?{id:workflowId,spec:configuredSpec}:{id:workflowId,...(action==='toggle'?{active:!schedule?.active}:{})});
+    {id:workflowId,expectedRevision:schedule?schedule.revision:null,...(action==='configure'?{spec:configuredSpec}:action==='toggle'?{active:!schedule?.active}:{})});
    if(action!=='toggle'){
     const saved={...defaultSpec,...result.schedule?.spec};setSpec(saved);setBaseline(saved);setEditing(!result.schedule);dirtyCallback.current?.(false);
    }

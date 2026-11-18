@@ -1,20 +1,31 @@
 """Schedule jobs and managed data sources."""
 from infrastructure.persistence.ids import uid, now
-from workflow_engine.scheduling.schedules import Schedules, preflight_schedule, scheduled_agent
+from workflow_engine.scheduling.schedules import ScheduleConflict, Schedules, preflight_schedule, scheduled_agent
 from workflow_engine.scheduling.library_sources import source_tags
 
 
 def claim_due(c):return {'jobs':Schedules(c.storage).claim_due()}
 
-def schedule(c):return {'schedule':Schedules(c.storage).activate(c.data['id'],c.data['active'])}
+def _schedule_write(c,operation):
+    revision={'expected_revision':c.data['expected_revision']} if 'expected_revision' in c.data else {}
+    try:return {'schedule':operation(**revision)}
+    except ScheduleConflict as error:return {'code':'schedule_conflict','error':str(error)}
+
+def schedule(c):
+    manager=Schedules(c.storage)
+    return _schedule_write(c,lambda **revision:manager.activate(c.data['id'],c.data['active'],**revision))
 
 def schedule_configure(c):
     manager=Schedules(c.storage)
-    c.storage.begin_write()
-    try:return {'schedule':manager.configure(c.data['id'],spec=c.data['spec'])}
-    except Exception:c.storage.db.rollback();raise
+    def configure(**revision):
+        c.storage.begin_write()
+        try:return manager.configure(c.data['id'],spec=c.data['spec'],**revision)
+        except Exception:c.storage.db.rollback();raise
+    return _schedule_write(c,configure)
 
-def schedule_remove(c):return {'schedule':Schedules(c.storage).remove(c.data['id'])}
+def schedule_remove(c):
+    manager=Schedules(c.storage)
+    return _schedule_write(c,lambda **revision:manager.remove(c.data['id'],**revision))
 
 def schedule_test(c):return {'job':Schedules(c.storage).enqueue_test(c.data['id'])}
 

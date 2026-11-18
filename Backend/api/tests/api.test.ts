@@ -357,6 +357,17 @@ test('standalone server persists and executes workflows, credentials, schedules 
       }
     });
 
+    await t.test('reservation configuration rejects a mixed start graph before mutating it',async()=>{
+      const mixed=workflow('예약으로 바꿀 수 없는 시작 구성',[stage('manualTrigger','수동 시작'),stage('webhook','Webhook 시작')]);
+      const saved=await server.request('/api/workflows','POST',mixed);
+      assert.equal(saved.status,200);
+      const rejected=await server.request('/api/workflows/schedule','POST',{workflowId:mixed.id,updatedAt:saved.data.workflow.updatedAt,action:'configure',rule:{interval:[{field:'days',triggerAtHour:9}]}});
+      assert.equal(rejected.status,400);
+      assert.match(rejected.data.error,/활성 시작 단계가 하나/);
+      const current=(await server.request('/api/workflows')).data.workflows.find((item:Flow)=>item.id===mixed.id);
+      assert.deepEqual(current,saved.data.workflow);
+    });
+
     await t.test('activation rejects workflows with both manual and scheduled starts', async () => {
       const ambiguous = workflow('시작점이 두 개인 예약',[stage('manualTrigger','버튼 시작'),stage('scheduleTrigger','예약 시작',{rule:{interval:[{field:'seconds',secondsInterval:1}]}}),rawSet('결과')]);
       // Both starts have outgoing paths but neither trigger receives an incoming edge.

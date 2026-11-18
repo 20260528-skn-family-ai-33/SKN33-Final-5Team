@@ -18,3 +18,7 @@ export function scheduleRuleForField(field:string,previous:Rule={},parameters:Ru
   default:return {field:'days',daysInterval:1,...clock};
  }
 }
+
+export function enabledAutomationStarts<T extends {type:string;disabled?:boolean}>(nodes:T[]):T[] {
+ return nodes.filter(node=>!node.disabled&&['.manualTrigger','.scheduleTrigger','.webhook'].some(type=>node.type.endsWith(type)));
+}

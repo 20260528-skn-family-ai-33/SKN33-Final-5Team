@@ -1989,7 +1989,8 @@ test('external reservation guards unsaved settings and returns from conversation
   await click(document.querySelector('[aria-label="외부 예약 검증 일정 관리"]')!);
   assert.equal(new URL(location.href).searchParams.get('external'),externalScheduleFixture.id);
   assert.deepEqual([...document.querySelectorAll('.reservation-tab-bar nav button')].map(button=>button.textContent),['관리']);
-  assert.ok(document.querySelector('.reservation-tab-bar .toolbar-actions'));
+  assert.equal(document.querySelector('[aria-label="워크플로 메뉴"]'),null);
+  assert.equal(document.querySelector('.schedule-settings .schedule-status')?.textContent,'중지');
   const nodes=()=>[...document.querySelectorAll<HTMLElement>('.as-flow-node')];
   assert.equal(nodes()[0].style.top,nodes()[1].style.top);
   assert.notEqual(nodes()[0].style.left,nodes()[1].style.left);
@@ -4154,5 +4155,38 @@ for(const [label,broken] of [
   assert.equal(new Date(nextRunAt(flow.nodes[0],Date.parse('2026-11-16T00:00:00Z'),'Asia/Seoul')).toISOString(),'2026-11-16T01:30:00.000Z');
   if(label==='null entry')assert.deepEqual(flow.nodes[0].parameters.rule.interval[1],broken.interval[1]);
   assert.equal(button('예약 켜기').disabled,false);
+ }finally{await h.close();}
+});
+
+test('reservation list forwards the displayed internal version and retains the row on conflict',async()=>{
+ const row=scheduleFixtures()[0];
+ const revision='a'.repeat(64);
+ const h=await setup('?screen=schedules',{},(path,body)=>{
+  if(path.startsWith('/api/agent-builder/schedules'))return {workflows:[{...row,schedule:{...row.schedule,revision}}],agents:[]};
+  if(path.endsWith('/schedule_remove')){
+   assert.deepEqual(body,{id:row.agent.id,expectedRevision:revision});
+   return new Response(JSON.stringify({error:'다른 화면에서 예약이 변경됐습니다.'}),{status:409});
+  }
+ },createElement(EntryApp));
+ try{
+  window.confirm=()=>true;
+  await click(scheduleRow(row.agent.id).querySelector('input')!);
+  await click(button('선택 삭제 (1)'));
+  assert.ok(scheduleRow(row.agent.id));
+  assert.match(document.querySelector('.schedule-page-notice')?.textContent||'',/다른 화면에서 예약이 변경/);
+ }finally{await h.close();}
+});
+
+test('reservation picker excludes external graphs with conflicting active starts',async()=>{
+ const manual={...externalScheduleFixture.nodes[0],type:'n8n-nodes-base.manualTrigger',parameters:{}};
+ const webhook={...manual,id:'webhook',name:'Webhook',type:'n8n-nodes-base.webhook'};
+ const broken={...externalScheduleFixture,id:'mixed',name:'시작 방식 충돌',nodes:[manual,webhook]};
+ const eligible={...externalScheduleFixture,id:'valid',name:'예약 가능한 업무',nodes:[manual,externalScheduleFixture.nodes[1]]};
+ const h=await setup('?screen=schedules',{},path=>path==='/api/workflows'?{workflows:[broken,eligible]}:undefined,createElement(EntryApp));
+ try{
+  await click(button('기존 워크플로우에 예약 추가'));
+  const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;
+  assert.ok(picker.querySelector('option[value="external:valid"]'));
+  assert.equal(picker.querySelector('option[value="external:mixed"]'),null);
  }finally{await h.close();}
 });

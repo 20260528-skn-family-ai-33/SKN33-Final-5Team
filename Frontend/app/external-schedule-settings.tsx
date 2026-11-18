@@ -1,4 +1,4 @@
-import {scheduleCronExpression,scheduleRuleForField} from '../../shared/schedule-rule';
+import {enabledAutomationStarts,scheduleCronExpression,scheduleRuleForField} from '../../shared/schedule-rule';
 import {useEffect,useRef,useState} from 'react';
 import {CalendarClock} from 'lucide-react';
 import type {Flow} from '../lib/workflow';
@@ -24,6 +24,7 @@ export function ExternalScheduleSettings({flow,onChange,onDirtyChange,onBusyChan
  const triggers=flow.nodes.filter(node=>!node.disabled&&node.type.endsWith('.scheduleTrigger'));
  const targets=triggers.length?triggers:flow.nodes.filter(node=>!node.disabled&&node.type.endsWith('.manualTrigger'));
  const hasSchedule=triggers.length>0;
+ const canConfigure=enabledAutomationStarts(flow.nodes).length===1;
  const trigger=targets[0];
  const normalized=editableSchedule(trigger?.parameters.rule);
  const needsRepair=hasSchedule&&normalized.needsRepair;
@@ -37,7 +38,7 @@ export function ExternalScheduleSettings({flow,onChange,onDirtyChange,onBusyChan
  function replaceRule(index:number,value:Record<string,unknown>){setRule({...rule,interval:intervals.map((entry:any,i:number)=>i===index?value:entry)});}
  function patch(index:number,value:Record<string,unknown>){replaceRule(index,{...intervals[index],...value});}
  async function act(action:'toggle'|'configure'|'remove'){
-  if(disabled||lock.current)return;
+  if(disabled||lock.current||!canConfigure&&(action==='configure'||action==='toggle'&&!flow.active))return;
   if(action==='remove'&&!window.confirm(scheduleRemovalMessage))return;
   if(action==='remove'&&dirty&&!window.confirm('저장하지 않은 일정 변경을 버리고 예약을 삭제할까요?'))return;
   lock.current=true;setBusy(true);onBusyChange?.(true);setError('');
@@ -50,9 +51,10 @@ export function ExternalScheduleSettings({flow,onChange,onDirtyChange,onBusyChan
  return <section className="schedule-settings" aria-label="예약 설정" aria-busy={busy}>
   <div className="schedule-settings-heading"><strong><CalendarClock size={17}/>예약 실행</strong><span className={'schedule-status '+(flow.active?'active':'paused')}>{!triggers.length?'예약 없음':flow.active?'활성':'중지'}</span></div>
   <p className="schedule-settings-help">{!flow.settings.timezone||flow.settings.timezone==='Asia/Seoul'?'서울 표준시':flow.settings.timezone}</p>
-  {triggers.length>0&&<div className="schedule-settings-actions"><button className="as-button as-primary" disabled={disabled||busy||!flow.active&&(dirty||needsRepair)} onClick={()=>void act('toggle')}>{flow.active?'예약 중지':'예약 켜기'}</button><button className="as-button as-secondary" disabled={disabled||busy} onClick={()=>{if(editing&&dirty&&!window.confirm('저장하지 않은 일정 변경을 버릴까요?'))return;setRule(JSON.parse(saved));setEditing(!editing);}}>일정 {editing?'수정 닫기':'수정'}</button><button className="as-button as-danger schedule-remove" disabled={disabled||busy} onClick={()=>void act('remove')}>예약 삭제</button></div>}
-  {needsRepair&&<p className="schedule-settings-help" role="status">{editing?'읽을 수 없는 항목에 매일 오전 9시를 표시했습니다. 실행 일정을 확인한 뒤 저장하세요.':'예약 설정을 읽을 수 없습니다. 일정 수정에서 값을 확인하고 저장하세요.'}</p>}
-  {editing?<form className="schedule-settings-form" onSubmit={event=>{event.preventDefault();void act('configure');}}>
+  {triggers.length>0&&<div className="schedule-settings-actions"><button className="as-button as-primary" disabled={disabled||busy||!flow.active&&(dirty||needsRepair||!canConfigure)} onClick={()=>void act('toggle')}>{flow.active?'예약 중지':'예약 켜기'}</button><button className="as-button as-secondary" disabled={disabled||busy||!canConfigure} onClick={()=>{if(editing&&dirty&&!window.confirm('저장하지 않은 일정 변경을 버릴까요?'))return;setRule(JSON.parse(saved));setEditing(!editing);}}>일정 {editing?'수정 닫기':'수정'}</button><button className="as-button as-danger schedule-remove" disabled={disabled||busy} onClick={()=>void act('remove')}>예약 삭제</button></div>}
+  {!canConfigure&&<p className="schedule-settings-help" role="status">예약을 저장하려면 활성 시작 단계가 하나여야 합니다. 설계에서 시작 방식을 확인하세요.</p>}
+  {canConfigure&&needsRepair&&<p className="schedule-settings-help" role="status">{editing?'읽을 수 없는 항목에 매일 오전 9시를 표시했습니다. 실행 일정을 확인한 뒤 저장하세요.':'예약 설정을 읽을 수 없습니다. 일정 수정에서 값을 확인하고 저장하세요.'}</p>}
+  {editing&&canConfigure?<form className="schedule-settings-form" onSubmit={event=>{event.preventDefault();void act('configure');}}>
    {intervals.map((entry:any,index:number)=><fieldset className="schedule-settings-fields" key={index} disabled={disabled||busy}><legend>반복 일정 {intervals.length>1?index+1:''}</legend>
     <label>반복 주기<select aria-label={'반복 주기 '+(index+1)} value={entry.field||'days'} onChange={event=>replaceRule(index,scheduleRuleForField(event.target.value,entry,trigger?.parameters))}>{[['seconds','초 간격'],['minutes','분 간격'],['hours','시간 간격'],['days','매일'],['weeks','매주'],['months','매월'],['cronExpression','직접 지정']].map(([value,name])=><option key={value} value={value}>{name}</option>)}</select></label>
     {['seconds','minutes','hours','days','weeks','months'].includes(entry.field)&&<label>반복 간격<input aria-label={'반복 간격 '+(index+1)} type="number" min="1" step="1" required value={entry[entry.field+'Interval']??(entry.field==='seconds'?30:entry.field==='minutes'?5:1)} onChange={event=>patch(index,{[entry.field+'Interval']:Number(event.target.value)})}/></label>}

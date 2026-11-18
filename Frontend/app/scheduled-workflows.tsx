@@ -1,4 +1,4 @@
-import {scheduleCronExpression} from '../../shared/schedule-rule';
+import {enabledAutomationStarts,scheduleCronExpression} from '../../shared/schedule-rule';
 import {WorkspaceIconButton} from './workspace-icon-button';
 import {WorkspacePageTitle} from './workspace-page-title';
 import {PageTransition} from './page-transition';
@@ -103,7 +103,7 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
   (a.status==='active'?(new Date(a.nextRunAt??NaN).valueOf()||0)-(new Date(b.nextRunAt??NaN).valueOf()||0):0)||a.name.localeCompare(b.name,'ko'));
  const selectedRows=matches.filter(row=>selected.includes(rowKey(row)));
  const available=agents.filter(agent=>!workflows.some(row=>row.agent.id===agent.id));
- const availableExternal=externalFlows.filter(flow=>flow.nodes.length>1&&!externalScheduled.some(scheduled=>scheduled.id===flow.id));
+ const availableExternal=externalFlows.filter(flow=>{const starts=enabledAutomationStarts(flow.nodes);return starts.length===1&&starts[0].type.endsWith('.manualTrigger');});
  const managedExternal=manageId.startsWith('external:')?externalFlows.find(flow=>flow.id===manageId.slice(9)):undefined;
  const managedRow=workflows.find(row=>row.agent.id===manageId);
  const managedAgent=managedRow?.agent??agents.find(agent=>agent.id===manageId);
@@ -114,7 +114,7 @@ export function ScheduledWorkflows({onOpen,onOpenExternal,onCreate,onCanLeaveCha
  function navigate(action:()=>void){if(onCanLeaveChange||canLeave())action();}
  async function changeReservation(row:ScheduleListRow,action:'pause'|'remove') {
    if(row.kind==='agent'){
-    const result=await request<{schedule:ManagedSchedule|null}>('/api/agent-builder/'+(action==='remove'?'schedule_remove':'schedule'),{id:row.id,...(action==='pause'?{active:false}:{})});
+    const result=await request<{schedule:ManagedSchedule|null}>('/api/agent-builder/'+(action==='remove'?'schedule_remove':'schedule'),{id:row.id,expectedRevision:workflows.find(item=>item.agent.id===row.id)?.schedule?.revision,...(action==='pause'?{active:false}:{})});
     setWorkflows(prior=>action==='remove'?prior.filter(item=>item.agent.id!==row.id):prior.map(item=>item.agent.id===row.id?{...item,schedule:result.schedule}:item));
    }else{
     const flow=externalFlows.find(item=>item.id===row.id)!;

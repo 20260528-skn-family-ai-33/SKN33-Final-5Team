@@ -206,3 +206,25 @@ def test_removal_and_simultaneous_test_reservation_never_leave_a_queued_job(tmp_
     assert manager.get(id) is None
     assert all(job['status']=='cancelled' for job in manager.jobs(id))
     store.close()
+
+def test_schedule_writes_reject_a_version_from_before_reconfiguration(tmp_path):
+    store,agent_id,_=seed(tmp_path)
+    store.close()
+    morning=request(tmp_path,'schedule_configure',id=agent_id,spec=SPEC,expected_revision=None)['schedule']
+    evening=request(tmp_path,'schedule_configure',id=agent_id,spec={**SPEC,'hour':17},expected_revision=morning['revision'])['schedule']
+    assert evening['revision']!=morning['revision']
+    stale_actions=[('schedule_remove',{}),('schedule',{'active':True}),('schedule_configure',{'spec':SPEC})]
+    for action,fields in stale_actions:
+        result=request(tmp_path,action,id=agent_id,expected_revision=morning['revision'],**fields)
+        assert result['code']=='schedule_conflict'
+        assert request(tmp_path,'agent',id=agent_id)['schedule']==evening
+    active=request(tmp_path,'schedule',id=agent_id,active=True,expected_revision=evening['revision'])['schedule']
+    assert active['revision']!=evening['revision']
+    store=Storage(tmp_path)
+    schedules=Schedules(store)
+    schedules.claim_due(datetime.fromisoformat(active['next_run_at'])+timedelta(seconds=1))
+    advanced=schedules.get(agent_id)
+    assert advanced['next_run_at']!=active['next_run_at']
+    assert advanced['revision']==active['revision']
+    store.close()
+    assert request(tmp_path,'schedule_remove',id=agent_id,expected_revision=active['revision'])=={'schedule':None}

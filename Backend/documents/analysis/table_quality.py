@@ -98,32 +98,49 @@ def anchor_geometry_issues(matches):
 def independent_anchor_issues(matches, cells, declared_cols=None):
     """Do not let a candidate's own box manufacture its position evidence.
 
-    Same-row peers must share a vertical band. An internal neighbouring column
-    without anchors has no independently established boundary; agreement among
-    same-column candidates cannot establish that missing boundary.
+    Ordinary peers require substantial symmetric vertical overlap. Explicitly
+    multiline anchors may span differently aligned peers. Missing internal
+    column boundaries require evidence, including the outer edge of a merge.
     """
-    rows, columns = defaultdict(list), defaultdict(list)
+    rows = defaultdict(list)
+    starts, ends = set(), set()
     for cell, piece in matches:
         row, col = position(cell)
         if cell.get('row_span', 1) == 1:
-            rows[row].append(piece)
-        if cell.get('col_span', 1) == 1:
-            columns[col].append(piece)
+            rows[row].append((cell, piece))
+        starts.add(col)
+        ends.add(col + cell.get('col_span', 1))
+    def agreement(a, b, *, spanning=False):
+        intersection = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+        heights = a[3]-a[1], b[3]-b[1]
+        return intersection >= .65 * (min(heights) if spanning else max(heights))
     issues = []
     for row, peers in rows.items():
-        if len(peers) > 1 and max(p['box'][1] for p in peers) >= min(p['box'][3] for p in peers):
+        # Ordinary boxes must agree substantially in both directions. A tiny
+        # intersection or a tall single-line candidate cannot certify a row.
+        aligned = all(agreement(a['box'], b['box'])
+                      for i, (_, a) in enumerate(peers) for _, b in peers[i+1:])
+        # An explicitly multiline cell can independently span differently
+        # aligned peers. Do not build a union from the candidates themselves.
+        multiline = any(('\n' in str(cell.get('text', '')).strip() or '\n' in anchor['text'].strip())
+                        and all(anchor['box'][1] <= other['box'][1] < other['box'][3] <= anchor['box'][3]
+                                and agreement(anchor['box'], other['box'], spanning=True)
+                                for _, other in peers if other is not anchor)
+                        for cell, anchor in peers)
+        if not aligned and not multiline:
             issues.append(dict(kind='anchor_row_alignment_conflict', row=row))
     logical_cols = max((position(c)[1] + c.get('col_span', 1) for c in cells), default=0)
     if type(declared_cols) is int:
         logical_cols = max(logical_cols, declared_cols)
-    for col in columns:
-        missing_left = col > 0 and col-1 not in columns
-        missing_right = col+1 < logical_cols and col+1 not in columns
-        if not (missing_left or missing_right):
-            continue
-        # No independent boundary exists on this internal side. Agreement
-        # between candidates cannot establish where the unobserved column is.
-        issues.append(dict(kind='anchor_column_evidence_missing', column=col))
+    for cell, piece in matches:
+        col = position(cell)[1]
+        end = col + cell.get('col_span', 1)
+        # A merged neighbour provides its outer edge, never an invented
+        # boundary inside the merge. Global ordering checks validate that edge.
+        if col > 0 and col not in ends or end < logical_cols and end not in starts:
+            issue = dict(kind='anchor_column_evidence_missing', column=col)
+            if issue not in issues:
+                issues.append(issue)
     return issues
 
 

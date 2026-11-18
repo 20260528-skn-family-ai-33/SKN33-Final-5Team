@@ -5,7 +5,7 @@ pending, while an explicit cancellation clears that column. A later mention of a
 column in an output/sort instruction cannot invalidate an unchanged predicate.
 """
 import re
-from agent_builder.conditions.filter_edits import ALL_FILTERS_CANCELLED, addition_intent, in_quoted_text
+from agent_builder.conditions.filter_edits import addition_intent, in_quoted_text
 from agent_builder.conditions.filter_dialogue import KEEP_ALL, PendingFilterDecision
 from .text_filter_parser import text_atoms, disjunctive_clause, uncovered_selection_fields
 
@@ -32,7 +32,7 @@ def text_filter_state(state):
 
     users = [(index, message) for index, message in enumerate(state.get('messages', [])) if message.get('role') == 'user']
     from agent_builder.conditions.condition_readiness import _comparison_spans, _comparison_subject, _uncertain_comparison, _excludes_named_range, _POLICY_SUBJECTS, _schedule_evidence
-    from agent_builder.conditions.filter_edits import filter_clear_events, user_filter_text, filter_clauses
+    from agent_builder.conditions.filter_edits import filter_edit_events, user_filter_text, filter_clauses
     for source, (turn, message) in enumerate(users):
         text = user_filter_text(state, turn, message)
         if text is None:
@@ -54,23 +54,21 @@ def text_filter_state(state):
                     text = field + '가 ' + short[1] + '인 행만 남겨줘'
                 elif re.fullmatch(r'(?:조건|필터)\s*+(?:취소|제거|해제)(?:해줘)?[.!?\s]*', text):
                     text = field + ' 조건 취소'
-        cancellation = ALL_FILTERS_CANCELLED.fullmatch(text)
-        if cancellation:
-            targets = fields if not cancellation['numeric'] else (numeric_fields | {
-                field for field, (_, rule) in active.items() if rule.get('value_type') == 'number'})
-            for field in targets:
-                active.pop(field, None)
-                pending.pop(field, None)
-            cleared_fields.update(targets)
-            numeric_fields.difference_update(targets)
-            replaced_numeric_fields.difference_update(targets)
-            continue
-        conflicting_proposals = {}
-        events = [(start, 'clear', field, None) for start, _, field in filter_clear_events(text, fields)]
-        events += [(start, 'keep', field, None) for start, _, field in filter_clear_events(text, fields, intent='keep')]
-        events += [(start, 'pending_cancel', field, f'{field} 조건을 취소할지 확인해주세요. 유지하거나 취소할 조건을 알려주세요.')
-                   for start, _, field in filter_clear_events(text, fields, intent='uncertain')]
+        known_numeric = numeric_fields | {field for field, (_, rule) in active.items() if rule.get('value_type') == 'number'}
+        known_numeric |= {field for field in fields if 'number' in (tables[0].get('profile', {}).get(field) or {}).get('types', [])}
+        from agent_builder.conditions.filter_dialogue import confirmed_numeric_filter
+        confirmed, _, _ = confirmed_numeric_filter(state)
+        if confirmed:
+            known_numeric.add(confirmed['field'])
         spans = _comparison_spans(text)
+        for index, span in enumerate(spans):
+            prefix = text[spans[index - 1].end() if index else 0:span.start()]
+            known_numeric.update(field for field in fields if _comparison_subject(field, prefix))
+        edits = filter_edit_events(text, fields, numeric_fields=known_numeric)
+        conflicting_proposals = {}
+        events = [(edit.start, {'clear': 'clear', 'keep': 'keep', 'uncertain': 'pending_cancel'}[edit.action],
+                   field, f'{field} 조건을 취소할지 확인해주세요. 유지하거나 취소할 조건을 알려주세요.')
+                  for edit in edits for field in edit.fields]
         for index, span in enumerate(spans):
             if _uncertain_comparison(text[span.end():]) or _excludes_named_range(text, span.end()):
                 continue
@@ -212,6 +210,8 @@ def literal_text_slots(state, catalog, primary):
     if contract['issues']:
         return {}
     predicates = contract['predicates']
+    if primary in contract['cleared_fields']:
+        primary = None  # A cancelled slot cannot own a retained text predicate.
     selected = next(((source, rule) for source, rule in predicates if rule['field'] == primary), None)
     if selected is None and primary is None and predicates:
         selected = predicates[0]

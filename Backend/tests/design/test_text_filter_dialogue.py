@@ -447,3 +447,160 @@ def test_numeric_bulk_cancel_requires_a_decisive_command(instruction):
     contract = text_filter_state(s)
     assert [rule['field'] for _, rule in contract['predicates']] == ['상태']
     assert not contract['cleared_fields']
+
+
+@pytest.mark.parametrize('instruction', [
+    '모든 숫자 조건은 취소하고 상태 조건은 유지해줘',
+    '상태 조건은 유지하고 모든 숫자 조건은 취소해줘',
+    '모든 숫자 조건 취소해줘. 상태 조건은 유지해줘.',
+    '비용과 수량 조건 취소하고 상태 조건 유지해줘',
+    '비용, 수량 조건 취소해줘',
+    '비용 조건이랑 수량 조건 취소해줘',
+    '비용 및 수량 필터 제거해줘',
+    '비용조건과 수량조건 취소해줘',
+])
+def test_shared_cancel_transaction_preserves_text_and_exports_all_matching_rows(tmp_path, instruction):
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    s = current('상태가 완료인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content=instruction))
+    contract = text_filter_state(s)
+    assert contract['cleared_fields'] == {'비용', '수량'}
+    assert not contract['issues'] and not compound_filter_state(s)['rules']
+    ready = prepare(s)  # The model still proposes the old numeric field; the contract owns the edit.
+    assert execute(ready, tmp_path) == [ROWS[0], ROWS[1], ROWS[3]]
+    stale = deepcopy(ready)
+    for node in stale['draft']['workflow']['nodes']:
+        if node['tool'] == 'filter_sort':
+            node['settings']['execution_plan']['filters'].append(dict(field='비용', operator='gte', value=10,
+                                                                     compare_field=None, value_type='number'))
+    store = Storage(tmp_path / 'stale')
+    try:
+        with pytest.raises(ValueError):
+            store.save_agent(stale)
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('instruction', [
+    '비용, 수량 조건 취소해도 될까? 상태 조건 유지해줘',
+    '비용과 수량 조건을 취소할지 모르겠어',
+    '그 조건 취소하고 상태 조건 유지해줘',
+    '비용 조건 취소하고 비용 조건 유지해줘',
+    '없는열 조건 취소하고 상태 조건 유지해줘',
+])
+def test_unresolved_cancel_transaction_cannot_reuse_old_conditions(instruction):
+    s = current('상태가 완료인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content=instruction))
+    contract = text_filter_state(s)
+    assert contract['issues'] and not contract['cleared_fields']
+    assert judge(s, VALUES)['decision'] == 'clarify'
+
+
+@pytest.mark.parametrize('instruction', [
+    '비용과 수량 조건은 취소하지 마. 상태 조건 유지해줘',
+    '모든 숫자 조건은 취소하면 안 돼. 상태 조건 유지해줘',
+    "설명에는 '모든 숫자 조건 취소해줘'라고 적어줘",
+    '파일 이름은 비용 조건 취소로 설정해줘',
+])
+def test_denied_and_metadata_cancellations_preserve_confirmed_rows(tmp_path, instruction):
+    s = current('상태가 완료인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content=instruction))
+    assert not text_filter_state(s)['cleared_fields']
+    # Metadata and denied edits must never remove a predicate; some requests may need review.
+    contract = text_filter_state(s)
+    assert [rule['field'] for _, rule in contract['predicates']] == ['상태']
+
+
+@pytest.mark.parametrize('separator', [', ', '과 ', ' 및 ', ' 조건과 '])
+def test_shared_edit_lexer_expands_listed_fields_without_matching_substrings(separator):
+    from agent_builder.conditions.filter_edits import filter_edit_events
+    events = filter_edit_events('총비용' + separator + '수량 조건 취소해줘', {'비용', '총비용', '수량', '상태'},
+                                numeric_fields={'비용', '총비용', '수량'})
+    assert {field for event in events if event.action == 'clear' for field in event.fields} == {'총비용', '수량'}
+
+
+@pytest.mark.parametrize('structured', [False, True])
+def test_cancel_after_ready_rebinds_legacy_slots_without_restoring_old_numeric_state(tmp_path, structured):
+    s = current('상태가 완료인 행만 남겨줘')
+    raw = proposal(s, {'filter.field': '비용', 'filter.operator': None, 'filter.value': None,
+                      'missing.policy': 'error', 'duplicate.policy': 'keep', 'output.format': 'json'})
+    fake = Fake([raw, raw])
+    store = Storage(tmp_path); store.add_asset(s['resources'][0], ROWS)
+    graph, connection = build_graph(store, conversation=compile_conditions, condition_transport=fake, condition_mode='enforce')
+    config = {'configurable': {'thread_id': s['session_id']}}
+    try:
+        first = graph.invoke(s, config)
+        assert first['status'] == 'ready'
+        followup = '비용, 수량 조건 취소해도 될까? 상태 조건은 유지해줘' if structured else '모든 숫자 조건은 취소하고 상태 조건은 유지해줘'
+        ready = graph.invoke(Command(resume=dict(type='message', content=followup)), config)
+        if structured:
+            assert ready['status'] == 'needs_clarification'
+            question = next(q for q in ready['pending_questions'] if q['key'] == 'filter.match')
+            # Resolve the same two-column transaction explicitly, through the real form protocol.
+            fake.packets = iter([raw])
+            ready = graph.invoke(Command(resume=dict(type='message', question_id=question['id'],
+                content=question['text'] + ' → 비용과 수량 조건 취소해줘',
+                question_answers=[dict(question_id=question['id'], value='비용과 수량 조건 취소해줘')])), config)
+        assert ready['status'] == 'ready', ready.get('issues') or ready.get('pending_questions')
+        assert ready['condition_ledger']['slots']['filter.field']['value'] == '상태'
+        saved = graph.invoke(Command(resume=dict(type='confirm')), config)
+        result = run_workflow(store, saved['saved_agent_id'], '실행', '', file_ids=[s['resources'][0]['id']])
+        assert result['status'] == 'succeeded' and result['rows'] == [ROWS[0], ROWS[1], ROWS[3]]
+    finally:
+        connection.close(); store.close()
+
+
+@pytest.mark.parametrize('suffix', ['', '. 상태 조건은 유지해줘'])
+def test_cancel_then_reassert_in_same_turn_keeps_the_new_condition(tmp_path, suffix):
+    s = current('상태가 완료인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content='비용 조건 취소하고 비용은 20원 이상으로 바꿔줘' + suffix))
+    assert execute(prepare(s), tmp_path) == []
+
+
+def test_cancel_all_numeric_without_any_text_filter_exports_unfiltered_rows(tmp_path):
+    s = current('')
+    s['messages'].append(dict(role='user', content='모든 숫자 조건 취소해줘'))
+    ledger = judge(s, VALUES)
+    assert ledger['decision'] == 'ready' and 'filter' not in ledger['operations']
+    assert not any(key.startswith('filter.') for key in ledger['slots'])
+    from tests.conditions.test_condition_readiness import workflow_draft
+    draft = workflow_draft(s)
+    draft['execution_plan']['filters'] = []
+    draft['workflow']['nodes'][1]['settings']['execution_plan']['filters'] = []
+    s.update(condition_ledger=ledger, condition_enforced=True, condition_required=True,
+             draft=draft, confirmed=True, status='ready')
+    assert execute(s, tmp_path) == ROWS
+
+
+def test_partially_unresolved_transaction_does_not_apply_a_half_cancel():
+    s = current('상태가 완료인 행만 남겨줘')
+    s['messages'].append(dict(role='user', content='비용 조건 취소하고 수량 조건은 취소할지 모르겠어'))
+    contract = text_filter_state(s)
+    assert contract['issues'] and not contract['cleared_fields']
+    turn = len(s['messages'])
+    s['messages'].append(dict(role='user', content='기존 조건 모두 유지'))
+    s['condition_answers'] = [dict(turn=turn, candidate_keys=['filter.match'])]
+    assert not text_filter_state(s)['issues'] and not text_filter_state(s)['cleared_fields']
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    assert {rule['field'] for rule in compound_filter_state(s)['rules']} == {'비용', '수량'}
+
+
+def test_same_turn_numeric_scope_uses_explicit_comparisons_without_profile_metadata():
+    s = current('상태가 완료인 행만 남겨줘. 모든 숫자 조건 취소해줘')
+    s['resources'][0].pop('profile', None)
+    contract = text_filter_state(s)
+    assert contract['cleared_fields'] == {'비용', '수량'}
+    assert [rule['field'] for _, rule in contract['predicates']] == ['상태']
+
+
+def test_cancelling_a_resolved_operand_does_not_drop_the_other_unresolved_operand():
+    from agent_builder.conditions.condition_readiness import compound_filter_state
+    s = current('')
+    s['messages'][0]['content'] = '비용이 10원 이상이고 수량이 많은 행을 JSON으로 저장해줘. 빈 값은 오류, 중복은 유지해.'
+    s['messages'].append(dict(role='user', content='비용 조건 취소해줘'))
+    waiting = compound_filter_state(s)
+    assert waiting['pending'] == 'complete' and waiting['missing_fields'] == ['수량']
+    s['messages'].append(dict(role='user', content='수량은 3개 초과'))
+    complete = compound_filter_state(s)
+    assert not complete['pending'] and complete['mode'] == 'all'
+    assert [(r['field'], r['operator'], r['value']) for r in complete['rules']] == [('수량', 'gt', 3)]

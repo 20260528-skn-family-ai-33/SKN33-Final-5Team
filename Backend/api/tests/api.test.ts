@@ -245,27 +245,30 @@ test('standalone server persists and executes workflows, credentials, schedules 
       const activation = await server.request('/api/activation','POST',{workflowId:scheduled.id,active:true});
       assert.equal(activation.status,200);
       const due = activation.data.workflow.schedule.nextRunAt as number;
+      const dueTimestamp = new Date(due).toISOString();
+      const matchesFirstDue = (execution:Execution) => execution.workflowId === scheduled.id
+        && execution.runs[0]?.input[0]?.timestamp === dueTimestamp;
       let result: Execution | undefined;
       try {
         const deadline = Date.now() + 4_000;
         while (Date.now() < deadline) {
           const listed = await server.request('/api/executions');
           assert.equal(listed.status,200);
-          result = (listed.data.executions as Execution[]).find(e => e.workflowId === scheduled.id && e.trigger === 'schedule');
+          result = (listed.data.executions as Execution[]).find(e => e.trigger === 'schedule' && matchesFirstDue(e));
           if (result && ['success','error','canceled'].includes(result.status)) break;
           await delay(50);
         }
-        assert.ok(result,'the server timer must create its own scheduled execution');
+        assert.ok(result,'the server timer must create the first scheduled execution');
         assert.equal(result.status,'success',result.error);
         assert.equal(result.mode,'live');
         assert.equal(result.runs.length,2);
         assert.ok(result.runs.every(run => run.status === 'success'));
-        assert.equal(result.runs.at(-1)?.output[0][0].timestamp,new Date(due).toISOString());
+        assert.equal(result.runs.at(-1)?.output[0][0].timestamp,dueTimestamp);
         assert.equal(result.runs.at(-1)?.output[0][0].timezone,'Asia/Seoul');
         const stored = (await server.request('/api/workflows')).data.workflows.find((flow:Flow) => flow.id === scheduled.id) as Flow;
         assert.ok(stored.schedule.nextRunAt > due,'the timer must advance the persisted next execution time');
         const executions = (await server.request('/api/executions')).data.executions as Execution[];
-        assert.equal(executions.filter(e => e.workflowId === scheduled.id && e.runs[0]?.input[0]?.timestamp === new Date(due).toISOString()).length,1);
+        assert.equal(executions.filter(matchesFirstDue).length,1);
       } finally {
         const stopped = await server.request('/api/activation','POST',{workflowId:scheduled.id,active:false});
         assert.equal(stopped.status,200);

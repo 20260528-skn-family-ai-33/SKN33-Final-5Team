@@ -10,9 +10,12 @@ from copy import deepcopy
 
 from contracts.models import AgentDraft, NodeSettings, WorkflowDefinition
 from workflow_engine.executors.document.extract_information import reserved_field_issue
-from workflow_engine.executors.document.table_rows import TABLE_INTENT as _TABLE_INTENT, has_repeated_rows, row_collection_intent
+from workflow_engine.executors.document.table_rows import TABLE_INTENT as _TABLE_INTENT, has_repeated_rows, label, row_collection_intent
 
 _SPLIT = re.compile(r'\s*(?:,|，|、|·|/|\n|\s및\s|\s그리고\s)\s*')
+_ALL_TABLES = r'(?:모든|전체)\s*(?:표|페이지)'
+_ALL_TABLES_ANSWER = re.compile(_ALL_TABLES + r'(?:에서|의)\s+(.+)', re.S)
+_ALL_TABLES_REQUEST = re.compile(r'(?<![\w])' + _ALL_TABLES + r'(?:에서|의|를|을)?(?=\s|[.!?]|$)')
 # A reply to the field question that cancels or changes the request instead of naming fields.
 _CHANGE = re.compile(r'(취소|그만|중단|됐어|됐습니다|필요\s*없|안\s*할래|하지\s*마|말고|대신|바꿔|바꿀|처음부터)')
 _NEGATION = re.compile(r'^(아니|아뇨|아냐|노노|no\b)', re.IGNORECASE)
@@ -40,7 +43,7 @@ def _extra_processing(text, fields=''):
     """True when the request has words outside the extraction-only job."""
     if fields:
         text = text.replace(fields, ' ')
-    for token in re.findall(r'[가-힣A-Za-z0-9_.]+', text or ''):
+    for token in re.findall(r'[가-힣A-Za-z0-9_.]+', _ALL_TABLES_REQUEST.sub(' ', text or '')):
         word = token.casefold()
         if word in _PARTICLES:
             continue  # a particle left after removing the listed fields
@@ -87,9 +90,14 @@ RECEIPT_FIELDS = ['상품명', '단가', '수량', '금액']
 
 QUESTION_KEY = 'document.fields'
 QUESTION = '어떤 항목을 한 줄씩 뽑을까요? 쉼표로 구분해 적어 주세요. (예: 상품명, 단가, 수량, 금액)'
+TABLE_SCOPE_QUESTION = '어느 표에서 행을 추출할까요?'
+FIELD_QUESTIONS = (QUESTION, TABLE_SCOPE_QUESTION)
+QUESTION_LABELS = {label for question in FIELD_QUESTIONS for label in (question, *re.split(r'(?<=[?？])\s+', question))}
 ASK_EXPLANATION = '첨부한 문서의 반복 항목을 한 줄씩 표로 정리합니다.'
 ALL_FIELDS_NOTE = '"전체"처럼 답하면 어떤 열을 만들지 정할 수 없어요. 표의 열이 될 항목 이름을 적어 주세요.'
 FIELD_NAMES_NOTE = '항목 이름만 쉼표로 구분해 입력해주세요. 예: 품명, 실입고.'
+TABLE_SCOPE_NOTE = ('같은 열이 여러 표에 있어요. 특정 표는 파일 미리보기에서 열을 선택해 주세요. '
+                    '모든 표를 읽으려면 “모든 표에서 품명, 실입고”처럼 답해 주세요.')
 EXPLANATION = ('첨부한 문서에서 반복 항목을 한 줄씩 추출해 CSV로 저장합니다. '
                'CSV는 엑셀에서 바로 열립니다. 추출 값은 원문에서 확인된 것만 기록되고, 확인되지 않은 칸은 비워 둡니다.')
 DEFAULT_FIELDS_NOTE = ('항목을 따로 정하지 않아 영수증 기본 항목(' + ', '.join(RECEIPT_FIELDS) + ')으로 정리합니다. '
@@ -206,20 +214,20 @@ def _draft(request, answer, fields, documents, *, document_table_id=None):
         workflow={'entry': 'read', 'nodes': nodes, 'edges': edges}).model_dump()
 
 
-def _ask(state, request, note=None):
+def _ask(state, request, note=None, *, question_text=QUESTION):
     draft = AgentDraft(
         name='문서 항목을 표로 정리', purpose=request[:2000], instructions=request[:12000], tool_ids=[], document_ids=[],
         requirements=[{'description': '사용자 요청', 'source_id': 'user', 'quote': request[:2000]}],
-        questions=[QUESTION], question_options=[[]], question_responses=[{'type':'text'}], unsupported=[], explanation=ASK_EXPLANATION,
+        questions=[question_text], question_options=[[]], question_responses=[{'type':'text'}], unsupported=[], explanation=ASK_EXPLANATION,
         execution_plan={'filters': [], 'sort': [], 'match': 'all', 'missing_policy': 'ask',
                         'duplicate_policy': 'keep', 'duplicate_field': None, 'output_format': 'csv'}).model_dump()
     from agent_builder.conditions.clarification_core import question_record
     scope = ':'.join([state.get('session_id', ''), *sorted(str(resource.get('id')) + '@' + str(resource.get('version'))
                                                    for resource in state.get('resources', []) if resource.get('kind') == 'document')])
-    question = question_record('orchestration', QUESTION_KEY, QUESTION, scope=scope)
+    question = question_record('orchestration', QUESTION_KEY, question_text, scope=scope)
     question['response'] = {'type':'text'}
     # Preserve one typed question identity, independently of how the chat renders its sentences.
-    return {'messages': state['messages'] + [{'role': 'assistant', 'content': ASK_EXPLANATION + ('\n' + note if note else '') + '\n• ' + QUESTION}],
+    return {'messages': state['messages'] + [{'role': 'assistant', 'content': ASK_EXPLANATION + ('\n' + note if note else '') + '\n• ' + question_text}],
             'draft': draft, 'pending_questions': [question], 'confirmed': False, 'saved_agent_id': None,
             'trace': state.get('trace', []) + [{'node': 'conversation', 'label': '문서 표 정리 항목 확인', 'status': 'needs_input',
                                                 'detail': '고정 흐름(문서 읽기 → 목록 추출 → CSV 저장)에 쓸 항목을 모델 호출 없이 묻습니다.', 'model_calls': 0}]}
@@ -227,28 +235,29 @@ def _ask(state, request, note=None):
 
 
 def _remaining_questions(state):
-    labels = {QUESTION, *re.split(r'(?<=[?？])\s+', QUESTION)}
     return [question for question in state.get('pending_questions', [])
-            if question.get('key') != QUESTION_KEY and question.get('text') not in labels]
+            if question.get('key') != QUESTION_KEY and question.get('text') not in QUESTION_LABELS]
 
 def _field_answer(content, state=None):
     """Read free text or resolve a preview selection, returning None for an unsupported preview."""
     # Read a typed answer by question identity; the chat label is presentation only.
     text = content.strip()
-    labels = {QUESTION, *re.split(r'(?<=[?？])\s+', QUESTION)}
     if state:
         latest = max((index for index, message in enumerate(state.get('messages', [])) if message.get('role') == 'user'), default=-1)
         for event in reversed(state.get('clarification_answers', [])):
             if event.get('turn') != latest or not event.get('explicit'):
                 continue
             ids = {question['id'] for question in event.get('questions', [])
-                   if question.get('key') == QUESTION_KEY or question.get('text') in labels}
+                   if question.get('key') == QUESTION_KEY or question.get('text') in QUESTION_LABELS}
             values = [item.get('value') for item in event.get('answers', []) if item.get('question_id') in ids]
             if len(values) == 1 and isinstance(values[0], str):
                 text = values[0].strip()
+                if text.startswith('{'):
+                    from .document_selection import document_selection
+                    return document_selection(text, state.get('resources', []))
                 break
     # Compatibility for older messages that saved a rendered question fragment.
-    for label in sorted(labels, key=len, reverse=True):
+    for label in sorted(QUESTION_LABELS, key=len, reverse=True):
         if text.startswith(label + ' → '):
             text = text[len(label + ' → '):].strip()
             break
@@ -302,6 +311,21 @@ def _preview_field_selection(content, resources):
         return None
     return resource['id'], block_ids.pop(), list(dict.fromkeys(fields))
 
+def _multiple_matching_tables(resources, fields):
+    from documents.resources.file_inspection import inspect_file
+    targets = {label(field) for field in fields}
+    matches = set()
+    for resource in resources:
+        if resource.get('kind') != 'document':
+            continue
+        for table in inspect_file(resource)['tables']:
+            if table.get('block_id') and table['preview'] and targets <= {label(column) for column in table['columns']}:
+                matches.add((resource['id'], table['block_id']))
+                if len(matches) > 1:
+                    return True
+    return False
+
+
 def _simple_extraction(state):
     from .request_guards import review_request
     from agent_builder.capabilities.capability_judgement import active_request_messages
@@ -333,10 +357,11 @@ def _inline_fields(request):
 
 def _awaiting_fields(state):
     messages = state.get('messages', [])
+    draft_questions = (state.get('draft') or {}).get('questions') or []
     return (len(messages) >= 2 and messages[-1]['role'] == 'user'
             and messages[-2]['role'] == 'assistant'
-            and (messages[-2]['content'].endswith(QUESTION)
-                 or (state.get('draft') or {}).get('questions') == [QUESTION]))
+            and (messages[-2]['content'].endswith(FIELD_QUESTIONS)
+                 or len(draft_questions) == 1 and draft_questions[0] in FIELD_QUESTIONS))
 
 
 def _field_addition(state):
@@ -430,6 +455,25 @@ def document_rows_reply(state, *, check_sources=True):
     answer = _field_answer(users[-1]['content'], state)
     preview = isinstance(answer, tuple)
     asked = _awaiting_fields(state)
+    scope_question = next((question for question in state.get('pending_questions', [])
+                           if question.get('text') == TABLE_SCOPE_QUESTION), None)
+    if scope_question and not preview:
+        fields = scope_question.get('document_fields') or []
+        from documents.resources.file_inspection import inspect_file
+        tables = [(resource['id'], table) for resource in resources if resource.get('kind') == 'document'
+                  for table in inspect_file(resource)['tables'] if table.get('block_id')
+                  and set(fields) <= set(table['columns'])]
+        chosen = [(identifier, table) for identifier, table in tables if answer == table['name']]
+        if len(chosen) == 1 and fields:
+            answer = chosen[0][0], chosen[0][1]['block_id'], fields
+            preview = True
+        elif not (isinstance(answer, str) and _ALL_TABLES_ANSWER.fullmatch(answer)):
+            waiting = _ask(state, (state.get('draft') or {}).get('purpose') or users[0]['content'],
+                           note=TABLE_SCOPE_NOTE, question_text=TABLE_SCOPE_QUESTION)
+            waiting['pending_questions'][0]['document_fields'] = fields
+            waiting['clarification_answers'] = [{**event, 'kind':'unresolved'} if event.get('turn') == len(messages)-1 else event
+                                                for event in state.get('clarification_answers', [])]
+            return waiting
     if answer is None or (preview and not asked) or not _supports_csv_recipe(state, preview=preview):
         return None
     addition = _field_addition(state)
@@ -456,9 +500,20 @@ def document_rows_reply(state, *, check_sources=True):
         elif is_request_change(answer):
             return None  # leave the fixed flow; the planner handles the cancellation or new request
         else:
-            fields = requested_fields(answer)
+            all_tables = _ALL_TABLES_ANSWER.fullmatch(answer)
+            fields = requested_fields(all_tables[1] if all_tables else answer)
             if not fields:
                 return _ask(state, request, note=FIELD_NAMES_NOTE)
+            if not all_tables and not _ALL_TABLES_REQUEST.search(request) and _multiple_matching_tables(resources, fields):
+                waiting = _ask(state, request, note=TABLE_SCOPE_NOTE, question_text=TABLE_SCOPE_QUESTION)
+                # A field list alone does not settle the separate table-scope question.
+                waiting['clarification_answers'] = [
+                    {**event, 'kind': 'unresolved'} if event.get('turn') == len(messages) - 1
+                    and any(question.get('text') == TABLE_SCOPE_QUESTION for question in event.get('questions', []))
+                    else event for event in state.get('clarification_answers', [])
+                ]
+                waiting['pending_questions'][0]['document_fields'] = fields
+                return waiting
         if issue := reserved_field_issue(fields):
             return _ask(state, request, note=issue)
         draft = _draft(request, users[-1]['content'], fields, documents, document_table_id=table_id)

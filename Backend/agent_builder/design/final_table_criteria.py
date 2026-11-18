@@ -1,4 +1,5 @@
 """Check policy overrides and ordering on the actual final content path."""
+from contracts.table_selection import missing_check_fields
 from workflow_engine.catalog.canonical import parse_arguments
 from workflow_engine.catalog.registry import node_ports
 
@@ -15,14 +16,6 @@ def _lookup_preserves_order(node, args, nodes):
     if args.get('path') == ['rows']:
         return source == 'table' and target in (None, 'records')
     return args.get('path') == [] and source in ('table', 'records') and target in (None, source)
-
-
-def _missing_fields(filters, sort, policy):
-    fields = ({f['field'] for f in filters if f['operator'] not in ('is_empty', 'not_empty')}
-              | {f['compare_field'] for f in filters if f.get('compare_field')}
-              | {s['field'] for s in sort})
-    # Native exclude without any conditions checks every column.
-    return None if policy == 'exclude' and not filters and not sort else fields
 
 
 def policy_path_conflicts(spec, nodes, requested_transform, draft, confirmed_specs):
@@ -44,7 +37,7 @@ def policy_path_conflicts(spec, nodes, requested_transform, draft, confirmed_spe
     orders = [s['sort'] for s in confirmed_specs if s['kind'] == 'sort']
     expected_filters = filters[0]['filters'] if filters else []
     expected_sort = orders[0] if orders else []
-    expected_fields = _missing_fields(expected_filters, expected_sort, missing)
+    expected_fields = missing_check_fields(expected_filters, expected_sort, missing)
     names = {field: field for field in (expected_fields or set())}
     duplicate_field = requested_policies.get('duplicate_field')
     if duplicate_field:
@@ -76,7 +69,7 @@ def policy_path_conflicts(spec, nodes, requested_transform, draft, confirmed_spe
                 if plan['filters'] and not any(_same_filters(plan['filters'], renamed_filters(f['filters']), plan['match'], f['match']) for f in filters):
                     conflicts.append(node['id'] + '의 행 선별을 요청한 조건으로 확인하지 못했습니다.')
                 current_fields = None if expected_fields is None else {names.get(field, field) for field in expected_fields}
-                if missing in ('exclude', 'error') and _missing_fields(plan['filters'], plan['sort'], missing) != current_fields:
+                if missing in ('exclude', 'error') and missing_check_fields(plan['filters'], plan['sort'], missing) != current_fields:
                     # Native checks duplicates, then missing values, then filters.
                     # Splitting the requested fields across row-removing nodes
                     # can hide an error or remove rows the full plan preserves.

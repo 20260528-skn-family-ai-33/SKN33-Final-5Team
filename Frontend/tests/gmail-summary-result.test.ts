@@ -63,6 +63,24 @@ test('multiple explicit title/sender sections become separate cards with explici
  assert.match(cards[1].querySelector('ul')!.textContent!,/결제 예정/);
 });
 
+test('processing counts distinguish five reads from three summaries without changing legacy reports',async()=>{
+ const flow={...workflow,nodes:[{...workflow.nodes[0],settings:{operation:'read_messages',arguments_json:'{"max_results":5,"query":"is:unread"}'}},...workflow.nodes.slice(1)]};
+ const cards=['일정 확인','결제 예정','업데이트 안내'].map(title=>`제목: ${title}\n보낸 사람: mail@example.com\n핵심: 내용을 확인하세요.`);
+ const limitNotice='검색 결과가 더 있어 이번 요약에는 최대 5건만 포함했습니다. 나머지 메일은 요약하지 않았습니다.';
+ const answer=[...cards,limitNotice].join('\n\n');
+ await render(answer,flow);
+ assert.equal(host.querySelector('.gmr-count')?.textContent,'표시된 메일 3건 · 최대 5건 조회');
+
+ const counts='메일 처리 결과: 읽음 5건 · 요약 3건 · 누락 2건';
+ const boldAnswer=answer.replace(cards[0],cards[0].replace(/^(제목|보낸 사람|핵심):/gm,'**$1:**'));
+ await render([boldAnswer,counts,receipt].join('\n\n'),flow);
+ assert.equal(host.querySelector('.gmr-count')?.textContent,'읽음 5건 · 요약 3건 · 누락 2건');
+ assert.equal(host.querySelectorAll('.gmr-card').length,3);
+ assert.doesNotMatch(host.querySelector('.gmr-list')!.textContent!,/메일 처리 결과|누락 2건/);
+ assert.equal(host.querySelector('.gmr-notices')?.textContent,limitNotice);
+ assert.equal(host.querySelector('.gmr-full p')?.textContent,[boldAnswer,counts].join('\n\n'));
+});
+
 test('missing sender and empty result fall back without inventing email cards',async()=>{
  for(const answer of ['제목: 발신자 없는 메일\n본문 내용','조회한 안 읽은 메일이 없습니다.']){
   assert.equal(parseGmailSummary(answer,workflow),null);
@@ -84,10 +102,12 @@ test('unrelated workflow stays outside the Gmail card parser',async()=>{
 });
 
 test('Gmail card fallback omits only Slack delivery receipts',async()=>{
- const answer='조회한 안 읽은 메일이 없습니다.\n\n'+receipt;
+ const counts='메일 처리 결과: 읽음 0건 · 요약 0건 · 누락 0건';
+ const answer=['조회한 안 읽은 메일이 없습니다.',counts,receipt].join('\n\n');
  await render(answer);
  assert.ok(host.querySelector('.as-run-answer'));
  assert.match(host.textContent!,/조회한 안 읽은 메일이 없습니다/);
+ assert.ok(host.textContent!.includes(counts));
  assert.doesNotMatch(host.textContent!,/accepted_by_provider|channel_id/);
 });
 

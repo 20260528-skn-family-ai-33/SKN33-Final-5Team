@@ -79,6 +79,27 @@ def option_answer(state):
                for q in state.get('pending_questions', [])
                if not event or q['id'] in event.get('question_ids', [])
                for option in q.get('options', []) if _compact(option) == text]
+    if not matches and any(q.get('key') == 'filter.match' for q in state.get('pending_questions', [])):
+        from .condition_readiness import MATCH_CHOICES, compound_filter_state, match_answer
+        answers = [item.get('answer', '') for item in (event or {}).get('answers', [])
+                   if item.get('key') == 'filter.match']
+        reply = answers[0] if len(answers) == 1 else messages[latest]['content']
+        from .filter_dialogue import KEEP_ALL
+        if reply.strip().rstrip('.!?') == KEEP_ALL:
+            from agent_builder.design.text_filter_contract import text_filter_state
+            prior = text_filter_state({**state, 'messages': messages[:latest]})
+            if prior.get('can_keep'):
+                eligible = [q for q in state.get('pending_questions', []) if q.get('key') == 'filter.match'
+                            and (not event or q['id'] in event.get('question_ids', []))]
+                if len(eligible) == 1:
+                    return {'key': 'filter.match', 'label': KEEP_ALL, 'question_id': eligible[0]['id'], 'turn': latest}
+        found = compound_filter_state(state)
+        mode = match_answer(reply, found['relation_count'])
+        matches = [{'key': q['key'], 'label': label, 'question_id': q['id'], 'turn': latest}
+                   for q in state.get('pending_questions', []) if q.get('key') == 'filter.match'
+                   and (not event or q['id'] in event.get('question_ids', []))
+                   for label in q.get('options', [])
+                   if _compact(label) == _compact(reply) or mode and MATCH_CHOICES.get(label) == mode]
     return matches[0] if len(matches) == 1 else None
 
 
@@ -146,7 +167,17 @@ def value_answer(state, *, _allow_comparison=False):
     latest = max((i for i, m in enumerate(messages) if m['role'] == 'user'), default=-1)
     if latest < 0:
         return None
-    text=messages[latest]['content'].strip().rstrip('.!?。')
+    events = state.get('condition_answers', [])
+    event = next((e for e in reversed(events) if e.get('turn') == latest), None)
+    text = messages[latest]['content']
+    if event and event.get('answers'):
+        # The chat transcript includes the question label. Use the answer attached
+        # to the current question, and let the model handle batches of answers.
+        answers = event['answers']
+        if len(answers) != 1 or answers[0].get('key') != 'filter.value':
+            return None
+        text = answers[0].get('answer', '')
+    text = text.strip().rstrip('.!?。')
     if _allow_comparison:
         comparison=re.fullmatch(r'(.+?)\s*(초과|이상|미만|이하)(?:으로|로)?(?:요)?',text)
         if not comparison:return None
@@ -154,8 +185,6 @@ def value_answer(state, *, _allow_comparison=False):
     match = _PLAIN_AMOUNT.fullmatch(text)
     if not match:
         return None
-    events = state.get('condition_answers', [])
-    event = next((e for e in reversed(events) if e.get('turn') == latest), None)
     pending = [q for q in state.get('pending_questions', []) if q['key'] == 'filter.value'
                and (not event or q['id'] in event.get('question_ids', []))]
     field = (state.get('condition_ledger') or {}).get('slots', {}).get('filter.field', {})
@@ -177,6 +206,7 @@ def value_answer(state, *, _allow_comparison=False):
 
 def resolution_question(key, resolution, base):
     label = {'filter.field': '선별할 열', 'filter.operator': '비교 방식', 'filter.value': '선별 기준값',
+             'filter.match': '선별 조건',
              'duplicate.field': '중복 판단 열', 'duplicate.policy': '중복 처리 방식',
              'input.table': '예약에 사용할 표 파일'}.get(key, base.rstrip('?'))
     if resolution['deferred']:

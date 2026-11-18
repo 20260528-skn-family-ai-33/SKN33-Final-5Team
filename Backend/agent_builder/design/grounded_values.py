@@ -22,7 +22,7 @@ _SCALAR_NUMBER = re.compile(r'[+-]?\d[\d,]*(?:\.\d+)?')
 _CLOCK_TIME = re.compile(r'(?<!\d)\d{1,2}:\d{2}(?::\d{2})?(?!\d)')
 _ISO_DATE = re.compile(r'(?<!\d)\d{4}-\d{1,2}-\d{1,2}(?!\d)')
 _CLAUSE_BREAK = re.compile(r'(?<!\d)[,，;；。!?]|[,，;；。!?](?!\d)|\n')
-_FIELD_TO_VALUE = re.compile(r'\s*(?:(?:이|가|은|는|을|를|의|값|기준|약)\s*)*[:=<>]*\s*')
+_FIELD_TO_VALUE = re.compile(r'\s*(?:(?:이|가|은|는|을|를|의|값|기준|상한|하한|약)\s*)*[:=<>]*\s*')
 _VALUE_TO_FIELD = re.compile(r'\s*(?:원\s*)?(?:이상|초과|이하|미만)(?:인|의)?\s*')
 _COMPARISON_AFTER = re.compile(r'\s*(?:(?:원|건|개|명|행|회|번)\s*)?(?:이상|초과|이하|미만|보다|넘|같|동일|부터|까지|인(?:\s|$))')
 _COMPARISON_BEFORE = re.compile(r'(?:최소|최대|>=|<=|>|<|=)\s*$')
@@ -34,12 +34,13 @@ _EMPTY_WORDS = re.compile(r'빈\s*(?:값|칸|셀|행|문자)?|비어|비었|공�
                           r'미입력|미기재|미작성|미등록|null|none|nan|empty|blank|missing', re.I)
 
 
-def _source_texts(state):
+def _source_texts(state, *, include_documents=True):
     parts = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
-    for resource in state.get('resources', []) or []:
-        if resource.get('kind') == 'document':
-            parts.append(resource.get('text') or '')
-            parts.extend(resource.get('pages') or [])
+    if include_documents:
+        for resource in state.get('resources', []) or []:
+            if resource.get('kind') == 'document':
+                parts.append(resource.get('text') or '')
+                parts.extend(resource.get('pages') or [])
     return [p for p in parts if isinstance(p, str)]
 
 
@@ -131,7 +132,7 @@ def _field_linked(clause, start, end, field_pattern):
     return False
 
 
-def _numeric_grounded(value, state, field):
+def _numeric_grounded(value, state, field, *, include_documents=True):
     slots = ((state.get('condition_ledger') or {}).get('slots') or {})
     settled_field = slots.get('filter.field') or {}
     settled_value = slots.get('filter.value') or {}
@@ -140,7 +141,7 @@ def _numeric_grounded(value, state, field):
             settled_field['value'].strip().casefold() == field.strip().casefold() and
             value in _numbers(str(settled_value.get('value')))):
         return True
-    sources = _source_texts(state)
+    sources = _source_texts(state, include_documents=include_documents)
     field_pattern = _field_pattern(field) if isinstance(field, str) and field else None
     field_mentioned = bool(field_pattern and any(field_pattern.search(source) for source in sources))
     for source in sources:
@@ -156,7 +157,10 @@ def _numeric_grounded(value, state, field):
                 elif (_COMPARISON_AFTER.match(clause[end:]) or
                       _COMPARISON_BEFORE.search(clause[:start])):
                     return True
-    return False
+    # A short answer can own a specific outstanding operand without repeating
+    # its column name in the transcript.
+    from agent_builder.conditions.condition_readiness import explicit_filter_operands
+    return any(rule['field'] == field and rule['value'] == value for rule in explicit_filter_operands(state))
 
 
 def _scalar_number(value):

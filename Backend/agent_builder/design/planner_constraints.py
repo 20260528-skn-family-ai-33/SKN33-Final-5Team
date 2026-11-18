@@ -67,6 +67,9 @@ def literal_schema(value):
 
 
 def table_plan_scope(state):
+    from .output_selection_request import output_selection
+    if output_selection(state):
+        return False  # Column projection requires registered adapters beyond a native filter chain.
     return (bool(state.get('condition_enforced')) and not state.get('required_node_refs') and
             ready_table_slots(state.get('condition_ledger')) is not None and
             len([r for r in state.get('resources',[]) if r.get('kind')=='table']) <= 1)

@@ -34,7 +34,12 @@ def source_file_ids(node,file_ids,storage,config,outputs=None):
     provided=[id for id in file_ids if supports(storage.asset(id),expected)]
     selected=settings.get('file_ids') or []
     if tool == 'read_document' and settings.get('document_table_id') is not None:
-        if len(selected) != 1 or (file_ids and selected[0] not in provided):
+        if len(selected) != 1:
+            raise ValueError(DOCUMENT_TABLE_ERROR)
+        if file_ids and selected[0] not in provided:
+            if len(provided) == 1 and len([n for n in (config.get('workflow') or {}).get('nodes', [])
+                                          if n['tool'] == 'read_document']) <= 1:
+                return provided
             raise ValueError(DOCUMENT_TABLE_ERROR)
         return selected
     other_readers=[n for n in (config.get('workflow') or {}).get('nodes',[])
@@ -82,9 +87,31 @@ def read_source(node,state,storage,config,external_port):
     if node['tool'] == 'read_document':
         parts = document_chunks(storage, ids)
         if table_id is not None:
+            original_ids = node['settings'].get('file_ids') or []
+            if ids != original_ids:
+                table_id = replacement_table_id(storage, original_ids[0], table_id, parts)
             parts = [part for part in parts if part.get('block_id') == table_id]
             if not any(part.get('table_cells') for part in parts):
                 raise ValueError(DOCUMENT_TABLE_ERROR)
         return {'documents': parts}
     asset=storage.asset(ids[0])
     return {'table':{'rows':storage.rows(ids[0]),'columns':asset['columns'],'file_id':ids[0]}}
+
+
+def replacement_table_id(storage, original_id, table_id, parts):
+    """Rebind one replacement document by a unique full header, never by block ID."""
+    from workflow_engine.executors.document.table_rows import _grid, label
+    original = [part for part in document_chunks(storage, [original_id])
+                if part.get('block_id') == table_id and part.get('table_cells')]
+    def signature(part):
+        grid = _grid(part.get('table_cells') or [])
+        if not grid or part.get('review_required'):
+            return None
+        return tuple((column, label(cell.get('text')), cell.get('row_span') or 1, cell.get('col_span') or 1)
+                     for column, cell in sorted(grid[0][1].items()))
+    if len(original) != 1 or not (expected := signature(original[0])):
+        raise ValueError(DOCUMENT_TABLE_ERROR)
+    candidates = {part.get('block_id') for part in parts if part.get('table_cells') and signature(part) == expected}
+    if len(candidates) != 1 or None in candidates:
+        raise ValueError('새 문서에서 같은 열 구조의 표를 하나로 확정할 수 없습니다. 미리보기에서 사용할 표를 다시 선택해 주세요.')
+    return candidates.pop()

@@ -97,7 +97,7 @@ def test_save_rejects_a_preview_workflow_with_changed_table_scope(tmp_path, repl
         store.close()
 
 
-def test_run_rejects_a_same_named_document_with_the_same_table_id(tmp_path):
+def test_run_rebinds_a_same_named_document_by_unique_header_not_table_id(tmp_path):
     asset = document([block(SOURCE, 'selected-table')], name='a.pdf')
     replacement = dict(asset, id='replacement')
     content = preview_message(asset, ['「표 1」의 품명', '「표 1」의 실입고'])
@@ -108,8 +108,10 @@ def test_run_rejects_a_same_named_document_with_the_same_table_id(tmp_path):
         store.add_asset(asset, [])
         store.add_asset(replacement, [])
         result = run_workflow(store, store.save_agent(current), '실행', '', file_ids=[replacement['id']], llm=NoModel())
-        assert result['status'] == 'failed' and not result.get('artifact')
-        assert '문서 미리보기에서 표를 다시 선택' in result['error']
+        assert result['status'] == 'succeeded', result.get('error')
+        assert output_rows(result['artifact']) == EXPECTED
+        assert all(record['evidence']['품명']['file_id'] == 'replacement'
+                   for record in result['outputs']['extract']['records'])
     finally:
         store.close()
 

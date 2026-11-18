@@ -18,13 +18,13 @@ def safe_cell(value):
     return "'"+value if isinstance(value,str) and value.lstrip().startswith(('=','+','-','@','\t','\r')) else value
 
 
-def records_artifact(records,format,confirmation=None):
+def records_artifact(records,format,confirmation=None,fields=None):
     if format=='json':
         # A user's confirmation from ask_user is saved with the records it approved.
         data={'records':records,'user_confirmation':confirmation} if confirmation else records
         return {'name':'추출_결과.json','content':json.dumps(data,ensure_ascii=False,indent=2),'mime':'application/json; charset=utf-8'}
     if format!='csv':raise ValueError('표 결과는 CSV/JSON을 선택하세요.')
-    columns=list(dict.fromkeys(k for r in records for k in r))
+    columns=fields or list(dict.fromkeys(k for r in records for k in r))
     stream=io.StringIO(newline='');writer=csv.DictWriter(stream,fieldnames=columns);writer.writeheader()
     for r in records:writer.writerow({k:safe_cell(r.get(k)) for k in columns})
     return {'name':'추출_결과.csv','content':'﻿'+stream.getvalue(),'mime':'text/csv; charset=utf-8'}
@@ -39,6 +39,26 @@ def text_artifact(text,format):
     return {'name':'답변.json','content':text,'mime':'application/json; charset=utf-8'}
 
 
+def project_records(records, fields):
+    """Column projection does not assert that these are parser-native table rows."""
+    if (records and not all(all(field in record for field in fields) for record in records)
+            and all('field' in record and 'value' in record for record in records)):
+        groups = {}
+        for record in records:
+            key = record.get('file_id') or record.get('file_name')
+            if not key:
+                raise ValueError('단일 값 결과의 원본 문서를 구분할 수 없습니다.')
+            group = groups.setdefault(key, {})
+            field = record['field']
+            if field in group:
+                raise ValueError('같은 문서에 중복된 추출 항목이 있습니다. 결과 범위를 확인해 주세요.')
+            group[field] = record['value']
+        records = list(groups.values())
+    if any(any(field not in record for field in fields) for record in records):
+        raise ValueError('출력할 열이 추출 결과에 없습니다. 추출 항목과 출력 열을 확인해 주세요.')
+    return [{field: record[field] for field in fields} for record in records]
+
+
 def execute(node,state,storage,config,llm):
     tool=node["tool"];settings=node["settings"];inputs={b["input"]:state["outputs"][b["node_id"]][b["output"]] for b in node["bindings"]}
     validate_export_inputs(inputs)
@@ -48,6 +68,10 @@ def execute(node,state,storage,config,llm):
     format=settings.get('format')
     if 'records' in inputs:
         records = inputs['records']
+        from workflow_engine.executors.document.receipt_check import CHECK_FIELD
+        warnings = list(dict.fromkeys(
+            str(record[CHECK_FIELD]) for record in records
+            if record.get(CHECK_FIELD) and record[CHECK_FIELD] != '일치'))
         fields = settings.get('fields') or []
         from workflow_engine.executors.document.table_rows import COVERAGE_KEY
         if any(record.get(COVERAGE_KEY) == 'unverified' for record in records):
@@ -56,10 +80,11 @@ def execute(node,state,storage,config,llm):
             from workflow_engine.executors.document.extract_information import ROW_RESERVED_FIELDS
             fields = [field for field in records[0] if field not in ROW_RESERVED_FIELDS]
         if fields:
-            if not records or any(record.get(COVERAGE_KEY) != 'complete' or any(field not in record for field in fields) for record in records):
-                raise ValueError('추출된 값의 근거는 확인했지만 원본 전체 행의 추출 여부는 확인하지 못했습니다. 표 인식 결과를 검토해 주세요. 일부 결과를 완성된 CSV로 저장하지 않았습니다.')
-            records = [{field: record[field] for field in fields} for record in records]
-        return {'artifact':records_artifact(records,format,inputs.get('answer'))}
+            records = project_records(records, fields)
+        artifact = records_artifact(records,format,inputs.get('answer'),fields=fields)
+        if warnings:
+            artifact['warnings'] = ['영수증 검산: ' + warning for warning in warnings]
+        return {'artifact': artifact}
     text=inputs.get('text') or inputs.get('answer')
     if isinstance(text,str) and text.strip():return {'artifact':text_artifact(text,format)}
     raise ValueError('저장할 records/text/answer 결과 입력이 필요합니다.')

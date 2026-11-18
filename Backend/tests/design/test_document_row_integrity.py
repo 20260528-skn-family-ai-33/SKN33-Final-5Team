@@ -52,6 +52,11 @@ def test_saved_native_receipt_preserves_arithmetic_in_history_and_only_requested
         records = persisted['outputs']['extract']['records']
         assert all(record['합계_검산'].startswith(expected_check) for record in records)
         assert all(record['row_coverage'] == 'complete' and record['evidence'] for record in records)
+        if expected_check == '불일치':
+            assert '영수증 검산: 불일치' in run['answer']
+            assert run['artifact']['warnings']
+        else:
+            assert not run['artifact'].get('warnings')
     finally:
         store.close()
 
@@ -238,13 +243,19 @@ class FirstRowModel:
             dict(field='실입고', value='48', source_id='delivery:1:0', quote='48')])]))
 
 
-def test_grounded_first_row_without_native_coverage_cannot_be_exported_as_finished_csv(tmp_path):
+def test_grounded_first_row_without_native_coverage_cannot_be_exported_as_finished_csv(tmp_path, monkeypatch):
     asset = document(); asset.pop('parser_metadata')
     s = state(asset); store = Storage(tmp_path); store.add_asset(asset, [])
     s['messages'] += [dict(role='assistant', content=QUESTION), dict(role='user', content='품명, 실입고')]
     s.update(document_rows_reply(s)); s.update(status='ready', confirmed=True)
     try:
-        result = run_workflow(store, store.save_agent(s), '워크플로우 실행', '', file_ids=[asset['id']], llm=FirstRowModel())
+        with pytest.raises(ValueError, match='전체 행'):
+            store.save_agent(s)
+        # Simulate a workflow persisted before source feasibility was enforced.
+        with monkeypatch.context() as legacy:
+            legacy.setattr('agent_builder.capabilities.capability_gate.require_save_ready', lambda _state: None)
+            saved_id = store.save_agent(s)
+        result = run_workflow(store, saved_id, '워크플로우 실행', '', file_ids=[asset['id']], llm=FirstRowModel())
         assert result['status'] == 'failed' and not result.get('artifact')
         assert '전체 행' in str(result.get('error'))
     finally:

@@ -263,24 +263,27 @@ def make_conversation(api_key,model,model_factory=None):
                 issues=workflow_errors(workflow,tool_ids,state['resources'])
                 return {'valid':not issues,'issues':issues,'normalized_workflow':workflow}
             except (ValueError,KeyError) as error:return {'valid':False,'issues':['워크플로우 스키마·필수 설정을 확인하세요. '+str(error)[:500]]}
-        evidence={}
-        for m in state['messages']:
-            if m['role']=='user':
-                for quote in [m['content'],*re.split(r'(?<=[.!?])\s+|\n',m['content'])]:
-                    if quote.strip() and len(quote)<=2000 and not any(e['source_id']=='user' and e['quote']==quote for e in evidence.values()):evidence['e'+str(len(evidence)+1)]={'source_id':'user','quote':quote}
-        for r in resources.values():
-            for quote in [*r['evidence_text'].splitlines(),*r.get('columns',[])]:
-                if quote.strip() and len(quote)<=2000:evidence['e'+str(len(evidence)+1)]={'source_id':r['id'],'quote':quote}
-        if state.get('condition_enforced'):
-            for slot in (state.get('condition_ledger') or {}).get('slots',{}).values():
-                for source in slot.get('evidence',[]):
-                    item={'source_id':source['source_id'],'quote':source['quote']}
-                    if item not in evidence.values():evidence['e'+str(len(evidence)+1)]=item
-        if not evidence:raise ValueError('업무 설명이 필요합니다.')
+        grouped_requirements = []
+        evidence = {}
         if grouped_steps:
-            # The complete request, not an input data row, owns these operations.
-            request = next(m['content'] for m in state['messages'] if m['role']=='user')
-            evidence = {k:v for k,v in evidence.items() if v == {'source_id':'user','quote':request}}
+            from agent_builder.design.grouped_totals_contract import grouped_contract, grouped_evidence
+            grouped_requirements = grouped_evidence(grouped_contract(state), state)
+            evidence = {f'e{index}': {'source_id': item['source_id'], 'quote': item['quote']}
+                        for index, item in enumerate(grouped_requirements, 1)}
+        else:
+            for m in state['messages']:
+                if m['role']=='user':
+                    for quote in [m['content'],*re.split(r'(?<=[.!?])\s+|\n',m['content'])]:
+                        if quote.strip() and len(quote)<=2000 and not any(e['source_id']=='user' and e['quote']==quote for e in evidence.values()):evidence['e'+str(len(evidence)+1)]={'source_id':'user','quote':quote}
+            for r in resources.values():
+                for quote in [*r['evidence_text'].splitlines(),*r.get('columns',[])]:
+                    if quote.strip() and len(quote)<=2000:evidence['e'+str(len(evidence)+1)]={'source_id':r['id'],'quote':quote}
+            if state.get('condition_enforced'):
+                for slot in (state.get('condition_ledger') or {}).get('slots',{}).values():
+                    for source in slot.get('evidence',[]):
+                        item={'source_id':source['source_id'],'quote':source['quote']}
+                        if item not in evidence.values():evidence['e'+str(len(evidence)+1)]=item
+        if not evidence:raise ValueError('업무 설명이 필요합니다.')
         schema=AgentDraft.model_json_schema()
         schema['properties']['name']['description']='완성할 사용자 업무의 이름. list_tools/inspect_resource/validate_workflow 같은 설계 보조 도구의 호출명이 아닙니다.'
         schema['properties']['questions']['description']='아직 사용자가 정하지 않은 필수 업무 조건만 질문합니다. 이미 명시한 기준·정렬·결측·중복 정책의 재확인이나 내부 구현 허락은 질문하지 않습니다. 조건이 충분하면 빈 배열입니다.'
@@ -721,6 +724,11 @@ def make_conversation(api_key,model,model_factory=None):
         raw['document_ids']=list(resources)
         if not raw.get('workflow') and not raw.get('unsupported') and not raw.get('questions'):raise ValueError('워크플로우 초안을 생성하지 못했습니다. 요청을 다시 확인하세요.')
         raw['requirements']=[{'description':r['description'],**evidence[r['evidence_id']]} for r in raw['requirements']]
+        if grouped_requirements and raw.get('workflow'):
+            # Ollama's bounded response may cite one turn. Keep the other
+            # verified user turns in the stored draft without another model call.
+            cited = {item['quote']: item for item in raw['requirements']}
+            raw['requirements'] = [cited.get(item['quote'], item) for item in grouped_requirements]
         draft=AgentDraft.model_validate(raw).model_dump()
         draft=canonical_table_draft(draft,state['messages'],state['resources'])
         from agent_builder.design.name_policy import present_generated_name

@@ -955,9 +955,9 @@
           "implementation": "canonical_local_operation",
           "inputs": "left:Table right:Table keys:JoinKey[] how:JoinHow cardinality:Cardinality null_keys:NullKeyPolicy max_rows:Positive",
           "outputs": "table:Table",
-          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap",
+          "requirements": "Install Backend/integrations/unified_tools/requirements.txt. inner/left equal-named keys; one_to_one/many_to_one; null_keys=error/match; max_rows cap",
           "side_effect": false,
-          "scope": "inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap",
+          "scope": "inner/left equal-named keys; one_to_one/many_to_one; null_keys=error/match; max_rows cap",
           "dependencies": [],
           "arguments": [
             {

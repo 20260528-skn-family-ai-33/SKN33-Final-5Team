@@ -7,6 +7,7 @@ import re
 from copy import deepcopy
 
 from contracts.numeric_criteria import number_value
+from .export_intent import explicit_export_intent, request_clauses
 from .text_filter_parser import column_projection_requests
 
 
@@ -20,6 +21,9 @@ _ALL_COLUMNS = re.compile(r'(?:전체|모든)\s*열(?:들)?(?:만)?(?:을|로)?\
 _SINGLE_EXPORT = re.compile(
     r'(?<![\w·])(?P<column>\w+?)(?:\s+(?P<marker>열|컬럼))?만(?:을|를)?\s*'
     r'(?:[\w.-]+\.(?P<format>csv|json|xlsx)(?:으로|로)\s*)?(?:저장|내보내)', re.I)
+_EXAMPLE = re.compile(r'\s*(?:예시(?:로|는)\s+|예를\s*들어\s+|문구는\s+)')
+_DISPLAY = re.compile(r'(?:표시|출력|보여)$')
+_DISPLAY_END = re.compile(r'\s*(?:해\s*(?:줘|주세요)|하세요|줘|주세요)[.!]?\s*')
 
 
 def _request_turns(state):
@@ -31,13 +35,13 @@ def _request_turns(state):
     offset = len(users)-len(active_users)
     for index, content in enumerate(active_users):
         text = re.sub(r'```[\s\S]*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|\x27[^\x27\n]*\x27', ' ', content)
-        text = re.sub(r'(?:^|[.!?;\n])\s*(?:예시(?:로|는)\s+|예를\s*들어\s+|문구는\s+)[^.!?;\n]*', ' ', text)
         # An explanation request does not cancel work in another sentence of
         # the same turn. Ignore only explanation-only clauses, not the turn.
-        clauses = re.split(r'((?<=[.!?;])\s+|\n+)', text)
+        clauses = list(request_clauses(text))
         requested = []
-        for position in range(0, len(clauses), 2):
-            clause = clauses[position]
+        for _, clause in clauses:
+            if _EXAMPLE.match(clause):
+                continue
             explanation = re.search(r'뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요', clause)
             instruction = re.search(
                 r'바꿔|변경해|추가해|제외해|선택해|'
@@ -45,9 +49,7 @@ def _request_turns(state):
                 r'(?:해\s*(?:줘|주세요)|하(?:고|며|세요|도록))(?=\s|[.!?,;]|$)', clause)
             if not explanation or instruction:
                 requested.append(clause)
-            if position + 1 < len(clauses):
-                requested.append(clauses[position + 1])
-        retained = ''.join(requested)
+        retained = text if len(requested) == len(clauses) else '\n'.join(requested)
         if retained.strip():
             yield offset+index, retained
 
@@ -67,14 +69,22 @@ def _known_columns(state):
     return columns
 
 
-def _selection_request(state):
+def _selection_request(state, columns, *, display_only=False):
     assets = state.get('resources', [])
     if len(assets) != 1 or assets[0].get('kind') != 'table':
         return -1, ''
     # A new output instruction replaces the old one even if its fields cannot
     # be projected by this narrow grammar. Unrelated replies do not replace it.
-    columns = _known_columns(state)
     for index, text in reversed(list(_request_turns(state))):
+        if display_only:
+            # A file's own header selection ends with that file. An independent
+            # selection for displayed rows still applies after cancelling it.
+            clauses = [clause for _, clause in request_clauses(text)
+                       if any(p.affirmed and _DISPLAY.search(clause[p.start:p.end])
+                              for p in column_projection_requests(clause, columns))]
+            if clauses:
+                return index, '\n'.join(clauses)
+            continue
         if (any(item.affirmed for item in column_projection_requests(text, columns)) or _NAMED_EXPORT.search(text) or _ALL_COLUMNS.search(text) or _single_requests(text, columns)
                 or re.search(r'\w+(?:\s*[·,]\s*\w+)+(?:을|를)\s*(?:내보내|저장)', text)
                 or re.search(r'(?:출력|저장할|내보낼)\s*(?:열|컬럼)|(?:열|컬럼).{0,20}(?:추가|제외|변경|바꿔)', text)):
@@ -82,27 +92,29 @@ def _selection_request(state):
     return -1, ''
 
 
-def _request_text(state):
-    return _selection_request(state)[1]
-
-
-def _all_columns_requested(state):
-    text = _request_text(state)
-    return any(_EXPORT_END.match(text[m.end():]) for m in _ALL_COLUMNS.finditer(text))
+def output_requirements(state):
+    """Active file and column requirements, consumed by planning and save validation."""
+    intent = explicit_export_intent(state)
+    assets = state.get('resources', [])
+    columns = _known_columns(state) if len(assets) == 1 and assets[0].get('kind') == 'table' else set()
+    source, text = _selection_request(state, columns, display_only=intent['cancelled'])
+    all_columns = any(_EXPORT_END.match(text[m.end():]) for m in _ALL_COLUMNS.finditer(text))
+    fields = None if all_columns else _selection_fields(text, columns)
+    display_clauses = set()
+    if fields:
+        for _, clause in request_clauses(text):
+            for projection in column_projection_requests(clause, columns):
+                if (projection.affirmed and list(projection.fields) == fields
+                        and _DISPLAY.search(clause[projection.start:projection.end])
+                        and not clause[:projection.start].strip()
+                        and _DISPLAY_END.fullmatch(clause[projection.end:])):
+                    display_clauses.add((source, clause.strip()))
+    return {**intent, 'fields': fields, 'all_columns': all_columns, 'field_source': source,
+            'display_clauses': frozenset(display_clauses)}
 
 
 def output_selection(state):
-    from .export_intent import explicit_export_intent
-    if explicit_export_intent(state)['cancelled']:
-        return None
-    assets=state.get('resources',[])
-    if len(assets)!=1 or assets[0].get('kind')!='table':
-        return None
-    # Only a new output instruction replaces the existing column selection.
-    text = _request_text(state)
-    if _all_columns_requested(state):
-        return None
-    return _selection_fields(text, _known_columns(state))
+    return output_requirements(state)['fields']
 
 
 def _selection_fields(text, columns):
@@ -135,45 +147,20 @@ def _selection_fields(text, columns):
 
 def literal_output_format(state):
     """The format of one unambiguous named projection, never a source filename."""
-    from .condition_requirements import multiple_outputs
-    from .export_intent import explicit_export_intent
-    intent = explicit_export_intent(state)
-    if intent['cancelled']:
-        return None
-    if output_selection(state) is None or multiple_outputs(state):
-        return None
-    source, text = _selection_request(state)
-    # A format-only change is validated through intent, but the named-export
-    # projector still owns only explicit save instructions.
-    if any(index >= source and re.search(
-            r'(?:csv|json|xlsx).{0,16}(?:바꿔|변경)', turn, re.I)
-           for index, turn in _request_turns(state)):
-        return None
-    if len(intent['formats']) == 1:
+    return _projectable_format(output_requirements(state))
+
+
+def _projectable_format(intent):
+    if intent['fields'] and intent['projects_writer'] and not intent['multiple'] and len(intent['formats']) == 1:
         return next(iter(intent['formats']))
-    # A later format-only revision preserves columns but supersedes this
-    # filename. Leave it to extraction rather than restoring the old format.
-    if any(index > source and re.search(r'csv|json|xlsx|저장\s*형식|파일\s*형식|저장하지|내보내지', turn, re.I)
-           for index, turn in _request_turns(state)):
-        return None
-    if re.search(r'(?:csv|json|xlsx).{0,16}(?:대신|바꿔|변경)|(?:대신|바꿔|변경).{0,16}(?:csv|json|xlsx)', text, re.I):
-        return None
-    matches = [m for pattern in (_NAMED_EXPORT, _SINGLE_EXPORT) for m in pattern.finditer(text)
-               if _EXPORT_END.match(text[m.end():]) and m['format']]
-    formats = {m['format'].lower() for m in matches}
-    # A same-turn correction supersedes the old filename's extension while
-    # retaining its projection. Only one active save format is unambiguous.
-    if len(formats) == 1 and len(intent['formats']) == 1:
-        return next(iter(intent['formats']))
-    return next(iter(formats)) if len(formats) == 1 else None
+    return None
 
 
 def validate_output_selection(plan, state):
     if plan['unresolved']:
         return
     specs = [task['spec'] for task in plan['tasks']]
-    from .export_intent import explicit_export_intent
-    intent = explicit_export_intent(state)
+    intent = output_requirements(state)
     exports = {s['format'] for s in specs if s['kind']=='export'}
     if intent['cancelled'] and exports:
         raise ValueError('취소한 파일 저장 작업이 업무 목록에 남아 있습니다.')
@@ -181,8 +168,7 @@ def validate_output_selection(plan, state):
         raise ValueError('취소한 파일 저장 형식이 업무 목록에 남아 있습니다.')
     if intent['additional'] and exports != intent['formats']:
         raise ValueError('같은 결과를 추가로 저장하라는 파일 형식이 누락되거나 변경됐습니다.')
-    from .condition_requirements import multiple_outputs
-    if intent['formats'] and not multiple_outputs(state) and exports != intent['formats']:
+    if intent['formats'] and not intent['multiple'] and exports != intent['formats']:
         raise ValueError('명시한 결과 파일 저장 작업이 누락되거나 형식이 변경됐습니다.')
     # Output revisions do not cancel row criteria. Check these even when a
     # later turn switches to all columns or a different output column list.
@@ -193,7 +179,7 @@ def validate_output_selection(plan, state):
     if any(not any(contains_alternative(spec, rule) for spec in specs if spec['kind']=='filter')
            for rule in literal_or_filters(state)):
         raise ValueError('명시한 OR 숫자 조건의 기준 또는 결합 방식이 누락되거나 변경됐습니다.')
-    if _all_columns_requested(state):
+    if intent['all_columns']:
         expected = set(state['resources'][0].get('columns', []))
         for spec in specs:
             if spec['kind'] == 'compute':
@@ -203,7 +189,7 @@ def validate_output_selection(plan, state):
                 expected.add(spec['target'])
             elif spec['kind'] == 'select_fields' and not expected <= set(spec['fields']):
                 raise ValueError('전체 열 저장 요청에서 일부 출력 열을 제거할 수 없습니다.')
-    fields=output_selection(state)
+    fields = intent['fields']
     computed=literal_output_compute(state)
     if computed:
         from .requirement_coverage import _formula
@@ -215,22 +201,20 @@ def validate_output_selection(plan, state):
         return
     if not any(s['kind'] == 'select_fields' and s['fields'] == fields for s in specs):
         raise ValueError('명시한 최종 출력 열 선택이 누락되거나 변경됐습니다: ' + ', '.join(fields))
-    output_format = literal_output_format(state)
-    if output_format and [s['format'] for s in specs if s['kind'] == 'export'] != [output_format]:
-        raise ValueError('명시한 결과 파일 저장 작업이 누락되거나 형식이 변경됐습니다.')
+    if intent['formats'] and not intent['multiple'] and sum(s['kind'] == 'export' for s in specs) != 1:
+        raise ValueError('명시한 결과 파일 저장 작업이 누락되거나 중복됐습니다.')
 
 
-def export_intent_issues(state, draft):
+def export_intent_issues(state, draft, *, intent=None):
     """An extra writer must not bypass a correct cancellation/revision ledger."""
-    from .condition_requirements import multiple_outputs
-    from .export_intent import explicit_export_intent
     from .requirement_coverage import _matches
     from workflow_engine.runner import execution_parameters
 
-    intent = explicit_export_intent(state)
+    if intent is None:
+        intent = output_requirements(state)
     if not (intent['cancelled'] or intent['forbidden_formats'] or intent['formats']):
         return []
-    single = bool(intent['formats']) and not multiple_outputs(state)
+    single = bool(intent['formats']) and not intent['multiple']
     for node in (draft.get('workflow') or {}).get('nodes', []):
         if node['tool'] not in ('write_result', 'export_result', 'create_spreadsheet'):
             continue
@@ -253,23 +237,31 @@ def export_intent_issues(state, draft):
 
 def output_selection_issues(state, draft):
     """Check the actual output even if extraction omitted a selection task."""
-    export_issues = export_intent_issues(state, draft)
+    intent = output_requirements(state)
+    export_issues = export_intent_issues(state, draft, intent=intent)
     if export_issues:
         return export_issues
-    all_columns = _all_columns_requested(state)
-    fields = output_selection(state)
+    all_columns = intent['all_columns']
+    fields = intent['fields']
     if (not all_columns and fields is None) or not draft.get('workflow'):
         return []
     from .content_lineage import content_ancestors
     from .requirement_coverage import _arguments
     from .workflow_paths import workflow_paths
+    from workflow_engine.execution_path import result_rows_endpoint
     workflow = draft['workflow']
     nodes = {n['id']: n for n in workflow['nodes']}
     try:
         for path, _ in workflow_paths(workflow):
-            writers = [n for n in path if n['tool'] in ('write_result','export_result')]
-            for writer in writers:
-                active = content_ancestors(nodes, writer['id']) | {writer['id']}
+            endpoints = [(n, True) for n in path if n['tool'] in ('write_result','export_result')]
+            if not endpoints:
+                preview = result_rows_endpoint(path)
+                if preview is None and intent['cancelled']:
+                    return ['요청한 열을 표시하는 최종 결과가 없습니다.']
+                if preview is not None:
+                    endpoints.append((preview[0], False))
+            for endpoint, writer in endpoints:
+                active = content_ancestors(nodes, endpoint['id']) | {endpoint['id']}
                 expected = list(state['resources'][0].get('columns', []))
                 actual = list(expected)
                 for n in path:
@@ -286,14 +278,14 @@ def output_selection_issues(state, draft):
                         actual = _arguments(n)['columns']
                         if all_columns and not set(expected)<=set(actual):
                             return ['전체 열 저장 요청과 실제 출력 열 선택이 다릅니다: '+n['id']]
-                    if n['id']==writer['id']:
-                        columns = _arguments(n).get('columns') if settings.get('operation') else None
+                    if n['id']==endpoint['id']:
+                        columns = _arguments(n).get('columns') if writer and settings.get('operation') else None
                         if columns is not None:
                             if set(columns)!=set(actual):
                                 return ['전체 열/출력 열 검증: CSV 헤더와 입력 데이터 열이 다릅니다: '+n['id']]
                             actual = columns
                         if fields is not None and actual!=fields:
-                            return ['명시한 최종 출력 열의 목록·순서와 실제 저장 헤더가 다릅니다: '+n['id']]
+                            return ['명시한 최종 출력 열의 목록·순서와 실제 결과가 다릅니다: '+n['id']]
                         if all_columns and not set(expected)<=set(actual):
                             return ['전체 열 저장 요청과 실제 저장 헤더가 다릅니다: '+n['id']]
     except (ValueError, KeyError, TypeError):
@@ -302,16 +294,17 @@ def output_selection_issues(state, draft):
 
 
 def project_output_selection(candidates,state):
-    fields=output_selection(state)
+    intent = output_requirements(state)
+    fields = intent['fields']
     if not fields:return candidates
     result=deepcopy(candidates)
-    source = _selection_request(state)[0]
+    source = intent['field_source']
     if not any(c['spec'].get('kind')=='select_fields' for c in result):
         index=next((i for i,item in enumerate(result) if item['spec'].get('kind')=='export'),len(result))
         result.insert(index,dict(source_message=source,description='명시한 최종 출력 열',spec=dict(kind='select_fields',fields=fields)))
-    output_format = literal_output_format(state)
+    output_format = _projectable_format(intent)
     if output_format and not any(c['spec'].get('kind')=='export' for c in result):
-        result.append(dict(source_message=source,description='명시한 결과 파일 저장',
+        result.append(dict(source_message=intent['active_from'],description='명시한 결과 파일 저장',
                            spec=dict(kind='export',format=output_format)))
     return result
 

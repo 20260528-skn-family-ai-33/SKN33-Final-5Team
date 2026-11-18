@@ -94,33 +94,22 @@ def _filter_issues(state, draft, compound):
                                              active, seen | {identifier})
 
     try:
+        from .export_intent import explicit_export_intent
+        cancelled = explicit_export_intent(state)['cancelled']
         checked_outputs = 0
-        paths = workflow_paths(draft['workflow'])
-        for path, _ in paths:
+        for path, _ in workflow_paths(draft['workflow']):
             active = {n['id'] for n in path}
             endpoints, artifact_emitted = filter_result_endpoints(state, draft['workflow'], path)
             checked_outputs += artifact_emitted
+            if cancelled:
+                # The runner may show the last rows before a completion notice.
+                # A substantive later operation can replace the requested result.
+                terminals = path[-2:] if path[-1]['tool'] == 'finish' else path[-1:]
+                if not any(node in terminals and output is not None for node, output in endpoints):
+                    return error
             for node, output in endpoints:
                 if any(not proven(node['id'], output, rule, check, active, set()) for rule, check in required):
                     return error
-        if checked_outputs:
-            return []
-        from .export_intent import explicit_export_intent
-        if not explicit_export_intent(state)['cancelled']:
-            return error
-        # Cancelling the file retains the requested row processing. Prove its
-        # actual terminal data on every path, not an unused earlier filter.
-        from workflow_engine.catalog.registry import node_ports
-        for path, _ in paths:
-            terminal = path[-1]
-            outputs = {port for port, kind in node_ports(terminal)[1].items()
-                       if kind in ('table', 'records')}
-            if terminal['tool'] in ('condition', 'ask_user', 'finish'):
-                outputs &= {binding['input'] for binding in terminal['bindings']}
-            active = {node['id'] for node in path}
-            if not outputs or any(not proven(terminal['id'], output, rule, check, active, set())
-                                  for output in outputs for rule, check in required):
-                return error
-        return []
+        return [] if checked_outputs or cancelled else error
     except (ValueError, KeyError, TypeError):
         return error

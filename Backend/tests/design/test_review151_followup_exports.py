@@ -199,7 +199,7 @@ def cancelled_processing_draft(terminal='records'):
     return draft
 
 
-@pytest.mark.parametrize('terminal', ['table', 'records', 'ask_user'])
+@pytest.mark.parametrize('terminal', ['table', 'records', 'ask_user', 'finish'])
 def test_cancelled_export_still_proves_final_processed_rows(terminal):
     from agent_builder.design.numeric_filter_proof import numeric_filter_issues
     from tests.workflow_engine.test_workflow import node, bind, edge
@@ -209,6 +209,9 @@ def test_cancelled_export_still_proves_final_processed_rows(terminal):
     if terminal == 'ask_user':
         draft['workflow']['nodes'].append(node('done', 'ask_user', [bind('records', 'columns', 'records')],
                                                question='처리 결과를 확인해주세요.'))
+        draft['workflow']['edges'].append(edge('columns', 'done'))
+    elif terminal == 'finish':
+        draft['workflow']['nodes'].append(node('done', 'finish', instructions='처리가 완료되었습니다.'))
         draft['workflow']['edges'].append(edge('columns', 'done'))
     assert numeric_filter_issues(current, draft) == []
     # An omitted writer without an actual cancellation remains an error.

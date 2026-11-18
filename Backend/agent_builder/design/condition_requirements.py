@@ -75,63 +75,23 @@ def owned_specs(confirmed, state):
         add('policy', '확정한 빈값·중복 정책 적용', policy_keys, missing_policy=values.get('missing.policy'),
             duplicate_policy=values.get('duplicate.policy'), duplicate_field=values.get('duplicate.field'))
     if 'output.format' in slots:
-        add('export', '요청한 형식으로 결과 저장', ['output.format'], format=values['output.format'])
+        from .export_intent import explicit_export_intent
+        intent = explicit_export_intent(state)
+        fmt = values['output.format']
+        if not intent['cancelled']:
+            if not intent['multiple'] and len(intent['formats']) == 1:
+                fmt = next(iter(intent['formats']))
+            if fmt not in intent['forbidden_formats']:
+                add('export', '요청한 형식으로 결과 저장', ['output.format'], format=fmt)
+                if not intent['multiple'] and intent['active_from'] >= 0:
+                    specs['export']['source_message'] = intent['active_from']
     return specs
 
 
 def multiple_outputs(state):
     from .export_intent import explicit_export_intent
-    from .output_selection_request import _request_turns
-    from agent_builder.conditions.filter_dialogue import control_reply
-    from agent_builder.conditions.filter_edits import user_filter_text
-    intent = explicit_export_intent(state)
-    if intent['cancelled']:
-        return False
-    if intent['additional']:
-        return True
-    # Replay only the surviving portion of a turn: a cancellation may be
-    # followed by a new separate-output request in the very same message.
-    active = [(source, text[intent['reset_offset']:] if source == intent['reset_from'] else text)
-              for source, text in _request_turns(state) if source >= intent['reset_from']]
-    # A format answer for a separately requested artifact does not replace the
-    # original artifact. Keep that scope unless the user explicitly replaces it.
-    prior = ' '.join(text for source, text in active
-                     if source < intent['active_from'])
-    separate = bool(re.search(r'별도|따로|원본.{0,12}결과', prior))
-    start = intent['reset_from'] if separate else intent['active_from']
-    user_turns = [(i, message) for i, message in enumerate(state.get('messages', []))
-                  if message['role'] == 'user']
-    turns = []
-    for source, text in active:
-        if source < start:
-            continue
-        index, message = user_turns[source]
-        reply = user_filter_text(state, index, message)
-        turns.append(reply if reply and reply != message['content'] else text)
-    text = ' '.join(text for text in turns if not control_reply(text))
-    # Keeping every row/column is a data policy, not a request for several artifacts.
-    # Mask only that scoped use of "all"; retain independent output clauses and
-    # the existing separate-file/format signals in the same request.
-    text = re.sub(
-        r'(?:중복(?:\s*행)?|행|열|레코드|데이터|값|항목)(?:들)?(?:은|는|을|를|도)?\s*'
-        r'(?:(?:그대로|빠짐없이)\s*)?모두\s*(?:(?:다|그대로)\s*)?(?:유지|보존)',
-        lambda match: match.group().replace('모두', '', 1), text)
-    # "All rows to CSV" still describes a single artifact, even without a
-    # keep/preserve verb. Do not erase "all results/files" or separate outputs.
-    def mask_row_quantifier(match):
-        # "Seoul rows and Busan rows, all ..." names distinct scopes. Do not
-        # infer that those scopes share one output just from the final noun.
-        grouped = re.search(
-            rf'{match["unit"]}(?:들)?\s*(?:과|와|및|,)\s*[^.!?;\n]*$', text[:match.start()])
-        return match.group() if grouped else match.group().replace('모두', '', 1)
 
-    text = re.sub(
-        r'(?<!\w)(?P<unit>행|열|레코드)(?:들)?(?:은|는|을|를|도)?\s*'
-        r'(?:(?:그대로|빠짐없이)\s*)?모두(?![가-힣])',
-        mask_row_quantifier, text)
-    text = re.sub(r'(?:빈\s*(?:값|칸|셀)|결측값?)(?:은|는|을|를)?\s*모두\s*(?:오류|에러|실패)(?:로)?\s*처리', '', text)
-    text = re.sub(r'(?:조건|기준)(?:을|은|는)?\s*(?:둘\s*다|모두)', '', text)
-    return bool(re.search(r'둘\s*다|모두|각각|각자|별도|따로|두\s*(?:개|파일)|(?:파일|결과|출력)(?:들)?(?:을|를|은|는)?\s*(?:둘\s*다|모두)|원본.{0,12}결과|(?:csv|json|xlsx|pdf|md)\s*(?:와|과|및|,|/|와 함께|이?랑)\s*(?:csv|json|xlsx|pdf|md)', text, re.I))
+    return explicit_export_intent(state)['multiple']
 
 
 def ordered_row_steps(state):

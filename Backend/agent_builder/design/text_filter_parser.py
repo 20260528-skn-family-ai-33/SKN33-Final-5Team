@@ -32,7 +32,7 @@ def column_projection_requests(text, fields):
         return []
     column = r'(?:' + names + ')'
     pattern = re.compile(r'\s*(?P<columns>' + column + r'(?:\s*(?:,|·|과|와|및)\s*' + column + r')*)'
-                         r'\s*(?:열|컬럼)?\s*(?:만)?(?:을|를)?\s*(?:포함|표시|출력|저장|내보내|남겨|남기)', re.I)
+                         r'\s*(?:열|컬럼)?\s*(?:만)?(?:을|를)?\s*(?:포함|표시|출력|보여|저장|내보내|남겨|남기)', re.I)
     result = []
     for scope in _OUTPUT_SCOPE.finditer(text):
         match = pattern.match(text, scope.end())

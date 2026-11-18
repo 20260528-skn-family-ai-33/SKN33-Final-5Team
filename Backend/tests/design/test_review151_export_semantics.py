@@ -167,6 +167,12 @@ def test_polite_negative_and_quoted_examples_keep_current_csv(reply):
     assert extract_plan(packet(), current)['tasks'][-1]['spec']['format'] == 'csv'
 
 
+def test_changing_the_input_format_does_not_replace_the_export():
+    current = order_state()
+    current['messages'].append(dict(role='user', content='입력 자료의 형식을 JSON으로 바꿔줘.'))
+    assert explicit_export_intent(current)['formats'] == {'csv'}
+
+
 @pytest.mark.parametrize('name, fmt, expected', [
     ('지역별매출.CSV', 'csv', '지역별매출.CSV'),
     ('지역별매출.CsV', 'csv', '지역별매출.CsV'),

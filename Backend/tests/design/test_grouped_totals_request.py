@@ -269,6 +269,13 @@ def test_sum_count_save_execute_csv(variant, tmp_path, monkeypatch):
     if variant == 'captured_model':
         recorded = json.loads(source.with_name('t02_model_response.json').read_text(encoding='utf-8'))
         draft = json.loads(json.dumps(recorded['draft'], ensure_ascii=False).replace('table-source', current['resources'][0]['id']))
+        # Keep the captured response immutable. The current contract deliberately
+        # requires null groups to survive the join of the two aggregate branches.
+        from workflow_engine.catalog.canonical import parse_arguments
+        join = next(node for node in draft['workflow']['nodes'] if node['tool'] == 'join_tables')
+        args = parse_arguments(join['settings'])
+        assert args['null_keys'] == 'error'
+        join['settings']['arguments_json'] = json.dumps({**args, 'null_keys': 'match'})
     def conversation(actual):
         assert not actual.get('issues'), actual['issues']
         return dict(draft=deepcopy(draft))

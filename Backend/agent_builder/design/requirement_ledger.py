@@ -125,7 +125,7 @@ def ledger_fingerprint(state):
     meaning = state.get('request_meaning_digest') or ''
     ledger = state.get('condition_ledger') or {}
     authority = (condition_digest(ledger), ledger.get('validation_digest')) if state.get('condition_enforced') else None
-    return plan_digest(['a4b.requirements.v10.grouped-totals', input_fingerprint(state), meaning, authority])
+    return plan_digest(['a4b.requirements.v11.active-output', input_fingerprint(state), meaning, authority])
 
 
 def plan_digest(plan):
@@ -667,9 +667,11 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             from .explicit_review_contract import explicit_review_contract, unrequested_review_kinds
             review_contract=explicit_review_contract(state)
             owned.update(unrequested_review_kinds(state))
-            from .output_selection_request import output_selection
-            selected_columns=output_selection(state)
-            if multiple_outputs(state):
+            from .output_selection_request import output_requirements
+            output = output_requirements(state)
+            if output['cancelled']:
+                owned.add('export')
+            elif output['multiple']:
                 owned.discard('export')
             active=transport
             if active is None:
@@ -707,8 +709,11 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
             # Show the same schema in the prompt instead of letting tool names
             # from the capability catalogue stand in for requirement kinds.
             payload['response_contract']=active.schema
-            from .output_selection_request import output_selection
-            selected_columns=output_selection(state)
+            selected_columns = output['fields']
+            if output['cancelled'] or output['formats'] or output['forbidden_formats']:
+                payload['active_output'] = dict(formats=sorted(output['formats']),
+                    cancelled=output['cancelled'], forbidden_formats=sorted(output['forbidden_formats']),
+                    separate_outputs=output['multiple'])
             numeric_filters=literal_numeric_filters(state)
             if numeric_filters:
                 payload['explicit_numeric_filters']=numeric_filters
@@ -721,7 +726,7 @@ def make_requirement_check(model, transport=None, mode=None, *, api_key='', erro
                 payload.setdefault('explicit_numeric_filters',[])
                 original_columns=set(state['resources'][0].get('columns',[]))
                 payload['requested_new_output_columns']=[field for field in selected_columns if field not in original_columns]
-                payload['explicit_output_instruction']='원문에 명시한 최종 열을 select_fields로 기록한다. 최종 열이 원본에 없으면 요청한 계산 결과 또는 명시적 이름 변경으로 생성하고 동일한 이름으로 선별한다. 그 전에 필요한 계산·선별·정렬과 파일 저장 업무를 모두 추출한다.'
+                payload['explicit_output_instruction']='최종 출력 열을 select_fields로 기록한다. 원본에 없는 열은 요청한 계산 또는 이름 변경으로 생성하고 동일한 이름으로 선별한다. 앞선 계산·선별·정렬은 유지한다. 파일 출력은 active_output이 있으면 그 조건을 적용한다.'
             from .request_guards import review_request
             review,final=review_request(state)
             if review:

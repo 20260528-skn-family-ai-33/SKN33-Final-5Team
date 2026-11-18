@@ -44,7 +44,7 @@ def grouped_totals_steps(state):
                 rename_to=rename['target']), bind(end))
         ends.append(end)
     output = add('join_tables', dict(arguments_json=dict(left={'$binding':'left'}, right={'$binding':'right'},
-        keys=named['sum']['fields'], how='inner', cardinality='one_to_one', null_keys='error', max_rows=MAX_GROUPED_ROWS)),
+        keys=named['sum']['fields'], how='inner', cardinality='one_to_one', null_keys='match', max_rows=MAX_GROUPED_ROWS)),
         bind(ends[0], name='left') + bind(ends[1], name='right'), 'join')
     if 'sort' in named:
         output = add('filter_sort', dict(execution_plan=plan(sort=named['sort']['sort'])), bind(output))

@@ -46,45 +46,31 @@ def group_sort_type(asset, field):
 
 
 def grouped_totals_packet(state):
+    from .grouped_totals_contract import contract_source, contract_specs, grouped_contract
+
     users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
     assets = state.get('resources', [])
-    if (len(users) != 1 or len(users[0]) > 2000 or len(assets) != 1 or assets[0].get('kind') != 'table'
-            or any(state.get(k) for k in ('base_agent_id', 'required_node_refs', 'redesign_context'))):
+    if (not users or len(users[-1]) > 2000 or len(assets) != 1 or assets[0].get('kind') != 'table'
+            or any(state.get(k) for k in ('base_agent_id', 'required_node_refs', 'redesign_context'))
+            or not _REQUEST.fullmatch(users[-1])):
         return None
-    match = _REQUEST.fullmatch(users[0])
-    if not match:
+    contract = grouped_contract(state)
+    if contract is None or contract['source'] != len(users) - 1:
         return None
-    v = match.groupdict()
-    asset = assets[0]
-    columns = asset.get('columns', [])
-    status = v['subject'] + '상태'
-    sort_type = group_sort_type(asset, v['group'])
-    if (asset.get('name') != v['file'] or not asset.get('id')
-            or not {v['left'], v['right'], v['group'], status} <= set(columns)
-            or not all(v[key].isidentifier() for key in ('left', 'right'))
-            or len({v['group'], v['measure'], v['total'], v['count'], 'sum', 'count'}) != 6
-            or v['measure'] in columns or v['group'] in (v['left'], v['right']) or sort_type is None):
+    if len(users) > 1 and contract['first_active_source'] == 0:
         return None
-    formula = f"{v['left']} * {v['right']}"
+    if (not all(contract[key].isidentifier() for key in ('left', 'right'))
+            or len({contract['group'], contract['measure'], contract['total'], contract['count'], 'sum', 'count'}) != 6
+            or contract['measure'] in assets[0].get('columns', [])
+            or contract['group'] in (contract['left'], contract['right']) or contract['sort_type'] is None):
+        return None
     try:
-        if formula_columns(formula) != {v['left'], v['right']}:
+        if formula_columns(contract['formula']) != {contract['left'], contract['right']}:
             return None
     except ValueError:
         return None
-    specs = [
-        dict(kind='read', file_ids=[asset['id']]),
-        dict(kind='filter', match='all', filters=[dict(field=status, operator='eq', value=v['value'],
-                                                    compare_field=None, value_type='text')]),
-        dict(kind='compute', formula=formula, output_column=v['measure']),
-        dict(kind='aggregate', fields=[v['group']], aggregation='sum', sum_field=v['measure']),
-        dict(kind='rename', source='sum', target=v['total']),
-        dict(kind='aggregate', fields=[v['group']], aggregation='count', sum_field=None),
-        dict(kind='rename', source='count', target=v['count']),
-        dict(kind='sort', sort=[dict(field=v['group'], direction='ascending' if v['direction']=='오름차순' else 'descending', value_type=sort_type)]),
-        dict(kind='select_fields', fields=[v['group'], v['total'], v['count']]),
-        dict(kind='export', format='csv'),
-    ]
-    return dict(tasks=[dict(source_message=0, description=s['kind'], spec=s) for s in specs], unresolved=[])
+    return dict(tasks=[dict(source_message=contract_source(contract, role), description=spec['kind'], spec=spec)
+                       for role, spec in contract_specs(contract)], unresolved=[])
 
 
 def validate_grouped_totals_intent(plan, state):
@@ -97,7 +83,7 @@ def validate_grouped_totals_intent(plan, state):
 def connect_grouped_totals(tasks, state):
     from .grouped_totals_contract import grouped_contract, connected_tasks
     contract = grouped_contract(state)
-    return connected_tasks(contract, tasks) if contract is not None else tasks
+    return connected_tasks(contract, tasks, state) if contract is not None else tasks
 
 
 def grouped_totals_filename(state):
@@ -115,5 +101,8 @@ def validate_grouped_totals(plan, state):
         return
     if plan['unresolved']:
         raise ValueError('명시한 합계·행 개수 조건과 후속 변경을 확인한 뒤 설계해야 합니다.')
-    if connected_tasks(contract, plan['tasks']) != plan['tasks']:
+    wired = connected_tasks(contract, plan['tasks'], state)
+    if any(expected['depends_on'] != actual['depends_on'] for expected, actual in zip(wired, plan['tasks'])):
         raise ValueError('합계와 행 개수는 같은 선별 원본에서 계산하고 최종 결과에 함께 연결해야 합니다.')
+    if wired != plan['tasks']:
+        raise ValueError('합계·행 개수 조건의 근거가 현재 요청 또는 후속 변경을 인용하지 않습니다.')

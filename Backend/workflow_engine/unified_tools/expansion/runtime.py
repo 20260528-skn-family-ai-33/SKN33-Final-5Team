@@ -66,10 +66,17 @@ def table_aggregate(rows,group_by,operation,column=None,null_policy="error"):
     return out
 @tool("table.join","Inner/left join with explicit keys, null-key and cardinality checks.")
 def table_join(left,right,keys,how="inner",cardinality="many_to_one"):
+    return join_rows(left,right,keys,how,cardinality,null_keys="error")
+
+def join_rows(left,right,keys,how,cardinality,*,null_keys):
     if how not in {"inner","left"} or cardinality not in {"one_to_one","many_to_one"}:raise ValueError("Unsupported join policy")
     if not keys:raise ValueError("Join keys required")
     def key(row):
         v=tuple(row[k] for k in keys)
+        if null_keys=="match":
+            # Grouped table aggregates use JSON keys, which distinguish null,
+            # empty text, boolean and number values that Python may equate.
+            return json.dumps(v,ensure_ascii=False)
         if any(x is None for x in v):raise ValueError("Null join key")
         return v
     index={}
@@ -164,9 +171,16 @@ def text_hash(text):return hashlib.sha256(text.encode()).hexdigest()
 class Context:
     root:Path
     connectors:dict=field(default_factory=dict)
-    def file(self,relative,*,must_be_file=False):
+    file_aliases:dict[Path,str]=field(default_factory=dict)
+    def file(self,relative,*,must_be_file=False,allow_alias=True):
+        if must_be_file and isinstance(relative,dict):
+            # A bound asset already identifies a specific physical file.
+            relative,allow_alias=relative['path'],False
         root=self.root.resolve();p=(root/relative).resolve()
         if not p.is_relative_to(root):raise ValueError("File path leaves authorized root")
+        if must_be_file and allow_alias:
+            alias=self.file_aliases.get(p.relative_to(root))
+            if alias is not None:p=self.file(alias)
         if must_be_file and p.is_dir():raise IsADirectoryError("Expected a file, received a directory")
         return p
 @tool("file.read_text","Read UTF-8 text within the selected workspace root.")

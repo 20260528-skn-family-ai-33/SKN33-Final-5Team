@@ -99,7 +99,7 @@ ARGUMENT_CONSTRAINTS = {
  ('email.list','read_messages'):{'max_results':{'type':'positive_integer','maximum':500}},
  ('filter_sort','filter'):{'predicates':{'type':'array','items':'object','min_items':1},'combine':{'enum':['and','or']}},
  ('join_tables','join'):{'keys':{'type':'array','items':'string','min_items':1},'how':{'enum':['inner','left']},
-     'cardinality':{'enum':['one_to_one','many_to_one']},'null_keys':{'enum':['error']},'max_rows':{'type':'positive_integer'}},
+     'cardinality':{'enum':['one_to_one','many_to_one']},'null_keys':{'enum':['error','match']},'max_rows':{'type':'positive_integer'}},
  ('join_tables','join_records'):{'keys':{'type':'array','items':'string','min_items':1},
      'how':{'enum':['inner','left']},'cardinality':{'enum':['one_to_one','many_to_one']}},
  ('compare_tables','diff'):{'keys':{'type':'array','items':'string','min_items':1}},

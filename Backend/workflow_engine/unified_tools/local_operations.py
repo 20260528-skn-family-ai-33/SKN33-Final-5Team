@@ -32,7 +32,7 @@ def transformed_table(source,result):
 
 def path(asset,context):
  if context is None:raise ValueError("Context required")
- return context.file(asset if isinstance(asset,str) else asset["path"],must_be_file=True)
+ return context.file(asset,must_be_file=True)
 def version(asset,expected,context):
  p=path(asset,context)
  if expected!=hashlib.sha256(p.read_bytes()).hexdigest():raise ValueError("Asset version conflict")
@@ -170,12 +170,12 @@ def parse_dates(table,columns,input_format,timezone):
     parsed=a
    r[c]=parsed.isoformat()
  return {"table":globals()["table"](data)}
-@operation("join_tables","join","inner/left equal-named keys; one_to_one/many_to_one; null_keys=error; max_rows cap")
+@operation("join_tables","join","inner/left equal-named keys; one_to_one/many_to_one; null_keys=error/match; max_rows cap")
 def join(left,right,keys,how,cardinality,null_keys,max_rows):
  from workflow_engine.unified_tools.dispatcher import runtime
- positive(max_rows);enum(null_keys,{"error"})
+ positive(max_rows);enum(null_keys,{"error","match"})
  if any(not isinstance(k,str) for k in keys):raise ValueError("Equal-named string join keys required")
- data=runtime.table_join(rows(left),rows(right),keys,how,cardinality)
+ data=runtime.join_rows(rows(left),rows(right),keys,how,cardinality,null_keys=null_keys)
  if len(data)>max_rows:raise ValueError("Join exceeds max_rows")
  if data:return {"table":table(data)}
  # Empty record arrays cannot carry a Table's declared schema. Keep the same

@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+from uuid import uuid4
 from documents.resources.document_resources import RemovedUpload, saved_input
 
 from workflow_engine.catalog.canonical import operation_spec, arguments_spec, parse_arguments, ports
@@ -76,10 +77,10 @@ def validate_settings(node, resources=(), allow_unbound=False):
     return spec, args
 
 
-def execution_context(storage):
+def execution_context(storage, file_aliases=None):
     root = Path(storage.path).parent / 'operation-files'
     root.mkdir(parents=True, exist_ok=True)
-    context = Context(root, dict(getattr(storage, 'workflow_connectors', {})))
+    context = Context(root, dict(getattr(storage, 'workflow_connectors', {})), file_aliases or {})
     # Only connectors injected by the scoped service storage are executable.
     # Never fall back to a process-wide Google identity in a multi-user service.
     hosts = [v.strip() for v in os.getenv('A4B_LINK_ALLOWED_HOSTS', '').split(',') if v.strip()]
@@ -119,7 +120,7 @@ def model_provider(llm):
         content = [{'type':'text', 'text':json.dumps(arguments, ensure_ascii=False)}]
         if tool == 'document_visual_qa':
             for page in arguments['pages']:
-                path = context.file(page['path'], must_be_file=True)
+                path = context.file(page, must_be_file=True)
                 mime = mimetypes.guess_type(path.name)[0]
                 if mime not in ('image/png','image/jpeg') or path.stat().st_size > 10*1024*1024:
                     raise ValueError('시각 검토에는 10MiB 이하 PNG/JPEG 페이지가 필요합니다.')
@@ -131,7 +132,7 @@ def model_provider(llm):
 
 
 def file_artifact(asset, context):
-    path = context.file(asset['path'], must_be_file=True)
+    path = context.file(asset['path'], must_be_file=True, allow_alias=False)
     data = path.read_bytes()
     if len(data) > 30*1024*1024: raise ValueError('결과 파일은 30MiB 이하여야 합니다.')
     return {'name': path.name, 'mime': mimetypes.guess_type(path.name)[0] or 'application/octet-stream',
@@ -153,10 +154,25 @@ def execute(node, state, storage, config, llm):
         # days of this run, for scheduled and one-off runs alike.
         gmail_period=query_period(args.get('query'),config)
         args['query']=resolve_gmail_query(args.get('query'),config)
-    context = execution_context(storage)
+    aliases = {}
+    for output in state.get('outputs', {}).values():
+        if alias := output.get('_file_alias'):
+            aliases[Path(alias['logical'])] = alias['physical']
+    context = execution_context(storage, aliases)
     args = resolve_assets(args, storage, context, ids)
-    if spec.get('runtime_id') in ('file.read_text','file.read_csv') and isinstance(args.get('path'),dict):
-        args['path']=args['path']['path']
+    logical = None
+    if node['tool'] == 'export_result' and spec['id'] in ('write_csv', 'write_json', 'serialize'):
+        key = 'filename' if spec['id'] == 'serialize' else 'path'
+        filename = Path(args[key]).name
+        if filename in ('', '..'):
+            raise ValueError('결과 파일 이름을 지정하세요.')
+        destination = context.file(args[key], must_be_file=True, allow_alias=False)
+        relative = destination.relative_to(context.root.resolve())
+        logical = relative.as_posix()
+        if args.get('overwrite') is not True:
+            # Normal exports own a fresh file, including a replay after a write
+            # that was never checkpointed. Retain the requested download name.
+            args[key] = (Path('exports') / uuid4().hex / relative.with_name(filename)).as_posix()
     status = dispatcher.preflight(node['tool'], spec['id'], context)
     if status['status'] == 'external_connection_required':
         raise ValueError('도구는 등록되어 있지만 외부 계정 연결이 필요합니다: ' + node['tool'])
@@ -188,6 +204,9 @@ def execute(node, state, storage, config, llm):
     if 'asset' in declared:
         asset=result.get('artifact',result)
         outputs['asset'] = asset; outputs['artifact'] = file_artifact(asset, context)
+        if logical is not None:
+            # This mapping is available to later reads only after the node succeeds.
+            outputs['_file_alias'] = {'logical': logical, 'physical': asset['path']}
     if 'pages' in declared: outputs['pages'] = result['pages']
     if isinstance(result,str):outputs['text']=result or '(빈 문자열)'
     if isinstance(result,dict) and isinstance(result.get('answer'),dict) and isinstance(result['answer'].get('text'),str):outputs['text']=result['answer']['text'] or '(빈 답변)'

@@ -1687,43 +1687,91 @@ def _sort_hint(text, columns):
     return fields, (directions.pop() if len(directions) == 1 else None)
 
 
+# "정렬은 취소하지 말고", "정렬 빼지 마": a negated withdrawal keeps the sort as it is.
+_SORT_KEPT = re.compile(r'\s*(?:하|해)?\s*(?:지|진)\s*(?:마|말|않)|\s*하면\s*안')
+
+
+def _sort_turn(text, columns, pattern):
+    """What one user turn says about sorting: ('sorts', [...]) | ('cancelled',) |
+    ('hint', fields, direction) | None when it says nothing about sorting."""
+    found = []
+    for match in (pattern.finditer(text) if pattern else ()):
+        written = _WRITTEN_SORT.match(text, match.end())
+        if (not written or _SORT_DROPPED_AFTER.match(text, written.end())
+                or any(item['field'] == match['field'] for item in found)):
+            continue
+        kind = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
+        found.append({'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
+                      'value_type': kind})
+    if found:
+        return ('sorts', found)
+    cancelled = False
+    for m in list(_SORT_CANCELLED.finditer(text)):
+        kept = _SORT_KEPT.match(text, m.end())
+        if kept:  # blank the kept phrase so its "정렬" is not read as a new sort request
+            text = text[:m.start()] + ' ' * (kept.end() - m.start()) + text[kept.end():]
+        else:
+            cancelled = True
+    if cancelled:
+        return ('cancelled',)
+    if _SORT_WORDS.search(text):
+        return ('hint',) + _sort_hint(text, columns)
+    return None
+
+
 def sort_request(state):
-    """The user's current sorting instruction, from the latest user turn that states one.
+    """The user's current sorting instruction, built up over the user turns in order.
 
     Returns {'kind': 'sorts'|'cancelled'|'unparsed'|'none', 'sorts': [...], 'text': turn,
     'fields': [...], 'direction': str|None}.
     'sorts' lists exact attached-table columns (matched whole, longest first: "예정주문일"
-    is never "주문일") written before a direction. 'unparsed' means sorting was written
-    but no column/direction pair could be read; the draft must still carry a sort, and
-    whatever was read on its own (the key column in 'fields', or the one 'direction' of
-    "최신순") must hold for the primary sort key. File names never count as wording.
+    is never "주문일") with their direction. A later turn that names column+direction
+    replaces it; "정렬 빼고" withdraws it ("취소하지 마" does not); a later turn that
+    names only the column ("정렬 기준은 주문일이야") or only the direction ("최신순으로")
+    changes only that part and keeps what it did not say. 'unparsed' means sorting was
+    written but no column/direction pair is known: the draft must still carry a sort,
+    and the part read on its own ('fields' or 'direction') must hold for its primary key.
+    File names never count as wording.
     """
     tables = [r for r in (state or {}).get('resources', []) if r.get('kind') == 'table']
     columns = sorted({c for r in tables for c in r.get('columns', []) if isinstance(c, str) and c.strip()},
                      key=len, reverse=True)
     pattern = (re.compile(r'(?<![가-힣A-Za-z0-9_])(?P<field>' + '|'.join(map(re.escape, columns)) + r')(?![A-Za-z0-9_])')
                if columns else None)
-    for message in reversed((state or {}).get('messages', [])):
+    current = {'kind': 'none', 'sorts': [], 'text': ''}
+    for message in (state or {}).get('messages', []):
         if message.get('role') != 'user' or not isinstance(message.get('content'), str):
             continue
         text = mask_file_names(message['content'])
-        found = []
-        for match in (pattern.finditer(text) if pattern else ()):
-            written = _WRITTEN_SORT.match(text, match.end())
-            if (not written or _SORT_DROPPED_AFTER.match(text, written.end())
-                    or any(item['field'] == match['field'] for item in found)):
-                continue
-            kind = {'숫자': 'number', '문자': 'text'}.get(written['type'] or '')
-            found.append({'field': match['field'], 'direction': 'ascending' if written['asc'] else 'descending',
-                          'value_type': kind})
-        if found:
-            return {'kind': 'sorts', 'sorts': found, 'text': text}
-        if _SORT_CANCELLED.search(text):
-            return {'kind': 'cancelled', 'sorts': [], 'text': text}
-        if _SORT_WORDS.search(text):
-            fields, direction = _sort_hint(text, columns)
-            return {'kind': 'unparsed', 'sorts': [], 'text': text, 'fields': fields, 'direction': direction}
-    return {'kind': 'none', 'sorts': [], 'text': ''}
+        said = _sort_turn(text, columns, pattern)
+        if said is None:
+            continue
+        if said[0] == 'sorts':
+            current = {'kind': 'sorts', 'sorts': said[1], 'text': text}
+            continue
+        if said[0] == 'cancelled':
+            current = {'kind': 'cancelled', 'sorts': [], 'text': text}
+            continue
+        fields, direction = said[1], said[2]
+        if current['kind'] == 'sorts':
+            primary = current['sorts'][0]
+            if len(fields) == 1 and (fields[0] != primary['field'] or direction):
+                same = fields[0] == primary['field']
+                current = {'kind': 'sorts', 'text': text, 'sorts': [{
+                    'field': fields[0], 'direction': direction or primary['direction'],
+                    'value_type': primary['value_type'] if same else None}]}
+            elif not fields and direction and direction != primary['direction']:
+                current = {'kind': 'sorts', 'text': text,
+                           'sorts': [{**primary, 'direction': direction}] + current['sorts'][1:]}
+            elif len(fields) > 1:
+                current = {'kind': 'unparsed', 'sorts': [], 'text': text, 'fields': fields, 'direction': direction}
+            # Otherwise the turn only re-confirms the known sort ("정렬 기준은 주문일이야").
+        elif current['kind'] == 'unparsed':
+            current = {**current, 'text': text, 'fields': fields or current['fields'],
+                       'direction': direction or current['direction']}
+        else:
+            current = {'kind': 'unparsed', 'sorts': [], 'text': text, 'fields': fields, 'direction': direction}
+    return current
 
 
 def requested_sorts(state):
@@ -1732,16 +1780,36 @@ def requested_sorts(state):
 
 
 def _final_sort(draft):
-    """The order the output receives: the last native sort on the executable path."""
+    """The order of the table the result file actually receives.
+
+    Follows the data bindings back from the output node on the executable path, not
+    just the path order: a sort node that runs but whose table the writer does not
+    consume does not order the file. The nearest executed native sort upstream wins;
+    non-sorting filter/dedup steps in between keep its order.
+    """
+    from agent_builder.design.content_lineage import content_bindings
     from workflow_engine.execution_path import execution_path
-    path = execution_path(draft.get('workflow') or {})
-    order = []
-    for node in path:
+    workflow = draft.get('workflow') or {}
+    path = execution_path(workflow)
+    if not path:
+        return []
+    executed = {node['id'] for node in path}
+    nodes = {node['id']: node for node in workflow.get('nodes', [])}
+    outputs = [node for node in path if node['tool'] in ('write_result', 'export_result')]
+    pending, seen = [(outputs[-1] if outputs else path[-1], None)], set()
+    while pending:
+        node, output = pending.pop(0)
+        if (node['id'], output) in seen or node['id'] not in executed:
+            continue
+        seen.add((node['id'], output))
         if node['tool'] == 'filter_sort' and not node['settings'].get('operation'):
             sort = (node['settings'].get('execution_plan') or draft.get('execution_plan') or {}).get('sort') or []
             if sort:
-                order = sort
-    return order
+                return sort
+        for binding in content_bindings(node, output):
+            if binding['node_id'] in nodes:
+                pending.append((nodes[binding['node_id']], binding['output']))
+    return []
 
 
 def _sort_issue(requested, draft):

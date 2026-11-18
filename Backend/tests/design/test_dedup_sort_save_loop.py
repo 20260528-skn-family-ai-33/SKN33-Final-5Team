@@ -3,6 +3,7 @@
 Real service entry + LangGraph + SQLite; capability, condition and planner replies are
 fixtures, so these check routing/state contracts, not the production model.
 """
+import io
 import json
 import re
 import tempfile
@@ -166,7 +167,7 @@ def node(id, tool, bindings=(), **settings):
     return {'id': id, 'tool': tool, 'label': id, 'bindings': list(bindings), 'settings': {**base, **settings}}
 
 
-def make_planner(calls, sort=SORT, schedule=None):
+def make_planner(calls, sort=SORT, schedule=None, bypass=False):
     def planner(state):
         calls.append(state['messages'][-1]['content'])
         chosen = sort(state) if callable(sort) else sort
@@ -178,6 +179,16 @@ def make_planner(calls, sort=SORT, schedule=None):
                       execution_plan=plan, instructions=json.dumps(plan, ensure_ascii=False)),
                  node('out', 'write_result', [{'input': 'table', 'node_id': 'sort', 'output': 'table'}], format='csv')]
         edges = [{'source': 'read', 'target': 'sort', 'branch': 'next'}, {'source': 'sort', 'target': 'out', 'branch': 'next'}]
+        if bypass:
+            # read -> dedup -> sort -> out, but out consumes the dedup table (PR #142 review 4).
+            dedup = {**plan, 'sort': []}
+            nodes[1:1] = [node('dedup', 'filter_sort', [{'input': 'table', 'node_id': 'read', 'output': 'table'}],
+                               execution_plan=dedup, instructions=json.dumps(dedup, ensure_ascii=False))]
+            nodes[2]['bindings'] = [{'input': 'table', 'node_id': 'dedup', 'output': 'table'}]
+            nodes[3]['bindings'] = [{'input': 'table', 'node_id': 'dedup', 'output': 'table'}]
+            edges = [{'source': 'read', 'target': 'dedup', 'branch': 'next'},
+                     {'source': 'dedup', 'target': 'sort', 'branch': 'next'},
+                     {'source': 'sort', 'target': 'out', 'branch': 'next'}]
         draft = AgentDraft(name='중복 주문 정리', purpose='중복 제거 후 정렬', instructions='요청대로 처리',
                            tool_ids=['read_table', 'filter_sort', 'write_result'], document_ids=[file_id],
                            requirements=[{'description': '요청', 'source_id': 'user', 'quote': CURRENT['request']}],
@@ -298,7 +309,7 @@ def test_correct_sort_saves_by_chat_and_runs_in_the_requested_order(service, tab
     assert done['status'] == 'saved' and saved() == 1
     result = fakes['run'](done['saved_agent_id'])
     assert result['status'] == 'succeeded'
-    assert [row['주문번호'] for row in result['rows']] == order
+    assert csv_order(result) == order == [row['주문번호'] for row in result['rows']]
 
 
 @pytest.mark.parametrize('table,rows,request_text,sort', [
@@ -398,7 +409,7 @@ def test_withdrawing_the_sort_in_a_later_turn(service, planner_sort, saves, orde
     if saves:
         assert changed['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
-        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == order
+        assert result['status'] == 'succeeded' and csv_order(result) == order == [row['주문번호'] for row in result['rows']]
     else:
         assert changed['status'] == 'validation_failed' and any('정렬' in issue for issue in changed['issues'])
         assert done['status'] == 'validation_failed' and saved() == 0
@@ -420,7 +431,7 @@ def test_column_basis_wording_is_enforced_end_to_end(service, planner_sort, save
     if saves:
         assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
-        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == order
+        assert result['status'] == 'succeeded' and csv_order(result) == order == [row['주문번호'] for row in result['rows']]
     else:
         assert first['status'] == 'validation_failed' and any('요청한 정렬' in issue for issue in first['issues'])
         assert done['status'] == 'validation_failed' and saved() == 0
@@ -446,7 +457,7 @@ def test_latest_first_wording_saves_a_sorted_draft_end_to_end(service, planner_s
     if saves:
         assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
-        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == order
+        assert result['status'] == 'succeeded' and csv_order(result) == order == [row['주문번호'] for row in result['rows']]
     else:
         assert first['status'] == 'validation_failed' and any(issue in text for text in first['issues'])
         assert done['status'] == 'validation_failed' and saved() == 0
@@ -508,7 +519,7 @@ def test_file_named_like_a_sort_saves_a_dedup_only_draft_end_to_end(service, pla
     if saves:
         assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
-        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == ['A1', 'B2']
+        assert result['status'] == 'succeeded' and csv_order(result) == ['A1', 'B2']
     else:
         assert first['status'] == 'validation_failed' and done['status'] == 'validation_failed' and saved() == 0
 
@@ -533,7 +544,120 @@ def test_sort_key_named_in_a_later_turn_end_to_end(service, planner_sort, saves,
     if saves:
         assert changed['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
         result = fakes['run'](done['saved_agent_id'])
-        assert result['status'] == 'succeeded' and [row['주문번호'] for row in result['rows']] == order
+        assert result['status'] == 'succeeded' and csv_order(result) == order == [row['주문번호'] for row in result['rows']]
     else:
         assert changed['status'] == 'validation_failed' and any('주문일' in i for i in changed['issues'])
+        assert done['status'] == 'validation_failed' and saved() == 0
+
+
+# --- PR #142 review 4: negated withdrawal, follow-ups keep unsaid parts, file data path ----
+
+def csv_order(result):
+    """주문번호 order in the CSV file the run produced, not the run's response rows."""
+    import csv as _csv
+    content = result['artifact']['content'].lstrip('\ufeff')
+    return [row['주문번호'] for row in _csv.DictReader(io.StringIO(content))]
+
+
+def test_negated_withdrawal_keeps_the_sort():
+    for kept in ['정렬은 취소하지 말고 저장해줘', '정렬 빼지 마', '정렬은 지우지 말고 그대로 둬', '정렬 제외하지 마']:
+        assert sort_request(conversation(REQUEST, kept))['sorts'] == [
+            {'field': '주문일', 'direction': 'ascending', 'value_type': None}], kept
+    assert sort_request(conversation(REQUEST, '정렬은 취소해줘'))['kind'] == 'cancelled'
+
+
+def test_follow_up_changes_only_what_it_says():
+    desc = REQUEST.replace('주문일 오름차순', '주문일 내림차순')
+    same_key = sort_request(conversation(desc, '정렬 기준은 주문일이야'))['sorts']
+    assert same_key == [{'field': '주문일', 'direction': 'descending', 'value_type': None}]
+    new_key = sort_request(conversation(desc, '정렬 기준은 금액이야'))['sorts']
+    assert new_key == [{'field': '금액', 'direction': 'descending', 'value_type': None}]
+    new_direction = sort_request(conversation(REQUEST, '최신순으로 바꿔줘'))['sorts']
+    assert new_direction == [{'field': '주문일', 'direction': 'descending', 'value_type': None}]
+    # An unrelated later answer or a bare "정렬해서 저장" changes nothing.
+    assert sort_request(conversation(desc, '첫 행만 남김', '정렬해서 저장해줘'))['sorts'] == same_key
+
+
+def test_writer_that_bypasses_the_sort_has_no_sort():
+    from agent_builder.conditions.condition_readiness import _final_sort
+    draft = dedup_draft(SORT)
+    assert _final_sort(draft) == SORT
+    dedup = {**draft['execution_plan'], 'sort': []}
+    nodes = draft['workflow']['nodes']
+    nodes.insert(1, {'id': 'dedup', 'tool': 'filter_sort', 'label': 'dedup', 'settings': {'execution_plan': dedup},
+                     'bindings': [{'input': 'table', 'node_id': 'read', 'output': 'table'}]})
+    nodes[2]['bindings'] = [{'input': 'table', 'node_id': 'dedup', 'output': 'table'}]
+    nodes[3]['bindings'] = [{'input': 'table', 'node_id': 'dedup', 'output': 'table'}]
+    draft['workflow']['edges'] = [{'source': 'read', 'target': 'dedup', 'branch': 'next'},
+                                  {'source': 'dedup', 'target': 'sort', 'branch': 'next'},
+                                  {'source': 'sort', 'target': 'out', 'branch': 'next'}]
+    assert _final_sort(draft) == []
+    nodes[3]['bindings'] = [{'input': 'table', 'node_id': 'sort', 'output': 'table'}]
+    assert _final_sort(draft) == SORT
+
+
+def kept_sort(state):
+    return SORT
+
+
+@pytest.mark.parametrize('planner_sort,saves,order', [
+    (SORT, True, ['B2', 'A1']),   # keeps 주문일 오름차순 after "취소하지 말고": saved
+    ([], False, None),            # drops the sort although the user said to keep it: blocked
+])
+def test_keep_sort_reply_end_to_end(service, planner_sort, saves, order):
+    act, saved, fakes = service
+    calls = []
+    planner = make_planner(calls, sort=SORT)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    assert act('message', planner, content=REQUEST)['status'] == 'ready'
+    planner = make_planner(calls, sort=planner_sort)
+    changed = act('message', planner, content='정렬은 취소하지 말고 저장해줘')
+    done = act('message', planner, content='확인완료. 저장') if changed['status'] != 'saved' else changed
+    if saves:
+        assert done['status'] == 'saved' and saved() == 1
+        result = fakes['run'](done['saved_agent_id'])
+        assert result['status'] == 'succeeded' and csv_order(result) == order
+    else:
+        assert changed['status'] == 'validation_failed' and saved() == 0
+
+
+DESC_REQUEST = REQUEST.replace('주문일 오름차순', '주문일 내림차순')
+
+
+@pytest.mark.parametrize('planner_sort,saves,order', [
+    (LATEST, True, ['A1', 'B2']),   # keeps 내림차순 after "정렬 기준은 주문일이야": saved
+    (SORT, False, None),            # flips to 오름차순: blocked
+])
+def test_column_reconfirmation_keeps_the_direction_end_to_end(service, planner_sort, saves, order):
+    act, saved, fakes = service
+    CURRENT['request'] = DESC_REQUEST
+    calls = []
+    planner = make_planner(calls, sort=LATEST)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    assert act('message', planner, content=DESC_REQUEST)['status'] == 'ready'
+    planner = make_planner(calls, sort=planner_sort)
+    changed = act('message', planner, content='정렬 기준은 주문일이야')
+    assert not changed['pending_questions']
+    done = act('message', planner, content='확인완료. 저장')
+    if saves:
+        assert changed['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
+        result = fakes['run'](done['saved_agent_id'])
+        assert result['status'] == 'succeeded' and csv_order(result) == order
+    else:
+        assert changed['status'] == 'validation_failed' and saved() == 0
+
+
+@pytest.mark.parametrize('bypass,saves', [(False, True), (True, False)])
+def test_csv_must_come_from_the_sorted_table_end_to_end(service, bypass, saves):
+    act, saved, fakes = service
+    planner = make_planner([], sort=SORT, bypass=bypass)
+    act('upload', planner, asset=dict(TABLE), rows=ROWS)
+    first = act('message', planner, content=REQUEST)
+    done = act('message', planner, content='확인완료. 저장')
+    if saves:
+        assert first['status'] == 'ready' and done['status'] == 'saved' and saved() == 1
+        result = fakes['run'](done['saved_agent_id'])
+        assert result['status'] == 'succeeded' and csv_order(result) == ['B2', 'A1']
+    else:
+        assert first['status'] == 'validation_failed' and any('정렬' in i for i in first['issues'])
         assert done['status'] == 'validation_failed' and saved() == 0

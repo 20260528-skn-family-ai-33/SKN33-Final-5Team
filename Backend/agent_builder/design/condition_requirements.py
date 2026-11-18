@@ -73,7 +73,15 @@ def owned_specs(confirmed, state):
 
 
 def multiple_outputs(state):
-    text = ' '.join(m['content'] for m in state.get('messages', []) if m['role'] == 'user')
+    from .export_intent import explicit_export_intent
+    from .output_selection_request import _request_turns
+    intent = explicit_export_intent(state)
+    if intent['cancelled']:
+        return False
+    if intent['additional']:
+        return True
+    text = ' '.join(text for source, text in _request_turns(state)
+                    if source >= intent['active_from'])
     # Keeping every row/column is a data policy, not a request for several artifacts.
     # Mask only that scoped use of "all"; retain independent output clauses and
     # the existing separate-file/format signals in the same request.

@@ -1,11 +1,14 @@
 {
   "metadata": {
     "model": "a4b-qwen35-9b-final664-pilot32k",
-    "server_base": "a129638a47c083a2b7ae1429c4165b972e19c47d",
+    "server_base": "baee617a33571c643c3514f6a07c53e64cf69191",
     "date": "2026-11-18",
     "requirements_model_calls": 0,
-    "source": "actual model draft using in-memory local fixes; only uploaded resource ID remapped",
-    "input_sha256": "1b1c8d0736f06556932157231a2ca1566003f1283cae84be9fd69b0b3df1dd5d"
+    "source": "actual model draft regenerated using in-memory PR151 fixes; resource ID remapped; server-only unused document_table_id=null omitted for branch schema compatibility",
+    "input_sha256": "1b1c8d0736f06556932157231a2ca1566003f1283cae84be9fd69b0b3df1dd5d",
+    "omitted_server_default_fields": {
+      "document_table_id": null
+    }
   },
   "draft": {
     "name": "자료 처리",
@@ -119,7 +122,7 @@
               ],
               "sort": [],
               "match": "all",
-              "missing_policy": "keep",
+              "missing_policy": "exclude",
               "duplicate_policy": "keep",
               "duplicate_field": null,
               "output_format": "json"
@@ -149,7 +152,7 @@
             "file_ids": [],
             "query": null,
             "fields": [],
-            "instructions": "{\"filters\": [{\"field\": \"주문상태\", \"operator\": \"eq\", \"value\": \"완료\", \"compare_field\": null, \"value_type\": \"text\"}], \"sort\": [], \"match\": \"all\", \"missing_policy\": \"keep\", \"duplicate_policy\": \"keep\", \"duplicate_field\": null, \"output_format\": \"json\"}",
+            "instructions": "{\"filters\": [{\"field\": \"주문상태\", \"operator\": \"eq\", \"value\": \"완료\", \"compare_field\": null, \"value_type\": \"text\"}], \"sort\": [], \"match\": \"all\", \"missing_policy\": \"exclude\", \"duplicate_policy\": \"keep\", \"duplicate_field\": null, \"output_format\": \"json\"}",
             "format": null,
             "question": null,
             "condition_field": null,
@@ -219,7 +222,15 @@
             "operation": null,
             "arguments_json": null,
             "node_ref": null,
-            "execution_plan": null,
+            "execution_plan": {
+              "filters": [],
+              "sort": [],
+              "match": "all",
+              "missing_policy": "keep",
+              "duplicate_policy": "keep",
+              "duplicate_field": null,
+              "output_format": "json"
+            },
             "agent_id": null,
             "agent_version": null,
             "output_node": null,
@@ -317,7 +328,15 @@
             "operation": null,
             "arguments_json": null,
             "node_ref": null,
-            "execution_plan": null,
+            "execution_plan": {
+              "filters": [],
+              "sort": [],
+              "match": "all",
+              "missing_policy": "keep",
+              "duplicate_policy": "keep",
+              "duplicate_field": null,
+              "output_format": "json"
+            },
             "agent_id": null,
             "agent_version": null,
             "output_node": null,

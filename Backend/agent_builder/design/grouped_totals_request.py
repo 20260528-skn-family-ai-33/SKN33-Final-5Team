@@ -20,6 +20,30 @@ _REQUEST = re.compile(
     rf'(?:\s+(?P=left)(?:이|가)\s*0인\s+(?P=value)\s+(?P=subject)도\s+(?P=count)(?:에는|에)\s*포함{_END})?\s*', re.I)
 
 
+def group_sort_type(asset, field):
+    """Use the complete upload profile, never a column name or a few samples."""
+    profiles = asset.get('profile')
+    profile = profiles.get(field) if isinstance(profiles, dict) else None
+    if not isinstance(profile, dict):
+        return None
+    total, missing = asset.get('row_count'), profile.get('missing')
+    if type(total) is not int or type(missing) is not int or not 0 <= missing < total:
+        return None
+    raw_types = profile.get('types')
+    if not isinstance(raw_types, list) or any(not isinstance(t, str) for t in raw_types):
+        return None
+    types = set(raw_types)
+    numeric = profile.get('numericStrings')
+    if types == {'number'}:
+        return 'number'
+    if types == {'string'} and type(numeric) is int:
+        if numeric == total - missing:
+            return 'number'
+        if numeric == 0:
+            return 'text'
+    return None
+
+
 def grouped_totals_packet(state):
     users = [m['content'] for m in state.get('messages', []) if m.get('role') == 'user']
     assets = state.get('resources', [])
@@ -33,11 +57,12 @@ def grouped_totals_packet(state):
     asset = assets[0]
     columns = asset.get('columns', [])
     status = v['subject'] + '상태'
+    sort_type = group_sort_type(asset, v['group'])
     if (asset.get('name') != v['file'] or not asset.get('id')
             or not {v['left'], v['right'], v['group'], status} <= set(columns)
             or not all(v[key].isidentifier() for key in ('left', 'right'))
             or len({v['group'], v['measure'], v['total'], v['count'], 'sum', 'count'}) != 6
-            or v['measure'] in columns or v['group'] in (v['left'], v['right'])):
+            or v['measure'] in columns or v['group'] in (v['left'], v['right']) or sort_type is None):
         return None
     specs = [
         dict(kind='read', file_ids=[asset['id']]),
@@ -48,7 +73,7 @@ def grouped_totals_packet(state):
         dict(kind='rename', source='sum', target=v['total']),
         dict(kind='aggregate', fields=[v['group']], aggregation='count', sum_field=None),
         dict(kind='rename', source='count', target=v['count']),
-        dict(kind='sort', sort=[dict(field=v['group'], direction='ascending' if v['direction']=='오름차순' else 'descending', value_type='text')]),
+        dict(kind='sort', sort=[dict(field=v['group'], direction='ascending' if v['direction']=='오름차순' else 'descending', value_type=sort_type)]),
         dict(kind='select_fields', fields=[v['group'], v['total'], v['count']]),
         dict(kind='export', format='csv'),
     ]

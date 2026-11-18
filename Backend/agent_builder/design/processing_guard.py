@@ -27,16 +27,16 @@ _ACTIONS = re.compile(
     r'|(?P<join>결합|병합)|(?P<extract>추출)|(?P<compare>비교|대조)')
 _INFLECTED_ACTIONS = re.compile(r'(?P<compute>곱한|곱해|곱하|더한|더해|나눈|나누어)|(?P<filter>행만\s*(?:남겨|남기|골라|추려))')
 _VERB = re.compile(r'\s*(?:해|하|합니|을\s*해|를\s*해|을\s*하|를\s*하)')
-_NEGATED = re.compile(r'\s*(?:은|는|을|를|만)?\s*(?:(?:하)?지(?:는)?\s*(?:마|말|않)|없이|말고|취소|안\s*해)')
+_NEGATED = re.compile(r'\s*(?:은|는|을|를|만)?\s*(?:(?:하)?지(?:는)?\s*(?:마|말|않)|없이|말고|취소|안\s*해|빼고|제외해|제외하고|생략해|생략하고)')
 _LITERALS = re.compile(r'''"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’|@?[\w.-]+\.(?:csv|json|xlsx|pdf|txt)\b''', re.I)
 
 
 def _legacy_actions(state):
     actions = set()
-    for message in active_request_messages(state):
-        if message.get('role') != 'user':
-            continue
-        text = _LITERALS.sub(' ', message['content'])
+    from .output_selection_request import _request_turns
+
+    for _, request in _request_turns(state):
+        text = _LITERALS.sub(' ', request)
         mentions = sorted([*_ACTIONS.finditer(text), *_INFLECTED_ACTIONS.finditer(text)], key=lambda m: m.start())
         for match in mentions:
             kind = match.lastgroup

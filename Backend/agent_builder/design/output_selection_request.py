@@ -29,7 +29,8 @@ def _request_turns(state):
     active_users = [m['content'] for m in active if m.get('role')=='user']
     offset = len(users)-len(active_users)
     for index, content in enumerate(active_users):
-        text = re.sub(r'"[^"\n]*"|“[^”\n]*”|\x27[^\x27\n]*\x27', ' ', content)
+        text = re.sub(r'```[\s\S]*?```|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|\x27[^\x27\n]*\x27', ' ', content)
+        text = re.sub(r'(?:^|[.!?;\n])\s*(?:예시(?:로|는)\s+|예를\s*들어\s+|문구는\s+)[^.!?;\n]*', ' ', text)
         if (re.search(r'뭐야|뭔가요|무슨\s*뜻|설명해|무엇인가요', text)
                 and not re.search(r'바꿔|변경해|추가해|제외해|선택해', text)):
             continue
@@ -76,6 +77,9 @@ def _all_columns_requested(state):
 
 
 def output_selection(state):
+    from .export_intent import explicit_export_intent
+    if explicit_export_intent(state)['cancelled']:
+        return None
     assets=state.get('resources',[])
     if len(assets)!=1 or assets[0].get('kind')!='table':
         return None
@@ -114,6 +118,9 @@ def _selection_fields(text, columns):
 def literal_output_format(state):
     """The format of one unambiguous named projection, never a source filename."""
     from .condition_requirements import multiple_outputs
+    from .export_intent import explicit_export_intent
+    if explicit_export_intent(state)['cancelled']:
+        return None
     if output_selection(state) is None or multiple_outputs(state):
         return None
     source, text = _selection_request(state)
@@ -134,6 +141,13 @@ def validate_output_selection(plan, state):
     if plan['unresolved']:
         return
     specs = [task['spec'] for task in plan['tasks']]
+    from .export_intent import explicit_export_intent
+    intent = explicit_export_intent(state)
+    exports = {s['format'] for s in specs if s['kind']=='export'}
+    if intent['cancelled'] and exports:
+        raise ValueError('취소한 파일 저장 작업이 업무 목록에 남아 있습니다.')
+    if intent['additional'] and exports != intent['formats']:
+        raise ValueError('같은 결과를 추가로 저장하라는 파일 형식이 누락되거나 변경됐습니다.')
     # Output revisions do not cancel row criteria. Check these even when a
     # later turn switches to all columns or a different output column list.
     from .numeric_filter_proof import guarantees_filter, contains_alternative

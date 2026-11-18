@@ -20,14 +20,15 @@ def grouped_totals_steps(state):
     def add(tool, settings, bindings, operation=None):
         steps.append(dict(tool=tool, operation=operation, settings=settings, bindings=bindings))
     def plan(**kw):
-        return ExecutionPlan.model_validate(dict(missing_policy='keep', duplicate_policy='keep',
-            duplicate_field=None, output_format='json', **{'filters':[], 'sort':[], 'match':'all', **kw})).model_dump(mode='json')
+        return ExecutionPlan.model_validate({**dict(missing_policy='keep', duplicate_policy='keep',
+            duplicate_field=None, output_format='json', filters=[], sort=[], match='all'), **kw}).model_dump(mode='json')
     add('read_table', dict(file_ids=specs[0]['file_ids']), [])
-    add('filter_sort', dict(execution_plan=plan(filters=specs[1]['filters'], match='all')), bind(1))
+    add('filter_sort', dict(execution_plan=plan(filters=specs[1]['filters'], match='all', missing_policy='exclude')), bind(1))
     add('calculate_columns', dict(table_operation='compute', calculation_formula=specs[2]['formula'],
                                  output_column=specs[2]['output_column']), bind(2))
     for spec, rename in ((specs[3], specs[4]), (specs[5], specs[6])):
-        add('aggregate_table', {k:spec[k] for k in ('fields','aggregation','sum_field')}, bind(3))
+        add('aggregate_table', {**{k:spec[k] for k in ('fields','aggregation','sum_field')},
+                                'execution_plan':plan()}, bind(3))
         add('calculate_columns', dict(table_operation='rename', rename_from=rename['source'],
                                      rename_to=rename['target']), bind(len(steps)))
     add('join_tables', dict(arguments_json=dict(left={'$binding':'left'}, right={'$binding':'right'},
@@ -95,6 +96,8 @@ def grouped_totals_issues(state, draft):
             return ['합계·행 개수는 같은 선별 원본을 사용하고 두 결과 모두 최종 CSV에 연결되어야 합니다.']
         for key, value in step['settings'].items():
             actual = parse_arguments(settings) if key == 'arguments_json' else settings.get(key)
+            if key == 'execution_plan':
+                actual = settings.get(key) or draft.get('execution_plan')
             if actual != value:
                 return ['합계·행 개수의 실행 설정이 원문에서 확인한 조건과 다릅니다: '+key]
     return []

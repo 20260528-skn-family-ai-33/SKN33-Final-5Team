@@ -177,7 +177,16 @@ def join(left,right,keys,how,cardinality,null_keys,max_rows):
  if any(not isinstance(k,str) for k in keys):raise ValueError("Equal-named string join keys required")
  data=runtime.table_join(rows(left),rows(right),keys,how,cardinality)
  if len(data)>max_rows:raise ValueError("Join exceeds max_rows")
- return {"table":table(data)}
+ if data:return {"table":table(data)}
+ # Empty record arrays cannot carry a Table's declared schema. Keep the same
+ # collision/ordering rules as table_join even when no rows match.
+ leftcols=transformed_table(left,[])['columns'];rightcols=transformed_table(right,[])['columns']
+ columns=list(leftcols)
+ for name in sorted(set(rightcols)-set(keys)):
+  target=name+'_right' if name in columns else name
+  if target in columns:raise ValueError("Join output column collision")
+  columns.append(target)
+ return {"table":table(data,columns)}
 @operation("compare_tables","diff","Unique non-null keys; added/deleted/changed cells; absolute numeric tolerance")
 def diff_tables(baseline,candidate,keys,compare_columns,absolute_tolerance):
  if type(absolute_tolerance) not in (int,float) or not math.isfinite(absolute_tolerance) or absolute_tolerance<0:raise ValueError("Nonnegative finite tolerance required")

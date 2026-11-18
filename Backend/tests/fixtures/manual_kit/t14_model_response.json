@@ -5,9 +5,9 @@
     "num_ctx": 32768,
     "num_predict": 8192,
     "thinking": true,
-    "source_release": "facfeaa14014ed5e82551ac7345153c40236e2e0",
-    "local_base": "1f87070",
-    "note": "Read-only checkpoint, local output-selection fixes applied in one-off process memory. File ID replaced with table-source; expected CSV not supplied to model."
+    "source_release": "baee617a33571c643c3514f6a07c53e64cf69191",
+    "local_base": "bded7bd + PR151 review fixes",
+    "note": "Actual model regenerated in a read-only one-off process; resource ID remapped and unused server document_table_id=null omitted for branch schema compatibility; expected CSV not supplied to model."
   },
   "extraction": {
     "tasks": [

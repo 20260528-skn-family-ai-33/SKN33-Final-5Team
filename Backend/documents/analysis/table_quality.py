@@ -95,6 +95,38 @@ def anchor_geometry_issues(matches):
     return issues
 
 
+def independent_anchor_issues(matches, cells, declared_cols=None):
+    """Do not let a candidate's own box manufacture its position evidence.
+
+    Same-row peers must share a vertical band. An internal neighbouring column
+    without anchors has no independently established boundary; agreement among
+    same-column candidates cannot establish that missing boundary.
+    """
+    rows, columns = defaultdict(list), defaultdict(list)
+    for cell, piece in matches:
+        row, col = position(cell)
+        if cell.get('row_span', 1) == 1:
+            rows[row].append(piece)
+        if cell.get('col_span', 1) == 1:
+            columns[col].append(piece)
+    issues = []
+    for row, peers in rows.items():
+        if len(peers) > 1 and max(p['box'][1] for p in peers) >= min(p['box'][3] for p in peers):
+            issues.append(dict(kind='anchor_row_alignment_conflict', row=row))
+    logical_cols = max((position(c)[1] + c.get('col_span', 1) for c in cells), default=0)
+    if type(declared_cols) is int:
+        logical_cols = max(logical_cols, declared_cols)
+    for col in columns:
+        missing_left = col > 0 and col-1 not in columns
+        missing_right = col+1 < logical_cols and col+1 not in columns
+        if not (missing_left or missing_right):
+            continue
+        # No independent boundary exists on this internal side. Agreement
+        # between candidates cannot establish where the unobserved column is.
+        issues.append(dict(kind='anchor_column_evidence_missing', column=col))
+    return issues
+
+
 def reconcile(data, prediction):
     cells = deepcopy(data.get('cells') or [])
     report = {'repairs': [], 'issues': [], 'method': 'unique_text_ocr_geometry_v1'}
@@ -150,6 +182,7 @@ def reconcile(data, prediction):
     matches = [(by_text[normalized(p['text'])], p) for p in pieces
                if pc[normalized(p['text'])] == cc[normalized(p['text'])] == 1 and p['score'] >= .98]
     report['issues'].extend(anchor_geometry_issues(matches))
+    report['issues'].extend(independent_anchor_issues(matches, cells, data.get('num_cols')))
     if report['issues']:
         # Preserve original values; conflicting anchors must not confirm cells
         # or support repairs elsewhere in the table.

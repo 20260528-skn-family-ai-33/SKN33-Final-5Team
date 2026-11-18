@@ -137,8 +137,8 @@ test('reservation management uses saved schedule and keeps an unscheduled workfl
  });
  try{
   assert.equal(document.querySelector('h1')?.textContent,'예약 관리');assert.match(document.querySelector('table')!.textContent!,/매일 09:00/);
-  await click(button('상세 확인'));assert.deepEqual(opened,['A']);
-  await click(button('일정 관리'));await click(button('예약 해제'));assert.equal(document.querySelector('[data-schedule-id="A"]'),null);
+  await click(button('일정 관리'));await click(button('예약 자료·실행 확인'));assert.deepEqual(opened,['A']);
+  await click(button('예약 해제'));assert.equal(document.querySelector('[data-schedule-id="A"]'),null);
   await click(button('기존 워크플로우에 예약 추가'));
   const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;assert.deepEqual(Array.from(picker.options).map(option=>option.value),['','A','B']);
   await change(picker,'B');await click(button('예약 추가'));assert.ok(document.querySelector('[data-schedule-id="B"]'));

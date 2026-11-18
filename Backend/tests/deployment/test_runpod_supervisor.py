@@ -18,10 +18,26 @@ SCRIPTS = ROOT / 'scripts/runpod'
 def eventually(check, timeout=8):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
-        if check():
-            return
+        value = check()
+        if value:
+            return value
         time.sleep(.02)
     raise AssertionError('Timed out waiting for fixture state')
+
+
+def read_pid(path):
+    try:
+        pid = int(path.read_text())
+    except (FileNotFoundError, ValueError):
+        return None
+    return pid if pid > 0 else None
+
+
+def wait_pid(path, previous=None, timeout=8):
+    def changed_pid():
+        pid = read_pid(path)
+        return pid if pid != previous else None
+    return eventually(changed_pid, timeout=timeout)
 
 
 @unittest.skipUnless(sys.platform == 'linux', 'Linux Bash/process-group integration')
@@ -123,7 +139,10 @@ server.serve_forever()
             try: os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError: pass
         for path in self.root.glob('*.pid'):
-            try: os.killpg(int(path.read_text()), signal.SIGKILL)
+            pid = read_pid(path)
+            if pid is None:
+                continue
+            try: os.killpg(pid, signal.SIGKILL)
             except ProcessLookupError: pass
 
     def test_missing_committed_parser_fails_without_using_legacy(self):
@@ -140,13 +159,14 @@ server.serve_forever()
         scripts = release/'scripts/runpod'
         scripts.mkdir(parents=True)
         (scripts/'pod_pdf_worker.py').touch()
-        (scripts/'gpu_parser_server.py').write_text((self.app/'gpu_parser_server.py').read_text())
+        # Exercise warmup starting before the parser fixture publishes its PID.
+        (scripts/'gpu_parser_server.py').write_text('import time; time.sleep(.2)\n'+(self.app/'gpu_parser_server.py').read_text())
         (self.app/'gpu_parser_server.py').write_text(self.common+"(r/'wrong-source').touch()\n")
         process = self.start(source_root=release)
-        eventually(lambda: (self.root/'warm.pid').exists())
-        first = int((self.root/'parser.pid').read_text())
+        wait_pid(self.root/'warm.pid')
+        first = wait_pid(self.root/'parser.pid')
         os.kill(first, signal.SIGTERM)
-        eventually(lambda: (self.root/'parser.pid').read_text() not in ('', str(first)))
+        wait_pid(self.root/'parser.pid', previous=first)
         self.assertIsNone(process.poll())
         self.assertFalse((self.root/'wrong-source').exists())
         self.assertFalse((self.root/'legacy-started').exists())
@@ -161,8 +181,7 @@ server.serve_forever()
 
     def test_term_during_warmup_stops_all_children_promptly(self):
         process = self.start()
-        eventually(lambda: all((self.root/(name+'.pid')).exists() for name in ('ollama', 'parser', 'warm')))
-        pids = [int((self.root/(name+'.pid')).read_text()) for name in ('ollama', 'parser', 'warm')]
+        pids = [wait_pid(self.root/(name+'.pid')) for name in ('ollama', 'parser', 'warm')]
         started = time.monotonic(); process.terminate(); process.wait(timeout=2)
         self.assertLess(time.monotonic()-started, 2)
         for pid in pids:
@@ -172,11 +191,10 @@ server.serve_forever()
 
     def assert_service_exit_during_warmup_restarts(self, service, exit_signal):
         process = self.start()
-        eventually(lambda: all((self.root/(name+'.pid')).exists() for name in ('ollama', 'parser', 'warm')))
-        original = {name: int((self.root/(name+'.pid')).read_text()) for name in ('ollama', 'parser', 'warm')}
+        original = {name: wait_pid(self.root/(name+'.pid')) for name in ('ollama', 'parser', 'warm')}
         os.kill(original[service], exit_signal)
         # Warmup stays blocked indefinitely, so restart cannot depend on it finishing.
-        eventually(lambda: int((self.root/'warm.pid').read_text()) != original['warm'], timeout=3)
+        wait_pid(self.root/'warm.pid', previous=original['warm'], timeout=3)
         for pid in original.values():
             eventually(lambda pid=pid: not Path('/proc', str(pid)).exists())
         self.assertIsNone(process.poll())
@@ -199,7 +217,7 @@ server.serve_forever()
     def test_ready_requires_authenticated_gateway_and_duplicate_start_preserves_it(self):
         (self.root/'warm-release').touch()
         process = self.start()
-        eventually(lambda: (self.root/'gateway.pid').exists())
+        wait_pid(self.root/'gateway.pid')
         time.sleep(.15)
         self.assertFalse((self.run/'ready').exists())
         (self.root/'gateway-listen').touch()

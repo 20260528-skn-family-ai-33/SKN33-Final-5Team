@@ -272,10 +272,18 @@ class OllamaPlanner:
             except urllib.error.HTTPError as error:
                 if error.code in (502, 503, 504, 524) and attempt < retries:
                     continue
-                raise ValueError('로컬 모델 호출에 실패했습니다. '+str(error)[:300]) from error
+                from infrastructure.llm.failure_classification import ModelTransportError
+                raise ModelTransportError.from_http_error(error) from error
             except (urllib.error.URLError, TimeoutError) as error:
-                raise ValueError('로컬 모델 호출에 실패했습니다. '+str(error)[:300]) from error
-        if raw.get('error'):raise ValueError('로컬 모델 오류: '+str(raw['error'])[:300])
+                from infrastructure.llm.failure_classification import ModelTransportError
+                raise ModelTransportError.from_exception(error) from error
+        if raw.get('error'):
+            from infrastructure.llm.failure_classification import ModelTransportError, context_limit_code
+            code=context_limit_code(raw['error'])
+            if code:
+                from infrastructure.llm.failure_classification import ModelContextLimitError
+                raise ModelContextLimitError(error_code=code)
+            raise ModelTransportError()
         if raw.get('done_reason') == 'length':
             raise ValueError('로컬 모델 응답이 출력 길이 제한으로 중단되었습니다. 잘린 응답은 처리하지 않습니다.')
         return {'content': raw.get('message', {}).get('content', ''),

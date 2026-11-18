@@ -137,6 +137,9 @@ def _generic_question(question,state):
     All three must hold, so real questions ("몇 시에 실행할까요?", "…조건을 알려주세요.") stay.
     """
     from agent_builder.design.turn_intent import _stems
+    from agent_builder.conditions.question_quality import strip_known_meta_instructions
+    if strip_known_meta_instructions(question) is None:
+        return True
     text=question.strip()
     users=' '.join(m['content'] for m in state.get('messages',[]) if m.get('role')=='user')
     # The sentence tells the user to check something ("확인해 주세요"); asking for information
@@ -148,21 +151,28 @@ _CHECK_REQUEST = re.compile(r'확인(?:해|하여|하시어)?\s*(?:주세요|주
 
 
 def _without_generic_questions(state,transport,result,retried=False):
-    """Re-assess once when every clarify question is a generic check request; then keep the verdict.
+    """Re-assess once when only non-questions were proposed; never display them.
 
     2026-11-11 RunPod M08: two copies of "처리 단계와 조건을 확인해 주세요." were the only
     questions, while the real missing item was the new column name. Duplicates are merged.
     """
     if result.get('decision')!='clarify':return result
+    from agent_builder.conditions.question_quality import strip_known_meta_instructions
     questions=list(dict.fromkeys(q.strip() for q in result.get('missing_conditions',[]) if q.strip()))
-    generic=[q for q in questions if _generic_question(q,state)]
-    result={**result,'missing_conditions':questions}
+    generic=[];usable=[]
+    for question in questions:
+        cleaned=strip_known_meta_instructions(question)
+        if cleaned is None or _generic_question(cleaned,state):
+            generic.append(question)
+        elif cleaned not in usable:
+            usable.append(cleaned)
+    result={**result,'missing_conditions':usable}
     if not generic:return result
     record={'generic_questions':generic}
-    if len(generic)<len(questions):
-        return {**result,'missing_conditions':[q for q in questions if q not in generic],**record}
-    if retried or transport is None:
+    if usable:
         return {**result,**record}
+    if retried or transport is None:
+        raise ValueError('지원 판단 모델이 답할 수 없는 확인 문장만 반복했습니다.')
     calls=result.get('model_calls') or 0
     feedback=('다음 질문은 사용자가 답할 수 있는 구체적인 질문이 아니라 요청과 무관한 확인 문장입니다: '+' / '.join(generic)+
               '. 사용자 요청에서 실제로 정해지지 않은 값만 구체적인 질문으로 적거나, 모두 정해졌으면 질문 없이 판단하세요.')
@@ -317,10 +327,12 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
                     result = {**result, 'missing_conditions':remaining, 'rejected_metadata_condition_indices':rejected}
         except Exception as error:
             if error_observer:error_observer(error)
-            from agent_builder.design.failure_notice import requirement_failure_notice
+            from agent_builder.design.failure_notice import requirement_failure_details, requirement_failure_notice
+            failure_details=requirement_failure_details('model_error',error,stage='capability_check')
             notice=requirement_failure_notice('model_output_error' if isinstance(error,(ValueError,TypeError,KeyError)) else 'model_error',
                 error,stage='capability_check',retained_draft=bool((state.get('draft') or {}).get('workflow')))
-            result={'decision':'system_error','issues':[notice], 'error_type':type(error).__name__,'model_calls':None}
+            result={'decision':'system_error','issues':[notice], 'error_type':type(error).__name__,
+                    'error_code':failure_details['reason_code'],'model_calls':None}
             if isinstance(error,AssessmentConflictError):
                 result.update(issues=['모델의 지원 판정과 누락 항목이 서로 맞지 않습니다. 요청을 보존하고 생성·저장을 중단했습니다.'],
                               assessment_conflict=error.reported,model_calls=error.model_calls)
@@ -380,12 +392,15 @@ def make_capability_check(model,transport=None,mode=None,error_observer=None,api
             issues=(result.get('issues') if decision=='system_error' else None) or [
                 '워크플로우를 생성하지 않았습니다. 지원 여부를 확정하지 못한 이유: '+reason
                 if reason else '워크플로우를 생성하지 않았습니다. 지원 여부를 확정하지 못했습니다.']
-            # A model/contract failure (error_type set) is retryable and is not a user decision.
+            # A processing failure is not a missing user condition. Only a known
+            # transient transport error can suggest another identical attempt.
             from agent_builder.conditions.clarification_core import system_failure, RETRY_NOTICE
-            failure=system_failure('capability_check',result['error_type'],' '.join(issues),state=state) if decision=='system_error' and result.get('error_type') else None
+            failure=system_failure('capability_check',result['error_type'],' '.join(issues),state=state,
+                error_code=result.get('error_code')) if decision=='system_error' and result.get('error_type') else None
             update.update(capability_route='stop',status='validation_failed',confirmed=False,saved_agent_id=None,gap_condition_review=None,
                 pending_questions=[],capability_questions=[],issues=issues,semantic_issues=[],system_failure=failure,
-                messages=state.get('messages',[])+[{'role':'assistant','content':(failure['message']+RETRY_NOTICE) if failure else ' '.join(issues)}])
+                messages=state.get('messages',[])+[{'role':'assistant','content':
+                    (failure['message']+(RETRY_NOTICE if failure['retryable'] else '')) if failure else ' '.join(issues)}])
         return update
     return check
 

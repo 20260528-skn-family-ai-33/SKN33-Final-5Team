@@ -235,6 +235,15 @@ def test_wrapped_provider_timeout_retains_its_category():
         assert error_info(error, 'request_analysis')['reason_code'] == 'model_timeout'
 
 
+def test_request_value_error_has_request_guidance_in_history():
+    failure = error_info(ValueError('private validation detail'), 'request_analysis')
+    assert failure == {
+        'reason_code': 'invalid_request',
+        'reason': '현재 입력과 대화 상태를 확인해 주세요.',
+        'error_type': 'ValueError',
+    }
+
+
 def test_request_identity_survives_redaction_and_is_persisted_with_result(tmp_path):
     s = session(tmp_path)
     request_id = uid()

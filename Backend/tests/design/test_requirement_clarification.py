@@ -9,8 +9,12 @@ from agent_builder.design.nodes import await_input
 from agent_builder.design.requirement_ledger import make_requirement_check, grounded_schedule, validate_plan
 from agent_builder.design.requirement_clarification import business_questions
 from agent_builder.design.requirement_clarification import clarification_reply
+from infrastructure.persistence.ids import uid
 from infrastructure.persistence.storage import Storage
+from service.handlers import design
+from service.worker import handle
 from tests.design.test_builder import initial
+from tests.documents.test_document_review import command as review_command, fixture_asset as reviewable_asset
 
 
 REQUEST='매일 오전에 gmail에서 안읽은 메일을 요약 정리해서 알려줄래?'
@@ -69,8 +73,28 @@ def test_unknown_internal_name_is_retried_then_presented_as_a_normal_question():
     assert len(model.calls)==2
     assert result['status']=='validation_failed'
     assert not result.get('pending_questions')
-    assert result['requirement_failure']['kind']=='processing_error' and result['requirement_failure']['retryable']
+    assert result['requirement_failure']['kind']=='processing_error' and not result['requirement_failure']['retryable']
+    assert result['requirement_failure']['reason_code']=='invalid_model_response'
     assert 'invented_customer_internal_field' not in json.dumps(result)
+
+
+def test_repeated_model_work_instructions_do_not_become_required_questions():
+    text=('처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.\n'
+          '처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.')
+    model=Extractor(raw([text]))
+    result=make_requirement_check('fixture',model,'enforce')(current('고객 보고서를 만들어줘.','manual'))
+    assert len(model.calls)==2
+    assert result['status']=='validation_failed'
+    assert result['pending_questions']==[]
+    assert result['requirement_failure']['retryable'] is False
+
+
+def test_real_question_survives_when_model_appends_a_work_instruction():
+    questions,unknown=business_questions(
+        ['어떤 고객을 대상으로 보고서를 만들까요? 원문 업무와 변경한 조건을 모두 수행해 주세요.'],
+        current('고객 보고서를 만들어줘.','manual'))
+    assert not unknown
+    assert [q['text'] for q in questions]==['어떤 고객을 대상으로 보고서를 만들까요?']
 
 
 def test_real_natural_language_business_question_is_preserved():
@@ -116,7 +140,7 @@ def test_bad_extraction_keeps_technical_error_out_of_customer_message():
     notice=result['messages'][-1]['content']
     assert '입력하신 조건은 보존' in notice and '저장을 중단' in notice
     assert '작업 목록' in notice and '잘못된 형식' in notice
-    assert result['requirement_failure']['kind']=='processing_error' and result['requirement_failure']['retryable']
+    assert result['requirement_failure']['kind']=='processing_error' and not result['requirement_failure']['retryable']
 
 
 @pytest.mark.parametrize('hour',[0,9])
@@ -175,6 +199,87 @@ def test_requirement_question_interrupt_resumes_into_reextraction_and_original_p
         assert payload['clarification_answers'][0]['questions'][0]['text']=='어떤 내용을 중심으로 요약할까요?'
     finally:
         connection.close();store.close()
+
+
+@pytest.mark.parametrize('case', ['attached', 'legacy-checkpoint', 'document-review'])
+def test_library_attachment_preserves_the_structured_folder_answer(tmp_path, monkeypatch, case):
+    request = '자료함 영수증을 검토하고 표로 정리해줘.'
+    folder_question = {'key': 'input.folder_path', 'text': '어느 폴더에 확인할 영수증이 있나요?',
+                       'options': [], 'response': {'type': 'text'}}
+    fields_question = {'key': 'output.fields', 'text': '어떤 항목을 표에 담을까요?',
+                       'options': [], 'response': {'type': 'text'}}
+    tasks = [{'source_message': 0, 'description': '영수증 정리',
+              'spec': {'kind': 'other', 'action': '영수증 검토 후 표로 정리'}}]
+    extractor = Extractor({'tasks': tasks, 'unresolved': [folder_question]})
+
+    def configured_graph(*args, **kwargs):
+        return build_graph(*args, **kwargs, capability_mode='off', condition_mode='off', verifier_mode='off',
+                           requirement_mode='enforce', requirement_transport=extractor)
+
+    def planner(_state):
+        pytest.fail('The planner must wait until the required fields are answered.')
+
+    def call(action, **fields):
+        return handle({'directory': str(tmp_path), 'action': action, **fields}, conversation=planner)
+
+    monkeypatch.setattr(design, 'build_graph', configured_graph)
+    folder = call('folder_create', name='영수증')['folder']
+    assets = []
+    for name, extension in [('영수증1.jpeg', 'jpeg'), ('영수증2.png', 'png'), ('영수증3.jpeg', 'jpeg')]:
+        asset = {
+            'name': name, 'kind': 'document', 'format': extension, 'text': '금액: 12,000원', 'columns': [],
+        }
+        if case == 'document-review' and extension == 'png':
+            asset = {**reviewable_asset(), 'name': name}
+        uploaded = call('library_upload', folder_id=folder['id'], rows=[], asset=asset)
+        assets.append(uploaded['asset'])
+
+    session = call('new_session', model='test', credential_id=uid())
+    session_id = session['id']
+    session = call('message', id=session_id, revision=session['revision'], content=request)
+    question, = session['pending_questions']
+    assert session['status'] == 'needs_clarification' and question['key'] == 'input.folder_path'
+
+    for asset in assets:
+        session = call('attach_asset', id=session_id, revision=session['revision'], asset_id=asset['id'])
+    assert session['pending_questions'] == [question]
+    assert len(extractor.calls) == 1
+
+    if case == 'legacy-checkpoint':
+        store = Storage(tmp_path)
+        graph, connection = configured_graph(store, conversation=planner)
+        config = {'configurable': {'thread_id': session_id}}
+        try:
+            snapshot = graph.get_state(config)
+            graph.update_state(config, {'resources': snapshot.values['resources']}, as_node='__start__')
+            snapshot = graph.get_state(config)
+            assert snapshot.next == ('resources',) and not snapshot.interrupts
+        finally:
+            connection.close()
+            store.close()
+    if case == 'document-review':
+        asset_id = assets[1]['id']
+        review = call('document_review', id=asset_id)
+        reviewed = call('document_review', id=asset_id, command=review_command(review))
+        assert reviewed['asset']['version'] == 2
+
+    folder_path = '내 자료함 / 영수증'
+    file_names = ', '.join(asset['name'] for asset in assets)
+    answer = f'{question["text"]} → {folder_path}: {file_names}\n이번에 읽을 파일: {file_names}'
+    extractor.value = {'tasks': tasks, 'unresolved': [fields_question]}
+    result = call('message', id=session_id, revision=session['revision'], content=answer,
+                  question_answers=[{'question_id': question['id'], 'value': folder_path}])
+
+    assert [item['key'] for item in result['pending_questions']] == ['output.fields']
+    if case == 'document-review':
+        assert result['resources'][1]['version'] == 2
+    assert [message['content'] for message in result['messages'] if message['role'] == 'user'] == [request, answer]
+    assert len(extractor.calls) == 2
+    model_input = json.loads(extractor.calls[-1][1]['content'])
+    assert [resource['id'] for resource in model_input['resources']] == [asset['id'] for asset in assets]
+    (recorded_answer,) = model_input['clarification_answers']
+    assert recorded_answer['question_ids'] == [question['id']]
+    assert recorded_answer['value'] == folder_path
 
 
 GMAIL_MORNING_REQUEST = '매일 오전에 gmail에서 안읽은 메일 요약해줘 상위 5개만'

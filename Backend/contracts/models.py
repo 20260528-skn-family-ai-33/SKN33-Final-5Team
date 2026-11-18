@@ -168,6 +168,10 @@ class BuilderState(TypedDict, total=False):
     status: str
     route: str
     attachment_route: str
+    edit_route: str
+    node_edit: dict | None
+    node_edit_proof: dict | None
+    node_edit_failure: dict | None
     issues: list[str]
     semantic_issues: list[str]
     trace: list[dict]

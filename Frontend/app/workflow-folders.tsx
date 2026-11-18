@@ -1,4 +1,4 @@
-import {useRef,useState} from 'react';
+import {useRef,useState,type ReactNode} from 'react';
 import {Folder,FolderInput,FolderPlus,Pencil,Trash2} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {request} from '../components/flow/connection-panel';
@@ -6,7 +6,7 @@ import './workflow-folders.css';
 export const MAX_WORKFLOW_SELECTION=500;
 export type WorkflowOrganization={revision:number;folders:{id:string;name:string}[];assignments:Record<string,string>};
 export const emptyOrganization:WorkflowOrganization={revision:0,folders:[],assignments:{}};
-export function WorkflowFolders({organization,onChange,active,onActive,selected,onMoved,disabled}:{organization:WorkflowOrganization;onChange:(next:WorkflowOrganization)=>void;active:string;onActive:(id:string)=>void;selected:string[];onMoved:()=>void;disabled:boolean}){
+export function WorkflowFolders({organization,onChange,active,onActive,selected,onMoved,disabled,selectionActions}:{organization:WorkflowOrganization;onChange:(next:WorkflowOrganization)=>void;active:string;onActive:(id:string)=>void;selected:string[];onMoved:()=>void;disabled:boolean;selectionActions?:ReactNode}){
  const [dialog,setDialog]=useState<'create'|'rename'|'delete'|'move'|null>(null),[value,setValue]=useState(''),[target,setTarget]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
  const inFlight=useRef(false),folder=organization.folders.find(f=>f.id===active);
  function open(kind:typeof dialog){setError('');setNotice('');setValue(kind==='rename'?folder?.name||'':'');setTarget('');setDialog(kind);}
@@ -33,9 +33,9 @@ export function WorkflowFolders({organization,onChange,active,onActive,selected,
    <button className="as-button" disabled={busy||disabled} onClick={()=>open('create')}><FolderPlus size={16}/>폴더 만들기</button>
    {folder&&<><button className="as-button" disabled={busy||disabled} onClick={()=>open('rename')}><Pencil size={15} strokeWidth={2} aria-hidden="true"/>폴더 이름 변경</button><button className="as-button" disabled={busy||disabled} onClick={()=>open('delete')}><Trash2 size={16}/>폴더 삭제</button></>}
   </div></div>
-  {selected.length>0&&<button className="as-button workflow-folder-move" disabled={busy||disabled||!selected.length||selected.length>MAX_WORKFLOW_SELECTION} onClick={()=>open('move')}><FolderInput size={16}/>선택한 워크플로우 이동{selected.length?` (${selected.length})`:''}</button>}
+  {selected.length>0&&<div className="workflow-selection-actions" role="group" aria-label="선택한 워크플로우 작업"><button className="as-button as-secondary workflow-folder-move" disabled={busy||disabled||!selected.length||selected.length>MAX_WORKFLOW_SELECTION} onClick={()=>open('move')}><FolderInput size={16}/>폴더로 이동{selected.length?` (${selected.length})`:''}</button>{selectionActions}</div>}
   {notice&&<p role="status">{notice}</p>}
-  {dialog&&<Dialog open onOpenChange={v=>{if(!v&&!inFlight.current)setDialog(null);}}><DialogContent className="as-dialog" showCloseButton={!busy} aria-describedby={undefined}><DialogHeader><DialogTitle>{({create:'폴더 만들기',rename:'폴더 이름 변경',delete:'폴더 삭제',move:'워크플로우 이동'})[dialog]}</DialogTitle></DialogHeader>
+  {dialog&&<Dialog open onOpenChange={v=>{if(!v&&!inFlight.current)setDialog(null);}}><DialogContent className="as-dialog" showCloseButton={!busy} aria-describedby={undefined}><DialogHeader><DialogTitle>{({create:'폴더 만들기',rename:'폴더 이름 변경',delete:'폴더 삭제',move:'폴더로 이동'})[dialog]}</DialogTitle></DialogHeader>
    <form className="workflow-folder-form" aria-busy={busy} onSubmit={e=>{e.preventDefault();void save();}}>
     {dialog==='delete'?<p>‘{folder?.name}’ 폴더를 삭제할까요? 안의 워크플로우는 미분류로 이동하며 실행 설정과 예약은 유지됩니다.</p>:dialog==='move'?<label>대상 폴더<select value={target} disabled={busy} onChange={e=>setTarget(e.target.value)}><option value="">미분류</option>{organization.folders.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>:<label>폴더 이름<input autoFocus maxLength={60} value={value} disabled={busy} onChange={e=>setValue(e.target.value)}/></label>}
     {error&&<p role="alert" className="as-error">{error}</p>}

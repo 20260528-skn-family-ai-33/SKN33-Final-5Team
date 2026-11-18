@@ -249,6 +249,9 @@ def coverage_enabled(state):
 
 
 def coverage_report(state,draft):
+    if state.get('node_edit_proof'):
+        from .node_edit import edit_coverage
+        return edit_coverage(state, draft)
     if not coverage_enabled(state):
         return dict(enabled=False,issues=[],tasks=[])
     problems=[]

@@ -8,6 +8,7 @@ import pytest
 
 import agent_builder.capabilities.capability_check as cc
 from agent_builder.conditions.clarification_core import register, statement_question
+from agent_builder.conditions.question_quality import strip_known_meta_instructions
 
 
 @pytest.mark.parametrize('text', ['중요한 메일을 선별할 조건을 알려주세요.', '처리할 파일을 자료 연결에서 업로드해 주세요.',
@@ -64,6 +65,7 @@ GENERIC = dict(decision='clarify', tool_ids=['read_table', 'calculate_columns', 
 
 
 @pytest.mark.parametrize('question,generic', [('처리 단계와 조건을 확인해 주세요.', True), ('자료 처리와 전송을 확인해 주세요', True),
+                                              ('기존 설정을 검토해 주세요.', True), ('현재 설정을 확인해 주세요.', True),
                                               ('새 열 이름을 알려주세요.', False), ('몇 시에 실행할까요?', False),
                                               ('qty 값을 확인해 주세요.', False)])
 def test_generic_check_requests_are_told_apart_from_questions(question, generic):
@@ -76,8 +78,45 @@ def test_generic_only_questions_are_reassessed_once_and_merged(monkeypatch):
     result = cc._without_generic_questions(M08, object(), dict(GENERIC, model_calls=1))
     assert result['missing_conditions'] == ['새 열 이름을 무엇으로 할까요?'] and result['model_calls'] == 2
     monkeypatch.setattr(cc, 'assess_capability', lambda state, transport: dict(GENERIC, model_calls=1))
-    kept = cc._without_generic_questions(M08, object(), dict(GENERIC, model_calls=1))
-    assert kept['decision'] == 'clarify' and kept['missing_conditions'] == ['처리 단계와 조건을 확인해 주세요.']
+    with pytest.raises(ValueError, match='답할 수 없는 확인 문장'):
+        cc._without_generic_questions(M08, object(), dict(GENERIC, model_calls=1))
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.\n'
+     '처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.', None),
+    ('처리 단계와 조건을 확인해 주세요. 몇 건을 읽을까요?', '몇 건을 읽을까요?'),
+    ('몇 건을 읽을까요? 몇 건을 읽을까요?', '몇 건을 읽을까요?'),
+    ('qty 값을 확인해 주세요.', 'qty 값을 확인해 주세요.'),
+    ('원문 업무와 변경한 조건을 모두 수행해 주세요. 조회 한도를 몇 건으로 할까요?', '조회 한도를 몇 건으로 할까요?'),
+    ('기존 설정을 검토해 주세요.', None),
+    ('기존 설정을 검토해 주세요. 어느 설정을 바꿀까요?', '어느 설정을 바꿀까요?'),
+])
+def test_model_question_quality_preserves_only_answerable_clauses(text, expected):
+    assert strip_known_meta_instructions(text) == expected
+
+
+def test_composite_meta_instruction_never_becomes_a_required_capability_question(monkeypatch):
+    repeated = dict(GENERIC, missing_conditions=[
+        '처리 단계와 조건을 확인해 주세요. 원문 업무와 변경한 조건을 모두 수행해 주세요.'] * 2,
+        model_calls=1)
+    calls=[]
+    monkeypatch.setattr(cc, 'assess_capability', lambda state, transport: calls.append(1) or repeated)
+    result=cc.make_capability_check('fixture', transport=object(), mode='enforce')(M08)
+    assert len(calls)==2
+    assert result['status']=='validation_failed'
+    assert result['pending_questions']==[]
+    assert result['system_failure']['retryable'] is False
+    assert result['system_failure']['reason'].strip()
+    assert '관리자' in result['system_failure']['action']
+    assert '다시 시도' not in result['messages'][-1]['content']
+
+
+def test_composite_meta_clause_is_removed_when_a_real_question_remains():
+    result=cc._without_generic_questions(M08, object(), dict(GENERIC,
+        missing_conditions=['처리 단계와 조건을 확인해 주세요. 새 열 이름은 무엇인가요?'], model_calls=1))
+    assert result['decision']=='clarify'
+    assert result['missing_conditions']==['새 열 이름은 무엇인가요?']
 
 
 # R03: a sort key is not a filter without a written comparator or value.

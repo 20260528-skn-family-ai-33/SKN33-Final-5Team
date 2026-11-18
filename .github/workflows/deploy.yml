@@ -178,7 +178,15 @@ jobs:
                       tests/design/test_explicit_keep_policy.py tests/design/test_explicit_output_columns.py \
                       tests/design/test_deferred_reader_schema.py tests/design/test_final_table_criteria.py \
                       tests/design/test_human_review_records.py tests/design/test_bounded_output_columns.py \
-                      tests/design/test_pending_preview_contract.py; do
+                      tests/design/test_pending_preview_contract.py tests/design/test_design_failure_guidance.py \
+                      tests/design/test_saved_requirement_failure_diagnostics.py tests/design/test_multiple_output_scope.py \
+                      tests/design/test_requirement_clarification.py tests/design/test_requirement_error_presentation.py \
+                      tests/design/test_failed_design_edits.py tests/design/test_beta_feedback.py \
+                      tests/design/test_failure_recovery.py tests/design/test_model_failure_classification.py \
+                      tests/design/test_manual_execution_questions.py tests/design/test_question_language.py \
+                      tests/design/test_pending_question_followups.py tests/design/test_node_popup_edits.py \
+                      tests/design/test_node_edit_copy.py tests/design/test_node_edit_descriptions.py \
+                      tests/design/test_node_edit_public_flow.py tests/design/test_node_edit_dependencies.py; do
             if [[ -f "$path" ]]; then tests+=("$path"); fi
           done
           .venv-agent/bin/python -m pytest -q "${tests[@]}"

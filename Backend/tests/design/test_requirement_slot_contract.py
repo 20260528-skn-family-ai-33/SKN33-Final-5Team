@@ -1,8 +1,10 @@
 """The requirement extractor proposes residual work and questions with stable keys."""
+from copy import deepcopy
+
 import pytest
 
 from tests.design.test_condition_requirement_ownership import COMBINED, Extraction, filter_spec, packet, validated_state
-from tests.conditions.test_condition_readiness import checked, proposal
+from tests.conditions.test_condition_readiness import checked, proposal, state as condition_state, workflow_draft
 from agent_builder.design.requirement_ledger import extract_plan, make_requirement_check
 
 
@@ -15,16 +17,23 @@ def test_ready_condition_schema_never_asks_model_to_fill_owned_policy_and_export
     assert [t['spec']['kind'] for t in result['requirement_ledger']['tasks']] == ['policy', 'export']
 
 
-def test_system_failure_after_answer_does_not_resurface_old_question():
+@pytest.mark.parametrize('with_workflow',[False,True])
+def test_system_failure_after_answer_does_not_resurface_old_question(with_workflow):
     current = validated_state()
     current.update(pending_questions=[dict(id='old', key='duplicate.policy', text='이전 질문')],
-                   draft={'questions':['이전 질문']})
+                   draft={'questions':['이전 질문'],'question_options':[['A','B']],
+                          'question_responses':[{'type':'single_choice'}]})
+    if with_workflow:
+        current['draft']['workflow']=workflow_draft(condition_state())['workflow']
+    before=deepcopy(current)
     class Offline:
         def invoke(self, messages):
             raise OSError('transport unavailable')
     result = make_requirement_check('fixture', Offline(), 'enforce')(current)
     assert result['requirement_route'] == 'stop'
     assert result['pending_questions'] == [] and not (result.get('draft') or {}).get('questions')
+    assert result['draft']=={**before['draft'],'questions':[],'question_options':[],'question_responses':[]}
+    assert current==before
     assert result['trace'][-1]['failure_kind'] == 'system_error'
 
 

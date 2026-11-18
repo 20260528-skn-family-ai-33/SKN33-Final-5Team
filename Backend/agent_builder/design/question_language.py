@@ -39,7 +39,7 @@ def korean_clock_text(text):
     return re.sub(r'몇\s*시\s*몇\s*분','몇 시 몇 분',text)
 
 
-def normalize_question_language(state):
+def normalize_question_language(state, *, report_failure=True):
     """Project old and new question copies alike; never rewrite the user's turn."""
     result={**state,'messages':[dict(message) for message in state.get('messages',[])],
             'pending_questions':[dict(question) for question in state.get('pending_questions',[])]}
@@ -62,18 +62,22 @@ def normalize_question_language(state):
         visible.append(question)
     result['pending_questions']=visible
     last_assistant=max((i for i,message in enumerate(result['messages']) if message.get('role')=='assistant'),default=-1)
+    last_user=max((i for i,message in enumerate(result['messages']) if message.get('role')=='user'),default=-1)
     for index,message in enumerate(result.get('messages',[])):
         if message.get('role')=='assistant':
             lines=[]
             for line in message.get('content','').split('\n'):
                 line=_normalize(line,sources)
                 if _unexpected(line,sources):
-                    if index==last_assistant:blocked=True
-                    line=_LANGUAGE_NOTICE
+                    if index==last_assistant and index>last_user:blocked=True
+                    line=(_LANGUAGE_NOTICE if report_failure and index>last_user and state.get('status')!='saved'
+                          else '이전 확인 질문의 문구는 표시하지 않았습니다.')
                 if not lines or line!=_LANGUAGE_NOTICE or lines[-1]!=line:lines.append(line)
             message['content']='\n'.join(lines)
-    if blocked:
-        result['requirement_failure']={'kind':'question_language_error','retryable':True}
+    if blocked and report_failure and state.get('status')!='saved':
+        result['requirement_failure']={'kind':'question_language_error','retryable':True,
+            'reason':'AI가 만든 확인 질문에 요청과 다른 언어의 문구가 섞여 있어 표시하지 않았습니다.',
+            'action':'조건 그대로 다시 시도하면 확인 질문을 다시 만듭니다.'}
         if last_assistant>=0:
             if _LANGUAGE_NOTICE not in result['messages'][last_assistant]['content']:
                 result['messages'][last_assistant]['content']+='\n'+_LANGUAGE_NOTICE
@@ -98,7 +102,12 @@ def validate_question_language(questions,state):
 
 
 def validate_draft_question_language(draft,state):
-    """Apply the same guard to both planners and execution-time question nodes."""
+    """Check language everywhere, and task-instruction leakage in design-time questions.
+
+    An ``ask_user`` node is an execution-time action. Its prompt may deliberately
+    ask someone to review a result, so it must not be treated as a missing input.
+    """
+    from agent_builder.conditions.question_quality import strip_known_meta_instructions
     result=deepcopy(draft)
     options=result.get('question_options') or []
     responses=result.get('question_responses') or []
@@ -106,6 +115,11 @@ def validate_draft_question_language(draft,state):
               'response':responses[index] if index<len(responses) else None}
              for index,text in enumerate(result.get('questions',[]))]
     validate_question_language(records,state)
+    for record in records:
+        cleaned=strip_known_meta_instructions(record['text'])
+        if cleaned is None:
+            raise ValueError('설계 모델이 답할 수 없는 확인 문장만 반환했습니다.')
+        record['text']=cleaned
     result['questions']=[record['text'] for record in records]
     for node in (result.get('workflow') or {}).get('nodes',[]):
         if node.get('tool')=='ask_user' and isinstance(node.get('settings'),dict):

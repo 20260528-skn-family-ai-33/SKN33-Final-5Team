@@ -77,6 +77,11 @@ def blocking_issue(state):
 
 
 def require_ready(state):
+    if state.get('node_edit_proof'):
+        from agent_builder.design.node_edit import proof_issue
+        issue = proof_issue(state)
+        if issue:raise ValueError(issue)
+        return
     issue=blocking_issue(state)
     if issue:raise ValueError(issue)
     if state.get('requirement_required'):

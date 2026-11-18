@@ -1,4 +1,5 @@
 import copy
+import sqlite3
 import pytest
 from langchain_core.messages import ToolMessage, AIMessage
 from infrastructure.persistence.storage import Storage; from infrastructure.persistence.ids import uid
@@ -18,6 +19,33 @@ def test_versions_and_concurrent_edit_guard(tmp_path):
     assert list_nodes(s)==[v2]
     with pytest.raises(ValueError,match='변경'):save(s,spec(),v1['id'],1)
     assert len(list_nodes(s))==1;s.close()
+
+def test_existing_node_save_keeps_sqlite_write_lock_until_insert(tmp_path, monkeypatch):
+    store = Storage(tmp_path)
+    try:
+        first = save(store, spec())
+        execute = store.db.execute
+        checked_lock = False
+
+        def check_lock_before_insert(sql, params=()):
+            nonlocal checked_lock
+            if sql.startswith('INSERT INTO reusable_nodes'):
+                contender = sqlite3.connect(store.path, timeout=0)
+                try:
+                    with pytest.raises(sqlite3.OperationalError) as error:
+                        contender.execute('BEGIN IMMEDIATE')
+                    assert error.value.sqlite_errorcode == sqlite3.SQLITE_BUSY
+                    checked_lock = True
+                finally:
+                    contender.close()
+            return execute(sql, params)
+
+        monkeypatch.setattr(store.db, 'execute', check_lock_before_insert)
+        updated = save(store, {**spec(), 'name': '수정된 역할'}, first['id'], first['version'])
+        assert updated['version'] == 2
+        assert checked_lock
+    finally:
+        store.close()
 
 def test_builtin_ids_cannot_be_overwritten_by_saved_nodes(tmp_path):
     from workflow_engine.library.node_library import default_nodes

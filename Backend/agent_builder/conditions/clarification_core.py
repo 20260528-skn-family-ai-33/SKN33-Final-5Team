@@ -175,17 +175,25 @@ def settled_stage(stage, node):
     return run
 
 
-def system_failure(stage, error, message, *, state=None):
-    """A retryable processing failure. It is not a user decision and never a question."""
+def system_failure(stage, error, message, *, state=None, error_code=None):
+    """A diagnosed processing failure, separate from a missing user answer."""
     extra={}
     if state is not None:
         from agent_builder.capabilities.capability_gate import input_fingerprint
         fingerprint=input_fingerprint(state)
         attempt=next_attempt(state, stage, fingerprint)
         extra={'attempt':attempt,'request_fingerprint':fingerprint}
-        message+=attempt_notice(attempt)
-    return {'stage': stage, 'error_type': type(error).__name__ if isinstance(error, BaseException) else str(error),
-            'message': message, 'retryable': True,**extra}
+    from agent_builder.design.failure_notice import requirement_failure_details, requirement_failure_notice
+    name=type(error).__name__ if isinstance(error, BaseException) else str(error)
+    # Gates diagnose the live exception before retaining only its class name.
+    # Their fixed code keeps response status/context evidence across that boundary.
+    source=error if isinstance(error,BaseException) or error_code is None else None
+    details=requirement_failure_details('model_error',source,stage=stage,attempt=extra.get('attempt',1),
+        error_code=error_code)
+    if extra.get('attempt',1)>1:
+        message=requirement_failure_notice(details['failure_kind'],source,stage=stage,attempt=extra['attempt'],
+            retained_draft=bool((state.get('draft') or {}).get('workflow')),error_code=details['reason_code'])
+    return {**details, 'error_type':name, 'message':message, **extra}
 
 
 RETRY_NOTICE = ' 일시적인 처리 오류라 질문으로 바꾸지 않았습니다. 같은 메시지를 다시 보내면 이 단계부터 다시 시도합니다.'

@@ -19,14 +19,12 @@ from agent_builder.design.plan_contracts import normalize_aggregate_plan_columns
 from workflow_engine.catalog.canonical import PLANNER_INSTRUCTIONS, planner_catalog
 from workflow_engine.catalog.registry import TOOLS, PORTS
 from workflow_engine.catalog.registry import node_ports
-from agent_builder.design.planner_constraints import native_decoder_schema, binding_repair_options
+from agent_builder.design.planner_constraints import (
+    binding_repair_options, constrain_sort, native_decoder_schema, ready_table_slots, split_sort_dedup_plans,
+)
 from agent_builder.design import linear_plan
 from workflow_engine.workflow import normalize_connections
 from agent_builder.design.nodes.validation import validate_node
-
-def _sort_request(state):
-    from agent_builder.conditions.condition_readiness import sort_request
-    return sort_request(state)
 
 SYSTEM = """당신은 한국어 문서 업무 워크플로우를 설계하는 A4B 메인 모델입니다.
 대화 전체, 현재 초안, 실제 자료, 등록 도구와 검증 오류를 보고 AgentDraft JSON 객체 하나만 반환하세요.
@@ -152,7 +150,7 @@ entry·edges·bindings의 모든 노드 ID는 실제 nodes에 있어야 합니�
 filter_sort.settings.execution_plan에 확정 조건을 반영합니다. 확정된 gt/gte와 금액을 이전 초안의 값으로 되돌리지 않습니다.
 조건 이름은 데이터 열이 아닙니다. actual_column=true 항목의 value가 실제 열 이름입니다.
 중복 제거는 filter_sort의 duplicate_field와 duplicate_policy(first/last/keep/error)로 지원합니다. 별도 도구가 필요하지 않습니다.
-단일 선별·중복 제거 계약은 sort=[]입니다. 중복 제거만 요청했으면 filters=[]이며 빈 값 정책은 missing_policy입니다.
+사용자가 정렬을 요청하지 않은 선별·중복 제거 계약은 sort=[]입니다. 중복 제거만 요청했으면 filters=[]이며 빈 값 정책은 missing_policy입니다.
 표 파일 저장은 write_result의 format=csv/json입니다. records/text는 export_result로 저장합니다. 저장 경로는 reports입니다.
 requirements.quote는 source_quote_catalog의 실제 원문을 그대로 선택하고 해당 source_id를 사용합니다. 요약·공백 변경 금지.
 node_ref와 saved_workflow는 제공된 라이브러리·버전·출력만 사용합니다. required_node_refs를 보존합니다.
@@ -423,10 +421,17 @@ def make_direct_conversation(api_key, model, model_factory=None):
     version = prompt_version()
     llm = model_factory() if model_factory else OllamaPlanner(model)
     def conversation_node(state):
+        from agent_builder.conditions.condition_readiness import sort_before_dedup_requested, sort_request
         from agent_builder.design.runtime_inputs import runtime_file_context, constrain_runtime_readers
         runtime_file = runtime_file_context(state)
-        use_linear=version=='v8' and linear_plan.eligible(state)
+        ledger = state.get('condition_ledger') if state.get('condition_enforced') else None
+        requested_sort = sort_request(state) if ledger is not None else None
+        slots = ready_table_slots(ledger) or {}
+        sort_first = ('deduplicate' in (ledger or {}).get('operations', [])
+                      and slots.get('duplicate.policy') in ('first','last')
+                      and sort_before_dedup_requested(state, requested_sort))
         table_scope=version in ('v7','v8') and linear_plan.eligible(state)
+        use_linear=version=='v8' and table_scope and not sort_first
         resources = [{k:v for k,v in r.items() if k not in ('rows','pages','parser_metadata','fixture')}
                      for r in state['resources']]
         for resource in resources:
@@ -464,10 +469,19 @@ def make_direct_conversation(api_key, model, model_factory=None):
             context['source_quote_catalog'] = source_quote_choices(state['messages'], resources)
             context['schema'] = citation_decoder_schema(context['schema'], context['source_quote_catalog'])
             if version in ('v5','v6','v7','v8') and state.get('condition_enforced'):
-                context['schema'] = planning_decoder_schema(context['schema'], state.get('condition_ledger') or {}, _sort_request(state))
+                context['schema'] = planning_decoder_schema(context['schema'], ledger or {}, requested_sort)
+            if version == 'v5' and sort_first:
+                defs = context['schema']['$defs']
+                constrain_sort(defs, defs['ExecutionPlan']['properties'], requested_sort)
+                plans = split_sort_dedup_plans(defs)
+                defs['NodeSettings']['properties']['execution_plan'] = {'anyOf': [*plans['anyOf'], {'type': 'null'}]}
             context['citation_scope'] = '최근 사용자 발언 12개(발언별 앞 4000자)부터 제공 자료 발췌·열 이름 순으로 최대 64구간·총 6000자. 전체 문서 검색 결과가 아닙니다.'
             if version in ('v6','v7','v8'):
-                context['schema']=native_decoder_schema(context['schema'],resources,state.get('condition_ledger') if state.get('condition_enforced') else None, require_ready_draft=version in ('v7','v8'), allowed_tools=linear_plan.ALLOWED if table_scope else None, sort_request=_sort_request(state))
+                context['schema'] = native_decoder_schema(
+                    context['schema'], resources, ledger, require_ready_draft=version in ('v7','v8'),
+                    allowed_tools=linear_plan.ALLOWED if table_scope else None, sort_request=requested_sort,
+                    sort_before_dedup=sort_first,
+                )
                 if table_scope:
                     context['supported_tools']=[t for t in context['supported_tools'] if t['id'] in linear_plan.ALLOWED]
                 # On a new turn the previous draft can contain obsolete questions
@@ -518,6 +532,10 @@ def make_direct_conversation(api_key, model, model_factory=None):
             context['tool_selection_advice']=advice
         if runtime_file:context['runtime_file_input']=runtime_file
         system_prompt=linear_plan.SYSTEM if use_linear else {'v1':SYSTEM,'v2':SYSTEM_V2,'v3':SYSTEM_V3,'v4':SYSTEM_V4,'v5':SYSTEM_V5,'v6':SYSTEM_V6,'v7':SYSTEM_V6,'v8':SYSTEM_V6}[version]+PLANNER_INSTRUCTIONS
+        if sort_first:
+            system_prompt += ('\n중복 제거보다 정렬을 먼저 실행합니다. filter_sort를 서로 다른 ID로 두 단계 만드세요. '
+                              '첫 단계에 요청한 sort와 duplicate_policy=keep, duplicate_field=null을 지정합니다. '
+                              '두 번째 단계의 table 입력은 첫 단계의 table 출력에 연결하고 sort=[]와 확정된 중복 정책을 지정하세요.')
         if runtime_file:system_prompt+='\n'+runtime_file['instruction']
         from agent_builder.design.question_controls import QUESTION_RESPONSE_INSTRUCTION
         system_prompt+='\n'+QUESTION_RESPONSE_INSTRUCTION

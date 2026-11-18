@@ -79,7 +79,7 @@ def table_tool_issues(state):
             if tools-set(TABLE_PLAN_TOOLS) else [])
 
 
-def _constrain_sort(defs, plan, request):
+def constrain_sort(defs, plan, request):
     """The sort the validator requires is the sort the decoder may emit (PR #142 review 5).
 
     No written sort (or a withdrawn one) keeps sort empty. Otherwise the schema only
@@ -112,8 +112,29 @@ def _constrain_sort(defs, plan, request):
     plan['sort']['items'] = {'$ref': '#/$defs/RequestedSortCondition'}
 
 
+def split_sort_dedup_plans(defs):
+    """Give the sort and duplicate-removal steps independent execution plans."""
+    sort_plan = deepcopy(defs['ExecutionPlan'])
+    sort_props = sort_plan['properties']
+    sort_props['sort']['minItems'] = 1
+    sort_props['duplicate_policy'] = literal_schema('keep')
+    sort_props['duplicate_field'] = literal_schema(None)
+
+    dedup_plan = deepcopy(defs['ExecutionPlan'])
+    dedup_props = dedup_plan['properties']
+    dedup_props['sort'].pop('minItems', None)
+    dedup_props['sort']['maxItems'] = 0
+    # A confirmed filter, if any, belongs to one step. Validation checks its placement.
+    for props in (sort_props, dedup_props):
+        props['filters'].pop('minItems', None)
+
+    defs['SortBeforeDedupPlan'] = sort_plan
+    defs['DedupAfterSortPlan'] = dedup_plan
+    return {'anyOf': [{'$ref': '#/$defs/SortBeforeDedupPlan'}, {'$ref': '#/$defs/DedupAfterSortPlan'}]}
+
+
 def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft=False, allowed_tools=None,
-                          sort_request=None):
+                          sort_request=None, sort_before_dedup=False):
     result=deepcopy(schema);defs=result['$defs']
     ids=list(dict.fromkeys(r['id'] for r in resources))
     root_ids=result['properties']['document_ids']
@@ -192,7 +213,7 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
         for key,field in [('duplicate.field','duplicate_field'),('duplicate.policy','duplicate_policy'),
                           ('missing.policy','missing_policy'),('output.format','output_format')]:
             if key in slots:plan[field]=literal_schema(slots[key])
-        _constrain_sort(defs, plan, sort_request)
+        constrain_sort(defs, plan, sort_request)
         if 'filter' not in ledger['operations']:
             plan['filters']['maxItems']=0
         elif all(key in slots for key in ('filter.field','filter.operator','filter.value')):
@@ -214,6 +235,9 @@ def native_decoder_schema(schema, resources, ledger=None, *, require_ready_draft
         if 'filter' in ledger['operations']:
             condition_def=defs['FilterCondition']
             condition_def['required']=list(condition_def['properties'])
+        if sort_before_dedup and 'NativeNode_filter_sort' in defs:
+            settings = defs['NativeNode_filter_sort']['properties']['settings']['properties']
+            settings['execution_plan'] = split_sort_dedup_plans(defs)
         result['required']=list(dict.fromkeys([*result.get('required',[]),'execution_plan']))
         if require_ready_draft:
             # The preceding condition node owns clarification/unsupported routing.

@@ -569,6 +569,65 @@ def test_ready_table_contract_fixes_node_ids_and_single_typed_bindings(monkeypat
         assert tool + '_1' not in item['node_id']['enum']  # no self-binding
 
 
+@pytest.mark.parametrize('provider', ['ollama', 'openai'])
+def test_ready_schema_represents_sort_before_dedup(monkeypatch, provider):
+    from jsonschema import Draft202012Validator
+    from agent_builder.conditions.condition_readiness import plan_issues
+    from tests.design.test_dedup_sort_save_loop import LATEST, SORT_FIRST_REQUEST, TABLE
+
+    monkeypatch.setenv('A4B_PLANNER_MODE', 'deepagent')
+    monkeypatch.setenv('A4B_MAIN_PROVIDER', provider)
+    s = state([{'role': 'user', 'content': SORT_FIRST_REQUEST}])
+    s['resources'] = [{**TABLE, 'id': 'orders'}]
+    s['condition_enforced'] = True
+    values = {'duplicate.field': '주문번호', 'duplicate.policy': 'first',
+              'missing.policy': 'keep', 'output.format': 'csv', 'sort.policy': 'none'}
+    ledger = {'decision': 'ready', 'operations': ['deduplicate'],
+              'slots': {key: {'status': 'specified', 'value': value} for key, value in values.items()}}
+    s['condition_ledger'] = ledger
+
+    response = draft()
+    dedup = {**response['execution_plan'], 'duplicate_policy': 'first', 'duplicate_field': '주문번호'}
+    sorting = {**response['execution_plan'], 'sort': LATEST}
+    reader, sort_node, dedup_node, writer = 'read_table_1', 'filter_sort_1', 'filter_sort_2', 'write_result_1'
+    nodes = [
+        {'id': reader, 'tool': 'read_table', 'label': '주문 읽기', 'bindings': [],
+         'settings': {'file_ids': ['orders']}},
+        {'id': sort_node, 'tool': 'filter_sort', 'label': '주문일 정렬', 'bindings': [bind('table', reader, 'table')],
+         'settings': {'execution_plan': sorting}},
+        {'id': dedup_node, 'tool': 'filter_sort', 'label': '중복 주문 제거', 'bindings': [bind('table', sort_node, 'table')],
+         'settings': {'execution_plan': dedup}},
+        {'id': writer, 'tool': 'write_result', 'label': 'CSV 저장', 'bindings': [bind('table', dedup_node, 'table')],
+         'settings': {'format': 'csv'}},
+    ]
+    response['workflow'] = {'entry': reader, 'nodes': nodes,
+                            'edges': [edge(reader, sort_node), edge(sort_node, dedup_node), edge(dedup_node, writer)]}
+    response['execution_plan'] = {**dedup, 'sort': LATEST}
+    captured = run_capturing(monkeypatch, s, response)
+    schema = captured['schema']
+    if provider == 'ollama':
+        from infrastructure.llm.ollama_chat_model import compatible_schema_payload
+        payload = compatible_schema_payload({'response_format': {'json_schema': {'schema': schema}}})
+        schema = payload['response_format']['json_schema']['schema']
+    validator = Draft202012Validator(schema)
+    validator.validate(response)
+    result = captured['result']
+    assert not result['semantic_issues']
+    assert not plan_issues(ledger, result['draft'], state=s)
+    assert [node['settings']['execution_plan'] for node in result['draft']['workflow']['nodes'][1:3]] == [sorting, dedup]
+    workflow = schema['$defs']['WorkflowDefinition']['properties']
+    assert (workflow['nodes']['minItems'], workflow['nodes']['maxItems']) == (4, 5)
+    assert (workflow['edges']['minItems'], workflow['edges']['maxItems']) == (3, 4)
+
+    wrong_policy = deepcopy(response)
+    wrong_policy['workflow']['nodes'][1]['settings']['execution_plan'] = response['execution_plan']
+    assert not validator.is_valid(wrong_policy)
+    for destination, bypass in [(2, reader), (3, sort_node)]:
+        wrong_binding = deepcopy(response)
+        wrong_binding['workflow']['nodes'][destination]['bindings'][0]['node_id'] = bypass
+        assert not validator.is_valid(wrong_binding)
+
+
 def test_ready_table_contract_decodes_only_runtime_settings_and_fills_the_rest(monkeypatch):
     """62% of a live draft was null settings keys the four table tools never read."""
     from tests.design.test_linear_plan import context

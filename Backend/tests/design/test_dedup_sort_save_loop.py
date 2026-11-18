@@ -863,3 +863,31 @@ def test_sort_before_dedup_keeps_the_latest_row_end_to_end(service, sort_first, 
     else:
         assert first['status'] == 'validation_failed' and any('정렬한 뒤 중복' in i for i in first['issues'])
         assert saved() == 0
+
+
+def test_final_resort_cannot_fix_a_wrong_sort_before_dedup(service):
+    act, saved, _ = service
+    CURRENT['request'] = SORT_FIRST_REQUEST
+    make_split_draft = make_planner([], sort=LATEST, sort_first=True)
+
+    def planner(state):
+        result = make_split_draft(state)
+        workflow = result['draft']['workflow']
+        _, first_sort, dedup, writer = workflow['nodes']
+        correct_sort = first_sort['settings']['execution_plan']
+        wrong_sort = {**correct_sort, 'sort': SORT}
+        first_sort['settings'].update(execution_plan=wrong_sort, instructions=json.dumps(wrong_sort))
+        final_sort = node('final_sort', 'filter_sort', [{'input': 'table', 'node_id': dedup['id'], 'output': 'table'}],
+                          execution_plan=correct_sort, instructions=json.dumps(correct_sort))
+        workflow['nodes'].insert(-1, final_sort)
+        writer['bindings'][0]['node_id'] = final_sort['id']
+        workflow['edges'][-1]['target'] = final_sort['id']
+        workflow['edges'].append({'source': final_sort['id'], 'target': writer['id'], 'branch': 'next'})
+        return result
+
+    act('upload', planner, asset=dict(TABLE), rows=SORT_FIRST_ROWS)
+    result = act('message', planner, content=SORT_FIRST_REQUEST)
+    assert result['status'] == 'validation_failed'
+    assert any('정렬한 뒤 중복' in issue for issue in result['issues'])
+    press_save(act, planner)
+    assert saved() == 0

@@ -11,11 +11,14 @@ from workflow_engine.catalog.registry import TOOLS, NATIVE_IDS
 from workflow_engine.catalog.canonical import PLANNER_INSTRUCTIONS, planner_catalog
 from agent_builder.design.presentation import canonical_table_draft
 from workflow_engine.workflow import normalize_connections, workflow_errors
-from agent_builder.design.planner_constraints import ready_table_slots, table_plan_scope, TABLE_PLAN_TOOLS
+from agent_builder.design.planner_constraints import (
+    constrain_sort, ready_table_slots, split_sort_dedup_plans, table_plan_scope, TABLE_PLAN_TOOLS,
+    typed_filter_conditions,
+)
 from agent_builder.design.native_settings import SCOPED_SETTINGS, NATIVE_SETTINGS, decoded_resource_tools
 
-# Inside the READY single-table scope each tool appears at most once, so its node ID is
-# fixed (read_table_1, ...): live drafts copied 36-char library UUIDs as IDs, corrupted
+# Inside the READY single-table scope use fixed node IDs (read_table_1, ...):
+# live drafts copied 36-char library UUIDs as IDs, corrupted
 # them mid-string, and invented nodes such as start_node_1 or filter_sort_flow_1.
 SCOPED_NODE_IDS={tool:tool+'_1' for tool in TABLE_PLAN_TOOLS}
 # Settings each scoped tool reads at run time (executors/sources.py file_ids, runner.py
@@ -295,9 +298,24 @@ def make_conversation(api_key,model,model_factory=None):
         plan_properties=schema['$defs']['ExecutionPlan']['properties']
         for key,field in [('missing.policy','missing_policy'),('duplicate.policy','duplicate_policy'),('duplicate.field','duplicate_field'),('output.format','output_format')]:
             if key in confirmed:plan_properties[field]={'enum':[confirmed[key]]}
-        if confirmed.get('sort.policy')=='none':
-            from agent_builder.conditions.condition_readiness import sort_request
-            if sort_request(state)['kind'] in ('none','cancelled'):plan_properties['sort']['maxItems']=0
+        from agent_builder.conditions.condition_readiness import sort_before_dedup_requested, sort_request
+        sort_before_dedup = False
+        if confirmed.get('sort.policy') == 'none' or confirmed.get('duplicate.policy') in ('first', 'last'):
+            request = sort_request(state)
+            sort_before_dedup = (confirmed.get('duplicate.policy') in ('first', 'last')
+                                 and 'deduplicate' in ledger.get('operations', [])
+                                 and sort_before_dedup_requested(state, request))
+            if confirmed.get('sort.policy') == 'none' and request['kind'] in ('none', 'cancelled'):
+                plan_properties['sort']['maxItems'] = 0
+        if not scoped:
+            typed_filter_conditions(schema)
+        filter_sort_plan = {'$ref': '#/$defs/ExecutionPlan'}
+        if sort_before_dedup:
+            constrain_sort(schema['$defs'], plan_properties, request)
+            if 'filter' not in ledger['operations']:
+                plan_properties['filters']['maxItems'] = 0
+            filter_sort_plan = split_sort_dedup_plans(schema['$defs'])
+        dedup_node_id = 'filter_sort_2'
         variants=[]
         for tool_name in schema['$defs']['WorkflowNode']['properties']['tool']['enum']:
             from workflow_engine.catalog.registry import NATIVE_IDS
@@ -343,7 +361,7 @@ def make_conversation(api_key,model,model_factory=None):
                 file_items['items']={'type':'string','enum':list(resources)}
             else:
                 file_items['maxItems']=0
-            variant['properties']['settings']['properties']['execution_plan']=({'$ref':'#/$defs/ExecutionPlan'} if tool_name=='filter_sort' else {'type':'null'})
+            variant['properties']['settings']['properties']['execution_plan']=(filter_sort_plan if tool_name=='filter_sort' else {'type':'null'})
             if tool_name in ('write_result','export_result') and 'output.format' in confirmed:
                 variant['properties']['settings']['properties']['format']={'enum':[confirmed['output.format']]}
             variant['properties']['settings']['properties']['node_ref']={'enum':[None,*[n['ref'] for n in state.get('node_library',[]) if n['spec']['tool']==tool_name and (tool_name=='agent_node' or n['ref'] in state.get('required_node_refs',[]))]]}
@@ -351,6 +369,19 @@ def make_conversation(api_key,model,model_factory=None):
                 settings=variant['properties']['settings']
                 settings['properties']={k:settings['properties'][k] for k in SCOPED_SETTINGS[tool_name]}
                 settings['required']=list(SCOPED_SETTINGS[tool_name])
+                if sort_before_dedup and tool_name == 'filter_sort':
+                    sort_props = variant['properties']
+                    sort_props['settings']['properties']['execution_plan'] = filter_sort_plan['anyOf'][0]
+                    binding_schema['properties']['node_id']['enum'] = [SCOPED_NODE_IDS['read_table']]
+                    dedup_variant = deepcopy(variant)
+                    dedup_props = dedup_variant['properties']
+                    dedup_props['id']['enum'] = [dedup_node_id]
+                    dedup_props['bindings']['items']['properties']['node_id']['enum'] = [SCOPED_NODE_IDS['filter_sort']]
+                    dedup_props['settings']['properties']['execution_plan'] = filter_sort_plan['anyOf'][1]
+                    variants.extend([variant, dedup_variant])
+                    continue
+                if sort_before_dedup and tool_name == 'write_result':
+                    binding_schema['properties']['node_id']['enum'] = [dedup_node_id]
             variants.append(variant)
         if not scoped:
             # Emit only settings actually read by each native executor. Keep
@@ -372,9 +403,6 @@ def make_conversation(api_key,model,model_factory=None):
             variants.extend(operation_variants(operation_node_schema,schema['$defs']['Binding'],operation_ids,variable_names))
             variants.extend(required_operation_variants(requirement_specs,operation_node_schema,schema['$defs']['Binding'],variable_names,operation_ids))
         schema['$defs']['WorkflowNode']={'anyOf':variants}
-        if not scoped:
-            from agent_builder.design.planner_constraints import typed_filter_conditions
-            typed_filter_conditions(schema)
         if scoped:
             # Conditions are confirmed: no re-asking or support reversal at this stage, and a
             # node floor/ceiling matching the existing audit (read, filter_sort, write_result if
@@ -382,13 +410,16 @@ def make_conversation(api_key,model,model_factory=None):
             for key in ('questions','question_options','unsupported'):schema['properties'][key]['maxItems']=0
             schema['properties']['workflow']={'$ref':'#/$defs/WorkflowDefinition'}
             schema['properties']['tool_ids']['items']['enum']=list(TABLE_PLAN_TOOLS)
-            minimum=2+('output.format' in ready_table_slots(state['condition_ledger']))
+            minimum=2+('output.format' in ready_table_slots(state['condition_ledger']))+sort_before_dedup
+            node_ids = list(SCOPED_NODE_IDS.values())
+            if sort_before_dedup:
+                node_ids.append(dedup_node_id)
             graph_props=schema['$defs']['WorkflowDefinition']['properties']
-            graph_props['nodes'].update(minItems=minimum,maxItems=len(TABLE_PLAN_TOOLS))
-            graph_props['edges'].update(minItems=minimum-1,maxItems=len(TABLE_PLAN_TOOLS)-1)
+            graph_props['nodes'].update(minItems=minimum,maxItems=len(node_ids))
+            graph_props['edges'].update(minItems=minimum-1,maxItems=len(node_ids)-1)
             # Every place a node is named uses the fixed IDs; the entry is the reader.
             graph_props['entry']={'type':'string','enum':[SCOPED_NODE_IDS['read_table']]}
-            for key in ('source','target'):schema['$defs']['WorkflowEdge']['properties'][key]={'type':'string','enum':list(SCOPED_NODE_IDS.values())}
+            for key in ('source','target'):schema['$defs']['WorkflowEdge']['properties'][key]={'type':'string','enum':node_ids}
         schema['properties']['requirements']['minItems']=1
         definition=schema['$defs']['Requirement']
         definition['properties']={'description':definition['properties']['description'],'evidence_id':{'type':'string','enum':list(evidence)}}
@@ -554,6 +585,10 @@ def make_conversation(api_key,model,model_factory=None):
         if state.get('condition_enforced'):
             context['confirmed_conditions']=state.get('condition_ledger')
             context['repair_instruction']+=' confirmed_conditions의 확정 값을 실제 노드·예약·출력 설정에 반영하고 이미 해결한 조건은 다시 묻지 마세요.'
+        if sort_before_dedup:
+            context['repair_instruction'] += (' 정렬을 먼저 적용하는 filter_sort는 duplicate_policy=keep으로 두세요. '
+                '그 table 출력을 받는 다음 filter_sort에 확정 중복 정책을 적용하고 sort=[]로 두세요. '
+                '결과 저장에는 두 번째 filter_sort의 table을 연결하세요.')
         from ml.advice.tool_recommendation import recommend_for_state
         advice=None if compact_table_prompt else recommend_for_state(state)
         if advice is not None:context['tool_selection_advice']=advice

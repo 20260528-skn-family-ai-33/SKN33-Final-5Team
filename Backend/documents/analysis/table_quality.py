@@ -295,19 +295,33 @@ def reconcile(data, prediction):
         return (max(left) if left else -math.inf if col == 0 else math.inf,
                 min(right) if right else math.inf if end == logical_cols else -math.inf)
 
+    logical_row_end = max((r for r, _ in occupied), default=-1) + 1
+    declared_rows = data.get('num_rows')
+    if type(declared_rows) is int:
+        logical_row_end = max(logical_row_end, declared_rows)
+
     def existing_row_matches(cell, piece, single_row):
         row, _ = position(cell)
         span = cell.get('row_span', 1)
         if span == 1:
             return single_row == [row]
-        # Validate a vertical merge within independently observed row extents.
-        # Its text need not fill the merge, and it never creates row anchors.
+        # Existing merged text may be slightly taller than adjacent glyphs.
+        # Bound internal expansion by independent neighbouring row gaps, not
+        # the candidate. Missing internal neighbours do not open that edge.
+        # This confirms existing values only; it never creates repair anchors.
         support = [row_evidence.get(r, []) for r in range(row, row+span)]
         if not all(support):
             return False
         boxes = [box for group in support for box in group]
         box = piece['box']
-        return (min(b[1] for b in boxes) <= box[1] < box[3] <= max(b[3] for b in boxes)
+        top, bottom = min(b[1] for b in boxes), max(b[3] for b in boxes)
+        before, after = row_evidence.get(row-1), row_evidence.get(row+span)
+        lo = (max(b[3] for b in before) + top) / 2 if before else (-math.inf if row == 0 else top)
+        hi = (bottom + min(b[1] for b in after)) / 2 if after else (math.inf if row+span == logical_row_end else bottom)
+        intersection = max(0, min(bottom, box[3]) - max(top, box[1]))
+        aligned = (top <= box[1] < box[3] <= bottom
+                   or intersection >= .65 * max(bottom-top, box[3]-box[1]))
+        return (aligned and lo <= box[1] < box[3] <= hi
                 and not any(overlap(box, b, 1) > 0 for r, group in row_evidence.items()
                             if not row <= r < row+span for b in group))
 

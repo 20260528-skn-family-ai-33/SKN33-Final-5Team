@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {CalendarClock} from 'lucide-react';
 import type {Flow} from '../lib/workflow';
 import {request} from '../components/flow/connection-panel';
 import {scheduleRemovalMessage} from './schedule-settings';
@@ -27,8 +28,8 @@ export function ExternalScheduleSettings({flow,onChange,onDirtyChange,onBusyChan
  }
  if(targets.length!==1)return <section className="schedule-settings"><p>예약 시작 단계 하나가 있는 워크플로우에서 일정을 관리할 수 있습니다.</p></section>;
  return <section className="schedule-settings" aria-label="예약 설정" aria-busy={busy}>
-  <div className="schedule-settings-heading"><strong>예약 실행</strong><span className={'schedule-status '+(flow.active?'active':'paused')}>{!triggers.length?'예약 없음':flow.active?'활성':'중지'}</span></div>
-  <p className="schedule-settings-help">시간대: {flow.settings.timezone||'Asia/Seoul'} · 예약을 삭제해도 워크플로우와 실행 기록은 유지됩니다.</p>
+  <div className="schedule-settings-heading"><strong><CalendarClock size={17}/>예약 실행</strong><span className={'schedule-status '+(flow.active?'active':'paused')}>{!triggers.length?'예약 없음':flow.active?'활성':'중지'}</span></div>
+  <p className="schedule-settings-help">{!flow.settings.timezone||flow.settings.timezone==='Asia/Seoul'?'서울 표준시':flow.settings.timezone}</p>
   {triggers.length>0&&<div className="schedule-settings-actions"><button className="as-button as-primary" disabled={busy||dirty&&!flow.active} onClick={()=>void act('toggle')}>{flow.active?'예약 중지':'예약 켜기'}</button><button className="as-button as-secondary" disabled={busy} onClick={()=>{if(editing&&dirty&&!window.confirm('저장하지 않은 일정 변경을 버릴까요?'))return;setRule(JSON.parse(saved));setEditing(!editing);}}>일정 {editing?'수정 닫기':'수정'}</button><button className="as-button as-danger" disabled={busy} onClick={()=>void act('remove')}>예약 삭제</button></div>}
   {editing?<form className="schedule-settings-form" onSubmit={event=>{event.preventDefault();void act('configure');}}>
    {intervals.map((entry:any,index:number)=><fieldset className="schedule-settings-fields" key={index} disabled={busy}><legend>반복 일정 {intervals.length>1?index+1:''}</legend>
@@ -38,8 +39,8 @@ export function ExternalScheduleSettings({flow,onChange,onDirtyChange,onBusyChan
     {entry.field==='weeks'&&<fieldset><legend>실행 요일</legend>{['일','월','화','수','목','금','토'].map((day,i)=><label key={day}><input type="checkbox" checked={(entry.triggerAtDayOfWeek||[]).includes(i)} onChange={event=>patch(index,{triggerAtDayOfWeek:event.target.checked?[...(entry.triggerAtDayOfWeek||[]),i]:(entry.triggerAtDayOfWeek||[]).filter((d:number)=>d!==i)})}/>{day}요일</label>)}</fieldset>}
     {entry.field==='months'&&<label>실행일<input aria-label={'실행일 '+(index+1)} type="number" min="1" max="31" required value={entry.triggerAtDay??1} onChange={event=>patch(index,{triggerAtDay:Number(event.target.value)})}/></label>}
     {entry.field==='cronExpression'&&<label>실행 일정 (Cron)<input aria-label={'실행 일정 '+(index+1)} required value={entry.expression||''} onChange={event=>patch(index,{expression:event.target.value})}/></label>}
-   </fieldset>)}<p className="schedule-settings-help">저장하면 예약이 중지됩니다. 변경된 일정을 확인한 뒤 예약을 켜세요.</p><button className="as-button as-primary" type="submit" disabled={busy}>일정 저장</button>
-  </form>:<p>현재 반복 일정 {intervals.length}개 · 일정을 수정해 실행 시각을 확인할 수 있습니다.</p>}
+   </fieldset>)}{flow.active&&<p className="schedule-settings-help">일정을 저장하면 예약이 중지됩니다.</p>}<button className="as-button as-primary" type="submit" disabled={busy}>일정 저장</button>
+  </form>:null}
   {error&&<p role="alert" className="schedule-settings-error">{error}</p>}
  </section>;
 }

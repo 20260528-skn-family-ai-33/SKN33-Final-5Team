@@ -41,3 +41,6 @@
 @media(max-width:900px){
  .unified-workspace .editor-container,.unified-workspace .workspace.chat-open .editor-container,.unified-schedule-panel{grid-template-columns:minmax(0,1fr);padding:16px}
 }
+
+.unified-workspace .editor-container>.studio-assistant{background:var(--a4b-surface);color:var(--a4b-ink)}
+.studio-assistant .as-composer-footer small{margin-left:auto}

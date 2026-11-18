@@ -242,7 +242,11 @@ jobs:
       - name: Test document parser routing and OCR coverage
         if: needs.resolve-image.outputs.target != 'frontend' && hashFiles('Backend/tests/documents/analysis/test_pipeline.py') != ''
         working-directory: Backend
-        run: .venv-document-analysis/bin/python -m unittest discover -s tests/documents/analysis -p test_pipeline.py
+        run: |
+          .venv-document-analysis/bin/python -m unittest discover -s tests/documents/analysis -p test_pipeline.py
+          if [[ -f tests/documents/analysis/test_remote_docling.py ]]; then
+            .venv-agent/bin/python -m pytest -q tests/documents/analysis/test_remote_pdf.py tests/documents/analysis/test_remote_docling.py
+          fi
       - name: Test business-data storage on PostgreSQL
         if: needs.resolve-image.outputs.target != 'frontend'
         env:

@@ -39,6 +39,7 @@ def source_file_ids(node,file_ids,storage,config,outputs=None):
         if file_ids and selected[0] not in provided:
             if len(provided) == 1 and len([n for n in (config.get('workflow') or {}).get('nodes', [])
                                           if n['tool'] == 'read_document']) <= 1:
+                replacement_table_id(storage, selected[0], settings['document_table_id'], document_chunks(storage, provided))
                 return provided
             raise ValueError(DOCUMENT_TABLE_ERROR)
         return selected
@@ -100,15 +101,21 @@ def read_source(node,state,storage,config,external_port):
 
 def replacement_table_id(storage, original_id, table_id, parts):
     """Rebind one replacement document by a unique full header, never by block ID."""
-    from workflow_engine.executors.document.table_rows import _grid, label
+    from workflow_engine.executors.document.table_rows import _grid, label, _unit_cell
     original = [part for part in document_chunks(storage, [original_id])
                 if part.get('block_id') == table_id and part.get('table_cells')]
     def signature(part):
         grid = _grid(part.get('table_cells') or [])
         if not grid or part.get('review_required'):
             return None
-        return tuple((column, label(cell.get('text')), cell.get('row_span') or 1, cell.get('col_span') or 1)
-                     for column, cell in sorted(grid[0][1].items()))
+        columns = {column for _, row in grid for column in row}
+        header_end = next((number for number, row in grid
+                           if set(row) == columns and all(_unit_cell(cell) and label(cell.get('text')) for cell in row.values())
+                           and len({label(cell.get('text')) for cell in row.values()}) == len(row)), None)
+        if header_end is None:
+            return None
+        return tuple((number, column, label(cell.get('text')), cell.get('row_span') or 1, cell.get('col_span') or 1)
+                     for number, row in grid if number <= header_end for column, cell in sorted(row.items()))
     if len(original) != 1 or not (expected := signature(original[0])):
         raise ValueError(DOCUMENT_TABLE_ERROR)
     candidates = {part.get('block_id') for part in parts if part.get('table_cells') and signature(part) == expected}

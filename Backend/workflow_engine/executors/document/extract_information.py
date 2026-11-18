@@ -113,8 +113,10 @@ def execute(node,state,storage,config,llm):
             if file_records and receipt_check.line_amount_field(fields):
                 native_fields = [field for field in fields if any(
                     label(cell.get('text')) == label(field) for part in parts for cell in part.get('table_cells', []))]
-                check_text = row_check_text(parts, native_fields=native_fields if native is not None else None)
-                message = receipt_check.check(file_records, fields, check_text)
+                check_fields = native_fields if native is not None else fields
+                if receipt_check.line_amount_field(check_fields):
+                    check_text = row_check_text(parts, native_fields=native_fields if native is not None else None)
+                    message = receipt_check.check(file_records, check_fields, check_text)
             if message:
                 # Arithmetic is file-scoped and independent of how its rows were extracted.
                 # Keep values, evidence and coverage intact; CSV projection happens at export.

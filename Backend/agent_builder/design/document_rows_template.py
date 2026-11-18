@@ -589,10 +589,20 @@ def document_row_source_issues(state, draft):
             if not reader:
                 continue
             source = reader['settings']
-            ids = source.get('file_ids') or list(resources)
+            from workflow_engine.executors.sources import source_file_ids
+            class DesignStorage:
+                def asset(self, identifier):
+                    if identifier not in resources:
+                        raise ValueError('선택한 문서를 다시 연결해 주세요.')
+                    return resources[identifier]
+            try:
+                ids = source_file_ids(reader, [], DesignStorage(), draft)
+            except ValueError as error:
+                return [str(error)]
             for identifier in ids:
                 asset = resources.get(identifier)
-                if not asset or asset.get('kind') != 'document':
+                from documents.resources.document_resources import supports
+                if not asset or not supports(asset, 'document'):
                     continue
                 if identifier not in chunks:
                     chunks[identifier] = list(chunks_for_asset(asset))
@@ -601,7 +611,7 @@ def document_row_source_issues(state, draft):
                     parts = [part for part in parts if part.get('block_id') == source['document_table_id']]
                 try:
                     rows = native_rows(parts, settings.get('fields') or [], EVIDENCE_KEYS, MAX_ROWS)
-                    if not rows:
+                    if rows is None:
                         return [asset['name'] + ': ' + NO_COORDINATES]
                 except ValueError as error:
                     return [asset['name'] + ': ' + str(error)]

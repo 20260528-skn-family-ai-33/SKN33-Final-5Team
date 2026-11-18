@@ -39,10 +39,9 @@ def text_artifact(text,format):
     return {'name':'답변.json','content':text,'mime':'application/json; charset=utf-8'}
 
 
-def project_records(records, fields):
+def project_records(records, fields, *, field_records=False):
     """Column projection does not assert that these are parser-native table rows."""
-    if (records and not all(all(field in record for field in fields) for record in records)
-            and all('field' in record and 'value' in record for record in records)):
+    if field_records:
         groups = {}
         for record in records:
             key = record.get('file_id') or record.get('file_name')
@@ -80,7 +79,11 @@ def execute(node,state,storage,config,llm):
             from workflow_engine.executors.document.extract_information import ROW_RESERVED_FIELDS
             fields = [field for field in records[0] if field not in ROW_RESERVED_FIELDS]
         if fields:
-            records = project_records(records, fields)
+            source_ids = {b['node_id'] for b in node['bindings'] if b['input'] == 'records'}
+            source_nodes = [n for n in (config or {}).get('workflow', {}).get('nodes', []) if n['id'] in source_ids]
+            field_records = any(n['tool'] == 'extract_information' and not n['settings'].get('operation')
+                                and n['settings'].get('extraction_mode') not in ('rows', 'receipt_items') for n in source_nodes)
+            records = project_records(records, fields, field_records=field_records)
         artifact = records_artifact(records,format,inputs.get('answer'),fields=fields)
         if warnings:
             artifact['warnings'] = ['영수증 검산: ' + warning for warning in warnings]

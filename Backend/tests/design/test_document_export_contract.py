@@ -10,10 +10,11 @@ from workflow_engine.executors.output.export_result import execute as export
 from workflow_engine.runner import run_workflow
 
 
-def export_records(records, fields, format='csv'):
+def export_records(records, fields, format='csv', *, field_records=False):
     return export({'tool': 'export_result', 'settings': {'format': format, 'fields': fields},
                    'bindings': [{'input': 'records', 'node_id': 'extract', 'output': 'records'}]},
-                  {'outputs': {'extract': {'records': records}}}, None, {}, NoModel())['artifact']
+                  {'outputs': {'extract': {'records': records}}}, None, {'workflow': {'nodes': [{'id': 'extract', 'tool': 'extract_information',
+                      'settings': {'extraction_mode': 'fields' if field_records else 'rows'}}]}}, NoModel())['artifact']
 
 
 @pytest.mark.parametrize('format', ['csv', 'json'])
@@ -28,10 +29,10 @@ def test_scalar_records_are_pivoted_per_file_not_per_filename():
     records = [{'file_id': id, 'file_name': 'same.pdf', 'field': field, 'value': value}
                for id, name, total in [('a', '상점A', '1000'), ('b', '상점B', '2000')]
                for field, value in [('상호명', name), ('합계', total)]]
-    assert output_rows(export_records(records, ['상호명', '합계'])) == [
+    assert output_rows(export_records(records, ['상호명', '합계'], field_records=True)) == [
         {'상호명': '상점A', '합계': '1000'}, {'상호명': '상점B', '합계': '2000'}]
     with pytest.raises(ValueError, match='중복'):
-        export_records(records + [records[0]], ['상호명'])
+        export_records(records + [records[0]], ['상호명'], field_records=True)
     assert output_rows(export_records([{'field': '원본 열', 'value': '값'}], ['value'])) == [{'value': '값'}]
 
 
@@ -75,7 +76,7 @@ def test_explicit_scalar_selects_native_row_without_model(selection, expected):
     result = extract(node, {'request': '문서마다 ' + selection,
                            'outputs': {'read': {'documents': list(chunks_for_asset(mixed_document()))}}},
                      None, {'purpose': '문서마다 ' + selection}, NoModel())
-    assert output_rows(export_records(result['records'], ['품명'])) == [{'품명': expected}]
+    assert output_rows(export_records(result['records'], ['품명'], field_records=True)) == [{'품명': expected}]
 
 
 def test_scalar_save_run_and_cancellation_does_not_inherit_old_selection(tmp_path):
@@ -172,3 +173,113 @@ def test_scoped_replacement_uses_unique_full_header(tmp_path, replacement_kind):
             assert '하나로 확정' in result['error']
     finally:
         store.close()
+
+
+@pytest.mark.parametrize('field', ['status', 'evidence', 'file_name', 'field', 'value'])
+def test_internal_keys_use_explicit_field_source(field):
+    records = [{'file_id': 'f', 'file_name': 'source.pdf', 'field': field, 'value': 'paid',
+                'status': 'verified', 'evidence': {}}]
+    assert output_rows(export_records(records, [field], field_records=True)) == [{field: 'paid'}]
+
+
+@pytest.mark.parametrize('text', ['거래일자 :', '거래일자：', '거래일자   :   '])
+def test_empty_metadata_is_not_a_separator(text):
+    from documents.resources.document_resources import chunks_for_asset
+    from workflow_engine.executors.document.row_contract import native_rows
+    asset = mixed_document(); asset['parser_metadata']['document_analysis']['blocks'][1]['text'] = text
+    with pytest.raises(ValueError, match='요청한 열'):
+        native_rows(list(chunks_for_asset(asset)), ['거래일자', '품명'], [], 200)
+
+
+@pytest.mark.parametrize('prefix', ['첫', '마지막'])
+def test_exclusion_is_not_selection(prefix):
+    from workflow_engine.executors.document.row_contract import scalar_selection
+    assert scalar_selection(prefix + ' 품목만 빼고 CSV로 저장해줘') is None
+
+
+@pytest.mark.parametrize('label', ['거래일자', '예정 거래일자'])
+def test_overlapping_chunks_preserve_original_line(label):
+    from documents.resources.document_resources import chunks_for_asset
+    from workflow_engine.executors.document.row_contract import native_rows
+    parts = list(chunks_for_asset(mixed_document()))[:1]
+    text = 'x' * 1397 + '\n' + label + ': 2026-11-18\n' + 'x' * 500
+    for offset, end in [(0, 1415), (1390, len(text))]:
+        parts.append({'file_id': 'delivery', 'file_name': 'a.pdf', 'source_id': f'delivery:date:{offset}',
+                      'block_id': 'date', 'offset': offset, 'text': text[offset:end]})
+    if label == '거래일자':
+        assert native_rows(parts, ['거래일자', '품명'], [], 200)[0]['거래일자'] == '2026-11-18'
+    else:
+        with pytest.raises(ValueError, match='요청한 열'):
+            native_rows(parts, ['거래일자', '품명'], [], 200)
+
+
+def test_common_amount_is_not_line_amount():
+    from documents.resources.document_resources import chunks_for_asset
+    asset = mixed_document()
+    asset['parser_metadata']['document_analysis']['blocks'][1]['text'] = '금액: 3000\n결제금액 3000'
+    node = {'tool': 'extract_information', 'settings': {'fields': ['품명', '금액'], 'extraction_mode': 'rows'},
+            'bindings': [{'input': 'documents', 'node_id': 'read', 'output': 'documents'}]}
+    result = extract(node, {'request': '각 품목 추출', 'outputs': {'read': {'documents': list(chunks_for_asset(asset))}}},
+                     None, {}, NoModel())
+    assert all('합계_검산' not in record for record in result['records'])
+
+
+def test_preflight_selected_documents_and_zero_rows():
+    from agent_builder.design.document_rows_template import _draft, document_row_source_issues
+    asset = document([block([['품명', '수량']])])
+    current = state(asset)
+    current['resources'].append(dict(id='unused', kind='document', name='unused.pdf', text='좌표 없음'))
+    draft = _draft('각 품목 CSV', '', ['품명', '수량'], [asset['id']])
+    draft['workflow']['nodes'][0]['settings']['file_ids'] = []
+    assert document_row_source_issues(current, draft) == []
+
+
+def test_replacement_compares_header_below_merged_title_and_preflight():
+    from workflow_engine.executors.sources import source_file_ids
+    from types import SimpleNamespace
+    def asset(identifier, last):
+        table = block([['Shared title'], ['Code', 'Qty', last], ['A', '2', '3']])
+        table['data']['cells'][0]['col_span'] = 3
+        return dict(document([table]), id=identifier)
+    old, new = asset('old', 'Ordered'), asset('new', 'Returned')
+    assets = {'old': old, 'new': new}
+    store = SimpleNamespace(asset=lambda identifier: assets[identifier])
+    node = {'id': 'read', 'tool': 'read_document', 'settings': {'file_ids': ['old'], 'document_table_id': 'table-1'}}
+    with pytest.raises(ValueError, match='하나로 확정'):
+        source_file_ids(node, ['new'], store, {'workflow': {'nodes': [node]}})
+
+
+def test_saved_scalar_status_does_not_export_internal_verification(tmp_path):
+    from agent_builder.design.document_rows_template import _draft
+    from workflow_engine.executors.schemas import Facts
+    asset = document([{'id': 'status', 'selected': True, 'content_types': ['text'],
+                       'text': 'status: paid', 'native_location': {'page': 1}, 'engine': 'mineru'}])
+    request = '문서마다 status 하나만 추출해줘'
+    current = state(asset, request)
+    draft = _draft(request, '', ['status'], [asset['id']])
+    draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
+    current.update(draft=draft, status='ready', confirmed=True)
+    class Model:
+        def with_structured_output(self, schema, **kwargs):
+            assert schema is Facts
+            return self
+        def invoke(self, messages):
+            return Facts.model_validate({'facts': [{'field': 'status', 'value': 'paid',
+                'source_id': 'delivery:status:0', 'quote': 'status: paid'}]})
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        result = run_workflow(store, store.save_agent(current), '실행', '', llm=Model())
+        assert result['status'] == 'succeeded', result.get('error')
+        assert output_rows(result['artifact']) == [{'status': 'paid'}]
+    finally:
+        store.close()
+
+
+def test_preflight_accepts_document_compatible_analyzed_asset():
+    from agent_builder.design.document_rows_template import _draft, document_row_source_issues
+    asset = document([block([['품명'], ['볼트']])]); asset['kind'] = 'table'
+    draft = _draft('각 품목 CSV', '', ['품명'], [asset['id']])
+    assert document_row_source_issues(state(asset), draft) == []
+    asset['parser_metadata']['document_analysis']['blocks'][0]['data']['cells'] = []
+    assert document_row_source_issues(state(asset), draft)

@@ -4124,3 +4124,35 @@ test('late external design responses leave the active reservation screen and ser
   assert.equal(button('저장').disabled,true);
  }finally{await h.close();}
 });
+
+for(const [label,broken] of [
+ ['null entry',{interval:[null,{field:'weeks',triggerAtDay:[3],triggerAtHour:11}]}],
+ ['empty interval',{interval:[]}],
+ ['non-array interval',{interval:{field:'days'}}],
+] as const)test('external schedule can repair a stored '+label+' without applying defaults automatically',async()=>{
+ let flow:Flow={...structuredClone(externalScheduleFixture),nodes:externalScheduleFixture.nodes.map(node=>({...node,position:[node.position[0],node.position[1]],typeVersion:1.2}))};
+ flow.nodes[0].parameters={rule:broken};
+ const h=await setup('?screen=schedule&external='+flow.id,{},(path,body)=>{
+  if(path==='/api/workflows')return {workflows:[flow]};
+  if(path.startsWith('/api/executions'))return {executions:[]};
+  if(path==='/api/workflows/schedule'){
+   flow={...flow,nodes:[{...flow.nodes[0],parameters:{rule:body.rule}},...flow.nodes.slice(1)]};
+   return {workflow:flow};
+  }
+ },createElement(EntryApp));
+ try{
+  assert.equal(button('예약 켜기').disabled,true);
+  await click(button('일정 수정'));
+  assert.match(document.querySelector('.schedule-settings [role=status]')?.textContent||'',/확인한 뒤 저장/);
+  assert.equal(h.calls.some(call=>call.body),false);
+  const time=document.querySelector<HTMLInputElement>('[aria-label="실행 시간 1"]')!;
+  assert.equal(time.value,'09:00');
+  await input(time,'10:30');
+  await click(button('일정 저장'));
+  const {validateSchedule,nextRunAt}=await import('../../Backend/api/src/schedule');
+  validateSchedule(flow.nodes[0],'Asia/Seoul');
+  assert.equal(new Date(nextRunAt(flow.nodes[0],Date.parse('2026-11-16T00:00:00Z'),'Asia/Seoul')).toISOString(),'2026-11-16T01:30:00.000Z');
+  if(label==='null entry')assert.deepEqual(flow.nodes[0].parameters.rule.interval[1],broken.interval[1]);
+  assert.equal(button('예약 켜기').disabled,false);
+ }finally{await h.close();}
+});

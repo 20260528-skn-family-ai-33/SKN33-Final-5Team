@@ -226,15 +226,17 @@ async function run(e:Execution){
  finally{controllers.delete(e.id);inFlight.delete(e.id);void pump();}
 }
 async function pump(){if(closing)return;for(const e of store.listPendingExecutions()){if(inFlight.size>=2)break;if(inFlight.has(e.id))continue;if(e.status==='queued'||e.status==='waiting'&&Date.parse(e.resumeAt||'')<=Date.now()){inFlight.add(e.id);void run(e);}}}
-function cancelQueuedScheduleExecutions(workflowId:string){
- for(const execution of store.listPendingExecutions())if(execution.workflowId===workflowId&&execution.trigger==='schedule'&&execution.status==='queued'){
-  store.saveExecution({...execution,status:'canceled',error:'예약 설정이 변경되어 대기 중인 자동 실행을 취소했습니다.'});
+function cancelQueuedScheduleExecutions(workflowId:string,reason='예약 설정이 변경되어 대기 중인 자동 실행을 취소했습니다.'){
+ for(const execution of store.listPendingExecutions())if(execution.workflowId===workflowId&&execution.trigger==='schedule'&&execution.status==='queued'&&!inFlight.has(execution.id)){
+  store.saveExecution({...execution,status:'canceled',error:reason});
  }
 }
 function activate(flow:Flow,active:boolean){
  if(active){checkLive(flow);const triggers=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(triggers.length!==1)throw new Error('자동 실행에는 예약 시작 또는 Webhook 시작 단계 하나가 필요해요.');const allStarts=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.manualTrigger')||n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(allStarts.length!==1)throw new Error('시작 단계는 하나만 사용해주세요. 기존 시작 단계에서 시작 방식을 바꿀 수 있어요.');const n=triggers[0];if(n.type.endsWith('.scheduleTrigger')){validateSchedule(n,flow.settings.timezone||'Asia/Seoul');const activatedAt=Date.now();flow.schedule={triggerId:n.id,activatedAt,nextRunAt:nextRunAt({...n,scheduleAnchorAt:activatedAt},activatedAt,flow.settings.timezone||'Asia/Seoul')};}if(n.type.endsWith('.webhook')){validateWebhookConfiguration(flow,n);flow.hookToken??=randomBytes(24).toString('hex');}}
  else delete flow.schedule;
- return store.saveFlow({...flow,active});
+ const saved=store.saveFlow({...flow,active});
+ if(!active)cancelQueuedScheduleExecutions(flow.id,'예약이 중지되어 대기 중인 자동 실행을 취소했습니다.');
+ return saved;
 }
 const timer=setInterval(()=>{
  if(!visualSchedulerEnabled)return;

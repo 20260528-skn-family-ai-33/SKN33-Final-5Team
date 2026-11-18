@@ -3,6 +3,7 @@ import {SERVER_STDIO,requestShutdown,removeDirectory,scaled} from '../src/test-p
 import test from 'node:test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer, type ServerResponse } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -302,6 +303,57 @@ test('standalone server persists and executes workflows, credentials, schedules 
         assert.equal(stopped.status,200);
         assert.equal(stopped.data.workflow.active,false);
         assert.equal(stopped.data.workflow.schedule,undefined);
+      }
+    });
+
+    await t.test('pausing a schedule cancels queued automatic runs but leaves running and manual work alone',async()=>{
+      const responses:ServerResponse[]=[];
+      const blocker=createHttpServer((_req,res)=>{responses.push(res);});
+      await new Promise<void>((resolve,reject)=>{blocker.once('error',reject);blocker.listen(0,'127.0.0.1',resolve);});
+      try{
+        const address=blocker.address();
+        assert.ok(address&&typeof address!=='string');
+        const held=workflow('실행 슬롯 점유',[stage('manualTrigger','직접 시작'),stage('httpRequest','응답 대기',{url:'http://127.0.0.1:'+address.port,method:'GET',options:{timeout:10_000}})]);
+        assert.equal((await server.request('/api/workflows','POST',held)).status,200);
+        const started=await Promise.all([1,2].map(()=>server.request('/api/runs','POST',{workflowId:held.id,mode:'live',input:[{}]})));
+        assert.ok(started.every(run=>run.status===202));
+        const deadline=Date.now()+scaled(4000);
+        while(responses.length<2&&Date.now()<deadline)await delay(25);
+        assert.equal(responses.length,2,'both execution slots must remain occupied');
+        const scheduled=workflow('중지할 자동 예약',[stage('scheduleTrigger','예약 시작',{rule:{interval:[{field:'seconds',secondsInterval:1}]}}),rawSet('출력')]);
+        assert.equal((await server.request('/api/workflows','POST',scheduled)).status,200);
+        const active=await server.request('/api/activation','POST',{workflowId:scheduled.id,active:true});
+        assert.equal(active.status,200);
+        const manual=await server.request('/api/runs','POST',{workflowId:scheduled.id,mode:'learning',input:[{}]});
+        assert.equal(manual.status,202);
+        const queueDeadline=Date.now()+scaled(4000);
+        let automatic:Execution|undefined;
+        while(!automatic&&Date.now()<queueDeadline){
+          const listed=await server.request('/api/executions?workflowId='+scheduled.id);
+          automatic=(listed.data.executions as Execution[]).find(item=>item.trigger==='schedule'&&item.status==='queued');
+          if(!automatic)await delay(25);
+        }
+        assert.ok(automatic,'scheduler must enqueue an automatic run before pause');
+        const paused=await server.request('/api/activation','POST',{workflowId:scheduled.id,active:false,expectedUpdatedAt:active.data.workflow.updatedAt});
+        assert.equal(paused.status,200);
+        assert.equal(paused.data.workflow.active,false);
+        const canceled=await server.execution(automatic.id,item=>item.status==='canceled');
+        assert.equal(canceled.runs.length,0);
+        const manualQueued=await server.request('/api/executions?id='+manual.data.executionId);
+        assert.equal(manualQueued.data.execution.status,'queued');
+        for(const running of started){
+          const stillRunning=await server.request('/api/executions?id='+running.data.executionId);
+          assert.equal(stillRunning.data.execution.status,'running');
+        }
+        for(const response of responses)response.end('done');
+        await server.execution(manual.data.executionId,item=>item.status==='success');
+        const final=await server.request('/api/executions?id='+automatic.id);
+        assert.equal(final.data.execution.status,'canceled');
+        assert.equal(final.data.execution.runs.length,0);
+      }finally{
+        for(const response of responses)if(!response.writableEnded)response.end('done');
+        blocker.closeAllConnections();
+        await new Promise<void>(resolve=>blocker.close(()=>resolve()));
       }
     });
 

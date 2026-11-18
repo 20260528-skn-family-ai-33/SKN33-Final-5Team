@@ -17,3 +17,10 @@
 @media(max-width:1000px){.scheduled-workflows>.task-library-title{flex-wrap:wrap}}@media(max-width:650px){.schedule-manager{padding:14px}.schedule-page-actions{width:100%}.schedule-workflow-picker select{font-size:16px}}
 
 .schedule-row-actions .as-button{white-space:nowrap}
+
+.schedule-list-tools>label{min-width:0}
+.schedule-list-filters{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;color:var(--a4b-muted);font-size:12px;font-variant-numeric:tabular-nums}
+@media(max-width:650px){
+ .entry-list-tools.schedule-list-tools{flex-wrap:wrap}
+ .schedule-list-tools>label{flex-basis:min(100%,220px)}
+}

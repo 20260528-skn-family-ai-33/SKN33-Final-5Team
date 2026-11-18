@@ -298,3 +298,8 @@ details.as-setting-section[open] > summary:not(:has(> svg))::after { transform:r
 .as-app>.as-global-error{position:relative;z-index:1;flex-wrap:wrap}
 
 .schedule-detail-tabs{width:100%}
+
+.schedule-detail-current{display:inline-flex;align-items:center;gap:8px;cursor:default}
+.screen-schedule .as-service-input>.schedule-settings+.as-schedule-card{margin-top:16px}
+.screen-schedule .as-schedule-card{border-color:var(--a4b-border);border-radius:8px;background:var(--a4b-surface);padding:20px}
+@media(max-width:650px){.screen-schedule .as-schedule-card{padding:16px}}

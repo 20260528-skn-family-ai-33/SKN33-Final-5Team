@@ -2615,7 +2615,8 @@ test('execution separation: a manual workflow gains a reservation while direct i
   assert.equal(button('예약 켜기').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
   await click(button('예약 자료로 지금 실행'));
   let sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[0].body,{id:'A',content:'',fileIds:[],useSchedule:true});
-  assert.deepEqual([...document.querySelectorAll('.schedule-detail-tabs button')].map(item=>item.textContent),['관리']);
+  assert.deepEqual([...document.querySelectorAll('.schedule-detail-tabs [aria-current=page]')].map(item=>item.textContent),['관리']);
+  assert.equal(document.querySelector('.schedule-detail-tabs button'),null);
   await click(button('작업 라이브러리'));await click(document.querySelector('[aria-label="서비스 A 실행하기"]')!);assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
   assert.equal(button('워크플로우 실행').disabled,true);await input(document.querySelector<HTMLTextAreaElement>('textarea[data-tour="run-input"]')!,'이번에는 다른 요청');
   await click(button('워크플로우 실행'));sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[1].body,{id:'A',content:'이번에는 다른 요청',fileIds:[]});

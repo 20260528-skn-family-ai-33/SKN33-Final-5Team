@@ -100,10 +100,14 @@ def execute(node,state,storage,config,llm):
     for parts in by_file.values():
         lookup = {d['source_id']: d for d in parts}
         if rows_mode:
-            file_records = native_records(parts, fields, EVIDENCE_KEYS, MAX_ROWS)
+            native = native_records(parts, fields, EVIDENCE_KEYS, MAX_ROWS)
+            file_records = native
             if file_records is None:
                 file_records = _model_row_records(parts, fields, settings.get('instructions'), state['request'], llm)
-            message = receipt_check.check(file_records, fields, row_check_text(parts))
+            message = None
+            if file_records and receipt_check.line_amount_field(fields):
+                check_text = row_check_text(parts, native_fields=fields if native is not None else None)
+                message = receipt_check.check(file_records, fields, check_text)
             if message:
                 # Arithmetic is file-scoped and independent of how its rows were extracted.
                 # Keep values, evidence and coverage intact; CSV projection happens at export.

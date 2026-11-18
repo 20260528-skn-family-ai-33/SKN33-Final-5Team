@@ -183,10 +183,32 @@ def test_native_summary_cells_are_checked_once_despite_flattened_overlapping_tex
     assert receipt_check.check(rows('1000', '2000'), ['상품명', '금액'], text).startswith(expected)
 
 
-def test_native_total_inside_flattened_table_reaches_extraction_findings():
+@pytest.mark.parametrize('marker', ['합계', '합\n계'])
+def test_native_total_inside_flattened_table_reaches_extraction_findings(marker):
     part = native_receipt('native', ['1000', '2000'], '')[0]
-    part['table_cells'] += [dict(row=3, column=c, text=value) for c, value in enumerate(['', '합계', '4000'])]
+    part['table_cells'] += [dict(row=3, column=c, text=value) for c, value in enumerate(['', marker, '4000'])]
     part['text'] = '\n'.join(cell['text'] for cell in part['table_cells'])
     records = extract_rows([part], ['상품명', '금액'])
     assert [record['금액'] for record in records] == ['1000', '2000']
     assert all(record['합계_검산'].startswith('불일치') for record in records)
+
+
+@pytest.mark.parametrize('block_id', [None, 'summary'])
+def test_overlapping_prose_chunks_count_each_printed_discount_once(block_id):
+    source = 'x' * 1450 + '\n소계 3000\n할인 -500\n결제금액 2500'
+    table, summary = native_receipt('native', ['1000', '2000'], source)
+    summary.update(source_id='native:1:0', offset=0)
+    if block_id is not None:
+        summary['block_id'] = block_id
+    overlap = {**summary, 'source_id': 'native:1:1400', 'offset': 1400, 'text': source[1400:]}
+    records = extract_rows([table, summary, overlap], ['상품명', '금액'])
+    assert [record['합계_검산'] for record in records] == ['일치', '일치']
+
+
+def test_offset_deduplication_keeps_equal_discounts_at_different_source_positions():
+    source = 'x' * 1450 + '\n소계 3000\n할인 -500\n할인 -500\n결제금액 2000'
+    table, summary = native_receipt('native', ['1000', '2000'], source)
+    summary.update(block_id='summary', offset=0)
+    overlap = {**summary, 'source_id': 'native:summary:1400', 'offset': 1400, 'text': source[1400:]}
+    records = extract_rows([table, summary, overlap], ['상품명', '금액'])
+    assert [record['합계_검산'] for record in records] == ['일치', '일치']

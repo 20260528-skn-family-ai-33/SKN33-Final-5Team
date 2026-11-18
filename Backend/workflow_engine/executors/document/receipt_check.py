@@ -66,9 +66,13 @@ def won(value):
     return f'{value:,}'
 
 
+def line_amount_field(fields):
+    return next((field for field in AMOUNT_FIELDS if field in fields), None)
+
+
 def check(records, fields, text):
     """Return the check message for one file's rows, or None when it cannot apply."""
-    field = next((f for f in AMOUNT_FIELDS if f in fields), None)
+    field = line_amount_field(fields)
     if not field or not records:
         return None
     subtotal, discount, paid = totals(text)

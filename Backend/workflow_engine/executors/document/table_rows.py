@@ -8,13 +8,20 @@ import unicodedata
 
 COVERAGE_KEY = 'row_coverage'
 TABLE_INTENT = re.compile(r'엑셀|excel|xlsx|csv|표로|표 형태|표 형식|목록으로|한 줄씩|행으로|스프레드시트', re.I)
-_ROW_REQUEST = re.compile(
-    r'한\s*(?:행|줄)씩|(?:행|품목|항목)\s*단위|(?:품목|항목)\s*(?:별|마다)'
-    r'|(?:모든|각|전체|반복)\s*(?:품목|행|항목)|모두\s*(?:추출|뽑)|목록으로'
+_ITEM_SCOPE = re.compile(
+    r'(?:행|품목|항목)\s*단위|(?:품목|항목)\s*(?:별|마다)'
+    r'|(?:모든|각|전체|반복(?:되는)?)\s*(?:품목|행|항목)'
+    r'|\b(?:each|every|all)\s+(?:rows?|line[\s-]+items?)\b', re.I
 )
+_DOCUMENT_SCOPE = re.compile(r'(?:문서|파일)\s*(?:당|마다|별(?:로)?)')
+_DOCUMENT_COUNT = re.compile(_DOCUMENT_SCOPE.pattern + r'\s*(?:\S+\s+){0,3}(?:한\s*(?:행|줄|값|개)|하나|1\s*개)')
+_ROW_REQUEST = re.compile(r'한\s*(?:행|줄)\s*씩|모두\s*(?:추출|뽑)|목록으로')
 _SCALAR_REQUEST = re.compile(
-    r'(?:문서|파일)\s*(?:당|마다|별(?:로)?)\s*(?:\S+\s+){0,3}(?:한\s*(?:행|줄|값|개)|하나|1\s*개)'
-    r'|\b한\s*값(?!\s*씩)|\b(?:한\s*개|하나|1\s*개)\s*만|\b(?:첫(?:\s*번째)?|마지막)\s*(?:행|항목|값)\s*만'
+    r'\b한\s*값(?!\s*씩)|\b(?:한\s*개|하나|1\s*개)\s*만|\b(?:첫(?:\s*번째)?|마지막)\s*(?:행|항목|값)\s*만'
+)
+_ROW_OPERATION = re.compile(
+    r'정렬|(?:오름|내림)\s*차순|필터(?:링)?|그룹(?:화|별)'
+    r'|\b(?:sort|filter)(?:ed|ing)?\b|\bgroup(?:ed|ing)?\s+by\b', re.I
 )
 _SUMMARY_LABELS = frozenset({
     '합계', '소계', '총계', '총합계', '부가세', '부가가치세', '세액',
@@ -32,17 +39,25 @@ def label(text):
 
 
 def row_collection_intent(*requests):
-    """Use output format as a hint when the user hasn't specified granularity."""
+    """Identify a collection request without treating a table's format as its granularity."""
     table_requested = False
+    row_operation_requested = False
     for request in reversed(requests):
         if not request:
             continue
-        if _SCALAR_REQUEST.search(request):
+        # "File by file" can organize each item. A count without that item scope limits the file's result.
+        if _ITEM_SCOPE.search(request):
+            return True
+        if _DOCUMENT_COUNT.search(request):
             return False
         if _ROW_REQUEST.search(request):
             return True
+        if _DOCUMENT_SCOPE.search(request) or _SCALAR_REQUEST.search(request):
+            return False
         table_requested = table_requested or bool(TABLE_INTENT.search(request))
-    return True if table_requested else None
+        row_operation_requested = row_operation_requested or bool(_ROW_OPERATION.search(request))
+    # A format-only request must not inherit a conflicting row assumption from generated instructions.
+    return row_operation_requested if table_requested else None
 
 
 def _table_parts(parts):
@@ -102,29 +117,70 @@ def _text(cell):
     return '' if value is None else str(value).strip()
 
 
-def row_check_text(parts):
-    """Use each native table's cell rows once, preserving separate prose totals.
+def _check_source_key(part):
+    if part.get('block_id') is not None:
+        return part['file_id'], 'block', part['block_id']
+    source_id = part['source_id']
+    page_source, delimiter, start = source_id.rpartition(':')
+    if delimiter and type(part.get('offset')) is int and start == str(part['offset']):
+        return part['file_id'], 'page', page_source
+    return part['file_id'], 'chunk', source_id
 
-    Flattened table text can put a total label and its amount on different lines.
-    Overlapping text chunks of one table must not repeat discounts in arithmetic.
-    """
-    tables = {}
-    for part in _table_parts(parts):
-        if part.get('table_cells'):
-            identity = (part['file_id'], part.get('block_id', part['source_id']))
-            tables[identity] = '\n'.join(
-                ' '.join(_text(row[column]).replace('\n', ' ') for column in sorted(row))
-                for _, row in _grid(part['table_cells'])
-            )
-    text, seen = [], set()
-    for part in parts:
-        identity = (part['file_id'], part.get('block_id', part['source_id']))
-        if identity in tables:
-            if identity not in seen:
-                text.append(tables[identity])
-                seen.add(identity)
+
+def _join_source_chunks(chunks):
+    if any(type(chunk.get('offset')) is not int or chunk['offset'] < 0 for chunk in chunks):
+        return '\n'.join(chunk['text'] for chunk in chunks)
+    segments = []
+    end = -1
+    for chunk in sorted(chunks, key=lambda part: part['offset']):
+        start = chunk['offset']
+        text = chunk['text']
+        if start > end:
+            segments.append(text)
         else:
-            text.append(part['text'])
+            segments[-1] += text[end - start:]
+        end = max(end, start + len(text))
+    return '\n'.join(segments)
+
+
+def _native_check_lines(grid, fields):
+    from workflow_engine.executors.document import receipt_check
+
+    header, columns = _columns(grid, {label(field): field for field in fields})
+    amount_column = columns.get(receipt_check.line_amount_field(fields))
+    if amount_column is None:
+        return
+    details = {number for number, _ in _detail_rows(grid, header, strict=True)}
+    for number, row in grid:
+        if number <= header or number in details:
+            continue
+        markers = _summary_labels(row)
+        cell = row.get(amount_column)
+        if len(markers) != 1 or cell is None or not _unit_cell(cell):
+            continue
+        amount = receipt_check.amount(_text(cell))
+        if amount is not None:
+            marker = ' '.join(_text(row[markers[0]]).split())
+            yield f'{marker} {amount}'
+
+
+def row_check_text(parts, *, native_fields=None):
+    """Project verified native summary rows or preserve parser text for the OCR check."""
+    sources = {}
+    for part in parts:
+        sources.setdefault(_check_source_key(part), []).append(part)
+    text = []
+    for chunks in sources.values():
+        cells = next((part['table_cells'] for part in chunks if part.get('table_cells')), None)
+        if not cells:
+            text.append(_join_source_chunks(chunks))
+            continue
+        grid = _grid(cells)
+        if native_fields is not None:
+            text.extend(_native_check_lines(grid, native_fields))
+        else:
+            text.extend(' '.join(_text(row[column]).replace('\n', ' ') for column in sorted(row))
+                        for _, row in grid)
     return '\n'.join(text)
 
 

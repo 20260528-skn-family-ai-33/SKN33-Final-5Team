@@ -1,6 +1,6 @@
 import pytest
 
-from workflow_engine.executors.document.table_rows import has_repeated_rows, native_records
+from workflow_engine.executors.document.table_rows import has_repeated_rows, native_records, row_collection_intent
 
 
 def table(rows, name='table', page=1):
@@ -96,3 +96,20 @@ def test_row_request_keeps_independent_single_row_tables_distinct(difference):
     else:
         second['table_cells'][2]['text'] = ''
     assert not has_repeated_rows([first, second], ['Item'], across_pages=True)
+
+
+@pytest.mark.parametrize(('requests', 'expected'), [
+    (('파일마다 각 품목을 한 줄씩 뽑아줘.',), True),
+    (('각 품목에서 품명 하나만 뽑아 CSV로 저장해줘.',), True),
+    (('문서별 문서번호와 발행일을 CSV로 저장해줘.',), False),
+    (('문서별 발행일을 뽑아 날짜순으로 정렬한 CSV로 저장해줘.',), False),
+    (('문서번호를 뽑아 CSV로 저장해줘.',), False),
+    (('파일마다 문서번호 하나씩 뽑아줘.',), False),
+    (('파일마다 문서번호를 한 줄씩 적어줘.',), False),
+    (('품명을 내림차순으로 정렬해 줘.', 'CSV로 저장해 줘.'), True),
+    (('모든 품목을 뽑아줘.', '문서당 문서번호 하나만 저장해줘.'), False),
+    (('모든 품목을 뽑아줘.', '대신 문서별 문서번호와 발행일을 CSV로 저장해줘.'), False),
+    (('모든 품목을 뽑아줘.', 'CSV로 저장해줘.'), True),
+])
+def test_collection_intent_separates_fields_and_output_format_from_row_scope(requests, expected):
+    assert row_collection_intent(*requests) is expected

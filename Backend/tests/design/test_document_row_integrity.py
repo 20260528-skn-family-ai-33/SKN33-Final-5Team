@@ -56,6 +56,33 @@ def test_saved_native_receipt_preserves_arithmetic_in_history_and_only_requested
         store.close()
 
 
+@pytest.mark.parametrize(('grid', 'summary_text', 'product'), [
+    ([['코드', '상품명', '금액'], ['A1', '현금 봉투', '1000'], ['A2', '편지지', '2000']],
+     '합계 3000', '현금 봉투'),
+    ([['코드', '상품명', '금액', '수량'], ['A1', '봉투', '1000', '1'], ['A2', '편지지', '2000', '1'],
+      ['', '합계', '3000', '2']], None, '봉투'),
+])
+def test_saved_receipt_uses_payment_amount_not_product_labels_or_quantity(tmp_path, grid, summary_text, product):
+    blocks = [block(grid)]
+    if summary_text is not None:
+        blocks.append(dict(id='total', selected=True, content_types=['text'], text=summary_text,
+                           native_location={'page': 1}, engine='mineru'))
+    asset = document(blocks, name='영수증.pdf')
+    current = state(asset, '이 영수증을 CSV로 정리해줘.')
+    current['messages'] += [dict(role='assistant', content=QUESTION), dict(role='user', content='상품명, 금액')]
+    current.update(document_rows_reply(current), status='ready', confirmed=True)
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        run = run_workflow(store, store.save_agent(current), '실행', '', file_ids=[asset['id']], llm=NoModel())
+        assert run['status'] == 'succeeded', run.get('error')
+        assert output_rows(run['artifact']) == [{'상품명': product, '금액': '1000'}, {'상품명': '편지지', '금액': '2000'}]
+        records = store.test(run['id'])['outputs']['extract']['records']
+        assert [(record['합계_검산'], record['row_coverage']) for record in records] == [('일치', 'complete')] * 2
+    finally:
+        store.close()
+
+
 def block(grid, identifier='table-1', page=1):
     return dict(id=identifier, selected=True, content_types=['table'],
                 text='\n'.join(str(value) for row in grid for value in row),
@@ -299,6 +326,8 @@ def test_general_planner_allows_scalar_extraction_from_one_matching_native_row()
 @pytest.mark.parametrize('request_text', [
     '이 자료의 모든 품목에서 요청한 값인 품명을 한 값씩 뽑아줘.',
     '품명만 뽑아서 내림차순으로 정렬해 CSV로 저장해줘.',
+    '파일마다 각 품목을 한 줄씩 뽑아줘.',
+    '각 품목에서 품명 하나만 뽑아 CSV로 저장해줘.',
 ])
 def test_general_planner_rejects_scalar_extraction_from_continued_table(tmp_path, request_text):
     from agent_builder.design.document_rows_template import _draft, document_row_contract_issues
@@ -317,16 +346,20 @@ def test_general_planner_rejects_scalar_extraction_from_continued_table(tmp_path
         store.close()
 
 
-def test_saved_scalar_workflow_checks_continue_table_on_a_new_execution_file(tmp_path):
+@pytest.mark.parametrize('request_text', [
+    '이 자료에서 모든 품목의 품명을 뽑아줘.',
+    '파일마다 각 품목을 한 줄씩 뽑아줘.',
+    '각 품목에서 품명 하나만 뽑아 CSV로 저장해줘.',
+])
+def test_saved_scalar_workflow_checks_continue_table_on_a_new_execution_file(tmp_path, request_text):
     from agent_builder.design.document_rows_template import _draft
     asset = document([block(SOURCE[:2])])
     replacement = document([block(SOURCE[:2]), block([HEADERS, SOURCE[2]], 'continued', 2)])
     replacement['id'] = 'replacement'
-    request = '이 자료에서 모든 품목의 품명을 뽑아줘.'
-    draft = _draft(request, request, ['품명'], [asset['id']])
+    draft = _draft(request_text, request_text, ['품명'], [asset['id']])
     draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
     draft['workflow']['nodes'][2]['settings']['fields'] = []
-    current = dict(state(asset, request), draft=draft, status='ready', confirmed=True)
+    current = dict(state(asset, request_text), draft=draft, status='ready', confirmed=True)
     store = Storage(tmp_path)
     try:
         store.add_asset(asset, [])
@@ -335,23 +368,32 @@ def test_saved_scalar_workflow_checks_continue_table_on_a_new_execution_file(tmp
         result = run_workflow(store, saved, '실행', '', file_ids=[replacement['id']], llm=NoModel())
         assert result['status'] == 'failed' and not result.get('artifact')
         assert '여러 행으로 반복' in result['error']
+
+        rows_draft = _draft(request_text, request_text, ['품명'], [replacement['id']])
+        rows_state = dict(state(replacement, request_text), draft=rows_draft, status='ready', confirmed=True)
+        result = run_workflow(store, store.save_agent(rows_state), '실행', '', file_ids=[replacement['id']], llm=NoModel())
+        assert result['status'] == 'succeeded', result.get('error')
+        assert output_rows(result['artifact']) == [{'품명': SOURCE[1][1]}, {'품명': SOURCE[2][1]}]
     finally:
         store.close()
 
 
-@pytest.mark.parametrize('request_text', [
-    '문서당 문서번호 하나를 CSV로 저장해줘.',
-    '문서별로 문서번호 한 값을 CSV로 저장해줘.',
+@pytest.mark.parametrize(('request_text', 'fields'), [
+    ('문서당 문서번호 하나를 CSV로 저장해줘.', ['문서번호']),
+    ('문서별로 문서번호 한 값을 CSV로 저장해줘.', ['문서번호']),
+    ('문서별 문서번호와 발행일을 CSV로 저장해줘.', ['문서번호', '발행일']),
+    ('문서번호를 뽑아서 CSV로 저장해줘.', ['문서번호']),
 ])
-def test_explicit_single_metadata_request_allows_same_table_on_two_pages(request_text):
+def test_document_metadata_request_allows_same_table_on_two_pages(tmp_path, request_text, fields):
     from agent_builder.design.document_rows_template import _draft, document_row_contract_issues
     grid = [['문서번호', '발행일'], ['DLV-H-11011', '2026-11-17']]
     asset = document([block(grid), block(grid, 'continued', 2)])
-    draft = _draft(request_text, request_text, ['문서번호'], [asset['id']])
-    node = draft['workflow']['nodes'][1]
-    node['settings']['extraction_mode'] = 'fields'
+    draft = _draft(request_text, request_text, fields, [asset['id']])
+    draft['workflow']['nodes'][1]['settings']['extraction_mode'] = 'fields'
     draft['workflow']['nodes'][2]['settings']['fields'] = []
-    assert not document_row_contract_issues(state(asset, request_text), draft)
+    current = dict(state(asset, request_text), draft=draft, status='ready', confirmed=True)
+    assert not document_row_contract_issues(current, draft)
+    values = {field: value for field, value in zip(*grid) if field in fields}
 
     class ScalarModel:
         def with_structured_output(self, schema, **_kwargs):
@@ -359,12 +401,18 @@ def test_explicit_single_metadata_request_allows_same_table_on_two_pages(request
             return self
 
         def invoke(self, _messages):
-            return Facts.model_validate(dict(facts=[dict(field='문서번호', value='DLV-H-11011',
-                source_id='delivery:table-1:0', quote='DLV-H-11011')]))
+            return Facts.model_validate(dict(facts=[dict(field=field, value=value,
+                source_id='delivery:table-1:0', quote=value) for field, value in values.items()]))
 
-    result = extract(node, {'outputs': {'read': {'documents': list(chunks_for_asset(asset))}},
-                            'request': '실행'}, None, draft, ScalarModel())
-    assert result['table']['rows'] == [{'문서번호': 'DLV-H-11011'}]
+    store = Storage(tmp_path)
+    try:
+        store.add_asset(asset, [])
+        result = run_workflow(store, store.save_agent(current), '실행', '', file_ids=[asset['id']], llm=ScalarModel())
+        assert result['status'] == 'succeeded', result.get('error')
+        assert result['outputs']['extract']['table']['rows'] == [values]
+        assert all(record['status'] == 'verified' for record in result['outputs']['extract']['records'])
+    finally:
+        store.close()
 
 
 def test_selected_table_cells_survive_even_without_flattened_parser_text():

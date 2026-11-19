@@ -100,7 +100,7 @@ def test_sdk_async_redirect_guard_closes_the_response(monkeypatch):
 
 
 def fixture_corpus():
-    original = json.loads((ROOT/'docs/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
+    original = json.loads((ROOT/'scripts/verify/fixtures/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
     fixture = deepcopy(original)
     fixture.pop('gold_sha256')
     fixture['cases'] = fixture['cases'][:30]

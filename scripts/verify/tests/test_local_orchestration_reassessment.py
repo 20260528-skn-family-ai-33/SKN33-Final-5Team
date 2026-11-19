@@ -13,7 +13,7 @@ spec.loader.exec_module(host)
 
 
 def test_local_alias_uses_original_weights_and_frozen_settings(monkeypatch):
-    frozen = host.read_json(host.ROOT / "docs/qwen-local-public9b-model.json")
+    frozen = host.read_json(host.FIXTURES / "qwen-local-public9b-model.json")
     upstream = {"modelfile": f"FROM C:/models/sha256-{host.WEIGHTS}\n", "template": "same"}
     alias = {**upstream, "parameters": frozen["parameters"]}
     infos = {("/api/version", None): {"version": "test"},
@@ -32,7 +32,7 @@ def test_local_alias_uses_original_weights_and_frozen_settings(monkeypatch):
 
 
 def test_resume_retains_first_failure_and_runs_only_remaining_cases(tmp_path, monkeypatch):
-    historical = host.read_json(host.ROOT / "docs/qwen-local-public9b-after-complete.json")
+    historical = host.read_json(host.FIXTURES / "qwen-local-public9b-after-complete.json")
     corpus = {"gold_sha256": "synthetic", "cases": [{"id": "R01"}, {"id": "R02"}]}
     corpus_path = tmp_path / "corpus.json"
     corpus_path.write_text(json.dumps(corpus), encoding="utf-8")

@@ -12,6 +12,7 @@ from pathlib import Path
 from qwen_live_support import digest
 
 ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def read(path):
@@ -86,11 +87,11 @@ def main():
     args = parser.parse_args()
     if args.output.exists():
         raise SystemExit("Refusing to overwrite existing comparison")
-    corpus = read(ROOT / "docs/qwen-live-evaluation-cases.json")
+    corpus = read(FIXTURES / "qwen-live-evaluation-cases.json")
     gold = {c["id"]: c for c in corpus["cases"] if c.get("eligible", True)}
     runs, reviews, result, hashes = {}, {}, {}, {}
     for phase, stem in (("baseline", "qwen-local-public9b-baseline-v2"), ("after", "qwen-local-public9b-after")):
-        paths = {kind: ROOT / "docs" / f"{stem}{'-complete' if phase == 'after' and kind == 'run' else suffix}.json"
+        paths = {kind: FIXTURES / f"{stem}{'-complete' if phase == 'after' and kind == 'run' else suffix}.json"
                  for kind, suffix in (("run", ""), ("review", "-review"), ("accounting", "-accounting"))}
         values = {kind: read(path) for kind, path in paths.items()}
         runs[phase], reviews[phase] = values["run"], values["review"]

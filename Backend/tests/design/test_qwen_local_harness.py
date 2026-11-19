@@ -112,7 +112,7 @@ def test_environment_comparison_rejects_legacy_remote_weights_or_dependency_chan
 
 
 def full_baseline():
-    corpus=json.loads((ROOT/'docs/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
+    corpus=json.loads((ROOT/'scripts/verify/fixtures/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
     baseline={'phase':'baseline','gold_sha256':corpus['gold_sha256'],'status':'completed',
               'cases':[{'id':c['id'],'status':'failed' if i==0 else 'completed','live_model_calls':1} for i,c in enumerate(corpus['cases'])]}
     return corpus,baseline

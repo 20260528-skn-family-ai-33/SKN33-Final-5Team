@@ -14,7 +14,7 @@ from qwen_live_support import digest
 
 quality = runpy.run_path(str(VERIFY / 'check-focused-qwen-outcomes.py'))['check']
 profile = runpy.run_path(str(VERIFY / 'profile-qwen-stages.py'))
-FROZEN = ROOT / 'docs/runpod-custom-rebuild-20261111/independent-evaluation-cases.json'
+FROZEN = VERIFY / 'fixtures/independent-evaluation-cases.json'
 MODEL = 'a4b-public-qwen35-9b-32k'
 WEIGHTS = 'dfd32b09718e2aa05f622795b2ab575efc817c6129928209c532c55023f4f2df'
 

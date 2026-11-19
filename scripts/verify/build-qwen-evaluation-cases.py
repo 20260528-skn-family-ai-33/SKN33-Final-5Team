@@ -142,7 +142,7 @@ payload = {'version': 1, 'source': 'manually authored synthetic gold; frozen bef
            'excluded': [{'id':'AMB01','request':'그 자료를 적당히 처리해줘.','reason':'지시 대상·업무가 없고 지원성 판단 정답을 단일 클래스로 확정할 수 없음'}]}
 payload['gold_sha256'] = hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
 if __name__ == '__main__':
-    path = ROOT / 'docs/qwen-live-evaluation-cases.json'
+    path = ROOT / 'scripts/verify/fixtures/qwen-live-evaluation-cases.json'
     if path.exists(): raise SystemExit('Gold already exists. Do not replace a frozen evaluation corpus.')
     path.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps({'count':len(cases),'categories':payload['categories'],'gold_sha256':payload['gold_sha256']}))

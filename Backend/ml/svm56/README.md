@@ -1,6 +1,6 @@
 # SVM 도구 추천 참고 연동안
 
-설치·활성 상태 진단: [팀 모델 전달·설치 안내](../../../docs/svm-deployment.md).
+설치와 활성 상태 진단은 [팀 모델 전달·설치 안내의 보관본](https://github.com/20260528-skn-family-ai-33/SKN33-Final-5Team/blob/7d48d0f0d0ae5681753e299abed5723da81a1108/docs/svm-deployment.md)을 참고하세요.
 저장소 루트에서 `npm run ml:install -- --source "/path/to/bundle"`,
 `npm run ml:check -- --probe`로 설치와 실제 추천 연결을 구분해 확인합니다.
 기준 모델과 카탈로그는 `runtime/ml-bundle`에 포함되어 Git clone으로 받을 수 있습니다.

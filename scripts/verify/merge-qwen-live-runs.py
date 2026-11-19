@@ -87,7 +87,7 @@ def merge(runs,corpus,source_documents=None):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('runs',type=Path,nargs='+');p.add_argument('--output',type=Path,required=True)
-    p.add_argument('--corpus',type=Path,default=Path(__file__).resolve().parents[2]/'docs/qwen-live-evaluation-cases.json')
+    p.add_argument('--corpus',type=Path,default=Path(__file__).resolve().parents[2]/'scripts/verify/fixtures/qwen-live-evaluation-cases.json')
     a=p.parse_args()
     if a.output.exists():raise SystemExit('Do not overwrite prior evidence; choose a new output path')
     documents=[f.read_bytes() for f in a.runs]

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 const [path,...options]=process.argv.slice(2);
 const corpusArgument=options.indexOf('--corpus');
-const corpusPath=corpusArgument<0?new URL('../../docs/qwen-live-evaluation-cases.json',import.meta.url):options.splice(corpusArgument,2)[1];
+const corpusPath=corpusArgument<0?new URL('./fixtures/qwen-live-evaluation-cases.json',import.meta.url):options.splice(corpusArgument,2)[1];
 const ids=options;
 const report=JSON.parse(fs.readFileSync(path,'utf8'));
 const corpus=JSON.parse(fs.readFileSync(corpusPath,'utf8'));

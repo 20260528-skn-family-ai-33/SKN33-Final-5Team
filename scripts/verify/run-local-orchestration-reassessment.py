@@ -17,15 +17,16 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
 VERIFY = Path(__file__).resolve().parent
-OUTPUT = ROOT / "docs/local-public9b-rebuild-20261111"
+FIXTURES = VERIFY / "fixtures"
+OUTPUT = ROOT / "outputs/local-public9b-rebuild-20261111"
 HOST = "http://127.0.0.1:11434"
 UPSTREAM = "qwen3.5:9b"
 ALIAS = "a4b-public-qwen35-9b-32k"
 WEIGHTS = "02d45dc1cf451ba2475ac33b301c2dd8f985abe4c182ce04a1f2f5bf0260278d"
 HOLDOUT_SHA = "93c821ded55570fda569ceb983f22fd2ebf8d6b8c7d395d445e68e4931bc7e35"
 COHORTS = (
-    ("legacy52", ROOT / "docs/qwen-live-evaluation-cases.json", []),
-    ("independent35", ROOT / "docs/runpod-custom-rebuild-20261111/independent-evaluation-cases.json",
+    ("legacy52", FIXTURES / "qwen-live-evaluation-cases.json", []),
+    ("independent35", FIXTURES / "independent-evaluation-cases.json",
      ["--corpus-profile", "runpod-rebuild", "--expected-gold-sha", HOLDOUT_SHA]),
 )
 
@@ -72,7 +73,7 @@ def prepare_model():
                        env={**os.environ, "OLLAMA_HOST": HOST}, cwd=ROOT, check=True)
     alias = api("/api/show", ALIAS)
     check_weights(alias)
-    frozen = read_json(ROOT / "docs/qwen-local-public9b-model.json")
+    frozen = read_json(FIXTURES / "qwen-local-public9b-model.json")
 
     def parameters(value):
         return dict(line.split(maxsplit=1) for line in value.splitlines() if line.strip())

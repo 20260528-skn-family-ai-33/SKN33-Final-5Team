@@ -18,7 +18,7 @@ def call(status='returned', sdk=False):
 
 
 def shards():
-    corpus=json.loads((ROOT/'docs/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
+    corpus=json.loads((ROOT/'scripts/verify/fixtures/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
     ids=[c['id'] for c in corpus['cases']]
     rows=[dict(id=id,status='completed',live_model_calls=1,model_calls=[call()]) for id in ids]
     rows[-2]['model_calls'].append(call('failed'))

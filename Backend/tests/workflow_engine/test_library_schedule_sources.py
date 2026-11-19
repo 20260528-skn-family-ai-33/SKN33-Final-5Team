@@ -519,3 +519,39 @@ def test_pause_prevents_a_claimed_file_batch_from_expanding_after_reactivation(t
         assert [job['status'] for job in schedules.jobs(identifier)] == ['cancelled']
     finally:
         store.close()
+
+
+def test_pausing_a_queued_retry_preserves_run_id_and_pinned_snapshot(tmp_path):
+    store=Storage(tmp_path)
+    try:
+        upload(store)
+        identifier=workflow(store)
+        manager=LibrarySources(store)
+        selection=manager.save(identifier,spec('new'),0)
+        refs=library_export(store,selection,'table')['candidates']
+        schedules=Schedules(store)
+        schedules.configure(identifier,spec={'frequency':'daily','timezone':'Asia/Seoul','hour':9,'minute':0,'weekday':None})
+        view=manager.stage(None,store.agent(identifier),{'selection':selection,'refs':[],'assets':[]})
+
+        def trigger():
+            current=datetime.now(timezone.utc)
+            store.db.execute('UPDATE builder_schedules SET next_at=? WHERE {ws} AND agent_id=?',
+                             ((current-timedelta(seconds=1)).isoformat(),identifier))
+            store.db.commit()
+            job,=schedules.claim_due(current)
+            child,=manager.expand('scheduled_run',job['id'],selection,refs,job['lease_token'])['job_ids']
+            return child
+
+        Schedules(view).activate(identifier,True)
+        first=trigger()
+        pinned=manager.stage(first,store.agent(identifier),snapshot(store,selection,refs))
+        manager.complete({'id':first,'agent_id':identifier,'status':'failed','library_source':source_metadata(pinned)})
+        store.db.execute("UPDATE builder_schedule_jobs SET state='failed' WHERE {ws} AND id=?",(first,))
+        store.db.commit()
+        assert trigger()==first
+        schedules.activate(identifier,False)
+        Schedules(view).activate(identifier,True)
+        assert trigger()==first
+        assert manager.snapshot(first)['source_key']==pinned.snapshot['source_key']
+    finally:
+        store.close()

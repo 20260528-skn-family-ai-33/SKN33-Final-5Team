@@ -47,8 +47,18 @@ export class Store {
   const flow={...validateFlow(clone(value)),revision:options.preserveRevision&&expected?expected:randomUUID(),updatedAt:new Date().toISOString()};
   const bytes=JSON.stringify(flow);
   if(expected!==undefined){
-   const result=this.db.prepare("UPDATE flows SET json=?,updated_at=? WHERE id=? AND COALESCE(json_extract(json,'$.revision'),updated_at)=?").run(bytes,flow.updatedAt,flow.id,expected);
-   if(!result.changes)throw new FlowConflictError();
+   const stop=!flow.active;
+   if(stop)this.db.exec('BEGIN IMMEDIATE');
+   try{
+    const result=this.db.prepare("UPDATE flows SET json=?,updated_at=? WHERE id=? AND COALESCE(json_extract(json,'$.revision'),updated_at)=?").run(bytes,flow.updatedAt,flow.id,expected);
+    if(!result.changes)throw new FlowConflictError();
+    if(stop){
+     this.db.prepare(`UPDATE executions SET json=json_set(json,'$.status','canceled','$.error',?)
+      WHERE workflow_id=? AND json_extract(json,'$.trigger')='schedule' AND json_extract(json,'$.status')='queued'`)
+      .run('예약이 중지되어 대기 중인 실행을 취소했어요.',flow.id);
+     this.db.exec('COMMIT');
+    }
+   }catch(error){if(stop)this.db.exec('ROLLBACK');throw error;}
   }else{
    const result=this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING').run(flow.id,bytes,flow.updatedAt);
    if(!result.changes)throw new FlowConflictError();
@@ -123,8 +133,17 @@ export class Store {
  saveWebhookResponse(id:string,bytes:Buffer,mime:string,fileName:string):void {if(bytes.length>48*1024*1024)throw new Error('저장할 Webhook 응답 크기 제한을 넘었어요.');this.db.prepare('INSERT INTO webhook_responses(execution_id,body,mime,file_name) VALUES(?,?,?,?) ON CONFLICT(execution_id) DO NOTHING').run(id,bytes,mime,fileName);}
  getWebhookResponse(id:string):{bytes:Buffer;mime:string;fileName:string}|undefined {const row=this.db.prepare('SELECT body,mime,file_name FROM webhook_responses WHERE execution_id=?').get(id);return row?{bytes:Buffer.from(row.body as Uint8Array),mime:String(row.mime),fileName:String(row.file_name)}:undefined;}
  reserveExecution(execution:Execution,flow:Flow,input:Json[],dedupeKey?:string):boolean {
-  const result=this.db.prepare('INSERT OR IGNORE INTO executions(id,workflow_id,json,flow,input,dedupe_key,started_at) VALUES(?,?,?,?,?,?,?)').run(execution.id,flow.id,JSON.stringify(execution),JSON.stringify(flow),JSON.stringify(input),dedupeKey??null,execution.startedAt);
+  const values=[execution.id,flow.id,JSON.stringify(execution),JSON.stringify(flow),JSON.stringify(input),dedupeKey??null,execution.startedAt] as const;
+  const result=execution.trigger==='schedule'
+   ?this.db.prepare(`INSERT OR IGNORE INTO executions(id,workflow_id,json,flow,input,dedupe_key,started_at)
+     SELECT ?,?,?,?,?,?,? FROM flows WHERE id=? AND json_extract(json,'$.active')=1
+     AND COALESCE(json_extract(json,'$.revision'),updated_at)=? AND json_extract(json,'$.schedule.nextRunAt')=?`)
+     .run(...values,flow.id,flowRevision(flow)??null,flow.schedule?.nextRunAt??null)
+   :this.db.prepare('INSERT OR IGNORE INTO executions(id,workflow_id,json,flow,input,dedupe_key,started_at) VALUES(?,?,?,?,?,?,?)').run(...values);
   return result.changes>0;
+ }
+ claimQueuedExecution(id:string):boolean {
+  return this.db.prepare("UPDATE executions SET json=json_set(json,'$.status','running') WHERE id=? AND json_extract(json,'$.status')='queued'").run(id).changes>0;
  }
  saveExecution(execution:Execution):void {const result=this.db.prepare('UPDATE executions SET json=? WHERE id=?').run(JSON.stringify(execution),execution.id);if(!result.changes)throw new Error('저장할 실행 기록을 찾을 수 없어요.');}
  getExecutionSnapshot(id:string):{flow:Flow;input:Json[]}|undefined {const row=this.db.prepare('SELECT flow,input FROM executions WHERE id=?').get(id);return row?{flow:JSON.parse(String(row.flow)),input:JSON.parse(String(row.input))}:undefined;}

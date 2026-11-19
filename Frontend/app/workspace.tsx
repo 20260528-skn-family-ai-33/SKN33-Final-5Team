@@ -206,11 +206,21 @@ export default function Home({embedded=false,initialWorkflowId,onServiceConnect}
   let checking=false,canceled=false;const controller=new AbortController();
   const interval=setInterval(async()=>{
    if(checking||canceled)return;checking=true;
-   const workflowId=flowRef.current.id;
+   const opened=flowRef.current;
+   const workflowId=opened.id;
    try{
     const [w,e]=await Promise.all([request('/api/workflows',undefined,undefined,controller.signal),request(executionsPath(workflowId),undefined,undefined,controller.signal)]);
     if(canceled||embedded&&flowRef.current.id!==workflowId)return;setWorkflows(w.workflows);setExecutions(e.executions);
-    if(!dirtyRef.current){const current=w.workflows.find((f:Flow)=>f.id===flowRef.current.id);if(current){setFlow(current);flowRef.current=current;}}
+    const displayed=flowRef.current;
+    if(!dirtyRef.current&&displayed.id===workflowId&&(displayed.revision??displayed.updatedAt)===(opened.revision??opened.updatedAt)){
+     const current=w.workflows.find((f:Flow)=>f.id===workflowId);
+     if(current){
+      if((current.revision??current.updatedAt)!==(displayed.revision??displayed.updatedAt)){
+       setPast([]);setFuture([]);setSelected(undefined);setNodeOpen(false);
+      }
+      setFlow(current);flowRef.current=current;
+     }
+    }
    }catch{}finally{checking=false;}
   },2500);
   return()=>{canceled=true;controller.abort();clearInterval(interval);};
@@ -219,8 +229,8 @@ export default function Home({embedded=false,initialWorkflowId,onServiceConnect}
  function change(next:Flow){next={...next,revision:flowRef.current.revision,updatedAt:flowRef.current.updatedAt};if(next.intentReview&&JSON.stringify([next.nodes.map(n=>[n.id,n.name,n.type,n.parameters,n.credentialId]),next.connections])!==JSON.stringify([flowRef.current.nodes.map(n=>[n.id,n.name,n.type,n.parameters,n.credentialId]),flowRef.current.connections]))next={...next,intentReview:{...next.intentReview,reviewed:false}};next={...next,active:false};delete next.schedule;setPast(p=>[...p.slice(-39),clone(flowRef.current)]);setFuture([]);setFlow(next);flowRef.current=next;setDirty(true);setExecution(null);}
  function undo(){if(!past.length)return;setFuture(f=>[clone(flow),...f]);const previous={...past[past.length-1],revision:flow.revision,updatedAt:flow.updatedAt};setPast(p=>p.slice(0,-1));setFlow(previous);flowRef.current=previous;setDirty(true);setExecution(null);}
  function redo(){if(!future.length)return;setPast(p=>[...p,clone(flow)]);const next={...future[0],revision:flow.revision,updatedAt:flow.updatedAt};setFuture(f=>f.slice(1));setFlow(next);flowRef.current=next;setDirty(true);setExecution(null);}
- async function save(value=flowRef.current,notify=true){const result=await request('/api/workflows',value);setWorkflows(w=>[result.workflow,...w.filter(x=>x.id!==value.id)]);if(flowRef.current.id===value.id&&flowRef.current.revision===value.revision&&flowRef.current.updatedAt===value.updatedAt){
-  const same=JSON.stringify(flowRef.current)===JSON.stringify(value);
+ async function save(value=flowRef.current,notify=true){const result=await request('/api/workflows',value);setWorkflows(w=>[result.workflow,...w.filter(x=>x.id!==value.id)]);if(flowRef.current.id===value.id&&(flowRef.current.revision??flowRef.current.updatedAt)===(value.revision??value.updatedAt)){
+  const same=!dirtyRef.current||flowRef.current===value||JSON.stringify(flowRef.current)===JSON.stringify(value);
   const next=same?result.workflow:{...flowRef.current,revision:result.workflow.revision,updatedAt:result.workflow.updatedAt};
   if(same)setDirty(false);
   setFlow(next);flowRef.current=next;

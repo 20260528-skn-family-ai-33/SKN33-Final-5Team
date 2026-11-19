@@ -467,3 +467,25 @@ test('SQLite stores workflows, private AES-GCM credentials, dedupe reservations 
   store=new Store(directory);assert.equal(store.getCredential(publicCredential.id).data.apiKey,'never-store-this-in-plaintext');assert.equal(store.getExecution(e.id)?.status,'waiting');assert.equal(store.deleteCredential(publicCredential.id),true);assert.throws(()=>store.getCredential(publicCredential.id),/다시 연결/);assert.throws(()=>store.deleteFlow(flow.id),/실행 중/);store.saveExecution({...e,status:'success'});assert.equal(store.deleteFlow(flow.id),true);assert.equal(store.getExecutionSnapshot(e.id)?.flow.name,flow.name);
  }finally{store.close();rmSync(directory,{recursive:true,force:true});}
 });
+
+test('stopping a visual schedule cancels unclaimed scheduled work without canceling started or manual work',()=>{
+ const directory=mkdtempSync(join(tmpdir(),'easyflow-stop-schedule-'));
+ const store=new Store(directory);
+ try{
+  const flow=store.saveFlow({...makeFlow(),active:true,schedule:{nextRunAt:Date.now()}});
+  const entry:Execution={id:'regular',workflowId:flow.id,workflowName:flow.name,status:'queued',startedAt:new Date().toISOString(),duration:0,runs:[],mode:'live',trigger:'schedule'};
+  assert.equal(store.reserveExecution(entry,flow,[{}]),true);
+  assert.equal(store.reserveExecution({...entry,id:'started'},flow,[{}]),true);
+  assert.equal(store.claimQueuedExecution('started'),true);
+  assert.equal(store.reserveExecution({...entry,id:'manual',trigger:'manual'},flow,[{}]),true);
+  const stopped=store.saveFlow({...flow,active:false,schedule:undefined},{expectedRevision:flow.revision});
+  assert.equal(store.getExecution('regular')?.status,'canceled');
+  assert.equal(store.getExecution('started')?.status,'running');
+  assert.equal(store.getExecution('manual')?.status,'queued');
+  assert.equal(store.claimQueuedExecution('regular'),false);
+  assert.equal(store.reserveExecution({...entry,id:'stale-slot'},flow,[{}]),false);
+  const resumed=store.saveFlow({...stopped,active:true,schedule:{nextRunAt:Date.now()+1000}},{expectedRevision:stopped.revision});
+  assert.equal(store.reserveExecution({...entry,id:'new-slot'},resumed,[{}]),true);
+  assert.equal(store.getExecution('regular')?.status,'canceled');
+ }finally{store.close();rmSync(directory,{recursive:true,force:true});}
+});

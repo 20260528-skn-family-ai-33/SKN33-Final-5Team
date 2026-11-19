@@ -313,16 +313,16 @@ class LibrarySources:
                 prior=None
                 if old and old[1]=='failed':
                     prior=self.db.execute('SELECT state,json FROM builder_schedule_jobs WHERE {ws} AND id=?',(old[0],)).fetchone()
-                if prior and prior[0]=='cancelled':
+                if prior and prior[0]=='cancelled' and not self.snapshot(old[0]):
                     self.db.execute('DELETE FROM builder_source_processed WHERE {ws} AND agent_id=? AND revision=? AND source_key=?',
                                     (agent['id'],selection['revision'],key))
                     old=None
                 if old:
-                    if prior and prior[0]=='failed':
+                    if prior and prior[0] in ('failed','cancelled'):
                         previous=json.loads(prior[1])
                         previous.update(kind=parent['kind'],due_at=due,parent_job_id=parent_id)
                         self.db.execute("UPDATE builder_source_processed SET state='pending',updated_at=? WHERE {ws} AND agent_id=? AND revision=? AND source_key=? AND state='failed'",(now(),agent['id'],selection['revision'],key))
-                        self.db.execute("UPDATE builder_schedule_jobs SET state='queued',lease_token=NULL,lease_until=NULL,json=? WHERE {ws} AND id=? AND state='failed'",(encoded(previous),old[0]))
+                        self.db.execute("UPDATE builder_schedule_jobs SET state='queued',lease_token=NULL,lease_until=NULL,json=? WHERE {ws} AND id=? AND state IN ('failed','cancelled')",(encoded(previous),old[0]))
                         jobs.append(old[0])
                     continue
                 child_id=uid()

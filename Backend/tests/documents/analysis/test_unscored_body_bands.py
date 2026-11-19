@@ -48,6 +48,8 @@ def test_uncovered_body_keeps_unscored_text_with_valid_geometry(tmp_path,score,g
     assert '정산금엑 000017' in payload['text']
     if geometry == 'normal':
         assert gap['text'] == 'DATE 2024-01-04\nTOTAL 12,000'
+    elif geometry in ('nan', 'inf'):
+        assert gap['text'] == 'TOTAL 12,000'
     else:
         assert gap['text'] == ''
     unscored = score in ('missing','empty','null','nan','short')

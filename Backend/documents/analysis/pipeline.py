@@ -62,30 +62,39 @@ def valid_ocr_box(box):
             and box[0] < box[2] and box[1] < box[3])
 
 
-def body_ocr_prediction(prediction):
-    """Keep usable body text without publishing invalid optional evidence."""
-    if not isinstance(prediction, dict):
+def body_ocr_prediction(prediction, *, require_geometry=False):
+    """Keep text/box/score correspondence by original index when filtering."""
+    if not isinstance(prediction, dict) or not isinstance(prediction.get('rec_texts', []), list):
         return {'rec_texts': [], 'rec_scores': []}, True
     texts = prediction.get('rec_texts', [])
-    valid_texts = isinstance(texts, list) and all(
-        isinstance(t, str) and not any(0xD800 <= ord(c) <= 0xDFFF for c in t) for t in texts)
-    safe_texts = [t for t in texts if isinstance(t, str)
-                  and not any(0xD800 <= ord(c) <= 0xDFFF for c in t)] if isinstance(texts, list) else []
+    indices = [i for i, text in enumerate(texts) if isinstance(text, str)
+               and not any(0xD800 <= ord(c) <= 0xDFFF for c in text)]
     scores = prediction.get('rec_scores', [])
-    valid_scores = (isinstance(scores, list) and len(scores) in (0, len(safe_texts))
+    valid_scores = (isinstance(scores, list) and len(scores) in (0, len(texts))
                     and all(finite_number(s) and 0 <= s <= 1 for s in scores))
-    safe = {'rec_texts': safe_texts, 'rec_scores': scores if valid_texts and valid_scores else []}
-    invalid = not valid_texts or not valid_scores
-    # Older OCR responses may omit optional geometry entirely.
+    invalid = len(indices) != len(texts) or not valid_scores
+
+    def selected(keep, boxes=None):
+        safe = {'rec_texts': [texts[i] for i in keep],
+                'rec_scores': [scores[i] for i in keep] if valid_scores and scores else []}
+        if boxes is not None:
+            safe['rec_boxes'] = [boxes[i] for i in keep]
+        return safe
+
+    # Missing geometry is allowed for legacy body responses. Region filtering
+    # still requires coordinates and will not consume this unlocated text.
     if 'rec_boxes' not in prediction:
-        return safe, invalid
-    # Body geometry is useful for region filtering even without confidence
-    # scores. Do not apply the stricter table-confirmation contract here.
+        return selected(indices), invalid
     boxes = prediction['rec_boxes']
-    if (not valid_texts or not isinstance(boxes, list) or len(boxes) != len(texts)
-            or len(boxes) > 2000 or not all(valid_ocr_box(box) for box in boxes)):
-        return safe, True
-    return {**safe, 'rec_boxes': boxes}, invalid
+    if not isinstance(boxes, list) or len(boxes) != len(texts) or len(boxes) > 2000:
+        return selected(indices), True
+    located = [i for i in indices if valid_ocr_box(boxes[i])]
+    invalid = invalid or len(located) != len(indices)
+    if require_geometry:
+        return selected(located, boxes), invalid
+    # A whole body region can retain unlocated text in detection order, but
+    # only a fully aligned subset may carry optional geometry.
+    return selected(indices, boxes if len(located) == len(indices) else None), invalid
 
 
 def ocr_in_bands(result, bands, scale):
@@ -444,10 +453,14 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 job = mapped[output['source']]
                 seen.add(output['source'])
                 region = job['parent']
-                prediction, invalid_details = body_ocr_prediction(output['result'])
                 bands = job.get('bands') or []
+                prediction, invalid_details = body_ocr_prediction(output['result'], require_geometry=bool(bands))
                 if bands:
                     prediction, unread = ocr_in_bands(prediction, bands, job['scale'])
+                    if invalid_details:
+                        # A discarded piece has uncertain coverage even if a
+                        # different valid piece happens to occupy the same band.
+                        unread = bands
                 text = ocr_text(prediction)
                 item = block('ocr-' + str(len(result['blocks']) + 1), 'text', region['native_location'],
                              parent=region['id'], unit=region['unit_id'], text=text, engine='paddleocr',

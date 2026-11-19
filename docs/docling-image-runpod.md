@@ -198,3 +198,11 @@ body_ocr_details:invalid_engine_result, low_confidence_uncovered_ocr, empty_ocr_
 원격 PaddleOCR 어댑터는 출처를 확인할 수 있는 항목을 보존하면서 출처 불명 표시를 파이프라인에 전달합니다. 여러 배치에서도 이 표시를 합칩니다. 다른 엔진의 source 계약은 완화하지 않았고, 표 검증 OCR은 출처 불명 표시 및 비정상 외곽 계약을 거부합니다. JSON 검증 완화나 광범위한 예외 무시는 추가하지 않았습니다.
 
 신규 test_body_response_envelope.py 78개는 정상/null/result 누락, 최상위 None/비객체/version/outputs 오류, 비객체 항목과 source 누락/null/비문자/미요청/중복/일부 누락, 내부 배열 오류를 본문/표 검증 및 직접 대역/실제 LocalEngines HTTP 응답 대역 경로에서 검사합니다. 본문 혼합 배치의 정상 조각 보존, 정상 표 issues=[]와 명시적 선택→실제 CSV export→저장/읽기, 국소 경고 및 문서 전체 차단, 출처 불명 전역 차단, 오류 표 차단, strict JSON/UTF-8 및 원격 배치 표시 유지도 확인합니다. 수정 전 7cb8248에서 27개 실패/51개 통과였습니다. 실제 CPU/GPU 인식과 운영 홈페이지 검증은 수행하지 않았습니다.
+
+### 엔진 version/model 메타데이터 저장 경계
+
+공통 validate_engine_metadata는 version 문자열과 model 객체(생략 시 빈 객체)를 검사하고, 중첩 메타데이터를 allow_nan=False JSON과 UTF-8로 표현할 수 있는지 저장 전에 검증합니다. 고립 서로게이트·비유한 숫자·직렬화 불가 값·크기 초과는 invalid_engine_metadata로 거부하며 정상 한글·보조평면 문자는 유지합니다. 원격 응답 파싱, 로컬 subprocess 응답 파일 처리, 원격 Docling 응답 및 본문/표 OCR의 직접 파이프라인 경계에 적용합니다. 실패한 attempt에는 version/model을 추가하지 않으므로 실패 기록이 최종 직렬화를 다시 깨뜨리지 않습니다.
+
+비정상 메타데이터를 가진 응답은 신뢰할 수 있는 정상 메타데이터로 치환하지 않고 거부합니다. 본문 응답 메타데이터 실패는 전역 image_ocr 검토, 표 검증 응답 메타데이터 실패는 해당 표 검토로 기록하며 이미 확보한 Docling 결과와 다른 정상 단계 결과는 반환합니다. 실패한 본문 응답의 텍스트를 발명하거나 검증을 통과한 것처럼 사용하지 않습니다. result 누락의 source별 국소 격리 정책은 유지합니다.
+
+신규 test_engine_metadata_contract.py 66개는 직접 대역/실제 원격 HTTP 어댑터/실제 로컬 응답 파일 어댑터 경로와 본문·표 phase를 교차합니다. 정상·한글/이모지·result 누락·version 서로게이트·중첩 model 서로게이트/키/NaN/±Infinity·model null/비객체를 비교하고 기본 표와 정상 본문 보존, partial/경고, 실패 attempt 메타데이터 부재, strict JSON/UTF-8 및 허용되는 정상 표 선택 CSV 저장/읽기를 확인합니다. 이전 b1dac84에서 48개 실패/18개 통과, 수정 후 66개 통과입니다. HTTP와 subprocess 응답은 대역이며 실제 CPU/GPU 인식·운영 홈페이지 검증은 수행하지 않았습니다.

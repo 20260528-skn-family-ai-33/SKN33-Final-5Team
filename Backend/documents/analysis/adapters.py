@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from .contracts import AnalysisError, MAX_RESULT, MAX_BYTES, sha256
+from .contracts import AnalysisError, MAX_RESULT, MAX_BYTES, sha256, validate_engine_metadata
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 REMOTE_ENGINES = ('layout', 'paddleocr')
@@ -133,6 +133,7 @@ def _remote_batch(url, engine, names, body, timeout):
         raise AnalysisError('invalid_engine_result', '엔진 JSON 응답을 읽을 수 없습니다.') from exc
     if not isinstance(data, dict) or not isinstance(data.get('version'), str) or not isinstance(data.get('outputs'), list):
         raise AnalysisError('invalid_engine_result', '엔진 응답 계약이 올바르지 않습니다.')
+    validate_engine_metadata(data)
     valid = [o for o in data['outputs'] if isinstance(o, dict)
              and isinstance(o.get('source'), str) and o['source'] in names]
     if len(valid) != len(data['outputs']):
@@ -190,6 +191,7 @@ class LocalEngines:
                     if exc.code in ('busy', 'timeout'):
                         self.image_unavailable = exc.code
                     raise
+                validate_engine_metadata(data)
                 (folder / 'response.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
                 attempt.update(status='partial' if data.get('partial') else 'succeeded',
                                version=data['version'], model=data.get('model', {}))
@@ -226,6 +228,7 @@ class LocalEngines:
                 raise AnalysisError('invalid_engine_result', '엔진 응답 계약이 올바르지 않습니다.')
             if completed.returncode or data.get('error'):
                 raise AnalysisError(data.get('error', 'engine_error'), engine + ' 처리 실패. 실행 환경·로컬 모델과 엔진 로그를 확인하세요.')
+            validate_engine_metadata(data)
             attempt.update(status='partial' if data.get('partial') else 'succeeded',
                            version=data['version'], model=data.get('model', {}))
             return data

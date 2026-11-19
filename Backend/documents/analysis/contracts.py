@@ -21,6 +21,20 @@ class AnalysisError(ValueError):
         super().__init__(message)
 
 
+def validate_engine_metadata(data):
+    """Reject unsafe metadata before it reaches routes or document blocks."""
+    if (not isinstance(data, dict) or not isinstance(data.get('version'), str)
+            or not isinstance(data.get('model', {}), dict)):
+        raise AnalysisError('invalid_engine_metadata', '엔진 메타데이터 형식이 올바르지 않습니다.')
+    try:
+        encoded = json.dumps({'version': data['version'], 'model': data.get('model', {})},
+                             ensure_ascii=False, allow_nan=False).encode('utf-8')
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise AnalysisError('invalid_engine_metadata', '엔진 메타데이터를 JSON/UTF-8로 표현할 수 없습니다.') from exc
+    if len(encoded) > MAX_RESULT:
+        raise AnalysisError('invalid_engine_metadata', '엔진 메타데이터가 크기 제한을 넘었습니다.')
+
+
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 

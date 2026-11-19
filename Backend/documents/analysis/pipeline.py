@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from . import CONTRACT_VERSION
 from .adapters import LocalEngines, convert
-from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, MAX_RESULT, block, bounds, project, sha256, validate
+from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, MAX_RESULT, block, bounds, project, sha256, validate, validate_engine_metadata
 from .readers import Inspector
 from .image_metadata import png_resolution
 from .table_quality import reconcile, render_cells, validate_prediction, finite_number
@@ -451,6 +451,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             if (not isinstance(recognized, dict) or not isinstance(recognized.get('version'), str)
                     or not isinstance(recognized.get('outputs'), list)):
                 raise AnalysisError('invalid_engine_result', '본문 OCR 응답 형식이 올바르지 않습니다.')
+            validate_engine_metadata(recognized)
             grouped = {name: [] for name in mapped}
             unknown_source = bool(recognized.get('invalid_output_sources'))
             for output in recognized['outputs']:
@@ -597,6 +598,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                     or not isinstance(recognized.get('outputs'), list)
                     or recognized.get('invalid_output_sources')):
                 raise AnalysisError('invalid_engine_result', '표 검증 OCR 응답 형식이 올바르지 않습니다.')
+            validate_engine_metadata(recognized)
             outputs = [o for o in recognized['outputs'] if isinstance(o, dict) and o.get('source') == str(job['path'])]
             if len(outputs) != 1 or len(recognized['outputs']) != 1:
                 raise AnalysisError('invalid_engine_result', '표 검증 OCR 응답을 확인할 수 없습니다.')

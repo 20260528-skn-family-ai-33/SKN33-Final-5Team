@@ -57,3 +57,20 @@ def test_explicit_selection_never_bypasses_global_or_unknown_review(tmp_path,fai
         assert not store.agents()
     finally:
         connection.close();store.close()
+
+
+@pytest.mark.parametrize('route',['remote','local','direct'])
+def test_docling_crop_failure_keeps_real_pipeline_table_executable(tmp_path,monkeypatch,route):
+    from tests.documents.analysis.test_docling_response_contract import harness,changed
+    from tests.documents.analysis.test_docling_review_scope import asset_for
+    calls=[]
+    def mutate(value):
+        calls.append(1)
+        return value if len(calls)==1 else changed(value,'second_bad_block')
+    payload,_,_=harness(tmp_path,monkeypatch,route,mutate,two_tables=True)
+    asset=asset_for(payload)
+    good=next(b for b in payload['document_analysis']['blocks'] if b['engine']=='docling')
+    nodes,rows=run_preview(tmp_path/'storage',asset,['「표 1」의 Item','「표 1」의 Count'])
+    assert nodes[0]['settings']['document_table_id']==good['id']
+    assert rows==[{'Item':'Milk','Count':'1'}]
+    assert asset['parser_metadata']['document_analysis']['review_required']

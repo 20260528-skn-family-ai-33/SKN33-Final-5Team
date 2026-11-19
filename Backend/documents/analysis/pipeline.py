@@ -215,7 +215,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
     result['timings'] = dict(inspection_seconds=time.perf_counter() - inspection_start)
     primary_failed = False
 
-    def add_parsed(parsed, *, parent=None, unit=None, location=None, selected=True, phase='primary'):
+    def add_parsed(parsed, *, parent=None, unit=None, location=None, selected=True, phase='primary', review_scope=None):
         if not isinstance(parsed, dict) or not isinstance(parsed.get('engine'), str) or parsed['engine'] not in {'docling', 'mineru'}:
             raise AnalysisError('invalid_engine_result', '문서 엔진 응답 형식이 올바르지 않습니다.')
         if parsed.get('engine') == 'docling':
@@ -237,7 +237,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             result['blocks'].append(item)
             added.append(item)
         if parsed.get('partial'):
-            review('partial_engine_output:' + parsed['engine'])
+            review('partial_engine_output:' + parsed['engine'],
+                   None if review_scope is None else review_scope + [b['id'] for b in added])
         return added
 
     if result['primary_processor'] in {'mineru', 'docling'}:
@@ -371,13 +372,13 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                     if kind in {'text', 'table'}:
                         if len(ocr_jobs) + len(table_jobs) >= max_supplements:
                             region['status'] = 'review_required'
-                            review('supplement_limit_reached')
+                            review('supplement_limit_reached', [region['id']])
                             continue
                         x0, y0, x1, y1 = coords
                         crop_bounds = (max(0, int(x0)), max(0, int(y0)), min(job['size'][0], int(x1 + 1)), min(job['size'][1], int(y1 + 1)))
                         if crop_bounds[0] >= crop_bounds[2] or crop_bounds[1] >= crop_bounds[3]:
                             region['status'] = 'review_required'
-                            review('invalid_region_crop')
+                            review('invalid_region_crop', [region['id']])
                             continue
                         crop_path = work / ('crop-' + region['id'] + '.png')
                         # Tables keep source pixels for Docling; only OCR input is enlarged.
@@ -512,7 +513,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
         region = job['parent']
         try:
             parsed = engines.run('docling', source=job['path'], scope=region['id'], phase='supplement')
-            added = add_parsed(parsed, parent=region['id'], unit=region['unit_id'], location=region['native_location'], phase='supplement')
+            added = add_parsed(parsed, parent=region['id'], unit=region['unit_id'], location=region['native_location'], phase='supplement', review_scope=[region['id']])
             for item in added:
                 item['data']['crop_origin'] = region['data']['crop_origin']
                 item['data']['input_coordinate_system'] = 'crop_pixels_or_engine_page'
@@ -522,19 +523,19 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             if any('table' in b['content_types'] and b['data'].get('cells') for b in added):
                 table_checks.append((region, job, added))
             if not any('table' in b['content_types'] and b['data'].get('cells') for b in added):
-                review('table_structure_missing:' + region['id'])
+                review('table_structure_missing:' + region['id'], [region['id']] + [b['id'] for b in added])
                 context = job['context']
                 entry = missing_table_images.setdefault(context['parent']['id'], dict(context=context, regions=[]))
                 entry['regions'].append(region['id'])
         except AnalysisError as exc:
-            review('image_table:' + exc.code)
+            review('image_table:' + exc.code, [region['id']])
 
     # Tight crops can remove layout context. Compare the containing image once,
     # retaining the original crop output and exposing the result as a candidate.
     for image_id, entry in missing_table_images.items():
         if len(ocr_jobs) + len(table_jobs) >= max_supplements:
-            review('supplement_limit_reached')
-            break
+            review('supplement_limit_reached', entry['regions'])
+            continue
         table_jobs.append({'comparison_image': image_id})
         context = entry['context']
         image = context['parent']
@@ -543,16 +544,16 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
         try:
             candidate = engines.run('docling', source=context['path'], scope=image_id, phase='comparison')
             added = add_parsed(candidate, parent=image_id, unit=image['unit_id'], location=image['native_location'],
-                               selected=False, phase='comparison')
+                               selected=False, phase='comparison', review_scope=entry['regions'])
             for item in added:
                 item['data']['context_for_regions'] = entry['regions']
                 item['data']['input_coordinate_system'] = 'containing_upright_image'
                 if item['bbox']:
                     item['bbox']['coordinate_system'] = 'docling_image_input_points'
             if not any('table' in b['content_types'] and b['data'].get('cells') for b in added):
-                review('image_context_table_structure_missing:' + image_id)
+                review('image_context_table_structure_missing:' + image_id, entry['regions'] + [b['id'] for b in added])
         except AnalysisError as exc:
-            review('image_table_comparison:' + exc.code)
+            review('image_table_comparison:' + exc.code, entry['regions'])
 
     # A structurally incomplete PDF table is compared with its whole page,
     # retaining page context. Candidate output never overwrites primary values.
@@ -561,10 +562,13 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                                 if b.get('selected', True) and 'table' in b['content_types']
                                 and not b['data'].get('cells') and b['native_location'].get('page')})
         for page_no in problem_pages:
-            review('primary_table_structure_incomplete')
+            affected_tables = [b['id'] for b in result['blocks'] if b.get('selected', True)
+                               and 'table' in b['content_types'] and not b['data'].get('cells')
+                               and b['native_location'].get('page') == page_no]
+            review('primary_table_structure_incomplete', affected_tables)
             if len(ocr_jobs) + len(table_jobs) >= max_supplements:
-                review('supplement_limit_reached')
-                break
+                review('supplement_limit_reached', affected_tables)
+                continue
             table_jobs.append({'comparison_page': page_no})
             result['routing_decisions'].append(dict(phase='comparison', rule='missing_table_structure',
                                                      processor='docling', scope={'page': page_no}))
@@ -574,9 +578,9 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 target.save(one_page)
             try:
                 candidate = engines.run('docling', source=one_page, scope={'page': page_no}, phase='comparison')
-                add_parsed(candidate, unit='page-' + str(page_no), location={'page': page_no}, selected=False, phase='comparison')
+                add_parsed(candidate, unit='page-' + str(page_no), location={'page': page_no}, selected=False, phase='comparison', review_scope=affected_tables)
             except AnalysisError as exc:
-                review('table_comparison:' + exc.code)
+                review('table_comparison:' + exc.code, affected_tables)
 
     # Optional enrichment is transactional: malformed/oversized evidence must
     # never invalidate already parsed body/table data.

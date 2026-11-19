@@ -226,3 +226,11 @@ body_ocr_details:invalid_engine_result, low_confidence_uncovered_ocr, empty_ocr_
 원격·로컬 Docling과 직접 파이프라인 연결 경계에서 공통 응답 검증을 수행한다. engine/version/model, blocks와 블록 kind/text/location/data/coordinate_system, 유한하고 순서가 맞는 4개 좌표, 셀 객체 목록, partial bool 및 전체 strict JSON/UTF-8 표현 가능성을 블록 반영 전에 검사한다. 잘못된 원격 메타데이터는 response.json 및 attempt에 저장하지 않는다. 한 응답 안의 뒤 블록이 잘못돼도 앞 블록만 부분 반영하지 않으며, 이미 처리한 다른 표와 본문은 유지한다. 값 추측·광범위한 예외 무시는 사용하지 않는다.
 
 신규 test_docling_response_contract.py 115개는 접수 타입·UUID, 조회 대기/완료 계약, 입력 해시/GPU 장치, 원격·로컬·직접 연결, 중첩 비유한 수/서로게이트, 잘못된 뒤 블록, 기존 정상 표 보존과 정상 선택 CSV 저장/읽기를 검사한다. 이전 5a72aca에서는 92개 실패/23개 통과, 수정본에서는 모두 통과했다. 기존 어댑터 단위 테스트의 최소 성공 대역 세 곳에는 실제 워커처럼 engine='docling'을 명시했다. 운영 GPU·홈페이지 검증은 수행하지 않았다.
+
+### Docling 표 실패의 검토 범위
+
+특정 표 crop의 image_table 실패·table_structure_missing은 해당 region과 그 응답의 블록에 귀속한다. 이미지 전체 비교는 비교를 요청한 미완성 region 집합과 후보 블록에만 경고를 부여하며, 같은 이미지의 독립 정상 crop을 부모 이미지 경고로 차단하지 않는다. PDF의 primary_table_structure_incomplete 및 비교 오류는 해당 페이지의 미완성 표에 귀속한다. 표 보완/비교 한도에 도달해도 각 미처리 영역의 범위를 계속 기록한다. 이미 범위가 확인된 잘못된 crop도 국소 경고로 기록한다.
+
+partial_engine_output은 crop/비교 호출의 확인 가능한 범위에만 좁히며, 주 분석의 부분 응답은 전역 경고로 유지한다. 초기 이미지 처리 한도, 출처 불명, 문서 전역 실패 등의 경고는 그대로 유지한다. 동일 코드의 지역 경고는 ID 합집합을 유지하고 기존 전역 경고를 좁히지 않는다. 문서 partial/경고와 선택 없는 전체 추출 차단을 유지하면서 독립 정상 표의 명시적 추출만 허용한다.
+
+신규 test_docling_review_scope.py 42개는 원격/로컬/직접 2표, 첫째/둘째 실패, 구조 누락·부분 응답·비교 실패, PDF 2페이지, crop/비교 한도, 동일 오류 합집합과 전역 우선, 오류 표/전체 문서/부모/출처 불명 차단을 검사한다. 정상은 실제 CSV export 저장/읽기까지 확인한다. 이전 938c50e에서는 37개 실패/5개 통과, 수정 후 모두 통과했다. 설계 회귀 3개는 실제 파이프라인 결과를 표 선택→설계→저장→실행까지 연결한다. 모델 및 HTTP는 대역이며 운영 GPU/홈페이지 검증은 수행하지 않았다.

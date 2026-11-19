@@ -234,3 +234,11 @@ body_ocr_details:invalid_engine_result, low_confidence_uncovered_ocr, empty_ocr_
 partial_engine_output은 crop/비교 호출의 확인 가능한 범위에만 좁히며, 주 분석의 부분 응답은 전역 경고로 유지한다. 초기 이미지 처리 한도, 출처 불명, 문서 전역 실패 등의 경고는 그대로 유지한다. 동일 코드의 지역 경고는 ID 합집합을 유지하고 기존 전역 경고를 좁히지 않는다. 문서 partial/경고와 선택 없는 전체 추출 차단을 유지하면서 독립 정상 표의 명시적 추출만 허용한다.
 
 신규 test_docling_review_scope.py 42개는 원격/로컬/직접 2표, 첫째/둘째 실패, 구조 누락·부분 응답·비교 실패, PDF 2페이지, crop/비교 한도, 동일 오류 합집합과 전역 우선, 오류 표/전체 문서/부모/출처 불명 차단을 검사한다. 정상은 실제 CSV export 저장/읽기까지 확인한다. 이전 938c50e에서는 37개 실패/5개 통과, 수정 후 모두 통과했다. 설계 회귀 3개는 실제 파이프라인 결과를 표 선택→설계→저장→실행까지 연결한다. 모델 및 HTTP는 대역이며 운영 GPU/홈페이지 검증은 수행하지 않았다.
+
+### PDF 원본 페이지 참조의 문맥 검증
+
+PDF 전체 분석 응답의 location.page는 양의 정수(bool 제외)이며 실제 Inspector units에 존재해야 한다. 누락/null/0/음수/범위 초과/문자열/float/bool/list/dict는 임의 보정하지 않고 invalid_engine_result로 처리한다. 이 검사는 primary 및 MinerU→Docling fallback의 기존 실패 처리 안에서 수행되어 native 본문과 이미 확보한 결과를 보존한다. 원본에서 위치를 확정할 수 없는 응답은 검토 대상으로 남긴다.
+
+add_parsed는 전체 응답의 블록을 임시 구성한 뒤 한 번에 반영한다. 뒤 블록의 잘못된 페이지 때문에 앞 블록만 남지 않으며 최종 invalid_contract까지 지연하지 않는다. 명시적인 unit/location이 있는 crop·한 페이지 비교는 원본 위치를 검증하고 엔진의 로컬 page=1을 원본 페이지 번호로 해석하지 않는다. Office의 parser_reported_page는 물리 PDF 페이지와 구분하는 기존 동작을 유지한다.
+
+신규 test_pdf_page_contract.py 48개는 실제 2페이지 PDF Inspector→pipeline, Docling primary/MinerU primary/MinerU→Docling fallback, 페이지 타입·범위·뒤 블록 오류, 정상 첫·마지막 페이지 CSV 저장/읽기, native 본문 보존과 strict JSON/UTF-8, 한 페이지 비교의 원본 2페이지 remap, 이미지 crop 및 Office 보고 페이지를 검사한다. 이전 1d778b6에서 34개 실패/14개 통과, 수정 후 모두 통과했다. 응답 대역으로 확인한 견고성 보완이며 운영 PDF에서 관찰한 장애나 PR 신규 회귀로 단정하지 않는다. 운영 GPU·홈페이지 검증은 수행하지 않았다.

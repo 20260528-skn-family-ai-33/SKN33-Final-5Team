@@ -221,21 +221,34 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
         if parsed.get('engine') == 'docling':
             validate_docling_result(parsed)
         added = []
+        known_units = {u['id'] for u in result['units']}
         for entry in parsed.get('blocks', []):
             original_location = entry.get('location', {})
+            if not isinstance(original_location, dict):
+                raise AnalysisError('invalid_engine_result', '문서 블록 위치 형식이 올바르지 않습니다.')
             page = original_location.get('page')
-            loc = location or original_location
-            native_unit = unit or ('page-' + str(page) if effective_fmt == 'pdf' and page else
-                                   result['units'][0]['id'] if result['units'] else 'document')
+            loc = location if location is not None else original_location
+            native_unit = unit or (result['units'][0]['id'] if result['units'] else 'document')
+            if effective_fmt == 'pdf':
+                # A crop/page comparison has an explicit source location; its
+                # engine-local page is not a reference into the original PDF.
+                source_page = loc.get('page')
+                if (type(source_page) is not int or not 1 <= source_page <= len(known_units)
+                        or 'page-' + str(source_page) not in known_units):
+                    raise AnalysisError('invalid_engine_result', 'PDF 블록의 원본 페이지를 확인할 수 없습니다.')
+                native_unit = unit if unit is not None else 'page-' + str(source_page)
+                if native_unit != 'page-' + str(source_page):
+                    raise AnalysisError('invalid_engine_result', 'PDF 블록의 페이지와 처리 단위가 다릅니다.')
             if effective_fmt != 'pdf' and page and not location:
                 loc = {'parser_object_index': len(added), 'parser_reported_page': page}
             geometry = entry.get('bbox')
-            item = block('parsed-' + str(len(result['blocks']) + 1), canonical_kind(entry['kind']), loc,
+            item = block('parsed-' + str(len(result['blocks']) + len(added) + 1), canonical_kind(entry['kind']), loc,
                          text=entry.get('text', ''), data=entry.get('data', {}), parent=parent, unit=native_unit,
                          engine=parsed['engine'], bbox=bounds(geometry, entry.get('coordinate_system', 'engine_native')) if geometry else None)
             item.update(selected=selected, parser_version=parsed['version'], phase=phase)
-            result['blocks'].append(item)
             added.append(item)
+        # Publish only after every block has passed source-context validation.
+        result['blocks'].extend(added)
         if parsed.get('partial'):
             review('partial_engine_output:' + parsed['engine'],
                    None if review_scope is None else review_scope + [b['id'] for b in added])

@@ -79,11 +79,13 @@ def body_ocr_prediction(prediction):
     # Older OCR responses may omit optional geometry entirely.
     if 'rec_boxes' not in prediction:
         return safe, invalid
-    try:
-        validate_prediction(prediction)
-    except AnalysisError:
+    # Body geometry is useful for region filtering even without confidence
+    # scores. Do not apply the stricter table-confirmation contract here.
+    boxes = prediction['rec_boxes']
+    if (not valid_texts or not isinstance(boxes, list) or len(boxes) != len(texts)
+            or len(boxes) > 2000 or not all(valid_ocr_box(box) for box in boxes)):
         return safe, True
-    return {**safe, 'rec_boxes': prediction['rec_boxes']}, invalid
+    return {**safe, 'rec_boxes': boxes}, invalid
 
 
 def ocr_in_bands(result, bands, scale):

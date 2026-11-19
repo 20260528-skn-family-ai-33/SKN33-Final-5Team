@@ -13,11 +13,11 @@
 프로젝트 루트에서 재현합니다. Python 표준 라이브러리만 사용합니다.
 
 ```bash
-python3 Backend/integrations/workflow_preprocessing/build_dataset.py
-python3 Backend/integrations/workflow_preprocessing/build_dataset.py --output /tmp/a4b-preprocessing
+python3 Backend/agent_builder/design/pilot/build_dataset.py
+python3 Backend/agent_builder/design/pilot/build_dataset.py --output /tmp/a4b-preprocessing
 ```
 
-기본 결과 폴더는 `docs/examples/workflow_preprocessing/`입니다. 검수 CSV, 통계, 보고서와 명세 사본을 결과 폴더에 생성하고 ZIP은 그 상위 폴더에 저장합니다. 생성 안내는 `DATASET_NOTES.md`를 사용하여 README와 이 폴더의 코드·명세를 유지합니다. `--output`으로 `Backend/integrations/` 내부를 지정할 수 없습니다.
+기본 결과 폴더는 `Backend/tests/fixtures/examples/workflow_preprocessing/`입니다. 검수 CSV, 통계, 보고서와 명세 사본을 결과 폴더에 생성하고 ZIP은 그 상위 폴더에 저장합니다. 생성 안내는 `DATASET_NOTES.md`를 사용하여 README와 이 폴더의 코드·명세를 유지합니다. `--output`으로 `Backend/integrations/` 내부를 지정할 수 없습니다.
 
 합성 예제를 별도 SQLite 테이블에 가져오려면 Python 에이전트 환경 설치 후 실행합니다.
 

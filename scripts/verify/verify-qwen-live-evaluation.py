@@ -215,7 +215,7 @@ def run_case(case,model,tracer,directory):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--corpus',type=Path,default=ROOT/'docs/qwen-live-evaluation-cases.json')
+    parser.add_argument('--corpus',type=Path,default=ROOT/'scripts/verify/fixtures/qwen-live-evaluation-cases.json')
     parser.add_argument('--corpus-profile',choices=['original-52','runpod-rebuild'],default='original-52')
     parser.add_argument('--expected-gold-sha',help='Canonical SHA frozen before evaluating the new corpus')
     parser.add_argument('--phase',choices=['baseline','after','reassessment'],required=True,

@@ -12,7 +12,7 @@ from workflow_engine.catalog.registry import TOOLS
 
 
 def test_frozen_corpus_contains_valid_catalog_and_ten_actual_clarification_loops():
-    corpus=json.loads((ROOT/'docs/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
+    corpus=json.loads((ROOT/'scripts/verify/fixtures/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
     assert validate_corpus(corpus,{t['id']:t for t in TOOLS})
     assert len(corpus['cases'])==52
     corpus['cases'][0]['gold']['routing']='UNSUPPORTED'
@@ -59,7 +59,7 @@ def test_operation_paths_cannot_escape_local_execution_policy():
 def test_adjudication_does_not_count_wrong_ready_as_clarification_completion():
     spec=importlib.util.spec_from_file_location('adjudicate',ROOT/'scripts/verify/adjudicate-qwen-live.py')
     mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
-    corpus=json.loads((ROOT/'docs/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
+    corpus=json.loads((ROOT/'scripts/verify/fixtures/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
     case=next(c for c in corpus['cases'] if c['id']=='M01')
     record={'id':'M01','final_route':'READY','turns':[{'response':{}},{'response':{}}],'workflow':None}
     label={'intent_correct':True,'observed_slots':{'filter.field':'wrong','output.format':'json'},

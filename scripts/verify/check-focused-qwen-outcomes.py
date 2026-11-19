@@ -116,7 +116,7 @@ def check(row, gold):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run", type=Path)
-    parser.add_argument("--corpus", type=Path, default=ROOT/"docs/runpod-custom-rebuild-20261111/independent-evaluation-cases.json")
+    parser.add_argument("--corpus", type=Path, default=ROOT/"scripts/verify/fixtures/independent-evaluation-cases.json")
     parser.add_argument("--case", choices=["H01","H20","H21","H32"], action="append", required=True)
     args = parser.parse_args()
     data = json.loads(args.run.read_bytes())

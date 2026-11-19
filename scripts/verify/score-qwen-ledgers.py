@@ -198,7 +198,7 @@ def summarize(rows, corpus, labels, require_complete=False):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('run',type=Path)
-    parser.add_argument('--corpus',type=Path,default=ROOT/'docs/qwen-live-evaluation-cases.json')
+    parser.add_argument('--corpus',type=Path,default=ROOT/'scripts/verify/fixtures/qwen-live-evaluation-cases.json')
     parser.add_argument('--case',action='append',help='Limit a partial template or review to selected case IDs')
     mode=parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--template',action='store_true');mode.add_argument('--labels',type=Path)

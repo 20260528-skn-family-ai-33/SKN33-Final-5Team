@@ -18,7 +18,7 @@ spec.loader.exec_module(adjudicate)
 
 @pytest.fixture
 def clarification_case():
-    corpus = json.loads((ROOT / 'docs/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
+    corpus = json.loads((ROOT / 'scripts/verify/fixtures/qwen-live-evaluation-cases.json').read_text(encoding='utf-8'))
     return deepcopy(next(case for case in corpus['cases'] if case['id'] == 'M07'))
 
 

@@ -10,12 +10,12 @@ sys.path.insert(0, str(ROOT / "scripts/verify"))
 score = runpy.run_path(str(ROOT / "scripts/verify/score-qwen-reassessment.py"))["score"]
 
 
-def read(path):
-    return json.loads((ROOT / path).read_bytes())
+def read_fixture(name):
+    return json.loads((ROOT / "scripts/verify/fixtures" / name).read_bytes())
 
 
 def test_untested_holdout_does_not_turn_missing_measurements_into_successes():
-    corpus = read("docs/runpod-custom-rebuild-20261111/independent-evaluation-cases.json")
+    corpus = read_fixture("independent-evaluation-cases.json")
     result = score({"gold_sha256": corpus["gold_sha256"], "cases": [], "status": "not_run"}, corpus)
     assert result["frozen_cases"] == len(result["missing_case_ids"]) == 35
     assert result["measured_cases"] == 0
@@ -28,9 +28,9 @@ def test_untested_holdout_does_not_turn_missing_measurements_into_successes():
 
 
 def test_historical_raw_and_review_reproduce_different_attempt_and_case_denominators():
-    corpus = read("docs/qwen-live-evaluation-cases.json")
-    run = read("docs/qwen-local-public9b-after-complete.json")
-    labels = read("docs/qwen-local-public9b-after-review.json")
+    corpus = read_fixture("qwen-live-evaluation-cases.json")
+    run = read_fixture("qwen-local-public9b-after-complete.json")
+    labels = read_fixture("qwen-local-public9b-after-review.json")
     result = score(run, corpus, labels)
     assert result["measured_cases"] == result["semantic_reviewed_cases"] == 52
     assert result["verified_response_cases"] == 50

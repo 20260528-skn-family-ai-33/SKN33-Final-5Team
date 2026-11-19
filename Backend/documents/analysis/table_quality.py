@@ -221,6 +221,15 @@ def reconcile(data, prediction):
                 if len(occupied) > 20000:
                     report['issues'].append('quality_input_limit')
                     return cells, report
+    # Validate declared dimensions against every occupied slot, including
+    # merged ranges, before any candidate can become a confirmation or repair.
+    row_count = data.get('num_rows', max((r for r, _ in occupied), default=-1) + 1)
+    col_count = data.get('num_cols', max((c for _, c in occupied), default=-1) + 1)
+    if (type(row_count) is not int or type(col_count) is not int or row_count <= 0 or col_count <= 0
+            or row_count * col_count > 20000
+            or any(r >= row_count or c >= col_count for r, c in occupied)):
+        report['issues'].append('invalid_table_dimensions')
+        return cells, report
     pc = Counter(normalized(p['text']) for p in pieces)
     cc = Counter(normalized(c.get('text')) for c in cells)
     by_text = {normalized(c.get('text')): c for c in cells}
@@ -401,6 +410,10 @@ def reconcile(data, prediction):
     if final_issues:
         report['issues'].extend(final_issues)
         return cells, report
+    covered = set(occupied) | {position(cell) for cell, _ in repairs}
+    if any(not (0 <= r < row_count and 0 <= c < col_count) for r, c in covered):
+        report['issues'].append('invalid_table_dimensions')
+        return cells, report
     for cell, p in repairs:
         evidence = dict(engine='paddleocr', ocr_index=p['index'], bbox=p['box'], score=p['score'],
                         coordinate_system='ocr_crop_pixels')
@@ -408,16 +421,9 @@ def reconcile(data, prediction):
         report['repairs'].append(dict(row=cell['row'], column=cell['column'], text=p['text'], evidence=evidence))
     # Missing objects are unknown, not verified blanks. Spans explicitly cover
     # their slots; no synthetic empty cells are introduced for sparse summaries.
-    covered = set(occupied) | {position(cell) for cell, _ in repairs}
-    row_count = data.get('num_rows', max((r for r, _ in covered), default=-1) + 1)
-    col_count = data.get('num_cols', max((c for _, c in covered), default=-1) + 1)
-    if (type(row_count) is not int or type(col_count) is not int or row_count <= 0 or col_count <= 0
-            or row_count * col_count > 20000 or any(r >= row_count or c >= col_count for r, c in covered)):
-        report['issues'].append('invalid_table_dimensions')
-    else:
-        gaps = [[r, c] for r in range(row_count) for c in range(col_count) if (r, c) not in covered]
-        if gaps:
-            report['issues'].append({'kind': 'unknown_cell_slots', 'slots': gaps})
+    gaps = [[r, c] for r in range(row_count) for c in range(col_count) if (r, c) not in covered]
+    if gaps:
+        report['issues'].append({'kind': 'unknown_cell_slots', 'slots': gaps})
     return cells, report
 
 

@@ -2025,7 +2025,6 @@ test('schedules: management opens the chosen workflow and leaving a pending list
  },createElement(EntryApp));
  try{
   await click(scheduleRow('A').querySelector('[aria-label="'+scheduleFixtures().find(row=>row.agent.id==='A')!.agent.config.name+' 일정 관리"]')!);
-  await click(document.querySelector('.schedule-detail-link')!);
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(new URL(location.href).searchParams.get('service'),'A');
   assert.equal(document.querySelector('h1')?.textContent,'일일 보고서');assert.ok(document.querySelector('.as-schedule-card'));
   await click(button('예약 관리'));assert.match(document.body.textContent!,/불러오고/);
@@ -2121,7 +2120,6 @@ test('Gmail schedules: switching to a file schedule restores its file requiremen
   assert.equal(document.querySelector('.as-workflow-switcher'),null);
   await click(button('예약 관리'));
   await click(document.querySelector('[aria-label="정기 재고 집계 일정 관리"]')!);
-  await click(document.querySelector('.schedule-detail-link')!);
   assert.equal(document.querySelector('h1')?.textContent,'정기 재고 집계');assert.ok(button('파일 연결'));
   assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('예약 자료로 지금 실행').disabled,true);
   assert.equal(h.calls.some(call=>call.body),false);
@@ -2760,7 +2758,6 @@ test('home: linked detail pages keep the selected workflow and return to home',a
  try{
   await click(button('예약 관리'));
   await click(scheduleRow('A').querySelector('[aria-label="일일 보고서 일정 관리"]')!);
-  await click(document.querySelector('.schedule-detail-link')!);
   route('schedule','A');
   assert.ok(document.querySelector('.as-schedule-card'));
   await click(button('작업 라이브러리'));
@@ -3734,7 +3731,7 @@ test('all saved-design entry paths preserve left selection and right-click setti
  try{
   await click(document.querySelector('[aria-label="서비스 A 설계 열기"]')!);await verify('library design');
   await click(document.querySelector('[data-tour="menu-schedules"]')!);
-  await click(document.querySelector('[aria-label="서비스 A 일정 관리"]')!);await click(document.querySelector('.schedule-detail-link')!);await click(button('작업 라이브러리'));await click(document.querySelector('[aria-label="서비스 A 설계 열기"]')!);await verify('schedule detail via library to design');
+  await click(document.querySelector('[aria-label="서비스 A 일정 관리"]')!);await click(button('작업 라이브러리'));await click(document.querySelector('[aria-label="서비스 A 설계 열기"]')!);await verify('schedule detail via library to design');
   await click(document.querySelector('[data-tour="menu-history"]')!);await click(button('결과 보기'));await click(button('설계'));await verify('history result to design');
   await click(document.querySelector('.as-workflow-switcher summary')!);await click(document.querySelector('.as-workflow-switcher nav button')!);await click(button('설계'));await verify('saved workflow switcher to design');
   assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);

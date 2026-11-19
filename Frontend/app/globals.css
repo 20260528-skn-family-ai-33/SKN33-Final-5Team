@@ -7,16 +7,67 @@
   @media (any-pointer: fine) {
     select:where(:not([multiple], [size], [aria-hidden="true"])) {
       appearance: base-select;
-    }
+      align-items: center;
+      gap: 8px;
 
-    select:where(:not([multiple], [size], [aria-hidden="true"]))::picker(select) {
-      appearance: base-select;
-      margin-block: 4px;
-      border: 1px solid var(--a4b-border);
-      border-radius: 8px;
-      background-color: var(--a4b-surface);
-      color: var(--a4b-ink);
-      box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+      &:enabled {
+        cursor: pointer;
+      }
+
+      &::picker-icon {
+        content: "";
+        flex: none;
+        inline-size: 7px;
+        block-size: 7px;
+        margin-inline: auto 2px;
+        border: solid currentColor;
+        border-width: 0 1.5px 1.5px 0;
+        color: var(--a4b-muted);
+        transform: translateY(-2px) rotate(45deg);
+      }
+
+      &:open::picker-icon {
+        color: var(--a4b-action);
+        transform: translateY(2px) rotate(225deg);
+      }
+
+      &::picker(select) {
+        appearance: base-select;
+        margin-block: 6px;
+        padding: 4px;
+        border: 1px solid var(--a4b-border);
+        border-radius: 10px;
+        background-color: var(--a4b-surface);
+        color: var(--a4b-ink);
+        box-shadow: 0 6px 18px rgb(32 47 63 / 14%);
+      }
+
+      & option {
+        min-block-size: 34px;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+
+        &:enabled:is(:hover, :focus-visible) {
+          background-color: var(--a4b-neutral-soft);
+        }
+
+        &:checked {
+          background-color: var(--a4b-blue-soft);
+          color: var(--a4b-action);
+          font-weight: 600;
+        }
+
+        &:focus-visible {
+          outline: 2px solid var(--a4b-action);
+          outline-offset: -2px;
+        }
+
+        &::checkmark {
+          order: 1;
+          margin-inline-start: auto;
+        }
+      }
     }
   }
 }

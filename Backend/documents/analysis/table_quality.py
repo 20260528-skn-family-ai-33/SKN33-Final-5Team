@@ -394,6 +394,11 @@ def reconcile(data, prediction):
         if existing is not None:
             if normalized(existing.get('text')) != normalized(p['text']):
                 report['issues'].append({'kind': 'cell_text_conflict', 'ocr_index': p['index'], 'slot': list(slot)})
+            else:
+                # Confirmed OCR was removed through anchors above. Equal text
+                # cannot certify a remaining piece that failed confirmation.
+                report['issues'].append({'kind': 'unmatched_existing_cell_ocr',
+                                         'ocr_index': p['index'], 'slot': list(slot)})
             continue
         proposals[slot].append(p)
     repairs = []

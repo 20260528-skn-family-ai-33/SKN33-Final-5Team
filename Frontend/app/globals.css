@@ -1,6 +1,26 @@
 @import "./workspace-icon-button.css";
 @import "tailwindcss";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
+
+/* Render desktop dropdown lists inside the page for window recordings. */
+@supports (appearance: base-select) and selector(select::picker(select)) {
+  @media (any-pointer: fine) {
+    select:where(:not([multiple], [size], [aria-hidden="true"])) {
+      appearance: base-select;
+    }
+
+    select:where(:not([multiple], [size], [aria-hidden="true"]))::picker(select) {
+      appearance: base-select;
+      margin-block: 4px;
+      border: 1px solid var(--a4b-border);
+      border-radius: 8px;
+      background-color: var(--a4b-surface);
+      color: var(--a4b-ink);
+      box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+    }
+  }
+}
+
 /* Keep the Webhook title and close button outside its scrolling request form. */
 .flow-dialog.webhook-dialog { display:flex; flex-direction:column; gap:0; width:min(660px,calc(100vw - 24px)); max-width:calc(100vw - 24px)!important; max-height:min(90dvh,calc(100dvh - 24px)); padding:0; overflow:hidden; }
 .webhook-dialog-header { flex:0 0 auto; padding:24px 56px 20px 24px; border-bottom:1px solid var(--border); }

@@ -190,3 +190,11 @@ Pod 내부 PDF worker는 `A4B_DOCLING_LOCAL_ONLY=1`로 이미 점유한 슬롯�
 body_ocr_details:invalid_engine_result, low_confidence_uncovered_ocr, empty_ocr_region은 실제 본문 OCR 블록에만 검토 범위를 기록합니다. 전체 이미지 부모를 범위로 포함하지 않아 같은 이미지의 독립 표로 경고가 확산되지 않습니다. 문서 전체 partial/경고와 선택 없는 추출 차단은 유지하고, 명시적으로 선택한 정상 표에는 해당 표·표 부모·실제 전역/알 수 없는 오류를 계속 적용합니다. 위치가 확인되지 않은 누락 응답이나 전체 분석 실패를 전역 검사에서 무시하지 않습니다.
 
 신규 test_body_review_table_export.py 18개는 실제 이미지+모델 대역 pipeline.run 출력에서 chunks_for_asset → select_table_parts → native_records → CSV export executor → 파일 저장/읽기를 연결합니다. 정상/NaN/점수 생략·빈 배열·비정상 점수/모든 조각 폐기/여러 띠 부분 커버리지와 정상 표·오류 표를 대조하며 정상 선택 CSV가 Milk,1임을 확인합니다. 문서 경고·partial은 유지하고 선택 없음, 실제 전역·범위 불명·표 부모·표 자체 경고는 계속 차단합니다. 수정 전 236104f에서 12개 실패/6개 통과, 수정 후 18개 통과입니다. 운영 GPU·홈페이지 검증은 수행하지 않았습니다.
+
+### 본문 OCR 응답 외곽 계약과 누락 result 격리
+
+본문 OCR은 최상위 객체/version/outputs 리스트를 명시적으로 검증한 뒤 요청한 source별로 응답을 묶습니다. result 키 누락/null/비객체는 빈 본문과 국소 검토 경고로 처리합니다. 일부 요청 source 누락과 중복 source도 해당 OCR 블록의 실패로 처리하며, 중복 중 하나를 선택하거나 응답 순서로 요청에 연결하지 않습니다. 정상 배치 항목과 Docling 기본 표는 보존합니다. 비객체 항목·미요청/누락/비문자 source는 출처 불명 전역 경고로 유지합니다.
+
+원격 PaddleOCR 어댑터는 출처를 확인할 수 있는 항목을 보존하면서 출처 불명 표시를 파이프라인에 전달합니다. 여러 배치에서도 이 표시를 합칩니다. 다른 엔진의 source 계약은 완화하지 않았고, 표 검증 OCR은 출처 불명 표시 및 비정상 외곽 계약을 거부합니다. JSON 검증 완화나 광범위한 예외 무시는 추가하지 않았습니다.
+
+신규 test_body_response_envelope.py 78개는 정상/null/result 누락, 최상위 None/비객체/version/outputs 오류, 비객체 항목과 source 누락/null/비문자/미요청/중복/일부 누락, 내부 배열 오류를 본문/표 검증 및 직접 대역/실제 LocalEngines HTTP 응답 대역 경로에서 검사합니다. 본문 혼합 배치의 정상 조각 보존, 정상 표 issues=[]와 명시적 선택→실제 CSV export→저장/읽기, 국소 경고 및 문서 전체 차단, 출처 불명 전역 차단, 오류 표 차단, strict JSON/UTF-8 및 원격 배치 표시 유지도 확인합니다. 수정 전 7cb8248에서 27개 실패/51개 통과였습니다. 실제 CPU/GPU 인식과 운영 홈페이지 검증은 수행하지 않았습니다.

@@ -99,6 +99,8 @@ def remote_engine(url, engine, sources, *, deadline=None):
             if data['version'] != result['version'] or data.get('model') != result.get('model'):
                 raise AnalysisError('invalid_engine_result', '처리 도중 GPU 엔진 버전이 변경됐습니다.')
             result['outputs'].extend(data['outputs'])
+            if data.get('invalid_output_sources'):
+                result['invalid_output_sources'] = True
     if result is None:
         raise AnalysisError('invalid_engine_result', 'GPU 파서에 보낼 이미지가 없습니다.')
     return result
@@ -129,9 +131,17 @@ def _remote_batch(url, engine, names, body, timeout):
         data = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise AnalysisError('invalid_engine_result', '엔진 JSON 응답을 읽을 수 없습니다.') from exc
-    if not isinstance(data, dict) or not isinstance(data.get('version'), str) or not isinstance(data.get('outputs'), list) \
-            or not all(isinstance(o, dict) and o.get('source') in names for o in data['outputs']):
+    if not isinstance(data, dict) or not isinstance(data.get('version'), str) or not isinstance(data.get('outputs'), list):
         raise AnalysisError('invalid_engine_result', '엔진 응답 계약이 올바르지 않습니다.')
+    valid = [o for o in data['outputs'] if isinstance(o, dict)
+             and isinstance(o.get('source'), str) and o['source'] in names]
+    if len(valid) != len(data['outputs']):
+        if engine != 'paddleocr':
+            raise AnalysisError('invalid_engine_result', '엔진 응답 계약이 올바르지 않습니다.')
+        # Preserve attributable OCR items, but never hide unknown provenance.
+        # Body parsing marks this globally; table verification rejects it.
+        data['outputs'] = valid
+        data['invalid_output_sources'] = True
     return data, len(raw)
 
 

@@ -448,13 +448,28 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
             recognized = engines.run('paddleocr', sources=[j['path'] for j in ocr_jobs],
                                      scope=[j['parent']['id'] for j in ocr_jobs], phase='supplement')
             mapped = {str(j['path']): j for j in ocr_jobs}
-            seen = set()
+            if (not isinstance(recognized, dict) or not isinstance(recognized.get('version'), str)
+                    or not isinstance(recognized.get('outputs'), list)):
+                raise AnalysisError('invalid_engine_result', '본문 OCR 응답 형식이 올바르지 않습니다.')
+            grouped = {name: [] for name in mapped}
+            unknown_source = bool(recognized.get('invalid_output_sources'))
             for output in recognized['outputs']:
-                job = mapped[output['source']]
-                seen.add(output['source'])
+                if (not isinstance(output, dict) or not isinstance(output.get('source'), str)
+                        or output['source'] not in mapped):
+                    unknown_source = True
+                    continue
+                grouped[output['source']].append(output)
+            if unknown_source:
+                review('image_ocr:unknown_output_source')
+            for name, job in mapped.items():
+                entries = grouped[name]
+                # Never choose between duplicate sources or pair by order.
+                output = entries[0] if len(entries) == 1 else {}
+                response_issue = ('missing_ocr_output' if not entries else
+                                  'duplicate_ocr_output' if len(entries) > 1 else None)
                 region = job['parent']
                 bands = job.get('bands') or []
-                prediction, invalid_details = body_ocr_prediction(output['result'], require_geometry=bool(bands))
+                prediction, invalid_details = body_ocr_prediction(output.get('result'), require_geometry=bool(bands))
                 if bands:
                     prediction, unread = ocr_in_bands(prediction, bands, job['scale'])
                     if invalid_details:
@@ -472,6 +487,8 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                     # Whole-image supplements share a parent with independent
                     # tables. Only this OCR result needs body review.
                     review('body_ocr_details:invalid_engine_result', [item['id']])
+                if response_issue:
+                    review(response_issue, [item['id']])
                 item['parser_version'] = recognized['version']
                 if bands:
                     item['data']['upright_y_bands'] = bands
@@ -481,8 +498,6 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 result['blocks'].append(item)
                 if not text.strip():
                     review('empty_ocr_region:' + region['id'], [item['id']])
-            if len(seen) != len(ocr_jobs):
-                review('missing_ocr_output')
         except AnalysisError as exc:
             review('image_ocr:' + exc.code)
 
@@ -578,7 +593,9 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
         item = tables[0]
         try:
             recognized = engines.run('paddleocr', sources=[job['path']], scope=region['id'], phase='table_verification')
-            if not isinstance(recognized, dict) or not isinstance(recognized.get('outputs'), list):
+            if (not isinstance(recognized, dict) or not isinstance(recognized.get('version'), str)
+                    or not isinstance(recognized.get('outputs'), list)
+                    or recognized.get('invalid_output_sources')):
                 raise AnalysisError('invalid_engine_result', '표 검증 OCR 응답 형식이 올바르지 않습니다.')
             outputs = [o for o in recognized['outputs'] if isinstance(o, dict) and o.get('source') == str(job['path'])]
             if len(outputs) != 1 or len(recognized['outputs']) != 1:

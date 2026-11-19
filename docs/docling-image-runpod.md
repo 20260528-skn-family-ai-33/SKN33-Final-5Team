@@ -206,3 +206,9 @@ body_ocr_details:invalid_engine_result, low_confidence_uncovered_ocr, empty_ocr_
 비정상 메타데이터를 가진 응답은 신뢰할 수 있는 정상 메타데이터로 치환하지 않고 거부합니다. 본문 응답 메타데이터 실패는 전역 image_ocr 검토, 표 검증 응답 메타데이터 실패는 해당 표 검토로 기록하며 이미 확보한 Docling 결과와 다른 정상 단계 결과는 반환합니다. 실패한 본문 응답의 텍스트를 발명하거나 검증을 통과한 것처럼 사용하지 않습니다. result 누락의 source별 국소 격리 정책은 유지합니다.
 
 신규 test_engine_metadata_contract.py 66개는 직접 대역/실제 원격 HTTP 어댑터/실제 로컬 응답 파일 어댑터 경로와 본문·표 phase를 교차합니다. 정상·한글/이모지·result 누락·version 서로게이트·중첩 model 서로게이트/키/NaN/±Infinity·model null/비객체를 비교하고 기본 표와 정상 본문 보존, partial/경고, 실패 attempt 메타데이터 부재, strict JSON/UTF-8 및 허용되는 정상 표 선택 CSV 저장/읽기를 확인합니다. 이전 b1dac84에서 48개 실패/18개 통과, 수정 후 66개 통과입니다. HTTP와 subprocess 응답은 대역이며 실제 CPU/GPU 인식·운영 홈페이지 검증은 수행하지 않았습니다.
+
+### 로컬 워커 실패 응답 계약
+
+로컬 워커의 `error`는 성공 메타데이터와 분리해 검사한다. 키가 있으면 비어 있지 않은 UTF-8 안전 문자열만 오류 코드로 허용하며 null/bool/숫자/객체/배열/고립 서로게이트는 `invalid_engine_result`로 처리한다. 키 없이 비정상 종료하면 `engine_error`를 사용한다. 실패 응답의 version/model은 시도 기록에 저장하지 않는다. 성공 응답에는 기존 메타데이터 검증을 유지한다. JSON 해독 경계의 ValueError/RecursionError도 잘못된 응답으로 분류한다.
+
+`test_worker_failure_contract.py`의 104개 검사는 로컬/원격 장애 후 CPU fallback, 본문/표 검증, 종료 코드 0/1과 정상 오류·키 누락·null·false·0·빈 문자열·숫자·객체·배열·서로게이트·바깥 null·잘못된 JSON·응답 파일 누락을 교차 검증한다. 기본 Docling 표, 정상 본문 단계 결과, 안전한 attempt 오류 코드와 strict JSON/UTF-8 직렬화 및 표 검증 경고 범위를 확인한다. 이전 384666b에서 64개 실패/40개 통과, 수정본에서 104개 통과했다. 모델·프로세스·원격 장애는 대역이며 운영 호출은 하지 않았다.

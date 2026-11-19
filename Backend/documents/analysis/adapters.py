@@ -222,12 +222,19 @@ class LocalEngines:
                 raise AnalysisError('invalid_engine_result', '엔진 응답이 없거나 크기 제한을 넘었습니다.')
             try:
                 data = json.loads(output.read_text(encoding='utf-8'))
-            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            except (ValueError, UnicodeDecodeError, RecursionError) as exc:
                 raise AnalysisError('invalid_engine_result', '엔진 JSON 응답을 읽을 수 없습니다.') from exc
-            if not isinstance(data, dict) or not data.get('error') and not isinstance(data.get('version'), str):
+            if not isinstance(data, dict):
                 raise AnalysisError('invalid_engine_result', '엔진 응답 계약이 올바르지 않습니다.')
-            if completed.returncode or data.get('error'):
-                raise AnalysisError(data.get('error', 'engine_error'), engine + ' 처리 실패. 실행 환경·로컬 모델과 엔진 로그를 확인하세요.')
+            # Failure payloads need not contain success metadata. Never copy an
+            # unvalidated error value into AnalysisError or persisted attempts.
+            if 'error' in data:
+                code = data['error']
+                if not isinstance(code, str) or not code.strip() or any(0xD800 <= ord(c) <= 0xDFFF for c in code):
+                    raise AnalysisError('invalid_engine_result', '엔진 오류 코드 계약이 올바르지 않습니다.')
+                raise AnalysisError(code, engine + ' 처리 실패. 실행 환경·로컬 모델과 엔진 로그를 확인하세요.')
+            if completed.returncode:
+                raise AnalysisError('engine_error', engine + ' 처리 실패. 실행 환경·로컬 모델과 엔진 로그를 확인하세요.')
             validate_engine_metadata(data)
             attempt.update(status='partial' if data.get('partial') else 'succeeded',
                            version=data['version'], model=data.get('model', {}))

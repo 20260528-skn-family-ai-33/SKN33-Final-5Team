@@ -469,16 +469,18 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 if 'rec_boxes' in prediction and not invalid_details:
                     item['data'].update(ocr_texts=prediction['rec_texts'], ocr_boxes=prediction['rec_boxes'])
                 if invalid_details:
-                    review('body_ocr_details:invalid_engine_result', [region['id'], item['id']])
+                    # Whole-image supplements share a parent with independent
+                    # tables. Only this OCR result needs body review.
+                    review('body_ocr_details:invalid_engine_result', [item['id']])
                 item['parser_version'] = recognized['version']
                 if bands:
                     item['data']['upright_y_bands'] = bands
                     if unread:
                         item['data']['unverified_y_bands'] = unread
-                        review('low_confidence_uncovered_ocr:' + region['id'])
+                        review('low_confidence_uncovered_ocr:' + region['id'], [item['id']])
                 result['blocks'].append(item)
                 if not text.strip():
-                    review('empty_ocr_region:' + region['id'])
+                    review('empty_ocr_region:' + region['id'], [item['id']])
             if len(seen) != len(ocr_jobs):
                 review('missing_ocr_output')
         except AnalysisError as exc:

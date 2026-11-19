@@ -102,45 +102,48 @@ test('new reservation defaults and reverting meaningful edits leave no unsaved c
  }finally{await h.close();assert.equal(observed.at(-1),false);}
 });
 
-test('reservation management protects dirty forms when closing, refreshing, switching rows or selecting another workflow',async()=>{
+test('reservation management protects dirty forms when closing, refreshing, opening details or selecting another workflow',async()=>{
  const agent=(id:string)=>({id,version:1,config:{name:id,purpose:'자료 요약',schedule:null}}),agents=['A','B','C','D'].map(agent);
+ const opened:string[]=[];
  let guard:()=>boolean=()=>true;
- const h=await mount(createElement(ScheduledWorkflows,{onOpen:()=>{},onCreate:()=>{},onCanLeaveChange:(value:()=>boolean)=>{guard=value;}}),path=>{
+ const h=await mount(createElement(ScheduledWorkflows,{onOpen:(id:string)=>{if(guard())opened.push(id);},onCreate:()=>{},onCanLeaveChange:(value:()=>boolean)=>{guard=value;}}),path=>{
   if(path.split('?')[0].endsWith('/schedules'))return {workflows:agents.slice(0,2).map(value=>({agent:value,schedule:saved}))};
   if(path.split('?')[0].endsWith('/agents'))return {agents};throw Error('Unexpected '+path);
  });
  let confirmations=0,allowDiscard=false;dom.window.confirm=()=>{confirmations++;return allowDiscard;};
  try{
-  await click(document.querySelector<HTMLElement>('[aria-label="A 일정 관리"]')!);await click(button('일정 수정'));await change(labelled('실행 시간'),'10:00');
+  await click(button('기존 워크플로우에 예약 추가'));
+  let picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;
+  await change(picker,'C');await change(labelled('실행 시간'),'10:00');
   const unload=new dom.window.Event('beforeunload',{cancelable:true});dom.window.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
   assert.equal(guard(),false);assert.equal(confirmations,1);
   await click(document.querySelector<HTMLElement>('[aria-label="예약 설정 닫기"]')!);assert.equal(confirmations,2);assert.equal(labelled('실행 시간').value,'10:00');
-  await click(document.querySelector<HTMLElement>('[aria-label="B 일정 관리"]')!);assert.equal(confirmations,3);assert.match(document.querySelector('.schedule-manager-heading')!.textContent!,/A/);
+  await click(document.querySelector<HTMLElement>('[aria-label="B 일정 관리"]')!);assert.equal(confirmations,3);assert.deepEqual(opened,[]);assert.equal(picker.value,'C');
   const reads=h.calls.length;await click(document.querySelector<HTMLElement>('[aria-label="예약 목록 새로고침"]')!);assert.equal(confirmations,4);assert.equal(h.calls.length,reads);
   allowDiscard=true;await click(button('기존 워크플로우에 예약 추가'));assert.equal(confirmations,5);
-  const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;await change(picker,'C');assert.equal(guard(),true);assert.equal(confirmations,5);
+  await click(button('기존 워크플로우에 예약 추가'));
+  picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;await change(picker,'C');assert.equal(guard(),true);assert.equal(confirmations,5);
   await change(labelled('반복 주기'),'hourly');allowDiscard=false;await change(picker,'D');assert.equal(confirmations,6);assert.equal(picker.value,'C');assert.equal(labelled('반복 주기').value,'hourly');
   allowDiscard=true;await change(picker,'D');assert.equal(confirmations,7);assert.equal(picker.value,'D');assert.equal(labelled('반복 주기').value,'daily');assert.equal(guard(),true);assert.equal(confirmations,7);
   const cleanUnload=new dom.window.Event('beforeunload',{cancelable:true});dom.window.dispatchEvent(cleanUnload);assert.equal(cleanUnload.defaultPrevented,false);
  }finally{await h.close();}
 });
 
-test('reservation management uses saved schedule and keeps an unscheduled workflow available after removal',async()=>{
+test('reservation management opens saved schedules directly and adds unscheduled workflows',async()=>{
  const agent={id:'A',version:1,config:{name:'보고서',purpose:'자료 요약',schedule:null}},manual={id:'B',version:1,config:{name:'직접 작업',purpose:'직접 실행',schedule:null}};
  const opened:string[]=[];
  const h=await mount(createElement(ScheduledWorkflows,{onOpen:(id:string)=>opened.push(id),onCreate:()=>{}}),(path,body)=>{
   if(path.split('?')[0].endsWith('/schedules'))return {workflows:[{agent,schedule:saved}]};
   if(path.split('?')[0].endsWith('/agents'))return {agents:[agent,manual]};
-  if(path.endsWith('/schedule_remove'))return {schedule:null};
   if(path.endsWith('/schedule_configure'))return {schedule:{...saved,spec:body.spec}};
   throw Error('Unexpected '+path);
  });
  try{
   assert.equal(document.querySelector('h1')?.textContent,'예약 관리');assert.match(document.querySelector('table')!.textContent!,/매일 09:00/);
-  await click(button('일정 관리'));await click(button('예약 자료·실행 확인'));assert.deepEqual(opened,['A']);
-  await click(button('예약 해제'));assert.equal(document.querySelector('[data-schedule-id="A"]'),null);
+  await click(button('일정 관리'));assert.deepEqual(opened,['A']);
+  assert.equal(document.querySelector('.schedule-manager'),null);
   await click(button('기존 워크플로우에 예약 추가'));
-  const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;assert.deepEqual(Array.from(picker.options).map(option=>option.value),['','A','B']);
+  const picker=document.querySelector<HTMLSelectElement>('[aria-label="예약할 워크플로우"]')!;assert.deepEqual(Array.from(picker.options).map(option=>option.value),['','B']);
   await change(picker,'B');await click(button('예약 추가'));assert.ok(document.querySelector('[data-schedule-id="B"]'));
   assert.equal(h.calls.at(-1)?.body.id,'B');
  }finally{await h.close();}

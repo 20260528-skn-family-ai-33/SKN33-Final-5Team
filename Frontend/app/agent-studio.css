@@ -253,15 +253,15 @@ details.as-setting-section[open] > summary:not(:has(> svg))::after { transform:r
 .as-desktop-canvas{background-color:#f7fafc;background-image:radial-gradient(#d6e3ed 1px,transparent 1px);background-size:24px 24px}
 .as-flow-node{align-items:center;justify-content:flex-start;gap:0;padding:0;border:0;border-radius:0;background:transparent;text-align:center;box-shadow:none;outline:0;animation:as-step-reveal 480ms cubic-bezier(.22,1,.36,1) both}
 .as-flow-node.selected{outline:0;box-shadow:none}
-.as-node-step{height:30px;font-size:11px;letter-spacing:.1em;color:var(--as-muted);font-weight:550}
+.as-node-step{flex:none;height:30px;font-size:11px;letter-spacing:.1em;color:var(--as-muted);font-weight:550}
 .as-node-square{position:relative;display:grid;place-items:center;width:112px;height:112px;flex:none;border:2px solid #d6e3ed;border-radius:21px;background:white;color:#315574;box-shadow:0 3px 12px #244a6b08;transition:border-color 160ms,box-shadow 160ms}
 .as-node-square>svg,.as-node-square>img{width:44px;height:44px}
 .as-flow-node:hover .as-node-square{border-color:#7caecb;box-shadow:0 0 0 4px #a4c9df1a}
 .as-flow-node.selected .as-node-square{border-color:#7caecb;box-shadow:0 0 0 3px #a4c9df26,0 0 14px #7caecb44}
 .as-flow-node:focus-visible{outline:none}
 .as-flow-node:focus-visible .as-node-square{outline:2px solid var(--as-accent);outline-offset:5px}
-.as-flow-node strong{display:-webkit-box;width:100%;max-width:none;margin-top:14px;font-size:15px;line-height:1.4;color:#244a6b;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow:hidden;overflow-wrap:anywhere}
-.as-flow-node small.as-node-kind{font-size:12px;color:var(--as-muted);margin-top:5px}
+.as-flow-node strong{flex:none;display:-webkit-box;width:100%;max-width:none;margin-top:14px;font-size:15px;line-height:1.4;color:#244a6b;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow:hidden;overflow-wrap:anywhere}
+.as-flow-node small.as-node-kind{flex:none;font-size:12px;line-height:1.4;color:var(--as-muted);margin-top:5px}
 .as-flow-node .as-node-square i{width:11px;height:11px;border:2px solid #f7fafc;background:#315574;top:calc(50% - 5.5px)}
 .flow-horizontal .as-flow-node .as-port-in{left:-7px;right:auto}
 .flow-horizontal .as-flow-node .as-port-out{left:auto;right:-7px}

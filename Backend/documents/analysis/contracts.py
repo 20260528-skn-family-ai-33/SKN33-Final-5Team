@@ -35,6 +35,41 @@ def validate_engine_metadata(data):
         raise AnalysisError('invalid_engine_metadata', '엔진 메타데이터가 크기 제한을 넘었습니다.')
 
 
+def validate_docling_result(data):
+    """Validate the complete response before publishing any parsed block."""
+    validate_engine_metadata(data)
+    if (data.get('engine') != 'docling' or not isinstance(data.get('blocks'), list)
+            or len(data['blocks']) > MAX_BLOCKS
+            or ('partial' in data and type(data['partial']) is not bool)):
+        raise AnalysisError('invalid_engine_result', 'Docling 응답 계약이 올바르지 않습니다.')
+    for entry in data['blocks']:
+        if (not isinstance(entry, dict) or not isinstance(entry.get('kind'), str)
+                or not isinstance(entry.get('text', ''), str)
+                or not isinstance(entry.get('location', {}), dict)
+                or not isinstance(entry.get('data', {}), dict)
+                or not isinstance(entry.get('coordinate_system', 'engine_native'), str)):
+            raise AnalysisError('invalid_engine_result', 'Docling 블록 형식이 올바르지 않습니다.')
+        geometry = entry.get('bbox')
+        if geometry is not None:
+            if not isinstance(geometry, (list, tuple)) or len(geometry) != 4:
+                raise AnalysisError('invalid_engine_result', 'Docling 좌표 형식이 올바르지 않습니다.')
+            try:
+                valid = all(type(v) in (int, float) and math.isfinite(v) for v in geometry)
+            except OverflowError:
+                valid = False
+            if not valid or geometry[2] < geometry[0] or geometry[3] < geometry[1]:
+                raise AnalysisError('invalid_engine_result', 'Docling 좌표 값이 올바르지 않습니다.')
+        cells = entry.get('data', {}).get('cells', [])
+        if not isinstance(cells, list) or not all(isinstance(c, dict) for c in cells):
+            raise AnalysisError('invalid_engine_result', 'Docling 셀 목록 형식이 올바르지 않습니다.')
+    try:
+        encoded = json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf-8')
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise AnalysisError('invalid_engine_result', 'Docling 응답을 JSON/UTF-8로 표현할 수 없습니다.') from exc
+    if len(encoded) > MAX_RESULT:
+        raise AnalysisError('invalid_engine_result', 'Docling 응답 크기가 제한을 넘었습니다.')
+
+
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 

@@ -218,3 +218,11 @@ body_ocr_details:invalid_engine_result, low_confidence_uncovered_ocr, empty_ocr_
 원격 OCR `_remote_batch`에서도 JSON 해독 단계의 ValueError(정수 자릿수 제한 포함), UnicodeDecodeError, RecursionError를 `invalid_engine_result`로 변환한다. 원격 Docling 작업 제출/조회 응답에도 같은 입력 경계 검사를 적용하며, 조회 실패 시 기존 작업 취소를 유지한다. 정수 보안 제한이나 strict JSON 정책을 완화하지 않는다. 잘못된 원격 JSON은 HTTP 장애와 구분해 CPU fallback 대상에 넣지 않으며, 뒤 배치 실패도 부분 배치를 성공으로 반환하지 않는다.
 
 신규 `test_json_decode_boundaries.py` 95개는 로컬/원격/HTTP 503 후 CPU fallback/CPU 허용 원격, 본문·표 검증, 정상/큰 정수/중첩/구문 오류/잘못된 UTF-8/최상위 타입/빈 응답/크기 초과, 첫·뒤 배치 및 Docling 제출·조회·취소를 검사한다. 기본 본문·표, 오류 코드·attempt, 검토 범위와 strict JSON/UTF-8 보존을 확인한다. Python 3.14에서는 깊은 배열을 해독할 수 있어 실제 중첩 입력과 디코더 RecursionError 대역을 분리했다. 정수 검사는 실제 인터프리터 제한을 읽고 문자열로 초과 입력을 생성하며 전역 설정은 변경하지 않는다. 이전 a48dfdd에서 신규 검사 16개 실패/79개 통과, 수정 후 95개 통과했다. 모델 및 HTTP 응답은 대역이며 운영 GPU에서 관찰한 장애가 아니다.
+
+### Docling 접수·조회 및 블록 응답 계약
+
+접수 HTTP 202 응답의 객체 및 문자열 job_id를 UUID 파싱 전에 검증한다. 키 누락·null·숫자·bool·배열·객체·잘못된 UUID 문자열은 invalid_engine_result이며 유효한 ID가 없으면 조회/취소 URL을 만들지 않는다. 조회 HTTP 202는 객체만 허용하고 기존 빈 대기 객체는 유지한다. 유효한 접수 후 조회/결과 검증 실패는 기존 취소 경로를 따른다.
+
+원격·로컬 Docling과 직접 파이프라인 연결 경계에서 공통 응답 검증을 수행한다. engine/version/model, blocks와 블록 kind/text/location/data/coordinate_system, 유한하고 순서가 맞는 4개 좌표, 셀 객체 목록, partial bool 및 전체 strict JSON/UTF-8 표현 가능성을 블록 반영 전에 검사한다. 잘못된 원격 메타데이터는 response.json 및 attempt에 저장하지 않는다. 한 응답 안의 뒤 블록이 잘못돼도 앞 블록만 부분 반영하지 않으며, 이미 처리한 다른 표와 본문은 유지한다. 값 추측·광범위한 예외 무시는 사용하지 않는다.
+
+신규 test_docling_response_contract.py 115개는 접수 타입·UUID, 조회 대기/완료 계약, 입력 해시/GPU 장치, 원격·로컬·직접 연결, 중첩 비유한 수/서로게이트, 잘못된 뒤 블록, 기존 정상 표 보존과 정상 선택 CSV 저장/읽기를 검사한다. 이전 5a72aca에서는 92개 실패/23개 통과, 수정본에서는 모두 통과했다. 기존 어댑터 단위 테스트의 최소 성공 대역 세 곳에는 실제 워커처럼 engine='docling'을 명시했다. 운영 GPU·홈페이지 검증은 수행하지 않았다.

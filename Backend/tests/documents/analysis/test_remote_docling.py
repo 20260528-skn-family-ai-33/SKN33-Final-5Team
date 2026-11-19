@@ -51,7 +51,7 @@ def test_png_supplement_uses_remote_without_local_docling(tmp_path, monkeypatch)
     source.write_bytes(b'fixture')
     monkeypatch.setenv('A4B_PARSER_URL', 'https://parser.example')
     monkeypatch.delenv('A4B_DOCLING_LOCAL_ONLY', raising=False)
-    result = dict(version='test', model={'device': 'cuda'}, blocks=[], partial=True)
+    result = dict(engine='docling', version='test', model={'device': 'cuda'}, blocks=[], partial=True)
     engines = LocalEngines(tmp_path / 'attempts')
     with patch.object(remote_docling, 'parse_remote_image', return_value=result), patch('subprocess.run') as local:
         assert engines.run('docling', source=source, phase='supplement') == result
@@ -81,7 +81,7 @@ def test_pod_local_only_does_not_reenter_shared_queue(tmp_path, monkeypatch):
     engines = LocalEngines(tmp_path / 'attempts')
     def local(command, **kwargs):
         from pathlib import Path
-        Path(command[-1]).write_text(json.dumps({'version': 'test', 'blocks': []}))
+        Path(command[-1]).write_text(json.dumps({'engine': 'docling', 'version': 'test', 'blocks': []}))
         return SimpleNamespace(returncode=0)
     with patch.object(remote_docling, 'parse_remote_image') as remote, patch('subprocess.run', side_effect=local):
         assert engines.run('docling', source=source)['version'] == 'test'
@@ -177,7 +177,7 @@ def test_completed_tables_share_one_budget(tmp_path, monkeypatch):
     def complete(source, timeout):
         budgets.append(timeout)
         clock.sleep(50)
-        return {'version': 'test', 'model': {}, 'blocks': []}
+        return {'engine': 'docling', 'version': 'test', 'model': {}, 'blocks': []}
     with patch.object(remote_docling, 'parse_remote_image', side_effect=complete):
         for _ in range(2):
             engines.run('docling', source=source)

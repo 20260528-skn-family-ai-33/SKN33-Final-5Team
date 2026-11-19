@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from . import CONTRACT_VERSION
 from .adapters import LocalEngines, convert
-from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, MAX_RESULT, block, bounds, project, sha256, validate, validate_engine_metadata
+from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, MAX_RESULT, block, bounds, project, sha256, validate, validate_engine_metadata, validate_docling_result
 from .readers import Inspector
 from .image_metadata import png_resolution
 from .table_quality import reconcile, render_cells, validate_prediction, finite_number
@@ -216,6 +216,10 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
     primary_failed = False
 
     def add_parsed(parsed, *, parent=None, unit=None, location=None, selected=True, phase='primary'):
+        if not isinstance(parsed, dict) or not isinstance(parsed.get('engine'), str) or parsed['engine'] not in {'docling', 'mineru'}:
+            raise AnalysisError('invalid_engine_result', '문서 엔진 응답 형식이 올바르지 않습니다.')
+        if parsed.get('engine') == 'docling':
+            validate_docling_result(parsed)
         added = []
         for entry in parsed.get('blocks', []):
             original_location = entry.get('location', {})

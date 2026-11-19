@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from .contracts import AnalysisError, MAX_RESULT, MAX_BYTES, sha256, validate_engine_metadata
+from .contracts import AnalysisError, MAX_RESULT, MAX_BYTES, sha256, validate_engine_metadata, validate_docling_result
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 REMOTE_ENGINES = ('layout', 'paddleocr')
@@ -191,7 +191,7 @@ class LocalEngines:
                     if exc.code in ('busy', 'timeout'):
                         self.image_unavailable = exc.code
                     raise
-                validate_engine_metadata(data)
+                validate_docling_result(data)
                 (folder / 'response.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
                 attempt.update(status='partial' if data.get('partial') else 'succeeded',
                                version=data['version'], model=data.get('model', {}))
@@ -236,6 +236,8 @@ class LocalEngines:
             if completed.returncode:
                 raise AnalysisError('engine_error', engine + ' 처리 실패. 실행 환경·로컬 모델과 엔진 로그를 확인하세요.')
             validate_engine_metadata(data)
+            if engine == 'docling':
+                validate_docling_result(data)
             attempt.update(status='partial' if data.get('partial') else 'succeeded',
                            version=data['version'], model=data.get('model', {}))
             return data

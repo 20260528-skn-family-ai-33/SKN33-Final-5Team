@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from .contracts import AnalysisError, MAX_BYTES, MAX_RESULT, sha256
+from .contracts import AnalysisError, MAX_BYTES, MAX_RESULT, sha256, validate_docling_result
 from .remote_pdf import NoRedirect
 
 QUEUE_WAIT_SECONDS = 10
@@ -58,7 +58,12 @@ def parse_remote_image(source, timeout=240):
                 continue
             if status != 202:
                 raise AnalysisError('invalid_engine_result', 'Docling 작업 ID가 반환되지 않았습니다.')
-            job = str(uuid.UUID(result['job_id']))
+            if not isinstance(result, dict) or not isinstance(result.get('job_id'), str):
+                raise AnalysisError('invalid_engine_result', 'Docling 작업 ID 형식이 올바르지 않습니다.')
+            try:
+                job = str(uuid.UUID(result['job_id']))
+            except ValueError as exc:
+                raise AnalysisError('invalid_engine_result', 'Docling 작업 ID가 올바른 UUID가 아닙니다.') from exc
         while True:
             status, result = send(urllib.request.Request(url + '/' + job, headers=headers))
             if status == 200:
@@ -70,9 +75,10 @@ def parse_remote_image(source, timeout=240):
                         or not isinstance(result.get('model'), dict)
                         or result['model'].get('device') != 'cuda'):
                     raise AnalysisError('invalid_engine_result', 'Docling 결과가 요청한 이미지 또는 GPU 계약과 다릅니다.')
+                validate_docling_result(result)
                 finished = True
                 return result
-            if status != 202:
+            if status != 202 or not isinstance(result, dict):
                 raise AnalysisError('invalid_engine_result', 'Docling 작업 상태가 올바르지 않습니다.')
             time.sleep(max(0, min(1, deadline - time.monotonic())))
     except urllib.error.HTTPError as exc:

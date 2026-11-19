@@ -9,6 +9,30 @@
 .admin-monitor .am-filters :is(input,select){height:44px;min-height:44px;margin:0;line-height:20px}
 .admin-monitor .am-filters form>.workspace-icon-button{height:44px;min-height:44px;width:44px;flex:none}
 
+@supports (appearance: base-select) and selector(select::picker(select)) {
+  @media (any-pointer: fine) {
+    .admin-monitor select {
+      display: flex;
+    }
+
+    .admin-monitor select:open {
+      border-color: var(--a4b-action);
+    }
+
+    .admin-monitor .am-filters select::picker(select) {
+      inline-size: anchor-size(self-inline);
+    }
+
+    .admin-monitor .am-filters > label {
+      min-inline-size: 110px;
+    }
+
+    .admin-monitor .am-filters > label:first-child {
+      min-inline-size: 128px;
+    }
+  }
+}
+
 .admin-monitor .am-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
 .admin-monitor .am-metrics article{padding:20px;border:1px solid var(--a4b-border);border-radius:12px;background:var(--a4b-surface)}
 .admin-monitor .am-metrics span{color:var(--a4b-muted)}.admin-monitor .am-metrics strong{display:block;font-size:28px;margin-top:8px;font-weight:650;font-variant-numeric:tabular-nums}

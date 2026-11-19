@@ -11,7 +11,6 @@ on:
       - scripts/deploy/a4b-frontend-release.py
       - scripts/deploy/a4b-deploy-targets.py
       - scripts/deploy/deploy-a4b-frontend.sh
-      - docs/a4b-automatic-deployment.md
   workflow_dispatch:
     inputs:
       operation:

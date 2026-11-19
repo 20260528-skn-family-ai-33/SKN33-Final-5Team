@@ -22,4 +22,4 @@ seed 42, 시나리오 그룹 단위 6/2/2 분할, 각 18/6/6행. 같은 요청�
 raw_requests.jsonl: 합성 원본 32행. clean_requests.jsonl: 정제된 30행. train/validation/test.jsonl: 그룹별 분리. dataset_review.csv: Excel로 열 수 있는 팀 검수표. tool_registry.json: 제안 도구 명세. contract.json: 임시 규약. change_log.json: 실제 정제 이력. summary.json: 계산된 통계. mock_execution_results.json: 모의 실행 결과. validator_negative_tests.json: 별도 의도적 오류 검증. sft_prompt_completion_draft.jsonl: 모델 중립 입력/정답 초안이며 토크나이저 적용 전.
 
 ## 재현
-Python 표준 라이브러리만 사용. 프로젝트 루트에서 python Backend/integrations/workflow_preprocessing/build_dataset.py 실행. --output 옵션으로 별도 결과 폴더를 지정할 수 있습니다. 정답은 생성 시나리오에 대해 검토 가능한 예시이며 자동 검사 통과가 사람이 검수한 정답을 의미하지 않습니다. 기존 백엔드 규약 확정 후 모든 설정과 도구 명세를 대조·변환하고 팀 검수해야 합니다. 모델 확정 후 해당 토크나이저·대화 템플릿·길이 제한·loss masking을 적용합니다.
+Python 표준 라이브러리를 사용합니다. 프로젝트 루트에서 `python Backend/agent_builder/design/pilot/build_dataset.py`를 실행하면 `outputs/workflow-preprocessing/`에 결과가 생성됩니다. `--output`으로 별도 결과 폴더를 지정할 수 있습니다. 정답은 생성 시나리오에 대해 검토 가능한 예시이며 자동 검사 통과가 사람이 검수한 정답을 의미하지 않습니다. 기존 백엔드 규약 확정 후 모든 설정과 도구 명세를 대조·변환하고 팀 검수해야 합니다. 모델 확정 후 해당 토크나이저·대화 템플릿·길이 제한·loss masking을 적용합니다.

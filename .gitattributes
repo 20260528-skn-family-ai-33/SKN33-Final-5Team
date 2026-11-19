@@ -19,31 +19,6 @@ runtime/ml-bundle/model/recommender_char_svm_5431.joblib -text whitespace=cr-at-
 runtime/ml-bundle/catalog/catalog_56.json -text whitespace=cr-at-eol
 
 # Evaluation records carry byte-level SHA256 provenance; keep their original bytes.
-docs/qwen-* -text
-docs/clarification-* -text
 scripts/verify/fixtures/*.json -text whitespace=cr-at-eol
 # Preserve the one CRLF source file covered by the frozen evaluation source hash.
 Backend/agent_builder/design/nodes/direct_conversation.py -text whitespace=cr-at-eol
-# Keep byte-hashed local evaluation evidence stable across checkouts.
-docs/local-public9b-verification/**/*.json -text whitespace=cr-at-eol
-
-# Preserve published run-evidence bytes for SHA-256 verification.
-runtime/a4b-final-integration-20261111/** -text whitespace=cr-at-eol
-runtime/a4b-final-integration-20261111/**/*.json linguist-generated=true
-runtime/a4b-final-integration-20261111/**/*.jsonl linguist-generated=true
-runtime/a4b-final-integration-20261111/**/*.xml linguist-generated=true
-runtime/final-qwen-performance/** -text whitespace=cr-at-eol
-runtime/final-qwen-performance/**/*.json linguist-generated=true
-runtime/final-qwen-performance/**/*.jsonl linguist-generated=true
-runtime/final-qwen-performance/**/*.xml linguist-generated=true
-runtime/generalization-focused/** -text whitespace=cr-at-eol
-runtime/generalization-focused/**/*.json linguist-generated=true
-runtime/generalization-focused/**/*.jsonl linguist-generated=true
-runtime/generalization-focused/**/*.xml linguist-generated=true
-runtime/planner-capability-9b-experiment/** -text whitespace=cr-at-eol
-runtime/planner-capability-9b-experiment/**/*.json linguist-generated=true
-runtime/planner-capability-9b-experiment/**/*.jsonl linguist-generated=true
-runtime/planner-capability-9b-experiment/**/*.xml linguist-generated=true
-runtime/orchestration-published-evidence.json -text linguist-generated=true whitespace=cr-at-eol
-# Archived pytest traceback retains the whitespace in the original failing assertion.
-runtime/final-qwen-performance/cache-before.xml -whitespace

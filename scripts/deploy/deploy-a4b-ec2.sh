@@ -152,7 +152,8 @@ else
     # Docker's env-file format is one assignment per line. Abort before cutover if
     # the running container's configuration cannot be represented without changes.
     # $state/env-overrides (root-only, KEY=VALUE per line) adds or replaces settings, e.g.
-    # A4B_STORAGE=postgres after the business-data migration (docs/business-data-storage.md).
+    # Set A4B_STORAGE=postgres after applying the business-data migrations.
+    # Migration guide: https://github.com/20260528-skn-family-ai-33/SKN33-Final-5Team/blob/7d48d0f0d0ae5681753e299abed5723da81a1108/docs/business-data-storage.md#스키마-적용
     overrides="$state/env-overrides"
     if [[ -e "$overrides" && $(stat -c '%u %a' "$overrides") != '0 600' ]]; then
         echo "$overrides must be owned by root with mode 600." >&2

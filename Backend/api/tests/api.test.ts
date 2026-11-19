@@ -239,6 +239,27 @@ test('standalone server persists and executes workflows, credentials, schedules 
       assert.equal(saved.data.workflow.nodes[1].parameters.jsonOutput,'{"changed":true}');
     });
 
+    await t.test('a stale editor cannot restore a removed trigger or recreate a deleted workflow', async () => {
+      const original = workflow('동시 편집 예약',[stage('scheduleTrigger','예약 시작',{rule:{interval:[{field:'days',triggerAtHour:9}]}}),rawSet('결과')]);
+      const first = await server.request('/api/workflows','POST',original);
+      assert.equal(first.status,200);
+      const stale = first.data.workflow as Flow;
+      const changed = structuredClone(stale);
+      changed.nodes[0].type='n8n-nodes-base.manualTrigger';
+      changed.nodes[0].parameters={};
+      const removed = await server.request('/api/workflows','POST',changed);
+      assert.equal(removed.status,200);
+      assert.equal((await server.request('/api/workflows','POST',stale)).status,409);
+      assert.equal((await server.request('/api/workflows','POST',original)).status,409);
+      assert.equal((await server.request('/api/activation','POST',{workflowId:stale.id,revision:stale.revision,active:true})).status,409);
+      assert.equal((await server.request('/api/runs','POST',{workflowId:stale.id,revision:stale.revision,mode:'learning'})).status,409);
+      assert.equal((await server.request('/api/workflows?'+new URLSearchParams({id:stale.id,revision:stale.revision!}),'DELETE')).status,409);
+      const stored = (await server.request('/api/workflows')).data.workflows.find((flow:Flow)=>flow.id===stale.id);
+      assert.equal(stored.nodes[0].type,'n8n-nodes-base.manualTrigger');
+      assert.equal((await server.request('/api/workflows?id='+stale.id,'DELETE')).status,200);
+      assert.equal((await server.request('/api/workflows','POST',removed.data.workflow)).status,409);
+    });
+
     await t.test('own scheduler tick starts and completes a live execution without a browser trigger', async () => {
       const scheduled = workflow('1초 예약 실행 확인',[stage('scheduleTrigger','1초마다 시작',{rule:{interval:[{field:'seconds',secondsInterval:1}]}}),rawSet('예약 입력 보존')]);
       assert.equal((await server.request('/api/workflows','POST',scheduled)).status,200);
@@ -267,6 +288,11 @@ test('standalone server persists and executes workflows, credentials, schedules 
         assert.equal(result.runs.at(-1)?.output[0][0].timezone,'Asia/Seoul');
         const stored = (await server.request('/api/workflows')).data.workflows.find((flow:Flow) => flow.id === scheduled.id) as Flow;
         assert.ok(stored.schedule.nextRunAt > due,'the timer must advance the persisted next execution time');
+        const openedBeforeTick = activation.data.workflow as Flow;
+        assert.equal(stored.revision,openedBeforeTick.revision);
+        const savedAfterTick = await server.request('/api/workflows','POST',openedBeforeTick);
+        assert.equal(savedAfterTick.status,200,'runtime ticks must not invalidate an open editor');
+        assert.ok(savedAfterTick.data.workflow.schedule.nextRunAt > due);
         const executions = (await server.request('/api/executions')).data.executions as Execution[];
         assert.equal(executions.filter(matchesFirstDue).length,1);
       } finally {

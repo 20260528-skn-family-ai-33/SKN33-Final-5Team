@@ -8,6 +8,11 @@ import {nodeInfo,type Flow} from '@/lib/workflow';
 import type {AssistantResult,ConversationTurn} from '@/lib/api-contracts';
 import type {CredentialPublic} from '@/lib/api-contracts';
 
+function designContext(flow?:Flow){
+ return JSON.stringify(flow&&{...flow,updatedAt:undefined,
+  schedule:flow.schedule?{...flow.schedule,nextRunAt:undefined}:undefined});
+}
+
 export function AssistantDialog({open,onClose,credentials,initialPrompt,currentWorkflow,onUse,onConnect,serverModel=false}:{open:boolean;onClose:()=>void;credentials:CredentialPublic[];initialPrompt:string;currentWorkflow?:Flow;onUse:(flow:Flow)=>Promise<boolean>;onConnect:()=>void;serverModel?:boolean}) {
  const [prompt,setPrompt]=useState('');const [account,setAccount]=useState('');const [model,setModel]=useState('gpt-4o-mini');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [result,setResult]=useState<AssistantResult>();
  const [chatSession,setChatSession]=useState<{id:string;revision:number}>();
@@ -20,7 +25,7 @@ export function AssistantDialog({open,onClose,credentials,initialPrompt,currentW
  const available=credentials.filter(c=>c.provider==='openai');
  useEffect(()=>{if(open&&!chatSession){let id=localStorage.getItem('a4b-chat-session-'+(currentWorkflow?.id||'new'));void request(id?'/api/assistant/sessions/'+id:'/api/assistant/sessions',id?undefined:{currentWorkflow}).then(s=>{setChatSession({id:s.id,revision:s.revision});setConversation(s.conversation);setResult(s.result||undefined);localStorage.setItem('a4b-chat-session-'+(currentWorkflow?.id||'new'),s.id);}).catch(()=>{localStorage.removeItem('a4b-chat-session-'+(currentWorkflow?.id||'new'));setError('저장된 대화를 열지 못했어요. 새 대화 버튼을 눌러주세요.');});}},[open]);
  useEffect(()=>{if(open){if(initialPrompt)setPrompt(initialPrompt);setError('');setAccount(previous=>available.some(c=>c.id===previous)?previous:available[0]?.id||'');}},[open]);
- async function generate(){setBusy(true);setError('');try{if(!chatSession)throw new Error('대화를 준비하고 있어요.');const context=JSON.stringify(currentWorkflow);const s=await request('/api/assistant/sessions/'+chatSession.id,{prompt,credentialId:serverModel?'a4b-server-model':account,...(serverModel?{}:{model}),revision:chatSession.revision,currentWorkflow});setChatSession({id:s.id,revision:s.revision});setConversation(s.conversation);setResult(s.result);setPrompt('');if(s.result?.workflow){if(JSON.stringify(currentRef.current)!==context){setError('응답을 기다리는 동안 캔버스가 바뀌어 자동 반영하지 않았어요. 현재 단계 기준으로 다시 요청해주세요.');}else if(!await onUse({...s.result.workflow,intentReview:{...s.result.workflow.intentReview,reviewed:false}})){setError('초안을 캔버스에 반영하지 못했어요.');}}}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ async function generate(){setBusy(true);setError('');try{if(!chatSession)throw new Error('대화를 준비하고 있어요.');const context=designContext(currentWorkflow);const s=await request('/api/assistant/sessions/'+chatSession.id,{prompt,credentialId:serverModel?'a4b-server-model':account,...(serverModel?{}:{model}),revision:chatSession.revision,currentWorkflow});setChatSession({id:s.id,revision:s.revision});setConversation(s.conversation);setResult(s.result);setPrompt('');if(s.result?.workflow){if(designContext(currentRef.current)!==context){setError('응답을 기다리는 동안 캔버스가 바뀌어 자동 반영하지 않았어요. 현재 단계 기준으로 다시 요청해주세요.');}else if(!await onUse({...s.result.workflow,intentReview:{...s.result.workflow.intentReview,reviewed:false}})){setError('초안을 캔버스에 반영하지 못했어요.');}}}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
  if(!open)return null;
  return <aside className="assistant-panel" aria-label="업무 설계 챗봇"><header className="assistant-panel-header"><h2 className="flex items-center gap-2"><Sparkles size={21}/>설계 도우미</h2><button className="icon-btn" aria-label="대화 패널 닫기" disabled={busy} onClick={onClose}><X/></button></header><div className="assistant-panel-body" ref={bodyRef}><p className="field-help">상황과 어려움을 말해주세요. 필요한 질문에 답하면 단계와 연결을 제안하고, 대화로 수정할 수 있어요.</p>

@@ -5,6 +5,11 @@ import {join} from 'node:path';
 import {clone,validateFlow,type Flow,type Json,type Execution} from '../../../shared/workflow';
 import type {CredentialInput,CredentialPublic,CredentialSecret,Provider} from './contracts';
 
+export class FlowConflictError extends Error {
+ constructor(){super('다른 화면에서 워크플로우가 변경되거나 삭제됐어요. 새로 열어 변경 내용을 확인해주세요.');}
+}
+export function flowRevision(flow:Flow):string|undefined {return flow.revision??flow.updatedAt;}
+
 const providers=new Set<Provider>(['openai','slack','bearer','basic','header','jwt']);
 export const GMAIL_CONNECTION_ID='a4b-gmail';
 const gmailEvents=['runtime_opened','oauth_started','connected','refreshed','disconnected','oauth_callback_failed','oauth_callback_unattributed','token_refresh_failed'] as const;
@@ -37,10 +42,27 @@ export class Store {
  saveAssistantSession(value:any,revision:number){const prior=this.getAssistantSession(value.id);if(prior.revision!==revision)throw new Error('대화가 변경됐어요. 다시 열고 확인해주세요.');value.revision=revision+1;const update=this.db.prepare('UPDATE assistant_sessions SET json=? WHERE id=? AND json=?').run(JSON.stringify(value),value.id,JSON.stringify(prior));if(!update.changes)throw new Error('대화가 변경됐어요.');return value;}
  listFlows():Flow[] {return this.db.prepare('SELECT json FROM flows ORDER BY updated_at DESC').all().map(row=>JSON.parse(String(row.json)));}
  getFlow(id:string):Flow|undefined {const row=this.db.prepare('SELECT json FROM flows WHERE id=?').get(id);return row?JSON.parse(String(row.json)):undefined;}
- saveFlow(value:Flow):Flow {const flow={...validateFlow(clone(value)),updatedAt:new Date().toISOString()};this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at').run(flow.id,JSON.stringify(flow),flow.updatedAt);return flow;}
- deleteFlow(id:string):boolean {
+ saveFlow(value:Flow, options:{expectedRevision?:string;preserveRevision?:boolean}={}):Flow {
+  const expected=options.expectedRevision;
+  const flow={...validateFlow(clone(value)),revision:options.preserveRevision&&expected?expected:randomUUID(),updatedAt:new Date().toISOString()};
+  const bytes=JSON.stringify(flow);
+  if(expected!==undefined){
+   const result=this.db.prepare("UPDATE flows SET json=?,updated_at=? WHERE id=? AND COALESCE(json_extract(json,'$.revision'),updated_at)=?").run(bytes,flow.updatedAt,flow.id,expected);
+   if(!result.changes)throw new FlowConflictError();
+  }else{
+   const result=this.db.prepare('INSERT INTO flows(id,json,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING').run(flow.id,bytes,flow.updatedAt);
+   if(!result.changes)throw new FlowConflictError();
+  }
+  return flow;
+ }
+ deleteFlow(id:string,expectedRevision?:string):boolean {
   const active=this.db.prepare("SELECT 1 FROM executions WHERE workflow_id=? AND json_extract(json,'$.status') IN ('queued','running','waiting') LIMIT 1").get(id);
   if(active)throw new Error('실행 중인 워크플로우는 완료한 뒤 삭제하세요.');
+  if(expectedRevision!==undefined){
+   const removed=this.db.prepare("DELETE FROM flows WHERE id=? AND COALESCE(json_extract(json,'$.revision'),updated_at)=?").run(id,expectedRevision);
+   if(!removed.changes)throw new FlowConflictError();
+   return true;
+  }
   return this.db.prepare('DELETE FROM flows WHERE id=?').run(id).changes>0;
  }
  private public(row:Record<string,any>):CredentialPublic {return {id:String(row.id),name:String(row.name),provider:row.provider as Provider,...(row.service?{service:String(row.service)}:{}),...(row.auth_type==='oauth2'?{authType:'oauth2' as const}:{}),createdAt:String(row.created_at),updatedAt:String(row.updated_at)};}

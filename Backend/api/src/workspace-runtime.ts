@@ -3,7 +3,7 @@ import {startBuilderScheduler,createBuilderScheduleState} from './agent-builder-
 import {handleAgentBuilder} from './agent-builder';
 import {type IncomingMessage, type ServerResponse} from 'node:http';
 import {randomUUID,randomBytes} from 'node:crypto';
-import {GMAIL_CONNECTION_ID,Store} from './store';
+import {FlowConflictError,flowRevision,GMAIL_CONNECTION_ID,Store} from './store';
 import {executeFlow} from './engine';
 import {assertWebhookJsonSize,buildWebhookResponse,prepareWebhookResponse} from './webhook-response';
 import {readWebhookRequest,WebhookRequestError} from './webhook-request';
@@ -228,11 +228,11 @@ async function pump(){if(closing)return;for(const e of store.listPendingExecutio
 function activate(flow:Flow,active:boolean){
  if(active){checkLive(flow);const triggers=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(triggers.length!==1)throw new Error('자동 실행에는 예약 시작 또는 Webhook 시작 단계 하나가 필요해요.');const allStarts=flow.nodes.filter(n=>!n.disabled&&(n.type.endsWith('.manualTrigger')||n.type.endsWith('.scheduleTrigger')||n.type.endsWith('.webhook')));if(allStarts.length!==1)throw new Error('시작 단계는 하나만 사용해주세요. 기존 시작 단계에서 시작 방식을 바꿀 수 있어요.');const n=triggers[0];if(n.type.endsWith('.scheduleTrigger')){validateSchedule(n,flow.settings.timezone||'Asia/Seoul');const activatedAt=Date.now();flow.schedule={triggerId:n.id,activatedAt,nextRunAt:nextRunAt({...n,scheduleAnchorAt:activatedAt},activatedAt,flow.settings.timezone||'Asia/Seoul')};}if(n.type.endsWith('.webhook')){validateWebhookConfiguration(flow,n);flow.hookToken??=randomBytes(24).toString('hex');}}
  else delete flow.schedule;
- return store.saveFlow({...flow,active});
+ return store.saveFlow({...flow,active},{expectedRevision:flowRevision(flow)});
 }
 const timer=setInterval(()=>{
  if(!visualSchedulerEnabled)return;
- for(const f of store.listFlows()){if(!f.active||!f.schedule||f.schedule.nextRunAt>Date.now())continue;const n=f.nodes.find(n=>n.id===f.schedule.triggerId);if(!n)continue;const due=f.schedule.nextRunAt;try{enqueue(f,[{timestamp:new Date(due).toISOString(),timezone:f.settings.timezone||'Asia/Seoul'}],'live',{trigger:'schedule',dedupeKey:`${f.id}/${n.id}/${due}`});f.schedule.nextRunAt=nextRunAt({...n,scheduleAnchorAt:f.schedule.activatedAt},Math.max(due,Date.now()),f.settings.timezone||'Asia/Seoul');store.saveFlow(f);}catch(err){store.saveFlow({...f,active:false,activationError:(err as Error).message});}}
+ for(const f of store.listFlows()){if(!f.active||!f.schedule||f.schedule.nextRunAt>Date.now())continue;const n=f.nodes.find(n=>n.id===f.schedule.triggerId);if(!n)continue;const due=f.schedule.nextRunAt;try{enqueue(f,[{timestamp:new Date(due).toISOString(),timezone:f.settings.timezone||'Asia/Seoul'}],'live',{trigger:'schedule',dedupeKey:`${f.id}/${n.id}/${due}`});f.schedule.nextRunAt=nextRunAt({...n,scheduleAnchorAt:f.schedule.activatedAt},Math.max(due,Date.now()),f.settings.timezone||'Asia/Seoul');store.saveFlow(f,{expectedRevision:flowRevision(f),preserveRevision:true});}catch(err){if(err instanceof FlowConflictError)continue;try{store.saveFlow({...f,active:false,activationError:(err as Error).message},{expectedRevision:flowRevision(f)});}catch(error){if(!(error instanceof FlowConflictError))throw error;}}}
  void pump();
 },500);
 
@@ -286,8 +286,8 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    }
    if(path==='/api/workflows'){
     if(method==='GET')return json(res,200,{workflows:store.listFlows()});
-    if(method==='POST'){const value=validateFlow(await body(req));if(value.intentReview){if(!value.intentReview.reviewed||!Array.isArray(value.intentReview.requirements)||value.intentReview.requirements.some((r:any)=>r.status!=='mapped'||!Array.isArray(r.nodeIds)||!r.nodeIds.length||r.nodeIds.some((id:string)=>!value.nodes.some(n=>n.id===id))))throw new Error('초안 설계 근거에서 요구사항과 실제 단계를 확인해주세요.');}const prior=store.getFlow(value.id);const same=prior&&JSON.stringify([prior.nodes,prior.connections,prior.settings])===JSON.stringify([value.nodes,value.connections,value.settings]);value.active=!!(same&&prior.active);if(value.active&&prior?.schedule)value.schedule=prior.schedule;else delete value.schedule;if(prior?.hookToken)value.hookToken=prior.hookToken;else delete value.hookToken;delete value.n8nId;return json(res,200,{workflow:store.saveFlow(value)});}
-    if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'');return json(res,200,{ok:true});}
+    if(method==='POST'){const value=validateFlow(await body(req));if(value.intentReview){if(!value.intentReview.reviewed||!Array.isArray(value.intentReview.requirements)||value.intentReview.requirements.some((r:any)=>r.status!=='mapped'||!Array.isArray(r.nodeIds)||!r.nodeIds.length||r.nodeIds.some((id:string)=>!value.nodes.some(n=>n.id===id))))throw new Error('초안 설계 근거에서 요구사항과 실제 단계를 확인해주세요.');}const prior=store.getFlow(value.id);const expected=flowRevision(value);if(prior?expected!==flowRevision(prior):expected!==undefined)throw new FlowConflictError();const same=prior&&JSON.stringify([prior.nodes,prior.connections,prior.settings])===JSON.stringify([value.nodes,value.connections,value.settings]);value.active=!!(same&&prior.active);if(value.active&&prior?.schedule)value.schedule=prior.schedule;else delete value.schedule;if(prior?.hookToken)value.hookToken=prior.hookToken;else delete value.hookToken;delete value.n8nId;return json(res,200,{workflow:store.saveFlow(value,{expectedRevision:expected})});}
+    if(method==='DELETE'){store.deleteFlow(url.searchParams.get('id')||'',url.searchParams.get('revision')??undefined);return json(res,200,{ok:true});}
    }
    if(path==='/api/workflows/from-request'&&method==='POST'){
     const input=await body(req);
@@ -309,7 +309,7 @@ const handle=async(req:IncomingMessage,res:ServerResponse)=>{
    if(path==='/api/files/download'&&method==='GET'){
     const execution=store.getExecution(url.searchParams.get('executionId')||'');if(!execution)return json(res,404,{error:'파일이 저장된 실행 기록을 찾을 수 없어요.'});const integer=(key:string)=>{const raw=url.searchParams.get(key)||'0';if(!/^\d{1,6}$/.test(raw))throw new Error('파일 위치를 확인해주세요.');return Number(raw);};const record=execution.runs[integer('runIndex')];if(!record)throw new Error('파일 단계의 실행 기록을 찾을 수 없어요.');const side=url.searchParams.get('side')||'output';if(!['input','output'].includes(side))throw new Error('파일 위치를 확인해주세요.');const items=side==='input'?record.input:record.output[integer('output')];const item=items?.[integer('item')];if(!item)throw new Error('선택한 파일 결과를 찾을 수 없어요.');const file=getBinary(item,url.searchParams.get('property')||'data');const local=decodeBinaryFile(file);const bytes=await readWorkspaceFile(binaryObjectPath(side==='input'?'uploads':'results',local),()=>local);res.writeHead(200,{'Content-Type':file.mimeType,'Content-Length':bytes.length,'Content-Disposition':`attachment; filename="download.${file.fileExtension?.replace(/[^a-z0-9]/gi,'')||'bin'}"; filename*=UTF-8''${encodeURIComponent(file.fileName).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(bytes);return;
    }
-   if(path==='/api/activation'&&method==='POST'){const data=await body(req);return json(res,200,{workflow:activate(getFlow(data.workflowId),!!data.active)});}
+   if(path==='/api/activation'&&method==='POST'){const data=await body(req);const flow=getFlow(data.workflowId);if(data.revision!==undefined&&data.revision!==flowRevision(flow))throw new FlowConflictError();return json(res,200,{workflow:activate(flow,!!data.active)});}
    if(path==='/api/credentials'){
     if(method==='GET')return json(res,200,{credentials:store.listCredentials()});
     if(method==='POST')return json(res,200,{credential:store.saveCredential(await body(req))});
@@ -420,7 +420,7 @@ if(!${gmail}){if(opener)window.close();else location.replace('/?screen=connectio
    if(path==='/api/assistant/converse'&&method==='POST'){const data=await body(req);const result=await orchestrateWorkflow(data.prompt,{credential:store.getCredential(data.credentialId),credentials:store.listCredentials(),model:data.model,conversation:data.conversation,currentWorkflow:data.currentWorkflow});return json(res,200,result);}
    if(path==='/api/assistant/analyze-error'&&method==='POST'){const data=await body(req);const execution=store.getExecution(data.executionId);if(!execution)return json(res,404,{error:'실행 기록을 찾을 수 없어요.'});const analysis=await analyzeExecutionError(execution,{credential:store.getCredential(data.credentialId),credentials:store.listCredentials(),model:data.model});return json(res,200,{analysis});}
    if(path==='/api/assistant/generate'&&method==='POST'){const data=await body(req);const result=await orchestrateWorkflow(data.prompt,{credential:store.getCredential(data.credentialId),credentials:store.listCredentials(),model:data.model});return json(res,200,result);}
-   if(path==='/api/runs'&&method==='POST'){const data=await body(req,16*1024*1024);if(data.mode!=='learning'&&data.mode!=='live')throw new Error('실행 모드를 확인해주세요.');const input=data.input??[{}];if(!Array.isArray(input)||input.length>5000||input.some((v:any)=>!v||typeof v!=='object'||Array.isArray(v)))throw new Error('시작 데이터는 객체 목록으로 입력해주세요.');assertBinaryItems(input);const e=enqueue(getFlow(data.workflowId),input,data.mode,{onlyNode:data.onlyNode,trigger:'manual'});return json(res,202,{executionId:e!.id,execution:e});}
+   if(path==='/api/runs'&&method==='POST'){const data=await body(req,16*1024*1024);if(data.mode!=='learning'&&data.mode!=='live')throw new Error('실행 모드를 확인해주세요.');const input=data.input??[{}];if(!Array.isArray(input)||input.length>5000||input.some((v:any)=>!v||typeof v!=='object'||Array.isArray(v)))throw new Error('시작 데이터는 객체 목록으로 입력해주세요.');assertBinaryItems(input);const flow=getFlow(data.workflowId);if(data.revision!==undefined&&data.revision!==flowRevision(flow))throw new FlowConflictError();const e=enqueue(flow,input,data.mode,{onlyNode:data.onlyNode,trigger:'manual'});return json(res,202,{executionId:e!.id,execution:e});}
    if(path==='/api/executions'&&method==='GET'){const id=url.searchParams.get('id');if(id){const e=store.getExecution(id);if(!e)return json(res,404,{error:'실행 기록을 찾을 수 없어요.'});return json(res,200,{execution:e});}return json(res,200,{executions:store.listExecutions(url.searchParams.get('workflowId')||undefined)});}
    if(path==='/api/evidence-review'&&method==='GET'){const e=store.getExecution(url.searchParams.get('id')||'');if(!e)throw new Error('실행 기록을 찾을 수 없어요.');return json(res,200,{checks:e.evidenceReview||{}});}
    if(path==='/api/evidence-review'&&method==='POST'){
@@ -448,7 +448,7 @@ if(!${gmail}){if(opener)window.close();else location.replace('/?screen=connectio
    enqueue(f,input,'live',{trigger:'webhook'},execution=>{if(immediate){if(n.parameters.options?.responseData===undefined&&!n.parameters.options?.noResponseBody&&n.parameters.responseData===undefined)immediate.body={executionId:execution.id,message:'워크플로 실행을 시작했어요.'};respondWebhook(res,execution.id,immediate);}else retainWebhook(execution,res,n,mode);},executionId);return;
   }
   return json(res,404,{error:'요청한 기능을 찾을 수 없어요.'});
- }catch(error){if(res.writableEnded||res.destroyed)return;if(error instanceof WebhookAuthError){for(const [name,value] of Object.entries(error.headers))res.setHeader(name,value);json(res,error.status,{error:error.message});}else if(error instanceof WebhookRequestError){
+ }catch(error){if(res.writableEnded||res.destroyed)return;if(error instanceof FlowConflictError){json(res,409,{error:error.message});}else if(error instanceof WebhookAuthError){for(const [name,value] of Object.entries(error.headers))res.setHeader(name,value);json(res,error.status,{error:error.message});}else if(error instanceof WebhookRequestError){
    // Write the complete, length-delimited error first. Finishing it immediately
    // makes HTTP destroySoon race an upload which has not read the response yet.
    const socket=req.socket,payload=JSON.stringify({error:error.message});let drained=0;

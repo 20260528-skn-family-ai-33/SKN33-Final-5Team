@@ -24,9 +24,9 @@ const {ScheduleSettings,ScheduledWorkflows,ClarificationForm}=module.exports;
 const originalFetch=globalThis.fetch,tick=()=>new Promise(done=>setImmediate(done));
 const daily={frequency:'daily',timezone:'Asia/Seoul',hour:9,minute:0,weekday:null,monthday:null,month_end:false};
 const saved={active:false,spec:daily,next_run_at:'2026-11-12T00:00:00Z',agent_version:1};
-async function mount(component:any,handler?:(path:string,body:any)=>unknown){
+async function mount(component:any,handler?:(path:string,body:any)=>unknown,externalWorkflows:unknown[]=[]){
  dom.window.close();installDOM();const calls:{path:string;body:any}[]=[];
- globalThis.fetch=(async(path:any,init?:RequestInit)=>{const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({path:String(path),body});const value=(await handler?.(String(path),body))??(String(path)==='/api/workflows'?{workflows:[]}:undefined);return new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});}) as any;
+ globalThis.fetch=(async(path:any,init?:RequestInit)=>{const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({path:String(path),body});const value=String(path)==='/api/workflows'?{workflows:externalWorkflows}:await handler?.(String(path),body);return new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});}) as any;
  const root=createRoot(document.getElementById('root'));await act(async()=>{root.render(component);await tick();});
  return {calls,render:async(component:any)=>act(async()=>{root.render(component);await tick();}),close:async()=>{await act(async()=>{root.unmount();await tick();});globalThis.fetch=originalFetch;}};
 }
@@ -191,8 +191,8 @@ test('external reservation rows display the same weekday, month date and Cron as
  const workflows=rules.map((rule,index)=>({id:String(index),name:'외부 '+index,nodes:[
   {type:'n8n-nodes-base.scheduleTrigger',parameters:{rule:{interval:[rule]}}},
  ]}));
- const h=await mount(createElement(ScheduledWorkflows,{onOpen:()=>{},onOpenExternal:()=>{},onCreate:()=>{}}),path=>
-  path==='/api/workflows'?{workflows}:{workflows:[],agents:[]});
+ const h=await mount(createElement(ScheduledWorkflows,{onOpen:()=>{},onOpenExternal:()=>{},onCreate:()=>{}}),
+  ()=>({workflows:[],agents:[]}),workflows);
  try{
   const row=(id:string)=>document.querySelector(`[data-schedule-id="${id}"]`)?.textContent||'';
   assert.match(row('0'),/매주 수요일 · 금요일 09:00/);

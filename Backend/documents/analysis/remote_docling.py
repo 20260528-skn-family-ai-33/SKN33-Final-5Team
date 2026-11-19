@@ -36,7 +36,11 @@ def parse_remote_image(source, timeout=240):
             raw = response.read(MAX_RESULT + 1)
             if len(raw) > MAX_RESULT:
                 raise AnalysisError('invalid_engine_result', 'Docling 응답 크기가 제한을 넘었습니다.')
-            return response.status, json.loads(raw)
+            try:
+                result = json.loads(raw)
+            except (ValueError, UnicodeDecodeError, RecursionError) as exc:
+                raise AnalysisError('invalid_engine_result', 'Docling JSON 응답을 읽을 수 없습니다.') from exc
+            return response.status, result
 
     try:
         while job is None:

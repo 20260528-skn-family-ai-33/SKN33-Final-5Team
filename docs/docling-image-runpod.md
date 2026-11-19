@@ -212,3 +212,9 @@ body_ocr_details:invalid_engine_result, low_confidence_uncovered_ocr, empty_ocr_
 로컬 워커의 `error`는 성공 메타데이터와 분리해 검사한다. 키가 있으면 비어 있지 않은 UTF-8 안전 문자열만 오류 코드로 허용하며 null/bool/숫자/객체/배열/고립 서로게이트는 `invalid_engine_result`로 처리한다. 키 없이 비정상 종료하면 `engine_error`를 사용한다. 실패 응답의 version/model은 시도 기록에 저장하지 않는다. 성공 응답에는 기존 메타데이터 검증을 유지한다. JSON 해독 경계의 ValueError/RecursionError도 잘못된 응답으로 분류한다.
 
 `test_worker_failure_contract.py`의 104개 검사는 로컬/원격 장애 후 CPU fallback, 본문/표 검증, 종료 코드 0/1과 정상 오류·키 누락·null·false·0·빈 문자열·숫자·객체·배열·서로게이트·바깥 null·잘못된 JSON·응답 파일 누락을 교차 검증한다. 기본 Docling 표, 정상 본문 단계 결과, 안전한 attempt 오류 코드와 strict JSON/UTF-8 직렬화 및 표 검증 경고 범위를 확인한다. 이전 384666b에서 64개 실패/40개 통과, 수정본에서 104개 통과했다. 모델·프로세스·원격 장애는 대역이며 운영 호출은 하지 않았다.
+
+### 원격 JSON 해독 경계 일치
+
+원격 OCR `_remote_batch`에서도 JSON 해독 단계의 ValueError(정수 자릿수 제한 포함), UnicodeDecodeError, RecursionError를 `invalid_engine_result`로 변환한다. 원격 Docling 작업 제출/조회 응답에도 같은 입력 경계 검사를 적용하며, 조회 실패 시 기존 작업 취소를 유지한다. 정수 보안 제한이나 strict JSON 정책을 완화하지 않는다. 잘못된 원격 JSON은 HTTP 장애와 구분해 CPU fallback 대상에 넣지 않으며, 뒤 배치 실패도 부분 배치를 성공으로 반환하지 않는다.
+
+신규 `test_json_decode_boundaries.py` 95개는 로컬/원격/HTTP 503 후 CPU fallback/CPU 허용 원격, 본문·표 검증, 정상/큰 정수/중첩/구문 오류/잘못된 UTF-8/최상위 타입/빈 응답/크기 초과, 첫·뒤 배치 및 Docling 제출·조회·취소를 검사한다. 기본 본문·표, 오류 코드·attempt, 검토 범위와 strict JSON/UTF-8 보존을 확인한다. Python 3.14에서는 깊은 배열을 해독할 수 있어 실제 중첩 입력과 디코더 RecursionError 대역을 분리했다. 정수 검사는 실제 인터프리터 제한을 읽고 문자열로 초과 입력을 생성하며 전역 설정은 변경하지 않는다. 이전 a48dfdd에서 신규 검사 16개 실패/79개 통과, 수정 후 95개 통과했다. 모델 및 HTTP 응답은 대역이며 운영 GPU에서 관찰한 장애가 아니다.

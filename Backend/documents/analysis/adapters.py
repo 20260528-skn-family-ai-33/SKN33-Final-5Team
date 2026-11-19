@@ -129,7 +129,7 @@ def _remote_batch(url, engine, names, body, timeout):
         raise AnalysisError('invalid_engine_result', '엔진 응답이 크기 제한을 넘었습니다.')
     try:
         data = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except (ValueError, UnicodeDecodeError, RecursionError) as exc:
         raise AnalysisError('invalid_engine_result', '엔진 JSON 응답을 읽을 수 없습니다.') from exc
     if not isinstance(data, dict) or not isinstance(data.get('version'), str) or not isinstance(data.get('outputs'), list):
         raise AnalysisError('invalid_engine_result', '엔진 응답 계약이 올바르지 않습니다.')

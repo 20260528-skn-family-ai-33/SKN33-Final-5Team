@@ -282,8 +282,12 @@ class LibrarySources:
                 row=self.db.execute('SELECT json,state,lease_token FROM builder_schedule_jobs WHERE {ws} AND id=?',(id,)).fetchone()
                 if not row or row[1]!='running' or row[2]!=lease_token:raise ValueError('예약 작업의 실행 소유권이 만료되었습니다.')
                 parent=json.loads(row[0]);agent=parent['agent_snapshot'];due=parent['due_at'];parent_id=id
-                if self.get(agent['id'])!=selection:
-                    parent.update(message='자료함 설정이 변경되어 이전 대기 작업을 취소했습니다.',finished_at=now())
+                active=self.db.execute('SELECT active FROM builder_schedules WHERE {ws} AND agent_id=?',(agent['id'],)).fetchone()
+                paused=parent.get('cancel_expansion') or parent['kind']=='scheduled' and not (active and active[0])
+                if paused or self.get(agent['id'])!=selection:
+                    message=('예약이 중지되어 파일별 실행을 등록하지 않았습니다.' if paused else
+                             '자료함 설정이 변경되어 이전 대기 작업을 취소했습니다.')
+                    parent.update(message=message,finished_at=now())
                     self.db.execute("UPDATE builder_schedule_jobs SET state='cancelled',json=?,lease_until=NULL WHERE {ws} AND id=?",(encoded(parent),id))
                     self.db.commit();return {'status':'skipped','enqueued_count':0,'message':parent['message']}
             else:
@@ -306,13 +310,20 @@ class LibrarySources:
                 key=source_key(selection,[ref])
                 old=self.db.execute('SELECT job_id,state FROM builder_source_processed WHERE {ws} AND agent_id=? AND revision=? AND source_key=?',
                                     (agent['id'],selection['revision'],key)).fetchone()
+                prior=None
+                if old and old[1]=='failed':
+                    prior=self.db.execute('SELECT state,json FROM builder_schedule_jobs WHERE {ws} AND id=?',(old[0],)).fetchone()
+                if prior and prior[0]=='cancelled':
+                    self.db.execute('DELETE FROM builder_source_processed WHERE {ws} AND agent_id=? AND revision=? AND source_key=?',
+                                    (agent['id'],selection['revision'],key))
+                    old=None
                 if old:
-                    if old[1]=='failed':
-                        changed=self.db.execute("UPDATE builder_source_processed SET state='pending',updated_at=? WHERE {ws} AND agent_id=? AND revision=? AND source_key=? AND state='failed'",(now(),agent['id'],selection['revision'],key))
-                        if changed.rowcount:
-                            requeued=self.db.execute("UPDATE builder_schedule_jobs SET state='queued',lease_token=NULL,lease_until=NULL WHERE {ws} AND id=? AND state IN ('failed','cancelled')",(old[0],))
-                            if requeued.rowcount:jobs.append(old[0])
-                            else:self.db.execute("UPDATE builder_source_processed SET state='failed',updated_at=? WHERE {ws} AND agent_id=? AND revision=? AND source_key=?",(now(),agent['id'],selection['revision'],key))
+                    if prior and prior[0]=='failed':
+                        previous=json.loads(prior[1])
+                        previous.update(kind=parent['kind'],due_at=due,parent_job_id=parent_id)
+                        self.db.execute("UPDATE builder_source_processed SET state='pending',updated_at=? WHERE {ws} AND agent_id=? AND revision=? AND source_key=? AND state='failed'",(now(),agent['id'],selection['revision'],key))
+                        self.db.execute("UPDATE builder_schedule_jobs SET state='queued',lease_token=NULL,lease_until=NULL,json=? WHERE {ws} AND id=? AND state='failed'",(encoded(previous),old[0]))
+                        jobs.append(old[0])
                     continue
                 child_id=uid()
                 inserted=self.db.execute("INSERT INTO builder_source_processed({wsc}agent_id,revision,source_key,job_id,state,updated_at) VALUES({wsv}?,?,?,?,'pending',?) ON CONFLICT DO NOTHING",

@@ -16,7 +16,7 @@ def schedule_configure(c):
 
 def schedule_remove(c):return {'schedule':Schedules(c.storage).remove(c.data['id'])}
 
-def schedule_test(c):return {'job':Schedules(c.storage).enqueue_test(c.data['id'])}
+def schedule_test(c):return {'job':Schedules(c.storage).enqueue_test(c.data['id'],expected_revision=c.data.get('test_revision'))}
 
 def schedule_cancel(c):return {'job':Schedules(c.storage).cancel_test(c.data['id'],c.data['job_id'])}
 
@@ -39,7 +39,7 @@ def scheduled_run(c):
     if snapshot['config'].get('schedule'):snapshot=scheduled_agent(snapshot,snapshot['config']['schedule'])
     agent=storage.bind_agent(snapshot) if hasattr(storage,'bound') else snapshot
     if job.get('library_source') and not hasattr(storage,'bound'):raise ValueError('자료함 실행 파일의 권한 확인과 스냅샷이 필요합니다.')
-    source=schedules.execution_source(agent)
+    source=job['managed_source'] if 'managed_source' in job else schedules.execution_source(agent)
     files=[source['asset_id']] if source else []
     try:preflight_schedule(storage,agent,files)
     except ValueError as error:

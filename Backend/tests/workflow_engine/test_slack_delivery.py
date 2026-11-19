@@ -344,3 +344,20 @@ def test_saved_child_workflow_reports_slack_connection():
     child = {"workflow": gmail_to_slack_workflow()}
     parent = {"workflow": {"nodes": [{"id": "child", "tool": "saved_workflow"}]}}
     assert required_connections(parent, {"child": {"config": child, "workflow_dependencies": {}}}) == ["gmail", "slack"]
+
+
+def test_gmail_cards_with_the_same_text_are_matched_by_verified_evidence():
+    from workflow_engine.executors.document.gmail_slack_summary import annotate_mail_summaries
+
+    header = '제목: 같은 제목\n보낸 사람: sender@example.com'
+    documents = [
+        dict(source_id='first', file_name='같은 제목', text=header+'\n\n본문', sent_at='2026-11-18T06:30:00Z'),
+        dict(source_id='second', file_name='같은 제목', text=header+'\n\n본문', sent_at='2026-11-18T07:45:00Z'),
+    ]
+    card = header+'\n핵심: 같은 안내입니다.\n근거 ID: '
+    result, ids = annotate_mail_summaries('\n'.join(card+ref for ref in ('e2', 'e1', 'e2')),
+                                          documents, {'e1': 'first', 'e2': 'second'})
+    assert ids == {'first', 'second'}
+    assert result.count('핵심: 같은 안내입니다.') == 2
+    assert result.index('16:45 (KST)') < result.index('15:30 (KST)')
+    assert '근거 ID:' not in result

@@ -1,6 +1,8 @@
 """Compile stored node contracts to a real, checkpointed LangGraph execution."""
 import json
 import base64
+from io import BytesIO
+from zipfile import ZipFile, ZIP_DEFLATED
 from pathlib import Path
 from typing import TypedDict
 from langgraph.graph import StateGraph,START,END
@@ -16,6 +18,21 @@ from workflow_engine.executors.dispatch import execute_node
 from workflow_engine.catalog.registry import uses_operation
 from workflow_engine.run_answer import public_run_answer
 from documents.resources.document_resources import saved_input
+
+
+def result_artifact(artifacts):
+    if len(artifacts) <= 1:
+        return artifacts[0] if artifacts else None
+    buffer = BytesIO()
+    with ZipFile(buffer, 'w', ZIP_DEFLATED) as archive:
+        for index, artifact in enumerate(artifacts, 1):
+            name = artifact['name'].replace('\\', '/').rsplit('/', 1)[-1].replace('\x00', '')
+            data = artifact['content']
+            if artifact.get('encoding') == 'base64':
+                data = base64.b64decode(data, validate=True)
+            archive.writestr(f'{index:03d}/{name if name not in ("", ".", "..") else "result"}', data)
+    return dict(name='실행_결과.zip', content=base64.b64encode(buffer.getvalue()).decode('ascii'),
+                mime='application/zip', encoding='base64')
 
 
 class RunState(TypedDict,total=False):
@@ -184,9 +201,16 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         result=graph.invoke(None if retry else Command(resume=answer) if run_id else None if resume_pending else {'outputs':{},'steps':[],'request':task_prompt,'file_ids':run['file_ids'],'messages':[{'role':'user','content':request}] if request else [],'customer_message':request,'reply_draft':run.get('reply_draft')},cfg,durability='sync')
         snapshot=graph.get_state(cfg);state=snapshot.values;outputs=state.get('outputs',{})
         questions=[i.value for t in snapshot.tasks for i in t.interrupts]
-        from workflow_engine.execution_path import artifact_output_ids
-        artifacts=[outputs[id]['artifact'] for id in artifact_output_ids(config['workflow'],outputs)]
+        from workflow_engine.execution_path import artifact_output_ids, artifact_origin
+        produced=artifact_output_ids(config['workflow'],outputs)
+        artifact_ids=list(dict.fromkeys(artifact_origin(config['workflow'],id) or id for id in produced))
         tools_by_id={n['id']:n['tool'] for n in config['workflow']['nodes']}
+        # Legacy paths can write an intermediate raw file before the user-facing
+        # result. Bundle only explicit exports, and preserve a terminal selection.
+        explicit=[id for id in artifact_ids if tools_by_id[id]=='export_result']
+        forwarded=bool(produced and tools_by_id[produced[-1]]=='finish')
+        public_ids=explicit if not forwarded and artifact_ids and artifact_ids[-1] in explicit else produced[-1:]
+        artifacts=[outputs[id]['artifact'] for id in public_ids]
         transformed_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool'] in ('text_transform','base64_codec','text_hash','date_transform') and n['id'] in outputs for b in n['bindings'] if b['input']=='text' and b['output']=='text'}
         gmail_collections={n['id'] for n in config['workflow']['nodes'] if n['tool']=='email.list' and n['settings'].get('operation')=='read_messages'}
         summarized_sources={b['node_id'] for n in config['workflow']['nodes'] if n['tool']=='compose_answer' and n['id'] in outputs
@@ -204,12 +228,12 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         tables=[v['table'] for v in outputs.values() if 'table' in v]
         result_rows=next((v['records'] if 'records' in v else v['table']['rows'] for v in reversed(list(outputs.values())) if 'records' in v or 'table' in v),[])
         evidence=[e for v in outputs.values() for e in v.get('evidence',[])]+[r['evidence'] for r in (records[-1] if records else []) if r.get('evidence')]
-        run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=artifacts[-1] if artifacts else None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
+        run.update(status='needs_input' if questions else 'succeeded',steps=state.get('steps',[]),rows=result_rows,artifact=None,answer=((texts[-1]+'\n\n') if texts else '')+questions[0]['question'] if questions else '\n\n'.join(texts) if texts else '저장한 워크플로우의 실행이 완료되었습니다.',question=questions[0] if questions else None,messages=state.get('messages',[]),evidence=evidence,outputs=outputs,error=None)
         run['answer'] = public_run_answer(run['answer'], outputs)
         export_warnings = list(dict.fromkeys(warning for artifact in artifacts for warning in artifact.get('warnings', [])))
         if export_warnings:
             run['answer'] += '\n\n' + '\n'.join(export_warnings)
-        if run['status'] == 'succeeded' and run.get('artifact'):
+        if run['status'] == 'succeeded' and artifacts:
             from workflow_engine.run_answer import empty_table_notice
             notice = empty_table_notice(config['workflow'], outputs)
             if notice:
@@ -231,18 +255,22 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
     lifecycle.assert_owner(run['id'],execution_token)
     reviews=collect_reviews(run.get('outputs',{}))
     from workflow_engine.library.reusable_workflows import contains_review
-    if (reviews or contains_review(config)) and run.get('artifact') and run['status']=='succeeded' and not is_review_report_artifact(config,run.get('outputs',{}),run['artifact']):
-        run.update(status='failed',artifact=None,error='검수 후보 응대는 승인 전에 자동 내보낼 수 없습니다. 검수 보고서 저장 또는 사람 승인을 사용하세요.')
-    if run.get('artifact') and run['status']=='succeeded':
+    if run['status']=='succeeded' and artifacts and (reviews or contains_review(config)) and not all(is_review_report_artifact(config,run.get('outputs',{}),artifact) for artifact in artifacts):
+        message='검수 후보 응대는 승인 전에 자동 내보낼 수 없습니다. 검수 보고서 저장 또는 사람 승인을 사용하세요.'
+        run.update(status='failed',artifact=None,report_path=None,error=message,answer=message)
+    if run['status']=='succeeded' and artifacts:
 
         reports=Path(storage.path).parent/'reports'
-        suffix=run['artifact']['name'].rsplit('.',1)[-1]
-        if suffix not in ['csv','json','md','txt','docx','xlsx','pdf','png','zip','html','eml']:suffix='bin'
-        target=reports/(run['id']+'.'+suffix);temp=reports/(run['id']+'.tmp')
         try:
+            run['artifact']=result_artifact(artifacts)
+            suffix=run['artifact']['name'].rsplit('.',1)[-1]
+            if suffix not in ['csv','json','md','txt','docx','xlsx','pdf','png','zip','html','eml']:suffix='bin'
+            target=reports/(run['id']+'.'+suffix)
             lifecycle.publish(run['id'],execution_token,target,
                 base64.b64decode(run['artifact']['content'],validate=True) if run['artifact'].get('encoding')=='base64' else run['artifact']['content']);run['report_path']='reports/'+target.name
-        except OSError:run.update(status='failed',error='보고서를 서버에 저장하지 못했습니다. 저장 공간과 권한을 확인하세요.')
+        except (OSError, ValueError):
+            message='보고서를 서버에 저장하지 못했습니다. 저장 공간과 권한을 확인하세요.'
+            run.update(status='failed',error=message,answer=message,artifact=None,report_path=None)
     if run['status']=='succeeded' and reviews:
         run['answer']='응대 검수가 완료되었습니다. 보고서를 확인하고 수정·승인 또는 거절하세요.'
 
@@ -251,7 +279,9 @@ def run_workflow(storage,agent_id,request,api_key,file_ids=None,run_id=None,answ
         try:
             lifecycle.publish(run['id'],execution_token,target,json.dumps({'id':run['id'],'agent_version':run['agent_version'],'source_version':run.get('source_version'),'reviews':reviews,'outputs':run['outputs']},ensure_ascii=False,indent=2))
             run['review_report_path']='reports/'+target.name
-        except OSError:run.update(status='failed',error='검수 보고서를 저장하지 못했습니다. 저장 공간과 권한을 확인하세요.')
+        except OSError:
+            message='검수 보고서를 저장하지 못했습니다. 저장 공간과 권한을 확인하세요.'
+            run.update(status='failed',error=message,answer=message)
     if run['status'] == 'succeeded':
         from agent_builder.conditions.input_requirements import table_run_request_notice
         notice = ('추가 필터·정렬을 이번 실행에 적용했습니다. 저장된 설정은 유지됩니다.'

@@ -166,7 +166,7 @@ def test_workflow_edits_preserve_separate_schedule_and_require_applying_new_vers
 @pytest.mark.parametrize('spec',[{**SPEC,'frequency':'yearly'},{**SPEC,'minute':True},{**SPEC,'hour':25}])
 def test_invalid_reservation_does_not_replace_existing_schedule(tmp_path,spec):
     store,id,_=seed(tmp_path,scheduled=True)
-    before=Schedules(store).get(id)
+    before=Schedules(store).get(id,include_test_revision=True)
     store.close()
     with pytest.raises(ValueError):request(tmp_path,'schedule_configure',id=id,spec=spec)
     assert request(tmp_path,'agent',id=id)['schedule']==before

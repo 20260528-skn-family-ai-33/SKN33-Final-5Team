@@ -89,23 +89,22 @@ def test_pod_local_only_does_not_reenter_shared_queue(tmp_path, monkeypatch):
 
 
 def test_busy_retries_within_budget_and_timeout_cancels(tmp_path, monkeypatch):
-    source = tmp_path / 'crop.png'
-    source.write_bytes(b'\x89PNG\r\n\x1a\nfixture')
-    monkeypatch.setenv('A4B_PARSER_URL', 'https://parser.example')
-    monkeypatch.setenv('A4B_PARSER_API_KEY', 'fixture-key')
+    clock, source, _ = timed_client(tmp_path, monkeypatch)
     busy = urllib.error.HTTPError('https://parser.example', 429, 'busy', {}, io.BytesIO(b'{}'))
     replies = [busy, reply(202, {'job_id': str(uuid4())}), TimeoutError(), reply(200, {})]
     requests = []
     def send(request, timeout):
         requests.append(request)
         response = replies.pop(0)
+        if isinstance(response, TimeoutError):
+            clock.now = 8
         if isinstance(response, Exception):
             raise response
         return response
-    with patch('urllib.request.build_opener') as opener, patch('time.sleep'):
+    with patch('urllib.request.build_opener') as opener:
         opener.return_value.open.side_effect = send
-        with pytest.raises(AnalysisError):
-            remote_docling.parse_remote_image(source)
+        with pytest.raises(AnalysisError, match='제한 시간'):
+            remote_docling.parse_remote_image(source, timeout=8)
     assert [r.get_method() for r in requests] == ['POST', 'POST', 'GET', 'DELETE']
 
 
@@ -182,3 +181,22 @@ def test_completed_tables_share_one_budget(tmp_path, monkeypatch):
         for _ in range(2):
             engines.run('docling', source=source)
     assert budgets == [120, 70]
+
+
+@pytest.mark.parametrize('transient', [urllib.error.URLError('temporary'),
+                                       urllib.error.HTTPError('https://parser.example', 503, 'busy', {}, None)])
+def test_poll_retries_the_accepted_job(tmp_path, monkeypatch, transient):
+    source = tmp_path / 'crop.png'
+    source.write_bytes(b'\x89PNG\r\n\x1a\nfixture')
+    job = str(uuid4())
+    result = dict(engine='docling', source_sha256=sha256(source),
+                  version='test', blocks=[], model={'device': 'cuda'})
+    monkeypatch.setenv('A4B_PARSER_URL', 'https://parser.example')
+    monkeypatch.setenv('A4B_PARSER_API_KEY', 'fixture-key')
+    with patch('urllib.request.build_opener') as opener, patch('time.sleep'):
+        send = opener.return_value.open
+        send.side_effect = [reply(202, {'job_id': job}), transient, reply(200, result)]
+        assert remote_docling.parse_remote_image(source) == result
+    requests = [call.args[0] for call in send.call_args_list]
+    assert [request.get_method() for request in requests] == ['POST', 'GET', 'GET']
+    assert requests[1].full_url == requests[2].full_url

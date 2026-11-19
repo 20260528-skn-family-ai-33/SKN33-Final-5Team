@@ -492,3 +492,30 @@ def test_current_owner_finishes_job_and_source_state_in_one_transaction(tmp_path
         assert store.db.execute('SELECT state FROM builder_source_snapshots WHERE {ws} AND run_id=?',(job['id'],)).fetchone()==(status,)
         assert store.db.execute('SELECT state FROM builder_source_processed WHERE {ws} AND job_id=?',(job['id'],)).fetchone()==(status,)
     finally:store.close()
+
+
+def test_pause_prevents_a_claimed_file_batch_from_expanding_after_reactivation(tmp_path):
+    store = Storage(tmp_path)
+    try:
+        upload(store)
+        identifier = workflow(store)
+        schedules = Schedules(store)
+        manager = LibrarySources(store)
+        selection = manager.save(identifier, spec('new'), 0)
+        refs = library_export(store, selection, 'table')['candidates']
+        schedules.configure(identifier, spec={'frequency':'daily','timezone':'Asia/Seoul','hour':9,'minute':0,'weekday':None})
+        view = manager.stage(None, store.agent(identifier), {'selection':selection,'refs':[],'assets':[]})
+        Schedules(view).activate(identifier, True)
+        current = datetime.now(timezone.utc)
+        store.db.execute('UPDATE builder_schedules SET next_at=? WHERE {ws} AND agent_id=?',
+                         ((current-timedelta(seconds=1)).isoformat(), identifier))
+        store.db.commit()
+        parent, = schedules.claim_due(current)
+        schedules.activate(identifier, False)
+        Schedules(view).activate(identifier, True)
+        result = manager.expand('scheduled_run', parent['id'], selection, refs, parent['lease_token'])
+        assert result['status'] == 'skipped'
+        assert result['enqueued_count'] == 0
+        assert [job['status'] for job in schedules.jobs(identifier)] == ['cancelled']
+    finally:
+        store.close()

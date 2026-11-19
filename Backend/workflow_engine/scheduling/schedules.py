@@ -1,4 +1,5 @@
 """Durable local-server schedules, managed sources and leased jobs."""
+import hashlib
 import json
 from copy import deepcopy
 from datetime import datetime,timedelta,timezone
@@ -145,6 +146,7 @@ class Schedules:
             self.db.execute('DELETE FROM builder_data_sources WHERE {ws} AND agent_id=?',(agent_id,))
         data={'agent_id':agent_id,'agent_version':agent['version'],'spec':spec,'updated_at':now()}
         self.db.execute('INSERT INTO builder_schedules({wsc}agent_id,json,next_at,active) VALUES({wsv}?,?,?,0) ON CONFLICT({wsc}agent_id) DO UPDATE SET json=excluded.json,next_at=excluded.next_at,active=0',(agent_id,json.dumps(data,ensure_ascii=False),next_occurrence(spec)))
+        self._cancel_queued(agent_id, ('scheduled',), '일정이 변경되어 대기 중인 정규 실행을 취소했습니다.')
         if requirements and not self.source(agent_id):
             tables=[id for id in agent['config']['document_ids'] if self.storage.asset(id)['kind']=='table']
             if len(tables)==1:self.replace_source(agent_id,tables[0],commit=False)
@@ -152,7 +154,7 @@ class Schedules:
                 documents=[id for id in agent['config']['document_ids'] if self.storage.asset(id)['kind']=='document']
                 if len(documents)==1:self.replace_source(agent_id,documents[0],commit=False)
         if commit:self.db.commit()
-        return self.get(agent_id)
+        return self.get(agent_id,include_test_revision=True)
     def workflow_changed(self,agent_id,previous_config):
         """Pause until the user applies the new version; discard obsolete file mappings."""
         agent=self.storage.agent(agent_id);old_source=self.source(agent_id)
@@ -166,6 +168,7 @@ class Schedules:
         if old_source and (not source or changed_slot):
             self.db.execute('DELETE FROM builder_data_sources WHERE {ws} AND agent_id=?',(agent_id,))
         self.db.execute('UPDATE builder_schedules SET active=0 WHERE {ws} AND agent_id=?',(agent_id,))
+        self._cancel_queued(agent_id, ('scheduled',), '워크플로우가 변경되어 대기 중인 정규 실행을 취소했습니다.')
     def remove(self,agent_id):
         """Remove the reservation and queued automatic jobs, preserving workflow versions."""
         self.storage.agent(agent_id)
@@ -175,15 +178,25 @@ class Schedules:
             self.db.execute('INSERT INTO builder_schedules({wsc}agent_id,json,next_at,active) VALUES({wsv}?,?,NULL,0) ON CONFLICT({wsc}agent_id) DO UPDATE SET json=excluded.json,next_at=NULL,active=0',
                             (agent_id,json.dumps(marker,ensure_ascii=False)))
             self.db.execute('DELETE FROM builder_data_sources WHERE {ws} AND agent_id=?',(agent_id,))
-            for job_id,body in self.db.execute("SELECT id,json FROM builder_schedule_jobs WHERE {ws} AND agent_id=? AND state='queued'",(agent_id,)).fetchall():
-                job=json.loads(body)
-                if job.get('kind') not in ('scheduled','schedule_test'):continue
-                job.update(error='예약이 해제되어 대기 중인 자동 실행을 취소했습니다.',finished_at=now())
-                self.db.execute("UPDATE builder_schedule_jobs SET state='cancelled',json=? WHERE {ws} AND id=?",(json.dumps(job,ensure_ascii=False),job_id))
-                self.db.execute("UPDATE builder_source_processed SET state='failed',updated_at=? WHERE {ws} AND job_id=? AND state='pending'",(now(),job_id))
+            self._cancel_queued(agent_id, ('scheduled','schedule_test'), '예약이 해제되어 대기 중인 자동 실행을 취소했습니다.')
             self.db.commit()
             return None
         except Exception:self.db.rollback();raise
+    def _cancel_queued(self,agent_id,kinds,reason):
+        rows=self.db.execute("SELECT id,state,json FROM builder_schedule_jobs WHERE {ws} AND agent_id=? AND state IN ('queued','running')",(agent_id,))
+        for job_id,state,body in rows.fetchall():
+            job=json.loads(body)
+            if job.get('kind') not in kinds:continue
+            if state=='running':
+                source=job.get('library_source') or {}
+                if (source.get('selection') or {}).get('mode')=='new' and 'refs' not in source:
+                    job['cancel_expansion']=True
+                    self.db.execute('UPDATE builder_schedule_jobs SET json=? WHERE {ws} AND id=?',(json.dumps(job,ensure_ascii=False),job_id))
+                continue
+            job.update(error=reason,finished_at=now())
+            self.db.execute("UPDATE builder_schedule_jobs SET state='cancelled',json=? WHERE {ws} AND id=?",(json.dumps(job,ensure_ascii=False),job_id))
+            LibrarySources(self.storage).failed_job(job_id,commit=False)
+
     @staticmethod
     def _reservation(row):
         if not row:return None
@@ -193,9 +206,20 @@ class Schedules:
     def listing(self):
         rows=self.db.execute('SELECT agent_id,json,next_at,active FROM builder_schedules WHERE {ws}')
         return {row[0]:reservation for row in rows if (reservation:=self._reservation(row[1:])) is not None}
-    def get(self,agent_id):
+    @staticmethod
+    def test_revision(schedule,source,library):
+        reservation={key:schedule[key] for key in ('agent_id','agent_version','spec','updated_at') if key in schedule}
+        managed=[source[key] for key in ('id','asset_id','version')] if source else None
+        revision=json.dumps([reservation,managed,library],sort_keys=True)
+        return hashlib.sha256(revision.encode()).hexdigest()
+
+    def get(self,agent_id,*,include_test_revision=False):
         row=self.db.execute('SELECT json,next_at,active FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
-        return self._reservation(row)
+        schedule=self._reservation(row)
+        if schedule and include_test_revision:
+            source=self.execution_source(self.storage.agent(agent_id))
+            schedule['test_revision']=self.test_revision(schedule,source,LibrarySources(self.storage).get(agent_id))
+        return schedule
     def was_removed(self,agent_id):
         row=self.db.execute('SELECT json FROM builder_schedules WHERE {ws} AND agent_id=?',(agent_id,)).fetchone()
         return bool(row and json.loads(row[0]).get('removed'))
@@ -216,18 +240,22 @@ class Schedules:
     def _activate(self,agent_id,active):
         schedule=self.get(agent_id)
         if not schedule:raise ValueError('예약 설정이 없습니다. 대화로 시간을 정하고 저장하세요.')
+        if not active or not schedule['active']:
+            self._cancel_queued(agent_id, ('scheduled',), '예약이 중지되어 대기 중인 정규 실행을 취소했습니다.')
         if active:
             agent=self.storage.agent(agent_id)
             if agent['version']!=schedule['agent_version']:raise ValueError('워크플로우가 변경됐습니다. 예약 설정을 저장해 적용할 버전을 확인하세요.')
             agent=scheduled_agent(agent,schedule['spec']);source=self.execution_source(agent)
             preflight_schedule(self.storage,agent,[source['asset_id']] if source else [])
-        self.db.execute('UPDATE builder_schedules SET active=?,next_at=? WHERE {ws} AND agent_id=?',(int(active),next_occurrence(schedule['spec']),agent_id));self.db.commit();return self.get(agent_id)
-    def enqueue_test(self,agent_id,delay_seconds=15):
+        self.db.execute('UPDATE builder_schedules SET active=?,next_at=? WHERE {ws} AND agent_id=?',(int(active),next_occurrence(schedule['spec']),agent_id));self.db.commit();return self.get(agent_id,include_test_revision=True)
+    def enqueue_test(self,agent_id,delay_seconds=15,expected_revision=None):
         self.storage.begin_write()
-        try:return self._enqueue_test(agent_id,delay_seconds)
+        try:return self._enqueue_test(agent_id,delay_seconds,expected_revision)
         except Exception:self.db.rollback();raise
-    def _enqueue_test(self,agent_id,delay_seconds=15):
-        agent=self.storage.agent(agent_id);schedule=self.get(agent_id)
+    def _enqueue_test(self,agent_id,delay_seconds,expected_revision):
+        agent=self.storage.agent(agent_id);schedule=self.get(agent_id,include_test_revision=True)
+        if expected_revision is not None and (not schedule or schedule['test_revision']!=expected_revision):
+            raise ValueError('예약 설정 또는 자료 연결이 변경됐습니다. 화면을 새로고침한 뒤 다시 시도하세요.')
         if not schedule:raise ValueError('예약 설정이 필요합니다.')
         if agent['version']!=schedule['agent_version']:raise ValueError('워크플로우가 변경됐습니다. 예약 설정을 저장해 적용할 버전을 확인하세요.')
         agent=scheduled_agent(agent,schedule['spec'])
@@ -236,6 +264,7 @@ class Schedules:
         if hasattr(self.storage,'bound'):agent=scheduled_agent(self.storage.storage.agent(agent_id),schedule['spec'])
         id=uid();due=(datetime.now(timezone.utc)+timedelta(seconds=delay_seconds)).isoformat()
         job={'id':id,'agent_id':agent_id,'agent_snapshot':agent,'kind':'schedule_test','due_at':due,'created_at':now()}
+        job['managed_source']={k:source[k] for k in ('id','asset_id','version')} if source else None
         binding=LibrarySources(self.storage).get(agent_id)
         if binding:job['library_source']={'selection':binding}
         self.db.execute('INSERT INTO builder_schedule_jobs({wsc}id,agent_id,slot_key,state,lease_until,lease_token,json) VALUES({wsv}?,?,?,\'queued\',NULL,NULL,?)',(id,agent_id,'test:'+id,json.dumps(job,ensure_ascii=False)));self.db.commit();return job
@@ -268,6 +297,13 @@ class Schedules:
                 if binding:job['library_source']={'selection':binding}
                 self.db.execute('INSERT INTO builder_schedule_jobs({wsc}id,agent_id,slot_key,state,lease_until,lease_token,json) VALUES({wsv}?,?,?,\'queued\',NULL,NULL,?) ON CONFLICT DO NOTHING',(id,agent_id,due,json.dumps(job,ensure_ascii=False)))
                 self.db.execute('UPDATE builder_schedules SET next_at=? WHERE {ws} AND agent_id=?',(next_occurrence(schedule['spec'],current),agent_id))
+            for (agent_id,) in self.db.execute(
+                "SELECT DISTINCT agent_id FROM builder_schedule_jobs WHERE {ws} AND state='queued' AND "
+                + self.storage.json_text('json','kind') + "='scheduled'"
+            ).fetchall():
+                reservation=self.get(agent_id)
+                if not reservation or not reservation['active']:
+                    self._cancel_queued(agent_id, ('scheduled',), '예약이 중지되어 대기 중인 정규 실행을 취소했습니다.')
             rows=self.db.execute("SELECT id,json FROM builder_schedule_jobs WHERE {ws} AND (state='queued' OR (state='running' AND lease_until<=?)) AND "+self.storage.json_text('json','due_at')+"<=? ORDER BY {seq} LIMIT 1",(stamp,stamp)).fetchall()
             for id,body in rows:
                 job=json.loads(body)

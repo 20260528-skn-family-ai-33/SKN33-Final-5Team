@@ -576,3 +576,35 @@ def test_retry_resets_previous_diagnostics(tmp_path, monkeypatch, late_failure):
         assert store.test(result['id']).get('diagnostics') == result.get('diagnostics')
     finally:
         store.close()
+
+
+def test_multiple_exports_publish_one_archive_and_resume_after_disk_error(tmp_path, monkeypatch):
+    from zipfile import ZipFile
+    from workflow_engine.lifecycle.run_lifecycle import RunLifecycle
+
+    workflow = flow()
+    workflow['nodes'].append(node('csv', 'export_result', [bind('records', 'extract', 'records')], format='csv'))
+    workflow['edges'].append(edge('out', 'csv'))
+    store, identifier, asset = saved(tmp_path, workflow)
+    try:
+        with monkeypatch.context() as patch:
+            def no_disk(*args, **kwargs):
+                raise OSError('disk full')
+            patch.setattr(RunLifecycle, 'publish', no_disk)
+            failed = run_workflow(store, identifier, '추출', 'unused', file_ids=[asset['id']], llm=FakeLLM())
+        assert failed['status'] == 'failed'
+        assert failed['answer'] == failed['error']
+        assert failed['artifact'] is None and failed['report_path'] is None
+
+        def must_use_checkpoint(*args):
+            pytest.fail('저장 실패 후에는 완료된 단계를 다시 실행하지 않습니다.')
+        run = run_workflow(store, identifier, '추출', 'unused', run_id=failed['id'],
+                           retry=True, llm=FakeLLM(), executor=must_use_checkpoint)
+        assert run['status'] == 'succeeded' and run['id'] == failed['id']
+        assert run['artifact']['mime'] == 'application/zip'
+        with ZipFile(tmp_path / run['report_path']) as archive:
+            assert archive.namelist() == ['001/추출_결과.json', '002/추출_결과.csv']
+            assert json.loads(archive.read(archive.namelist()[0]))[0]['value'] == '테스트'
+            assert '테스트' in archive.read(archive.namelist()[1]).decode('utf-8-sig')
+    finally:
+        store.close()

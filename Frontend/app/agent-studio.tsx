@@ -44,7 +44,7 @@ import {ClarificationForm,type ClarificationAnswer} from './clarification-form';
 import {SlackChannelPicker} from './slack-channel-picker';
 
 
-type SavedSchedule={active:boolean;next_run_at:string;spec:ScheduleSpec;agent_version:number};
+type SavedSchedule={test_revision?:string;active:boolean;next_run_at:string;spec:ScheduleSpec;agent_version:number};
 type Source={id:string;asset_id:string;version:number;asset:Resource};
 type Job={id:string;kind:string;status:string;due_at:string;run_id?:string;error?:string;source_name?:string;source_version?:string};
 type Draft={schedule?:ScheduleSpec|null;report_destination?:string|null;workflow?:Workflow|null;name:string;purpose:string;instructions:string;tool_ids:string[];document_ids:string[];requirements:{description:string;source_id:string;quote:string}[];questions:string[];question_options?:string[][];question_responses?:(QuestionResponse|null)[];unsupported:string[];explanation:string;execution_plan?:{match:string;filters:{field:string;operator:string;compare_field:string|null;value:unknown}[];sort:{field:string;direction:string;value_type:string}[];missing_policy:string;duplicate_policy:string;duplicate_field:string|null;output_format:string}};
@@ -438,8 +438,8 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  useEffect(()=>{
   if(!initialFileReady||!initialPromptPending.current||loading||initialLoadFailed||!credentialId||screen!=='workflow')return;
   initialPromptPending.current=false;
-  void send();
- },[loading,initialLoadFailed,credentialId,screen,initialFileReady,session]);
+  if(text.trim()===initialPrompt?.trim())void send();
+ },[loading,initialLoadFailed,credentialId,screen,initialFileReady,session,text,initialPrompt]);
  useEffect(()=>{
   if(!initialFilePending.current||loading||initialLoadFailed||!credentialId||screen!=='workflow')return;
   const files=initialFilePending.current;initialFilePending.current=undefined;
@@ -634,9 +634,9 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
    setHistory(result.tests||[]);setTestRun(prior=>queuedSourceRuns.length?queued||prior:refreshedAgentRun(result.tests||[],prior,pinnedRun.current));
   },()=>inFlight.current||generation.current!==token);
  },[selected?.id,refreshRuns,busy,testRun?.id,queuedSourceRuns]);
- async function uploadSource(file:File){if(!selected||inFlight.current)return;if(file.size>8*1024*1024){setError('자료는 8MB 이하로 연결하세요.');return;}inFlight.current=true;setBusy('다음 실행에 사용할 데이터 소스를 갱신합니다.');setError('');try{const result=await request('/api/agent-builder/source_upload',{id:selected.id,fileName:file.name,data:await asBase64(file)});setSource(result.source);setScheduleNotice('소스 버전 '+result.source.version+' 저장 · 다음 실행부터 반영됩니다.');}catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy('');if(sourceInput.current)sourceInput.current.value='';}}
+ async function uploadSource(file:File){if(!selected||inFlight.current)return;if(file.size>8*1024*1024){setError('자료는 8MB 이하로 연결하세요.');return;}inFlight.current=true;setBusy('다음 실행에 사용할 데이터 소스를 갱신합니다.');setError('');try{const result=await request('/api/agent-builder/source_upload',{id:selected.id,fileName:file.name,data:await asBase64(file)});await refreshScheduleSource();setScheduleNotice('소스 버전 '+result.source.version+' 저장 · 다음 실행부터 반영됩니다.');}catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy('');if(sourceInput.current)sourceInput.current.value='';}}
 
- async function testSchedule(){if(!selected||inFlight.current)return;inFlight.current=true;setBusy('시험 예약을 등록합니다.');setError('');try{const result=await request('/api/agent-builder/schedule_test',{id:selected.id});setJobs(prior=>[{...result.job,status:'queued'},...prior]);setScheduleNotice('15초 후 시험 예약을 등록했습니다. 서버 타이머가 실행하며 결과가 자동 갱신됩니다.');}catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy('');}}
+ async function testSchedule(){if(!selected||inFlight.current)return;inFlight.current=true;setBusy('시험 예약을 등록합니다.');setError('');try{const result=await request('/api/agent-builder/schedule_test',{id:selected.id,testRevision:schedule?.test_revision});setJobs(prior=>[{...result.job,status:'queued'},...prior]);setScheduleNotice('15초 후 시험 예약을 등록했습니다. 서버 타이머가 실행하며 결과가 자동 갱신됩니다.');}catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy('');}}
  async function cancelSchedule(jobId:string){if(!selected||inFlight.current)return;inFlight.current=true;setBusy('시험 예약을 취소합니다.');setError('');try{const result=await request('/api/agent-builder/schedule_cancel',{id:selected.id,jobId});setJobs(prior=>prior.map(j=>j.id===jobId?result.job:j));setScheduleNotice('시험 예약을 취소했습니다.');}catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy('');}}
  async function uploadRun(file:File){if(!selected||inFlight.current)return;if(file.size>8*1024*1024){setError('자료는 8MB 이하로 연결하세요.');return;}if(runFiles.length>=10){setError('실행 자료는 최대 10개입니다.');return;}inFlight.current=true;setBusy('이번 실행 자료를 읽고 있습니다.');setError('');try{const result=await request('/api/agent-builder/run_upload',{id:selected.id,fileName:file.name,data:await asBase64(file)});setRunFiles(prior=>[...prior,result.asset]);}catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy('');if(runFileInput.current)runFileInput.current.value='';}}
  async function resumeRun(){if(!testRun||inFlight.current||!testText.trim())return;inFlight.current=true;setBusy('확인 답변으로 같은 실행을 이어갑니다.');setError('');try{const result=await request('/api/agent-builder/resume_run',{id:testRun.id,content:testText});setTestRun(result);setHistory(prior=>[result,...prior.filter(r=>r.id!==result.id)]);requestAnimationFrame(()=>resultPanel.current?.scrollIntoView({behavior:'smooth',block:'start'}));setTestText('');}catch(e){setError((e as Error).message);}finally{inFlight.current=false;setBusy('');}}
@@ -690,7 +690,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
  const runWorkflow = testRun?.config_snapshot && 'workflow' in testRun.config_snapshot
   ? testRun.config_snapshot.workflow
   : !testRun || selected?.version === testRun.agent_version ? selected?.config.workflow : undefined;
- const resultFile = testRun && (testRun.artifact || testRun.report_path) ? {
+ const resultFile = testRun?.status==='succeeded' && (testRun.artifact || testRun.report_path) ? {
   ...testRun.artifact, name:suggestedRunFilename(testRun.artifact?.name || testRun.report_path!, testRun.config_snapshot?.name || selected?.config.name)
  } : null;
  const unverifiedFields = [...new Set((testRun?.rows || [])
@@ -760,7 +760,7 @@ export default function AgentStudio({onNewWorkflow,onNavigate,onExternalFlow,onL
     const updated=await renameWorkflow(renaming,name);
     setSelected(current=>current?.id===updated.id?{...current,...updated}:current);
     setAgents(current=>current.map(agent=>agent.id===updated.id?updated:agent));
-    setSchedule(current=>current?.agent_version===renaming.version?{...current,agent_version:updated.version}:current);
+    if(screen==='schedule')await refreshScheduleSource();
    }}/>}
    {screen==='workflow'&&!saved&&<div className="as-progress"  aria-label="설계 진행">
     <span className={draft?'done':'current'}><i>{draft?<Check size={12}/>:'1'}</i>업무 설명</span>

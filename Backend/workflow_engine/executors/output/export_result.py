@@ -92,8 +92,11 @@ def execute(node,state,storage,config,llm):
                              and source['settings'].get('extraction_mode') not in ('rows', 'receipt_items'))
             records = project_records(records, fields, field_records=field_records)
         artifact = records_artifact(records,format,inputs.get('answer'),fields=fields)
-        if warnings:
-            artifact['warnings'] = ['영수증 검산: ' + warning for warning in warnings]
+        notices = ['영수증 검산: ' + warning for warning in warnings]
+        if format == 'csv' and inputs.get('answer'):
+            notices.append('CSV에는 요청한 표 열만 저장했습니다. 확인 답변은 실행 기록에서 확인하거나 JSON으로 함께 저장할 수 있습니다.')
+        if notices:
+            artifact['warnings'] = notices
         return {'artifact': artifact}
     text=inputs.get('text') or inputs.get('answer')
     if isinstance(text,str) and text.strip():return {'artifact':text_artifact(text,format)}

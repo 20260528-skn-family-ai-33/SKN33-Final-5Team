@@ -2062,13 +2062,13 @@ test('Gmail schedules: a connected account can activate, enqueue a test and run 
  ],edges:[{source:'mail',target:'summary',branch:'next'}]}}};
  const completed={id:'gmail-now',status:'succeeded',answer:'전날 메일 요약 결과',agent_version:1,steps:[],rows:[],artifact:null,error:null};
  let active=false,latest:any[]=[];
- const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
+ const schedule=()=>({active,test_revision:'a'.repeat(64),spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
  const h=await setup('?screen=schedule&service=G',{},(path,body)=>{
   if(path.split('?')[0].endsWith('/agents'))return {agents:[gmail]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail,latest),schedule:schedule(),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:true,connectionVersion:1,email:'scheduled@example.com'};
   if(path.endsWith('/schedule')){assert.deepEqual(body,{id:'G',active:!active});active=body.active;return {schedule:schedule()};}
-  if(path.endsWith('/schedule_test')){assert.deepEqual(body,{id:'G'});return {job:{id:'gmail-test-job',kind:'schedule_test',due_at:'2026-11-10T00:00:15Z'}};}
+  if(path.endsWith('/schedule_test')){assert.deepEqual(body,{id:'G',testRevision:'a'.repeat(64)});return {job:{id:'gmail-test-job',kind:'schedule_test',due_at:'2026-11-10T00:00:15Z'}};}
   if(path.endsWith('/test')){assert.deepEqual(body,{id:'G',content:'',fileIds:[],useSchedule:true});latest=[completed];return completed;}
  },createElement(EntryApp));
  try{
@@ -2130,12 +2130,12 @@ test('source-free schedules: non-Gmail workflows can activate and run without re
  const scalar=agent('N','정기 숫자 계산',dailySchedule);
  const completed={id:'scalar-now',status:'succeeded',answer:'계산 결과 42',agent_version:1,steps:[],rows:[],artifact:null,error:null};
  let active=false;
- const schedule=()=>({active,spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
+ const schedule=()=>({active,test_revision:'a'.repeat(64),spec:dailySchedule,next_run_at:'2026-11-11T00:00:00Z'});
  const h=await setup('?screen=schedule&service=N',{},(path,body)=>{
   if(path.split('?')[0].endsWith('/agents'))return {agents:[scalar]};
   if(path.includes('/agent?id=N'))return {...snapshot(scalar),schedule:schedule(),source_required:false,required_connections:[],request_required:false,input_requirements:[]};
   if(path.endsWith('/schedule')){assert.deepEqual(body,{id:'N',active:!active});active=body.active;return {schedule:schedule()};}
-  if(path.endsWith('/schedule_test')){assert.deepEqual(body,{id:'N'});return {job:{id:'scalar-test-job',kind:'schedule_test',due_at:'2026-11-10T00:00:15Z'}};}
+  if(path.endsWith('/schedule_test')){assert.deepEqual(body,{id:'N',testRevision:'a'.repeat(64)});return {job:{id:'scalar-test-job',kind:'schedule_test',due_at:'2026-11-10T00:00:15Z'}};}
   if(path.endsWith('/test')){assert.deepEqual(body,{id:'N',content:'',fileIds:[],useSchedule:true});return completed;}
  },createElement(EntryApp));
  try{

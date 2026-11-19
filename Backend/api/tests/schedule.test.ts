@@ -88,3 +88,16 @@ test('invalid settings, unsupported cron syntax and impossible dates are rejecte
   const invalidAnchor = node({field:'days'}); invalidAnchor.scheduleAnchorAt = 1e30;
   assert.throws(() => validateSchedule(invalidAnchor, 'Asia/Seoul'));
 });
+
+test('the editor rule fields drive weekday, month day and imported Cron calculation', async () => {
+  const {scheduleRuleForField} = await import('../../../shared/schedule-rule');
+  const clock = {triggerAtHour:9, triggerAtMinute:0};
+  const week = node({...scheduleRuleForField('weeks', clock), triggerAtDay:[3,5]});
+  const month = node({...scheduleRuleForField('months', clock), triggerAtDayOfMonth:20});
+  const cron = node(scheduleRuleForField('cronExpression', {expression:'15 9 * * 3'}, {}));
+  const after = '2026-11-17T00:00:00.000Z';
+  assert.equal(next(week, after, 'Asia/Seoul'), '2026-11-18T00:00:00.000Z');
+  assert.equal(next(week, '2026-11-18T00:00:00.000Z', 'Asia/Seoul'), '2026-11-20T00:00:00.000Z');
+  assert.equal(next(month, after, 'Asia/Seoul'), '2026-11-20T00:00:00.000Z');
+  assert.equal(next(cron, after, 'Asia/Seoul'), '2026-11-18T00:15:00.000Z');
+});

@@ -487,6 +487,10 @@ export async function handleAgentBuilder(req:IncomingMessage,res:ServerResponse,
    if(builderNeedsSlack(current.agent.config,current.agent.workflow_dependencies)&&!await slackAccessToken?.())
     throw new Error('예약 실행에 사용할 Slack 계정을 먼저 연결해주세요.');
   }
+  if(workerAction==='schedule_test'){
+   if(typeof data.testRevision!=='string'||!/^[0-9a-f]{64}$/.test(data.testRevision))throw new Error('예약 설정을 새로고침한 뒤 다시 시도하세요.');
+   payload.test_revision=data.testRevision;
+  }
   if(['message','confirm','test','resume_run','retry_run'].includes(workerAction)){
    if(['message','confirm'].includes(workerAction)){
     if(data.generationRequestId!==undefined&&(typeof data.generationRequestId!=='string'||!idPattern.test(data.generationRequestId)))throw new Error('생성 요청 ID를 확인하세요.');

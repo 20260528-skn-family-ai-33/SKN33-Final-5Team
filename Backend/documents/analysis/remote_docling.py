@@ -2,6 +2,7 @@
 import json
 import os
 import time
+import http.client
 import urllib.error
 import urllib.request
 import uuid
@@ -56,7 +57,15 @@ def parse_remote_image(source, timeout=240):
                 raise AnalysisError('invalid_engine_result', 'Docling 작업 ID가 반환되지 않았습니다.')
             job = str(uuid.UUID(result['job_id']))
         while True:
-            status, result = send(urllib.request.Request(url + '/' + job, headers=headers))
+            try:
+                status, result = send(urllib.request.Request(url + '/' + job, headers=headers))
+            except urllib.error.HTTPError as exc:
+                if exc.code not in (429, 500, 502, 503, 504):
+                    raise
+                exc.close()
+                status = 202
+            except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead):
+                status = 202
             if status == 200:
                 if (not isinstance(result, dict) or result.get('engine') != 'docling'
                         or result.get('source_sha256') != sha256(source)

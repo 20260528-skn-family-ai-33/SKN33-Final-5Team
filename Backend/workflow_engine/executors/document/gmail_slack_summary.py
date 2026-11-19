@@ -1,6 +1,6 @@
 """Attach source timestamps and count matched cards in the final Slack digest."""
 import re
-from collections import defaultdict, deque
+from collections import defaultdict
 from datetime import datetime
 from email.utils import parseaddr
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -12,6 +12,7 @@ _TITLE = re.compile(r'^[ \t]*(?:(?:[-•*]|\d+[.)])[ \t]*)?(?:\*\*)?(?:제목|su
 _SENDER = re.compile(r'^[ \t]*(?:[-•*][ \t]*)?(?:\*\*)?(?:보낸 사람|발신자|from)(?:\*\*)?[ \t]*[:：](?:\*\*)?[ \t]*(.+)$', re.I | re.M)
 _SENT_TIME = re.compile(r'^[ \t]*(?:(?:[-•*]|\d+[.)]|#{1,6})[ \t]*)?(?:\*\*)?(?:보낸 시간|보낸 시각|sent at)(?:\*\*)?[ \t]*[:：][^\n]*(?:\n|$)', re.I | re.M)
 _METADATA = re.compile(r'^[ \t]*citations[ \t]*[:=][ \t]*\[[^\r\n]*\][ \t]*$', re.I | re.M)
+_CARD_SOURCE = re.compile(r'^[ \t]*근거 ID[ \t]*:[ \t]*(e\d+)[ \t]*(?:\n|$)', re.M)
 _POINT = re.compile(r'^[ \t]*(?:[-•*][ \t]*)?(?:\*\*)?(?:핵심(?: 내용)?|요약)(?:\*\*)?[ \t]*[:：](?:\*\*)?', re.M)
 _UNKNOWN_SENT_TIME = '확인할 수 없음'
 
@@ -58,10 +59,11 @@ def _sent_time(value):
     return _UNKNOWN_SENT_TIME
 
 
-def annotate_mail_summaries(text, documents):
+def annotate_mail_summaries(text, documents, card_sources=None):
     """Attach the Gmail header time without guessing which duplicate header supplied it."""
-    available = defaultdict(deque)
+    available = defaultdict(list)
     sent_times = defaultdict(set)
+    source_times = {}
     for doc in documents:
         title = doc['file_name']
         prefix = f'제목: {title}\n보낸 사람: '
@@ -73,6 +75,7 @@ def annotate_mail_summaries(text, documents):
                 sent_times[key].add(_sent_time(doc.get('sent_at')))
                 if not doc.get('body_unavailable'):
                     available[key].append(doc['source_id'])
+                    source_times[doc['source_id']] = _sent_time(doc.get('sent_at'))
 
     text = _SENT_TIME.sub('', text.replace('\r\n', '\n').replace('\r', '\n'))
     headings = list(_TITLE.finditer(text))
@@ -90,13 +93,26 @@ def annotate_mail_summaries(text, documents):
         times = sent_times.get(key)
         sent_time = next(iter(times)) if times is not None and len(times) == 1 else _UNKNOWN_SENT_TIME
         body = card[sender.end():]
-        fragments.append(f'{heading[0]}{card[:sender.end()]}\n보낸 시간: {sent_time}{body}')
-        choices = available.get(key)
+        citations = _CARD_SOURCE.findall(body)
+        body = _CARD_SOURCE.sub('', body)
+        choices = available.get(key, ())
         content = _POINT.sub('', _METADATA.sub('', body)).strip()
         card_key = (key, ' '.join(content.split()).casefold())
-        if choices and card_key not in seen_cards and any(character.isalnum() for character in content):
-            matched.add(choices.popleft())
-            seen_cards.add(card_key)
+        has_summary = any(character.isalnum() for character in content)
+        if card_sources is not None:
+            source = card_sources.get(citations[0]) if len(citations) == 1 else None
+            if not citations and len(choices) == 1:
+                source = choices[0]
+            if not has_summary or source not in choices or source in matched:
+                continue
+            matched.add(source)
+            sent_time = source_times[source]
+        elif has_summary:
+            candidates = [source for source in choices if source not in matched]
+            if candidates and card_key not in seen_cards:
+                matched.add(candidates[0])
+                seen_cards.add(card_key)
+        fragments.append(f'{heading[0]}{card[:sender.end()]}\n보낸 시간: {sent_time}{body}')
     return ''.join(fragments), matched
 
 

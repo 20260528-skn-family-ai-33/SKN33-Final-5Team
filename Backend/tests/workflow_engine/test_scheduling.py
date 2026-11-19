@@ -115,3 +115,94 @@ def test_weekly_monday_kst_example_and_offline_coalescing(tmp_path):
     assert jobs[0]['due_at']==due.isoformat()
     assert datetime.fromisoformat(s.get(id)['next_run_at'])>datetime.now(timezone.utc)
     assert not s.claim_due();store.close()
+
+
+def test_pause_only_cancels_unclaimed_regular_jobs(tmp_path):
+    store, first_id = seed(tmp_path)
+    other, second_id = seed(tmp_path)
+    other.close()
+    schedules = Schedules(store)
+    current = datetime.now(timezone.utc)
+    for id in (first_id, second_id):
+        schedules.activate(id, True)
+    for id in (first_id, second_id):
+        store.db.execute('UPDATE builder_schedules SET next_at=? WHERE agent_id=?',
+                         ((current-timedelta(seconds=1)).isoformat(), id))
+    store.db.commit()
+    running, = schedules.claim_due(current)
+    waiting = second_id if running['agent_id'] == first_id else first_id
+    trial = schedules.enqueue_test(waiting, -1)
+    schedules.activate(waiting, False)
+    schedules.activate(running['agent_id'], False)
+    schedules.finish(running['id'], running['lease_token'], 'succeeded')
+    assert [job['id'] for job in schedules.claim_due(current+timedelta(seconds=1))] == [trial['id']]
+    assert {job['kind']: job['status'] for job in schedules.jobs(waiting)} == {
+        'scheduled': 'cancelled', 'schedule_test': 'running',
+    }
+    store.close()
+
+
+def test_trial_rejects_changed_settings_and_pins_managed_source(tmp_path):
+    store, id = seed(tmp_path)
+    schedules = Schedules(store)
+    before = schedules.get(id,include_test_revision=True)['test_revision']
+    schedules.configure(id, {**SPEC, 'hour': 17})
+    with pytest.raises(ValueError, match='새로고침'):
+        schedules.enqueue_test(id, -1, before)
+    assert not schedules.jobs(id)
+    current = schedules.get(id,include_test_revision=True)['test_revision']
+    job = schedules.enqueue_test(id, -1, current)
+    source = schedules.source(id)
+    asset = {**source['asset'], 'id': uid()}
+    store.add_asset(asset, [{'code': 'X', 'stock': '1', 'reorder_level': '10'}])
+    schedules.replace_source(id, asset['id'])
+    with pytest.raises(ValueError, match='새로고침'):
+        schedules.enqueue_test(id, -1, current)
+    claimed, = schedules.claim_due()
+    assert claimed['id'] == job['id']
+    store.close()
+    run = handle({'directory': str(tmp_path), 'action': 'scheduled_run', 'id': job['id'],
+                  'lease_token': claimed['lease_token']})
+    assert run['source_version'] == source['version']
+    assert [row['code'] for row in run['rows']] == ['A', 'B']
+
+
+def test_pause_rolls_back_job_cancellation_if_source_update_fails(tmp_path, monkeypatch):
+    from workflow_engine.scheduling.library_sources import LibrarySources
+
+    store, identifier = seed(tmp_path)
+    other, blocker = seed(tmp_path)
+    other.close()
+    try:
+        schedules = Schedules(store)
+        current = datetime.now(timezone.utc)
+        for agent_id in (blocker, identifier):
+            schedules.activate(agent_id, True)
+        for agent_id in (blocker, identifier):
+            store.db.execute('UPDATE builder_schedules SET next_at=? WHERE agent_id=?',
+                             ((current-timedelta(seconds=1)).isoformat(), agent_id))
+        store.db.commit()
+        running, = schedules.claim_due(current)
+        waiting = blocker if running['agent_id'] == identifier else identifier
+
+        def fail(*args, **kwargs):
+            raise OSError('injected cursor write failure')
+
+        with monkeypatch.context() as patch:
+            patch.setattr(LibrarySources, 'failed_job', fail)
+            with pytest.raises(OSError, match='injected'):
+                schedules.activate(waiting, False)
+        assert schedules.get(waiting)['active']
+        queued, = schedules.jobs(waiting)
+        assert queued['status'] == 'queued'
+        store.close()
+        store = Storage(tmp_path)
+        schedules = Schedules(store)
+        assert schedules.get(waiting)['active']
+        assert schedules.jobs(waiting)[0]['status'] == 'queued'
+        schedules.activate(waiting, False)
+        schedules.activate(waiting, True)
+        assert schedules.jobs(waiting)[0]['status'] == 'cancelled'
+        assert not schedules.claim_due(current+timedelta(seconds=1))
+    finally:
+        store.close()

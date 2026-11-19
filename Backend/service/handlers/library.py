@@ -46,7 +46,10 @@ def agent(c):
     reservation=schedules.get(data['id'])
     scheduled_config=scheduled_agent(agent,reservation['spec'] if reservation else {'timezone':'Asia/Seoul'})['config']
     source=schedules.execution_source(agent)
-    return {'agent':agent,'tests':storage.tests(data['id']),'resources':available_inputs(storage,agent['config']['document_ids']),'schedule':reservation,'source':source,'library_source':LibrarySources(storage).get(data['id']),'source_required':bool(source) or source_required(agent['config'],storage,None,agent.get('workflow_dependencies')),'required_connections':required_connections(agent['config'],agent.get('workflow_dependencies')),'jobs':schedules.jobs(data['id']),
+    library=LibrarySources(storage).get(data['id'])
+    if reservation:
+        reservation['test_revision']=schedules.test_revision(reservation,source,library)
+    return {'agent':agent,'tests':storage.tests(data['id']),'resources':available_inputs(storage,agent['config']['document_ids']),'schedule':reservation,'source':source,'library_source':library,'source_required':bool(source) or source_required(agent['config'],storage,None,agent.get('workflow_dependencies')),'required_connections':required_connections(agent['config'],agent.get('workflow_dependencies')),'jobs':schedules.jobs(data['id']),
             'input_requirements':execution_requirements(agent['config'],storage,[source['asset_id']] if source else [],agent.get('workflow_dependencies')),
             'schedule_request_required':execution_request_required(scheduled_config,agent.get('workflow_dependencies')),
             'request_required':execution_request_required(agent['config'],agent.get('workflow_dependencies'))}

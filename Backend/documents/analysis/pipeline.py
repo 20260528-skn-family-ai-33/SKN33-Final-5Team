@@ -14,7 +14,7 @@ from .adapters import LocalEngines, convert
 from .contracts import AnalysisError, FORMATS, IMAGE_FORMATS, MAX_BYTES, MAX_RESULT, block, bounds, project, sha256, validate
 from .readers import Inspector
 from .image_metadata import png_resolution
-from .table_quality import reconcile, render_cells, validate_prediction
+from .table_quality import reconcile, render_cells, validate_prediction, finite_number
 
 PRIMARY = {'pdf': 'mineru', 'hwp': 'docling', 'hwpx': 'docling', 'doc': 'docling',
            'docx': 'docling', 'ppt': 'docling', 'pptx': 'docling', 'xls': 'native', 'xlsx': 'native',
@@ -58,8 +58,32 @@ def uncovered_ink_bands(picture, regions):
 
 def valid_ocr_box(box):
     return (isinstance(box, (tuple, list)) and len(box) == 4
-            and all(isinstance(value, (int, float)) and math.isfinite(value) for value in box)
+            and all(finite_number(value) for value in box)
             and box[0] < box[2] and box[1] < box[3])
+
+
+def body_ocr_prediction(prediction):
+    """Keep usable body text without publishing invalid optional evidence."""
+    if not isinstance(prediction, dict):
+        return {'rec_texts': [], 'rec_scores': []}, True
+    texts = prediction.get('rec_texts', [])
+    valid_texts = isinstance(texts, list) and all(
+        isinstance(t, str) and not any(0xD800 <= ord(c) <= 0xDFFF for c in t) for t in texts)
+    safe_texts = [t for t in texts if isinstance(t, str)
+                  and not any(0xD800 <= ord(c) <= 0xDFFF for c in t)] if isinstance(texts, list) else []
+    scores = prediction.get('rec_scores', [])
+    valid_scores = (isinstance(scores, list) and len(scores) in (0, len(safe_texts))
+                    and all(finite_number(s) and 0 <= s <= 1 for s in scores))
+    safe = {'rec_texts': safe_texts, 'rec_scores': scores if valid_texts and valid_scores else []}
+    invalid = not valid_texts or not valid_scores
+    # Older OCR responses may omit optional geometry entirely.
+    if 'rec_boxes' not in prediction:
+        return safe, invalid
+    try:
+        validate_prediction(prediction)
+    except AnalysisError:
+        return safe, True
+    return {**safe, 'rec_boxes': prediction['rec_boxes']}, invalid
 
 
 def ocr_in_bands(result, bands, scale):
@@ -418,7 +442,7 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 job = mapped[output['source']]
                 seen.add(output['source'])
                 region = job['parent']
-                prediction = output['result']
+                prediction, invalid_details = body_ocr_prediction(output['result'])
                 bands = job.get('bands') or []
                 if bands:
                     prediction, unread = ocr_in_bands(prediction, bands, job['scale'])
@@ -426,8 +450,11 @@ def run(source, work, *, engines=None, converter=convert, max_supplements=16, pd
                 item = block('ocr-' + str(len(result['blocks']) + 1), 'text', region['native_location'],
                              parent=region['id'], unit=region['unit_id'], text=text, engine='paddleocr',
                              data={'ocr_scores': prediction.get('rec_scores', []), 'crop_origin': job['origin'],
-                                   'crop_scale': job['scale'], 'ocr_texts': prediction.get('rec_texts', []),
-                                   'ocr_boxes': prediction.get('rec_boxes', [])})
+                                   'crop_scale': job['scale']})
+                if 'rec_boxes' in prediction and not invalid_details:
+                    item['data'].update(ocr_texts=prediction['rec_texts'], ocr_boxes=prediction['rec_boxes'])
+                if invalid_details:
+                    review('body_ocr_details:invalid_engine_result', [region['id'], item['id']])
                 item['parser_version'] = recognized['version']
                 if bands:
                     item['data']['upright_y_bands'] = bands

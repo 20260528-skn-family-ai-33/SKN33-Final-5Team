@@ -17,7 +17,8 @@ from pathlib import Path
 
 CODE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-ROOT = PROJECT_ROOT / 'Backend/tests/fixtures/examples/workflow_preprocessing'
+DEFAULT_OUTPUT = PROJECT_ROOT / 'outputs/workflow-preprocessing'
+ROOT = DEFAULT_OUTPUT
 VERSION = 'workflow-draft-v0.1'
 
 def dump(name, obj):
@@ -220,9 +221,9 @@ def check_expected(group,result):
 
 def main(output_directory=None):
     global ROOT
-    ROOT = Path(output_directory or ROOT).expanduser().resolve()
-    integrations = CODE_ROOT.parent
-    if ROOT == integrations or integrations in ROOT.parents:
+    ROOT = Path(output_directory or DEFAULT_OUTPUT).expanduser().resolve()
+    design_root = CODE_ROOT.parent
+    if ROOT == design_root or design_root in ROOT.parents:
         raise ValueError('전처리 결과는 Backend/agent_builder/design 외부 폴더에 저장하세요.')
     ROOT.mkdir(parents=True, exist_ok=True)
     raw=[]
@@ -281,7 +282,7 @@ def main(output_directory=None):
     # Model-neutral source of truth; selected tokenizer/chat template must be applied later.
     jsonl('sft_prompt_completion_draft.jsonl',[{'id':r['id'],'split':r['split'],'prompt':{'request':r['request'],'context':r['context'],'contract_version':VERSION},'completion':r['target']} for r in clean])
     readme='''# 워크플로우 생성 데이터 1차 전처리 초안\n\n## 목적\n사용자 요청과 실제로 제공 가능한 자원 명세를 입력으로 받아, 단계 연결을 포함한 워크플로우 초안 또는 확인 질문을 생성하는 학습 과제의 파일럿입니다. 특정 모델은 확정하지 않았습니다.\n\n## 출처와 한계\n모든 요청, 정답 설정, 도구 명세, 업무 레코드는 이 작업에서 새로 작성한 합성 자료입니다. 사용자 실제 로그나 기존 A4B 코드에서 추출한 자료가 아닙니다. 외부 자료 수집·개인정보 포함 없음. 이름·ID·주소는 시험용입니다. 원본의 공백과 중복도 작성 과정에서 만든 것이며 실제 서비스에서 발견한 결함으로 해석하면 안 됩니다. 팀의 사람 검수와 기존 백엔드 규격 대조는 미완료입니다.\n\n## 범위\n10개 시나리오 × 표현 3개 = 30개 고유 사례. 이 중 실행 구성 24개, 정보 부족 확인 6개. 예약·이벤트·수동·대화 시작을 포함합니다. 선형 단계 연결만 지원하며, 분기·반복·대기/재개·권한 집행·외부 연결·멀티 에이전트 실행은 이 파일럿에서 구현하지 않았습니다. 생성 도우미를 학습하는 데이터이며 모든 업무 실행에 에이전트가 있어야 하는 것은 아닙니다.\n\n## 정제 기준\nUnicode NFC 및 연속 공백 정리. 요청·자원·정답이 동일한 완전 중복은 첫 사례만 유지. 필수 요청·출력, 시간, 도구/자료/목적지 참조, 인자 키, 일부 리터럴 타입, 단계 참조의 출력 타입, 조건 열, 집계 열, 선형 연결을 검사합니다. 임의 코드나 조건 문자열 eval은 사용하지 않습니다. 요청에 정보가 없는 것은 불량이 아니라 needs_clarification 정답으로 유지합니다. 오탈자·의미 충돌·출처 정확성을 자동으로 완전히 검증하는 시스템은 아닙니다.\n\n## 분할\nseed 42, 시나리오 그룹 단위 6/2/2 분할, 각 18/6/6행. 같은 요청의 세 표현은 한 분할에만 들어갑니다. 이 분할은 작업 예시이며 표본이 작아 신뢰할 성능평가나 범용성 증명에 충분하지 않습니다. 테스트 결과를 보고 튜닝하지 말고, 규모 확장 전 업무와 도구 조합 분할을 다시 검토해야 합니다.\n\n## 모의 실행\n메모리 레코드 조회·필터·집계만 실제 Python 연산. 보고서 저장과 알림은 반환값만 만드는 mock이며 전송·생성 파일 없음. 문서 검색은 고정 근거 반환으로 검색 정확도 미검증. 실제 시간 예약, 웹훅 수신, 사용자 대화, LLM 추론, 모델 학습, 백엔드 실행을 수행하지 않았습니다.\n\n## 파일\nraw_requests.jsonl: 합성 원본 32행. clean_requests.jsonl: 정제된 30행. train/validation/test.jsonl: 그룹별 분리. dataset_review.csv: Excel로 열 수 있는 팀 검수표. tool_registry.json: 제안 도구 명세. contract.json: 임시 규약. change_log.json: 실제 정제 이력. summary.json: 계산된 통계. mock_execution_results.json: 모의 실행 결과. validator_negative_tests.json: 별도 의도적 오류 검증. sft_prompt_completion_draft.jsonl: 모델 중립 입력/정답 초안이며 토크나이저 적용 전.\n\n## 재현\nPython 표준 라이브러리만 사용. python build_dataset.py 실행. 정답은 생성 시나리오에 대해 검토 가능한 예시이며 자동 검사 통과가 사람이 검수한 정답을 의미하지 않습니다. 기존 백엔드 규약 확정 후 모든 설정과 도구 명세를 대조·변환하고 팀 검수해야 합니다. 모델 확정 후 해당 토크나이저·대화 템플릿·길이 제한·loss masking을 적용합니다.\n'''
-    readme=readme.replace('python build_dataset.py 실행.', '프로젝트 루트에서 python Backend/agent_builder/design/pilot/build_dataset.py 실행. --output 옵션으로 별도 결과 폴더를 지정할 수 있습니다.')
+    readme=readme.replace('python build_dataset.py 실행.', '프로젝트 루트에서 python Backend/agent_builder/design/pilot/build_dataset.py 실행. 기본 결과 폴더는 outputs/workflow-preprocessing/입니다. --output 옵션으로 별도 결과 폴더를 지정할 수 있습니다.')
     # Generated notes have a separate name so authored repository READMEs remain intact.
     (ROOT/'DATASET_NOTES.md').write_text(readme,encoding='utf-8')
     rows=''.join('<tr><td>'+html.escape(str(k))+'</td><td>'+html.escape(str(v))+'</td></tr>' for k,v in summary.items())
@@ -297,6 +298,9 @@ def main(output_directory=None):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description='합성 전처리 데이터와 검수 결과를 생성합니다.')
-    parser.add_argument('--output',type=Path,default=ROOT,help='결과 폴더 (기본: Backend/tests/fixtures/examples/workflow_preprocessing)')
+    parser.add_argument(
+        '--output', type=Path,
+        help=f'결과 폴더 (기본: {DEFAULT_OUTPUT.relative_to(PROJECT_ROOT).as_posix()})',
+    )
     args=parser.parse_args()
     main(args.output)

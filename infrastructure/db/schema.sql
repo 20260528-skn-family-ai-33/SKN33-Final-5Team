@@ -7,7 +7,8 @@
 -- 검토 및 새 빈 DB 복원용 기준본이다. 기존 RDS에 재실행하는 마이그레이션이 아니다.
 -- PostgreSQL 16 및 psql 16.15 이상을 사용하고, 새 DB에 prerequisites.sql을 먼저 적용한다.
 -- postgres 소유권과 a4b_guard_owner 소유 SECURITY DEFINER 함수 5개의 권한 경계를 보존한다.
--- 앱 시작 시 자동 실행하지 않는다. 갱신·복원 절차: docs/cognito-login.md의 DB 스키마 정의 절.
+-- 앱 시작 시 자동 실행하지 않는다. 갱신·복원 절차는 Cognito 안내의 DB 스키마 정의 절을 참고한다.
+-- https://github.com/20260528-skn-family-ai-33/SKN33-Final-5Team/blob/7d48d0f0d0ae5681753e299abed5723da81a1108/docs/cognito-login.md#db-스키마-정의
 
 --
 -- PostgreSQL database dump

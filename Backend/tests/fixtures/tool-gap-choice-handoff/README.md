@@ -52,7 +52,7 @@ const result = await executeReviewedGap(review, dataset, generator, {
 });
 ```
 
-review/dataset은 [기존 도구 검토 규격](../tool-gap.md)을 따른다. 선택했다는 사실만으로 부족한 업무 조건이나 독립 정답 자료가 생기지 않는다. 입출력·오류 처리·공개/숨긴 사례가 필요하다. human_reviewed 표기를 자동으로 true로 바꾸지 않는다.
+review/dataset은 [기존 도구 검토 규격](https://github.com/20260528-skn-family-ai-33/SKN33-Final-5Team/blob/0d4c6d1d1f0ff8381768173149e8eea8fa78072a/docs/tool-gap.md#검토-규격)을 따른다. 선택했다는 사실만으로 부족한 업무 조건이나 독립 정답 자료가 생기지 않는다. 입출력·오류 처리·공개/숨긴 사례가 필요하다. human_reviewed 표기를 자동으로 true로 바꾸지 않는다.
 
 1. 현재 선택을 실제 worker에서 조회.
 2. 도구 전체 대조·명세/정답 형식·동의 일치 검증.

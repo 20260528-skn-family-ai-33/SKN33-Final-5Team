@@ -2111,14 +2111,17 @@ test('Gmail schedules: switching to a file schedule restores its file requiremen
  const gmail=agent('G','전날 Gmail 요약',dailySchedule),fileAgent=agent('F','정기 재고 집계',dailySchedule);
  const h=await setup('?screen=schedule&service=G',{},path=>{
   if(path.split('?')[0].endsWith('/agents'))return {agents:[gmail,fileAgent]};
+  if(path.split('?')[0].endsWith('/schedules'))return {workflows:[{agent:fileAgent,schedule:snapshot(fileAgent).schedule}]};
   if(path.includes('/agent?id=G'))return {...snapshot(gmail),source_required:false,required_connections:['gmail'],request_required:false,input_requirements:[]};
   if(path.includes('/agent?id=F'))return {...snapshot(fileAgent),source_required:true,request_required:false,input_requirements:[{kind:'table',required_before_start:true,ready:false}]};
   if(path==='/api/agent-builder/gmail')return {configured:true,connected:true,connectionVersion:1,email:'scheduled@example.com'};
  },createElement(EntryApp));
  try{
   assert.equal(button('예약 켜기').disabled,false);
-  const openFile=Array.from(document.querySelectorAll('.as-agent-link')).find(item=>item.querySelector('strong')?.textContent==='정기 재고 집계');assert.ok(openFile);
-  await click(openFile);
+  assert.equal(document.querySelector('.as-workflow-switcher'),null);
+  await click(button('예약 관리'));
+  await click(document.querySelector('[aria-label="정기 재고 집계 일정 관리"]')!);
+  await click(document.querySelector('.schedule-detail-link')!);
   assert.equal(document.querySelector('h1')?.textContent,'정기 재고 집계');assert.ok(button('파일 연결'));
   assert.equal(button('예약 켜기').disabled,true);assert.equal(button('15초 후 시험 예약').disabled,true);assert.equal(button('예약 자료로 지금 실행').disabled,true);
   assert.equal(h.calls.some(call=>call.body),false);
@@ -2612,7 +2615,9 @@ test('execution separation: a manual workflow gains a reservation while direct i
   assert.equal(button('예약 켜기').disabled,false);assert.equal(button('예약 자료로 지금 실행').disabled,false);
   await click(button('예약 자료로 지금 실행'));
   let sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[0].body,{id:'A',content:'',fileIds:[],useSchedule:true});
-  await click(button('실행'));assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
+  assert.deepEqual([...document.querySelectorAll('.schedule-detail-tabs [aria-current=page]')].map(item=>item.textContent),['관리']);
+  assert.equal(document.querySelector('.schedule-detail-tabs button'),null);
+  await click(button('작업 라이브러리'));await click(document.querySelector('[aria-label="서비스 A 실행하기"]')!);assert.ok(document.querySelector('textarea[data-tour="run-input"]'));
   assert.equal(button('워크플로우 실행').disabled,true);await input(document.querySelector<HTMLTextAreaElement>('textarea[data-tour="run-input"]')!,'이번에는 다른 요청');
   await click(button('워크플로우 실행'));sent=h.calls.filter(call=>call.path.endsWith('/test'));assert.deepEqual(sent[1].body,{id:'A',content:'이번에는 다른 요청',fileIds:[]});
   await click(Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent==='예약 관리')!);await click(button('예약 해제'));
@@ -2631,12 +2636,12 @@ test('reservation edits survive cancelled tab, browser-back and new-workflow nav
  try{
   const tab=(text:string)=>Array.from(document.querySelectorAll('.studio-tabs button')).find(item=>item.textContent===text)!;
   await click(tab('예약 관리'));await click(button('일정 수정'));await input(field('실행 시간'),'10:00');
-  window.confirm=()=>{prompts++;return false;};await click(tab('실행'));
+  window.confirm=()=>{prompts++;return false;};await click(button('작업 라이브러리'));
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
   await act(async()=>{window.history.back();await new Promise(resolve=>setTimeout(resolve,100));});
   assert.equal(new URL(location.href).searchParams.get('screen'),'schedule');assert.equal(field('실행 시간').value,'10:00');
   await click(button('홈'));assert.equal(field('실행 시간').value,'10:00');assert.ok(prompts>=3);
-  await click(button('일정 저장'));const count=prompts;await click(tab('실행'));assert.equal(new URL(location.href).searchParams.get('screen'),'run');assert.equal(prompts,count);
+  await click(button('일정 저장'));const count=prompts;await click(button('작업 라이브러리'));assert.equal(new URL(location.href).searchParams.get('screen'),'workflows');assert.equal(prompts,count);
   assert.equal(h.calls.filter(call=>call.body).length,1);
  }finally{await h.close();}
 });
@@ -2758,7 +2763,8 @@ test('home: linked detail pages keep the selected workflow and return to home',a
   await click(document.querySelector('.schedule-detail-link')!);
   route('schedule','A');
   assert.ok(document.querySelector('.as-schedule-card'));
-  await click(button('설계'));
+  await click(button('작업 라이브러리'));
+  await click(document.querySelector('[aria-label="일일 보고서 설계 열기"]')!);
   route('workflow','A');
   assert.equal(document.querySelector('main h1')?.textContent,'일일 보고서');
   await click(document.querySelector('[data-tour="menu-workflows"]')!);
@@ -3728,7 +3734,7 @@ test('all saved-design entry paths preserve left selection and right-click setti
  try{
   await click(document.querySelector('[aria-label="서비스 A 설계 열기"]')!);await verify('library design');
   await click(document.querySelector('[data-tour="menu-schedules"]')!);
-  await click(document.querySelector('[aria-label="서비스 A 일정 관리"]')!);await click(document.querySelector('.schedule-detail-link')!);await click(button('설계'));await verify('schedule detail to design');
+  await click(document.querySelector('[aria-label="서비스 A 일정 관리"]')!);await click(document.querySelector('.schedule-detail-link')!);await click(button('작업 라이브러리'));await click(document.querySelector('[aria-label="서비스 A 설계 열기"]')!);await verify('schedule detail via library to design');
   await click(document.querySelector('[data-tour="menu-history"]')!);await click(button('결과 보기'));await click(button('설계'));await verify('history result to design');
   await click(document.querySelector('.as-workflow-switcher summary')!);await click(document.querySelector('.as-workflow-switcher nav button')!);await click(button('설계'));await verify('saved workflow switcher to design');
   assert.equal(h.calls.filter(call=>/\/(message|confirm)$/.test(call.path)).length,0);
